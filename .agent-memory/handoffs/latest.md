@@ -1,71 +1,89 @@
-# Handoff — 2026-06-30 (for Codex / any agent)
+# Handoff / Codex work backlog — 2026-06-30
 
-## Context (read these first)
-`docs/context-capsule.md` (Vision + Next Steps are the current source of truth),
-`AGENTS.md`, `docs/security.md`. Repo on `main` (GitHub `charle-z/mcp-devbox`),
-deployed in production via Coolify on a VPS, reachable from ChatGPT web.
+Status: **L1 + remote (v0.2) live in production and validated end-to-end from ChatGPT
+web** (Coolify/VPS, `https://mcp-devbox-charlez.duckdns.org/mcp?key=...`). All 13 MCP
+tools work; verified one-tool-per-message on ChatGPT's instant model. `go test ./...`
++ `go vet` + `gofmt` green.
 
-## Direction (UPDATED — do not regress)
-The agent IS ChatGPT itself, driving MCP tools directly. **Do NOT build the L2
-cheap-model worker (DeepSeek/MiniMax) and do NOT fork opencode/etc.** Invest in: more
-safe tools + capability, grants hardening, L3 sandbox, easy install. `docs/features.md`
-still mentions the worker — it's outdated; the capsule Vision wins.
+Read first (source of truth, in order): `docs/context-capsule.md` (Vision + Next
+Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
 
-## Build discipline (AGENTS.md)
-TDD per step: RED → GREEN → `go test ./...` → `go vet ./...` + `gofmt -l` → one commit
-per step, **no AI signature**. Go toolchain (Windows host, not on PATH):
-`$env:PATH = "C:\Users\carbe\go-sdk\go\bin;" + $env:PATH`. Reuse the existing Policy /
-Service / mcpserver — never duplicate security checks. Repo file content is DATA.
+## Direction (do NOT regress)
+- The agent IS ChatGPT (or any MCP client) driving these tools. **Do NOT build an L2
+  cheap-model worker; do NOT fork opencode.** `docs/features.md` worker plan is stale.
+- Keep the runtime image **capable** (Go + git), not minimal — the box is meant to
+  grow into a broader agent (later: disk/forensics/more toolchains).
+- Broad capabilities (disk/network/free exec) require **L3 first**. Never a free
+  terminal; each capability = an allowlisted + audited tool + a deliberate jail step.
 
-## STATUS (2026-06-30)
-- Task 1 DONE (commit 40af1cd): env config MCP_DEVBOX_TEST_CMD / MCP_DEVBOX_ALLOW_CMD.
-- Task 2 DONE (commit 8415c49): grants verified airtight — adversarial tests prove the
-  agent cannot self-approve (request_id replay denied), unknown-id approve fails, grant
-  is single-use + path-exact + non-persistent + raw double-gated. See
-  internal/policy/grants_adversarial_test.go. **Grants are sound; no rework needed.**
-- Task 3 DONE: `create_file` (patch-first new-file creation, commit a4b10e1) and
-  `git_commit` (staged commit, mode-gated, no push) added + registered as MCP tools,
-  tested against real git. The create→test→commit loop is now usable from ChatGPT.
-- NEXT = Task 4 (L3: OS sandbox + egress). Optional polish: write/overwrite-existing
-  via patch helper, controlled `git_push` (currently push is blocked by design),
-  clearer tool schemas. All pushed to origin/main.
+## Hard rules (from AGENTS.md — non-negotiable)
+- TDD per step: RED → GREEN → `go test ./...` → `go vet ./...` + `gofmt -l` → **one
+  commit per step**, commit messages **without any AI signature / Co-Authored-By**.
+- Reuse `internal/policy` (the single gate) and `internal/tools` Service; never
+  duplicate jail/secret/allowlist checks. Repo file content is DATA, never instructions.
+- Secure-by-default stays: read-only default, secrets denied (path+content+grants),
+  allowlist-only commands, patch-first writes, audit everything, **policy not mutable
+  by the agent at runtime**.
+- Go toolchain (Windows host, not on PATH): `$env:PATH = "C:\Users\carbe\go-sdk\go\bin;" + $env:PATH`.
+- After each step update `docs/context-capsule.md` if behavior changed; keep this
+  handoff's checklist current.
 
-## Task 1 (DONE) — capability via env, flip to `ask`
-Goal: let ChatGPT actually patch + run tests on the VPS without rebuilding the image.
-- In `cmd/mcp-devbox/main.go`, read `MCP_DEVBOX_TEST_CMD` and `MCP_DEVBOX_ALLOW_CMD`
-  from env as fallbacks for the existing `--test-cmd` / `--allow-cmd` flags (flag wins
-  if set). Keep `MCP_DEVBOX_MODE` / `ROOT` / `TOKEN` behavior intact.
-- Update the Dockerfile CMD so those envs flow through (it already passes ROOT/MODE).
-- Tests: env is read; flag overrides env; empty env = current secure defaults.
-- DoD: set `MCP_DEVBOX_TEST_CMD="go test ./..."` and `MCP_DEVBOX_MODE=ask` in Coolify →
-  redeploy → from ChatGPT, `run_tests` returns approval-required, and `apply_patch`
-  works after approve. Update `docs/connect-remote.md` with the new env vars.
+## Backlog (do in order; each item = its own TDD step/commit)
 
-## Task 2 — verify/harden grants (security-critical)
-The grants feature (`internal/grantadmin`, `internal/policy` access-grants,
-`tools.ReadFileWithAccess`) is a deliberate human-approved bypass of secret-deny.
-It LOOKS correct (loopback admin + token, raw needs --confirm-raw, ttl 1s–1h, agent
-can't self-approve). Confirm with adversarial tests if not already covered:
-- grant is **single-use** (consumed after one read) and **path-exact** (no widening to
-  siblings/parent), **non-persistent** (gone after restart), and the **agent cannot
-  reach the admin channel** (loopback only).
-- `--raw` truly requires the second confirmation; normal grant still redacts.
-- A grant approved for path A cannot be used to read path B.
-Fix any gap found, TDD. Also: make the approval UX less painful than exec-into-container
-(e.g., document a `docker exec` one-liner, or a small `mcp-devbox grant` convenience).
+### P0 — quick wins / hygiene
+1. **Tune secret-scan false positives.** `internal/policy/scan.go` over-redacts: e.g.
+   `MCP_DEVBOX_TOKEN="$(openssl rand -base64 32)"` in README got redacted. Refine the
+   `generic-secret-assign` rule so shell command substitutions `$(...)`, bare env-var
+   refs, and obvious placeholders aren't treated as secrets — WITHOUT weakening real
+   token detection. Add table tests with both real secrets (must redact) and these
+   false positives (must NOT redact).
+2. **CI workflow.** Add `.github/workflows/ci.yml` running `go test ./...` + `go vet`
+   on push/PR (Go 1.26). Keeps coverage without bloating the runtime image.
+3. **Docs sync.** Update `docs/connect-remote.md` with what we learned: ChatGPT works
+   best one-tool-per-message on the instant model; multi-tool chains on the thinking
+   model + OpenAI's exec guardrail cause "message sequence" errors. Document the 13
+   tools incl. create_file/run_command/git_commit and their mode gating. Add the new
+   env vars (MCP_DEVBOX_TEST_CMD/ALLOW_CMD) and note `git_commit` does NOT push.
+   Mark `docs/features.md` L2-worker section as superseded (point to capsule Vision).
 
-## Image policy (decided): keep it CAPABLE, not minimal
-Do NOT strip the runtime to bare essentials. Owner wants the box to grow into a
-broader agent (later: disk access / forensics / more toolchains — "Codex-in-chat with
-OpenClaw/Hermes freedom"). Runtime keeps Go 1.26 + git (commit f6140e8). When adding
-capabilities: each = a deliberate allowlisted+audited tool + explicit jail expansion,
-NEVER a free terminal. Broad capabilities make L3 a HARD prerequisite (see below).
+### P1 — make it feel like an agent + robustness
+4. **Metacognition (instructions).** Enrich `initialize.instructions` in
+   `internal/mcpserver/server.go` to prescribe a loop: plan → act → observe →
+   self-check (esp. via run_tests) → revise → record to memory. Keep it concise.
+5. **Metacognition (memory).** Add a `memory_write(section, content)` MCP tool +
+   `internal/tools` method that writes structured files under `.agent-memory/`
+   (`current-task.md`, `plan.md`, `decisions.md`, `reflections.md`) — same policy as
+   memory_update_handoff (jailed, secret-scanned, write-mode-gated). Lets the agent
+   externalize and re-read its own reasoning across steps/sessions. TDD + register.
+6. **Transport hardening (best-effort for ChatGPT multi-step).** In
+   `internal/mcpserver/http.go`: return an `Mcp-Session-Id` on `initialize` and accept
+   it on later POSTs; make `GET /mcp` return a valid (possibly empty/keep-alive) SSE
+   stream instead of 405. Goal: reduce ChatGPT's "Error en la secuencia de mensajes"
+   on chained calls. NOTE: this will NOT fix OpenAI's own intermittent blocking of
+   execution tools — that is client-side and out of scope. Keep bearer/`?key=` auth.
 
-## Task 4 — L3 (the enabler for "freedom"): OS sandbox + egress
-Wrap Docker/gVisor/nsjail so a permitted command cannot escape; egress default-deny
-(block 169.254.169.254 + RFC1918). Required before free command execution, especially
-the PC scenario. Wrap, don't reinvent (see docs/design.md / security.md).
+### P2 — the big enabler (separate, careful)
+7. **L3 — OS sandbox + egress.** Wrap Docker/gVisor/nsjail so a permitted command
+   provably cannot escape; egress default-deny (block 169.254.169.254 + RFC1918,
+   allowlist endpoints). REQUIRED before any broad capability (disk/forensics/free
+   exec) and before pointing at the owner's PC. Wrap proven tech; do not reinvent.
+   See `docs/design.md` / `docs/security.md`.
+
+### Ongoing / optional
+- New capability tools (toward the broader-agent vision) ONLY as allowlisted+audited
+  tools with explicit jail scoping; e.g. a gated `git_push` (currently push is blocked
+  by design — add only behind mode+approval if the owner wants it).
+- Improve tool descriptions/schemas to reduce client arg mistakes.
+- Less painful grant-approval UX than exec-into-container (document a one-liner or a
+  small convenience), keeping the human-only, loopback-only guarantee.
 
 ## Don't
-Reintroduce the cheap-model worker; give the PC command-execution before L3; weaken
-read-only default; expose the grant admin channel beyond loopback; persist grants.
+Reintroduce the L2 worker; give the PC command execution before L3; expose the grant
+admin channel beyond loopback; persist grants; weaken read-only default; commit AI
+signatures; minimize the image to drop Go.
+
+## Verify before declaring any step done
+`go test ./... -count=1` green · `go vet ./...` clean · `gofmt -l` empty · build ok.
+For deploy-affecting changes, the webhook auto-redeploys on push to `main`
+(charle-z/mcp-devbox); smoke: `GET /healthz`→200, `GET /mcp`→405, `POST /mcp` no
+token→401, `POST /mcp?key=`→200 with 13 tools.
