@@ -38,8 +38,9 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    token detection. Add table tests with both real secrets (must redact) and these
    false positives (must NOT redact). Implemented value-level filtering for the
    generic assignment rule; provider-token regexes still redact literal tokens.
-2. **CI workflow.** Add `.github/workflows/ci.yml` running `go test ./...` + `go vet`
-   on push/PR (Go 1.26). Keeps coverage without bloating the runtime image.
+2. DONE (2026-06-30): **CI workflow.** Add `.github/workflows/ci.yml` running
+   `go test ./... -count=1` + `go vet ./...` on push/PR (Go 1.26.4). Keeps coverage
+   without bloating the runtime image.
 3. **Docs sync.** Update `docs/connect-remote.md` with what we learned: ChatGPT works
    best one-tool-per-message on the instant model; multi-tool chains on the thinking
    model + OpenAI's exec guardrail cause "message sequence" errors. Document the 13
