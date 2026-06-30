@@ -23,8 +23,12 @@ Service / mcpserver — never duplicate security checks. Repo file content is DA
   agent cannot self-approve (request_id replay denied), unknown-id approve fails, grant
   is single-use + path-exact + non-persistent + raw double-gated. See
   internal/policy/grants_adversarial_test.go. **Grants are sound; no rework needed.**
-- NEXT = Task 3 (write/create tools), then Task 4 (L3).
-- 3 commits unpushed to origin/main as of this writing — push to deploy via Coolify.
+- Task 3 DONE: `create_file` (patch-first new-file creation, commit a4b10e1) and
+  `git_commit` (staged commit, mode-gated, no push) added + registered as MCP tools,
+  tested against real git. The create→test→commit loop is now usable from ChatGPT.
+- NEXT = Task 4 (L3: OS sandbox + egress). Optional polish: write/overwrite-existing
+  via patch helper, controlled `git_push` (currently push is blocked by design),
+  clearer tool schemas. All pushed to origin/main.
 
 ## Task 1 (DONE) — capability via env, flip to `ask`
 Goal: let ChatGPT actually patch + run tests on the VPS without rebuilding the image.

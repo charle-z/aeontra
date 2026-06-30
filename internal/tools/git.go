@@ -45,6 +45,40 @@ func (s *Service) GitDiff(extra ...string) (string, error) {
 	return s.redact(out), nil
 }
 
+// GitCommit stages all changes and commits them. It is a write action: gated by the
+// write/command posture (read-only denies, ask requires approve=true, allow commits).
+// The message is passed via argv (never a shell), so normal punctuation is safe.
+func (s *Service) GitCommit(message string, approve bool) (string, error) {
+	sp := s.log.Start("git_commit")
+	if strings.TrimSpace(message) == "" {
+		err := fmt.Errorf("commit message is required")
+		sp.Finish(audit.Error, "git_commit", nil, err)
+		return "", err
+	}
+	// Mode + allowlist gate (commit is not in the destructive git set).
+	needsApproval, err := s.pol.CheckCommand("git", []string{"commit"})
+	if err != nil {
+		sp.Finish(audit.Deny, "git_commit", nil, err)
+		return "", err
+	}
+	if needsApproval && !approve {
+		sp.Finish(audit.Ask, "git_commit", nil, nil)
+		return "APPROVAL REQUIRED: git_commit would stage all changes and commit. Re-invoke with approve=true.", nil
+	}
+	ctx := context.Background()
+	if out, err := s.run(ctx, s.root, "git", []string{"add", "-A"}); err != nil {
+		sp.Finish(audit.Error, "git add -A", nil, err)
+		return s.redact(out), fmt.Errorf("git add: %w", err)
+	}
+	out, err := s.run(ctx, s.root, "git", []string{"commit", "-m", message})
+	if err != nil {
+		sp.Finish(audit.Error, "git commit", nil, err)
+		return s.redact(out), fmt.Errorf("git commit: %w", err)
+	}
+	sp.Finish(audit.Allow, "git commit", nil, nil)
+	return s.redact(out), nil
+}
+
 // ApplyPatch applies a unified diff, patch-first and validated. It (1) extracts the
 // patch's target files and policy-checks each as a write (jail + secret + mode),
 // (2) validates with `git apply --check` BEFORE applying, (3) in ask mode returns

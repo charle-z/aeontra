@@ -149,6 +149,23 @@ func (s *Server) register() {
 			return s.svc.RunTests(p.Approve, p.Extra...)
 		})
 
+	s.add("git_commit",
+		"Stage all changes and commit them. Write action: denied in read-only; in ask mode set approve=true. Does not push.",
+		object(map[string]any{
+			"message": strProp("commit message"),
+			"approve": boolProp("commit even when approval is required"),
+		}, "message"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Message string `json:"message"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.GitCommit(p.Message, p.Approve)
+		})
+
 	s.add("memory_read", "Read the repo's agent-agnostic memory (.agent-memory/*.md), redacted.",
 		object(map[string]any{}),
 		func(json.RawMessage) (string, error) { return s.svc.MemoryRead() })
