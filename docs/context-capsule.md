@@ -31,6 +31,19 @@ mcp-devbox is the **safe hands**. Goals: control the VPS now, optionally the PC 
 `docs/features.md` still describes the old option-B worker; treat THIS section as the
 current source of truth for direction.
 
+**Image policy (decided 2026-06-30):** do NOT minimize the runtime image to bare
+essentials. The owner expects the box to GROW into a broader agent (run tests now;
+later possibly disk access / forensics / more toolchains) — "a Codex-in-chat with
+OpenClaw/Hermes-like freedom". So the runtime keeps a capable toolset (currently Go
+1.26 + git). Trading capability for a few hundred MB is not worth it on this VPS.
+
+**Security consequence (non-negotiable as capability grows):** every new capability
+is a deliberate, allowlisted, audited tool + an explicit jail expansion — never a
+blanket "free terminal". And broad capabilities (disk/forensics/network) make **L3
+(OS sandbox + egress default-deny) a hard prerequisite**, not optional: a command
+with disk+network access reachable from ChatGPT is a serious hole without L3. Evaluate
+that expansion carefully; do not bolt it on before L3.
+
 ## Current State
 
 **Layer 1 green + v0.2 remote connectivity + ephemeral human access grants added.** Go module

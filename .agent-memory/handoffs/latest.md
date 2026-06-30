@@ -54,7 +54,14 @@ can't self-approve). Confirm with adversarial tests if not already covered:
 Fix any gap found, TDD. Also: make the approval UX less painful than exec-into-container
 (e.g., document a `docker exec` one-liner, or a small `mcp-devbox grant` convenience).
 
-## Task 3 — L3 (later, big): OS sandbox + egress
+## Image policy (decided): keep it CAPABLE, not minimal
+Do NOT strip the runtime to bare essentials. Owner wants the box to grow into a
+broader agent (later: disk access / forensics / more toolchains — "Codex-in-chat with
+OpenClaw/Hermes freedom"). Runtime keeps Go 1.26 + git (commit f6140e8). When adding
+capabilities: each = a deliberate allowlisted+audited tool + explicit jail expansion,
+NEVER a free terminal. Broad capabilities make L3 a HARD prerequisite (see below).
+
+## Task 4 — L3 (the enabler for "freedom"): OS sandbox + egress
 Wrap Docker/gVisor/nsjail so a permitted command cannot escape; egress default-deny
 (block 169.254.169.254 + RFC1918). Required before free command execution, especially
 the PC scenario. Wrap, don't reinvent (see docs/design.md / security.md).
