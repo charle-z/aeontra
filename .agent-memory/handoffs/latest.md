@@ -31,12 +31,13 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
 ## Backlog (do in order; each item = its own TDD step/commit)
 
 ### P0 — quick wins / hygiene
-1. **Tune secret-scan false positives.** `internal/policy/scan.go` over-redacts: e.g.
+1. DONE (2026-06-30): **Tune secret-scan false positives.** `internal/policy/scan.go` over-redacts: e.g.
    `MCP_DEVBOX_TOKEN="$(openssl rand -base64 32)"` in README got redacted. Refine the
    `generic-secret-assign` rule so shell command substitutions `$(...)`, bare env-var
    refs, and obvious placeholders aren't treated as secrets — WITHOUT weakening real
    token detection. Add table tests with both real secrets (must redact) and these
-   false positives (must NOT redact).
+   false positives (must NOT redact). Implemented value-level filtering for the
+   generic assignment rule; provider-token regexes still redact literal tokens.
 2. **CI workflow.** Add `.github/workflows/ci.yml` running `go test ./...` + `go vet`
    on push/PR (Go 1.26). Keeps coverage without bloating the runtime image.
 3. **Docs sync.** Update `docs/connect-remote.md` with what we learned: ChatGPT works

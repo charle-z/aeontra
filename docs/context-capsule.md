@@ -63,6 +63,12 @@ approve it through the daemon's loopback admin channel using `mcp-devbox grant`;
 grants are in-memory, exact-path, single-use, TTL-bounded, and normal grants still
 redact. Raw output requires `--raw --confirm-raw`. No grant/approval MCP tool exists.
 
+**Secret-scan tuning (2026-06-30):** content redaction still catches provider
+tokens and real generic assignments, but no longer redacts obvious non-secret
+assignment values such as shell command substitutions (`$(...)`), env-var refs
+(`$TOKEN`, `${TOKEN}`, `$env:TOKEN`), and placeholders (`<paste-the-token>`,
+`REPLACE_ME...`, `your-token-here`).
+
 **VPS/Coolify deploy path:** `Dockerfile` + `.dockerignore` + `docs/deploy-coolify.md`
 support running mcp-devbox on a VPS behind Coolify/Traefik with repos mounted at
 `/repos`, HTTP bound to `0.0.0.0:8765` inside the container, non-root Alpine
@@ -185,7 +191,7 @@ Vision section above wins.
 
 ## Last Verified
 
-Date: 2026-06-29 — `go test ./...` + `go vet` + `go build ./...` + `gofmt` green. stdio: initialize/
+Date: 2026-06-30 — `go test ./... -count=1` + `go vet ./...` + `go build ./...` + `gofmt` green. Secret-scan false positives tuned for command substitutions/env refs/placeholders while real assignments still redact. stdio: initialize/
 tools/list/tools/call, secret read returns structured `access-required`,
 human-approved grants are exact-path/single-use/TTL and raw-gated, prompt-injection
 returned as data.

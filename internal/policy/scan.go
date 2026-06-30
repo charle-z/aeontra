@@ -1,6 +1,9 @@
 package policy
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // redactPlaceholder replaces detected secret material in returned content.
 const redactPlaceholder = "***REDACTED-SECRET***"
@@ -63,9 +66,44 @@ func Redact(content string) (string, bool) {
 			if start < 0 || end < 0 {
 				return m
 			}
+			if rule.name == "generic-secret-assign" && isBenignSecretAssignmentValue(m[start:end]) {
+				return m
+			}
 			redacted = true
 			return m[:start] + redactPlaceholder + m[end:]
 		})
 	}
 	return out, redacted
+}
+
+func isBenignSecretAssignmentValue(value string) bool {
+	v := strings.TrimSpace(value)
+	v = strings.Trim(v, `"'`)
+	low := strings.ToLower(v)
+
+	if strings.HasPrefix(v, "$(") || strings.HasPrefix(v, "`") {
+		return true
+	}
+	if strings.HasPrefix(v, "$") || (strings.HasPrefix(low, "%") && strings.HasSuffix(low, "%")) {
+		return true
+	}
+	if strings.HasPrefix(v, "<") && strings.HasSuffix(v, ">") {
+		return true
+	}
+
+	placeholderWords := []string{
+		"placeholder",
+		"replace",
+		"changeme",
+		"change-me",
+		"your-",
+		"paste",
+		"todo",
+	}
+	for _, word := range placeholderWords {
+		if strings.Contains(low, word) {
+			return true
+		}
+	}
+	return false
 }

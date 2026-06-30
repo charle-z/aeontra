@@ -107,6 +107,41 @@ DB_TOKEN=abcdef0123456789`
 	}
 }
 
+func TestRedact_GenericAssignmentsRealSecretsStillRedact(t *testing.T) {
+	cases := map[string]string{
+		"mcp-token":       "MCP_DEVBOX_TOKEN=supersecretvalue123",
+		"quoted-secret":   `CLIENT_SECRET="abcdef0123456789"`,
+		"password-urlish": "PASSWORD=postgres://user:pass@example.invalid/db",
+	}
+	for name, in := range cases {
+		out, red := Redact(in)
+		if !red {
+			t.Errorf("%s: expected redaction in %q", name, in)
+		}
+		if out == in {
+			t.Errorf("%s: content unchanged, secret leaked: %q", name, out)
+		}
+	}
+}
+
+func TestRedact_GenericAssignmentsFalsePositives(t *testing.T) {
+	cases := map[string]string{
+		"shell-command-substitution": `MCP_DEVBOX_TOKEN="$(openssl rand -base64 32)"`,
+		"bare-env-ref":               "MCP_DEVBOX_TOKEN=$MCP_DEVBOX_TOKEN",
+		"braced-env-ref":             "MCP_DEVBOX_TOKEN=${MCP_DEVBOX_TOKEN}",
+		"powershell-env-ref":         "MCP_DEVBOX_TOKEN=$env:MCP_DEVBOX_TOKEN",
+		"angle-placeholder":          "MCP_DEVBOX_TOKEN=<paste-the-token>",
+		"replace-placeholder":        "CLIENT_SECRET=REPLACE_ME_WITH_SECRET",
+		"your-placeholder":           "API_KEY=your-token-here",
+	}
+	for name, in := range cases {
+		out, red := Redact(in)
+		if red || out != in {
+			t.Errorf("%s: false positive redaction; redacted=%v out=%q", name, red, out)
+		}
+	}
+}
+
 func TestRedact_CleanContentUnchanged(t *testing.T) {
 	in := "package main\n\nfunc main() { println(\"hello world\") }\n"
 	out, red := Redact(in)
