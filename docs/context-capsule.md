@@ -1,204 +1,184 @@
-# Context Capsule — mcp-devbox
+# Context Capsule - mcp-devbox
 
-Compact handoff for any AI session. Keep short and current.
+Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-L1 + remote connectivity are **done and running in production** (ChatGPT web →
-Coolify/VPS over HTTPS, verified live). Current goal: evolve it into a **GPT-driven
-agent** that can safely *do* things (not just read), controlled by the human via the
-ChatGPT chat.
+L1 + remote connectivity are done and running in production: ChatGPT web connects to
+the Coolify/VPS deployment over HTTPS and can operate on repos cloned in the VPS
+volume. Current goal: evolve mcp-devbox into a GPT-driven agent tool box that can
+safely do work, while a human keeps control of risky operations.
 
-## Vision (UPDATED 2026-06-30 — supersedes the old "option B" worker plan)
+## Vision (updated 2026-06-30)
 
-**Owner's refined direction (confirmed in chat):** the agent IS ChatGPT itself.
-ChatGPT (the chat the owner already pays for) drives the loop directly via MCP tools;
-mcp-devbox is the **safe hands**. Goals: control the VPS now, optionally the PC later,
-**without burning Codex / licensed-AI credits**, non-persistent and human-controlled.
+The agent is ChatGPT itself. ChatGPT drives the loop directly through MCP tools;
+mcp-devbox provides the safe hands: jail, policy, redaction, grants, audit, and
+mode-gated actions.
 
-> **DROPPED: the L2 cheap-model worker (DeepSeek/MiniMax).** The owner explicitly does
-> NOT want a separate worker/orchestrator — that was "the thing I'd send orders to";
-> they want GPT itself to act. Do NOT reintroduce a worker. Do NOT fork opencode/etc.
-> (those bring their own paid model loop). ChatGPT already does multi-step tool-calling.
+Do not reintroduce the old L2 cheap-model worker / `delegate_to_worker` plan and do
+not fork opencode or another paid agent loop. The owner wants to use the ChatGPT
+session they already pay for, avoid burning Codex/licensed-agent credits, and fall
+back to Codex/Claude/opencode only for work that proves impossible through MCP.
 
-**Revised layers / priorities:**
-1. **More agent-first tools + capability** — flip `ask`, wire `MCP_DEVBOX_TEST_CMD` /
-   `MCP_DEVBOX_ALLOW_CMD` (env→flags), add write/create tools so GPT *does*, not just reads.
-2. **Grants hardening** — the deliberate, human-approved bypass of secret-deny must stay airtight.
-3. **L3 (OS sandbox + egress)** — REQUIRED before free command execution, especially on the PC.
-4. **Easy install / portability** — one-command redeploy to any VPS (already Dockerfile + Coolify).
+Revised priorities:
 
-`docs/features.md` still describes the old option-B worker; treat THIS section as the
-current source of truth for direction.
+1. Agent-first tool UX: better instructions, memory, safe write/test/commit loops.
+2. Grants hardening: local-human-only, exact-path, single-use/TTL, raw double-gated.
+3. L3 hard isolation: OS sandbox plus egress controls before broad command/disk power.
+4. Install/deploy polish: easy repeatable VPS deployment and safer auth front doors.
 
-**Image policy (decided 2026-06-30):** do NOT minimize the runtime image to bare
-essentials. The owner expects the box to GROW into a broader agent (run tests now;
-later possibly disk access / forensics / more toolchains) — "a Codex-in-chat with
-OpenClaw/Hermes-like freedom". So the runtime keeps a capable toolset (currently Go
-1.26 + git). Trading capability for a few hundred MB is not worth it on this VPS.
+`docs/features.md` is explicitly marked SUPERSEDED for the old worker plan. This
+capsule is the current source of truth for direction.
 
-**Security consequence (non-negotiable as capability grows):** every new capability
-is a deliberate, allowlisted, audited tool + an explicit jail expansion — never a
-blanket "free terminal". And broad capabilities (disk/forensics/network) make **L3
-(OS sandbox + egress default-deny) a hard prerequisite**, not optional: a command
-with disk+network access reachable from ChatGPT is a serious hole without L3. Evaluate
-that expansion carefully; do not bolt it on before L3.
+Image policy: keep the runtime capable, not minimal. The Docker image intentionally
+keeps Go + git because the VPS box is meant to run tests and grow into broader,
+audited tools. Do not shrink it into a bare runtime that cannot do useful work.
+
+Security consequence: every new capability must be a deliberate allowlisted and
+audited tool with explicit jail scoping. There is no free terminal before L3.
 
 ## Current State
 
-**Layer 1 green + v0.2 remote connectivity + ephemeral human access grants added.** Go module
-`github.com/carbe/mcp-devbox` (Go 1.26). Policy core + all 10 L1 MCP tools + MCP
-server + CLI, TDD-tested (incl. adversarial), `go vet`/`gofmt` clean. On branch
-`feat/layer-1`.
+Layer 1, v0.2 HTTP transport, Docker/Coolify deploy, and ephemeral human access
+grants are implemented and live. Module: `github.com/carbe/mcp-devbox` (Go 1.26).
+Main branch: `main`.
 
-**Transports:** stdio (default, local clients) **and** HTTP (`serve --http ADDR`,
-streamable-HTTP subset: `POST /mcp` JSON-RPC, **mandatory bearer auth**, 202 for
-notifications, 405 on GET, batch support, `/healthz`). Same Policy/Service/redaction
-reused — no core duplication. Bearer from `MCP_DEVBOX_TOKEN` (or `--http-token`);
-refuses to start over HTTP without it; binds 127.0.0.1 by default.
+Production:
 
-**Ephemeral grants:** secret paths remain denied by default. A denied secret read
-returns structured `access-required` with a request id. Only the local human can
-approve it through the daemon's loopback admin channel using `mcp-devbox grant`;
-grants are in-memory, exact-path, single-use, TTL-bounded, and normal grants still
-redact. Raw output requires `--raw --confirm-raw`. No grant/approval MCP tool exists.
+- Host: `https://mcp-devbox-charlez.duckdns.org`
+- MCP endpoint: `/mcp?key=<MCP_DEVBOX_TOKEN>`
+- Auth in ChatGPT connector: "Sin autenticacion" because ChatGPT cannot set a bearer
+  header in the connector UI.
+- Runtime root: `/repos/mcp-devbox`
+- Default mode: `read-only`
+- Repos live in the persistent `/repos` volume.
 
-**Secret-scan tuning (2026-06-30):** content redaction still catches provider
-tokens and real generic assignments, but no longer redacts obvious non-secret
-assignment values such as shell command substitutions (`$(...)`), env-var refs
-(`$TOKEN`, `${TOKEN}`, `$env:TOKEN`), and placeholders (`<paste-the-token>`,
-`REPLACE_ME...`, `your-token-here`).
+Transport:
 
-**VPS/Coolify deploy path:** `Dockerfile` + `.dockerignore` + `docs/deploy-coolify.md`
-support running mcp-devbox on a VPS behind Coolify/Traefik with repos mounted at
-`/repos`, HTTP bound to `0.0.0.0:8765` inside the container, non-root Alpine
-runtime, and `MCP_DEVBOX_TOKEN` supplied only by Coolify env/secrets.
+- stdio for local clients.
+- HTTP `POST /mcp` JSON-RPC, bearer or `?key=` token required.
+- `/healthz` for health checks.
+- `GET /mcp` returns 405 in v0.2.
+- Same Policy/Service/redaction path for both transports; no duplicated security checks.
 
-**Verified end-to-end through a real Cloudflare quick tunnel** (2026-06-29):
-public `/healthz`→200, `/mcp` no-token→401, `initialize` ok with bearer, and
-`read_file` returned the secret **redacted** over the public internet path. The only
-step left for the user is the ChatGPT connector click-through (guide below). NOT
-built: L2 worker, L3 OS sandbox/egress.
+Ephemeral grants:
 
-Spec-Kit-style artifacts (constitution + spec/plan/tasks) live in `.specify/` and
-`specs/001-layer-1/`. The Spec Kit CLI itself was not installable here (no `uv`), so
-we followed the constitution + TDD directly.
+- Secret paths remain denied by default.
+- A denied secret read returns structured `access-required` with a request id.
+- Only the local human can approve through the daemon's loopback admin channel using
+  `mcp-devbox grant`.
+- Grants are in-memory, exact-path, single-use, and TTL-bounded.
+- Normal grants still redact. Raw output requires `--raw --confirm-raw`.
+- No MCP tool can approve grants.
 
-### What works (L1)
-- **Policy** (`internal/policy`): path jail (fs+commands, symlink/traversal/UNC/
-  sibling-prefix safe), secret deny by path, content secret-scan + redaction,
-  command allowlist + destructive/injection block, ephemeral in-memory read grants,
-  single immutable policy/config gate.
-- **Audit** (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- **Tools** (`internal/tools`): build_context_pack, read_file, read_many_files,
-  search_code, apply_patch (git apply --check, ask-gated), git_status, git_diff,
-  run_tests (allowlist, mode-gated), memory_read, memory_update_handoff.
-- **Server/CLI**: `internal/mcpserver` (dependency-free JSON-RPC stdio) + `cmd/mcp-devbox serve`.
-- **Deploy:** Docker image for Coolify/VPS documented in `docs/deploy-coolify.md`.
+Secret-scan tuning (2026-06-30): content redaction still catches provider tokens and
+real generic assignments, but does not redact obvious non-secret assignment values
+such as shell command substitutions (`$(...)`), env-var refs (`$TOKEN`, `${TOKEN}`,
+`$env:TOKEN`), and placeholders (`<paste-the-token>`, `REPLACE_ME...`,
+`your-token-here`).
 
-### Toolchain note (Windows host)
-Go installed as a local SDK at `C:\Users\carbe\go-sdk\go\bin` (no admin). Prepend it:
-`$env:PATH = "C:\Users\carbe\go-sdk\go\bin;" + $env:PATH`.
+CI (2026-06-30): `.github/workflows/ci.yml` runs `go test ./... -count=1` and
+`go vet ./...` on push/PR with Go 1.26.4.
 
-## Key Decisions
+## What Works
 
-- Go-first core (cross-platform); Rust NOT used (security = architecture, not language).
-- Linux-first secure mode via WSL2 on Windows.
-- Cloudflare Tunnel + Access (free) for the ChatGPT bridge.
-- Markdown repo memory; patch-first writes; allowlist-only commands.
-- Positioning: the **secure** alternative to Desktop Commander (core category exists).
+- Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
+  sibling-prefix protection, secret path deny, content redaction, command allowlist,
+  destructive/injection blocking, in-memory read grants, immutable runtime policy.
+- Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
+- Tools (`internal/tools`): 13 MCP tools:
+  `build_context_pack`, `read_file`, `read_many_files`, `search_code`,
+  `apply_patch`, `create_file`, `run_command`, `git_status`, `git_diff`,
+  `run_tests`, `git_commit`, `memory_read`, `memory_update_handoff`.
+- Writes: `apply_patch` is patch-first and validates with `git apply --check`;
+  `create_file` refuses overwrite and goes through the same patch pipeline.
+- Commands: `run_command` and `run_tests` are allowlist-only, mode-gated, no shell,
+  output redacted.
+- Git: `git_status` and `git_diff` are read-only; `git_commit` stages and commits
+  locally but does not push.
+- Deploy: `Dockerfile`, `.dockerignore`, and `docs/deploy-coolify.md` support
+  Coolify/Traefik with `MCP_DEVBOX_TOKEN` supplied only by env/secrets.
 
 ## Important Files
 
 | File | Why |
 |---|---|
-| `AGENTS.md` | operating rules + security invariants (read first) |
-| `docs/design.md` | architecture, decisions, MVP scope, layers |
-| `docs/security.md` | threat model + secure-by-default invariants + tests |
+| `AGENTS.md` | Operating rules + security invariants. |
+| `.agent-memory/handoffs/latest.md` | Prioritized backlog and per-step handoff. |
+| `docs/security.md` | Threat model and secure-by-default invariants. |
+| `docs/design.md` | Architecture and layer decisions. |
+| `docs/connect-remote.md` | ChatGPT/local client setup and real-world connector notes. |
+| `docs/deploy-coolify.md` | VPS/Coolify deployment guide. |
 
 ## Commands
 
 ```bash
-go test ./...     # full suite (incl. adversarial)
-go vet ./...      # quality gate (golangci-lint not installed)
-go build ./...    # build
-go run ./cmd/mcp-devbox serve --root <ABS_PATH> [--mode read-only|ask|allow] \
-       [--test-cmd "go test ./..."]
-mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> \
-       [--ttl 5m] [--raw --confirm-raw] <REQUEST_ID>
+go test ./... -count=1
+go vet ./...
+go build ./...
+gofmt -l $(git ls-files '*.go')
 
-# Remote (HTTP) — bearer auth required:
-$env:MCP_DEVBOX_TOKEN = "<token>"      # PowerShell; or export in bash
-go run ./cmd/mcp-devbox serve --root <ABS_PATH> --http :8765
-cloudflared tunnel --url http://127.0.0.1:8765   # ephemeral public HTTPS URL
-# cloudflared 2025.11.1 already installed on this host (via chocolatey).
-# Full guide: docs/connect-remote.md (ChatGPT connector + stdio fast-path).
-# VPS/Coolify guide: docs/deploy-coolify.md
+go run ./cmd/mcp-devbox serve --root <ABS_PATH> --mode read-only
+go run ./cmd/mcp-devbox serve --root <ABS_PATH> --mode ask \
+  --test-cmd "go test ./..." --http :8765
+
+mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> \
+  [--ttl 5m] [--raw --confirm-raw] <REQUEST_ID>
 ```
 
-## Open Decisions (resolve before/during build)
+Windows Go SDK:
 
-- **Install model: self-tunnel (A) vs hosted relay (B)** — security narrative vs
-  adoption. Default to (A) for a security tool. See `docs/design.md`.
-- **Repo location: WSL2 vs Windows FS** — affects path jail + performance.
-- **Validate ChatGPT-web premise** with a real session before heavy build.
+```powershell
+$env:PATH = "C:\Users\carbe\go-sdk\go\bin;" + $env:PATH
+```
+
+Container/Coolify env:
+
+- `MCP_DEVBOX_TOKEN`
+- `MCP_DEVBOX_ROOT`
+- `MCP_DEVBOX_MODE`
+- `MCP_DEVBOX_TEST_CMD`
+- `MCP_DEVBOX_ALLOW_CMD`
+
+## Production Grant Approval
+
+Secret reads return `access-required` plus a `request_id`. To approve:
+
+1. Coolify app logs: find the printed `ACCESS REQUIRED ... mcp-devbox grant --admin
+   http://127.0.0.1:<port> --admin-token <tok> --ttl 5m <request_id>` command.
+2. Coolify app terminal, inside the container: run that exact command.
+3. Add `--raw --confirm-raw` only when the human explicitly wants unredacted secret
+   output.
+
+The admin channel is loopback-only and must stay that way.
+
+## Next Steps
+
+1. P1-4: enrich `initialize.instructions` with a concise agent loop: plan, act,
+   observe, self-check with tests, revise, record memory.
+2. P1-5: add `memory_write(section, content)` for structured `.agent-memory/`
+   files such as `current-task.md`, `plan.md`, `decisions.md`, and `reflections.md`.
+3. P1-6: best-effort transport hardening for ChatGPT chains: session id on
+   initialize and a valid GET/SSE response instead of 405, without weakening auth.
+4. P2-7: L3 OS sandbox + egress controls before any broad command, disk/forensics,
+   network, or PC-wide capability.
+
+Optional future capability: a gated `git_push` tool, only if the owner wants it and
+only behind mode+approval. Pushing is deliberately absent today.
 
 ## Known Risks / Debt
 
-- Core category exists (Desktop Commander, ~5.7k★, hosts its own relay) — our
-  differentiator is **security posture + memory + agent-first tools**, not features.
-- ChatGPT↔local needs a tunnel = exposing a local security tool (the hard part).
-- Layer 2 (OS isolation) is the genuinely complex piece; **wrap, don't reinvent**.
-- Path-based secret blocking is insufficient → need **content secret scanning**.
-- The "secure" claim is a liability → under-promise, ship `SECURITY.md`.
-- Not yet validated: this is also the first real test of the ai-sdlc-blueprint.
-
-## Deployment in production (2026-06-30)
-
-Running on a CubePath VPS via **Coolify** (Dockerfile build), public at
-`https://mcp-devbox-charlez.duckdns.org` (DuckDNS A → 144.225.147.58, Traefik TLS via
-Let's Encrypt). ChatGPT connector: URL `…/mcp?key=<MCP_DEVBOX_TOKEN>`, auth "Sin
-autenticación". Verified live from ChatGPT: build_context_pack / search_code / read_file
-work; `.env` correctly blocked with `access-required`. Repo to operate on is cloned into
-the `/repos` volume; `MCP_DEVBOX_ROOT=/repos/mcp-devbox`, `MCP_DEVBOX_MODE=read-only`.
-Gotcha solved: Coolify "Ports Exposes" must be **8765** (was 3000 → 502).
-
-### Approving a secret-read grant on the VPS
-Secret reads return `access-required` + a `request_id`. To approve (human-only, by design):
-1. Coolify → app → **Logs**: find the `ACCESS REQUIRED … mcp-devbox grant --admin
-   http://127.0.0.1:<port> --admin-token <tok> --ttl 5m <request_id>` line.
-2. Coolify → app → **Terminal** (inside the container), run that exact command.
-   The admin channel is loopback-only, so it must be run from inside the container.
-   `--raw` (unredacted) additionally requires `--confirm-raw`.
-
-## Next Steps (per the UPDATED vision above — GPT-as-agent, NO worker)
-
-1. **Capability:** wire `MCP_DEVBOX_TEST_CMD` + `MCP_DEVBOX_ALLOW_CMD` (env→flags in
-   `cmd/mcp-devbox/main.go`, mirror in Dockerfile CMD), flip VPS to `--mode ask`, so GPT
-   can patch + run tests. Then add write/create tools (new files, controlled git commit).
-2. **Grants hardening/verify:** confirm grants are single-use + path-exact + non-persistent
-   + raw double-gated (code looks correct; add/confirm adversarial tests). Consider a less
-   painful approval UX than container-exec.
-3. **L3:** OS sandbox (wrap Docker/gVisor/nsjail) + egress default-deny — required before
-   free command exec, especially for the PC scenario.
-4. **PC scenario (optional):** daemon on PC bound to 127.0.0.1 + `ssh -R` to the VPS reusing
-   the domain; keep read-only/ask until L3.
-5. **Install polish:** one-command redeploy to a new VPS.
-
-NOTE: `feat/layer-1` history was squashed; everything now lives on `main` (and GitHub
-`charle-z/mcp-devbox`). `docs/features.md` still mentions the L2 worker — outdated; the
-Vision section above wins.
+- The category exists; the differentiator is security posture, memory, and
+  agent-first tooling.
+- ChatGPT remote access exposes a security tool to the internet path; token/auth,
+  reverse-proxy gates, and policy all matter.
+- `?key=` is practical for ChatGPT but can leak through URL logs/history; rotate if
+  exposed and prefer an extra front gate such as Cloudflare Access or Traefik auth.
+- L3 is the genuinely hard layer. Wrap proven tech; do not invent a sandbox.
 
 ## Last Verified
 
-Date: 2026-06-30 — `go test ./... -count=1` + `go vet ./...` + `go build ./...` + `gofmt` green. Secret-scan false positives tuned for command substitutions/env refs/placeholders while real assignments still redact. stdio: initialize/
-tools/list/tools/call, secret read returns structured `access-required`,
-human-approved grants are exact-path/single-use/TTL and raw-gated, prompt-injection
-returned as data.
-HTTP: 401 without bearer, unauthenticated `GET /mcp` -> 405, redaction over transport, 202/405/413/batch. **Remote:
-verified through a live `trycloudflare.com` quick tunnel — public 401 without token,
-`initialize` ok with bearer, `read_file` redacted over the public path; tunnel torn
-down after.** Docker image smoke passed on Docker Desktop 4.55.0: image built,
-container healthy, `/healthz` -> 200, `GET /mcp` -> 405, `POST /mcp` without token
--> 401, `POST /mcp?key=` initialize -> 200. ChatGPT UI click-through pending
-(user step).
+Date: 2026-06-30. Local gates green: `go test ./... -count=1`, `go vet ./...`,
+`go build ./...`, and `gofmt -l` empty. Production has been validated end-to-end
+from ChatGPT web: initialize/tools list, one-tool-per-message calls, normal reads,
+and `.env` denied with structured `access-required`.

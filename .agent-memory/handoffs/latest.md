@@ -41,12 +41,12 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
 2. DONE (2026-06-30): **CI workflow.** Add `.github/workflows/ci.yml` running
    `go test ./... -count=1` + `go vet ./...` on push/PR (Go 1.26.4). Keeps coverage
    without bloating the runtime image.
-3. **Docs sync.** Update `docs/connect-remote.md` with what we learned: ChatGPT works
-   best one-tool-per-message on the instant model; multi-tool chains on the thinking
-   model + OpenAI's exec guardrail cause "message sequence" errors. Document the 13
-   tools incl. create_file/run_command/git_commit and their mode gating. Add the new
-   env vars (MCP_DEVBOX_TEST_CMD/ALLOW_CMD) and note `git_commit` does NOT push.
-   Mark `docs/features.md` L2-worker section as superseded (point to capsule Vision).
+3. DONE (2026-06-30): **Docs sync.** `docs/connect-remote.md` now documents the
+   production ChatGPT behavior (one-tool-per-message is most reliable; thinking-model
+   multi-tool chains can hit "message sequence" errors), all 13 tools and mode gating,
+   `MCP_DEVBOX_TEST_CMD` / `MCP_DEVBOX_ALLOW_CMD`, and that `git_commit` does NOT push.
+   `docs/features.md` is now explicitly marked SUPERSEDED for the old cheap-model
+   worker plan and points to `docs/context-capsule.md` as the active vision.
 
 ### P1 — make it feel like an agent + robustness
 4. **Metacognition (instructions).** Enrich `initialize.instructions` in
