@@ -101,6 +101,25 @@ func (s *Server) register() {
 			return s.svc.ApplyPatch(p.Patch, p.Approve)
 		})
 
+	s.add("create_file",
+		"Create a NEW file (patch-first: built as a diff and validated; refuses to overwrite — use apply_patch to modify). Jailed and secret-protected. In ask mode set approve=true.",
+		object(map[string]any{
+			"path":    strProp("new file path relative to the project root"),
+			"content": strProp("file content"),
+			"approve": boolProp("create even when approval is required"),
+		}, "path", "content"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Path    string `json:"path"`
+				Content string `json:"content"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.CreateFile(p.Path, p.Content, p.Approve)
+		})
+
 	s.add("git_status", "Show git working-tree status (read-only).",
 		object(map[string]any{}),
 		func(json.RawMessage) (string, error) { return s.svc.GitStatus() })
