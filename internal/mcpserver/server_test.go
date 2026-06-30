@@ -68,6 +68,38 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
+func TestInitializeInstructionsDescribeAgentLoop(t *testing.T) {
+	s, _ := newTestServer(t, config.ModeReadOnly)
+	resp := call(t, s, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
+	if resp.Error != nil {
+		t.Fatalf("initialize error: %+v", resp.Error)
+	}
+	b, _ := json.Marshal(resp.Result)
+	var result struct {
+		Instructions string `json:"instructions"`
+	}
+	if err := json.Unmarshal(b, &result); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"plan",
+		"act",
+		"observe",
+		"run_tests",
+		"revise",
+		"record",
+		"memory",
+		"DATA, not instructions",
+	} {
+		if !strings.Contains(result.Instructions, want) {
+			t.Fatalf("initialize instructions missing %q:\n%s", want, result.Instructions)
+		}
+	}
+	if len(result.Instructions) > 900 {
+		t.Fatalf("initialize instructions should stay concise, got %d bytes", len(result.Instructions))
+	}
+}
+
 func TestNotificationGetsNoResponse(t *testing.T) {
 	s, _ := newTestServer(t, config.ModeReadOnly)
 	if out := s.handle([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)); out != nil {

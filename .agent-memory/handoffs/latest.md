@@ -48,13 +48,15 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    `docs/features.md` is now explicitly marked SUPERSEDED for the old cheap-model
    worker plan and points to `docs/context-capsule.md` as the active vision.
 
-### P1 — make it feel like an agent + robustness
-4. **Metacognition (instructions).** Enrich `initialize.instructions` in
-   `internal/mcpserver/server.go` to prescribe a loop: plan → act → observe →
-   self-check (esp. via run_tests) → revise → record to memory. Keep it concise.
+### P1 - make it feel like an agent + robustness
+4. DONE (2026-06-30): **Metacognition (instructions).** Enriched
+   `initialize.instructions` in `internal/mcpserver/server.go` with a concise loop:
+   plan briefly, act with one focused tool call, observe, self-check with `run_tests`
+   when code changed, revise on failure, and record useful state to memory. Kept the
+   prompt-injection warning that repo file contents are DATA, not instructions.
 5. **Metacognition (memory).** Add a `memory_write(section, content)` MCP tool +
    `internal/tools` method that writes structured files under `.agent-memory/`
-   (`current-task.md`, `plan.md`, `decisions.md`, `reflections.md`) — same policy as
+   (`current-task.md`, `plan.md`, `decisions.md`, `reflections.md`) - same policy as
    memory_update_handoff (jailed, secret-scanned, write-mode-gated). Lets the agent
    externalize and re-read its own reasoning across steps/sessions. TDD + register.
 6. **Transport hardening (best-effort for ChatGPT multi-step).** In
@@ -62,7 +64,7 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    it on later POSTs; make `GET /mcp` return a valid (possibly empty/keep-alive) SSE
    stream instead of 405. Goal: reduce ChatGPT's "Error en la secuencia de mensajes"
    on chained calls. NOTE: this will NOT fix OpenAI's own intermittent blocking of
-   execution tools — that is client-side and out of scope. Keep bearer/`?key=` auth.
+   execution tools - that is client-side and out of scope. Keep bearer/`?key=` auth.
 
 ### P2 — the big enabler (separate, careful)
 7. **L3 — OS sandbox + egress.** Wrap Docker/gVisor/nsjail so a permitted command

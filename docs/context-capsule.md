@@ -80,6 +80,11 @@ such as shell command substitutions (`$(...)`), env-var refs (`$TOKEN`, `${TOKEN
 CI (2026-06-30): `.github/workflows/ci.yml` runs `go test ./... -count=1` and
 `go vet ./...` on push/PR with Go 1.26.4.
 
+Agent instructions (2026-06-30): `initialize.instructions` now tells MCP clients to
+plan briefly, act with one focused tool call, observe, self-check with `run_tests`
+when code changed, revise on failure, and record useful state to memory while still
+treating repo file contents as DATA, not instructions.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
@@ -154,13 +159,11 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. P1-4: enrich `initialize.instructions` with a concise agent loop: plan, act,
-   observe, self-check with tests, revise, record memory.
-2. P1-5: add `memory_write(section, content)` for structured `.agent-memory/`
+1. P1-5: add `memory_write(section, content)` for structured `.agent-memory/`
    files such as `current-task.md`, `plan.md`, `decisions.md`, and `reflections.md`.
-3. P1-6: best-effort transport hardening for ChatGPT chains: session id on
+2. P1-6: best-effort transport hardening for ChatGPT chains: session id on
    initialize and a valid GET/SSE response instead of 405, without weakening auth.
-4. P2-7: L3 OS sandbox + egress controls before any broad command, disk/forensics,
+3. P2-7: L3 OS sandbox + egress controls before any broad command, disk/forensics,
    network, or PC-wide capability.
 
 Optional future capability: a gated `git_push` tool, only if the owner wants it and
