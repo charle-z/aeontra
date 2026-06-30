@@ -4,17 +4,32 @@ Compact handoff for any AI session. Keep short and current.
 
 ## Current Goal
 
-Stand up **Layer 1** (secure-by-default local MCP daemon in Go) — already more
-secure than Desktop Commander, dogfoodable daily. **L1 must be finished/shipped
-before starting L2** (the cheap-model worker).
+L1 + remote connectivity are **done and running in production** (ChatGPT web →
+Coolify/VPS over HTTPS, verified live). Current goal: evolve it into a **GPT-driven
+agent** that can safely *do* things (not just read), controlled by the human via the
+ChatGPT chat.
 
-## Vision (chosen: option B)
+## Vision (UPDATED 2026-06-30 — supersedes the old "option B" worker plan)
 
-Full target = a **local, secure coding agent powered by a cheap model, orchestrated
-by any chat via MCP** (ChatGPT orchestrates; DeepSeek/MiniMax worker does grunt
-work; MCP enforces security). Complete feature spec + per-layer DoD in
-**`docs/features.md`**. Build L1 → L2 (worker) → L3 (OS sandbox/egress) → L4 (adoption).
-The worker-loop spec WILL evolve — do not freeze it.
+**Owner's refined direction (confirmed in chat):** the agent IS ChatGPT itself.
+ChatGPT (the chat the owner already pays for) drives the loop directly via MCP tools;
+mcp-devbox is the **safe hands**. Goals: control the VPS now, optionally the PC later,
+**without burning Codex / licensed-AI credits**, non-persistent and human-controlled.
+
+> **DROPPED: the L2 cheap-model worker (DeepSeek/MiniMax).** The owner explicitly does
+> NOT want a separate worker/orchestrator — that was "the thing I'd send orders to";
+> they want GPT itself to act. Do NOT reintroduce a worker. Do NOT fork opencode/etc.
+> (those bring their own paid model loop). ChatGPT already does multi-step tool-calling.
+
+**Revised layers / priorities:**
+1. **More agent-first tools + capability** — flip `ask`, wire `MCP_DEVBOX_TEST_CMD` /
+   `MCP_DEVBOX_ALLOW_CMD` (env→flags), add write/create tools so GPT *does*, not just reads.
+2. **Grants hardening** — the deliberate, human-approved bypass of secret-deny must stay airtight.
+3. **L3 (OS sandbox + egress)** — REQUIRED before free command execution, especially on the PC.
+4. **Easy install / portability** — one-command redeploy to any VPS (already Dockerfile + Coolify).
+
+`docs/features.md` still describes the old option-B worker; treat THIS section as the
+current source of truth for direction.
 
 ## Current State
 
@@ -119,20 +134,41 @@ cloudflared tunnel --url http://127.0.0.1:8765   # ephemeral public HTTPS URL
 - The "secure" claim is a liability → under-promise, ship `SECURITY.md`.
 - Not yet validated: this is also the first real test of the ai-sdlc-blueprint.
 
-## Next Steps
+## Deployment in production (2026-06-30)
 
-1. DONE (2026-06-29): ChatGPT web connected via the connector (URL `…/mcp?key=`,
-   "Sin autenticación") through a Cloudflare quick tunnel and successfully called
-   `build_context_pack` to read+summarize a real repo. The ChatGPT-web premise is
-   validated end-to-end. Next: a minimal demo (read → apply_patch → run_tests in
-   `ask` mode) to show the full loop.
-2. ChatGPT auth: RESOLVED. ChatGPT's UI has no header field (only OAuth/none/mixed), so
-   the token rides in the URL (`?key=`). Upgrade path (no URL secret): OAuth via
-   Cloudflare Access once a domain is set up.
-3. For a stable URL, set up a **named** Cloudflare tunnel (guide Step 3b).
-4. Merge `feat/layer-1`.
-5. Only then start **L2** (cheap-model worker) per `docs/features.md`. Do NOT begin
-   L2 until connectivity is dogfooded and the branch merged.
+Running on a CubePath VPS via **Coolify** (Dockerfile build), public at
+`https://mcp-devbox-charlez.duckdns.org` (DuckDNS A → 144.225.147.58, Traefik TLS via
+Let's Encrypt). ChatGPT connector: URL `…/mcp?key=<MCP_DEVBOX_TOKEN>`, auth "Sin
+autenticación". Verified live from ChatGPT: build_context_pack / search_code / read_file
+work; `.env` correctly blocked with `access-required`. Repo to operate on is cloned into
+the `/repos` volume; `MCP_DEVBOX_ROOT=/repos/mcp-devbox`, `MCP_DEVBOX_MODE=read-only`.
+Gotcha solved: Coolify "Ports Exposes" must be **8765** (was 3000 → 502).
+
+### Approving a secret-read grant on the VPS
+Secret reads return `access-required` + a `request_id`. To approve (human-only, by design):
+1. Coolify → app → **Logs**: find the `ACCESS REQUIRED … mcp-devbox grant --admin
+   http://127.0.0.1:<port> --admin-token <tok> --ttl 5m <request_id>` line.
+2. Coolify → app → **Terminal** (inside the container), run that exact command.
+   The admin channel is loopback-only, so it must be run from inside the container.
+   `--raw` (unredacted) additionally requires `--confirm-raw`.
+
+## Next Steps (per the UPDATED vision above — GPT-as-agent, NO worker)
+
+1. **Capability:** wire `MCP_DEVBOX_TEST_CMD` + `MCP_DEVBOX_ALLOW_CMD` (env→flags in
+   `cmd/mcp-devbox/main.go`, mirror in Dockerfile CMD), flip VPS to `--mode ask`, so GPT
+   can patch + run tests. Then add write/create tools (new files, controlled git commit).
+2. **Grants hardening/verify:** confirm grants are single-use + path-exact + non-persistent
+   + raw double-gated (code looks correct; add/confirm adversarial tests). Consider a less
+   painful approval UX than container-exec.
+3. **L3:** OS sandbox (wrap Docker/gVisor/nsjail) + egress default-deny — required before
+   free command exec, especially for the PC scenario.
+4. **PC scenario (optional):** daemon on PC bound to 127.0.0.1 + `ssh -R` to the VPS reusing
+   the domain; keep read-only/ask until L3.
+5. **Install polish:** one-command redeploy to a new VPS.
+
+NOTE: `feat/layer-1` history was squashed; everything now lives on `main` (and GitHub
+`charle-z/mcp-devbox`). `docs/features.md` still mentions the L2 worker — outdated; the
+Vision section above wins.
 
 ## Last Verified
 
