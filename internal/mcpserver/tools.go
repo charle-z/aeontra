@@ -1,6 +1,9 @@
 package mcpserver
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // object builds a JSON-Schema object node.
 func object(props map[string]any, required ...string) map[string]any {
@@ -118,6 +121,26 @@ func (s *Server) register() {
 				return "", err
 			}
 			return s.svc.CreateFile(p.Path, p.Content, p.Approve)
+		})
+
+	s.add("run_command",
+		"Run a single allowlisted program with args (e.g. [\"go\",\"vet\",\"./...\"]). NOT a shell: only allowlisted programs, no metacharacters. Mode-gated (read-only denies; ask needs approve=true). Output redacted.",
+		object(map[string]any{
+			"command": strArrProp("program and arguments; command[0] is the program"),
+			"approve": boolProp("run even when approval is required"),
+		}, "command"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Command []string `json:"command"`
+				Approve bool     `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			if len(p.Command) == 0 {
+				return "", fmt.Errorf("command must have at least the program name")
+			}
+			return s.svc.RunCommand(p.Command[0], p.Command[1:], p.Approve)
 		})
 
 	s.add("git_status", "Show git working-tree status (read-only).",
