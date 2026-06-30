@@ -31,6 +31,23 @@ const version = "0.2.0"
 // tokenEnv is the preferred way to supply the HTTP bearer token (keeps it out of
 // the process argument list / shell history).
 const tokenEnv = "MCP_DEVBOX_TOKEN"
+
+// Env fallbacks for the test/allowlist commands so a containerized deploy (Coolify)
+// can configure them without baking flags into the image. A flag, when set, wins.
+const (
+	testCmdEnv  = "MCP_DEVBOX_TEST_CMD"
+	allowCmdEnv = "MCP_DEVBOX_ALLOW_CMD"
+)
+
+// envFallback returns flagVal when non-empty (after trimming), otherwise the value
+// of the named environment variable.
+func envFallback(flagVal, envName string) string {
+	if strings.TrimSpace(flagVal) != "" {
+		return flagVal
+	}
+	return os.Getenv(envName)
+}
+
 const adminTokenEnv = "MCP_DEVBOX_ADMIN_TOKEN"
 
 func main() {
@@ -128,6 +145,10 @@ func serve(args []string) error {
 		}
 		absRoots = append(absRoots, abs)
 	}
+
+	// Flags win; otherwise fall back to env (handy for container deploys).
+	*allowCmd = envFallback(*allowCmd, allowCmdEnv)
+	*testCmd = envFallback(*testCmd, testCmdEnv)
 
 	allow := config.SecureDefaults().AllowedCommands
 	if strings.TrimSpace(*allowCmd) != "" {
