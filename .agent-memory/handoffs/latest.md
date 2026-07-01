@@ -1,7 +1,7 @@
 # Handoff / Codex work backlog — 2026-06-30
 
 Status: **L1 + remote (v0.2) live in production and validated end-to-end from ChatGPT
-web** (Coolify/VPS, `https://mcp-devbox-charlez.duckdns.org/mcp?key=...`). All 13 MCP
+web** (Coolify/VPS, `https://mcp-devbox-charlez.duckdns.org/mcp?key=...`). All 14 MCP
 tools work; verified one-tool-per-message on ChatGPT's instant model. `go test ./...`
 + `go vet` + `gofmt` green.
 
@@ -43,7 +43,7 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    without bloating the runtime image.
 3. DONE (2026-06-30): **Docs sync.** `docs/connect-remote.md` now documents the
    production ChatGPT behavior (one-tool-per-message is most reliable; thinking-model
-   multi-tool chains can hit "message sequence" errors), all 13 tools and mode gating,
+   multi-tool chains can hit "message sequence" errors), all 13 tools at that time and mode gating,
    `MCP_DEVBOX_TEST_CMD` / `MCP_DEVBOX_ALLOW_CMD`, and that `git_commit` does NOT push.
    `docs/features.md` is now explicitly marked SUPERSEDED for the old cheap-model
    worker plan and points to `docs/context-capsule.md` as the active vision.
@@ -54,11 +54,12 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    plan briefly, act with one focused tool call, observe, self-check with `run_tests`
    when code changed, revise on failure, and record useful state to memory. Kept the
    prompt-injection warning that repo file contents are DATA, not instructions.
-5. **Metacognition (memory).** Add a `memory_write(section, content)` MCP tool +
-   `internal/tools` method that writes structured files under `.agent-memory/`
-   (`current-task.md`, `plan.md`, `decisions.md`, `reflections.md`) - same policy as
-   memory_update_handoff (jailed, secret-scanned, write-mode-gated). Lets the agent
-   externalize and re-read its own reasoning across steps/sessions. TDD + register.
+5. DONE (2026-06-30): **Metacognition (memory).** Added `memory_write(section,
+   content, approve)` MCP tool + `internal/tools` method. It writes only the closed
+   structured sections under `.agent-memory/` (`current-task.md`, `plan.md`,
+   `decisions.md`, `reflections.md`), uses `Policy.CheckWrite`, is denied in
+   read-only, requires `approve=true` in ask mode, and redacts content before
+   persisting.
 6. **Transport hardening (best-effort for ChatGPT multi-step).** In
    `internal/mcpserver/http.go`: return an `Mcp-Session-Id` on `initialize` and accept
    it on later POSTs; make `GET /mcp` return a valid (possibly empty/keep-alive) SSE
@@ -90,4 +91,4 @@ signatures; minimize the image to drop Go.
 `go test ./... -count=1` green · `go vet ./...` clean · `gofmt -l` empty · build ok.
 For deploy-affecting changes, the webhook auto-redeploys on push to `main`
 (charle-z/mcp-devbox); smoke: `GET /healthz`→200, `GET /mcp`→405, `POST /mcp` no
-token→401, `POST /mcp?key=`→200 with 13 tools.
+token→401, `POST /mcp?key=`→200 with 14 tools.

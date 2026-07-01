@@ -193,6 +193,25 @@ func (s *Server) register() {
 		object(map[string]any{}),
 		func(json.RawMessage) (string, error) { return s.svc.MemoryRead() })
 
+	s.add("memory_write",
+		"Write one structured memory section under .agent-memory/ (current-task, plan, decisions, reflections). Denied in read-only; in ask mode set approve=true. Content is redacted before persisting.",
+		object(map[string]any{
+			"section": strProp("one of: current-task, plan, decisions, reflections"),
+			"content": strProp("Markdown memory content"),
+			"approve": boolProp("write even when approval is required"),
+		}, "section", "content"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Section string `json:"section"`
+				Content string `json:"content"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.MemoryWrite(p.Section, p.Content, p.Approve)
+		})
+
 	s.add("memory_update_handoff",
 		"Write a handoff note into .agent-memory/handoffs/ so any agent can resume. Denied in read-only mode; content redacted.",
 		object(map[string]any{"content": strProp("handoff note (Markdown)")}, "content"),

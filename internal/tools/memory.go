@@ -15,6 +15,13 @@ import (
 // memoryDir is the agent-agnostic repo memory directory.
 const memoryDir = ".agent-memory"
 
+var memoryWriteSections = map[string]string{
+	"current-task": "current-task.md",
+	"plan":         "plan.md",
+	"decisions":    "decisions.md",
+	"reflections":  "reflections.md",
+}
+
 // MemoryRead returns the repo's agent memory: all Markdown under .agent-memory/,
 // concatenated and redacted. It is a read and works in any mode. Missing memory is
 // not an error — it returns a short note.
@@ -100,6 +107,51 @@ func (s *Service) MemoryUpdateHandoff(content string) (string, error) {
 	sp.Finish(audit.Allow, "memory_update_handoff", written, nil)
 	rel, _ := filepath.Rel(s.root, tsFile)
 	return "Handoff written to " + filepath.ToSlash(rel) + " (and latest.md)", nil
+}
+
+// MemoryWrite writes one structured memory section under .agent-memory/. Sections
+// are closed-set names, not paths. The destination still goes through the Policy
+// write gate so jail, secret-path deny, and mode posture remain centralized.
+func (s *Service) MemoryWrite(section, content string, approve bool) (string, error) {
+	sp := s.log.Start("memory_write")
+
+	key := strings.ToLower(strings.TrimSpace(section))
+	filename, ok := memoryWriteSections[key]
+	if !ok {
+		err := fmt.Errorf("unknown memory section %q (allowed: current-task, plan, decisions, reflections)", section)
+		sp.Finish(audit.Deny, "memory_write", nil, err)
+		return "", err
+	}
+	if strings.TrimSpace(content) == "" {
+		err := fmt.Errorf("memory content is required")
+		sp.Finish(audit.Error, "memory_write", nil, err)
+		return "", err
+	}
+
+	dest := filepath.Join(s.root, memoryDir, filename)
+	resolved, needsApproval, err := s.pol.CheckWrite(dest)
+	if err != nil {
+		sp.Finish(audit.Deny, key, nil, err)
+		return "", err
+	}
+	if needsApproval && !approve {
+		sp.Finish(audit.Ask, key, []string{resolved}, nil)
+		return "APPROVAL REQUIRED: memory_write would update " + filepath.ToSlash(filepath.Join(memoryDir, filename)) + ". Re-invoke with approve=true.", nil
+	}
+
+	safe, _ := s.pol.Redact(content)
+	body := strings.TrimSpace(safe) + "\n"
+	if err := os.MkdirAll(filepath.Dir(resolved), 0o755); err != nil {
+		sp.Finish(audit.Error, key, []string{resolved}, err)
+		return "", err
+	}
+	if err := os.WriteFile(resolved, []byte(body), 0o644); err != nil {
+		sp.Finish(audit.Error, key, []string{resolved}, err)
+		return "", err
+	}
+	sp.Finish(audit.Allow, key, []string{resolved}, nil)
+	rel, _ := filepath.Rel(s.root, resolved)
+	return "Memory section written to " + filepath.ToSlash(rel), nil
 }
 
 // filepathWithin reports whether target is inside base (both absolute, cleaned).

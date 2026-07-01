@@ -13,7 +13,7 @@ handoff state live in `docs/context-capsule.md` and `.agent-memory/handoffs/late
 
 ## Current L1 Surface
 
-mcp-devbox exposes 13 MCP tools:
+mcp-devbox exposes 14 MCP tools:
 
 - `build_context_pack`
 - `read_file`
@@ -27,6 +27,7 @@ mcp-devbox exposes 13 MCP tools:
 - `run_tests`
 - `git_commit`
 - `memory_read`
+- `memory_write`
 - `memory_update_handoff`
 
 Security rules remain the product:

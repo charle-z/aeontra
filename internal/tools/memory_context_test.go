@@ -68,6 +68,67 @@ func TestMemoryUpdateHandoff_WritesAndRedacts(t *testing.T) {
 	}
 }
 
+func TestMemoryWrite_ReadOnlyDenied(t *testing.T) {
+	svc, _ := newTestService(t, config.ModeReadOnly)
+	if _, err := svc.MemoryWrite("plan", "next step", false); err == nil {
+		t.Error("memory_write in read-only mode should be denied")
+	}
+}
+
+func TestMemoryWrite_AskRequiresApproval(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAsk)
+	out, err := svc.MemoryWrite("plan", "run the focused tests", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "APPROVAL REQUIRED") {
+		t.Fatalf("ask mode should require approval, got %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agent-memory", "plan.md")); !os.IsNotExist(err) {
+		t.Fatalf("memory_write should not write before approval, stat err=%v", err)
+	}
+	if _, err := svc.MemoryWrite("plan", "run the focused tests", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agent-memory", "plan.md")); err != nil {
+		t.Fatalf("approved memory_write did not write plan.md: %v", err)
+	}
+}
+
+func TestMemoryWrite_WritesAllowedSectionAndRedacts(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	_, err := svc.MemoryWrite("current-task", "Ship P1-5 with api_key=supersecretvalue123", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".agent-memory", "current-task.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "supersecretvalue123") {
+		t.Fatalf("secret persisted into structured memory: %q", data)
+	}
+	if !strings.Contains(string(data), "***REDACTED-SECRET***") {
+		t.Fatalf("structured memory should contain redacted marker: %q", data)
+	}
+	out, err := svc.MemoryRead()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "current-task.md") || !strings.Contains(out, "Ship P1-5") {
+		t.Fatalf("memory_read should surface structured memory, got %q", out)
+	}
+}
+
+func TestMemoryWrite_RejectsUnknownSection(t *testing.T) {
+	svc, _ := newTestService(t, config.ModeAllow)
+	for _, section := range []string{"handoffs/latest", "../plan", "notes", "plan.md"} {
+		if _, err := svc.MemoryWrite(section, "content", false); err == nil {
+			t.Fatalf("memory_write should reject section %q", section)
+		}
+	}
+}
+
 func TestBuildContextPack_AssemblesAndRedacts(t *testing.T) {
 	svc, root := newTestService(t, config.ModeReadOnly)
 	write(t, root, "README.md", "# My Project\nleaky gh"+"p_0123456789abcdefghijklmnopqrstuvwxyz\n")

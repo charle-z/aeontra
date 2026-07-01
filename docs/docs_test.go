@@ -31,6 +31,7 @@ func TestConnectRemoteDocumentsCurrentToolSurface(t *testing.T) {
 		"run_tests",
 		"git_commit",
 		"memory_read",
+		"memory_write",
 		"memory_update_handoff",
 		"MCP_DEVBOX_TEST_CMD",
 		"MCP_DEVBOX_ALLOW_CMD",

@@ -151,7 +151,7 @@ Observed behavior from the production connector:
 
 ## Current Tool Surface
 
-ChatGPT should list these 13 tools:
+ChatGPT should list these 14 tools:
 
 | Tool | Mode / approval behavior |
 |---|---|
@@ -167,6 +167,7 @@ ChatGPT should list these 13 tools:
 | `run_tests` | Command action. Runs the configured test command from `--test-cmd` or `MCP_DEVBOX_TEST_CMD`; mode-gated and allowlisted. |
 | `git_commit` | Write/command action. Stages all changes and commits; denied in `read-only`, approval-gated in `ask`, and does not push. |
 | `memory_read` | Read-only. Reads `.agent-memory/*.md` with redaction. |
+| `memory_write` | Write action. Updates one structured `.agent-memory/` section (`current-task`, `plan`, `decisions`, `reflections`); denied in `read-only`, approval-gated in `ask`, content redacted before persisting. |
 | `memory_update_handoff` | Write action. Updates `.agent-memory/handoffs/`; denied in `read-only`, content redacted. |
 
 Mode summary:

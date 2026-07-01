@@ -113,8 +113,9 @@ func TestToolsList(t *testing.T) {
 	b, _ := json.Marshal(resp.Result)
 	for _, name := range []string{
 		"build_context_pack", "read_file", "read_many_files", "search_code",
-		"apply_patch", "git_status", "git_diff", "run_tests",
-		"memory_read", "memory_update_handoff",
+		"apply_patch", "create_file", "run_command", "git_status", "git_diff",
+		"run_tests", "git_commit", "memory_read", "memory_write",
+		"memory_update_handoff",
 	} {
 		if !strings.Contains(string(b), `"`+name+`"`) {
 			t.Errorf("tools/list missing %q: %s", name, b)

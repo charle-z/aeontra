@@ -91,16 +91,20 @@ treating repo file contents as DATA, not instructions.
   sibling-prefix protection, secret path deny, content redaction, command allowlist,
   destructive/injection blocking, in-memory read grants, immutable runtime policy.
 - Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- Tools (`internal/tools`): 13 MCP tools:
+- Tools (`internal/tools`): 14 MCP tools:
   `build_context_pack`, `read_file`, `read_many_files`, `search_code`,
   `apply_patch`, `create_file`, `run_command`, `git_status`, `git_diff`,
-  `run_tests`, `git_commit`, `memory_read`, `memory_update_handoff`.
+  `run_tests`, `git_commit`, `memory_read`, `memory_write`,
+  `memory_update_handoff`.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
   `create_file` refuses overwrite and goes through the same patch pipeline.
 - Commands: `run_command` and `run_tests` are allowlist-only, mode-gated, no shell,
   output redacted.
 - Git: `git_status` and `git_diff` are read-only; `git_commit` stages and commits
   locally but does not push.
+- Memory: `memory_write` updates only the structured sections `current-task`, `plan`,
+  `decisions`, and `reflections` under `.agent-memory/`; it uses the Policy write
+  gate, requires approval in `ask`, and redacts before persisting.
 - Deploy: `Dockerfile`, `.dockerignore`, and `docs/deploy-coolify.md` support
   Coolify/Traefik with `MCP_DEVBOX_TOKEN` supplied only by env/secrets.
 
@@ -159,11 +163,9 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. P1-5: add `memory_write(section, content)` for structured `.agent-memory/`
-   files such as `current-task.md`, `plan.md`, `decisions.md`, and `reflections.md`.
-2. P1-6: best-effort transport hardening for ChatGPT chains: session id on
+1. P1-6: best-effort transport hardening for ChatGPT chains: session id on
    initialize and a valid GET/SSE response instead of 405, without weakening auth.
-3. P2-7: L3 OS sandbox + egress controls before any broad command, disk/forensics,
+2. P2-7: L3 OS sandbox + egress controls before any broad command, disk/forensics,
    network, or PC-wide capability.
 
 Optional future capability: a gated `git_push` tool, only if the owner wants it and
@@ -182,6 +184,8 @@ only behind mode+approval. Pushing is deliberately absent today.
 ## Last Verified
 
 Date: 2026-06-30. Local gates green: `go test ./... -count=1`, `go vet ./...`,
-`go build ./...`, and `gofmt -l` empty. Production has been validated end-to-end
-from ChatGPT web: initialize/tools list, one-tool-per-message calls, normal reads,
-and `.env` denied with structured `access-required`.
+`go build ./...`, and `gofmt -l` empty. P1-5 `memory_write` tests cover read-only
+deny, ask-mode approval, section allowlist, redaction before persistence, and
+MCP registration. Production has been validated end-to-end from ChatGPT web:
+initialize/tools list, one-tool-per-message calls, normal reads, and `.env` denied
+with structured `access-required`.
