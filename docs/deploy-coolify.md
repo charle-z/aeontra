@@ -106,6 +106,7 @@ After deployment, run from your local machine:
 ```bash
 curl -i https://mcp.example.com/healthz
 curl -i https://mcp.example.com/mcp
+curl -i "https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>"
 curl -i -X POST "https://mcp.example.com/mcp" \
   -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
@@ -117,9 +118,11 @@ curl -i -X POST "https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>" \
 Expected:
 
 - `/healthz` returns `200`
-- `GET /mcp` returns `405`
+- `GET /mcp` without token returns `401`
+- `GET /mcp?key=<token>` returns `200` with `text/event-stream`
 - `POST /mcp` without token returns `401`
-- `POST /mcp?key=<token>` returns an MCP `initialize` result
+- `POST /mcp?key=<token>` returns an MCP `initialize` result and an
+  `Mcp-Session-Id` response header
 
 Security invariants remain enforced by mcp-devbox policy inside the container:
 jail, secret deny plus redaction, command allowlist, patch-first writes, and audit.

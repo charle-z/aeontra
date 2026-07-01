@@ -60,12 +60,11 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    `decisions.md`, `reflections.md`), uses `Policy.CheckWrite`, is denied in
    read-only, requires `approve=true` in ask mode, and redacts content before
    persisting.
-6. **Transport hardening (best-effort for ChatGPT multi-step).** In
-   `internal/mcpserver/http.go`: return an `Mcp-Session-Id` on `initialize` and accept
-   it on later POSTs; make `GET /mcp` return a valid (possibly empty/keep-alive) SSE
-   stream instead of 405. Goal: reduce ChatGPT's "Error en la secuencia de mensajes"
-   on chained calls. NOTE: this will NOT fix OpenAI's own intermittent blocking of
-   execution tools - that is client-side and out of scope. Keep bearer/`?key=` auth.
+6. DONE (2026-06-30): **Transport hardening (best-effort for ChatGPT multi-step).**
+   `internal/mcpserver/http.go` now returns `Mcp-Session-Id` on `initialize`, accepts
+   that header on later POSTs, and serves authenticated `GET /mcp` as a minimal SSE
+   stream. Unauthenticated GET still returns 401. This may reduce ChatGPT "message
+   sequence" errors, but OpenAI-side execution blocking remains client-side.
 
 ### P2 — the big enabler (separate, careful)
 7. **L3 — OS sandbox + egress.** Wrap Docker/gVisor/nsjail so a permitted command
@@ -90,5 +89,5 @@ signatures; minimize the image to drop Go.
 ## Verify before declaring any step done
 `go test ./... -count=1` green · `go vet ./...` clean · `gofmt -l` empty · build ok.
 For deploy-affecting changes, the webhook auto-redeploys on push to `main`
-(charle-z/mcp-devbox); smoke: `GET /healthz`→200, `GET /mcp`→405, `POST /mcp` no
-token→401, `POST /mcp?key=`→200 with 14 tools.
+(charle-z/mcp-devbox); smoke: `GET /healthz`→200, `GET /mcp` no token→401,
+`GET /mcp?key=`→200 SSE, `POST /mcp` no token→401, `POST /mcp?key=`→200 with 14 tools.

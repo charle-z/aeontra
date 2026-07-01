@@ -2,7 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +31,7 @@ const DefaultMCPPath = "/mcp"
 // file contents as DATA, never instructions.
 func (s *Server) HTTPHandler(token string) http.Handler {
 	mux := http.NewServeMux()
+	sessionID := newHTTPSessionID()
 
 	// Unauthenticated liveness probe — no sensitive information.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -45,11 +48,16 @@ func (s *Server) HTTPHandler(token string) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			s.handleHTTPPost(w, r)
+			s.handleHTTPPost(w, r, sessionID)
+		case http.MethodGet:
+			if !authOK(r, token) {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="mcp-devbox"`)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			handleHTTPGetSSE(w)
 		default:
-			// We do not offer a server-initiated SSE stream in L1; the streamable-HTTP
-			// spec permits returning 405 for GET in that case.
-			w.Header().Set("Allow", "POST")
+			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
@@ -82,10 +90,29 @@ func authOK(r *http.Request, token string) bool {
 	return false
 }
 
+func newHTTPSessionID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return hex.EncodeToString(b[:])
+	}
+	return fmt.Sprintf("mcp-devbox-%d", time.Now().UnixNano())
+}
+
+func handleHTTPGetSSE(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, ": mcp-devbox keep-alive\n\n")
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // handleHTTPPost reads one JSON-RPC message (or a batch array) and replies. A lone
 // notification/response yields 202 Accepted with no body; a request yields 200 with
 // an application/json response; a batch yields a JSON array of the non-empty replies.
-func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionID string) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHTTPBody))
 	if err != nil {
 		// MaxBytesReader signals oversize via its error; report 413.
@@ -101,6 +128,9 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request) {
 	if trimmed == "" {
 		http.Error(w, "empty body", http.StatusBadRequest)
 		return
+	}
+	if containsInitialize([]byte(trimmed)) {
+		w.Header().Set("Mcp-Session-Id", sessionID)
 	}
 
 	// JSON-RPC batch (array) support.
@@ -132,6 +162,26 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp)
+}
+
+func containsInitialize(raw []byte) bool {
+	var msg struct {
+		Method string `json:"method"`
+	}
+	if json.Unmarshal(raw, &msg) == nil && msg.Method == "initialize" {
+		return true
+	}
+	var batch []struct {
+		Method string `json:"method"`
+	}
+	if json.Unmarshal(raw, &batch) == nil {
+		for _, msg := range batch {
+			if msg.Method == "initialize" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // handleBatch processes each element of a JSON-RPC batch, dropping notification

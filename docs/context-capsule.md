@@ -58,7 +58,10 @@ Transport:
 - stdio for local clients.
 - HTTP `POST /mcp` JSON-RPC, bearer or `?key=` token required.
 - `/healthz` for health checks.
-- `GET /mcp` returns 405 in v0.2.
+- Authenticated `GET /mcp` returns a minimal SSE stream; unauthenticated `GET /mcp`
+  returns 401.
+- HTTP `initialize` responses include `Mcp-Session-Id`; later POSTs may send that
+  header and are accepted.
 - Same Policy/Service/redaction path for both transports; no duplicated security checks.
 
 Ephemeral grants:
@@ -163,9 +166,7 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. P1-6: best-effort transport hardening for ChatGPT chains: session id on
-   initialize and a valid GET/SSE response instead of 405, without weakening auth.
-2. P2-7: L3 OS sandbox + egress controls before any broad command, disk/forensics,
+1. P2-7: L3 OS sandbox + egress controls before any broad command, disk/forensics,
    network, or PC-wide capability.
 
 Optional future capability: a gated `git_push` tool, only if the owner wants it and
@@ -184,8 +185,8 @@ only behind mode+approval. Pushing is deliberately absent today.
 ## Last Verified
 
 Date: 2026-06-30. Local gates green: `go test ./... -count=1`, `go vet ./...`,
-`go build ./...`, and `gofmt -l` empty. P1-5 `memory_write` tests cover read-only
-deny, ask-mode approval, section allowlist, redaction before persistence, and
-MCP registration. Production has been validated end-to-end from ChatGPT web:
-initialize/tools list, one-tool-per-message calls, normal reads, and `.env` denied
-with structured `access-required`.
+`go build ./...`, and `gofmt -l` empty. P1-6 HTTP tests cover `Mcp-Session-Id` on
+initialize, later POST with session header, authenticated GET SSE, and unauthenticated
+GET 401. Production has been validated end-to-end from ChatGPT web: initialize/tools
+list, one-tool-per-message calls, normal reads, and `.env` denied with structured
+`access-required`.

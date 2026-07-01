@@ -80,6 +80,7 @@ Local smoke test:
 ```powershell
 curl.exe http://127.0.0.1:8765/healthz
 curl.exe -i http://127.0.0.1:8765/mcp
+curl.exe -i "http://127.0.0.1:8765/mcp?key=$env:MCP_DEVBOX_TOKEN"
 curl.exe -i -X POST http://127.0.0.1:8765/mcp
 curl.exe -s -X POST "http://127.0.0.1:8765/mcp?key=$env:MCP_DEVBOX_TOKEN" `
   -H "Content-Type: application/json" `
@@ -89,9 +90,11 @@ curl.exe -s -X POST "http://127.0.0.1:8765/mcp?key=$env:MCP_DEVBOX_TOKEN" `
 Expected:
 
 - `GET /healthz` -> `200`
-- `GET /mcp` -> `405`
+- `GET /mcp` without token -> `401`
+- `GET /mcp?key=<token>` -> `200` with `Content-Type: text/event-stream`
 - `POST /mcp` without token -> `401`
-- `POST /mcp?key=<token>` or `Authorization: Bearer <token>` -> JSON-RPC response
+- `POST /mcp?key=<token>` or `Authorization: Bearer <token>` -> JSON-RPC response;
+  `initialize` includes an `Mcp-Session-Id` response header
 
 ---
 
@@ -237,7 +240,8 @@ header `Authorization: Bearer <token>` or use `/mcp?key=<token>`. List tools and
 |---|---|
 | `401` from `/mcp` | Missing or wrong token. Provide `Authorization: Bearer <token>` or `?key=<token>` matching `MCP_DEVBOX_TOKEN`. |
 | ChatGPT cannot add a bearer header | Expected. Use `/mcp?key=<token>` plus "Sin autenticacion", or put OAuth/Access in front. |
-| `405` on `GET /mcp` | Expected in v0.2. JSON-RPC is served over `POST /mcp`. |
+| `GET /mcp` returns `401` | Expected without auth. Add `?key=<token>` or a bearer header. |
+| `GET /mcp?key=` returns `200 text/event-stream` | Expected after P1-6. It is a minimal SSE stream for MCP client compatibility; JSON-RPC calls still use `POST /mcp`. |
 | Connector lists no tools | Wrong URL, wrong token, reverse proxy not routing to port 8765, or daemon not running. |
 | Tool returns "outside the workspace jail" | The path is not under the configured `--root`/`MCP_DEVBOX_ROOT`. |
 | Secret read returns `access-required` | Expected. Approve only from the daemon host/container using the printed local grant command. |
