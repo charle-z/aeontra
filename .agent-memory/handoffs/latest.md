@@ -13,9 +13,13 @@ Build/vet/gofmt/tests green. Security-sensitive code checked: transport auth on 
 (401 without token), scan.go false-positive fix scoped to the generic rule only (real
 provider-token regexes intact), memory_write uses a closed section allowlist + CheckWrite
 + redaction. Commit hygiene good. Small follow-ups (non-blocking):
-- **SSE on GET closes immediately.** Verify a real ChatGPT session doesn't reconnect-loop;
-  if it does, make `handleHTTPGetSSE` a persistent keep-alive loop (ping every ~15s until
-  the request context is cancelled) instead of writing one comment and returning.
+- **SSE on GET closes immediately.** ATTEMPTED persistent keep-alive (loop with 15s
+  pings until `r.Context()` cancel) on 2026-07-02 and REVERTED: it hangs the existing
+  synchronous test `TestHTTP_GetMCPReturnsSSE` (does a blocking GET) and there is NO
+  evidence yet that ChatGPT reconnect-loops. Do this ONLY if a real ChatGPT session is
+  observed reconnect-looping — and if so, ALSO update that test to drive the GET with a
+  cancelable context in a goroutine (or the suite hangs ~10min). Current immediate-close
+  SSE is valid and tests pass; leave it unless there's evidence.
 - **Dockerfile**: added OCI labels; optionally pin the base image by digest for fully
   reproducible prod builds.
 - NEXT backlog item = **P2-7c** (sandbox config/status plumbing, still disabled), then the
