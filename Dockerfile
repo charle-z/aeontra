@@ -23,7 +23,10 @@ RUN apk add --no-cache ca-certificates git wget \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
 	&& mkdir -p /repos \
-	&& chown -R mcpdevbox:mcpdevbox /repos
+	&& chown -R mcpdevbox:mcpdevbox /repos \
+	# Defense in depth: strip setuid/setgid bits so no binary can be used to
+	# escalate privileges (the app runs non-root and needs no setuid tools).
+	&& find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
 
 # Writable Go caches for the non-root user (go test/build need these), plus a
 # default git identity so git_commit works without a home dir (override in Coolify).
