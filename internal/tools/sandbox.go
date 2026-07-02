@@ -99,6 +99,47 @@ func (p pendingSandboxRunner) Run(context.Context, SandboxRunRequest) (SandboxRu
 	return SandboxRunResult{}, fmt.Errorf("sandbox backend %q not yet implemented (L3 pending)", p.backend)
 }
 
+// SandboxExec runs an ARBITRARY command inside the L3 sandbox. Unlike run_command it
+// is NOT allowlist-limited: the sandbox (network-denied, read-only rootfs, workspace-
+// only, resource-limited) is what contains it, so shells and arbitrary tools are
+// permitted — but ONLY when a real sandbox backend is available. It is mode-gated
+// (read-only denies; ask needs approve=true; allow runs), audited, and its combined
+// output is redacted before return. This is "broad execution, contained": it never
+// grants the model a general-purpose control plane over the host.
+func (s *Service) SandboxExec(argv []string, approve bool) (string, error) {
+	sp := s.log.Start("sandbox_exec")
+	if len(argv) == 0 {
+		err := fmt.Errorf("command is required")
+		sp.Finish(audit.Error, "sandbox_exec", nil, err)
+		return "", err
+	}
+	// No broad execution without containment.
+	if !s.sandbox.Status(context.Background()).Available {
+		err := fmt.Errorf("sandbox_exec requires an L3 sandbox backend (set MCP_DEVBOX_SANDBOX=docker on a host with Docker); broad execution is disabled without containment")
+		sp.Finish(audit.Deny, summarize(argv...), nil, err)
+		return "", err
+	}
+	needsApproval, err := s.pol.CheckSandboxExec()
+	if err != nil {
+		sp.Finish(audit.Deny, summarize(argv...), nil, err)
+		return "", err
+	}
+	if needsApproval && !approve {
+		sp.Finish(audit.Ask, summarize(argv...), nil, nil)
+		return fmt.Sprintf("APPROVAL REQUIRED: sandbox_exec would run %q in the L3 sandbox. Re-invoke with approve=true.", argv[0]), nil
+	}
+
+	res, runErr := s.sandbox.Run(context.Background(), SandboxRunRequest{Dir: s.root, Argv: argv})
+	combined := strings.TrimRight(res.Stdout+"\n"+res.Stderr, "\n")
+	out := s.redact(combined)
+	if runErr != nil {
+		sp.Finish(audit.Error, summarize(argv...), nil, runErr)
+		return out, fmt.Errorf("sandbox exec failed: %w", runErr)
+	}
+	sp.Finish(audit.Allow, summarize(argv...), nil, nil)
+	return fmt.Sprintf("[exit %d, backend %s, egress %s]\n%s", res.ExitCode, res.SandboxBackend, res.EgressProfile, out), nil
+}
+
 // SandboxStatus reports whether an L3 backend is configured. This is diagnostic
 // only; it does not grant extra command capability.
 func (s *Service) SandboxStatus() string {

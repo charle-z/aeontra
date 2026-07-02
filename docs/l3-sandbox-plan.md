@@ -124,8 +124,14 @@ Always block:
   `sandbox_status` only. No tool routes command execution through it, and
   `run_command`/`run_tests` stay L1 allowlist-only. Enabling broad execution is gated
   behind step 4 (adversarial escape/egress/timeout/limit tests) run on Linux/WSL2.
-- **Containment is UNVERIFIED from the Windows dev host** — the argv is correct by
-  construction and tested, but real isolation must be proven on Linux before enabling.
+- **Containment VERIFIED on Linux+Docker (WSL2, 2026-07-02).** The integration tests
+  in `sandbox_docker_adversarial_test.go` all pass against a real Docker daemon:
+  baseline run works; egress to `169.254.169.254` and the internet is DENIED
+  (`--network none`); host files outside the workspace are not readable; the read-only
+  rootfs blocks writes; and a hung command is killed by the timeout. Run them with
+  `go test ./internal/tools/ -run Integration -v` on a Linux host with Docker.
+- With containment proven, step 5 is unblocked: a broad-execution tool may route
+  commands through the sandbox (see `sandbox_exec`).
 
 ## Where to run the sandbox (VPS vs PC) + easy config
 
