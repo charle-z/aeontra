@@ -97,10 +97,17 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
 7b. DONE (2026-07-02): **L3 implementation step 1.** Added a `SandboxRunner`
    contract/status in code and a read-only `sandbox_status` MCP diagnostic. Plain
    exec remains L1 only; broad/free commands remain unavailable.
-7c. **L3 implementation step 2.** Add explicit configuration and startup/status
-   plumbing for a future Linux sandbox backend, still disabled unless configured.
-   Do not mount Docker socket into the public MCP container and do not expose broad
-   command execution until adversarial egress/escape tests pass.
+7c. DONE (2026-07-02): **L3 config/status plumbing.** `config.Config.SandboxBackend`
+   (validated: none/docker/nsjail/gvisor; unknown = ErrUnknownSandboxBackend), CLI
+   `--sandbox` + `MCP_DEVBOX_SANDBOX` env, and `tools.NewSandboxRunner`. A named backend
+   is "pending": visible in sandbox_status but Available:false, FreeTerminal:false,
+   Run errors — no broad exec, no Docker socket. Still disabled unless a REAL backend
+   is implemented. Tested (config validation + pending runner).
+7d. **L3 real backend (BIG, on a branch `l3-sandbox`).** Implement an actual Linux
+   sandbox (wrap Docker/gVisor/nsjail) behind the SandboxRunner interface + default-deny
+   egress (block 169.254.169.254 + RFC1918). Gate broad command exec behind it. Ship
+   ONLY after adversarial escape/exfil tests pass. Do NOT merge to main without warning
+   the owner (touches the live endpoint + execution posture).
 
 ### P1.5 — OAuth for the ChatGPT connector (INVESTIGATE + implement on a branch)
 Goal: let ChatGPT authenticate via its "OAuth" connector option so the secret no longer

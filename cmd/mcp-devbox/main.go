@@ -37,6 +37,7 @@ const tokenEnv = "MCP_DEVBOX_TOKEN"
 const (
 	testCmdEnv  = "MCP_DEVBOX_TEST_CMD"
 	allowCmdEnv = "MCP_DEVBOX_ALLOW_CMD"
+	sandboxEnv  = "MCP_DEVBOX_SANDBOX"
 )
 
 // envFallback returns flagVal when non-empty (after trimming), otherwise the value
@@ -129,6 +130,7 @@ func serve(args []string) error {
 	auditPath := fs.String("audit", "", "audit log path")
 	httpAddr := fs.String("http", "", "serve MCP over HTTP at ADDR (e.g. :8765); omit for stdio")
 	httpToken := fs.String("http-token", "", "bearer token for HTTP (prefer "+tokenEnv+" env)")
+	sandbox := fs.String("sandbox", "", "L3 sandbox backend: none (default)|docker|nsjail|gvisor (plumbed, not yet enabled)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -149,6 +151,7 @@ func serve(args []string) error {
 	// Flags win; otherwise fall back to env (handy for container deploys).
 	*allowCmd = envFallback(*allowCmd, allowCmdEnv)
 	*testCmd = envFallback(*testCmd, testCmdEnv)
+	*sandbox = envFallback(*sandbox, sandboxEnv)
 
 	allow := config.SecureDefaults().AllowedCommands
 	if strings.TrimSpace(*allowCmd) != "" {
@@ -164,6 +167,7 @@ func serve(args []string) error {
 		Mode:            config.Mode(*mode),
 		AllowedCommands: allow,
 		TestCommand:     test,
+		SandboxBackend:  *sandbox,
 	})
 	if err != nil {
 		return err
@@ -187,7 +191,9 @@ func serve(args []string) error {
 	}
 	defer logger.Close()
 
-	svc := tools.NewService(pol, logger, primary).WithTestCommand(test)
+	svc := tools.NewService(pol, logger, primary).
+		WithTestCommand(test).
+		WithSandboxRunner(tools.NewSandboxRunner(cfg.SandboxBackend))
 	srv := mcpserver.New(svc)
 	adminToken, err := randomHexToken()
 	if err != nil {

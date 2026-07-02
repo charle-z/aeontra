@@ -7,6 +7,7 @@ package config
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 )
 
 // Mode is the effective access posture for writes and command execution.
@@ -37,13 +38,24 @@ type Config struct {
 	TestCommand []string
 	// AuditPath is where the append-only audit log is written.
 	AuditPath string
+	// SandboxBackend names the (future) L3 execution backend: "none" (default,
+	// disabled) or a known name (docker/nsjail/gvisor). Known names are plumbed and
+	// visible in sandbox_status but NOT yet implemented — configuring one does not
+	// enable broad command execution (L3 pending).
+	SandboxBackend string
 }
+
+// KnownSandboxBackends are the L3 backends the config accepts. They are not yet
+// implemented; naming one only wires status/plumbing.
+var KnownSandboxBackends = []string{"docker", "nsjail", "gvisor"}
 
 var (
 	// ErrNoRoots is returned when no project root is configured.
 	ErrNoRoots = errors.New("config: at least one project root is required")
 	// ErrRootNotAbsolute is returned when a root is not an absolute path.
 	ErrRootNotAbsolute = errors.New("config: project root must be an absolute path")
+	// ErrUnknownSandboxBackend is returned for an unrecognized sandbox backend.
+	ErrUnknownSandboxBackend = errors.New("config: unknown sandbox backend (use none/docker/nsjail/gvisor)")
 )
 
 // SecureDefaults returns a Config pre-populated with the secure-by-default posture:
@@ -74,6 +86,24 @@ func New(c Config) (Config, error) {
 	c.Roots = cleaned
 	if c.Mode == "" {
 		c.Mode = ModeReadOnly
+	}
+
+	// Sandbox backend: empty -> "none" (disabled); otherwise must be a known name.
+	switch b := strings.ToLower(strings.TrimSpace(c.SandboxBackend)); b {
+	case "", "none":
+		c.SandboxBackend = "none"
+	default:
+		known := false
+		for _, k := range KnownSandboxBackends {
+			if b == k {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return Config{}, ErrUnknownSandboxBackend
+		}
+		c.SandboxBackend = b
 	}
 	return c, nil
 }
