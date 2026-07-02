@@ -30,8 +30,9 @@ ChatGPT / Claude / Cursor / opencode  (any MCP client)
   ↓  (Cloudflare Tunnel + Access: TLS, auth, outbound-only)
 mcp-devbox daemon (Go)
   ↓  policy gate (read-only default, allowlist, secret deny, path jail, audit)
-tools: project_scan · build_context_pack · read_many_files · search_code ·
-       apply_patch · git_status · git_diff · run_tests · memory_read · memory_update
+tools: build_context_pack · read_file · read_many_files · search_code ·
+       apply_patch · run_command · git_status · git_diff · run_tests ·
+       memory_read · memory_update_handoff · sandbox_status
   ↓
 local repositories (only configured paths)
 ```
@@ -55,9 +56,9 @@ memory persists, the human approves risky actions.**
 
 ## MVP tools (Layer 1)
 
-`project_list · project_scan · build_context_pack · read_file · read_many_files ·
-search_code · apply_patch · git_status · git_diff · run_tests · memory_read ·
-memory_update_handoff`
+`build_context_pack · read_file · read_many_files · search_code · apply_patch ·
+create_file · run_command · git_status · git_diff · run_tests · git_commit ·
+memory_read · memory_write · memory_update_handoff · sandbox_status`
 
 Most important: `build_context_pack`, `read_many_files`, `apply_patch` (minimize
 roundtrips, minimize tokens, reviewable changes).

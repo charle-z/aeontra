@@ -76,9 +76,13 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    with tested requirements: no free terminal before L3, no Docker socket in the
    public MCP container, explicit runner contract, default-deny egress, metadata/
    RFC1918 blocks, and human approval preserved.
-7b. **L3 implementation step 1.** Add a `SandboxRunner` contract/status in code,
-   keeping plain exec as L1 only. Broad/free commands remain unavailable until a real
-   Linux backend + adversarial egress/escape tests pass.
+7b. DONE (2026-07-02): **L3 implementation step 1.** Added a `SandboxRunner`
+   contract/status in code and a read-only `sandbox_status` MCP diagnostic. Plain
+   exec remains L1 only; broad/free commands remain unavailable.
+7c. **L3 implementation step 2.** Add explicit configuration and startup/status
+   plumbing for a future Linux sandbox backend, still disabled unless configured.
+   Do not mount Docker socket into the public MCP container and do not expose broad
+   command execution until adversarial egress/escape tests pass.
 
 ### Ongoing / optional
 - New capability tools (toward the broader-agent vision) ONLY as allowlisted+audited
@@ -97,4 +101,4 @@ signatures; minimize the image to drop Go.
 `go test ./... -count=1` green · `go vet ./...` clean · `gofmt -l` empty · build ok.
 For deploy-affecting changes, the webhook auto-redeploys on push to `main`
 (charle-z/mcp-devbox); smoke: `GET /healthz`→200, `GET /mcp` no token→401,
-`GET /mcp?key=`→200 SSE, `POST /mcp` no token→401, `POST /mcp?key=`→200 with 14 tools.
+`GET /mcp?key=`→200 SSE, `POST /mcp` no token→401, `POST /mcp?key=`→200 with 15 tools.

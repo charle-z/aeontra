@@ -33,6 +33,7 @@ func TestConnectRemoteDocumentsCurrentToolSurface(t *testing.T) {
 		"memory_read",
 		"memory_write",
 		"memory_update_handoff",
+		"sandbox_status",
 		"MCP_DEVBOX_TEST_CMD",
 		"MCP_DEVBOX_ALLOW_CMD",
 		"one-tool-per-message",

@@ -143,6 +143,11 @@ func (s *Server) register() {
 			return s.svc.RunCommand(p.Command[0], p.Command[1:], p.Approve)
 		})
 
+	s.add("sandbox_status",
+		"Report L3 sandbox availability. Diagnostic only: unavailable by default, no free terminal, no Docker socket in the public MCP container.",
+		object(map[string]any{}),
+		func(json.RawMessage) (string, error) { return s.svc.SandboxStatus(), nil })
+
 	s.add("git_status", "Show git working-tree status (read-only).",
 		object(map[string]any{}),
 		func(json.RawMessage) (string, error) { return s.svc.GitStatus() })

@@ -154,7 +154,7 @@ Observed behavior from the production connector:
 
 ## Current Tool Surface
 
-ChatGPT should list these 14 tools:
+ChatGPT should list these 15 tools:
 
 | Tool | Mode / approval behavior |
 |---|---|
@@ -172,6 +172,7 @@ ChatGPT should list these 14 tools:
 | `memory_read` | Read-only. Reads `.agent-memory/*.md` with redaction. |
 | `memory_write` | Write action. Updates one structured `.agent-memory/` section (`current-task`, `plan`, `decisions`, `reflections`); denied in `read-only`, approval-gated in `ask`, content redacted before persisting. |
 | `memory_update_handoff` | Write action. Updates `.agent-memory/handoffs/`; denied in `read-only`, content redacted. |
+| `sandbox_status` | Read-only diagnostic. Reports whether an L3 sandbox backend is configured; default is unavailable, no free terminal, no Docker socket in the public MCP container. |
 
 Mode summary:
 

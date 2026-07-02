@@ -27,16 +27,20 @@ type Service struct {
 	log     *audit.Logger
 	root    string // primary project root: working dir for commands
 	run     Runner
+	sandbox SandboxRunner
 	testCmd []string // the single allowlisted test command (run_tests)
 }
 
 // NewService builds a Service. root must be one of the policy's jail roots.
 func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
-	return &Service{pol: pol, log: log, root: root, run: execRunner}
+	return &Service{pol: pol, log: log, root: root, run: execRunner, sandbox: disabledSandboxRunner{}}
 }
 
 // WithRunner overrides the command runner (tests).
 func (s *Service) WithRunner(r Runner) *Service { s.run = r; return s }
+
+// WithSandboxRunner overrides the L3 sandbox runner (tests/future backends).
+func (s *Service) WithSandboxRunner(r SandboxRunner) *Service { s.sandbox = r; return s }
 
 // WithTestCommand sets the allowlisted command used by run_tests (e.g. {"go","test","./..."}).
 func (s *Service) WithTestCommand(cmd []string) *Service { s.testCmd = cmd; return s }

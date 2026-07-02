@@ -121,15 +121,33 @@ func TestToolsList(t *testing.T) {
 		"build_context_pack", "read_file", "read_many_files", "search_code",
 		"apply_patch", "create_file", "run_command", "git_status", "git_diff",
 		"run_tests", "git_commit", "memory_read", "memory_write",
-		"memory_update_handoff",
+		"memory_update_handoff", "sandbox_status",
 	} {
 		if !strings.Contains(string(b), `"`+name+`"`) {
 			t.Errorf("tools/list missing %q: %s", name, b)
 		}
 	}
-	for _, forbidden := range []string{"grant", "approve_access", "access_grant"} {
+	for _, forbidden := range []string{"grant", "approve_access", "access_grant", "free_terminal"} {
 		if strings.Contains(string(b), `"name":"`+forbidden+`"`) {
 			t.Errorf("tools/list exposes grant capability %q: %s", forbidden, b)
+		}
+	}
+}
+
+func TestToolsCall_SandboxStatusDefaultUnavailable(t *testing.T) {
+	s, _ := newTestServer(t, config.ModeReadOnly)
+	resp := call(t, s, `{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"sandbox_status","arguments":{}}}`)
+	var tr toolResult
+	b, _ := json.Marshal(resp.Result)
+	if err := json.Unmarshal(b, &tr); err != nil {
+		t.Fatal(err)
+	}
+	if tr.IsError {
+		t.Fatalf("sandbox_status should be a diagnostic result: %s", b)
+	}
+	for _, want := range []string{"available: false", "backend: none", "free_terminal: false"} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("sandbox_status missing %q: %s", want, b)
 		}
 	}
 }
