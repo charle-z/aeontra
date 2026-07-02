@@ -56,3 +56,20 @@ func TestFeaturesMarksWorkerPlanSuperseded(t *testing.T) {
 		}
 	}
 }
+
+func TestL3SandboxPlanDocumentsHardRequirements(t *testing.T) {
+	doc := readDoc(t, "l3-sandbox-plan.md")
+	for _, want := range []string{
+		"default-deny egress",
+		"no Docker socket in the public MCP container",
+		"169.254.169.254",
+		"RFC1918",
+		"explicit runner contract",
+		"no free terminal before L3",
+		"human approval",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Fatalf("l3-sandbox-plan.md does not contain %q", want)
+		}
+	}
+}

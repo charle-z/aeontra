@@ -172,8 +172,9 @@ The admin channel is loopback-only and must stay that way.
 1. Verify the new durable preflight from ChatGPT web after deploy: `initialize`
    instructions should mention `git_status`, `git pull --ff-only origin main`, and
    `build_context_pack`.
-2. P2-7: L3 OS sandbox + egress controls before any broad command, disk/forensics,
-   network, or PC-wide capability.
+2. P2-7 implementation starts from `docs/l3-sandbox-plan.md`: add a `SandboxRunner`
+   contract/status first, then a Linux backend. Do not mount Docker socket into the
+   public MCP container and do not expose free commands until L3 tests pass.
 
 Optional future capability: a gated `git_push` tool, only if the owner wants it and
 only behind mode+approval. Pushing is deliberately absent today.

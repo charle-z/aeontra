@@ -72,11 +72,13 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    sequence" errors, but OpenAI-side execution blocking remains client-side.
 
 ### P2 — the big enabler (separate, careful)
-7. **L3 — OS sandbox + egress.** Wrap Docker/gVisor/nsjail so a permitted command
-   provably cannot escape; egress default-deny (block 169.254.169.254 + RFC1918,
-   allowlist endpoints). REQUIRED before any broad capability (disk/forensics/free
-   exec) and before pointing at the owner's PC. Wrap proven tech; do not reinvent.
-   See `docs/design.md` / `docs/security.md`.
+7a. DONE (2026-07-02): **L3 design contract.** Added `docs/l3-sandbox-plan.md`
+   with tested requirements: no free terminal before L3, no Docker socket in the
+   public MCP container, explicit runner contract, default-deny egress, metadata/
+   RFC1918 blocks, and human approval preserved.
+7b. **L3 implementation step 1.** Add a `SandboxRunner` contract/status in code,
+   keeping plain exec as L1 only. Broad/free commands remain unavailable until a real
+   Linux backend + adversarial egress/escape tests pass.
 
 ### Ongoing / optional
 - New capability tools (toward the broader-agent vision) ONLY as allowlisted+audited
