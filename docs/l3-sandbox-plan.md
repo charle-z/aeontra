@@ -109,3 +109,60 @@ Always block:
    commands, network egress to metadata/RFC1918, timeout, and resource limits.
 5. Only after those tests pass, consider a broader command tool. Until then,
    `run_command` remains allowlist-only and audited.
+
+## Status on branch `l3-sandbox` (2026-07-02)
+
+- **Docker backend implemented + unit-tested** (`internal/tools/sandbox_docker.go`):
+  `dockerArgv` builds a hardened `docker run` (`--network none` = egress deny,
+  `--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`, non-root
+  `--user`, `--pids-limit`/`--memory`/`--cpus`, `/tmp` tmpfs, only the workspace
+  bind-mounted). Tests lock these flags and assert it NEVER emits `--privileged`,
+  the docker socket, `--network host`, `--cap-add`, host pid/userns, or `-v /:`.
+- Wired via config (`MCP_DEVBOX_SANDBOX=docker`, image via `MCP_DEVBOX_SANDBOX_IMAGE`,
+  default `golang:1.26-alpine`). `nsjail`/`gvisor` remain "pending".
+- **IMPORTANT — not yet live for execution:** the runner currently backs
+  `sandbox_status` only. No tool routes command execution through it, and
+  `run_command`/`run_tests` stay L1 allowlist-only. Enabling broad execution is gated
+  behind step 4 (adversarial escape/egress/timeout/limit tests) run on Linux/WSL2.
+- **Containment is UNVERIFIED from the Windows dev host** — the argv is correct by
+  construction and tested, but real isolation must be proven on Linux before enabling.
+
+## Where to run the sandbox (VPS vs PC) + easy config
+
+Two deployment shapes, both driven by the same env config:
+
+### A. On the VPS (primary)
+The public MCP container is socketless by design, so it cannot itself run
+`docker run`. Options, in order of preference:
+1. **Run the whole app container under a sandboxed runtime** (gVisor/`runsc`, or a
+   locked-down Docker runtime with a default-deny egress network policy) at the
+   Coolify/host level. Then in-container execution is already OS-isolated — set
+   `MCP_DEVBOX_SANDBOX=gvisor` (once that backend lands) for accurate status. No DinD,
+   no socket.
+2. **Run the daemon on the VPS host** (not in the socketless container) where Docker
+   is available, with `MCP_DEVBOX_SANDBOX=docker`. The daemon spawns hardened
+   ephemeral containers per command.
+Never mount `/var/run/docker.sock` into the internet-facing container.
+
+### B. Interact with the PC (when the VPS is too small, or you want local repos)
+Keep the PC unexposed; front it with the VPS you already trust:
+1. Daemon runs on the **PC**, bound to `127.0.0.1`, `MCP_DEVBOX_SANDBOX=docker`
+   (Docker Desktop / WSL2), `--mode ask`, roots limited to chosen repos.
+2. **Reverse SSH tunnel to the VPS** (reuses the existing domain + Traefik TLS):
+   `ssh -R 8766:127.0.0.1:8765 user@vps`, and route a hostname
+   (e.g. `pc.<domain>`) to that port. No inbound ports opened on the home network.
+3. ChatGPT points at `https://pc.<domain>/mcp?key=...` (or OAuth later). Same bearer
+   auth + policy + the PC's local Docker sandbox contains execution.
+4. Result: the VPS provides the secure public front + TLS; the PC provides compute
+   and local repos; commands are sandboxed locally; nothing on the PC is exposed
+   except through the authenticated tunnel.
+
+### Easy-config summary (env only)
+```
+MCP_DEVBOX_SANDBOX=docker|gvisor|nsjail|none   # default none
+MCP_DEVBOX_SANDBOX_IMAGE=golang:1.26-alpine    # docker backend image
+MCP_DEVBOX_MODE=ask                            # approvals for risky actions
+MCP_DEVBOX_ROOT=/repos/<repo>                  # (VPS) or the PC repo path
+```
+Switching host (VPS↔PC) is: run the daemon there, set these envs, point the tunnel/
+connector at it. No code change.
