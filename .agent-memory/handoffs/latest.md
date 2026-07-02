@@ -102,6 +102,24 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    Do not mount Docker socket into the public MCP container and do not expose broad
    command execution until adversarial egress/escape tests pass.
 
+### P1.5 — OAuth for the ChatGPT connector (INVESTIGATE + implement on a branch)
+Goal: let ChatGPT authenticate via its "OAuth" connector option so the secret no longer
+rides in the URL (`?key=`). Owner prefers this. NOT urgent — `?key=`/bearer works today;
+rotate the token when OAuth lands. Do this on a branch (`oauth`), not main.
+- **Investigate FIRST** ChatGPT's exact MCP connector OAuth flow (it evolves; confirm the
+  current requirements before coding). MCP auth (2025) generally needs the server to expose
+  `/.well-known/oauth-protected-resource` + an authorization server with
+  `/.well-known/oauth-authorization-server`, dynamic client registration (RFC 7591),
+  `authorize` + `token` endpoints, and PKCE (S256); access tokens validated per request.
+- Realistic path for THIS setup (DuckDNS + Traefik on the VPS, not a Cloudflare-managed
+  domain): implement a minimal OAuth AS in the daemon, OR front with oauth2-proxy — but
+  verify the proxy actually satisfies ChatGPT's MCP OAuth discovery (a generic proxy may
+  not). Cloudflare Access would need moving the domain to Cloudflare.
+- Security: the AS is auth-critical — TDD it hard (no-token→401, PKCE required, token
+  expiry, audience/scope, constant-time compares). Keep bearer/`?key=` as a fallback behind
+  a flag during transition. Do not weaken the existing Policy.
+- ROTATE the current token regardless (it was shared in chat during setup).
+
 ### Ongoing / optional
 - New capability tools (toward the broader-agent vision) ONLY as allowlisted+audited
   tools with explicit jail scoping; e.g. a gated `git_push` (currently push is blocked
