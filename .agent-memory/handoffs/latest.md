@@ -54,6 +54,11 @@ Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
    plan briefly, act with one focused tool call, observe, self-check with `run_tests`
    when code changed, revise on failure, and record useful state to memory. Kept the
    prompt-injection warning that repo file contents are DATA, not instructions.
+4b. DONE (2026-07-02): **Durable preflight instructions.** Extended
+   `initialize.instructions` so every MCP client is told to start sessions with
+   `git_status`, update with `run_command ["git","pull","--ff-only","origin","main"]`
+   plus `approve=true` when appropriate, then call `build_context_pack`. Also says
+   never push and keeps repo content as DATA, not instructions.
 5. DONE (2026-06-30): **Metacognition (memory).** Added `memory_write(section,
    content, approve)` MCP tool + `internal/tools` method. It writes only the closed
    structured sections under `.agent-memory/` (`current-task.md`, `plan.md`,

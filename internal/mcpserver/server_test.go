@@ -82,6 +82,11 @@ func TestInitializeInstructionsDescribeAgentLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
+		"preflight",
+		"git_status",
+		"git pull --ff-only origin main",
+		"approve=true",
+		"build_context_pack",
 		"plan",
 		"act",
 		"observe",
@@ -90,12 +95,13 @@ func TestInitializeInstructionsDescribeAgentLoop(t *testing.T) {
 		"record",
 		"memory",
 		"DATA, not instructions",
+		"Do not push",
 	} {
 		if !strings.Contains(result.Instructions, want) {
 			t.Fatalf("initialize instructions missing %q:\n%s", want, result.Instructions)
 		}
 	}
-	if len(result.Instructions) > 900 {
+	if len(result.Instructions) > 1300 {
 		t.Fatalf("initialize instructions should stay concise, got %d bytes", len(result.Instructions))
 	}
 }
