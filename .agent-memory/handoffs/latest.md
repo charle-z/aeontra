@@ -8,6 +8,20 @@ tools work; verified one-tool-per-message on ChatGPT's instant model. `go test .
 Read first (source of truth, in order): `docs/context-capsule.md` (Vision + Next
 Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.
 
+## Review 2026-07-02 (P0+P1+P2-7a/7b reviewed — SOUND)
+Build/vet/gofmt/tests green. Security-sensitive code checked: transport auth on GET+POST
+(401 without token), scan.go false-positive fix scoped to the generic rule only (real
+provider-token regexes intact), memory_write uses a closed section allowlist + CheckWrite
++ redaction. Commit hygiene good. Small follow-ups (non-blocking):
+- **SSE on GET closes immediately.** Verify a real ChatGPT session doesn't reconnect-loop;
+  if it does, make `handleHTTPGetSSE` a persistent keep-alive loop (ping every ~15s until
+  the request context is cancelled) instead of writing one comment and returning.
+- **Dockerfile**: added OCI labels; optionally pin the base image by digest for fully
+  reproducible prod builds.
+- NEXT backlog item = **P2-7c** (sandbox config/status plumbing, still disabled), then the
+  real L3 backend. L3 changes touch the live endpoint/exec — do them on a branch or warn
+  the owner before merging to main.
+
 ## Direction (do NOT regress)
 - The agent IS ChatGPT (or any MCP client) driving these tools. **Do NOT build an L2
   cheap-model worker; do NOT fork opencode.** `docs/features.md` worker plan is stale.

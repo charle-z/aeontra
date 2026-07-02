@@ -12,6 +12,13 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/mcp-devbox ./cmd/m
 # dev-agent box.) For pure read/patch/commit you only need git, which is included.
 FROM golang:1.26-alpine
 
+# OCI metadata (good practice; helps registries/scanners identify the image).
+# For fully reproducible prod builds, pin the base by digest (golang:1.26-alpine@sha256:...).
+LABEL org.opencontainers.image.title="mcp-devbox" \
+	org.opencontainers.image.description="Secure-by-default local MCP server for AI coding agents" \
+	org.opencontainers.image.source="https://github.com/charle-z/mcp-devbox" \
+	org.opencontainers.image.licenses="MIT"
+
 RUN apk add --no-cache ca-certificates git wget \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
