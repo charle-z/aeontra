@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/carbe/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
 // configIdentity sets a local git identity so commits work in the test repo.

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/carbe/mcp-devbox/internal/config"
-	"github.com/carbe/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/policy"
 )
 
 func TestRunCommand_AllowRuns(t *testing.T) {

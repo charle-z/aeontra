@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
 // ErrReadOnly is returned when a write or command is attempted while the server is

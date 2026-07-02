@@ -42,7 +42,7 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
 - Secure-by-default stays: read-only default, secrets denied (path+content+grants),
   allowlist-only commands, patch-first writes, audit everything, **policy not mutable
   by the agent at runtime**.
-- Go toolchain (Windows host, not on PATH): `$env:PATH = "C:\Users\carbe\go-sdk\go\bin;" + $env:PATH`.
+- Go toolchain (Windows host, not on PATH): `$env:PATH = "C:\Users\<user>\go-sdk\go\bin;" + $env:PATH`.
 - After each step update `docs/context-capsule.md` if behavior changed; keep this
   handoff's checklist current.
 

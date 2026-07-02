@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/carbe/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/audit"
 )
 
 // GitStatus returns the working-tree status (read-only; works in any mode).

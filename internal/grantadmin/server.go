@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/audit"
-	"github.com/carbe/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/policy"
 )
 
 const DefaultPath = "/admin/grants"

@@ -18,12 +18,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/audit"
-	"github.com/carbe/mcp-devbox/internal/config"
-	"github.com/carbe/mcp-devbox/internal/grantadmin"
-	"github.com/carbe/mcp-devbox/internal/mcpserver"
-	"github.com/carbe/mcp-devbox/internal/policy"
-	"github.com/carbe/mcp-devbox/internal/tools"
+	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/grantadmin"
+	"github.com/charle-z/mcp-devbox/internal/mcpserver"
+	"github.com/charle-z/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
 const version = "0.2.0"

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/policy"
 )
 
 // Decision is the policy outcome recorded for a tool call.

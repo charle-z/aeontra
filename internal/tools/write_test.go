@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/carbe/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
 func TestCreateFile_AllowCreatesWithContent(t *testing.T) {

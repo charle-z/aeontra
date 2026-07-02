@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/carbe/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
 func TestSearchCode_FindsMatches(t *testing.T) {

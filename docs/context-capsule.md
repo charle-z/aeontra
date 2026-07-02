@@ -40,7 +40,7 @@ audited tool with explicit jail scoping. There is no free terminal before L3.
 ## Current State
 
 Layer 1, v0.2 HTTP transport, Docker/Coolify deploy, and ephemeral human access
-grants are implemented and live. Module: `github.com/carbe/mcp-devbox` (Go 1.26).
+grants are implemented and live. Module: `github.com/charle-z/mcp-devbox` (Go 1.26).
 Main branch: `main`.
 
 Production:
@@ -147,7 +147,7 @@ mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> \
 Windows Go SDK:
 
 ```powershell
-$env:PATH = "C:\Users\carbe\go-sdk\go\bin;" + $env:PATH
+$env:PATH = "C:\Users\<user>\go-sdk\go\bin;" + $env:PATH
 ```
 
 Container/Coolify env:

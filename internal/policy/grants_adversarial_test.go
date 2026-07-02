@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
 // The core security property of grants: a request_id is NOT a grant. The agent

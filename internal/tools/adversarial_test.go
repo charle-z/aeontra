@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/carbe/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
 // This file consolidates ADVERSARIAL bypass attempts exercised through the tool

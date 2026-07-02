@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/audit"
-	"github.com/carbe/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
 // memoryDir is the agent-agnostic repo memory directory.

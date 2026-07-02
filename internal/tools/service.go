@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/audit"
-	"github.com/carbe/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/policy"
 )
 
 // maxReadBytes caps a single file read so a tool cannot be used to pull an

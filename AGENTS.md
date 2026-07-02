@@ -89,10 +89,10 @@ build   go build ./...
 run     go run ./cmd/mcp-devbox serve --root <ABS_PROJECT_PATH>
 
 # Go toolchain on this Windows host is a local SDK (no admin install):
-#   C:\Users\carbe\go-sdk\go\bin
+#   C:\Users\<user>\go-sdk\go\bin
 # In PowerShell, prepend it for the session:
-#   $env:PATH = "C:\Users\carbe\go-sdk\go\bin;" + $env:PATH
-# Module: github.com/carbe/mcp-devbox  (Go 1.26)
+#   $env:PATH = "C:\Users\<user>\go-sdk\go\bin;" + $env:PATH
+# Module: github.com/charle-z/mcp-devbox  (Go 1.26)
 # Lint: golangci-lint not installed; `go vet` is the gate for now.
 ```
 

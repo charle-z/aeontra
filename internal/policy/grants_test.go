@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
 func TestAccessGrants_ApproveConsumeSingleUseExactPath(t *testing.T) {

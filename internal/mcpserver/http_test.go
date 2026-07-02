@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/carbe/mcp-devbox/internal/audit"
-	"github.com/carbe/mcp-devbox/internal/config"
-	"github.com/carbe/mcp-devbox/internal/policy"
-	"github.com/carbe/mcp-devbox/internal/tools"
+	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
 const testToken = "s3cr3t-bearer-token-value"

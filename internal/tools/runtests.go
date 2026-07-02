@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/carbe/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/audit"
 )
 
 // RunCommand runs a single allowlisted program with args (one-off). It is gated by

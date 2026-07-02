@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/carbe/mcp-devbox/internal/audit"
-	"github.com/carbe/mcp-devbox/internal/config"
-	"github.com/carbe/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/policy"
 )
 
 func newTestService(t *testing.T, mode config.Mode) (*Service, string) {
