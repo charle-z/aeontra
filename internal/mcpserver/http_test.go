@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/config"
@@ -151,8 +153,24 @@ func TestHTTP_NotificationReturns202(t *testing.T) {
 }
 
 func TestHTTP_GetMCPReturnsSSE(t *testing.T) {
+	// The SSE stream is persistent: it stays open until the client disconnects. Drive
+	// it with a cancelable context in a goroutine so the synchronous handler does not
+	// hang the test; cancel to close, then assert the opening comment was flushed.
 	h, _ := newHTTPServer(t, config.ModeReadOnly)
-	rr := do(t, h, "GET", "/mcp", "Bearer "+testToken, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/mcp", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rr := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() { h.ServeHTTP(rr, req); close(done) }()
+	cancel() // client disconnects; a persistent stream must then return promptly
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("persistent SSE handler did not return after client disconnect (hung)")
+	}
+
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET /mcp: got %d, want 200; body=%s", rr.Code, rr.Body.String())
 	}

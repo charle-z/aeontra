@@ -55,7 +55,7 @@ func (s *Server) HTTPHandler(token string) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			handleHTTPGetSSE(w)
+			handleHTTPGetSSE(w, r)
 		default:
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -98,14 +98,43 @@ func newHTTPSessionID() string {
 	return fmt.Sprintf("mcp-devbox-%d", time.Now().UnixNano())
 }
 
-func handleHTTPGetSSE(w http.ResponseWriter) {
+// handleHTTPGetSSE serves the server->client SSE stream. It stays open, sending a
+// periodic keep-alive comment, until the client disconnects (request context
+// cancelled). A persistent stream (vs an immediate close) avoids clients such as
+// ChatGPT reconnecting in a loop. We push no server-initiated MCP messages in L1, so
+// the stream carries only keep-alive comments.
+func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, ": mcp-devbox keep-alive\n\n")
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
+
+	flusher, _ := w.(http.Flusher)
+	writeChunk := func(s string) bool {
+		if _, err := io.WriteString(w, s); err != nil {
+			return false
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return true
+	}
+
+	if !writeChunk(": mcp-devbox stream open\n\n") {
+		return
+	}
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if !writeChunk(": ping\n\n") {
+				return
+			}
+		}
 	}
 }
 
