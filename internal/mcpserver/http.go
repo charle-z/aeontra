@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/oauth"
 )
 
 // maxHTTPBody caps a single MCP request body. MCP messages are small; this bounds
@@ -23,15 +25,42 @@ const DefaultMCPPath = "/mcp"
 
 // HTTPHandler returns an http.Handler that exposes the MCP tools over a
 // streamable-HTTP subset (single endpoint, JSON-RPC over POST). Authentication is
-// MANDATORY: every /mcp request must carry "Authorization: Bearer <token>" matching
-// token, else 401. The same Server.handle path (and therefore the same Policy,
-// Service, and redaction) is reused — no tool or policy logic is duplicated here.
+// MANDATORY: every /mcp request must present a valid credential, else 401.
+//
+// Two auth modes coexist during the transition. A static bearer/`?key=` token (legacy)
+// is accepted when token != "". When oauthProvider != nil, its discovery + flow
+// endpoints are mounted and a valid OAuth access token is accepted; a 401 then carries a
+// WWW-Authenticate header pointing at the Protected Resource Metadata so clients such as
+// ChatGPT can bootstrap the OAuth flow. The same Server.handle path (and therefore the
+// same Policy, Service, and redaction) is reused — no tool or policy logic is duplicated.
 //
 // All request bodies are treated as untrusted input. Tool results still carry repo
 // file contents as DATA, never instructions.
-func (s *Server) HTTPHandler(token string) http.Handler {
+func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.Handler {
 	mux := http.NewServeMux()
 	sessionID := newHTTPSessionID()
+
+	if oauthProvider != nil {
+		oauthProvider.RegisterRoutes(mux)
+	}
+
+	// authorized accepts either the legacy static token (only when configured) or a
+	// valid OAuth access token (only when OAuth is enabled).
+	authorized := func(r *http.Request) bool {
+		if token != "" && authOK(r, token) {
+			return true
+		}
+		return oauthProvider != nil && oauthProvider.Authorize(r)
+	}
+	// challenge sets the correct WWW-Authenticate header for a 401. When OAuth is on it
+	// points at the exact Protected Resource Metadata (RFC 9728 §5.1).
+	challenge := func(w http.ResponseWriter) {
+		if oauthProvider != nil {
+			w.Header().Set("WWW-Authenticate", oauthProvider.ChallengeHeader())
+		} else {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp-devbox"`)
+		}
+	}
 
 	// Unauthenticated liveness probe — no sensitive information.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -43,15 +72,15 @@ func (s *Server) HTTPHandler(token string) http.Handler {
 	mux.HandleFunc(DefaultMCPPath, func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
-			if !authOK(r, token) {
-				w.Header().Set("WWW-Authenticate", `Bearer realm="mcp-devbox"`)
+			if !authorized(r) {
+				challenge(w)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			s.handleHTTPPost(w, r, sessionID)
 		case http.MethodGet:
-			if !authOK(r, token) {
-				w.Header().Set("WWW-Authenticate", `Bearer realm="mcp-devbox"`)
+			if !authorized(r) {
+				challenge(w)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -230,14 +259,16 @@ func (s *Server) handleBatch(raw []byte) [][]byte {
 }
 
 // ServeHTTP starts an HTTP server bound to addr that serves the MCP endpoint with
-// mandatory bearer auth, shutting down gracefully when ctx is cancelled.
-func (s *Server) ServeHTTP(ctx context.Context, addr, token string) error {
-	if token == "" {
-		return errors.New("http transport requires a bearer token (refusing to start without auth)")
+// mandatory auth, shutting down gracefully when ctx is cancelled. At least one auth
+// mechanism must be configured: it refuses to start only when there is neither a static
+// token NOR an OAuth provider (fail closed — never serve MCP unauthenticated).
+func (s *Server) ServeHTTP(ctx context.Context, addr, token string, oauthProvider *oauth.Provider) error {
+	if token == "" && oauthProvider == nil {
+		return errors.New("http transport requires auth: set a bearer token or enable OAuth (refusing to start without auth)")
 	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.HTTPHandler(token),
+		Handler:           s.HTTPHandler(token, oauthProvider),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)

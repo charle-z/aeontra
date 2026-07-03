@@ -14,6 +14,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
@@ -37,7 +38,61 @@ func newHTTPServer(t *testing.T, mode config.Mode) (http.Handler, string) {
 	}
 	resolved := pol.Roots()[0]
 	svc := tools.NewService(pol, audit.New(&bytes.Buffer{}), resolved)
-	return New(svc).HTTPHandler(testToken), resolved
+	return New(svc).HTTPHandler(testToken, nil), resolved
+}
+
+// newHTTPServerWithOAuth builds a handler with the OAuth provider enabled (and no static
+// token) to exercise the OAuth integration boundary.
+func newHTTPServerWithOAuth(t *testing.T, staticToken string) http.Handler {
+	t.Helper()
+	root := t.TempDir()
+	cfg, err := config.New(config.Config{Roots: []string{root}, Mode: config.ModeReadOnly, AllowedCommands: []string{"git"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pol, err := policy.NewPolicy(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := tools.NewService(pol, audit.New(&bytes.Buffer{}), pol.Roots()[0])
+	prov, err := oauth.NewProvider(oauth.Config{
+		Issuer:     "http://localhost:8765",
+		Resource:   "http://localhost:8765/mcp",
+		Passphrase: "owner-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(svc).HTTPHandler(staticToken, prov)
+}
+
+func TestHTTP_OAuthChallengePointsToPRM(t *testing.T) {
+	h := newHTTPServerWithOAuth(t, "")
+	rr := do(t, h, "POST", "/mcp", "", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("no token: got %d, want 401", rr.Code)
+	}
+	wa := rr.Header().Get("WWW-Authenticate")
+	if !strings.Contains(wa, `resource_metadata="http://localhost:8765/.well-known/oauth-protected-resource/mcp"`) {
+		t.Errorf("WWW-Authenticate = %q, must point at the exact PRM", wa)
+	}
+}
+
+func TestHTTP_OAuthDiscoveryMountedUnauthenticated(t *testing.T) {
+	h := newHTTPServerWithOAuth(t, "")
+	rr := do(t, h, "GET", "/.well-known/oauth-protected-resource/mcp", "", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("PRM discovery: got %d, want 200 (unauthenticated)", rr.Code)
+	}
+}
+
+func TestHTTP_LegacyTokenStillWorksWithOAuth(t *testing.T) {
+	// With OAuth enabled AND a static token set, the legacy bearer must still authorize.
+	h := newHTTPServerWithOAuth(t, testToken)
+	rr := do(t, h, "POST", "/mcp", "Bearer "+testToken, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if rr.Code == http.StatusUnauthorized {
+		t.Fatalf("legacy token should authorize even with OAuth on; got 401")
+	}
 }
 
 func do(t *testing.T, h http.Handler, method, path, auth, body string) *httptest.ResponseRecorder {

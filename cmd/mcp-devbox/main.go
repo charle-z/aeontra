@@ -22,6 +22,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/grantadmin"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
+	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
@@ -39,6 +40,39 @@ const (
 	allowCmdEnv = "MCP_DEVBOX_ALLOW_CMD"
 	sandboxEnv  = "MCP_DEVBOX_SANDBOX"
 )
+
+// OAuth env. When both are set, the HTTP transport enables its in-process OAuth
+// authorization server (see internal/oauth). publicURLEnv is the public HTTPS base URL
+// (the OAuth issuer); the canonical MCP resource used as the token audience is that base
+// plus the MCP path.
+const (
+	publicURLEnv       = "MCP_DEVBOX_PUBLIC_URL"
+	oauthPassphraseEnv = "MCP_DEVBOX_OAUTH_PASSPHRASE"
+)
+
+// buildOAuthProvider constructs the OAuth provider from env, or returns (nil, nil) when
+// OAuth is not configured. It errors if only one of the two required vars is set, so a
+// half-configured OAuth setup fails loudly rather than silently falling back.
+func buildOAuthProvider() (*oauth.Provider, error) {
+	publicURL := strings.TrimSpace(os.Getenv(publicURLEnv))
+	passphrase := os.Getenv(oauthPassphraseEnv)
+	if publicURL == "" && strings.TrimSpace(passphrase) == "" {
+		return nil, nil // OAuth disabled
+	}
+	if publicURL == "" || strings.TrimSpace(passphrase) == "" {
+		return nil, fmt.Errorf("OAuth requires BOTH %s and %s to be set", publicURLEnv, oauthPassphraseEnv)
+	}
+	issuer := strings.TrimRight(publicURL, "/")
+	p, err := oauth.NewProvider(oauth.Config{
+		Issuer:     issuer,
+		Resource:   issuer + mcpserver.DefaultMCPPath,
+		Passphrase: passphrase,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configuring OAuth: %w", err)
+	}
+	return p, nil
+}
 
 // envFallback returns flagVal when non-empty (after trimming), otherwise the value
 // of the named environment variable.
@@ -246,18 +280,33 @@ func serve(args []string) error {
 		if token == "" {
 			token = os.Getenv(tokenEnv)
 		}
-		if strings.TrimSpace(token) == "" {
-			return fmt.Errorf("HTTP transport requires a bearer token: set %s=<token> "+
-				"(or --http-token). Refusing to start without auth", tokenEnv)
+		// Optional OAuth authorization server (enabled when both env vars are set). The
+		// resource (token audience) is the canonical MCP URL = public base + /mcp.
+		oauthProvider, err := buildOAuthProvider()
+		if err != nil {
+			return err
+		}
+		// Fail closed: at least one auth mechanism must be configured.
+		if strings.TrimSpace(token) == "" && oauthProvider == nil {
+			return fmt.Errorf("HTTP transport requires auth: set %s=<token> (or --http-token), "+
+				"or enable OAuth with %s + %s. Refusing to start without auth",
+				tokenEnv, publicURLEnv, oauthPassphraseEnv)
 		}
 		addr := normalizeHTTPAddr(*httpAddr)
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
+		authDesc := "Authorization: Bearer <token>"
+		if oauthProvider != nil {
+			authDesc = "OAuth (discovery via /.well-known/oauth-protected-resource)"
+			if strings.TrimSpace(token) != "" {
+				authDesc += " or legacy Bearer token"
+			}
+		}
 		fmt.Fprintf(os.Stderr, "mcp-devbox %s serving HTTP on %s (mode=%s, roots=%v, audit=%s)\n",
 			version, addr, pol.Mode(), pol.Roots(), ap)
-		fmt.Fprintf(os.Stderr, "MCP endpoint: POST http://%s%s  (Authorization: Bearer <token> required)\n",
-			addr, mcpserver.DefaultMCPPath)
-		return srv.ServeHTTP(ctx, addr, token)
+		fmt.Fprintf(os.Stderr, "MCP endpoint: POST http://%s%s  (%s)\n",
+			addr, mcpserver.DefaultMCPPath, authDesc)
+		return srv.ServeHTTP(ctx, addr, token, oauthProvider)
 	}
 
 	fmt.Fprintf(os.Stderr, "mcp-devbox %s serving stdio (mode=%s, roots=%v, audit=%s)\n",
