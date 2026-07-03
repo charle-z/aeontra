@@ -46,10 +46,10 @@ Main branch: `main`.
 Production:
 
 - Host: `https://mcp-devbox-charlez.duckdns.org`
-- MCP endpoint: `/mcp?key=<MCP_DEVBOX_TOKEN>`
-- Auth in ChatGPT connector: "Sin autenticacion" because ChatGPT cannot set a bearer
-  header in the connector UI.
-- Runtime root: `/repos/mcp-devbox`
+- MCP endpoint: `/mcp`
+- Preferred ChatGPT auth: OAuth with DCR, public client, scope `mcp`.
+- Legacy fallback: `/mcp?key=<MCP_DEVBOX_TOKEN>`.
+- Runtime root: `/repos`
 - Default mode: `read-only`
 - Repos live in the persistent `/repos` volume.
 
@@ -63,10 +63,13 @@ Transport:
 - HTTP `initialize` responses include `Mcp-Session-Id`; later POSTs may send that
   header and are accepted.
 - Same Policy/Service/redaction path for both transports; no duplicated security checks.
-- OAuth 2.1 (branch `oauth`, not yet merged/deployed): in-process AS + resource server
-  in `internal/oauth`. Enable with env `MCP_DEVBOX_PUBLIC_URL` + `MCP_DEVBOX_OAUTH_PASSPHRASE`;
-  discovery (RFC 9728/8414), DCR (7591), PKCE S256, refresh rotation, audience-bound
-  tokens. Fail-closed startup; static bearer/`?key=` kept as fallback. See `docs/oauth.md`.
+- OAuth 2.1: in-process AS + resource server in `internal/oauth`. Enable with env
+  `MCP_DEVBOX_PUBLIC_URL` + `MCP_DEVBOX_OAUTH_PASSPHRASE`; discovery (RFC 9728/8414),
+  DCR (7591), PKCE S256, refresh rotation, audience-bound tokens. Optional
+  `MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only DCR public client registrations so
+  ChatGPT can reauthenticate after redeploy without deleting the connector. Tokens and
+  authorization codes remain in-memory only. Static bearer/`?key=` kept as fallback.
+  See `docs/oauth.md`.
 
 Ephemeral grants:
 
@@ -161,6 +164,10 @@ Container/Coolify env:
 - `MCP_DEVBOX_MODE`
 - `MCP_DEVBOX_TEST_CMD`
 - `MCP_DEVBOX_ALLOW_CMD`
+- `MCP_DEVBOX_PUBLIC_URL`
+- `MCP_DEVBOX_OAUTH_PASSPHRASE`
+- `MCP_DEVBOX_OAUTH_CLIENT_STORE` (recommended: `/state/oauth-clients.json` on a
+  persistent `/state` volume outside `/repos`)
 
 ## Production Grant Approval
 
@@ -176,9 +183,9 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Verify the new durable preflight from ChatGPT web after deploy: `initialize`
-   instructions should mention `git_status`, `git pull --ff-only origin main`, and
-   `build_context_pack`.
+1. Configure Coolify with a persistent `/state` volume and
+   `MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json`, then reconnect once.
+   Future redeploys should not require deleting the ChatGPT connector.
 2. P2-7 implementation now has the `SandboxRunner` contract and `sandbox_status`
    diagnostic. Next: wire a Linux backend behind explicit config, keeping the Docker
    socket out of the public MCP container and keeping broad commands disabled until

@@ -3,6 +3,11 @@ package oauth
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -64,16 +69,19 @@ type clientReg struct {
 	createdAt    time.Time
 }
 
-// tokenStore holds all short-lived OAuth state in process memory. There is no
-// persistence by design: a restart drops every grant and the owner reconnects.
+// tokenStore holds short-lived OAuth state in process memory. Access tokens,
+// refresh tokens, and authorization codes are never persisted. Only DCR public
+// client registrations may be persisted, so a ChatGPT connector can reauthorize
+// after a daemon restart without deleting and recreating the connector.
 type tokenStore struct {
-	mu        sync.Mutex
-	access    map[string]accessGrant
-	codes     map[string]authCode
-	refresh   map[string]refreshGrant
-	clients   map[string]clientReg
-	regTimes  []time.Time // sliding window of recent registration timestamps
-	failTimes []time.Time // sliding window of recent passphrase failures
+	mu              sync.Mutex
+	access          map[string]accessGrant
+	codes           map[string]authCode
+	refresh         map[string]refreshGrant
+	clients         map[string]clientReg
+	clientStorePath string
+	regTimes        []time.Time // sliding window of recent registration timestamps
+	failTimes       []time.Time // sliding window of recent passphrase failures
 }
 
 func newTokenStore() *tokenStore {
@@ -83,6 +91,126 @@ func newTokenStore() *tokenStore {
 		refresh: make(map[string]refreshGrant),
 		clients: make(map[string]clientReg),
 	}
+}
+
+type clientStoreFile struct {
+	Version int                 `json:"version"`
+	Clients []clientStoreRecord `json:"clients"`
+}
+
+type clientStoreRecord struct {
+	ID           string    `json:"id"`
+	RedirectURIs []string  `json:"redirect_uris"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (s *tokenStore) enableClientPersistence(path string) error {
+	path = filepath.Clean(path)
+	if path == "." || path == "" {
+		return fmt.Errorf("path is required")
+	}
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("path must be absolute")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clientStorePath = path
+	return s.loadClientsLocked()
+}
+
+func (s *tokenStore) loadClientsLocked() error {
+	body, err := os.ReadFile(s.clientStorePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var doc clientStoreFile
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return fmt.Errorf("decode %s: %w", s.clientStorePath, err)
+	}
+	if doc.Version != 1 {
+		return fmt.Errorf("unsupported client store version %d", doc.Version)
+	}
+	if len(doc.Clients) > maxClients {
+		return fmt.Errorf("client store has %d clients, max %d", len(doc.Clients), maxClients)
+	}
+	loaded := make(map[string]clientReg, len(doc.Clients))
+	for _, c := range doc.Clients {
+		if c.ID == "" {
+			return fmt.Errorf("client store contains an empty client id")
+		}
+		if len(c.RedirectURIs) == 0 {
+			return fmt.Errorf("client %s has no redirect URIs", c.ID)
+		}
+		for _, redirect := range c.RedirectURIs {
+			if err := validateRedirectURI(redirect); err != nil {
+				return fmt.Errorf("client %s redirect_uri: %w", c.ID, err)
+			}
+		}
+		if c.CreatedAt.IsZero() {
+			return fmt.Errorf("client %s has an empty created_at", c.ID)
+		}
+		if _, exists := loaded[c.ID]; exists {
+			return fmt.Errorf("client store contains duplicate client id %s", c.ID)
+		}
+		loaded[c.ID] = clientReg{redirectURIs: append([]string(nil), c.RedirectURIs...), createdAt: c.CreatedAt}
+	}
+	s.clients = loaded
+	return nil
+}
+
+func (s *tokenStore) persistClientsLocked() error {
+	if s.clientStorePath == "" {
+		return nil
+	}
+	clients := make([]clientStoreRecord, 0, len(s.clients))
+	for id, c := range s.clients {
+		clients = append(clients, clientStoreRecord{
+			ID:           id,
+			RedirectURIs: append([]string(nil), c.redirectURIs...),
+			CreatedAt:    c.createdAt,
+		})
+	}
+	sort.Slice(clients, func(i, j int) bool {
+		return clients[i].ID < clients[j].ID
+	})
+	body, err := json.MarshalIndent(clientStoreFile{Version: 1, Clients: clients}, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(s.clientStorePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".oauth-clients-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, s.clientStorePath); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 // errRegLimited is returned by registerClient when the cap or rate limit is hit.
@@ -114,6 +242,10 @@ func (s *tokenStore) registerClient(redirectURIs []string) (string, error) {
 
 	id := randToken()
 	s.clients[id] = clientReg{redirectURIs: redirectURIs, createdAt: now}
+	if err := s.persistClientsLocked(); err != nil {
+		delete(s.clients, id)
+		return "", err
+	}
 	s.regTimes = append(s.regTimes, now)
 	return id, nil
 }

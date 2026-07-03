@@ -109,7 +109,7 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    ONLY after adversarial escape/exfil tests pass. Do NOT merge to main without warning
    the owner (touches the live endpoint + execution posture).
 
-### P1.5 — OAuth for the ChatGPT connector (IMPLEMENTED on branch `oauth`)
+### P1.5 - OAuth for the ChatGPT connector (DONE)
 Goal met: ChatGPT can authenticate via its "OAuth" connector option so the secret no
 longer rides in the URL (`?key=`). Built as a minimal in-process OAuth 2.1 AS +
 resource server in `internal/oauth` (stdlib only, opaque in-memory tokens), verified
@@ -125,12 +125,17 @@ against the MCP Authorization spec 2025-06-18.
   `*oauth.Provider`; startup rule = refuse only when no static token AND no OAuth (fail
   closed). Enabled via env `MCP_DEVBOX_PUBLIC_URL` + `MCP_DEVBOX_OAUTH_PASSPHRASE`
   (both required; https-only except localhost). Legacy bearer/`?key=` kept as fallback.
+- **P1.5b durability (2026-07-03)**: `MCP_DEVBOX_OAUTH_CLIENT_STORE` optionally persists
+  only DCR public client registrations (recommended `/state/oauth-clients.json` on a
+  persistent `/state` volume outside `/repos`). This fixes ChatGPT reconnect after
+  redeploy/restart without deleting the connector. Authorization codes, access tokens,
+  and refresh tokens remain in-memory only.
 - **Tests**: 32 unit tests in `internal/oauth` + `TestOAuthEndToEnd` (real HTTP: register
   → authorize → token(PKCE) → authenticated `/mcp`; bogus token → 401 w/ resource_metadata)
   + mcpserver challenge/discovery/legacy-fallback tests. Docs: `docs/oauth.md`.
-- **Still TODO**: merge `oauth` → main + set the two env vars in Coolify; connect ChatGPT
-  via the OAuth option to confirm live; then **ROTATE `MCP_DEVBOX_TOKEN`** (shared in chat)
-  and optionally drop the static token to go OAuth-only.
+- **Still TODO**: set `MCP_DEVBOX_OAUTH_CLIENT_STORE` in Coolify and mount `/state`;
+  reconnect ChatGPT once; then **ROTATE `MCP_DEVBOX_TOKEN`** (shared in chat) and
+  optionally drop the static token to go OAuth-only.
 - Not done (out of scope): token persistence across restarts, multi-user, JWT/JWKS.
 
 ### Ongoing / optional

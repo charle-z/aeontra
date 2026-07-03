@@ -39,7 +39,27 @@ MCP_DEVBOX_MODE=read-only
 Use `read-only` first. Switch to `ask` only when you intentionally want patch/test
 workflows.
 
-4. Add a persistent volume mounted at `/repos`.
+If using OAuth for the ChatGPT connector, also set:
+
+```text
+MCP_DEVBOX_PUBLIC_URL=https://mcp.example.com
+MCP_DEVBOX_OAUTH_PASSPHRASE=<long-owner-passphrase>
+MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json
+```
+
+`MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only ChatGPT's public OAuth client
+registration, not authorization codes, access tokens, or refresh tokens. Mount it
+outside the MCP repo jail so agents cannot edit OAuth server state through normal
+file tools.
+
+4. Add persistent volumes:
+
+```text
+/repos
+/state
+```
+
+Use `/repos` for cloned repositories and `/state` for OAuth client registrations.
 5. Expose only the internal application port `8765` through Coolify/Traefik. Do not
 publish `8765` directly on the VPS host firewall.
 6. Deploy.
@@ -79,8 +99,18 @@ you intentionally want the whole volume in the jail.
 
 ## Connect ChatGPT
 
-ChatGPT's connector UI does not provide a custom bearer header field, so use the
-query-string key and choose "Sin autenticacion":
+Preferred option: use OAuth.
+
+```text
+Connector URL: https://mcp.example.com/mcp
+Authentication: OAuth
+Client registration: Dynamic Client Registration / DCR
+Token endpoint auth: none / public client
+Scopes: mcp
+```
+
+If OAuth is unavailable, ChatGPT's connector UI can still use the legacy query-string
+key with "Sin autenticacion":
 
 ```text
 https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>

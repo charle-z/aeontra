@@ -46,8 +46,9 @@ const (
 // (the OAuth issuer); the canonical MCP resource used as the token audience is that base
 // plus the MCP path.
 const (
-	publicURLEnv       = "MCP_DEVBOX_PUBLIC_URL"
-	oauthPassphraseEnv = "MCP_DEVBOX_OAUTH_PASSPHRASE"
+	publicURLEnv            = "MCP_DEVBOX_PUBLIC_URL"
+	oauthPassphraseEnv      = "MCP_DEVBOX_OAUTH_PASSPHRASE"
+	oauthClientStorePathEnv = "MCP_DEVBOX_OAUTH_CLIENT_STORE"
 )
 
 // buildOAuthProvider constructs the OAuth provider from env, or returns (nil, nil) when
@@ -64,9 +65,10 @@ func buildOAuthProvider() (*oauth.Provider, error) {
 	}
 	issuer := strings.TrimRight(publicURL, "/")
 	p, err := oauth.NewProvider(oauth.Config{
-		Issuer:     issuer,
-		Resource:   issuer + mcpserver.DefaultMCPPath,
-		Passphrase: passphrase,
+		Issuer:          issuer,
+		Resource:        issuer + mcpserver.DefaultMCPPath,
+		Passphrase:      passphrase,
+		ClientStorePath: os.Getenv(oauthClientStorePathEnv),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configuring OAuth: %w", err)

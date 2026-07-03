@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func postJSON(t *testing.T, p *Provider, path, body string) *httptest.ResponseRecorder {
@@ -17,6 +20,20 @@ func postJSON(t *testing.T, p *Provider, path, body string) *httptest.ResponseRe
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	return rec
+}
+
+func testProviderWithClientStore(t *testing.T, clientStorePath string) *Provider {
+	t.Helper()
+	p, err := NewProvider(Config{
+		Issuer:          "https://mcp.example.com",
+		Resource:        "https://mcp.example.com/mcp",
+		Passphrase:      "correct horse",
+		ClientStorePath: clientStorePath,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	return p
 }
 
 func TestRegister_Success(t *testing.T) {
@@ -110,5 +127,64 @@ func TestRegister_CapEnforced(t *testing.T) {
 	}
 	if !got429 {
 		t.Error("registration must be rate/cap limited (expected a 429)")
+	}
+}
+
+func TestRegister_PersistentClientsSurviveProviderRestart(t *testing.T) {
+	clientStorePath := filepath.Join(t.TempDir(), "oauth-clients.json")
+	p1 := testProviderWithClientStore(t, clientStorePath)
+
+	rec := postJSON(t, p1, pathRegister, `{
+		"client_name": "ChatGPT",
+		"redirect_uris": ["https://chatgpt.com/connector_platform_oauth_redirect"]
+	}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("register status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var doc struct {
+		ClientID     string   `json:"client_id"`
+		RedirectURIs []string `json:"redirect_uris"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if doc.ClientID == "" || len(doc.RedirectURIs) != 1 {
+		t.Fatalf("bad registration response: %+v", doc)
+	}
+
+	p2 := testProviderWithClientStore(t, clientStorePath)
+	auth := getAuthorize(t, p2, validAuthorizeParams(p2, doc.ClientID, doc.RedirectURIs[0]))
+	if auth.Code != http.StatusOK {
+		t.Fatalf("authorize after restart status = %d, want 200; body=%s", auth.Code, auth.Body.String())
+	}
+}
+
+func TestRegister_PersistenceDoesNotPersistTokens(t *testing.T) {
+	clientStorePath := filepath.Join(t.TempDir(), "oauth-clients.json")
+	p1 := testProviderWithClientStore(t, clientStorePath)
+	clientID, _ := regTestClient(t, p1)
+
+	access := p1.issueAccessToken(clientID, p1.resource, "mcp", time.Hour)
+	refresh := randToken()
+	p1.store.putRefresh(refresh, refreshGrant{
+		clientID:  clientID,
+		scope:     "mcp",
+		resource:  p1.resource,
+		expiresAt: time.Now().Add(refreshTokenTTL),
+	})
+
+	p2 := testProviderWithClientStore(t, clientStorePath)
+	if p2.Authorize(bearerReq(access)) {
+		t.Fatal("access tokens must remain in-memory only across provider restart")
+	}
+	if _, ok := p2.store.consumeRefresh(refresh); ok {
+		t.Fatal("refresh tokens must remain in-memory only across provider restart")
+	}
+	body, err := os.ReadFile(clientStorePath)
+	if err != nil {
+		t.Fatalf("read client store: %v", err)
+	}
+	if strings.Contains(string(body), access) || strings.Contains(string(body), refresh) {
+		t.Fatalf("client store must not contain bearer tokens: %s", body)
 	}
 }

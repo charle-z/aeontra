@@ -12,8 +12,8 @@
 //
 // Security posture: OAuth is enabled only when explicitly configured; tokens are opaque,
 // short-lived, single-use where applicable, never logged, and validated per request with
-// strict audience (resource) binding. There is no persistence: a restart drops all
-// grants and the owner simply reconnects.
+// strict audience (resource) binding. Optional persistence is limited to DCR public
+// client registrations; tokens and authorization codes stay in process memory only.
 package oauth
 
 import (
@@ -26,9 +26,10 @@ import (
 // (authorization server identity); Resource is the canonical MCP endpoint URI used as
 // the token audience (RFC 8707). Both must be HTTPS (localhost is exempt for dev).
 type Config struct {
-	Issuer     string // e.g. https://mcp-devbox-charlez.duckdns.org
-	Resource   string // e.g. https://mcp-devbox-charlez.duckdns.org/mcp
-	Passphrase string // owner login secret presented at /oauth/authorize
+	Issuer          string // e.g. https://mcp-devbox-charlez.duckdns.org
+	Resource        string // e.g. https://mcp-devbox-charlez.duckdns.org/mcp
+	Passphrase      string // owner login secret presented at /oauth/authorize
+	ClientStorePath string // optional JSON file for DCR clients only; tokens remain in memory
 }
 
 // Provider is the in-process OAuth authorization + resource server.
@@ -59,11 +60,17 @@ func NewProvider(cfg Config) (*Provider, error) {
 	if err := validatePublicURL(resource); err != nil {
 		return nil, fmt.Errorf("oauth: resource: %w", err)
 	}
+	store := newTokenStore()
+	if strings.TrimSpace(cfg.ClientStorePath) != "" {
+		if err := store.enableClientPersistence(cfg.ClientStorePath); err != nil {
+			return nil, fmt.Errorf("oauth: client store: %w", err)
+		}
+	}
 	return &Provider{
 		issuer:     issuer,
 		resource:   resource,
 		passphrase: cfg.Passphrase,
-		store:      newTokenStore(),
+		store:      store,
 	}, nil
 }
 

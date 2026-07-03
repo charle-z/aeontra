@@ -15,6 +15,7 @@ Set both env vars (OAuth stays **off** unless both are present):
 |-----|---------|---------|
 | `MCP_DEVBOX_PUBLIC_URL` | Public HTTPS base URL (the OAuth **issuer**). Must be `https://` (only `localhost` may use `http`). | `https://mcp-devbox-charlez.duckdns.org` |
 | `MCP_DEVBOX_OAUTH_PASSPHRASE` | The owner login secret entered on the authorize page. | *(a strong passphrase)* |
+| `MCP_DEVBOX_OAUTH_CLIENT_STORE` | Optional JSON file for persistent Dynamic Client Registration clients. Store it on a persistent volume outside the MCP repo jail when possible. | `/state/oauth-clients.json` |
 
 The token **audience** (canonical resource) is derived as `<PUBLIC_URL>/mcp`.
 
@@ -48,12 +49,18 @@ clients can bootstrap the flow.
 - The owner passphrase is compared in **constant time** and is **rate-limited**; DCR is
   capped and rate-limited. A registered client is useless without the human passphrase.
 - Redirect URIs: exact match, `https`-or-`localhost` only, no fragments/wildcards.
-- **No persistence**: tokens live in process memory. A restart drops all grants and the
-  owner simply reconnects (ChatGPT re-runs the flow).
+- **Narrow persistence only**: if `MCP_DEVBOX_OAUTH_CLIENT_STORE` is set, DCR public
+  client registrations persist so ChatGPT can reauthenticate after redeploy without
+  deleting the connector. Authorization codes, access tokens, and refresh tokens stay
+  in process memory only; a restart drops sessions and forces a fresh owner login.
+- Keep the client store file on a small persistent volume such as `/state`, not inside
+  the writable repo workspace, so MCP tools cannot edit OAuth server state as data.
 
 ## Connecting ChatGPT
 
-1. Deploy with the two env vars set (e.g. in Coolify), redeploy.
+1. Deploy with the two required env vars set (e.g. in Coolify). For stable reconnects
+   after redeploy, also set `MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json`
+   and mount `/state` as a persistent volume.
 2. In ChatGPT, add the connector with the MCP URL `https://<host>/mcp` and choose the
    **OAuth** option (no manual client id needed — DCR handles it).
 3. ChatGPT discovers the AS, registers, and opens the authorize page; enter the

@@ -38,6 +38,7 @@ func TestNewProvider_RejectsBadConfig(t *testing.T) {
 		{Issuer: "https://h", Resource: "https://h/mcp", Passphrase: ""},        // no passphrase
 		{Issuer: "http://h", Resource: "http://h/mcp", Passphrase: "x"},         // not https
 		{Issuer: "https://h/", Resource: "https://h/mcp#frag", Passphrase: "x"}, // fragment in resource
+		{Issuer: "https://h", Resource: "https://h/mcp", Passphrase: "x", ClientStorePath: "relative.json"},
 	}
 	for i, c := range cases {
 		if _, err := NewProvider(c); err == nil {

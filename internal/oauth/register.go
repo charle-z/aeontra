@@ -46,6 +46,10 @@ func (p *Provider) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	clientID, err := p.store.registerClient(req.RedirectURIs)
 	if err != nil {
+		if err != errRegLimited {
+			registrationError(w, http.StatusInternalServerError, "server_error", "could not store client registration")
+			return
+		}
 		registrationError(w, http.StatusTooManyRequests, "temporarily_unavailable", "registration limit reached")
 		return
 	}
