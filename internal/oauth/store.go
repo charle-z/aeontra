@@ -199,6 +199,31 @@ func (s *tokenStore) putAccess(token string, g accessGrant) {
 	s.access[token] = g
 }
 
+func (s *tokenStore) putRefresh(token string, g refreshGrant) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh[token] = g
+}
+
+// consumeRefresh atomically returns and deletes a refresh token (rotation: a refresh
+// token is valid at most once). Expired tokens are rejected.
+func (s *tokenStore) consumeRefresh(token string) (refreshGrant, bool) {
+	if token == "" {
+		return refreshGrant{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g, ok := s.refresh[token]
+	if !ok {
+		return refreshGrant{}, false
+	}
+	delete(s.refresh, token)
+	if time.Now().After(g.expiresAt) {
+		return refreshGrant{}, false
+	}
+	return g, true
+}
+
 // getAccess returns the grant for a token if present and unexpired. Expired grants are
 // evicted on read so the map does not accumulate stale entries.
 func (s *tokenStore) getAccess(token string) (accessGrant, bool) {

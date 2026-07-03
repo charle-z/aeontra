@@ -27,6 +27,7 @@ func (p *Provider) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc(pathOIDCMeta, p.handleAuthServerMetadata)
 	mux.HandleFunc(pathRegister, p.handleRegister)
 	mux.HandleFunc(pathAuthorize, p.handleAuthorize)
+	mux.HandleFunc(pathToken, p.handleToken)
 }
 
 // writeJSON emits a JSON document with the correct content type. Discovery documents
