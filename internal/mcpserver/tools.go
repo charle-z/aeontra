@@ -148,6 +148,26 @@ func (s *Server) register() {
 		object(map[string]any{}),
 		func(json.RawMessage) (string, error) { return s.svc.SandboxStatus(), nil })
 
+	s.add("sandbox_exec",
+		"Run an ARBITRARY command INSIDE the L3 sandbox (contained: no network, read-only rootfs, workspace-only, resource-limited). NOT allowlist-limited — the sandbox contains it. Requires a configured backend (MCP_DEVBOX_SANDBOX=docker on a host with Docker); denied in read-only; set approve=true in ask mode.",
+		object(map[string]any{
+			"command": strArrProp("program and arguments; command[0] is the program"),
+			"approve": boolProp("run even when approval is required"),
+		}, "command"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Command []string `json:"command"`
+				Approve bool     `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			if len(p.Command) == 0 {
+				return "", fmt.Errorf("command must have at least the program name")
+			}
+			return s.svc.SandboxExec(p.Command, p.Approve)
+		})
+
 	s.add("git_status", "Show git working-tree status (read-only).",
 		object(map[string]any{}),
 		func(json.RawMessage) (string, error) { return s.svc.GitStatus() })

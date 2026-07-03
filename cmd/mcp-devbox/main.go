@@ -191,9 +191,22 @@ func serve(args []string) error {
 	}
 	defer logger.Close()
 
+	// Select the L3 sandbox runner. "docker" gets the real hardened backend; other
+	// named backends (nsjail/gvisor) stay pending until implemented; "none" disabled.
+	// NOTE: the runner currently backs sandbox_status only — no tool routes command
+	// execution through it yet (broad exec stays gated until adversarial Linux tests
+	// pass; see docs/l3-sandbox-plan.md).
+	sandboxRunner := tools.NewSandboxRunner(cfg.SandboxBackend)
+	if cfg.SandboxBackend == "docker" {
+		img := os.Getenv("MCP_DEVBOX_SANDBOX_IMAGE")
+		if img == "" {
+			img = "golang:1.26-alpine"
+		}
+		sandboxRunner = tools.NewDockerSandboxRunner(tools.DockerSandboxConfig{Image: img, Root: primary})
+	}
 	svc := tools.NewService(pol, logger, primary).
 		WithTestCommand(test).
-		WithSandboxRunner(tools.NewSandboxRunner(cfg.SandboxBackend))
+		WithSandboxRunner(sandboxRunner)
 	srv := mcpserver.New(svc)
 	adminToken, err := randomHexToken()
 	if err != nil {
