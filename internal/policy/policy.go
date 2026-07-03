@@ -155,6 +155,21 @@ func (p *Policy) CheckCommand(prog string, args []string) (needsApproval bool, e
 	}
 }
 
+// CheckAction applies ONLY the write/command mode posture (read-only denies; ask
+// requires approval; allow permits). Use it for non-filesystem side-effecting
+// actions (e.g. triggering an external deploy) that are gated by mode but have no
+// path/allowlist of their own.
+func (p *Policy) CheckAction() (needsApproval bool, err error) {
+	switch p.mode {
+	case config.ModeReadOnly:
+		return false, ErrReadOnly
+	case config.ModeAsk:
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
 // CheckCommandAllowed runs only the allowlist + destructive + injection gate,
 // WITHOUT the write/command mode posture. It is for inherently read-only command
 // tools (git_status, git_diff) that must work even in read-only mode.

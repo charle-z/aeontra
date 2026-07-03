@@ -148,6 +148,23 @@ func (s *Server) register() {
 		object(map[string]any{}),
 		func(json.RawMessage) (string, error) { return s.svc.SandboxStatus(), nil })
 
+	s.add("coolify_deploy",
+		"Trigger a deploy of an app on the configured Coolify instance (by uuid). Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; denied in read-only; set approve=true in ask mode. The API token is never exposed.",
+		object(map[string]any{
+			"app":     strProp("the Coolify application uuid to deploy"),
+			"approve": boolProp("deploy even when approval is required"),
+		}, "app"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				App     string `json:"app"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.CoolifyDeploy(p.App, p.Approve)
+		})
+
 	s.add("git_status", "Show git working-tree status (read-only).",
 		object(map[string]any{}),
 		func(json.RawMessage) (string, error) { return s.svc.GitStatus() })
