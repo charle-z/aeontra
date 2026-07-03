@@ -36,6 +36,7 @@ type Provider struct {
 	issuer     string
 	resource   string
 	passphrase string
+	store      *tokenStore
 }
 
 // NewProvider validates the config and builds a Provider. It rejects empty fields,
@@ -58,7 +59,12 @@ func NewProvider(cfg Config) (*Provider, error) {
 	if err := validatePublicURL(resource); err != nil {
 		return nil, fmt.Errorf("oauth: resource: %w", err)
 	}
-	return &Provider{issuer: issuer, resource: resource, passphrase: cfg.Passphrase}, nil
+	return &Provider{
+		issuer:     issuer,
+		resource:   resource,
+		passphrase: cfg.Passphrase,
+		store:      newTokenStore(),
+	}, nil
 }
 
 // validatePublicURL enforces: absolute http(s) URL, no fragment, and HTTPS unless the
