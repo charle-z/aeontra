@@ -10,38 +10,58 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/audit"
 )
 
-// GitStatus returns the working-tree status (read-only; works in any mode).
-func (s *Service) GitStatus() (string, error) {
+// GitStatus returns the working-tree status (read-only; works in any mode). When
+// repo is provided, it is resolved as a working directory inside the jail.
+func (s *Service) GitStatus(repo ...string) (string, error) {
 	sp := s.log.Start("git_status")
+	dirArg := ""
+	if len(repo) > 0 {
+		dirArg = repo[0]
+	}
+	dir, err := s.workdir(dirArg)
+	if err != nil {
+		sp.Finish(audit.Deny, "git status", nil, err)
+		return "", err
+	}
 	args := []string{"status", "--short", "--branch"}
 	if err := s.pol.CheckCommandAllowed("git", args); err != nil {
 		sp.Finish(audit.Deny, "git status", nil, err)
 		return "", err
 	}
-	out, err := s.run(context.Background(), s.root, "git", args)
+	out, err := s.run(context.Background(), dir, "git", args)
 	if err != nil {
-		sp.Finish(audit.Error, "git status", nil, err)
+		sp.Finish(audit.Error, "git status", []string{dir}, err)
 		return s.redact(out), fmt.Errorf("git status: %w", err)
 	}
-	sp.Finish(audit.Allow, "git status", nil, nil)
+	sp.Finish(audit.Allow, "git status", []string{dir}, nil)
 	return s.redact(out), nil
 }
 
 // GitDiff returns a diff (read-only). Optional extra args (e.g. "--staged" or a
 // pathspec) are validated by the allowlist gate (no metacharacters/injection).
 func (s *Service) GitDiff(extra ...string) (string, error) {
+	return s.GitDiffIn("", extra...)
+}
+
+// GitDiffIn is GitDiff with an explicit, jailed repo working directory.
+func (s *Service) GitDiffIn(repo string, extra ...string) (string, error) {
 	sp := s.log.Start("git_diff")
+	dir, err := s.workdir(repo)
+	if err != nil {
+		sp.Finish(audit.Deny, "git diff", nil, err)
+		return "", err
+	}
 	args := append([]string{"diff"}, extra...)
 	if err := s.pol.CheckCommandAllowed("git", args); err != nil {
 		sp.Finish(audit.Deny, summarize(args...), nil, err)
 		return "", err
 	}
-	out, err := s.run(context.Background(), s.root, "git", args)
+	out, err := s.run(context.Background(), dir, "git", args)
 	if err != nil {
-		sp.Finish(audit.Error, summarize(args...), nil, err)
+		sp.Finish(audit.Error, summarize(args...), []string{dir}, err)
 		return s.redact(out), fmt.Errorf("git diff: %w", err)
 	}
-	sp.Finish(audit.Allow, summarize(args...), nil, nil)
+	sp.Finish(audit.Allow, summarize(args...), []string{dir}, nil)
 	return s.redact(out), nil
 }
 

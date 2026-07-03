@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,6 +24,25 @@ func TestRunTests_AllowMode(t *testing.T) {
 	}
 	if !strings.Contains(out, "PASS") {
 		t.Errorf("unexpected: %q", out)
+	}
+}
+
+func TestRunTests_RunsInSelectedCWDUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	repo := filepath.Join(root, "mcp-devbox")
+	write(t, repo, "go.mod", "module example.com/x\n")
+	var gotDir string
+	svc.WithTestCommand([]string{"go", "test"}).
+		WithRunner(func(ctx context.Context, dir, prog string, args []string) (string, error) {
+			gotDir = dir
+			return "PASS\n", nil
+		})
+
+	if _, err := svc.RunTestsIn(false, "mcp-devbox"); err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != repo {
+		t.Fatalf("runner dir = %q, want %q", gotDir, repo)
 	}
 }
 

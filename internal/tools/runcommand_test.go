@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,6 +20,35 @@ func TestRunCommand_AllowRuns(t *testing.T) {
 	}
 	if !strings.Contains(out, "branch main") {
 		t.Errorf("unexpected: %q", out)
+	}
+}
+
+func TestRunCommand_RunsInSelectedCWDUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	repo := filepath.Join(root, "mcp-devbox")
+	write(t, repo, "README.md", "# repo\n")
+	var gotDir string
+	svc.WithRunner(func(ctx context.Context, dir, prog string, args []string) (string, error) {
+		gotDir = dir
+		return "ok", nil
+	})
+
+	if _, err := svc.RunCommandIn("git", []string{"status"}, false, "mcp-devbox"); err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != repo {
+		t.Fatalf("runner dir = %q, want %q", gotDir, repo)
+	}
+}
+
+func TestRunCommand_DeniesCWDOutsideWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	outside := filepath.Join(filepath.Dir(root), "outside-cwd")
+	write(t, outside, "x.txt", "x")
+	svc.WithRunner(fakeRunner("should not run", nil))
+
+	if _, err := svc.RunCommandIn("git", []string{"status"}, true, outside); err == nil {
+		t.Fatal("run_command cwd must not escape the workspace jail")
 	}
 }
 

@@ -156,25 +156,34 @@ Observed behavior from the production connector:
 
 ## Current Tool Surface
 
-ChatGPT should list these 15 tools:
+ChatGPT should list these tools:
 
 | Tool | Mode / approval behavior |
 |---|---|
 | `build_context_pack` | Read-only. Returns tree, key files, memory, and git status with secrets redacted. |
+| `list_dir` | Read-only. Lists one jailed directory without reading file contents; useful for seeing repos under `/repos`; Git repos are marked `[git]`. |
 | `read_file` | Read-only for normal files. Secret paths return `access-required`; only a local human grant can approve, and raw output needs a separate raw grant. |
 | `read_many_files` | Read-only. Each path is checked independently; denied reads are reported inline. |
 | `search_code` | Read-only. Searches with RE2, skips secret/dependency dirs, redacts matched lines. |
 | `apply_patch` | Write action. Denied in `read-only`; in `ask`, validates first and requires `approve=true`; in `allow`, still goes through policy and `git apply --check`. |
 | `create_file` | Write action. Creates a new file only, refuses overwrite, implemented through the same patch-first pipeline as `apply_patch`. |
-| `run_command` | Command action. Denied in `read-only`; in `ask`, requires `approve=true`; always allowlist-only, no shell, output redacted. |
-| `git_status` | Read-only. Uses allowlist checking but ignores write posture. |
-| `git_diff` | Read-only. Optional args are allowlist/injection checked. |
-| `run_tests` | Command action. Runs the configured test command from `--test-cmd` or `MCP_DEVBOX_TEST_CMD`; mode-gated and allowlisted. |
+| `run_command` | Command action. Optional `cwd` selects a jailed working directory such as `mcp-devbox`; denied in `read-only`; in `ask`, requires `approve=true`; always allowlist-only, no shell, output redacted. |
+| `git_status` | Read-only. Optional `repo` selects a jailed repo directory when root is `/repos`; uses allowlist checking but ignores write posture. |
+| `git_diff` | Read-only. Optional `repo`; optional args are allowlist/injection checked. |
+| `run_tests` | Command action. Optional `cwd`; runs the configured test command from `--test-cmd` or `MCP_DEVBOX_TEST_CMD`; mode-gated and allowlisted. |
 | `git_commit` | Write/command action. Stages all changes and commits; denied in `read-only`, approval-gated in `ask`, and does not push. |
 | `memory_read` | Read-only. Reads `.agent-memory/*.md` with redaction. |
 | `memory_write` | Write action. Updates one structured `.agent-memory/` section (`current-task`, `plan`, `decisions`, `reflections`); denied in `read-only`, approval-gated in `ask`, content redacted before persisting. |
 | `memory_update_handoff` | Write action. Updates `.agent-memory/handoffs/`; denied in `read-only`, content redacted. |
 | `sandbox_status` | Read-only diagnostic. Reports whether an L3 sandbox backend is configured; default is unavailable, no free terminal, no Docker socket in the public MCP container. |
+| `sandbox_exec` | Broad command execution inside an L3 sandbox only. Disabled unless a real sandbox backend is configured; not a replacement for L1 allowlist. |
+| `coolify_deploy` | Deployment action. Disabled unless Coolify env is configured; denied in `read-only`, approval-gated in `ask`, token never exposed. |
+
+When `MCP_DEVBOX_ROOT=/repos`, use this flow:
+
+1. `list_dir` with no path to see available repos.
+2. `git_status` with `repo:"mcp-devbox"` or another listed repo.
+3. `run_command` / `run_tests` with `cwd:"mcp-devbox"` for repo-local commands.
 
 Mode summary:
 

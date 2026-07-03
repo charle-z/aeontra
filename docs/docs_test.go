@@ -20,6 +20,7 @@ func TestConnectRemoteDocumentsCurrentToolSurface(t *testing.T) {
 
 	for _, want := range []string{
 		"build_context_pack",
+		"list_dir",
 		"read_file",
 		"read_many_files",
 		"search_code",

@@ -14,8 +14,20 @@ import (
 // no metacharacters. Output is redacted. For the project's fixed test command, prefer
 // run_tests.
 func (s *Service) RunCommand(prog string, args []string, approve bool) (string, error) {
+	return s.RunCommandIn(prog, args, approve, "")
+}
+
+// RunCommandIn is RunCommand with an explicit, jailed working directory. This is
+// how a global /repos root can safely operate inside one selected repo without a
+// mutable session-level "cd".
+func (s *Service) RunCommandIn(prog string, args []string, approve bool, cwd string) (string, error) {
 	sp := s.log.Start("run_command")
 	summary := summarize(append([]string{prog}, args...)...)
+	dir, err := s.workdir(cwd)
+	if err != nil {
+		sp.Finish(audit.Deny, summary, nil, err)
+		return "", err
+	}
 	needsApproval, err := s.pol.CheckCommand(prog, args)
 	if err != nil {
 		sp.Finish(audit.Deny, summary, nil, err)
@@ -25,12 +37,12 @@ func (s *Service) RunCommand(prog string, args []string, approve bool) (string, 
 		sp.Finish(audit.Ask, summary, nil, nil)
 		return fmt.Sprintf("APPROVAL REQUIRED: run_command would execute %q. Re-invoke with approve=true.", prog), nil
 	}
-	out, runErr := s.run(context.Background(), s.root, prog, args)
+	out, runErr := s.run(context.Background(), dir, prog, args)
 	if runErr != nil {
-		sp.Finish(audit.Allow, summarize(prog), nil, runErr)
+		sp.Finish(audit.Allow, summarize(prog), []string{dir}, runErr)
 		return s.redact(out), fmt.Errorf("command failed: %w", runErr)
 	}
-	sp.Finish(audit.Allow, summarize(prog), nil, nil)
+	sp.Finish(audit.Allow, summarize(prog), []string{dir}, nil)
 	return s.redact(out), nil
 }
 
@@ -39,6 +51,11 @@ func (s *Service) RunCommand(prog string, args []string, approve bool) (string, 
 // allow runs. The base command must be configured (WithTestCommand) and pass the
 // allowlist gate. Output is redacted before return.
 func (s *Service) RunTests(approve bool, extra ...string) (string, error) {
+	return s.RunTestsIn(approve, "", extra...)
+}
+
+// RunTestsIn is RunTests with an explicit, jailed working directory.
+func (s *Service) RunTestsIn(approve bool, cwd string, extra ...string) (string, error) {
 	sp := s.log.Start("run_tests")
 	if len(s.testCmd) == 0 {
 		err := fmt.Errorf("no test command configured for this project")
@@ -47,6 +64,11 @@ func (s *Service) RunTests(approve bool, extra ...string) (string, error) {
 	}
 	prog := s.testCmd[0]
 	args := append(append([]string{}, s.testCmd[1:]...), extra...)
+	dir, err := s.workdir(cwd)
+	if err != nil {
+		sp.Finish(audit.Deny, summarize(append([]string{prog}, args...)...), nil, err)
+		return "", err
+	}
 
 	needsApproval, err := s.pol.CheckCommand(prog, args)
 	if err != nil {
@@ -58,13 +80,13 @@ func (s *Service) RunTests(approve bool, extra ...string) (string, error) {
 		return fmt.Sprintf("APPROVAL REQUIRED: run_tests would execute %q. Re-invoke with approve=true.", prog), nil
 	}
 
-	out, runErr := s.run(context.Background(), s.root, prog, args)
+	out, runErr := s.run(context.Background(), dir, prog, args)
 	if runErr != nil {
 		// A non-zero exit (failing tests) is a normal result, not a policy error:
 		// return the (redacted) output along with the error for the agent to read.
-		sp.Finish(audit.Allow, summarize(prog), nil, runErr)
+		sp.Finish(audit.Allow, summarize(prog), []string{dir}, runErr)
 		return s.redact(out), fmt.Errorf("tests failed: %w", runErr)
 	}
-	sp.Finish(audit.Allow, summarize(prog), nil, nil)
+	sp.Finish(audit.Allow, summarize(prog), []string{dir}, nil)
 	return s.redact(out), nil
 }

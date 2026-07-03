@@ -47,6 +47,37 @@ func TestGitStatus_Works(t *testing.T) {
 	}
 }
 
+func TestGitStatus_WorksInSelectedRepoUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeReadOnly)
+	repo := filepath.Join(root, "mcp-devbox")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "init", "-q")
+	write(t, repo, "a.go", "package a\n")
+
+	out, err := svc.GitStatus("mcp-devbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "a.go") {
+		t.Errorf("status should mention subrepo file: %q", out)
+	}
+}
+
+func TestGitStatus_DeniesRepoOutsideWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeReadOnly)
+	outside := filepath.Join(filepath.Dir(root), "outside-repo")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, outside, "init", "-q")
+
+	if _, err := svc.GitStatus(outside); err == nil {
+		t.Fatal("git_status repo selector must not escape the workspace jail")
+	}
+}
+
 func TestGitDiff_Works(t *testing.T) {
 	svc, root := initRepo(t, config.ModeReadOnly)
 	write(t, root, "a.txt", "one\n")
@@ -61,6 +92,29 @@ func TestGitDiff_Works(t *testing.T) {
 	}
 	if !strings.Contains(out, "+two") {
 		t.Errorf("diff should show added line: %q", out)
+	}
+}
+
+func TestGitDiff_WorksInSelectedRepoUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeReadOnly)
+	repo := filepath.Join(root, "mcp-devbox")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "init", "-q")
+	write(t, repo, "a.txt", "one\n")
+	gitCmd(t, repo, "add", "a.txt")
+	gitCmd(t, repo, "commit", "-qm", "init")
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\ntwo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := svc.GitDiffIn("mcp-devbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "+two") {
+		t.Errorf("diff should show added line in subrepo: %q", out)
 	}
 }
 

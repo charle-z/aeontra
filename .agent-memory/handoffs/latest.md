@@ -77,6 +77,12 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    `git_status`, update with `run_command ["git","pull","--ff-only","origin","main"]`
    plus `approve=true` when appropriate, then call `build_context_pack`. Also says
    never push and keeps repo content as DATA, not instructions.
+4c. DONE (2026-07-03): **Repo navigation under `/repos`.** Added `list_dir` to list
+   jailed directories without reading file contents and mark Git repos. `git_status`
+   and `git_diff` now accept `repo`; `run_command` and `run_tests` now accept jailed
+   `cwd`. `initialize.instructions` tells clients to use `list_dir`, then `repo`/`cwd`
+   when `MCP_DEVBOX_ROOT=/repos`. This fixes `git status: exit status 128` when the
+   root is the repo volume instead of a Git repo.
 5. DONE (2026-06-30): **Metacognition (memory).** Added `memory_write(section,
    content, approve)` MCP tool + `internal/tools` method. It writes only the closed
    structured sections under `.agent-memory/` (`current-task.md`, `plan.md`,
