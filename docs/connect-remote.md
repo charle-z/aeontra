@@ -3,9 +3,11 @@
 mcp-devbox speaks MCP over two transports:
 
 - **stdio** (default): local clients on the same machine, such as Cursor or Claude Desktop.
-- **HTTP** (`serve --http`): JSON-RPC over `POST /mcp`, bearer auth required. ChatGPT web
+- **HTTP** (`serve --http`): JSON-RPC over `POST /mcp`, auth required. ChatGPT web
   can reach it through a stable HTTPS domain (Coolify/Traefik, Cloudflare Tunnel, or
-  another reverse proxy).
+  another reverse proxy). Auth is either a **static bearer token** (`?key=` fallback for
+  ChatGPT) or **OAuth 2.1** — the recommended, secret-not-in-URL option. See
+  [oauth.md](oauth.md).
 
 Security baseline: the daemon still enforces the same L1 policy in every transport:
 workspace jail, secret-path deny, content redaction, allowlisted commands, patch-first

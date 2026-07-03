@@ -109,23 +109,29 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    ONLY after adversarial escape/exfil tests pass. Do NOT merge to main without warning
    the owner (touches the live endpoint + execution posture).
 
-### P1.5 — OAuth for the ChatGPT connector (INVESTIGATE + implement on a branch)
-Goal: let ChatGPT authenticate via its "OAuth" connector option so the secret no longer
-rides in the URL (`?key=`). Owner prefers this. NOT urgent — `?key=`/bearer works today;
-rotate the token when OAuth lands. Do this on a branch (`oauth`), not main.
-- **Investigate FIRST** ChatGPT's exact MCP connector OAuth flow (it evolves; confirm the
-  current requirements before coding). MCP auth (2025) generally needs the server to expose
-  `/.well-known/oauth-protected-resource` + an authorization server with
-  `/.well-known/oauth-authorization-server`, dynamic client registration (RFC 7591),
-  `authorize` + `token` endpoints, and PKCE (S256); access tokens validated per request.
-- Realistic path for THIS setup (DuckDNS + Traefik on the VPS, not a Cloudflare-managed
-  domain): implement a minimal OAuth AS in the daemon, OR front with oauth2-proxy — but
-  verify the proxy actually satisfies ChatGPT's MCP OAuth discovery (a generic proxy may
-  not). Cloudflare Access would need moving the domain to Cloudflare.
-- Security: the AS is auth-critical — TDD it hard (no-token→401, PKCE required, token
-  expiry, audience/scope, constant-time compares). Keep bearer/`?key=` as a fallback behind
-  a flag during transition. Do not weaken the existing Policy.
-- ROTATE the current token regardless (it was shared in chat during setup).
+### P1.5 — OAuth for the ChatGPT connector (IMPLEMENTED on branch `oauth`)
+Goal met: ChatGPT can authenticate via its "OAuth" connector option so the secret no
+longer rides in the URL (`?key=`). Built as a minimal in-process OAuth 2.1 AS +
+resource server in `internal/oauth` (stdlib only, opaque in-memory tokens), verified
+against the MCP Authorization spec 2025-06-18.
+- **Implemented**: RFC 9728 Protected Resource Metadata (`/.well-known/oauth-protected-
+  resource[/mcp]`), RFC 8414 AS metadata (+ `openid-configuration` alias), RFC 7591 DCR
+  (`/oauth/register`, capped+rate-limited, strict redirect validation), `/oauth/authorize`
+  (owner passphrase login, constant-time + throttled, re-validates every param), and
+  `/oauth/token` (authorization_code + PKCE **S256**, refresh_token with **rotation**).
+  `resource` (RFC 8707) required in authorize+token; access tokens **audience-bound** to
+  `<PUBLIC_URL>/mcp` and validated header-only per request.
+- **Wiring**: `internal/mcpserver/http.go` `HTTPHandler`/`ServeHTTP` take an optional
+  `*oauth.Provider`; startup rule = refuse only when no static token AND no OAuth (fail
+  closed). Enabled via env `MCP_DEVBOX_PUBLIC_URL` + `MCP_DEVBOX_OAUTH_PASSPHRASE`
+  (both required; https-only except localhost). Legacy bearer/`?key=` kept as fallback.
+- **Tests**: 32 unit tests in `internal/oauth` + `TestOAuthEndToEnd` (real HTTP: register
+  → authorize → token(PKCE) → authenticated `/mcp`; bogus token → 401 w/ resource_metadata)
+  + mcpserver challenge/discovery/legacy-fallback tests. Docs: `docs/oauth.md`.
+- **Still TODO**: merge `oauth` → main + set the two env vars in Coolify; connect ChatGPT
+  via the OAuth option to confirm live; then **ROTATE `MCP_DEVBOX_TOKEN`** (shared in chat)
+  and optionally drop the static token to go OAuth-only.
+- Not done (out of scope): token persistence across restarts, multi-user, JWT/JWKS.
 
 ### Ongoing / optional
 - New capability tools (toward the broader-agent vision) ONLY as allowlisted+audited

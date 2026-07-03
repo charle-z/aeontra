@@ -63,6 +63,10 @@ Transport:
 - HTTP `initialize` responses include `Mcp-Session-Id`; later POSTs may send that
   header and are accepted.
 - Same Policy/Service/redaction path for both transports; no duplicated security checks.
+- OAuth 2.1 (branch `oauth`, not yet merged/deployed): in-process AS + resource server
+  in `internal/oauth`. Enable with env `MCP_DEVBOX_PUBLIC_URL` + `MCP_DEVBOX_OAUTH_PASSPHRASE`;
+  discovery (RFC 9728/8414), DCR (7591), PKCE S256, refresh rotation, audience-bound
+  tokens. Fail-closed startup; static bearer/`?key=` kept as fallback. See `docs/oauth.md`.
 
 Ephemeral grants:
 
