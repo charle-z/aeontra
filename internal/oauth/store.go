@@ -67,12 +67,13 @@ type clientReg struct {
 // tokenStore holds all short-lived OAuth state in process memory. There is no
 // persistence by design: a restart drops every grant and the owner reconnects.
 type tokenStore struct {
-	mu       sync.Mutex
-	access   map[string]accessGrant
-	codes    map[string]authCode
-	refresh  map[string]refreshGrant
-	clients  map[string]clientReg
-	regTimes []time.Time // sliding window of recent registration timestamps
+	mu        sync.Mutex
+	access    map[string]accessGrant
+	codes     map[string]authCode
+	refresh   map[string]refreshGrant
+	clients   map[string]clientReg
+	regTimes  []time.Time // sliding window of recent registration timestamps
+	failTimes []time.Time // sliding window of recent passphrase failures
 }
 
 func newTokenStore() *tokenStore {
@@ -125,6 +126,71 @@ func (s *tokenStore) getClient(id string) (clientReg, bool) {
 	defer s.mu.Unlock()
 	c, ok := s.clients[id]
 	return c, ok
+}
+
+// Passphrase throttle: bound brute force of the owner login at /oauth/authorize.
+const (
+	maxPassphraseFailures = 5
+	passphraseWindow      = time.Minute
+)
+
+// putCode stores a single-use authorization code.
+func (s *tokenStore) putCode(code string, c authCode) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.codes[code] = c
+}
+
+// consumeCode atomically returns and deletes a code if present and unexpired. The
+// delete makes codes single-use even under concurrent redemption.
+func (s *tokenStore) consumeCode(code string) (authCode, bool) {
+	if code == "" {
+		return authCode{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.codes[code]
+	if !ok {
+		return authCode{}, false
+	}
+	delete(s.codes, code)
+	if time.Now().After(c.expiresAt) {
+		return authCode{}, false
+	}
+	return c, true
+}
+
+// passphraseThrottled reports whether too many failed passphrase attempts occurred
+// within the window (a simple global backoff; this is a single-owner server).
+func (s *tokenStore) passphraseThrottled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneFailuresLocked()
+	return len(s.failTimes) >= maxPassphraseFailures
+}
+
+func (s *tokenStore) recordPassphraseFailure() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneFailuresLocked()
+	s.failTimes = append(s.failTimes, time.Now())
+}
+
+func (s *tokenStore) resetPassphraseFailures() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failTimes = nil
+}
+
+func (s *tokenStore) pruneFailuresLocked() {
+	now := time.Now()
+	kept := s.failTimes[:0]
+	for _, t := range s.failTimes {
+		if now.Sub(t) < passphraseWindow {
+			kept = append(kept, t)
+		}
+	}
+	s.failTimes = kept
 }
 
 func (s *tokenStore) putAccess(token string, g accessGrant) {
