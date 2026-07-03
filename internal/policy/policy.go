@@ -160,6 +160,14 @@ func (p *Policy) CheckCommand(prog string, args []string) (needsApproval bool, e
 // sandbox, not an allowlist, is what contains a broad command. Callers MUST verify a
 // sandbox backend is available before using this.
 func (p *Policy) CheckSandboxExec() (needsApproval bool, err error) {
+	return p.CheckAction()
+}
+
+// CheckAction applies ONLY the write/command mode posture (read-only denies; ask
+// requires approval; allow permits). Use it for non-filesystem side-effecting
+// actions (e.g. triggering an external deploy) that are gated by mode but have no
+// path/allowlist of their own.
+func (p *Policy) CheckAction() (needsApproval bool, err error) {
 	switch p.mode {
 	case config.ModeReadOnly:
 		return false, ErrReadOnly

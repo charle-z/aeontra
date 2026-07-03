@@ -28,7 +28,8 @@ type Service struct {
 	root    string // primary project root: working dir for commands
 	run     Runner
 	sandbox SandboxRunner
-	testCmd []string // the single allowlisted test command (run_tests)
+	testCmd []string       // the single allowlisted test command (run_tests)
+	coolify *CoolifyClient // optional; nil/unconfigured = coolify_deploy disabled
 }
 
 // NewService builds a Service. root must be one of the policy's jail roots.
@@ -44,6 +45,9 @@ func (s *Service) WithSandboxRunner(r SandboxRunner) *Service { s.sandbox = r; r
 
 // WithTestCommand sets the allowlisted command used by run_tests (e.g. {"go","test","./..."}).
 func (s *Service) WithTestCommand(cmd []string) *Service { s.testCmd = cmd; return s }
+
+// WithCoolify sets the optional Coolify deploy client (nil disables coolify_deploy).
+func (s *Service) WithCoolify(c *CoolifyClient) *Service { s.coolify = c; return s }
 
 // execRunner is the default Runner: explicit argv, jailed working directory, a
 // timeout, and combined output. It NEVER invokes a shell.

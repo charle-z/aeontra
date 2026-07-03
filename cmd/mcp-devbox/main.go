@@ -207,6 +207,11 @@ func serve(args []string) error {
 	svc := tools.NewService(pol, logger, primary).
 		WithTestCommand(test).
 		WithSandboxRunner(sandboxRunner)
+	// Optional Coolify deploy capability (disabled unless configured). The API token
+	// is a secret read from env; it is never exposed to the agent.
+	if cu := strings.TrimSpace(os.Getenv("COOLIFY_URL")); cu != "" {
+		svc = svc.WithCoolify(tools.NewCoolifyClient(cu, os.Getenv("COOLIFY_API_TOKEN"), splitCSV(os.Getenv("COOLIFY_ALLOWED_APPS"))))
+	}
 	srv := mcpserver.New(svc)
 	adminToken, err := randomHexToken()
 	if err != nil {
