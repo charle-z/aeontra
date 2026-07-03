@@ -48,13 +48,31 @@ type refreshGrant struct {
 	expiresAt time.Time
 }
 
+// Registration limits bound abuse of the unauthenticated DCR endpoint. A registered
+// client is useless without the owner passphrase at /authorize, but we still cap total
+// clients and rate-limit registrations so the endpoint cannot be used to exhaust memory.
+const (
+	maxClients                = 100
+	maxRegistrationsPerWindow = 20
+	registrationWindow        = time.Minute
+)
+
+// clientReg is a dynamically-registered public client (RFC 7591). No secret is stored:
+// clients are public and authenticate the code exchange with PKCE, not a secret.
+type clientReg struct {
+	redirectURIs []string
+	createdAt    time.Time
+}
+
 // tokenStore holds all short-lived OAuth state in process memory. There is no
 // persistence by design: a restart drops every grant and the owner reconnects.
 type tokenStore struct {
-	mu      sync.Mutex
-	access  map[string]accessGrant
-	codes   map[string]authCode
-	refresh map[string]refreshGrant
+	mu       sync.Mutex
+	access   map[string]accessGrant
+	codes    map[string]authCode
+	refresh  map[string]refreshGrant
+	clients  map[string]clientReg
+	regTimes []time.Time // sliding window of recent registration timestamps
 }
 
 func newTokenStore() *tokenStore {
@@ -62,7 +80,51 @@ func newTokenStore() *tokenStore {
 		access:  make(map[string]accessGrant),
 		codes:   make(map[string]authCode),
 		refresh: make(map[string]refreshGrant),
+		clients: make(map[string]clientReg),
 	}
+}
+
+// errRegLimited is returned by registerClient when the cap or rate limit is hit.
+var errRegLimited = errorString("registration limit reached")
+
+type errorString string
+
+func (e errorString) Error() string { return string(e) }
+
+// registerClient enforces the cap + sliding-window rate limit, then stores a new client
+// under a fresh random client_id and returns it.
+func (s *tokenStore) registerClient(redirectURIs []string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	// Drop timestamps outside the window.
+	kept := s.regTimes[:0]
+	for _, t := range s.regTimes {
+		if now.Sub(t) < registrationWindow {
+			kept = append(kept, t)
+		}
+	}
+	s.regTimes = kept
+
+	if len(s.clients) >= maxClients || len(s.regTimes) >= maxRegistrationsPerWindow {
+		return "", errRegLimited
+	}
+
+	id := randToken()
+	s.clients[id] = clientReg{redirectURIs: redirectURIs, createdAt: now}
+	s.regTimes = append(s.regTimes, now)
+	return id, nil
+}
+
+func (s *tokenStore) getClient(id string) (clientReg, bool) {
+	if id == "" {
+		return clientReg{}, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.clients[id]
+	return c, ok
 }
 
 func (s *tokenStore) putAccess(token string, g accessGrant) {
