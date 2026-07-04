@@ -83,6 +83,12 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    `cwd`. `initialize.instructions` tells clients to use `list_dir`, then `repo`/`cwd`
    when `MCP_DEVBOX_ROOT=/repos`. This fixes `git status: exit status 128` when the
    root is the repo volume instead of a Git repo.
+4d. DONE (2026-07-04): **Global builder Step 1: multi-repo consistency.**
+   `build_context_pack`, `apply_patch`, `create_file`, `git_commit`, `memory_read`,
+   and `memory_write` now accept an optional `repo` selector so a `/repos` root can
+   work relative to one child repo. Added RED/GREEN tests for selected-repo context,
+   patch, create, commit, and memory. Next global-builder step: controlled
+   `git_clone`/`git_push` tools.
 5. DONE (2026-06-30): **Metacognition (memory).** Added `memory_write(section,
    content, approve)` MCP tool + `internal/tools` method. It writes only the closed
    structured sections under `.agent-memory/` (`current-task.md`, `plan.md`,

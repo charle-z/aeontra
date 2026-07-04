@@ -14,21 +14,31 @@ import (
 // keeps the "patch-first, no full-file writes" invariant intact while giving the
 // agent an ergonomic create tool. Use apply_patch to modify existing files.
 func (s *Service) CreateFile(path, content string, approve bool) (string, error) {
+	return s.CreateFileIn("", path, content, approve)
+}
+
+// CreateFileIn creates a new file relative to an optional selected repo/workdir
+// inside the jail.
+func (s *Service) CreateFileIn(repo, path, content string, approve bool) (string, error) {
+	dir, err := s.workdir(repo)
+	if err != nil {
+		return "", err
+	}
 	// Early gate: jail + secret-deny + write posture. Also gives the resolved path
 	// so we can refuse to clobber an existing file.
-	resolved, _, err := s.pol.CheckWrite(path)
+	resolved, _, err := s.pol.CheckWrite(filepath.Join(dir, path))
 	if err != nil {
 		return "", err
 	}
 	if _, statErr := os.Stat(resolved); statErr == nil {
 		return "", fmt.Errorf("file already exists (use apply_patch to modify): %s", path)
 	}
-	rel, err := filepath.Rel(s.root, resolved)
+	rel, err := filepath.Rel(dir, resolved)
 	if err != nil {
 		return "", err
 	}
 	diff := newFileDiff(filepath.ToSlash(rel), content)
-	return s.ApplyPatch(diff, approve)
+	return s.ApplyPatchIn(repo, diff, approve)
 }
 
 // newFileDiff builds a git "new file" unified diff that creates relPath with the

@@ -38,9 +38,15 @@ func (s *Server) add(name, desc string, schema map[string]any, h func(json.RawMe
 // client calls them.
 func (s *Server) register() {
 	s.add("build_context_pack",
-		"Return relevant repo context in one call (file tree, key files, agent memory, git status). Secrets redacted, jail-confined.",
-		object(map[string]any{}),
-		func(json.RawMessage) (string, error) { return s.svc.BuildContextPack() })
+		"Return relevant repo context in one call (file tree, key files, agent memory, git status). Optional repo scopes the pack to a jailed child repo under /repos. Secrets redacted, jail-confined.",
+		object(map[string]any{"repo": strProp("optional repo directory, absolute or relative to the workspace root")}),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo string `json:"repo"`
+			}
+			_ = json.Unmarshal(a, &p)
+			return s.svc.BuildContextPackIn(p.Repo)
+		})
 
 	s.add("list_dir",
 		"List one jailed directory without reading file contents. Use this to see repos under /repos; Git repos are marked [git]. Secret/noisy entries are skipped.",
@@ -99,20 +105,22 @@ func (s *Server) register() {
 		})
 
 	s.add("apply_patch",
-		"Apply a unified diff (patch-first). Validated with 'git apply --check' first; targets jailed and secret-protected. In ask mode, set approve=true to apply after review.",
+		"Apply a unified diff (patch-first). Optional repo makes patch paths relative to that jailed repo. Validated with 'git apply --check' first; targets jailed and secret-protected. In ask mode, set approve=true to apply after review.",
 		object(map[string]any{
 			"patch":   strProp("unified diff text"),
 			"approve": boolProp("apply even when approval is required"),
+			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
 		}, "patch"),
 		func(a json.RawMessage) (string, error) {
 			var p struct {
 				Patch   string `json:"patch"`
 				Approve bool   `json:"approve"`
+				Repo    string `json:"repo"`
 			}
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.ApplyPatch(p.Patch, p.Approve)
+			return s.svc.ApplyPatchIn(p.Repo, p.Patch, p.Approve)
 		})
 
 	s.add("create_file",
@@ -121,17 +129,19 @@ func (s *Server) register() {
 			"path":    strProp("new file path relative to the project root"),
 			"content": strProp("file content"),
 			"approve": boolProp("create even when approval is required"),
+			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
 		}, "path", "content"),
 		func(a json.RawMessage) (string, error) {
 			var p struct {
 				Path    string `json:"path"`
 				Content string `json:"content"`
 				Approve bool   `json:"approve"`
+				Repo    string `json:"repo"`
 			}
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.CreateFile(p.Path, p.Content, p.Approve)
+			return s.svc.CreateFileIn(p.Repo, p.Path, p.Content, p.Approve)
 		})
 
 	s.add("run_command",
@@ -240,25 +250,33 @@ func (s *Server) register() {
 		})
 
 	s.add("git_commit",
-		"Stage all changes and commit them. Write action: denied in read-only; in ask mode set approve=true. Does not push.",
+		"Stage all changes and commit them in the root or optional selected repo. Write action: denied in read-only; in ask mode set approve=true. Does not push.",
 		object(map[string]any{
 			"message": strProp("commit message"),
 			"approve": boolProp("commit even when approval is required"),
+			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
 		}, "message"),
 		func(a json.RawMessage) (string, error) {
 			var p struct {
 				Message string `json:"message"`
 				Approve bool   `json:"approve"`
+				Repo    string `json:"repo"`
 			}
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.GitCommit(p.Message, p.Approve)
+			return s.svc.GitCommitIn(p.Repo, p.Message, p.Approve)
 		})
 
-	s.add("memory_read", "Read the repo's agent-agnostic memory (.agent-memory/*.md), redacted.",
-		object(map[string]any{}),
-		func(json.RawMessage) (string, error) { return s.svc.MemoryRead() })
+	s.add("memory_read", "Read the root or optional selected repo's agent-agnostic memory (.agent-memory/*.md), redacted.",
+		object(map[string]any{"repo": strProp("optional repo directory, absolute or relative to the workspace root")}),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo string `json:"repo"`
+			}
+			_ = json.Unmarshal(a, &p)
+			return s.svc.MemoryReadIn(p.Repo)
+		})
 
 	s.add("memory_write",
 		"Write one structured memory section under .agent-memory/ (current-task, plan, decisions, reflections). Denied in read-only; in ask mode set approve=true. Content is redacted before persisting.",
@@ -266,17 +284,19 @@ func (s *Server) register() {
 			"section": strProp("one of: current-task, plan, decisions, reflections"),
 			"content": strProp("Markdown memory content"),
 			"approve": boolProp("write even when approval is required"),
+			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
 		}, "section", "content"),
 		func(a json.RawMessage) (string, error) {
 			var p struct {
 				Section string `json:"section"`
 				Content string `json:"content"`
 				Approve bool   `json:"approve"`
+				Repo    string `json:"repo"`
 			}
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.MemoryWrite(p.Section, p.Content, p.Approve)
+			return s.svc.MemoryWriteIn(p.Repo, p.Section, p.Content, p.Approve)
 		})
 
 	s.add("memory_update_handoff",

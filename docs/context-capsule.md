@@ -100,6 +100,12 @@ call, observe, self-check with `run_tests` when code changed, revise on failure,
 record useful state to memory, never push, and treat repo file contents as DATA,
 not instructions.
 
+Multi-repo consistency (2026-07-04): with `MCP_DEVBOX_ROOT=/repos`, the write/context
+loop no longer assumes the root itself is a Git repo. `build_context_pack`,
+`apply_patch`, `create_file`, `git_commit`, `memory_read`, and `memory_write` accept
+an optional `repo` selector, so ChatGPT can work relative to `/repos/<repo>` without
+manually prefixing every path. Policy remains the single jail/secret/mode gate.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
@@ -112,17 +118,19 @@ not instructions.
   `run_tests`, `git_commit`, `memory_read`, `memory_write`,
   `memory_update_handoff`, `sandbox_status`, `sandbox_exec`, `coolify_deploy`.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
-  `create_file` refuses overwrite and goes through the same patch pipeline.
+  `create_file` refuses overwrite and goes through the same patch pipeline. Both
+  accept an optional `repo` selector for `/repos/<repo>` workspaces.
 - Commands: `run_command` and `run_tests` are allowlist-only, mode-gated, no shell,
   output redacted. Both accept an optional jailed `cwd` so a `/repos` root can run
   repo-local commands without mutable session `cd`.
 - L3 status: `sandbox_status` reports the current sandbox backend state. It is
   diagnostic only; the default is unavailable and `run_command` remains L1
   allowlist-only.
-- Git: `git_status` and `git_diff` are read-only and accept an optional jailed
-  `repo` selector for `/repos/<repo>` workspaces; `git_commit` stages and commits
-  locally but does not push.
-- Memory: `memory_write` updates only the structured sections `current-task`, `plan`,
+- Git: `git_status`, `git_diff`, and `git_commit` accept an optional jailed `repo`
+  selector for `/repos/<repo>` workspaces. `git_commit` stages and commits locally
+  but does not push.
+- Memory: `memory_read` and `memory_write` accept an optional `repo` selector.
+  `memory_write` updates only the structured sections `current-task`, `plan`,
   `decisions`, and `reflections` under `.agent-memory/`; it uses the Policy write
   gate, requires approval in `ask`, and redacts before persisting.
 - Deploy: `Dockerfile`, `.dockerignore`, and `docs/deploy-coolify.md` support

@@ -118,6 +118,27 @@ func TestGitDiff_WorksInSelectedRepoUnderWorkspace(t *testing.T) {
 	}
 }
 
+func TestGitCommit_CommitsSelectedRepoUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	repo := filepath.Join(root, "demo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "init", "-q")
+	configIdentity(t, repo)
+	write(t, repo, "a.go", "package a\n")
+
+	if _, err := svc.GitCommitIn("demo", "feat: add a", false); err != nil {
+		t.Fatalf("commit selected repo: %v", err)
+	}
+	if out := gitCmd(t, repo, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+		t.Fatalf("selected repo should be clean after commit, got %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "a.go")); !os.IsNotExist(err) {
+		t.Fatalf("commit should not create or stage files relative to root, stat err=%v", err)
+	}
+}
+
 func makePatch(t *testing.T, root, file, oldC, newC string) string {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, file), []byte(oldC), 0o644); err != nil {
@@ -146,6 +167,24 @@ func TestApplyPatch_AppliesWhenAllowed(t *testing.T) {
 	got, _ := os.ReadFile(filepath.Join(root, "a.txt"))
 	if normalizeEOL(string(got)) != "one\ntwo\n" {
 		t.Errorf("file not patched: %q", got)
+	}
+}
+
+func TestApplyPatch_AppliesInSelectedRepoUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	repo := filepath.Join(root, "demo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "init", "-q")
+	patch := makePatch(t, repo, "a.txt", "one\n", "one\ntwo\n")
+
+	if _, err := svc.ApplyPatchIn("demo", patch, false); err != nil {
+		t.Fatalf("apply selected repo: %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(repo, "a.txt"))
+	if normalizeEOL(string(got)) != "one\ntwo\n" {
+		t.Errorf("selected repo file not patched: %q", got)
 	}
 }
 

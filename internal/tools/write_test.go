@@ -23,6 +23,29 @@ func TestCreateFile_AllowCreatesWithContent(t *testing.T) {
 	}
 }
 
+func TestCreateFile_CreatesInSelectedRepoUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	repo := filepath.Join(root, "demo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "init", "-q")
+
+	if _, err := svc.CreateFileIn("demo", "src/app.go", "package src\n", false); err != nil {
+		t.Fatalf("create in selected repo: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(repo, "src", "app.go"))
+	if err != nil {
+		t.Fatalf("file not created in selected repo: %v", err)
+	}
+	if normalizeEOL(string(got)) != "package src\n" {
+		t.Fatalf("unexpected selected repo content: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "src", "app.go")); !os.IsNotExist(err) {
+		t.Fatalf("create_file should not write relative to root when repo is selected, stat err=%v", err)
+	}
+}
+
 func TestCreateFile_NoTrailingNewline(t *testing.T) {
 	svc, root := initRepo(t, config.ModeAllow)
 	if _, err := svc.CreateFile("a.txt", "one\ntwo", false); err != nil {

@@ -24,18 +24,29 @@ var keyFiles = []string{
 // a file tree, key project files, the agent memory, and git status — all jailed and
 // redacted. It minimizes MCP roundtrips and tokens versus many small reads.
 func (s *Service) BuildContextPack() (string, error) {
+	return s.BuildContextPackIn("")
+}
+
+// BuildContextPackIn is BuildContextPack scoped to an optional repo/workdir inside
+// the jail. This lets a /repos root produce context for one selected child repo.
+func (s *Service) BuildContextPackIn(repo string) (string, error) {
 	sp := s.log.Start("build_context_pack")
+	dir, err := s.workdir(repo)
+	if err != nil {
+		sp.Finish(audit.Deny, "build_context_pack", nil, err)
+		return "", err
+	}
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "# Context pack for %s\n\n", filepath.Base(s.root))
+	fmt.Fprintf(&b, "# Context pack for %s\n\n", filepath.Base(dir))
 
 	b.WriteString("## File tree\n")
-	b.WriteString(s.fileTree())
+	b.WriteString(s.fileTreeIn(dir))
 	b.WriteString("\n")
 
 	b.WriteString("## Key files\n")
 	for _, kf := range keyFiles {
-		p := filepath.Join(s.root, kf)
+		p := filepath.Join(dir, kf)
 		if _, err := os.Stat(p); err != nil {
 			continue
 		}
@@ -52,12 +63,12 @@ func (s *Service) BuildContextPack() (string, error) {
 	b.WriteString("\n")
 
 	b.WriteString("## Agent memory\n")
-	mem, _ := s.MemoryRead()
+	mem, _ := s.MemoryReadIn(repo)
 	b.WriteString(mem)
 	b.WriteString("\n\n")
 
 	b.WriteString("## Git status\n")
-	if st, err := s.GitStatus(); err == nil {
+	if st, err := s.GitStatus(repo); err == nil {
 		b.WriteString(st)
 	} else {
 		b.WriteString("[git status unavailable]")
@@ -72,15 +83,19 @@ func (s *Service) BuildContextPack() (string, error) {
 // fileTree returns a bounded, sorted listing of repo files relative to the root,
 // skipping ignored and secret-named directories/files.
 func (s *Service) fileTree() string {
+	return s.fileTreeIn(s.root)
+}
+
+func (s *Service) fileTreeIn(root string) string {
 	var entries []string
 	count := 0
-	_ = filepath.WalkDir(s.root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if path != s.root && (ignoredDirs[name] || policy.IsSecretPath(path)) {
+			if path != root && (ignoredDirs[name] || policy.IsSecretPath(path)) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -91,7 +106,7 @@ func (s *Service) fileTree() string {
 		if count >= maxTreeEntries {
 			return filepath.SkipAll
 		}
-		rel, _ := filepath.Rel(s.root, path)
+		rel, _ := filepath.Rel(root, path)
 		entries = append(entries, filepath.ToSlash(rel))
 		count++
 		return nil

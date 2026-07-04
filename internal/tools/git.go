@@ -69,7 +69,18 @@ func (s *Service) GitDiffIn(repo string, extra ...string) (string, error) {
 // write/command posture (read-only denies, ask requires approve=true, allow commits).
 // The message is passed via argv (never a shell), so normal punctuation is safe.
 func (s *Service) GitCommit(message string, approve bool) (string, error) {
+	return s.GitCommitIn("", message, approve)
+}
+
+// GitCommitIn stages and commits changes in an optional selected repo/workdir
+// inside the jail. The root-level GitCommit behavior is preserved when repo is empty.
+func (s *Service) GitCommitIn(repo, message string, approve bool) (string, error) {
 	sp := s.log.Start("git_commit")
+	dir, err := s.workdir(repo)
+	if err != nil {
+		sp.Finish(audit.Deny, "git_commit", nil, err)
+		return "", err
+	}
 	if strings.TrimSpace(message) == "" {
 		err := fmt.Errorf("commit message is required")
 		sp.Finish(audit.Error, "git_commit", nil, err)
@@ -86,16 +97,16 @@ func (s *Service) GitCommit(message string, approve bool) (string, error) {
 		return "APPROVAL REQUIRED: git_commit would stage all changes and commit. Re-invoke with approve=true.", nil
 	}
 	ctx := context.Background()
-	if out, err := s.run(ctx, s.root, "git", []string{"add", "-A"}); err != nil {
-		sp.Finish(audit.Error, "git add -A", nil, err)
+	if out, err := s.run(ctx, dir, "git", []string{"add", "-A"}); err != nil {
+		sp.Finish(audit.Error, "git add -A", []string{dir}, err)
 		return s.redact(out), fmt.Errorf("git add: %w", err)
 	}
-	out, err := s.run(ctx, s.root, "git", []string{"commit", "-m", message})
+	out, err := s.run(ctx, dir, "git", []string{"commit", "-m", message})
 	if err != nil {
-		sp.Finish(audit.Error, "git commit", nil, err)
+		sp.Finish(audit.Error, "git commit", []string{dir}, err)
 		return s.redact(out), fmt.Errorf("git commit: %w", err)
 	}
-	sp.Finish(audit.Allow, "git commit", nil, nil)
+	sp.Finish(audit.Allow, "git commit", []string{dir}, nil)
 	return s.redact(out), nil
 }
 
@@ -104,7 +115,18 @@ func (s *Service) GitCommit(message string, approve bool) (string, error) {
 // (2) validates with `git apply --check` BEFORE applying, (3) in ask mode returns
 // "approval required" without applying unless approve is true.
 func (s *Service) ApplyPatch(patch string, approve bool) (string, error) {
+	return s.ApplyPatchIn("", patch, approve)
+}
+
+// ApplyPatchIn applies a patch relative to an optional selected repo/workdir
+// inside the jail.
+func (s *Service) ApplyPatchIn(repo, patch string, approve bool) (string, error) {
 	sp := s.log.Start("apply_patch")
+	dir, err := s.workdir(repo)
+	if err != nil {
+		sp.Finish(audit.Deny, "apply_patch", nil, err)
+		return "", err
+	}
 
 	targets := parsePatchTargets(patch)
 	if len(targets) == 0 {
@@ -116,7 +138,7 @@ func (s *Service) ApplyPatch(patch string, approve bool) (string, error) {
 	var resolvedTargets []string
 	needsApproval := false
 	for _, tgt := range targets {
-		resolved, approval, err := s.pol.CheckWrite(filepath.Join(s.root, tgt))
+		resolved, approval, err := s.pol.CheckWrite(filepath.Join(dir, tgt))
 		if err != nil {
 			sp.Finish(audit.Deny, summarize(targets...), nil, err)
 			return "", fmt.Errorf("patch target %q: %w", tgt, err)
@@ -140,7 +162,7 @@ func (s *Service) ApplyPatch(patch string, approve bool) (string, error) {
 	pf.Close()
 
 	checkArgs := []string{"apply", "--check", "--verbose", pf.Name()}
-	if out, err := s.run(context.Background(), s.root, "git", checkArgs); err != nil {
+	if out, err := s.run(context.Background(), dir, "git", checkArgs); err != nil {
 		sp.Finish(audit.Error, summarize(targets...), resolvedTargets, err)
 		return "", fmt.Errorf("patch failed validation (git apply --check):\n%s", s.redact(out))
 	}
@@ -152,7 +174,7 @@ func (s *Service) ApplyPatch(patch string, approve bool) (string, error) {
 	}
 
 	applyArgs := []string{"apply", pf.Name()}
-	if out, err := s.run(context.Background(), s.root, "git", applyArgs); err != nil {
+	if out, err := s.run(context.Background(), dir, "git", applyArgs); err != nil {
 		sp.Finish(audit.Error, summarize(targets...), resolvedTargets, err)
 		return "", fmt.Errorf("git apply failed:\n%s", s.redact(out))
 	}

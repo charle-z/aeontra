@@ -120,6 +120,28 @@ func TestMemoryWrite_WritesAllowedSectionAndRedacts(t *testing.T) {
 	}
 }
 
+func TestMemoryReadWrite_SelectedRepoUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	repo := filepath.Join(root, "demo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.MemoryWriteIn("demo", "plan", "repo-local plan", false); err != nil {
+		t.Fatalf("write selected repo memory: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agent-memory", "plan.md")); !os.IsNotExist(err) {
+		t.Fatalf("root memory should not be written when repo is selected, stat err=%v", err)
+	}
+	out, err := svc.MemoryReadIn("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "repo-local plan") {
+		t.Fatalf("selected repo memory missing: %q", out)
+	}
+}
+
 func TestMemoryWrite_RejectsUnknownSection(t *testing.T) {
 	svc, _ := newTestService(t, config.ModeAllow)
 	for _, section := range []string{"handoffs/latest", "../plan", "notes", "plan.md"} {
@@ -154,5 +176,26 @@ func TestBuildContextPack_AssemblesAndRedacts(t *testing.T) {
 	}
 	if strings.Contains(out, "should_not_appear_value") {
 		t.Errorf(".env content leaked into context pack: %q", out)
+	}
+}
+
+func TestBuildContextPack_SelectedRepoUnderWorkspace(t *testing.T) {
+	svc, root := newTestService(t, config.ModeReadOnly)
+	write(t, root, "README.md", "# Root Project\n")
+	repo := filepath.Join(root, "demo")
+	write(t, repo, "README.md", "# Demo Project\n")
+	write(t, repo, "src/app.go", "package src\n")
+	write(t, repo, ".agent-memory/state.md", "repo memory\n")
+	gitCmd(t, repo, "init", "-q")
+
+	out, err := svc.BuildContextPackIn("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Demo Project") || !strings.Contains(out, "src/app.go") || !strings.Contains(out, "repo memory") {
+		t.Fatalf("selected repo context missing expected content: %q", out)
+	}
+	if strings.Contains(out, "Root Project") {
+		t.Fatalf("context pack should not include root files when repo is selected: %q", out)
 	}
 }

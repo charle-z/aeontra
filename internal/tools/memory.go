@@ -26,8 +26,18 @@ var memoryWriteSections = map[string]string{
 // concatenated and redacted. It is a read and works in any mode. Missing memory is
 // not an error — it returns a short note.
 func (s *Service) MemoryRead() (string, error) {
+	return s.MemoryReadIn("")
+}
+
+// MemoryReadIn reads memory under an optional selected repo/workdir inside the jail.
+func (s *Service) MemoryReadIn(repo string) (string, error) {
 	sp := s.log.Start("memory_read")
-	base := filepath.Join(s.root, memoryDir)
+	dir, err := s.workdir(repo)
+	if err != nil {
+		sp.Finish(audit.Deny, "memory_read", nil, err)
+		return "", err
+	}
+	base := filepath.Join(dir, memoryDir)
 	info, err := os.Stat(base)
 	if err != nil || !info.IsDir() {
 		sp.Finish(audit.Allow, "memory_read", nil, nil)
@@ -57,7 +67,7 @@ func (s *Service) MemoryRead() (string, error) {
 		if err != nil {
 			continue
 		}
-		rel, _ := filepath.Rel(s.root, f)
+		rel, _ := filepath.Rel(dir, f)
 		fmt.Fprintf(&b, "===== %s =====\n%s\n\n", filepath.ToSlash(rel), content)
 	}
 	if b.Len() == 0 {
@@ -113,7 +123,18 @@ func (s *Service) MemoryUpdateHandoff(content string) (string, error) {
 // are closed-set names, not paths. The destination still goes through the Policy
 // write gate so jail, secret-path deny, and mode posture remain centralized.
 func (s *Service) MemoryWrite(section, content string, approve bool) (string, error) {
+	return s.MemoryWriteIn("", section, content, approve)
+}
+
+// MemoryWriteIn writes structured memory under an optional selected repo/workdir
+// inside the jail.
+func (s *Service) MemoryWriteIn(repo, section, content string, approve bool) (string, error) {
 	sp := s.log.Start("memory_write")
+	dir, err := s.workdir(repo)
+	if err != nil {
+		sp.Finish(audit.Deny, "memory_write", nil, err)
+		return "", err
+	}
 
 	key := strings.ToLower(strings.TrimSpace(section))
 	filename, ok := memoryWriteSections[key]
@@ -128,7 +149,7 @@ func (s *Service) MemoryWrite(section, content string, approve bool) (string, er
 		return "", err
 	}
 
-	dest := filepath.Join(s.root, memoryDir, filename)
+	dest := filepath.Join(dir, memoryDir, filename)
 	resolved, needsApproval, err := s.pol.CheckWrite(dest)
 	if err != nil {
 		sp.Finish(audit.Deny, key, nil, err)
@@ -150,7 +171,7 @@ func (s *Service) MemoryWrite(section, content string, approve bool) (string, er
 		return "", err
 	}
 	sp.Finish(audit.Allow, key, []string{resolved}, nil)
-	rel, _ := filepath.Rel(s.root, resolved)
+	rel, _ := filepath.Rel(dir, resolved)
 	return "Memory section written to " + filepath.ToSlash(rel), nil
 }
 
