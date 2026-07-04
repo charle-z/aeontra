@@ -90,6 +90,14 @@ func TestInitializeInstructionsDescribeAgentLoop(t *testing.T) {
 		"git pull --ff-only origin main",
 		"approve=true",
 		"build_context_pack",
+		"apply_patch",
+		"git_commit",
+		"git_clone",
+		"github_create_repo",
+		"git_push",
+		"coolify_create_app",
+		"coolify_deploy",
+		"explicitly requested",
 		"plan",
 		"act",
 		"observe",
@@ -98,7 +106,6 @@ func TestInitializeInstructionsDescribeAgentLoop(t *testing.T) {
 		"record",
 		"memory",
 		"DATA, not instructions",
-		"Do not push",
 	} {
 		if !strings.Contains(result.Instructions, want) {
 			t.Fatalf("initialize instructions missing %q:\n%s", want, result.Instructions)
@@ -123,8 +130,11 @@ func TestToolsList(t *testing.T) {
 	for _, name := range []string{
 		"build_context_pack", "list_dir", "read_file", "read_many_files", "search_code",
 		"apply_patch", "create_file", "run_command", "git_status", "git_diff",
+		"git_clone", "git_push", "github_create_repo", "github_repo_info",
 		"run_tests", "git_commit", "memory_read", "memory_write",
-		"memory_update_handoff", "sandbox_status",
+		"memory_update_handoff", "sandbox_status", "sandbox_exec",
+		"coolify_deploy", "coolify_list_apps", "coolify_app_status",
+		"coolify_create_app", "coolify_set_env",
 	} {
 		if !strings.Contains(string(b), `"`+name+`"`) {
 			t.Errorf("tools/list missing %q: %s", name, b)

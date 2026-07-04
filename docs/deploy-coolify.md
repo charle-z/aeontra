@@ -9,7 +9,8 @@ personal machine.
 The Docker image is multi-stage:
 
 - build: official `golang:1.26-alpine`, `go build ./cmd/mcp-devbox`
-- runtime: `alpine`, non-root user `10001`, includes `git` and `wget`
+- runtime: `alpine`, non-root user `10001`, includes Go, `git`, Node.js, `npm`,
+  and `wget`
 - healthcheck: `GET http://127.0.0.1:8765/healthz`
 
 Default container command:
@@ -20,7 +21,9 @@ mcp-devbox serve --root "${MCP_DEVBOX_ROOT:-/repos/workspace}" \
   --http 0.0.0.0:8765
 ```
 
-Set `MCP_DEVBOX_ROOT=/repos/<repo>` in Coolify for the repo ChatGPT should see.
+Set `MCP_DEVBOX_ROOT=/repos` in Coolify when using the global-builder workflow.
+Repos live as child directories under that volume and tools accept `repo`/`cwd`
+selectors for repo-local work.
 The token must come from Coolify secrets/env as `MCP_DEVBOX_TOKEN`; never hardcode
 it in the image or repo.
 
@@ -32,12 +35,14 @@ it in the image or repo.
 
 ```text
 MCP_DEVBOX_TOKEN=<long-random-secret>
-MCP_DEVBOX_ROOT=/repos/<repo>
-MCP_DEVBOX_MODE=read-only
+MCP_DEVBOX_ROOT=/repos
+MCP_DEVBOX_MODE=ask
+MCP_DEVBOX_ALLOW_CMD=git,go,node,npm
 ```
 
-Use `read-only` first. Switch to `ask` only when you intentionally want patch/test
-workflows.
+Use `read-only` for inspection-only deployments. Use `ask` for the global-builder
+workflow so patches, commands, commits, pushes, and deploys require explicit
+approval fields.
 
 If using OAuth for the ChatGPT connector, also set:
 
@@ -60,9 +65,28 @@ file tools.
 ```
 
 Use `/repos` for cloned repositories and `/state` for OAuth client registrations.
-5. Expose only the internal application port `8765` through Coolify/Traefik. Do not
+5. Optional global-builder env:
+
+```text
+GITHUB_TOKEN=<fine-grained-token>
+GITHUB_OWNER=<owner>
+GITHUB_OWNER_TYPE=user
+GITHUB_DEFAULT_VISIBILITY=private
+
+COOLIFY_URL=<your-coolify-url>
+COOLIFY_API_TOKEN=<coolify-api-token>
+COOLIFY_SERVER_UUID=<server-uuid>
+COOLIFY_PROJECT_UUID=<project-uuid>
+COOLIFY_ENVIRONMENT_NAME=production
+COOLIFY_ALLOWED_DOMAINS=example.com
+```
+
+`GITHUB_TOKEN` should have the minimum repo permissions you need. Do not enable
+Coolify `read:sensitive`; mcp-devbox does not need secret-reading API responses for
+builder actions.
+6. Expose only the internal application port `8765` through Coolify/Traefik. Do not
 publish `8765` directly on the VPS host firewall.
-6. Deploy.
+7. Deploy.
 
 If you manage Traefik labels manually, the service should route HTTPS traffic to
 container port `8765` only. Example labels:
@@ -94,8 +118,8 @@ cd /repos/<repo>
 git pull --ff-only
 ```
 
-Make sure `MCP_DEVBOX_ROOT` points to the exact repo directory, not `/repos`, unless
-you intentionally want the whole volume in the jail.
+For global-builder mode, keep `MCP_DEVBOX_ROOT=/repos`. ChatGPT should use
+`list_dir`, then pass `repo:"<repo>"` or `cwd:"<repo>"` to repo-local tools.
 
 ## Connect ChatGPT
 

@@ -106,6 +106,11 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    server/project/environment env vars and optional `COOLIFY_ALLOWED_DOMAINS`;
    env values are redacted from output/audit. Next global-builder step: builder
    image toolchain, docs, and initialize instructions.
+4h. DONE (2026-07-04): **Global builder Step 5: image/docs/instructions.**
+   Runtime image now includes Node.js/npm beside Go/git. `initialize.instructions`
+   describes the full global-builder loop: list repos, select/create/clone, patch,
+   test/build, commit, and only publish/deploy when explicitly requested. Docs
+   cover `/repos` root, GitHub/Coolify envs, and global-builder tool usage.
 5. DONE (2026-06-30): **Metacognition (memory).** Added `memory_write(section,
    content, approve)` MCP tool + `internal/tools` method. It writes only the closed
    structured sections under `.agent-memory/` (`current-task.md`, `plan.md`,

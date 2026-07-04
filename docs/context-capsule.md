@@ -31,8 +31,9 @@ Revised priorities:
 capsule is the current source of truth for direction.
 
 Image policy: keep the runtime capable, not minimal. The Docker image intentionally
-keeps Go + git because the VPS box is meant to run tests and grow into broader,
-audited tools. Do not shrink it into a bare runtime that cannot do useful work.
+keeps Go + git + Node/npm because the VPS box is meant to run tests/builds and grow
+into a broader, audited builder. Do not shrink it into a bare runtime that cannot do
+useful work.
 
 Security consequence: every new capability must be a deliberate allowlisted and
 audited tool with explicit jail scoping. There is no free terminal before L3.
@@ -50,7 +51,7 @@ Production:
 - Preferred ChatGPT auth: OAuth with DCR, public client, scope `mcp`.
 - Legacy fallback: `/mcp?key=<MCP_DEVBOX_TOKEN>`.
 - Runtime root: `/repos`
-- Default mode: `read-only`
+- Default mode: `read-only`; global-builder production should use `ask`
 - Repos live in the persistent `/repos` volume.
 
 Transport:
@@ -122,6 +123,11 @@ Coolify builder tools (2026-07-04): `coolify_list_apps`, `coolify_app_status`,
 Creation uses configured server/project/environment env vars, optional domains are
 checked against `COOLIFY_ALLOWED_DOMAINS`, and env values are sent to Coolify but
 redacted from tool output/audit.
+
+Builder image/instructions (2026-07-04): the runtime image includes Node.js and npm
+beside Go/git. `initialize.instructions` now tells ChatGPT to use repo-aware
+context/patch/create/commit/memory tools, publish with GitHub/push only when
+explicitly requested, and deploy with Coolify only when explicitly requested.
 
 ## What Works
 

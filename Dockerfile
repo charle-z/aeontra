@@ -7,9 +7,9 @@ COPY internal ./internal
 
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/mcp-devbox ./cmd/mcp-devbox
 
-# Runtime keeps the full Go 1.26 toolchain so run_tests ("go test ./...") works in
-# the container and matches this/most repos' go.mod. (Bigger image, but this is a
-# dev-agent box.) For pure read/patch/commit you only need git, which is included.
+# Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can
+# run common Go and web project checks in the VPS container. (Bigger image, but this
+# is a dev-agent box.)
 FROM golang:1.26-alpine
 
 # OCI metadata (good practice; helps registries/scanners identify the image).
@@ -19,7 +19,8 @@ LABEL org.opencontainers.image.title="mcp-devbox" \
 	org.opencontainers.image.source="https://github.com/charle-z/mcp-devbox" \
 	org.opencontainers.image.licenses="MIT"
 
-RUN apk add --no-cache ca-certificates git wget \
+RUN apk add --no-cache ca-certificates git nodejs npm wget \
+	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
 	&& mkdir -p /repos \
