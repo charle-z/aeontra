@@ -232,6 +232,46 @@ func (s *Server) register() {
 			return s.svc.GitDiffIn(p.Repo, p.Args...)
 		})
 
+	s.add("git_clone",
+		"Clone a Git repository into a new simple directory under the workspace root. No embedded credentials in URLs; target cannot escape the jail. Denied in read-only; in ask mode set approve=true.",
+		object(map[string]any{
+			"url":     strProp("remote Git URL, without embedded credentials"),
+			"dir":     strProp("optional simple target directory name under the workspace root; inferred from URL when omitted"),
+			"approve": boolProp("clone even when approval is required"),
+		}, "url"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				URL     string `json:"url"`
+				Dir     string `json:"dir"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.GitClone(p.URL, p.Dir, p.Approve)
+		})
+
+	s.add("git_push",
+		"Push one branch from a selected jailed repo to one named remote. No force/tags/extra args/URL remotes are accepted. Denied in read-only; in ask mode set approve=true.",
+		object(map[string]any{
+			"repo":    strProp("repo directory, absolute or relative to the workspace root"),
+			"remote":  strProp("optional remote name, defaults to origin"),
+			"branch":  strProp("optional branch name, defaults to the current branch"),
+			"approve": boolProp("push even when approval is required"),
+		}, "repo"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo    string `json:"repo"`
+				Remote  string `json:"remote"`
+				Branch  string `json:"branch"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.GitPush(p.Repo, p.Remote, p.Branch, p.Approve)
+		})
+
 	s.add("run_tests",
 		"Run the project's configured test command (allowlisted). Optional cwd is jailed under the workspace. In ask mode, set approve=true to run.",
 		object(map[string]any{

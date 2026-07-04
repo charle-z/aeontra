@@ -106,6 +106,11 @@ loop no longer assumes the root itself is a Git repo. `build_context_pack`,
 an optional `repo` selector, so ChatGPT can work relative to `/repos/<repo>` without
 manually prefixing every path. Policy remains the single jail/secret/mode gate.
 
+Global builder git tools (2026-07-04): `git_clone` clones a remote into a new simple
+directory under `/repos` and rejects embedded credentials or target escapes.
+`git_push` pushes one branch from a selected repo to one named remote; it accepts no
+force, tags, extra args, or URL remotes. Both are mode-gated and audited.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
@@ -115,7 +120,7 @@ manually prefixing every path. Policy remains the single jail/secret/mode gate.
 - Tools (`internal/tools`): MCP tools:
   `build_context_pack`, `list_dir`, `read_file`, `read_many_files`, `search_code`,
   `apply_patch`, `create_file`, `run_command`, `git_status`, `git_diff`,
-  `run_tests`, `git_commit`, `memory_read`, `memory_write`,
+  `git_clone`, `git_push`, `run_tests`, `git_commit`, `memory_read`, `memory_write`,
   `memory_update_handoff`, `sandbox_status`, `sandbox_exec`, `coolify_deploy`.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
   `create_file` refuses overwrite and goes through the same patch pipeline. Both

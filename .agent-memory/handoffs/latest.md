@@ -89,6 +89,12 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    work relative to one child repo. Added RED/GREEN tests for selected-repo context,
    patch, create, commit, and memory. Next global-builder step: controlled
    `git_clone`/`git_push` tools.
+4e. DONE (2026-07-04): **Global builder Step 2: controlled git clone/push.**
+   Added `git_clone(url, dir?, approve)` and `git_push(repo, remote?, branch?,
+   approve)`. Clone rejects embedded credentials and target escapes; push accepts
+   only a selected repo, named remote, and branch (no force/tags/extra args/URL
+   remotes). Both are mode-gated and audited. Next global-builder step: GitHub API
+   repo create/info tools.
 5. DONE (2026-06-30): **Metacognition (memory).** Added `memory_write(section,
    content, approve)` MCP tool + `internal/tools` method. It writes only the closed
    structured sections under `.agent-memory/` (`current-task.md`, `plan.md`,
