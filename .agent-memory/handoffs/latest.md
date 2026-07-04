@@ -100,6 +100,12 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    `GITHUB_DEFAULT_VISIBILITY` config plus `github_create_repo` and
    `github_repo_info`. Create defaults private, can opt into public, is mode-gated,
    and redacts API errors/output. Next global-builder step: Coolify create/list/env/status.
+4g. DONE (2026-07-04): **Global builder Step 4: Coolify builder tools.**
+   Added `coolify_list_apps`, `coolify_app_status`, `coolify_create_app`, and
+   `coolify_set_env` beside `coolify_deploy`. App creation uses configured
+   server/project/environment env vars and optional `COOLIFY_ALLOWED_DOMAINS`;
+   env values are redacted from output/audit. Next global-builder step: builder
+   image toolchain, docs, and initialize instructions.
 5. DONE (2026-06-30): **Metacognition (memory).** Added `memory_write(section,
    content, approve)` MCP tool + `internal/tools` method. It writes only the closed
    structured sections under `.agent-memory/` (`current-task.md`, `plan.md`,

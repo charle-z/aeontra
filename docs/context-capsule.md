@@ -117,6 +117,12 @@ Repository creation is private by default (`GITHUB_DEFAULT_VISIBILITY=public` or
 tool `visibility=public` opts into public), mode-gated, audited, and never exposes
 the token.
 
+Coolify builder tools (2026-07-04): `coolify_list_apps`, `coolify_app_status`,
+`coolify_create_app`, and `coolify_set_env` extend the existing deploy tool.
+Creation uses configured server/project/environment env vars, optional domains are
+checked against `COOLIFY_ALLOWED_DOMAINS`, and env values are sent to Coolify but
+redacted from tool output/audit.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
@@ -128,7 +134,8 @@ the token.
   `apply_patch`, `create_file`, `run_command`, `git_status`, `git_diff`,
   `git_clone`, `git_push`, `github_create_repo`, `github_repo_info`, `run_tests`,
   `git_commit`, `memory_read`, `memory_write`,
-  `memory_update_handoff`, `sandbox_status`, `sandbox_exec`, `coolify_deploy`.
+  `memory_update_handoff`, `sandbox_status`, `sandbox_exec`, `coolify_deploy`,
+  `coolify_list_apps`, `coolify_app_status`, `coolify_create_app`, `coolify_set_env`.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
   `create_file` refuses overwrite and goes through the same patch pipeline. Both
   accept an optional `repo` selector for `/repos/<repo>` workspaces.
@@ -196,6 +203,13 @@ Container/Coolify env:
 - `GITHUB_OWNER`
 - `GITHUB_OWNER_TYPE` (`user` or `org`)
 - `GITHUB_DEFAULT_VISIBILITY` (`private` default, or `public`)
+- `COOLIFY_URL` (optional, for Coolify tools)
+- `COOLIFY_API_TOKEN`
+- `COOLIFY_ALLOWED_APPS` (optional app uuid allowlist)
+- `COOLIFY_SERVER_UUID`
+- `COOLIFY_PROJECT_UUID`
+- `COOLIFY_ENVIRONMENT_NAME` or `COOLIFY_ENVIRONMENT_UUID`
+- `COOLIFY_ALLOWED_DOMAINS` (optional domain suffix allowlist)
 
 ## Production Grant Approval
 

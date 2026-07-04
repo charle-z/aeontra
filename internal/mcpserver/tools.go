@@ -208,6 +208,70 @@ func (s *Server) register() {
 			return s.svc.CoolifyDeploy(p.App, p.Approve)
 		})
 
+	s.add("coolify_list_apps",
+		"List applications on the configured Coolify instance. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set. Token is never exposed.",
+		object(map[string]any{}),
+		func(json.RawMessage) (string, error) { return s.svc.CoolifyListApps() })
+
+	s.add("coolify_app_status",
+		"Read one Coolify application by uuid. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced when configured.",
+		object(map[string]any{"app": strProp("Coolify application uuid")}, "app"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				App string `json:"app"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.CoolifyAppStatus(p.App)
+		})
+
+	s.add("coolify_create_app",
+		"Create a Coolify application from a GitHub repo using configured server/project/environment. Optional domain is checked against COOLIFY_ALLOWED_DOMAINS. Denied in read-only; in ask mode set approve=true.",
+		object(map[string]any{
+			"name":        strProp("new Coolify app name"),
+			"github_repo": strProp("owner/repo or credential-free Git URL"),
+			"branch":      strProp("branch, defaults to main"),
+			"build_pack":  strProp("nixpacks, dockerfile, static, or dockercompose; defaults to nixpacks"),
+			"port":        strProp("optional exposed port, e.g. 3000"),
+			"domain":      strProp("optional fqdn, e.g. https://app.example.com"),
+			"approve":     boolProp("create even when approval is required"),
+		}, "name", "github_repo"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Name       string `json:"name"`
+				GitHubRepo string `json:"github_repo"`
+				Branch     string `json:"branch"`
+				BuildPack  string `json:"build_pack"`
+				Port       string `json:"port"`
+				Domain     string `json:"domain"`
+				Approve    bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.CoolifyCreateApp(p.Name, p.GitHubRepo, p.Branch, p.BuildPack, p.Port, p.Domain, p.Approve)
+		})
+
+	s.add("coolify_set_env",
+		"Set environment variables on one Coolify application. Values are sent to Coolify but redacted from output/audit. Denied in read-only; in ask mode set approve=true.",
+		object(map[string]any{
+			"app":     strProp("Coolify application uuid"),
+			"vars":    map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "environment variables to set"},
+			"approve": boolProp("set env vars even when approval is required"),
+		}, "app", "vars"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				App     string            `json:"app"`
+				Vars    map[string]string `json:"vars"`
+				Approve bool              `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.CoolifySetEnv(p.App, p.Vars, p.Approve)
+		})
+
 	s.add("git_status", "Show git working-tree status (read-only). Optional repo is a jailed directory, useful when the workspace root is /repos.",
 		object(map[string]any{"repo": strProp("optional repo directory, absolute or relative to the workspace root")}),
 		func(a json.RawMessage) (string, error) {

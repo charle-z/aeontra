@@ -58,6 +58,17 @@ const (
 	githubDefaultVisibilityEnv = "GITHUB_DEFAULT_VISIBILITY"
 )
 
+const (
+	coolifyURLEnv             = "COOLIFY_URL"
+	coolifyAPITokenEnv        = "COOLIFY_API_TOKEN"
+	coolifyAllowedAppsEnv     = "COOLIFY_ALLOWED_APPS"
+	coolifyServerUUIDEnv      = "COOLIFY_SERVER_UUID"
+	coolifyProjectUUIDEnv     = "COOLIFY_PROJECT_UUID"
+	coolifyEnvironmentNameEnv = "COOLIFY_ENVIRONMENT_NAME"
+	coolifyEnvironmentUUIDEnv = "COOLIFY_ENVIRONMENT_UUID"
+	coolifyAllowedDomainsEnv  = "COOLIFY_ALLOWED_DOMAINS"
+)
+
 // buildOAuthProvider constructs the OAuth provider from env, or returns (nil, nil) when
 // OAuth is not configured. It errors if only one of the two required vars is set, so a
 // half-configured OAuth setup fails loudly rather than silently falling back.
@@ -252,8 +263,15 @@ func serve(args []string) error {
 		WithSandboxRunner(sandboxRunner)
 	// Optional Coolify deploy capability (disabled unless configured). The API token
 	// is a secret read from env; it is never exposed to the agent.
-	if cu := strings.TrimSpace(os.Getenv("COOLIFY_URL")); cu != "" {
-		svc = svc.WithCoolify(tools.NewCoolifyClient(cu, os.Getenv("COOLIFY_API_TOKEN"), splitCSV(os.Getenv("COOLIFY_ALLOWED_APPS"))))
+	if cu := strings.TrimSpace(os.Getenv(coolifyURLEnv)); cu != "" {
+		svc = svc.WithCoolify(tools.NewCoolifyClient(cu, os.Getenv(coolifyAPITokenEnv), splitCSV(os.Getenv(coolifyAllowedAppsEnv))).
+			WithBuilderConfig(
+				os.Getenv(coolifyServerUUIDEnv),
+				os.Getenv(coolifyProjectUUIDEnv),
+				os.Getenv(coolifyEnvironmentNameEnv),
+				os.Getenv(coolifyEnvironmentUUIDEnv),
+				splitCSV(os.Getenv(coolifyAllowedDomainsEnv)),
+			))
 	}
 	if gt := strings.TrimSpace(os.Getenv(githubTokenEnv)); gt != "" {
 		svc = svc.WithGitHub(tools.NewGitHubClient("", gt, os.Getenv(githubOwnerEnv), os.Getenv(githubOwnerTypeEnv), os.Getenv(githubDefaultVisibilityEnv)))
