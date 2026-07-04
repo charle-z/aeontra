@@ -33,6 +33,40 @@ func (s *Server) add(name, desc string, schema map[string]any, h func(json.RawMe
 	s.order = append(s.order, name)
 }
 
+// annotate attaches the same behavior hints to each named tool (no-op for names that
+// were not registered, e.g. a tool gated off by configuration).
+func (s *Server) annotate(hints map[string]any, names ...string) {
+	for _, n := range names {
+		if e, ok := s.table[n]; ok {
+			e.def.Annotations = hints
+			s.table[n] = e
+		}
+	}
+}
+
+// annotateTools labels every tool with MCP behavior hints so clients can distinguish
+// safe reads from consequential actions. Labeling is HONEST: side-effecting tools are
+// never marked read-only. This mainly stops clients (e.g. ChatGPT) from over-blocking
+// harmless read-only tools like git_status/list_dir.
+func (s *Server) annotateTools() {
+	// Local, side-effect-free reads.
+	s.annotate(map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		"build_context_pack", "list_dir", "read_file", "read_many_files",
+		"search_code", "git_status", "git_diff", "memory_read", "sandbox_status")
+	// Read-only, but reaching external services (GitHub / Coolify APIs).
+	s.annotate(map[string]any{"readOnlyHint": true, "openWorldHint": true},
+		"github_repo_info", "coolify_list_apps", "coolify_app_status")
+	// Additive/local writes: not read-only, but not destructive (no data loss).
+	s.annotate(map[string]any{"readOnlyHint": false, "destructiveHint": false},
+		"apply_patch", "create_file", "git_commit", "git_clone", "memory_write",
+		"memory_update_handoff")
+	// Consequential/broad actions: not read-only; leave destructiveHint at its cautious
+	// default so the client keeps gating them.
+	s.annotate(map[string]any{"readOnlyHint": false},
+		"run_command", "run_tests", "sandbox_exec", "git_push",
+		"github_create_repo", "coolify_deploy", "coolify_create_app", "coolify_set_env")
+}
+
 // register wires every L1 tool. Descriptions are written for the orchestrating
 // agent; all enforcement happens in the tool/policy layer regardless of how a
 // client calls them.
@@ -449,4 +483,6 @@ func (s *Server) register() {
 			}
 			return s.svc.MemoryUpdateHandoff(p.Content)
 		})
+
+	s.annotateTools()
 }
