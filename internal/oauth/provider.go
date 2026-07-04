@@ -30,6 +30,10 @@ type Config struct {
 	Resource        string // e.g. https://mcp-devbox-charlez.duckdns.org/mcp
 	Passphrase      string // owner login secret presented at /oauth/authorize
 	ClientStorePath string // optional JSON file for DCR clients only; tokens remain in memory
+	// RefreshStorePath is an optional JSON file that persists ONLY refresh tokens, so a
+	// ChatGPT connector survives a daemon restart (redeploy) without re-entering the
+	// passphrase. Access tokens and authorization codes are never persisted.
+	RefreshStorePath string
 }
 
 // Provider is the in-process OAuth authorization + resource server.
@@ -64,6 +68,11 @@ func NewProvider(cfg Config) (*Provider, error) {
 	if strings.TrimSpace(cfg.ClientStorePath) != "" {
 		if err := store.enableClientPersistence(cfg.ClientStorePath); err != nil {
 			return nil, fmt.Errorf("oauth: client store: %w", err)
+		}
+	}
+	if strings.TrimSpace(cfg.RefreshStorePath) != "" {
+		if err := store.enableRefreshPersistence(cfg.RefreshStorePath); err != nil {
+			return nil, fmt.Errorf("oauth: refresh store: %w", err)
 		}
 	}
 	return &Provider{

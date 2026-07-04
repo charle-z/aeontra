@@ -74,14 +74,15 @@ type clientReg struct {
 // client registrations may be persisted, so a ChatGPT connector can reauthorize
 // after a daemon restart without deleting and recreating the connector.
 type tokenStore struct {
-	mu              sync.Mutex
-	access          map[string]accessGrant
-	codes           map[string]authCode
-	refresh         map[string]refreshGrant
-	clients         map[string]clientReg
-	clientStorePath string
-	regTimes        []time.Time // sliding window of recent registration timestamps
-	failTimes       []time.Time // sliding window of recent passphrase failures
+	mu               sync.Mutex
+	access           map[string]accessGrant
+	codes            map[string]authCode
+	refresh          map[string]refreshGrant
+	clients          map[string]clientReg
+	clientStorePath  string
+	refreshStorePath string
+	regTimes         []time.Time // sliding window of recent registration timestamps
+	failTimes        []time.Time // sliding window of recent passphrase failures
 }
 
 func newTokenStore() *tokenStore {
@@ -335,6 +336,9 @@ func (s *tokenStore) putRefresh(token string, g refreshGrant) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.refresh[token] = g
+	// Persistence is best-effort: a write error (e.g. full disk) must not break token
+	// issuance. The grant stays in memory for this process's lifetime regardless.
+	_ = s.persistRefreshLocked()
 }
 
 // consumeRefresh atomically returns and deletes a refresh token (rotation: a refresh
@@ -350,10 +354,130 @@ func (s *tokenStore) consumeRefresh(token string) (refreshGrant, bool) {
 		return refreshGrant{}, false
 	}
 	delete(s.refresh, token)
+	_ = s.persistRefreshLocked() // rotation must be durable; best-effort on write error
 	if time.Now().After(g.expiresAt) {
 		return refreshGrant{}, false
 	}
 	return g, true
+}
+
+type refreshStoreFile struct {
+	Version int                  `json:"version"`
+	Refresh []refreshStoreRecord `json:"refresh"`
+}
+
+type refreshStoreRecord struct {
+	Token     string    `json:"token"`
+	ClientID  string    `json:"client_id"`
+	Scope     string    `json:"scope"`
+	Resource  string    `json:"resource"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func (s *tokenStore) enableRefreshPersistence(path string) error {
+	path = filepath.Clean(path)
+	if path == "." || path == "" {
+		return fmt.Errorf("path is required")
+	}
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("path must be absolute")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refreshStorePath = path
+	return s.loadRefreshLocked()
+}
+
+// loadRefreshLocked reads persisted refresh tokens, dropping any that have expired.
+func (s *tokenStore) loadRefreshLocked() error {
+	body, err := os.ReadFile(s.refreshStorePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var doc refreshStoreFile
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return fmt.Errorf("decode %s: %w", s.refreshStorePath, err)
+	}
+	if doc.Version != 1 {
+		return fmt.Errorf("unsupported refresh store version %d", doc.Version)
+	}
+	now := time.Now()
+	loaded := make(map[string]refreshGrant, len(doc.Refresh))
+	for _, r := range doc.Refresh {
+		if r.Token == "" || now.After(r.ExpiresAt) {
+			continue // skip empty or already-expired tokens
+		}
+		loaded[r.Token] = refreshGrant{
+			clientID:  r.ClientID,
+			scope:     r.Scope,
+			resource:  r.Resource,
+			expiresAt: r.ExpiresAt,
+		}
+	}
+	s.refresh = loaded
+	return nil
+}
+
+// persistRefreshLocked atomically writes the current refresh tokens (0600). Called under
+// s.mu after every mutation so a restart restores exactly the live set.
+func (s *tokenStore) persistRefreshLocked() error {
+	if s.refreshStorePath == "" {
+		return nil
+	}
+	records := make([]refreshStoreRecord, 0, len(s.refresh))
+	for tok, g := range s.refresh {
+		records = append(records, refreshStoreRecord{
+			Token:     tok,
+			ClientID:  g.clientID,
+			Scope:     g.scope,
+			Resource:  g.resource,
+			ExpiresAt: g.expiresAt,
+		})
+	}
+	sort.Slice(records, func(i, j int) bool { return records[i].Token < records[j].Token })
+	body, err := json.MarshalIndent(refreshStoreFile{Version: 1, Refresh: records}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic0600(s.refreshStorePath, body)
+}
+
+// writeFileAtomic0600 writes body to path via a temp file + rename, with 0600 perms.
+func writeFileAtomic0600(path string, body []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".oauth-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 // getAccess returns the grant for a token if present and unexpired. Expired grants are
