@@ -62,11 +62,12 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 		}
 	}
 
-	// Unauthenticated liveness probe — no sensitive information.
+	// Unauthenticated liveness probe. It reports the running version + git commit so a
+	// deploy can be confirmed to have shipped the latest code (no sensitive information).
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, "ok\n")
+		_, _ = io.WriteString(w, "ok mcp-devbox "+serverVersion+" "+Commit+"\n")
 	})
 
 	mux.HandleFunc(DefaultMCPPath, func(w http.ResponseWriter, r *http.Request) {

@@ -50,12 +50,23 @@ If using OAuth for the ChatGPT connector, also set:
 MCP_DEVBOX_PUBLIC_URL=https://mcp.example.com
 MCP_DEVBOX_OAUTH_PASSPHRASE=<long-owner-passphrase>
 MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json
+MCP_DEVBOX_OAUTH_REFRESH_STORE=/state/oauth-refresh.json
 ```
 
 `MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only ChatGPT's public OAuth client
-registration, not authorization codes, access tokens, or refresh tokens. Mount it
-outside the MCP repo jail so agents cannot edit OAuth server state through normal
-file tools.
+registration. `MCP_DEVBOX_OAUTH_REFRESH_STORE` (0600) additionally persists **refresh
+tokens** so a redeploy does not force the passphrase login again; access tokens and
+authorization codes are never persisted. Mount both on `/state` (outside the MCP repo
+jail) so agents cannot edit OAuth server state through normal file tools.
+
+### Verify a redeploy actually shipped
+
+`GET https://mcp.example.com/healthz` returns `ok mcp-devbox <version> <commit>`. Compare
+`<commit>` to `git rev-parse HEAD` on `main`. If it lags, the deploy did not ship the
+latest code — check the webhook fired and that Coolify rebuilt (didn't reuse a cached
+image). To stamp the commit, either let Coolify inject `SOURCE_COMMIT` (read at startup)
+or pass a build argument `GIT_SHA=$(git rev-parse HEAD)` (baked via `-ldflags`). Changing
+`GIT_SHA` also busts the Docker build cache, forcing a genuine rebuild per commit.
 
 4. Add persistent volumes:
 

@@ -107,7 +107,24 @@ func envFallback(flagVal, envName string) string {
 
 const adminTokenEnv = "MCP_DEVBOX_ADMIN_TOKEN"
 
+// commitEnvVars are consulted (in order) at startup to stamp the running git commit when
+// it was not baked in via -ldflags. SOURCE_COMMIT is injected by Coolify at deploy time.
+var commitEnvVars = []string{"MCP_DEVBOX_COMMIT", "SOURCE_COMMIT"}
+
+// stampCommit sets the build commit from the environment when present, so /healthz and
+// the MCP initialize response report exactly which commit is live even if the image was
+// not built with an -ldflags stamp.
+func stampCommit() {
+	for _, name := range commitEnvVars {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			mcpserver.Commit = v
+			return
+		}
+	}
+}
+
 func main() {
+	stampCommit()
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)
@@ -124,7 +141,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "version", "--version", "-v":
-		fmt.Println("mcp-devbox " + version)
+		fmt.Println("mcp-devbox " + version + " (commit " + mcpserver.Commit + ")")
 	case "help", "--help", "-h":
 		usage()
 	default:

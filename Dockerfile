@@ -1,11 +1,20 @@
 FROM golang:1.26-alpine AS build
 
+# GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
+# --build-arg GIT_SHA=$(git rev-parse HEAD). It is baked into the binary via -ldflags so
+# the running instance can report exactly which commit is live (GET /healthz shows it).
+# Because ARG changes bust the build cache from this point on, every new commit also
+# forces a genuine rebuild instead of reusing a stale cached image layer.
+ARG GIT_SHA=unknown
+
 WORKDIR /src
 COPY go.mod ./
 COPY cmd ./cmd
 COPY internal ./internal
 
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/mcp-devbox ./cmd/mcp-devbox
+RUN CGO_ENABLED=0 go build -trimpath \
+	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/mcpserver.Commit=${GIT_SHA}" \
+	-o /out/mcp-devbox ./cmd/mcp-devbox
 
 # Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can
 # run common Go and web project checks in the VPS container. (Bigger image, but this

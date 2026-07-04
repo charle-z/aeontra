@@ -19,6 +19,19 @@ import (
 
 const protocolVersion = "2024-11-05"
 
+// serverVersion is the human semantic version reported to clients.
+const serverVersion = "0.2.0"
+
+// Commit is the git SHA of the running build, so a deployed instance can report exactly
+// which commit is live (surfaced in /healthz and the initialize serverInfo). It defaults
+// to "unknown" and is set either at build time via
+//
+//	-ldflags "-X github.com/charle-z/mcp-devbox/internal/mcpserver.Commit=<sha>"
+//
+// or at startup from an environment variable (see cmd/mcp-devbox). This is the primary
+// way to confirm a redeploy actually shipped the latest commit.
+var Commit = "unknown"
+
 // Server dispatches MCP requests to the tool service.
 type Server struct {
 	svc   *tools.Service
@@ -116,7 +129,7 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 	return map[string]any{
 		"protocolVersion": version,
 		"capabilities":    map[string]any{"tools": map[string]any{}},
-		"serverInfo":      map[string]any{"name": s.name, "version": "0.2.0"},
+		"serverInfo":      map[string]any{"name": s.name, "version": serverVersion, "commit": Commit},
 		"instructions": "Secure-by-default local repo tools. Start each work session " +
 			"with a short preflight: list_dir to see repos under /repos, then " +
 			"build_context_pack with repo when a target exists, then git_status with repo. " +

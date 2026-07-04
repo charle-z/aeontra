@@ -16,8 +16,24 @@ Set both env vars (OAuth stays **off** unless both are present):
 | `MCP_DEVBOX_PUBLIC_URL` | Public HTTPS base URL (the OAuth **issuer**). Must be `https://` (only `localhost` may use `http`). | `https://mcp-devbox-charlez.duckdns.org` |
 | `MCP_DEVBOX_OAUTH_PASSPHRASE` | The owner login secret entered on the authorize page. | *(a strong passphrase)* |
 | `MCP_DEVBOX_OAUTH_CLIENT_STORE` | Optional JSON file for persistent Dynamic Client Registration clients. Store it on a persistent volume outside the MCP repo jail when possible. | `/state/oauth-clients.json` |
+| `MCP_DEVBOX_OAUTH_REFRESH_STORE` | Optional JSON file (0600) that persists **only refresh tokens**, so a redeploy/restart does **not** force the passphrase login again — ChatGPT's stored refresh token still works. Access tokens and authorization codes are never persisted. Put it on the same persistent volume. | `/state/oauth-refresh.json` |
 
 The token **audience** (canonical resource) is derived as `<PUBLIC_URL>/mcp`.
+
+### Avoiding re-login on every redeploy
+
+Refresh tokens live in memory unless `MCP_DEVBOX_OAUTH_REFRESH_STORE` points at a file on
+a **persistent volume**. Without it, every redeploy drops all tokens and ChatGPT must
+re-enter the passphrase. With both `..._CLIENT_STORE` and `..._REFRESH_STORE` on a volume,
+a redeploy is seamless: the connector silently refreshes and keeps working.
+
+### Confirming which commit is live
+
+`GET /healthz` returns `ok mcp-devbox <version> <commit>` and the MCP `initialize`
+response includes `serverInfo.commit`. The commit is baked at build time
+(`--build-arg GIT_SHA=$(git rev-parse HEAD)`) or read at startup from `SOURCE_COMMIT`
+(injected by Coolify) / `MCP_DEVBOX_COMMIT`. Compare it against `git rev-parse HEAD` on
+`main` to verify a redeploy actually shipped the latest code.
 
 `MCP_DEVBOX_TOKEN` (the legacy static bearer / `?key=`) is now **optional**:
 
