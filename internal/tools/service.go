@@ -30,6 +30,7 @@ type Service struct {
 	sandbox SandboxRunner
 	testCmd []string       // the single allowlisted test command (run_tests)
 	coolify *CoolifyClient // optional; nil/unconfigured = coolify_deploy disabled
+	github  *GitHubClient  // optional; nil/unconfigured = GitHub tools disabled
 }
 
 // NewService builds a Service. root must be one of the policy's jail roots.
@@ -48,6 +49,9 @@ func (s *Service) WithTestCommand(cmd []string) *Service { s.testCmd = cmd; retu
 
 // WithCoolify sets the optional Coolify deploy client (nil disables coolify_deploy).
 func (s *Service) WithCoolify(c *CoolifyClient) *Service { s.coolify = c; return s }
+
+// WithGitHub sets the optional GitHub API client (nil disables GitHub tools).
+func (s *Service) WithGitHub(c *GitHubClient) *Service { s.github = c; return s }
 
 // execRunner is the default Runner: explicit argv, jailed working directory, a
 // timeout, and combined output. It NEVER invokes a shell.

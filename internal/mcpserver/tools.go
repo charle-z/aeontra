@@ -272,6 +272,40 @@ func (s *Server) register() {
 			return s.svc.GitPush(p.Repo, p.Remote, p.Branch, p.Approve)
 		})
 
+	s.add("github_create_repo",
+		"Create a GitHub repository for the configured owner using GITHUB_TOKEN. Defaults to private unless configured or visibility=public. Token is never exposed. Denied in read-only; in ask mode set approve=true.",
+		object(map[string]any{
+			"name":        strProp("new repository name"),
+			"description": strProp("optional repository description"),
+			"visibility":  strProp("optional: private or public; defaults to GITHUB_DEFAULT_VISIBILITY or private"),
+			"approve":     boolProp("create even when approval is required"),
+		}, "name"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				Visibility  string `json:"visibility"`
+				Approve     bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.GitHubCreateRepo(p.Name, p.Description, p.Visibility, p.Approve)
+		})
+
+	s.add("github_repo_info",
+		"Read basic metadata for a repository under the configured GitHub owner. Token is never exposed and output is redacted.",
+		object(map[string]any{"name": strProp("repository name")}, "name"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.GitHubRepoInfo(p.Name)
+		})
+
 	s.add("run_tests",
 		"Run the project's configured test command (allowlisted). Optional cwd is jailed under the workspace. In ask mode, set approve=true to run.",
 		object(map[string]any{

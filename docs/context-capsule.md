@@ -111,6 +111,12 @@ directory under `/repos` and rejects embedded credentials or target escapes.
 `git_push` pushes one branch from a selected repo to one named remote; it accepts no
 force, tags, extra args, or URL remotes. Both are mode-gated and audited.
 
+GitHub API tools (2026-07-04): optional `GITHUB_TOKEN` + `GITHUB_OWNER` +
+`GITHUB_OWNER_TYPE` configure `github_create_repo` and `github_repo_info`.
+Repository creation is private by default (`GITHUB_DEFAULT_VISIBILITY=public` or
+tool `visibility=public` opts into public), mode-gated, audited, and never exposes
+the token.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
@@ -120,7 +126,8 @@ force, tags, extra args, or URL remotes. Both are mode-gated and audited.
 - Tools (`internal/tools`): MCP tools:
   `build_context_pack`, `list_dir`, `read_file`, `read_many_files`, `search_code`,
   `apply_patch`, `create_file`, `run_command`, `git_status`, `git_diff`,
-  `git_clone`, `git_push`, `run_tests`, `git_commit`, `memory_read`, `memory_write`,
+  `git_clone`, `git_push`, `github_create_repo`, `github_repo_info`, `run_tests`,
+  `git_commit`, `memory_read`, `memory_write`,
   `memory_update_handoff`, `sandbox_status`, `sandbox_exec`, `coolify_deploy`.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
   `create_file` refuses overwrite and goes through the same patch pipeline. Both
@@ -185,6 +192,10 @@ Container/Coolify env:
 - `MCP_DEVBOX_OAUTH_PASSPHRASE`
 - `MCP_DEVBOX_OAUTH_CLIENT_STORE` (recommended: `/state/oauth-clients.json` on a
   persistent `/state` volume outside `/repos`)
+- `GITHUB_TOKEN` (optional, for GitHub tools)
+- `GITHUB_OWNER`
+- `GITHUB_OWNER_TYPE` (`user` or `org`)
+- `GITHUB_DEFAULT_VISIBILITY` (`private` default, or `public`)
 
 ## Production Grant Approval
 

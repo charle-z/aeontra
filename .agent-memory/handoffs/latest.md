@@ -95,6 +95,11 @@ provider-token regexes intact), memory_write uses a closed section allowlist + C
    only a selected repo, named remote, and branch (no force/tags/extra args/URL
    remotes). Both are mode-gated and audited. Next global-builder step: GitHub API
    repo create/info tools.
+4f. DONE (2026-07-04): **Global builder Step 3: GitHub API tools.**
+   Added optional `GITHUB_TOKEN`/`GITHUB_OWNER`/`GITHUB_OWNER_TYPE`/
+   `GITHUB_DEFAULT_VISIBILITY` config plus `github_create_repo` and
+   `github_repo_info`. Create defaults private, can opt into public, is mode-gated,
+   and redacts API errors/output. Next global-builder step: Coolify create/list/env/status.
 5. DONE (2026-06-30): **Metacognition (memory).** Added `memory_write(section,
    content, approve)` MCP tool + `internal/tools` method. It writes only the closed
    structured sections under `.agent-memory/` (`current-task.md`, `plan.md`,

@@ -51,6 +51,13 @@ const (
 	oauthClientStorePathEnv = "MCP_DEVBOX_OAUTH_CLIENT_STORE"
 )
 
+const (
+	githubTokenEnv             = "GITHUB_TOKEN"
+	githubOwnerEnv             = "GITHUB_OWNER"
+	githubOwnerTypeEnv         = "GITHUB_OWNER_TYPE"
+	githubDefaultVisibilityEnv = "GITHUB_DEFAULT_VISIBILITY"
+)
+
 // buildOAuthProvider constructs the OAuth provider from env, or returns (nil, nil) when
 // OAuth is not configured. It errors if only one of the two required vars is set, so a
 // half-configured OAuth setup fails loudly rather than silently falling back.
@@ -247,6 +254,9 @@ func serve(args []string) error {
 	// is a secret read from env; it is never exposed to the agent.
 	if cu := strings.TrimSpace(os.Getenv("COOLIFY_URL")); cu != "" {
 		svc = svc.WithCoolify(tools.NewCoolifyClient(cu, os.Getenv("COOLIFY_API_TOKEN"), splitCSV(os.Getenv("COOLIFY_ALLOWED_APPS"))))
+	}
+	if gt := strings.TrimSpace(os.Getenv(githubTokenEnv)); gt != "" {
+		svc = svc.WithGitHub(tools.NewGitHubClient("", gt, os.Getenv(githubOwnerEnv), os.Getenv(githubOwnerTypeEnv), os.Getenv(githubDefaultVisibilityEnv)))
 	}
 	srv := mcpserver.New(svc)
 	adminToken, err := randomHexToken()
