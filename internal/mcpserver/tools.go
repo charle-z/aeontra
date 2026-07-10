@@ -3,6 +3,8 @@ package mcpserver
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
 // object builds a JSON-Schema object node.
@@ -22,6 +24,9 @@ func strArrProp(desc string) map[string]any {
 }
 func boolProp(desc string) map[string]any {
 	return map[string]any{"type": "boolean", "description": desc}
+}
+func intProp(desc string) map[string]any {
+	return map[string]any{"type": "integer", "description": desc}
 }
 
 // add registers a tool definition and handler.
@@ -71,7 +76,7 @@ func (s *Server) annotateTools() {
 		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "memory_read", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
-		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status")
+		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "platform_app_create_preview", "platform_deploy_preview")
 	// Additive/local writes: not read-only, but not destructive (no data loss).
 	s.annotate(localWrite,
 		"apply_patch", "create_file", "git_commit", "git_clone", "memory_write",
@@ -246,26 +251,26 @@ func (s *Server) register() {
 		})
 
 	s.add("coolify_deploy",
-		"Trigger a deploy of an app on the configured Coolify instance (by uuid). Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; denied in read-only; set approve=true in ask mode. The API token is never exposed.",
+		"Execute one previously reviewed platform_deploy_preview plan after revalidating the application repository, branch and expected commit. The plan is expiring and single-use; requires approval in ask mode; token is never exposed.",
 		object(map[string]any{
-			"app":     strProp("the Coolify application uuid to deploy"),
-			"approve": boolProp("deploy even when approval is required"),
-		}, "app"),
+			"plan_id": strProp("plan id returned by platform_deploy_preview"),
+			"approve": boolProp("execute the deployment plan when approval is required"),
+		}, "plan_id"),
 		func(a json.RawMessage) (string, error) {
 			var p struct {
-				App     string `json:"app"`
+				PlanID  string `json:"plan_id"`
 				Approve bool   `json:"approve"`
 			}
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.CoolifyDeploy(p.App, p.Approve)
+			return s.svc.PlatformDeploy(p.PlanID, p.Approve)
 		})
 
 	s.add("coolify_list_apps",
 		"List applications on the configured Coolify instance. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set. Token is never exposed.",
 		object(map[string]any{}),
-		func(json.RawMessage) (string, error) { return s.svc.CoolifyListApps() })
+		func(json.RawMessage) (string, error) { return s.svc.PlatformAppsList() })
 
 	s.add("coolify_app_status",
 		"Read one Coolify application by uuid. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced when configured.",
@@ -277,34 +282,75 @@ func (s *Server) register() {
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.CoolifyAppStatus(p.App)
+			return s.svc.PlatformAppStatus(p.App)
 		})
 
 	s.add("coolify_create_app",
-		"Create a Coolify application from a GitHub repo using configured server/project/environment. Optional domain is checked against COOLIFY_ALLOWED_DOMAINS. Denied in read-only; in ask mode set approve=true.",
+		"Execute one previously reviewed platform_app_create_preview plan using the configured server/project/environment. Repository owner, domain, build, port and healthcheck were validated; plan is expiring and single-use; requires approval in ask mode.",
 		object(map[string]any{
-			"name":        strProp("new Coolify app name"),
-			"github_repo": strProp("owner/repo or credential-free Git URL"),
-			"branch":      strProp("branch, defaults to main"),
-			"build_pack":  strProp("nixpacks, dockerfile, static, or dockercompose; defaults to nixpacks"),
-			"port":        strProp("optional exposed port, e.g. 3000"),
-			"domain":      strProp("optional fqdn, e.g. https://app.example.com"),
-			"approve":     boolProp("create even when approval is required"),
-		}, "name", "github_repo"),
+			"plan_id": strProp("plan id returned by platform_app_create_preview"),
+			"approve": boolProp("execute the application creation plan when approval is required"),
+		}, "plan_id"),
 		func(a json.RawMessage) (string, error) {
 			var p struct {
-				Name       string `json:"name"`
-				GitHubRepo string `json:"github_repo"`
-				Branch     string `json:"branch"`
-				BuildPack  string `json:"build_pack"`
-				Port       string `json:"port"`
-				Domain     string `json:"domain"`
-				Approve    bool   `json:"approve"`
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
 			}
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.CoolifyCreateApp(p.Name, p.GitHubRepo, p.Branch, p.BuildPack, p.Port, p.Domain, p.Approve)
+			return s.svc.PlatformAppCreate(p.PlanID, p.Approve)
+		})
+
+	s.add("platform_app_create_preview",
+		"Validate a Coolify application definition against configured server/project/environment, GitHub owner and domain allowlist, then create a read-only expiring single-use plan. Required environment variable names are shown; no secret values are accepted or returned.",
+		object(map[string]any{
+			"name":                 strProp("new application name"),
+			"github_repo":          strProp("owner/repo or allowed credential-free GitHub URL"),
+			"branch":               strProp("branch, defaults to main"),
+			"domain":               strProp("optional domain restricted by COOLIFY_ALLOWED_DOMAINS"),
+			"port":                 strProp("optional exposed port from 1 to 65535"),
+			"build_pack":           strProp("nixpacks, dockerfile, static, or dockercompose"),
+			"healthcheck_path":     strProp("optional absolute HTTP healthcheck path"),
+			"healthcheck_interval": intProp("optional healthcheck interval in seconds"),
+			"healthcheck_timeout":  intProp("optional healthcheck timeout in seconds"),
+			"required_env":         strArrProp("names of required environment variables; never values"),
+		}, "name", "github_repo"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Name                string   `json:"name"`
+				GitHubRepo          string   `json:"github_repo"`
+				Branch              string   `json:"branch"`
+				Domain              string   `json:"domain"`
+				Port                string   `json:"port"`
+				BuildPack           string   `json:"build_pack"`
+				HealthcheckPath     string   `json:"healthcheck_path"`
+				HealthcheckInterval int      `json:"healthcheck_interval"`
+				HealthcheckTimeout  int      `json:"healthcheck_timeout"`
+				RequiredEnv         []string `json:"required_env"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.PlatformAppCreatePreview(tools.PlatformAppCreateRequest{
+				Name: p.Name, GitHubRepo: p.GitHubRepo, Branch: p.Branch, Domain: p.Domain,
+				Port: p.Port, BuildPack: p.BuildPack, HealthcheckPath: p.HealthcheckPath,
+				HealthcheckInterval: p.HealthcheckInterval, HealthcheckTimeout: p.HealthcheckTimeout,
+				RequiredEnv: p.RequiredEnv,
+			})
+		})
+
+	s.add("platform_deploy_preview",
+		"Read one allowed Coolify application and create an expiring single-use deployment plan bound to its repository, branch and expected commit. It does not deploy.",
+		object(map[string]any{"app": strProp("Coolify application UUID")}, "app"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				App string `json:"app"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.PlatformDeployPreview(p.App)
 		})
 
 	s.add("coolify_set_env",

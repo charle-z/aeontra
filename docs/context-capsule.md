@@ -160,6 +160,15 @@ running one generated `git push` (with `-u` only for the initial branch). Force,
 mirror, tags, arbitrary refspecs, URL remotes and extra arguments are not expressible.
 Legacy `git_push` invokes the same planned execution handler.
 
+Planned Coolify operations (2026-07-10): `platform_apps_list` and
+`platform_app_status` return safe application summaries. Application creation is
+`platform_app_create_preview` -> `platform_app_create`, validating the configured
+server/project/environment, GitHub owner, domain allowlist, port, build pack,
+healthcheck and required environment-variable names (never values). Deployment is
+`platform_deploy_preview` -> `platform_deploy`, bound to the app repository, branch
+and expected commit. Both write flows use expiring single-use plans and revalidation;
+legacy Coolify names share the same handlers.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
