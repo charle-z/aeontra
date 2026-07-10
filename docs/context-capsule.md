@@ -178,6 +178,14 @@ reuses mode approval, audit and timeouts; service names require
 `MCP_DEVBOX_PRIVILEGED_SERVICES`. Docker profiles preview but fail securely in the
 public MCP architecture rather than exposing the Docker socket.
 
+Persistent user notes (2026-07-10): free-form Markdown notes are separate from
+structured `memory_write` sections and live at `/repos/.agent-memory/notes` when
+the configured root is `/repos`. `notes_list` and `notes_read` expose safe metadata
+and redacted content. `notes_write_preview` -> `notes_write` supports create or
+append only, with validated slugs, a 64 KiB limit, symlink defense, no overwrite,
+content-hash revalidation, timestamped appends and expiring single-use plans. Notes
+are not automatically committed into child project repositories.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/

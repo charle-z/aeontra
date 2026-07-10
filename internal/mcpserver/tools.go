@@ -74,7 +74,7 @@ func (s *Server) annotateTools() {
 	// Local, side-effect-free reads.
 	s.annotate(localRead,
 		"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
-		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "memory_read", "sandbox_status")
+		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "memory_read", "notes_list", "notes_read", "notes_write_preview", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
 		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "platform_app_create_preview", "platform_deploy_preview")
@@ -89,6 +89,7 @@ func (s *Server) annotateTools() {
 	s.annotate(externalIdempotentWrite, "repo_fetch")
 	s.annotate(localWrite, "repo_fast_forward")
 	s.annotate(localWrite, "repo_remote_set")
+	s.annotate(localWrite, "notes_write")
 	// General execution can modify local state in ways the server cannot characterize.
 	s.annotate(localDestructive, "run_command", "run_tests", "sandbox_exec")
 	s.annotate(externalDestructive, "privileged_task_execute")
@@ -692,6 +693,60 @@ func (s *Server) register() {
 				return "", err
 			}
 			return s.svc.MemoryWriteIn(p.Repo, p.Section, p.Content, p.Approve)
+		})
+
+	s.add("notes_list",
+		"List persistent Markdown user notes stored under the workspace root's .agent-memory/notes directory. Returns only validated names, update times and sizes; symlinks and non-Markdown files are skipped.",
+		object(map[string]any{}),
+		func(json.RawMessage) (string, error) { return s.svc.NotesList() })
+
+	s.add("notes_read",
+		"Read one persistent Markdown user note by validated lowercase slug. The path is jailed, symlinks are rejected and content-level secrets are redacted.",
+		object(map[string]any{"name": strProp("validated note slug without .md")}, "name"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.NotesRead(p.Name)
+		})
+
+	s.add("notes_write_preview",
+		"Validate and redact Markdown content for a create-or-append note operation, enforce the note size limit and current target state, and return an exact expiring single-use plan. It never overwrites or writes during preview.",
+		object(map[string]any{
+			"name":    strProp("validated lowercase note slug without .md"),
+			"content": strProp("Markdown note content; secrets are redacted before planning"),
+			"mode":    strProp("create or append; create refuses existing notes"),
+		}, "name", "content", "mode"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Name    string `json:"name"`
+				Content string `json:"content"`
+				Mode    string `json:"mode"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.NotesWritePreview(p.Name, p.Content, p.Mode)
+		})
+
+	s.add("notes_write",
+		"Execute one reviewed notes_write_preview plan. It creates without overwrite or appends only if the existing content hash is unchanged; plan is expiring and single-use and requires approval in ask mode.",
+		object(map[string]any{
+			"plan_id": strProp("plan id returned by notes_write_preview"),
+			"approve": boolProp("execute the note plan when approval is required"),
+		}, "plan_id"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.NotesWrite(p.PlanID, p.Approve)
 		})
 
 	s.add("memory_update_handoff",
