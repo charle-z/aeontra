@@ -71,7 +71,7 @@ func (s *Server) annotateTools() {
 		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "memory_read", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
-		"github_repo_info", "source_repo_info", "source_repo_create_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status")
+		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status")
 	// Additive/local writes: not read-only, but not destructive (no data loss).
 	s.annotate(localWrite,
 		"apply_patch", "create_file", "git_commit", "git_clone", "memory_write",
@@ -419,24 +419,39 @@ func (s *Server) register() {
 		})
 
 	s.add("git_push",
-		"Push one branch from a selected jailed repo to one named remote. No force/tags/extra args/URL remotes are accepted. Denied in read-only; in ask mode set approve=true.",
+		"Execute a previously reviewed repo_publish_preview plan for one local branch and one named owner-restricted remote. No force, mirror, tags, refspecs, URL remotes, or extra arguments are accepted; requires approval in ask mode.",
 		object(map[string]any{
-			"repo":    strProp("repo directory, absolute or relative to the workspace root"),
-			"remote":  strProp("optional remote name, defaults to origin"),
-			"branch":  strProp("optional branch name, defaults to the current branch"),
-			"approve": boolProp("push even when approval is required"),
-		}, "repo"),
+			"plan_id": strProp("plan id returned by repo_publish_preview"),
+			"approve": boolProp("execute the publication plan when approval is required"),
+		}, "plan_id"),
 		func(a json.RawMessage) (string, error) {
 			var p struct {
-				Repo    string `json:"repo"`
-				Remote  string `json:"remote"`
-				Branch  string `json:"branch"`
+				PlanID  string `json:"plan_id"`
 				Approve bool   `json:"approve"`
 			}
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.GitPush(p.Repo, p.Remote, p.Branch, p.Approve)
+			return s.svc.RepoPublish(p.PlanID, p.Approve)
+		})
+
+	s.add("repo_publish_preview",
+		"Validate a clean attached current branch and one named credential-free GitHub remote, inspect the exact remote branch state, reject behind/diverged publication, and create a read-only expiring single-use push plan. It does not push.",
+		object(map[string]any{
+			"repo":   strProp("repository directory, absolute or relative to the workspace root"),
+			"remote": strProp("remote name, defaults to origin; URLs and option-like names are rejected"),
+			"branch": strProp("branch name, defaults to and must equal the current attached branch"),
+		}, "repo"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo   string `json:"repo"`
+				Remote string `json:"remote"`
+				Branch string `json:"branch"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.RepoPublishPreview(p.Repo, p.Remote, p.Branch)
 		})
 
 	s.add("github_create_repo",

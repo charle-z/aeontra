@@ -152,6 +152,14 @@ private-by-default visibility and an existence recheck. `repo_remote_preview` an
 restricted to `GITHUB_OWNER`. The legacy `github_*` names remain registered on the
 same safe handlers.
 
+Planned publication (2026-07-09): `repo_publish_preview` inspects a clean attached
+current branch, a named credential-free GitHub remote, and the exact remote branch
+SHA; it rejects behind/diverged state and creates an expiring single-use plan.
+`repo_publish` revalidates branch, HEAD, tree, remote URL and remote branch before
+running one generated `git push` (with `-u` only for the initial branch). Force,
+mirror, tags, arbitrary refspecs, URL remotes and extra arguments are not expressible.
+Legacy `git_push` invokes the same planned execution handler.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
