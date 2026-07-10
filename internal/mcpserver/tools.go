@@ -33,6 +33,16 @@ func (s *Server) add(name, desc string, schema map[string]any, h func(json.RawMe
 	s.order = append(s.order, name)
 }
 
+// addAlias exposes a stable recommended name while preserving the exact handler,
+// input schema, and policy path of an existing compatibility name.
+func (s *Server) addAlias(name, target, desc string) {
+	original := s.table[target]
+	original.def.Name = name
+	original.def.Description = desc
+	s.table[name] = original
+	s.order = append(s.order, name)
+}
+
 // annotate attaches the same behavior hints to each named tool (no-op for names that
 // were not registered, e.g. a tool gated off by configuration).
 func (s *Server) annotate(hints map[string]any, names ...string) {
@@ -49,22 +59,28 @@ func (s *Server) annotate(hints map[string]any, names ...string) {
 // never marked read-only. This mainly stops clients (e.g. ChatGPT) from over-blocking
 // harmless read-only tools like git_status/list_dir.
 func (s *Server) annotateTools() {
+	localRead := map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	externalRead := map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	localWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+	externalWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	localDestructive := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
 	// Local, side-effect-free reads.
-	s.annotate(map[string]any{"readOnlyHint": true, "openWorldHint": false},
-		"build_context_pack", "list_dir", "read_file", "read_many_files",
-		"search_code", "git_status", "git_diff", "memory_read", "sandbox_status")
+	s.annotate(localRead,
+		"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
+		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "memory_read", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
-	s.annotate(map[string]any{"readOnlyHint": true, "openWorldHint": true},
-		"github_repo_info", "coolify_list_apps", "coolify_app_status")
+	s.annotate(externalRead,
+		"github_repo_info", "source_repo_info", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status")
 	// Additive/local writes: not read-only, but not destructive (no data loss).
-	s.annotate(map[string]any{"readOnlyHint": false, "destructiveHint": false},
+	s.annotate(localWrite,
 		"apply_patch", "create_file", "git_commit", "git_clone", "memory_write",
 		"memory_update_handoff")
-	// Consequential/broad actions: not read-only; leave destructiveHint at its cautious
-	// default so the client keeps gating them.
-	s.annotate(map[string]any{"readOnlyHint": false},
-		"run_command", "run_tests", "sandbox_exec", "git_push",
-		"github_create_repo", "coolify_deploy", "coolify_create_app", "coolify_set_env")
+	// External writes are consequential and open-world, but not inherently destructive.
+	s.annotate(externalWrite,
+		"git_push", "repo_publish", "github_create_repo", "source_repo_create",
+		"coolify_deploy", "platform_deploy", "coolify_create_app", "platform_app_create", "coolify_set_env")
+	// General execution can modify local state in ways the server cannot characterize.
+	s.annotate(localDestructive, "run_command", "run_tests", "sandbox_exec")
 }
 
 // register wires every L1 tool. Descriptions are written for the orchestrating
@@ -483,6 +499,19 @@ func (s *Server) register() {
 			}
 			return s.svc.MemoryUpdateHandoff(p.Content)
 		})
+
+	// Compatibility names remain available. Recommended names share the exact same
+	// handler and schema, so aliases cannot bypass or duplicate policy enforcement.
+	s.addAlias("repo_list", "list_dir", "List one jailed repository directory without reading file contents; equivalent to list_dir.")
+	s.addAlias("repo_status", "git_status", "Show read-only status for one jailed repository; equivalent to git_status.")
+	s.addAlias("repo_diff", "git_diff", "Show a read-only diff for one jailed repository; equivalent to git_diff.")
+	s.addAlias("source_repo_info", "github_repo_info", "Read metadata for a repository under the configured source-host owner; equivalent to github_repo_info and performs an external read.")
+	s.addAlias("source_repo_create", "github_create_repo", "Create a repository under the configured source-host owner; equivalent to github_create_repo and performs an external write requiring approval in ask mode.")
+	s.addAlias("repo_publish", "git_push", "Publish one local branch to one named remote; equivalent to git_push and performs an external write requiring approval in ask mode.")
+	s.addAlias("platform_apps_list", "coolify_list_apps", "List applications from the configured deployment platform; equivalent to coolify_list_apps and performs an external read.")
+	s.addAlias("platform_app_status", "coolify_app_status", "Read one application from the configured deployment platform; equivalent to coolify_app_status and performs an external read.")
+	s.addAlias("platform_app_create", "coolify_create_app", "Create an application on the configured deployment platform; equivalent to coolify_create_app and performs an external write requiring approval in ask mode.")
+	s.addAlias("platform_deploy", "coolify_deploy", "Trigger a deployment on the configured platform; equivalent to coolify_deploy and performs an external write requiring approval in ask mode.")
 
 	s.annotateTools()
 }

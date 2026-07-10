@@ -129,6 +129,12 @@ beside Go/git. `initialize.instructions` now tells ChatGPT to use repo-aware
 context/patch/create/commit/memory tools, publish with GitHub/push only when
 explicitly requested, and deploy with Coolify only when explicitly requested.
 
+Tool metadata compatibility (2026-07-09): every registered MCP tool now publishes
+all four behavior hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, and
+`openWorldHint`). Recommended `repo_*`, `source_*`, and `platform_*` aliases coexist
+with the original names and reuse the exact same schemas, handlers, policy checks,
+and approval posture.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
