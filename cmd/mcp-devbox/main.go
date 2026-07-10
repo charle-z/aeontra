@@ -70,6 +70,12 @@ const (
 	coolifyAllowedDomainsEnv  = "COOLIFY_ALLOWED_DOMAINS"
 )
 
+const (
+	privilegedTasksEnv    = "MCP_DEVBOX_PRIVILEGED_TASKS"
+	privilegedServicesEnv = "MCP_DEVBOX_PRIVILEGED_SERVICES"
+	privilegedTimeoutEnv  = "MCP_DEVBOX_PRIVILEGED_TIMEOUT"
+)
+
 // buildOAuthProvider constructs the OAuth provider from env, or returns (nil, nil) when
 // OAuth is not configured. It errors if only one of the two required vars is set, so a
 // half-configured OAuth setup fails loudly rather than silently falling back.
@@ -280,6 +286,19 @@ func serve(args []string) error {
 	svc := tools.NewService(pol, logger, primary).
 		WithTestCommand(test).
 		WithSandboxRunner(sandboxRunner)
+	privilegedTimeout := 2 * time.Minute
+	if raw := strings.TrimSpace(os.Getenv(privilegedTimeoutEnv)); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil || parsed <= 0 {
+			return fmt.Errorf("%s must be a positive duration", privilegedTimeoutEnv)
+		}
+		privilegedTimeout = parsed
+	}
+	svc = svc.WithPrivilegedConfig(tools.PrivilegedConfig{
+		Enabled:         strings.EqualFold(strings.TrimSpace(os.Getenv(privilegedTasksEnv)), "true"),
+		AllowedServices: splitCSV(os.Getenv(privilegedServicesEnv)),
+		Timeout:         privilegedTimeout,
+	})
 	// Optional Coolify deploy capability (disabled unless configured). The API token
 	// is a secret read from env; it is never exposed to the agent.
 	if cu := strings.TrimSpace(os.Getenv(coolifyURLEnv)); cu != "" {

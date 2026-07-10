@@ -38,6 +38,12 @@ func NewActionPlanStore(log *audit.Logger) *ActionPlanStore {
 }
 
 func (s *ActionPlanStore) Create(operation string, args map[string]string) (ActionPlan, error) {
+	return s.CreateTTL(operation, args, s.ttl)
+}
+
+// CreateTTL creates a plan with a caller-selected short TTL. It is used by
+// higher-risk profiles that should expire faster than ordinary action plans.
+func (s *ActionPlanStore) CreateTTL(operation string, args map[string]string, ttl time.Duration) (ActionPlan, error) {
 	var random [32]byte
 	if _, err := rand.Read(random[:]); err != nil {
 		return ActionPlan{}, fmt.Errorf("creating action plan id: %w", err)
@@ -48,7 +54,7 @@ func (s *ActionPlanStore) Create(operation string, args map[string]string) (Acti
 		Operation: operation,
 		Args:      clonePlanArgs(args),
 		CreatedAt: now,
-		ExpiresAt: now.Add(s.ttl),
+		ExpiresAt: now.Add(ttl),
 	}
 	s.mu.Lock()
 	s.plans[p.ID] = p

@@ -23,15 +23,16 @@ type Runner func(ctx context.Context, dir, prog string, args []string) (output s
 
 // Service is the L1 tool surface.
 type Service struct {
-	pol     *policy.Policy
-	log     *audit.Logger
-	root    string // primary project root: working dir for commands
-	run     Runner
-	sandbox SandboxRunner
-	testCmd []string       // the single allowlisted test command (run_tests)
-	coolify *CoolifyClient // optional; nil/unconfigured = coolify_deploy disabled
-	github  *GitHubClient  // optional; nil/unconfigured = GitHub tools disabled
-	plans   *ActionPlanStore
+	pol        *policy.Policy
+	log        *audit.Logger
+	root       string // primary project root: working dir for commands
+	run        Runner
+	sandbox    SandboxRunner
+	testCmd    []string       // the single allowlisted test command (run_tests)
+	coolify    *CoolifyClient // optional; nil/unconfigured = coolify_deploy disabled
+	github     *GitHubClient  // optional; nil/unconfigured = GitHub tools disabled
+	plans      *ActionPlanStore
+	privileged PrivilegedConfig
 }
 
 // NewService builds a Service. root must be one of the policy's jail roots.
@@ -56,6 +57,13 @@ func (s *Service) WithCoolify(c *CoolifyClient) *Service { s.coolify = c; return
 
 // WithGitHub sets the optional GitHub API client (nil disables GitHub tools).
 func (s *Service) WithGitHub(c *GitHubClient) *Service { s.github = c; return s }
+
+// WithPrivilegedConfig applies immutable administrator startup configuration for
+// closed privileged profiles. It is not exposed through MCP at runtime.
+func (s *Service) WithPrivilegedConfig(cfg PrivilegedConfig) *Service {
+	s.privileged = normalizePrivilegedConfig(cfg)
+	return s
+}
 
 // execRunner is the default Runner: explicit argv, jailed working directory, a
 // timeout, and combined output. It NEVER invokes a shell.

@@ -70,10 +70,11 @@ func (s *Server) annotateTools() {
 	externalWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
 	externalIdempotentWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
 	localDestructive := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
+	externalDestructive := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
 	// Local, side-effect-free reads.
 	s.annotate(localRead,
 		"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
-		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "memory_read", "sandbox_status")
+		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "memory_read", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
 		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "platform_app_create_preview", "platform_deploy_preview")
@@ -90,6 +91,7 @@ func (s *Server) annotateTools() {
 	s.annotate(localWrite, "repo_remote_set")
 	// General execution can modify local state in ways the server cannot characterize.
 	s.annotate(localDestructive, "run_command", "run_tests", "sandbox_exec")
+	s.annotate(externalDestructive, "privileged_task_execute")
 }
 
 // register wires every L1 tool. Descriptions are written for the orchestrating
@@ -248,6 +250,46 @@ func (s *Server) register() {
 				return "", fmt.Errorf("command must have at least the program name")
 			}
 			return s.svc.SandboxExec(p.Command, p.Approve)
+		})
+
+	s.add("privileged_task_preview",
+		"Preview one administrator-enabled, server-defined privileged profile. The client supplies only a profile name and narrow validated parameters, never an executable, argv, or shell string. Returns the exact command, jailed working directory, network/filesystem posture, effect, risk, short-lived plan id and expiry. Disabled by default.",
+		object(map[string]any{
+			"repo":    strProp("jailed repository directory when the selected profile applies to a repository"),
+			"profile": strProp("one approved server-defined profile name"),
+			"params": map[string]any{
+				"type":                 "object",
+				"additionalProperties": map[string]any{"type": "string"},
+				"description":          "narrow profile parameters such as remote, branch, or allowlisted service name",
+			},
+		}, "profile"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo    string            `json:"repo"`
+				Profile string            `json:"profile"`
+				Params  map[string]string `json:"params"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.PrivilegedTaskPreview(p.Repo, p.Profile, p.Params)
+		})
+
+	s.add("privileged_task_execute",
+		"Execute one unexpired unused privileged_task_preview plan after policy approval. The exact server-generated command, jailed cwd, timeout and profile remain fixed. Docker profiles fail securely when safe containment is unavailable; no free host terminal is exposed.",
+		object(map[string]any{
+			"plan_id": strProp("plan id returned by privileged_task_preview"),
+			"approve": boolProp("execute the privileged profile when approval is required"),
+		}, "plan_id"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.PrivilegedTaskExecute(p.PlanID, p.Approve)
 		})
 
 	s.add("coolify_deploy",

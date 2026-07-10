@@ -169,6 +169,15 @@ healthcheck and required environment-variable names (never values). Deployment i
 and expected commit. Both write flows use expiring single-use plans and revalidation;
 legacy Coolify names share the same handlers.
 
+Controlled privileged profiles (2026-07-10): `privileged_task_preview` and
+`privileged_task_execute` expose only server-defined profiles and are disabled by
+default (`MCP_DEVBOX_PRIVILEGED_TASKS=true` enables them). The client cannot provide
+an executable, argv or shell string. Previews show the exact command, jailed cwd,
+network/filesystem scope, effect, risk and a two-minute single-use plan. Execution
+reuses mode approval, audit and timeouts; service names require
+`MCP_DEVBOX_PRIVILEGED_SERVICES`. Docker profiles preview but fail securely in the
+public MCP architecture rather than exposing the Docker socket.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
