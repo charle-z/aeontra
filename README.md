@@ -43,6 +43,13 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **mandatory bearer auth**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
+**Secure builder evolution:** the server now exposes 51 deliberately annotated
+tools, including rich repository status, narrow synchronization, planned GitHub
+creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
+and disabled-by-default privileged profiles. Consequential operations use
+cryptographically named, expiring, single-use plans and revalidate state before
+execution. See [docs/tools.md](docs/tools.md).
+
 Quick start:
 
 ```bash
@@ -59,8 +66,26 @@ cloudflared tunnel --url http://127.0.0.1:8765
 
 **Connect from ChatGPT / Cursor / Claude Desktop:** see `docs/connect-remote.md`.
 
-Layers 2–3 (cheap-model worker, OS sandbox/egress) are not built yet — see
-`docs/features.md`. Honest scope and limitations: `SECURITY.md`.
+Complete OS isolation and egress control are not yet universal; the old cheap-model
+worker plan is superseded. Honest scope and limitations: `SECURITY.md`.
+
+## Secure builder workflows
+
+```text
+repo_list -> repo_status -> repo_fetch
+-> repo_fast_forward_preview -> repo_fast_forward
+-> source_repo_create_preview -> source_repo_create
+-> repo_remote_preview -> repo_remote_set
+-> repo_publish_preview -> repo_publish
+
+platform_apps_list -> platform_app_create_preview -> platform_app_create
+-> platform_deploy_preview -> platform_deploy -> platform_app_status
+```
+
+Use one tool call per message when that is more reliable for the ChatGPT connector.
+This is workflow advice, not a security bypass. `git_commit` does not push; force
+push and a free host terminal do not exist; tokens are never returned; external
+writes require explicit approval in ask mode; aliases never weaken policy.
 
 ## How to build
 
@@ -77,3 +102,4 @@ Layers 2–3 (cheap-model worker, OS sandbox/egress) are not built yet — see
 - `docs/design.md` — architecture, language/platform/tunnel decisions, MVP scope.
 - `docs/security.md` — threat model + secure-by-default invariants (the product).
 - `docs/context-capsule.md` — current state for resuming without re-hydrating chat.
+- `docs/tools.md` — canonical tool, alias, annotation, workflow, and approval reference.

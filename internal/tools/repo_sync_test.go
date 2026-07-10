@@ -18,12 +18,15 @@ func TestRepoStatusReturnsRichFields(t *testing.T) {
 	gitCmd(t, root, "add", "tracked.txt")
 	gitCmd(t, root, "commit", "-qm", "base")
 	write(t, root, "untracked.txt", "new\n")
+	write(t, root, "with space.txt", "staged\n")
+	gitCmd(t, root, "add", "with space.txt")
+	write(t, root, "with space.txt", "modified after stage\n")
 
 	out, err := svc.RepoStatus("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"repository:", "branch:", "head:", "ahead:", "behind:", "untracked_files:", "untracked.txt", "clean: false", "detached_head: false"} {
+	for _, want := range []string{"repository:", "branch:", "head:", "ahead:", "behind:", "staged_files:\n- with space.txt", "modified_files:\n- with space.txt", "untracked_files:", "untracked.txt", "clean: false", "detached_head: false"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rich status missing %q:\n%s", want, out)
 		}

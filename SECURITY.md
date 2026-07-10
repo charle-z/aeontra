@@ -16,6 +16,13 @@ OS-level isolation or egress control — those are Layer 3.
 - Filesystem + command jail confined to configured roots (symlink/traversal safe).
 - Repo file contents are treated as **data, never instructions**.
 - Policy is loaded once and is **not** modifiable by the agent at runtime.
+- GitHub creation, remote changes, publication, Coolify creation/deployment, notes,
+  and privileged profiles use exact TTL-bound single-use plans with state
+  revalidation and audit.
+- Publication accepts one named remote and current branch: no force, mirror, tags,
+  arbitrary refspecs, URL remote, or embedded credentials.
+- Privileged profiles are server-defined and disabled by default. There is no free
+  host terminal and the public MCP is never given the Docker socket.
 
 ### What Layer 1 does NOT yet do (known limitations)
 - **No OS sandbox (Layer 2).** A permitted command runs as your user; app-level policy
@@ -26,6 +33,10 @@ OS-level isolation or egress control — those are Layer 3.
 
 Use `--mode read-only` (the default) unless you need writes/commands, and prefer
 `ask` over `allow`.
+
+Compatibility aliases do not relax these rules: old and recommended names share
+the same schema, handler, policy checks, plan, approval posture, and audit path.
+Tokens come only from administrator environment configuration and are never returned.
 
 ### Remote HTTP transport (v0.2)
 - The HTTP endpoint (`serve --http`) requires a bearer token on every `/mcp` request

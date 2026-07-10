@@ -80,19 +80,18 @@ func (s *Server) annotateTools() {
 		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "platform_app_create_preview", "platform_deploy_preview")
 	// Additive/local writes: not read-only, but not destructive (no data loss).
 	s.annotate(localWrite,
-		"apply_patch", "create_file", "git_commit", "git_clone", "memory_write",
-		"memory_update_handoff")
+		"create_file", "git_commit")
 	// External writes are consequential and open-world, but not inherently destructive.
 	s.annotate(externalWrite,
-		"git_push", "repo_publish", "github_create_repo", "source_repo_create",
-		"coolify_deploy", "platform_deploy", "coolify_create_app", "platform_app_create", "coolify_set_env")
+		"git_clone", "git_push", "repo_publish", "github_create_repo", "source_repo_create",
+		"coolify_create_app", "platform_app_create")
 	s.annotate(externalIdempotentWrite, "repo_fetch")
 	s.annotate(localWrite, "repo_fast_forward")
-	s.annotate(localWrite, "repo_remote_set")
 	s.annotate(localWrite, "notes_write")
-	// General execution can modify local state in ways the server cannot characterize.
-	s.annotate(localDestructive, "run_command", "run_tests", "sandbox_exec")
-	s.annotate(externalDestructive, "privileged_task_execute")
+	// These tools can replace/delete content or perform effects the server cannot
+	// characterize as additive, so clients must see truthful destructive hints.
+	s.annotate(localDestructive, "apply_patch", "memory_write", "memory_update_handoff", "repo_remote_set", "sandbox_exec")
+	s.annotate(externalDestructive, "run_command", "run_tests", "coolify_deploy", "platform_deploy", "coolify_set_env", "privileged_task_execute")
 }
 
 // register wires every L1 tool. Descriptions are written for the orchestrating

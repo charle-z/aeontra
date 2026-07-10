@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ type remoteBranchState struct {
 	Exists bool
 	SHA    string
 }
+
+var gitObjectIDRe = regexp.MustCompile(`^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$`)
 
 // RepoPublishPreview validates one current local branch against one named,
 // owner-restricted remote. No push URL, refspec, force, mirror, or tag option is
@@ -208,6 +211,9 @@ func (s *Service) readRemoteBranch(dir, remote, branch string) (remoteBranchStat
 	}
 	if len(fields) != 2 || fields[1] != "refs/heads/"+branch {
 		return remoteBranchState{}, fmt.Errorf("unexpected git ls-remote response")
+	}
+	if !gitObjectIDRe.MatchString(fields[0]) {
+		return remoteBranchState{}, fmt.Errorf("git ls-remote returned an invalid object id")
 	}
 	return remoteBranchState{Exists: true, SHA: fields[0]}, nil
 }

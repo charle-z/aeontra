@@ -62,6 +62,10 @@ func (s *Service) RepoRemotePreview(repo, remote, repository string) (string, er
 
 func (s *Service) RepoRemoteSet(planID string, approve bool) (string, error) {
 	sp := s.log.Start("repo_remote_set")
+	if err := s.github.configError(); err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
 	needsApproval, err := s.pol.CheckAction()
 	if err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)

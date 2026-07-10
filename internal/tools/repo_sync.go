@@ -70,12 +70,21 @@ func (s *Service) readRepositoryStatus(repo string) (repositoryStatus, error) {
 			st.Untracked = append(st.Untracked, strings.TrimPrefix(line, "? "))
 			st.Clean = false
 		case strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 ") || strings.HasPrefix(line, "u "):
-			fields := strings.Fields(line)
+			limit := 9
+			if strings.HasPrefix(line, "2 ") {
+				limit = 10
+			} else if strings.HasPrefix(line, "u ") {
+				limit = 11
+			}
+			fields := strings.SplitN(line, " ", limit)
 			if len(fields) < 3 {
 				continue
 			}
 			xy := fields[1]
-			path := fields[len(fields)-1]
+			path := strings.SplitN(fields[len(fields)-1], "\t", 2)[0]
+			if unquoted, err := strconv.Unquote(path); err == nil {
+				path = unquoted
+			}
 			if len(xy) == 2 && xy[0] != '.' {
 				st.Staged = append(st.Staged, path)
 			}

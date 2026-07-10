@@ -116,7 +116,12 @@ func (s *Service) PrivilegedTaskExecute(planID string, approve bool) (string, er
 	ctx, cancel := context.WithTimeout(context.Background(), s.privileged.Timeout)
 	defer cancel()
 	var out string
-	if plan.Args["runner"] == "sandbox-preferred" && s.sandbox.Status(ctx).Available {
+	if plan.Args["runner"] == "sandbox-required" {
+		if !s.sandbox.Status(ctx).Available {
+			err := fmt.Errorf("secure failure: sandbox unavailable for profile %s; network and filesystem containment cannot be guaranteed", plan.Args["profile"])
+			sp.Finish(audit.Deny, planID, []string{dir}, err)
+			return "", err
+		}
 		result, runErr := s.sandbox.Run(ctx, SandboxRunRequest{Dir: dir, Argv: argv, NetworkProfile: "none", Timeout: s.privileged.Timeout})
 		out = strings.TrimRight(result.Stdout+"\n"+result.Stderr, "\n")
 		err = runErr
@@ -179,9 +184,9 @@ func (s *Service) buildPrivilegedProfile(repo, profile string, params map[string
 			"go-build": {"go", "build", "./..."}, "gofmt-check": {"gofmt", "-l", "."},
 		}
 		p.Argv = commands[profile]
-		p.Runner = "sandbox-preferred"
+		p.Runner = "sandbox-required"
 		p.Effect = "Run the fixed " + profile + " verification profile."
-		p.Risk = "Build or test code may consume CPU, memory, and write tool caches; timeout applies."
+		p.Risk = "Build or test code may consume CPU, memory, and write tool caches; a configured sandbox and timeout are mandatory."
 	case "docker-build-project", "docker-compose-config":
 		if err := onlyProfileParams(params); err != nil {
 			return p, err

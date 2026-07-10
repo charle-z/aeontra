@@ -157,3 +157,18 @@ func TestPlatformAPIErrorsRedactToken(t *testing.T) {
 		t.Fatalf("API error leaked token: out=%q err=%v", out, err)
 	}
 }
+
+func TestPlatformStatusOmitsCredentialURLs(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"uuid":"app1","git_repository":"https://user:password@github.com/acme/demo.git","fqdn":"https://user:password@example.com"}`))
+	}))
+	defer ts.Close()
+	svc := configuredPlatformService(t, config.ModeReadOnly, ts.URL)
+	out, err := svc.PlatformAppStatus("app1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "password") || strings.Count(out, "[unsafe URL omitted]") != 2 {
+		t.Fatalf("credential URLs were not omitted: %s", out)
+	}
+}

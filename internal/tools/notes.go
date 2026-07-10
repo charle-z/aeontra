@@ -97,6 +97,7 @@ func (s *Service) NotesRead(name string) (string, error) {
 
 func (s *Service) NotesWritePreview(name, content, mode string) (string, error) {
 	sp := s.log.Start("notes_write_preview")
+	name = strings.TrimSpace(name)
 	target, err := s.noteTarget(name)
 	if err != nil {
 		sp.Finish(audit.Deny, summarize(name), nil, err)

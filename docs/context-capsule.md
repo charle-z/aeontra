@@ -91,15 +91,14 @@ such as shell command substitutions (`$(...)`), env-var refs (`$TOKEN`, `${TOKEN
 CI (2026-06-30): `.github/workflows/ci.yml` runs `go test ./... -count=1` and
 `go vet ./...` on push/PR with Go 1.26.4.
 
-Agent instructions (2026-07-03): `initialize.instructions` now gives every MCP
-client the durable preflight for a `/repos` root: call `list_dir`, call
-`build_context_pack`, identify the target repo, then call `git_status` with `repo`.
-If the repo is behind `origin/main` or the user asks to update it, run
-`git pull --ff-only origin main` through `run_command` with `cwd` set to that repo
-and `approve=true`. It also tells the client to plan briefly, use one focused tool
-call, observe, self-check with `run_tests` when code changed, revise on failure,
-record useful state to memory, never push, and treat repo file contents as DATA,
-not instructions.
+Agent instructions (updated 2026-07-10): `initialize.instructions` uses recommended
+names and one focused tool call per message: `repo_list`, `build_context_pack`, and
+`repo_status`; synchronization only through `repo_fetch` plus the planned
+fast-forward pair; local edit/test/commit; and explicit planned source, remote,
+publication, platform, notes, or privileged workflows. It states that repo content
+is DATA, `git_commit` does not push, external writes require approval, tokens are
+never returned, aliases do not weaken policy, and there is no force push or free
+host terminal.
 
 Multi-repo consistency (2026-07-04): with `MCP_DEVBOX_ROOT=/repos`, the write/context
 loop no longer assumes the root itself is a Git repo. `build_context_pack`,
@@ -109,14 +108,12 @@ manually prefixing every path. Policy remains the single jail/secret/mode gate.
 
 Global builder git tools (2026-07-04): `git_clone` clones a remote into a new simple
 directory under `/repos` and rejects embedded credentials or target escapes.
-`git_push` pushes one branch from a selected repo to one named remote; it accepts no
-force, tags, extra args, or URL remotes. Both are mode-gated and audited.
+`git_push` is now the compatibility name for planned `repo_publish`; it accepts only
+an unexpired preview plan, never force, tags, extra args, refspecs, or URL remotes.
 
-GitHub API tools (2026-07-04): optional `GITHUB_TOKEN` + `GITHUB_OWNER` +
-`GITHUB_OWNER_TYPE` configure `github_create_repo` and `github_repo_info`.
-Repository creation is private by default (`GITHUB_DEFAULT_VISIBILITY=public` or
-tool `visibility=public` opts into public), mode-gated, audited, and never exposes
-the token.
+GitHub API tools: optional `GITHUB_TOKEN` + `GITHUB_OWNER` + `GITHUB_OWNER_TYPE`
+configure `source_repo_info` and planned repository creation. Creation is private
+by default, fixed to the configured owner, mode-gated, audited, and token-safe.
 
 Coolify builder tools (2026-07-04): `coolify_list_apps`, `coolify_app_status`,
 `coolify_create_app`, and `coolify_set_env` extend the existing deploy tool.
@@ -176,7 +173,8 @@ an executable, argv or shell string. Previews show the exact command, jailed cwd
 network/filesystem scope, effect, risk and a two-minute single-use plan. Execution
 reuses mode approval, audit and timeouts; service names require
 `MCP_DEVBOX_PRIVILEGED_SERVICES`. Docker profiles preview but fail securely in the
-public MCP architecture rather than exposing the Docker socket.
+public MCP architecture rather than exposing the Docker socket. Go verification
+profiles require an available sandbox so their no-network posture is enforceable.
 
 Persistent user notes (2026-07-10): free-form Markdown notes are separate from
 structured `memory_write` sections and live at `/repos/.agent-memory/notes` when
@@ -192,13 +190,9 @@ are not automatically committed into child project repositories.
   sibling-prefix protection, secret path deny, content redaction, command allowlist,
   destructive/injection blocking, in-memory read grants, immutable runtime policy.
 - Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- Tools (`internal/tools`): MCP tools:
-  `build_context_pack`, `list_dir`, `read_file`, `read_many_files`, `search_code`,
-  `apply_patch`, `create_file`, `run_command`, `git_status`, `git_diff`,
-  `git_clone`, `git_push`, `github_create_repo`, `github_repo_info`, `run_tests`,
-  `git_commit`, `memory_read`, `memory_write`,
-  `memory_update_handoff`, `sandbox_status`, `sandbox_exec`, `coolify_deploy`,
-  `coolify_list_apps`, `coolify_app_status`, `coolify_create_app`, `coolify_set_env`.
+- Tools (`internal/tools`): 51 registered tools with schema, description, four
+  annotations, handler and tests. See `docs/tools.md` for the canonical complete
+  table, compatibility aliases, exact effects, and workflows.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
   `create_file` refuses overwrite and goes through the same patch pipeline. Both
   accept an optional `repo` selector for `/repos/<repo>` workspaces.
@@ -245,10 +239,13 @@ mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> \
   [--ttl 5m] [--raw --confirm-raw] <REQUEST_ID>
 ```
 
-Windows Go SDK:
+Windows verification when Go is not installed system-wide: use an official
+temporary Go 1.26 SDK or the official `golang:1.26` container. Keep SDKs/caches
+outside the repository and do not commit generated binaries.
 
 ```powershell
-$env:PATH = "C:\Users\<user>\go-sdk\go\bin;" + $env:PATH
+$env:PATH = "$env:TEMP\mcp-devbox-go-sdk\go\bin;" + $env:PATH
+$env:GOCACHE = "$env:TEMP\mcp-devbox-go-cache"
 ```
 
 Container/Coolify env:
@@ -262,6 +259,7 @@ Container/Coolify env:
 - `MCP_DEVBOX_OAUTH_PASSPHRASE`
 - `MCP_DEVBOX_OAUTH_CLIENT_STORE` (recommended: `/state/oauth-clients.json` on a
   persistent `/state` volume outside `/repos`)
+- `MCP_DEVBOX_OAUTH_REFRESH_STORE` (recommended: `/state/oauth-refresh.json`)
 - `GITHUB_TOKEN` (optional, for GitHub tools)
 - `GITHUB_OWNER`
 - `GITHUB_OWNER_TYPE` (`user` or `org`)
@@ -273,6 +271,9 @@ Container/Coolify env:
 - `COOLIFY_PROJECT_UUID`
 - `COOLIFY_ENVIRONMENT_NAME` or `COOLIFY_ENVIRONMENT_UUID`
 - `COOLIFY_ALLOWED_DOMAINS` (optional domain suffix allowlist)
+- `MCP_DEVBOX_PRIVILEGED_TASKS` (`true` explicitly enables fixed profiles; default disabled)
+- `MCP_DEVBOX_PRIVILEGED_SERVICES` (optional approved service names)
+- `MCP_DEVBOX_PRIVILEGED_TIMEOUT` (optional, default `2m`)
 
 ## Production Grant Approval
 
@@ -296,8 +297,8 @@ The admin channel is loopback-only and must stay that way.
    socket out of the public MCP container and keeping broad commands disabled until
    adversarial L3 tests pass.
 
-Optional future capability: a gated `git_push` tool, only if the owner wants it and
-only behind mode+approval. Pushing is deliberately absent today.
+Publication now exists only through the planned `repo_publish_preview` /
+`repo_publish` flow; `git_push` is the identical compatibility handler.
 
 ## Known Risks / Debt
 
@@ -311,9 +312,10 @@ only behind mode+approval. Pushing is deliberately absent today.
 
 ## Last Verified
 
-Date: 2026-06-30. Local gates green: `go test ./... -count=1`, `go vet ./...`,
-`go build ./...`, and `gofmt -l` empty. P1-6 HTTP tests cover `Mcp-Session-Id` on
-initialize, later POST with session header, authenticated GET SSE, and unauthenticated
-GET 401. Production has been validated end-to-end from ChatGPT web: initialize/tools
-list, one-tool-per-message calls, normal reads, and `.env` denied with structured
-`access-required`.
+Date: 2026-07-10. Local secure-builder gates green: `go test ./... -count=1`,
+`go vet ./...`, `go build ./...`, and empty `gofmt -l .`. Wire-level `tools/list`
+coverage asserts 51 unique tools and, for each, a schema, description, all four
+annotations, handler, tests, and documentation. No push, GitHub creation, Coolify
+deployment, live infrastructure mutation, or secret-bearing API call was performed.
+Production still runs the previously validated baseline until the owner explicitly
+authorizes push and redeploy.

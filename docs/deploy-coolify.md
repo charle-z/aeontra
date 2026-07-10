@@ -90,11 +90,20 @@ COOLIFY_SERVER_UUID=<server-uuid>
 COOLIFY_PROJECT_UUID=<project-uuid>
 COOLIFY_ENVIRONMENT_NAME=production
 COOLIFY_ALLOWED_DOMAINS=example.com
+
+# Disabled by default; enable only fixed administrator-approved profiles:
+MCP_DEVBOX_PRIVILEGED_TASKS=false
+MCP_DEVBOX_PRIVILEGED_SERVICES=mcp-devbox
+MCP_DEVBOX_PRIVILEGED_TIMEOUT=2m
 ```
 
 `GITHUB_TOKEN` should have the minimum repo permissions you need. Do not enable
 Coolify `read:sensitive`; mcp-devbox does not need secret-reading API responses for
 builder actions.
+
+The public MCP container must not mount `/var/run/docker.sock`. Docker privileged
+profiles intentionally fail securely there. Run them only through a separately
+contained administrator runner if that architecture is added later.
 6. Expose only the internal application port `8765` through Coolify/Traefik. Do not
 publish `8765` directly on the VPS host firewall.
 7. Deploy.
@@ -122,12 +131,10 @@ git clone https://github.com/OWNER/REPO.git <repo>
 For private repos, use a deploy key or token available only on the VPS. Do not put
 repo credentials in the mcp-devbox image or in ChatGPT prompts.
 
-To update:
-
-```bash
-cd /repos/<repo>
-git pull --ff-only
-```
+To update through MCP, use `repo_fetch`, `repo_fast_forward_preview`, then
+`repo_fast_forward`. This preserves the jailed, audited, exact-plan workflow and
+never uses reset. Reserve direct host Git commands for an administrator operating
+outside the MCP protocol.
 
 For global-builder mode, keep `MCP_DEVBOX_ROOT=/repos`. ChatGPT should use
 `list_dir`, then pass `repo:"<repo>"` or `cwd:"<repo>"` to repo-local tools.
@@ -191,3 +198,12 @@ Expected:
 
 Security invariants remain enforced by mcp-devbox policy inside the container:
 jail, secret deny plus redaction, command allowlist, patch-first writes, and audit.
+
+## Redeploy and reconnect
+
+After an authorized push, let the existing Coolify webhook rebuild the branch.
+Verify `/healthz` reports the pushed commit before testing tools. Keep `/repos` and
+`/state` volumes mounted. With persisted OAuth client and refresh stores, ChatGPT
+should reconnect without connector deletion; if OAuth configuration changed,
+reconnect once through the normal OAuth flow. Then call `tools/list`, confirm 51
+tools and all four annotations, and run read-only acceptance tests before any write.

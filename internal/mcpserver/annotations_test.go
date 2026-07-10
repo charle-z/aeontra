@@ -41,6 +41,42 @@ func TestToolAnnotations_AreCompleteAndSerialize(t *testing.T) {
 	}
 }
 
+func TestToolsListWireSurfaceIsComplete(t *testing.T) {
+	s := stampServer(t)
+	raw := s.handle([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	var response struct {
+		Result struct {
+			Tools []toolDef `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Result.Tools) != len(s.order) || len(response.Result.Tools) != 51 {
+		t.Fatalf("tools/list returned %d tools, registry has %d; want documented surface 51", len(response.Result.Tools), len(s.order))
+	}
+	seen := map[string]bool{}
+	for _, def := range response.Result.Tools {
+		if seen[def.Name] {
+			t.Errorf("duplicate tool %s", def.Name)
+		}
+		seen[def.Name] = true
+		entry, ok := s.table[def.Name]
+		if !ok || entry.handler == nil {
+			t.Errorf("%s has no handler", def.Name)
+		}
+		if strings.TrimSpace(def.Description) == "" {
+			t.Errorf("%s has no description", def.Name)
+		}
+		if def.InputSchema == nil || def.InputSchema["type"] != "object" {
+			t.Errorf("%s has invalid input schema: %#v", def.Name, def.InputSchema)
+		}
+		if len(def.Annotations) != 4 {
+			t.Errorf("%s has incomplete annotations: %#v", def.Name, def.Annotations)
+		}
+	}
+}
+
 func TestCompatibilityAliasesShareSchemaAndHandler(t *testing.T) {
 	s := stampServer(t)
 	for alias, legacy := range compatibilityAliases {
@@ -99,7 +135,16 @@ func TestToolAnnotationClassifications(t *testing.T) {
 	for _, name := range []string{"github_repo_info", "source_repo_info", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status"} {
 		assertHints(name, true, false, true, true)
 	}
-	for _, name := range []string{"git_push", "repo_publish", "github_create_repo", "source_repo_create", "coolify_deploy", "platform_deploy", "coolify_create_app", "platform_app_create", "coolify_set_env"} {
+	for _, name := range []string{"git_push", "repo_publish", "github_create_repo", "source_repo_create", "coolify_create_app", "platform_app_create"} {
 		assertHints(name, false, false, false, true)
 	}
+	assertHints("git_clone", false, false, false, true)
+	for _, name := range []string{"coolify_deploy", "platform_deploy", "coolify_set_env"} {
+		assertHints(name, false, true, false, true)
+	}
+	for _, name := range []string{"apply_patch", "memory_write", "memory_update_handoff", "repo_remote_set"} {
+		assertHints(name, false, true, false, false)
+	}
+	assertHints("run_command", false, true, false, true)
+	assertHints("run_tests", false, true, false, true)
 }

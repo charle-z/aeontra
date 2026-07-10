@@ -37,6 +37,18 @@ tools: build_context_pack · list_dir · read_file · read_many_files · search_
 local repositories (only configured paths)
 ```
 
+The current secure-builder surface is larger than this original MVP diagram. The
+canonical 51-tool registry, aliases and annotations are in `tools.md`.
+Consequential multi-step operations share one in-memory action-plan store:
+
+```text
+read-only preview -> cryptographic plan (exact non-secret args + state + TTL)
+                  -> mode/approval -> single consume -> state revalidation
+                  -> narrow generated effect -> redacted result + audit
+```
+
+Plans never mutate policy, never contain secret values, and disappear on restart.
+
 Principle: **the model thinks, the daemon executes, git records, tests validate,
 memory persists, the human approves risky actions.**
 
@@ -79,6 +91,11 @@ roundtrips, minimize tokens, reviewable changes).
 Free terminal · full-file write tool · autonomous agent without approval · DB ·
 job queue · UI/dashboard · hosted relay · OpenCode delegation · reinvented sandbox
 primitives. (See `AGENTS.md` architecture rule.)
+
+The disabled-by-default privileged profile mechanism is not a free terminal: every
+command and parameter shape is defined server-side, has a short plan TTL and timeout,
+and Docker profiles fail securely rather than exposing the host Docker socket to the
+public daemon.
 
 ## Phases
 

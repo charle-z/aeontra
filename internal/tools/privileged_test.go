@@ -72,7 +72,7 @@ func TestPrivilegedExecuteApprovalReplayExpiryAndTimeout(t *testing.T) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
-	preview, err := svc.PrivilegedTaskPreview(root, "go-vet", nil)
+	preview, err := svc.PrivilegedTaskPreview(root, "git-fast-forward", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +107,18 @@ func TestPrivilegedDockerProfileFailsSecurelyWithoutContainment(t *testing.T) {
 	}
 	if _, err := svc.PrivilegedTaskExecute(privilegedField(preview, "Plan ID"), true); err == nil || !strings.Contains(err.Error(), "Docker socket") {
 		t.Fatalf("docker profile must fail securely: %v", err)
+	}
+}
+
+func TestPrivilegedGoProfileFailsSecurelyWithoutSandbox(t *testing.T) {
+	svc, root := newTestService(t, config.ModeAllow)
+	svc.WithPrivilegedConfig(PrivilegedConfig{Enabled: true})
+	preview, err := svc.PrivilegedTaskPreview(root, "go-build", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PrivilegedTaskExecute(privilegedField(preview, "Plan ID"), true); err == nil || !strings.Contains(err.Error(), "sandbox unavailable") {
+		t.Fatalf("go profile must fail securely without sandbox: %v", err)
 	}
 }
 

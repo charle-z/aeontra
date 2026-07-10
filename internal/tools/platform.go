@@ -427,7 +427,25 @@ func (s *Service) normalizePlatformCreate(req PlatformAppCreateRequest) (Platfor
 
 func formatPlatformApp(app platformApplication) string {
 	return fmt.Sprintf("uuid: %s\nname: %s\nstatus: %s\ndeployment_state: %s\nrepository: %s\nbranch: %s\ndomain: %s\n",
-		app.UUID, app.Name, app.Status, app.DeploymentStatus, app.repo(), app.branch(), app.domain())
+		app.UUID, app.Name, app.Status, app.DeploymentStatus, safePlatformURL(app.repo()), app.branch(), safePlatformURL(app.domain()))
+}
+
+func safePlatformURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || (!strings.Contains(raw, "://") && !strings.HasPrefix(raw, "git@")) {
+		return raw
+	}
+	if strings.HasPrefix(raw, "git@") {
+		if err := validateCloneURL(raw); err == nil {
+			return raw
+		}
+		return "[unsafe URL omitted]"
+	}
+	clean, err := sanitizeCredentialFreeURL(raw)
+	if err != nil {
+		return "[unsafe URL omitted]"
+	}
+	return clean
 }
 
 func (s *Service) coolifySafe(body string) string {

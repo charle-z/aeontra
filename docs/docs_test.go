@@ -39,9 +39,52 @@ func TestConnectRemoteDocumentsCurrentToolSurface(t *testing.T) {
 		"MCP_DEVBOX_ALLOW_CMD",
 		"one-tool-per-message",
 		"git_commit does not push",
+		"repo_fast_forward_preview",
+		"source_repo_create_preview",
+		"repo_publish_preview",
+		"platform_app_create_preview",
+		"notes_write_preview",
+		"privileged_task_preview",
+		"MCP_DEVBOX_PRIVILEGED_TASKS",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Fatalf("connect-remote.md does not document %q", want)
+		}
+	}
+}
+
+func TestToolReferenceDocumentsAllRegisteredToolsAndInvariants(t *testing.T) {
+	doc := readDoc(t, "tools.md")
+	tools := []string{
+		"apply_patch", "build_context_pack", "coolify_app_status", "coolify_create_app",
+		"coolify_deploy", "coolify_list_apps", "coolify_set_env", "create_file",
+		"git_clone", "git_commit", "git_diff", "git_push", "git_status",
+		"github_create_repo", "github_repo_info", "list_dir", "memory_read",
+		"memory_update_handoff", "memory_write", "notes_list", "notes_read",
+		"notes_write", "notes_write_preview", "platform_app_create",
+		"platform_app_create_preview", "platform_app_status", "platform_apps_list",
+		"platform_deploy", "platform_deploy_preview", "privileged_task_execute",
+		"privileged_task_preview", "read_file", "read_many_files", "repo_diff",
+		"repo_fast_forward", "repo_fast_forward_preview", "repo_fetch", "repo_list",
+		"repo_publish", "repo_publish_preview", "repo_remote_preview", "repo_remote_set",
+		"repo_status", "run_command", "run_tests", "sandbox_exec", "sandbox_status",
+		"search_code", "source_repo_create", "source_repo_create_preview", "source_repo_info",
+	}
+	if len(tools) != 51 {
+		t.Fatalf("test inventory has %d tools, want 51", len(tools))
+	}
+	for _, name := range tools {
+		if !strings.Contains(doc, "`"+name+"`") {
+			t.Errorf("tools.md does not document %s", name)
+		}
+	}
+	for _, invariant := range []string{
+		"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint",
+		"git_commit does not push", "no force", "no free host terminal",
+		"Tokens", "External writes require explicit approval", "aliases",
+	} {
+		if !strings.Contains(strings.ToLower(doc), strings.ToLower(invariant)) {
+			t.Errorf("tools.md does not document invariant %q", invariant)
 		}
 	}
 }

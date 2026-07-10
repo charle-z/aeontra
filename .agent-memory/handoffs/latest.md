@@ -1,9 +1,26 @@
 # Handoff / Codex work backlog — 2026-06-30
 
-Status: **L1 + remote (v0.2) live in production and validated end-to-end from ChatGPT
-web** (Coolify/VPS, `https://mcp-devbox-charlez.duckdns.org/mcp?key=...`). All 14 MCP
-tools work; verified one-tool-per-message on ChatGPT's instant model. `go test ./...`
-+ `go vet` + `gofmt` green.
+Production baseline: **L1 + remote (v0.2) live and previously validated end-to-end
+from ChatGPT web**. The secure-builder evolution below is local-only until an
+authorized push/redeploy. One-tool-per-message remains the most reliable connector
+workflow.
+
+## Secure builder evolution — 2026-07-10
+
+Implemented locally on branch `secure-builder-evolution`; do not push or deploy
+without explicit owner authorization. The registry now has 51 tools with complete
+truthful annotations and compatibility aliases. Added shared cryptographic
+TTL/single-use action plans; rich repo status plus narrow fetch/fast-forward; planned
+GitHub creation, remote configuration and safe publication; planned Coolify create
+and deploy; disabled-by-default fixed privileged profiles; and persistent free-form
+notes. `git_commit` does not push, force push and free host terminal remain absent,
+tokens are never returned, and old names share the new safe handlers.
+
+Canonical tool/workflow reference: `docs/tools.md`. Before push, verify all eight
+`Step 01`…`Step 08` commits, clean status, full Go gates, diff against `origin/main`,
+and absence of secrets/binaries/AI signatures. After an authorized push, verify the
+Coolify `/healthz` commit stamp, reconnect OAuth only if needed, call `tools/list`
+(expect 51), and run read-only acceptance tests before planned writes.
 
 Read first (source of truth, in order): `docs/context-capsule.md` (Vision + Next
 Steps), `AGENTS.md`, `docs/security.md`, `docs/design.md`.

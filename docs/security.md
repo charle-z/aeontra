@@ -71,6 +71,24 @@ Grant properties:
 `rm -rf`, `del /s`, `format`, `mkfs`, `curl|bash`, `wget|bash`,
 `powershell Invoke-Expression`, `sudo`, `chmod -R 777`.
 
+## Planned consequential actions
+
+Repository fast-forward, GitHub creation, remote updates, publication, Coolify app
+creation/deployment, note writes, and privileged profiles use a shared in-memory
+plan mechanism. IDs use cryptographic randomness; plans hold an operation and exact
+normalized non-secret arguments, creation/expiry timestamps, and single-use state.
+Execution consumes the plan, rechecks policy and current state, and audits creation,
+execution, expiry, replay, and rejection.
+
+Preview is not approval. In `ask` mode execution still requires `approve=true`. A
+plan cannot authorize a different repository, owner, remote, branch, commit,
+application, service, command, or note body. Daemon restart clears every plan.
+
+Git publication has no force/mirror/tag/refspec surface. GitHub operations are fixed
+to `GITHUB_OWNER`; Coolify repositories use that owner and domains obey
+`COOLIFY_ALLOWED_DOMAINS`. Tokens and env values never appear in output or audit.
+Compatibility aliases invoke identical handlers and cannot weaken policy.
+
 ## Isolation layers
 
 | Layer | Mechanism | When |
