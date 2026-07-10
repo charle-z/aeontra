@@ -143,6 +143,15 @@ are short-lived, exact-state-bound and single-use, and execution revalidates the
 jailed repo, attached branch, clean tree, HEAD, upstream target and fast-forward
 relationship before `git merge --ff-only`.
 
+Planned source hosting (2026-07-09): `source_repo_info` returns existence,
+visibility, default branch, credential-free clone URL and viewer permission for the
+fixed configured GitHub owner. Repository creation is now a two-step
+`source_repo_create_preview` -> `source_repo_create` flow with exact expiring plans,
+private-by-default visibility and an existence recheck. `repo_remote_preview` and
+`repo_remote_set` similarly plan and revalidate credential-free GitHub remotes,
+restricted to `GITHUB_OWNER`. The legacy `github_*` names remain registered on the
+same safe handlers.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/

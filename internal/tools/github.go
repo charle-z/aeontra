@@ -53,10 +53,17 @@ type githubRepoResponse struct {
 	Name          string `json:"name"`
 	FullName      string `json:"full_name"`
 	Private       bool   `json:"private"`
+	Visibility    string `json:"visibility"`
 	HTMLURL       string `json:"html_url"`
 	CloneURL      string `json:"clone_url"`
 	SSHURL        string `json:"ssh_url"`
 	DefaultBranch string `json:"default_branch"`
+	RoleName      string `json:"role_name"`
+	Permissions   struct {
+		Admin bool `json:"admin"`
+		Push  bool `json:"push"`
+		Pull  bool `json:"pull"`
+	} `json:"permissions"`
 }
 
 func (c *GitHubClient) createRepo(ctx context.Context, name, description, visibility string) (int, string, error) {

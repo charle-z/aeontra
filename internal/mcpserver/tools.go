@@ -68,10 +68,10 @@ func (s *Server) annotateTools() {
 	// Local, side-effect-free reads.
 	s.annotate(localRead,
 		"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
-		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "memory_read", "sandbox_status")
+		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "memory_read", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
-		"github_repo_info", "source_repo_info", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status")
+		"github_repo_info", "source_repo_info", "source_repo_create_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status")
 	// Additive/local writes: not read-only, but not destructive (no data loss).
 	s.annotate(localWrite,
 		"apply_patch", "create_file", "git_commit", "git_clone", "memory_write",
@@ -82,6 +82,7 @@ func (s *Server) annotateTools() {
 		"coolify_deploy", "platform_deploy", "coolify_create_app", "platform_app_create", "coolify_set_env")
 	s.annotate(externalIdempotentWrite, "repo_fetch")
 	s.annotate(localWrite, "repo_fast_forward")
+	s.annotate(localWrite, "repo_remote_set")
 	// General execution can modify local state in ways the server cannot characterize.
 	s.annotate(localDestructive, "run_command", "run_tests", "sandbox_exec")
 }
@@ -439,24 +440,39 @@ func (s *Server) register() {
 		})
 
 	s.add("github_create_repo",
-		"Create a GitHub repository for the configured owner using GITHUB_TOKEN. Defaults to private unless configured or visibility=public. Token is never exposed. Denied in read-only; in ask mode set approve=true.",
+		"Execute a previously reviewed source_repo_create_preview plan to create one GitHub repository under the configured owner. The plan is exact, expiring and single-use; token is never exposed; requires approval in ask mode.",
 		object(map[string]any{
-			"name":        strProp("new repository name"),
-			"description": strProp("optional repository description"),
-			"visibility":  strProp("optional: private or public; defaults to GITHUB_DEFAULT_VISIBILITY or private"),
-			"approve":     boolProp("create even when approval is required"),
-		}, "name"),
+			"plan_id": strProp("plan id returned by source_repo_create_preview"),
+			"approve": boolProp("execute the create plan when approval is required"),
+		}, "plan_id"),
 		func(a json.RawMessage) (string, error) {
 			var p struct {
-				Name        string `json:"name"`
-				Description string `json:"description"`
-				Visibility  string `json:"visibility"`
-				Approve     bool   `json:"approve"`
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
 			}
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.GitHubCreateRepo(p.Name, p.Description, p.Visibility, p.Approve)
+			return s.svc.SourceRepoCreate(p.PlanID, p.Approve)
+		})
+
+	s.add("source_repo_create_preview",
+		"Check that a repository is absent under the configured GitHub owner and create a read-only, exact, expiring and single-use creation plan. Private is the default; public must be explicit. Nothing is created.",
+		object(map[string]any{
+			"name":        strProp("new repository name under the configured owner"),
+			"visibility":  strProp("optional private or public visibility; defaults to configured private posture"),
+			"description": strProp("optional repository description; redacted before planning"),
+		}, "name"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Name        string `json:"name"`
+				Visibility  string `json:"visibility"`
+				Description string `json:"description"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.SourceRepoCreatePreview(p.Name, p.Visibility, p.Description)
 		})
 
 	s.add("github_repo_info",
@@ -469,7 +485,43 @@ func (s *Server) register() {
 			if err := json.Unmarshal(a, &p); err != nil {
 				return "", err
 			}
-			return s.svc.GitHubRepoInfo(p.Name)
+			return s.svc.SourceRepoInfo(p.Name)
+		})
+
+	s.add("repo_remote_preview",
+		"Create a read-only, exact, expiring and single-use plan to add or update one named Git remote in a jailed repository. The destination must be credential-free and stay under configured GITHUB_OWNER.",
+		object(map[string]any{
+			"repo":       strProp("repository directory, absolute or relative to the workspace root"),
+			"remote":     strProp("remote name, defaults to origin"),
+			"repository": strProp("repository name under configured owner, or an allowed credential-free HTTPS/SSH GitHub URL"),
+		}, "repo", "repository"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo       string `json:"repo"`
+				Remote     string `json:"remote"`
+				Repository string `json:"repository"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.RepoRemotePreview(p.Repo, p.Remote, p.Repository)
+		})
+
+	s.add("repo_remote_set",
+		"Execute one reviewed repo_remote_preview plan. It revalidates the current remote state and runs exactly git remote add or git remote set-url; requires approval in ask mode.",
+		object(map[string]any{
+			"plan_id": strProp("plan id returned by repo_remote_preview"),
+			"approve": boolProp("execute the remote plan when approval is required"),
+		}, "plan_id"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.RepoRemoteSet(p.PlanID, p.Approve)
 		})
 
 	s.add("run_tests",
