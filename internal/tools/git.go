@@ -13,28 +13,11 @@ import (
 // GitStatus returns the working-tree status (read-only; works in any mode). When
 // repo is provided, it is resolved as a working directory inside the jail.
 func (s *Service) GitStatus(repo ...string) (string, error) {
-	sp := s.log.Start("git_status")
 	dirArg := ""
 	if len(repo) > 0 {
 		dirArg = repo[0]
 	}
-	dir, err := s.workdir(dirArg)
-	if err != nil {
-		sp.Finish(audit.Deny, "git status", nil, err)
-		return "", err
-	}
-	args := []string{"status", "--short", "--branch"}
-	if err := s.pol.CheckCommandAllowed("git", args); err != nil {
-		sp.Finish(audit.Deny, "git status", nil, err)
-		return "", err
-	}
-	out, err := s.run(context.Background(), dir, "git", args)
-	if err != nil {
-		sp.Finish(audit.Error, "git status", []string{dir}, err)
-		return s.redact(out), fmt.Errorf("git status: %w", err)
-	}
-	sp.Finish(audit.Allow, "git status", []string{dir}, nil)
-	return s.redact(out), nil
+	return s.RepoStatus(dirArg)
 }
 
 // GitDiff returns a diff (read-only). Optional extra args (e.g. "--staged" or a

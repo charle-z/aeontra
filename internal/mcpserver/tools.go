@@ -63,11 +63,12 @@ func (s *Server) annotateTools() {
 	externalRead := map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
 	localWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
 	externalWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
+	externalIdempotentWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
 	localDestructive := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
 	// Local, side-effect-free reads.
 	s.annotate(localRead,
 		"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
-		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "memory_read", "sandbox_status")
+		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "memory_read", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
 		"github_repo_info", "source_repo_info", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status")
@@ -79,6 +80,8 @@ func (s *Server) annotateTools() {
 	s.annotate(externalWrite,
 		"git_push", "repo_publish", "github_create_repo", "source_repo_create",
 		"coolify_deploy", "platform_deploy", "coolify_create_app", "platform_app_create", "coolify_set_env")
+	s.annotate(externalIdempotentWrite, "repo_fetch")
+	s.annotate(localWrite, "repo_fast_forward")
 	// General execution can modify local state in ways the server cannot characterize.
 	s.annotate(localDestructive, "run_command", "run_tests", "sandbox_exec")
 }
@@ -363,6 +366,55 @@ func (s *Server) register() {
 				return "", err
 			}
 			return s.svc.GitClone(p.URL, p.Dir, p.Approve)
+		})
+
+	s.add("repo_fetch",
+		"Fetch one named remote into one jailed Git repository by running exactly 'git fetch <remote>'. No refspecs or extra arguments are accepted. This external action updates local remote-tracking refs and requires approval in ask mode.",
+		object(map[string]any{
+			"repo":    strProp("repository directory, absolute or relative to the workspace root"),
+			"remote":  strProp("remote name, defaults to origin; option-like names are rejected"),
+			"approve": boolProp("execute the fetch when approval is required"),
+		}, "repo"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo    string `json:"repo"`
+				Remote  string `json:"remote"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.RepoFetch(p.Repo, p.Remote, p.Approve)
+		})
+
+	s.add("repo_fast_forward_preview",
+		"Create a read-only, short-lived, single-use plan for an exact clean-tree fast-forward of the current attached branch to its existing upstream tracking ref. It does not fetch or modify the repository.",
+		object(map[string]any{"repo": strProp("repository directory, absolute or relative to the workspace root")}, "repo"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo string `json:"repo"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.RepoFastForwardPreview(p.Repo)
+		})
+
+	s.add("repo_fast_forward",
+		"Execute one previously reviewed, unexpired and unused fast-forward plan using exactly 'git merge --ff-only <upstream>'. Repository, branch, HEAD, target and clean state are revalidated; requires approval in ask mode.",
+		object(map[string]any{
+			"plan_id": strProp("plan id returned by repo_fast_forward_preview"),
+			"approve": boolProp("execute the plan when approval is required"),
+		}, "plan_id"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.RepoFastForward(p.PlanID, p.Approve)
 		})
 
 	s.add("git_push",

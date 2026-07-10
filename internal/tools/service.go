@@ -31,12 +31,16 @@ type Service struct {
 	testCmd []string       // the single allowlisted test command (run_tests)
 	coolify *CoolifyClient // optional; nil/unconfigured = coolify_deploy disabled
 	github  *GitHubClient  // optional; nil/unconfigured = GitHub tools disabled
+	plans   *ActionPlanStore
 }
 
 // NewService builds a Service. root must be one of the policy's jail roots.
 func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
-	return &Service{pol: pol, log: log, root: root, run: execRunner, sandbox: disabledSandboxRunner{}}
+	return &Service{pol: pol, log: log, root: root, run: execRunner, sandbox: disabledSandboxRunner{}, plans: NewActionPlanStore(log)}
 }
+
+// WithActionPlanStore overrides the in-memory plan store for deterministic tests.
+func (s *Service) WithActionPlanStore(store *ActionPlanStore) *Service { s.plans = store; return s }
 
 // WithRunner overrides the command runner (tests).
 func (s *Service) WithRunner(r Runner) *Service { s.run = r; return s }

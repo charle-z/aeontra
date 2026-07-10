@@ -135,6 +135,14 @@ all four behavior hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, an
 with the original names and reuse the exact same schemas, handlers, policy checks,
 and approval posture.
 
+Safe repository synchronization (2026-07-09): `repo_status`/`git_status` return
+branch, HEAD, upstream, ahead/behind and categorized working-tree state.
+`repo_fetch` runs only `git fetch <remote>`. `repo_fast_forward_preview` and
+`repo_fast_forward` use the shared in-memory cryptographic action-plan store; plans
+are short-lived, exact-state-bound and single-use, and execution revalidates the
+jailed repo, attached branch, clean tree, HEAD, upstream target and fast-forward
+relationship before `git merge --ff-only`.
+
 ## What Works
 
 - Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
