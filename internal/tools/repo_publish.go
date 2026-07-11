@@ -69,7 +69,7 @@ func (s *Service) RepoPublishPreview(repo, remote, branch string) (string, error
 		sp.Finish(audit.Deny, "preview", []string{st.Dir}, err)
 		return "", err
 	}
-	remoteState, err := s.readRemoteBranch(st.Dir, remote, branch)
+	remoteState, err := s.readRemoteBranch(st.Dir, remoteURL, remote, branch)
 	if err != nil {
 		sp.Finish(audit.Error, "preview", []string{st.Dir}, err)
 		return "", err
@@ -166,7 +166,7 @@ func (s *Service) RepoPublish(planID string, approve bool) (string, error) {
 		sp.Finish(audit.Deny, planID, []string{st.Dir}, err)
 		return "", err
 	}
-	remoteState, err := s.readRemoteBranch(st.Dir, plan.Args["remote"], plan.Args["branch"])
+	remoteState, err := s.readRemoteBranch(st.Dir, remoteURL, plan.Args["remote"], plan.Args["branch"])
 	if err != nil {
 		sp.Finish(audit.Error, planID, []string{st.Dir}, err)
 		return "", err
@@ -184,7 +184,7 @@ func (s *Service) RepoPublish(planID string, approve bool) (string, error) {
 	// Deliberately do not route this through the generic command allowlist: generic
 	// git push is always blocked there. This exact argv is generated and validated
 	// by the publication plan and still passes the central action posture above.
-	out, runErr := s.run(context.Background(), st.Dir, "git", args)
+	out, runErr := s.runGitHubRemote(context.Background(), st.Dir, remoteURL, args)
 	if runErr != nil {
 		sp.Finish(audit.Error, planID, []string{st.Dir}, runErr)
 		return s.redact(out), fmt.Errorf("git push: %w", runErr)
@@ -193,7 +193,7 @@ func (s *Service) RepoPublish(planID string, approve bool) (string, error) {
 	return s.redact(out), nil
 }
 
-func (s *Service) readRemoteBranch(dir, remote, branch string) (remoteBranchState, error) {
+func (s *Service) readRemoteBranch(dir, remoteURL, remote, branch string) (remoteBranchState, error) {
 	if !safeGitName(remote) || strings.Contains(remote, "/") || !safeGitName(branch) {
 		return remoteBranchState{}, fmt.Errorf("unsafe remote or branch")
 	}
@@ -201,7 +201,7 @@ func (s *Service) readRemoteBranch(dir, remote, branch string) (remoteBranchStat
 	if err := s.pol.CheckCommandAllowed("git", args); err != nil {
 		return remoteBranchState{}, err
 	}
-	out, err := s.run(context.Background(), dir, "git", args)
+	out, err := s.runGitHubRemote(context.Background(), dir, remoteURL, args)
 	if err != nil {
 		return remoteBranchState{}, fmt.Errorf("git ls-remote: %w", err)
 	}

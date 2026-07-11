@@ -21,12 +21,18 @@ const maxReadBytes = 1 << 20 // 1 MiB
 // and returns combined stdout+stderr. Injectable for tests.
 type Runner func(ctx context.Context, dir, prog string, args []string) (output string, err error)
 
+// GitHubHTTPSRunner executes a fixed git argv against an already-validated GitHub
+// HTTPS remote. The token is supplied out-of-band so it never enters the remote URL,
+// command argv, audit record, or tool result.
+type GitHubHTTPSRunner func(ctx context.Context, dir, prog string, args []string, token string) (output string, err error)
+
 // Service is the L1 tool surface.
 type Service struct {
 	pol        *policy.Policy
 	log        *audit.Logger
 	root       string // primary project root: working dir for commands
 	run        Runner
+	githubRun  GitHubHTTPSRunner
 	sandbox    SandboxRunner
 	testCmd    []string       // the single allowlisted test command (run_tests)
 	coolify    *CoolifyClient // optional; nil/unconfigured = coolify_deploy disabled
@@ -37,14 +43,21 @@ type Service struct {
 
 // NewService builds a Service. root must be one of the policy's jail roots.
 func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
-	return &Service{pol: pol, log: log, root: root, run: execRunner, sandbox: disabledSandboxRunner{}, plans: NewActionPlanStore(log)}
+	return &Service{pol: pol, log: log, root: root, run: execRunner, githubRun: execGitHubHTTPSRunner, sandbox: disabledSandboxRunner{}, plans: NewActionPlanStore(log)}
 }
 
 // WithActionPlanStore overrides the in-memory plan store for deterministic tests.
 func (s *Service) WithActionPlanStore(store *ActionPlanStore) *Service { s.plans = store; return s }
 
 // WithRunner overrides the command runner (tests).
-func (s *Service) WithRunner(r Runner) *Service { s.run = r; return s }
+func (s *Service) WithRunner(r Runner) *Service {
+	s.run = r
+	// Tests and alternative runners retain control of the exact git invocation.
+	s.githubRun = func(ctx context.Context, dir, prog string, args []string, _ string) (string, error) {
+		return r(ctx, dir, prog, args)
+	}
+	return s
+}
 
 // WithSandboxRunner overrides the L3 sandbox runner (tests/future backends).
 func (s *Service) WithSandboxRunner(r SandboxRunner) *Service { s.sandbox = r; return s }

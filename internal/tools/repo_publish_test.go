@@ -98,6 +98,33 @@ func TestRepoPublishSuccessfulInitialAndNormalPush(t *testing.T) {
 	}
 }
 
+func TestRepoPublishUsesConfiguredTokenOnlyForBoundGitHubHTTPSRemote(t *testing.T) {
+	f := &publishFixture{head: strings.Repeat("a", 40), branch: "main", remoteURL: "https://github.com/acme/demo.git", pushOutput: "pushed"}
+	svc, root := newPublishService(t, config.ModeAllow, f)
+	var gotToken string
+	var calls int
+	svc.githubRun = func(_ context.Context, _ string, _ string, args []string, token string) (string, error) {
+		calls++
+		gotToken = token
+		return f.runner(context.Background(), "", "git", args)
+	}
+	preview, err := svc.RepoPublishPreview(root, "origin", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RepoPublish(field(preview, "plan_id"), true); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || gotToken != "token" {
+		t.Fatalf("GitHub HTTPS runner calls=%d token=%q, want two calls with configured token", calls, gotToken)
+	}
+	for _, args := range f.commands {
+		if strings.Contains(strings.Join(args, " "), "token") {
+			t.Fatalf("token leaked into git argv: %#v", args)
+		}
+	}
+}
+
 func TestRepoPublishPreviewRejectsUnsafeStateAndArguments(t *testing.T) {
 	base := publishFixture{head: strings.Repeat("a", 40), branch: "main", remoteURL: "https://github.com/acme/demo.git", counts: "0 1"}
 	for _, tc := range []struct {
