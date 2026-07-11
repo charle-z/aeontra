@@ -9,6 +9,12 @@ the Coolify/VPS deployment over HTTPS and can operate on repos cloned in the VPS
 volume. Current goal: evolve mcp-devbox into a GPT-driven agent tool box that can
 safely do work, while a human keeps control of risky operations.
 
+Product roadmap (2026-07-11): `docs/product-roadmap.md` defines the complete path
+from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
+edge agents, provider-neutral MiniMax/OpenCode orchestration, and scope-bound
+authorized security research. The public console is presentation-only; MCP Devbox
+remains the private authority and is not tied to any framework or model provider.
+
 ## Vision (updated 2026-06-30)
 
 The agent is ChatGPT itself. ChatGPT drives the loop directly through MCP tools;
@@ -67,9 +73,11 @@ Transport:
 - OAuth 2.1: in-process AS + resource server in `internal/oauth`. Enable with env
   `MCP_DEVBOX_PUBLIC_URL` + `MCP_DEVBOX_OAUTH_PASSPHRASE`; discovery (RFC 9728/8414),
   DCR (7591), PKCE S256, refresh rotation, audience-bound tokens. Optional
-  `MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only DCR public client registrations so
-  ChatGPT can reauthenticate after redeploy without deleting the connector. Tokens and
-  authorization codes remain in-memory only. Static bearer/`?key=` kept as fallback.
+  `MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only DCR public client registrations.
+  `MCP_DEVBOX_OAUTH_REFRESH_STORE` optionally persists rotating refresh tokens with
+  mode 0600 so ChatGPT can survive redeploys without repeating owner login. Access
+  tokens and authorization codes remain in-memory only. Static bearer/`?key=` remains
+  available as fallback.
   See `docs/oauth.md`.
 
 Ephemeral grants:
@@ -198,7 +206,7 @@ are not automatically committed into child project repositories.
   sibling-prefix protection, secret path deny, content redaction, command allowlist,
   destructive/injection blocking, in-memory read grants, immutable runtime policy.
 - Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- Tools (`internal/tools`): 53 registered tools with schema, description, four
+- Tools (`internal/tools`): 55 registered tools with schema, description, four
   annotations, handler and tests. See `docs/tools.md` for the canonical complete
   table, compatibility aliases, exact effects, and workflows.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
@@ -230,6 +238,7 @@ are not automatically committed into child project repositories.
 | `docs/design.md` | Architecture and layer decisions. |
 | `docs/connect-remote.md` | ChatGPT/local client setup and real-world connector notes. |
 | `docs/deploy-coolify.md` | VPS/Coolify deployment guide. |
+| `docs/product-roadmap.md` | Cubethon, universal profiles, edge, orchestrator, and authorized-security roadmap. |
 
 ## Commands
 
@@ -323,9 +332,9 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-10. Local secure-builder gates green: `go test ./... -count=1`,
+Date: 2026-07-11. Local secure-builder gates green: `go test ./... -count=1`,
 `go vet ./...`, `go build ./...`, and empty `gofmt -l .`. Wire-level `tools/list`
-coverage asserts 53 unique tools and, for each, a schema, description, all four
+coverage asserts 55 unique tools and, for each, a schema, description, all four
 annotations, handler, tests, and documentation. No push, GitHub creation, Coolify
 deployment, live infrastructure mutation, or secret-bearing API call was performed.
 Production still runs the previously validated baseline until the owner explicitly

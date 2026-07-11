@@ -168,7 +168,7 @@ Observed behavior from the production connector:
 
 ## Current Tool Surface
 
-The canonical 53-tool table, all four annotations, aliases and exact effects are in
+The canonical 55-tool table, all four annotations, aliases and exact effects are in
 [tools.md](tools.md). Recommended complete workflows are:
 
 ```text
@@ -192,6 +192,7 @@ platform_app_create
 platform_deploy_preview
 platform_deploy
 platform_app_status
+platform_app_logs
 ```
 
 Use `notes_list`/`notes_read` and `notes_write_preview`/`notes_write` for free-form

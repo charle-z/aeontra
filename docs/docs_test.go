@@ -57,12 +57,12 @@ func TestToolReferenceDocumentsAllRegisteredToolsAndInvariants(t *testing.T) {
 	doc := readDoc(t, "tools.md")
 	tools := []string{
 		"apply_patch", "build_context_pack", "coolify_app_status", "coolify_create_app",
-		"coolify_deploy", "coolify_list_apps", "coolify_set_env", "create_file",
+		"coolify_app_logs", "coolify_deploy", "coolify_list_apps", "coolify_set_env", "create_file",
 		"git_clone", "git_commit", "git_diff", "git_push", "git_status",
 		"github_create_repo", "github_repo_info", "list_dir", "memory_read",
 		"memory_update_handoff", "memory_write", "notes_list", "notes_read",
 		"notes_write", "notes_write_preview", "platform_app_create",
-		"platform_app_create_preview", "platform_app_status", "platform_apps_list",
+		"platform_app_create_preview", "platform_app_logs", "platform_app_status", "platform_apps_list",
 		"platform_deploy", "platform_deploy_preview", "privileged_task_execute",
 		"privileged_task_preview", "read_file", "read_many_files", "repo_diff",
 		"repo_fast_forward", "repo_fast_forward_preview", "repo_fetch", "repo_list",
@@ -71,8 +71,8 @@ func TestToolReferenceDocumentsAllRegisteredToolsAndInvariants(t *testing.T) {
 		"search_code", "source_repo_create", "source_repo_create_preview", "source_repo_info",
 		"project_validation_preview", "project_validation_execute",
 	}
-	if len(tools) != 53 {
-		t.Fatalf("test inventory has %d tools, want 53", len(tools))
+	if len(tools) != 55 {
+		t.Fatalf("test inventory has %d tools, want 55", len(tools))
 	}
 	for _, name := range tools {
 		if !strings.Contains(doc, "`"+name+"`") {

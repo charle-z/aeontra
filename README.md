@@ -43,10 +43,11 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **mandatory bearer auth**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the server now exposes 51 deliberately annotated
+**Secure builder evolution:** the server now exposes 55 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
-and disabled-by-default privileged profiles. Consequential operations use
+private validation profiles, bounded Coolify logs, and disabled-by-default
+privileged profiles. Consequential operations use
 cryptographically named, expiring, single-use plans and revalidate state before
 execution. See [docs/tools.md](docs/tools.md).
 
@@ -80,6 +81,7 @@ repo_list -> repo_status -> repo_fetch
 
 platform_apps_list -> platform_app_create_preview -> platform_app_create
 -> platform_deploy_preview -> platform_deploy -> platform_app_status
+-> platform_app_logs
 ```
 
 Use one tool call per message when that is more reliable for the ChatGPT connector.
@@ -103,3 +105,5 @@ writes require explicit approval in ask mode; aliases never weaken policy.
 - `docs/security.md` — threat model + secure-by-default invariants (the product).
 - `docs/context-capsule.md` — current state for resuming without re-hydrating chat.
 - `docs/tools.md` — canonical tool, alias, annotation, workflow, and approval reference.
+- `docs/product-roadmap.md` — Cubethon delivery plus universal profiles, edge,
+  orchestration, and authorized-security roadmap.

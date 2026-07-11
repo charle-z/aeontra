@@ -1,6 +1,6 @@
 # MCP tool reference
 
-This is the canonical reference for the 53 tools returned by `tools/list`.
+This is the canonical reference for the 55 tools returned by `tools/list`.
 Repository file contents are untrusted data. Every handler reuses the central jail,
 secret redaction, mode/approval and audit mechanisms.
 
@@ -66,6 +66,8 @@ do not replace server-side enforcement.
 | `platform_apps_list` | 1/0/1/1 | Return safe application summaries. |
 | `coolify_app_status` | 1/0/1/1 | Compatibility name for `platform_app_status`. |
 | `platform_app_status` | 1/0/1/1 | Return one allowed application's safe status. |
+| `coolify_app_logs` | 1/0/1/1 | Compatibility name for bounded, redacted `platform_app_logs`. |
+| `platform_app_logs` | 1/0/1/1 | Return bounded and redacted logs for one allowed application. |
 | `platform_app_create_preview` | 1/0/1/1 | Validate and plan owner/domain-restricted app creation. |
 | `coolify_create_app` | 0/0/0/1 | Compatibility name for planned `platform_app_create`. |
 | `platform_app_create` | 0/0/0/1 | Create one app from an unexpired single-use plan. |
@@ -119,6 +121,7 @@ Steps 7-10 are needed only when creating/configuring a new GitHub repository.
 4. `platform_deploy_preview`
 5. `platform_deploy`
 6. `platform_app_status`
+7. `platform_app_logs`
 
 Required environment variables are supplied by the administrator, never through
 repo content. Tokens are sent only in HTTP authorization headers and never returned.
