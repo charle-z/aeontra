@@ -120,8 +120,8 @@ func (s *Service) PlatformAppsList() (string, error) {
 		sp.Finish(audit.Error, "list", nil, err)
 		return s.coolifySafe(body), err
 	}
-	var apps []platformApplication
-	if err := json.Unmarshal([]byte(body), &apps); err != nil {
+	apps, err := decodePlatformApplications(body)
+	if err != nil {
 		sp.Finish(audit.Error, "list", nil, err)
 		return "", fmt.Errorf("decoding Coolify application list: %w", err)
 	}
@@ -137,6 +137,28 @@ func (s *Service) PlatformAppsList() (string, error) {
 	}
 	sp.Finish(audit.Allow, "list", nil, nil)
 	return s.redact(b.String()), nil
+}
+
+func decodePlatformApplications(body string) ([]platformApplication, error) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil, nil
+	}
+	var apps []platformApplication
+	if err := json.Unmarshal([]byte(body), &apps); err == nil {
+		return apps, nil
+	}
+	var wrapped struct {
+		Applications []platformApplication `json:"applications"`
+		Data         []platformApplication `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &wrapped); err != nil {
+		return nil, err
+	}
+	if wrapped.Applications != nil {
+		return wrapped.Applications, nil
+	}
+	return wrapped.Data, nil
 }
 
 func (s *Service) PlatformAppStatus(appID string) (string, error) {
@@ -386,13 +408,26 @@ func (s *Service) PlatformDeploy(planID string, approve bool) (string, error) {
 		DeploymentUUID string `json:"deployment_uuid"`
 		UUID           string `json:"uuid"`
 		Status         string `json:"status"`
+		Message        string `json:"message"`
 	}
-	_ = json.Unmarshal([]byte(body), &result)
+	trimmedBody := strings.TrimSpace(body)
+	if trimmedBody != "" {
+		_ = json.Unmarshal([]byte(trimmedBody), &result)
+	}
 	if result.DeploymentUUID == "" {
 		result.DeploymentUUID = result.UUID
 	}
 	sp.Finish(audit.Allow, planID, nil, nil)
-	return fmt.Sprintf("deployment_id: %s\nstatus: %s\n", result.DeploymentUUID, result.Status), nil
+	out := fmt.Sprintf("http_status: %d\ndeployment_id: %s\nstatus: %s\n", status, result.DeploymentUUID, result.Status)
+	if result.Message != "" {
+		out += "message: " + s.coolifySafe(result.Message) + "\n"
+	}
+	if trimmedBody == "" {
+		out += "response_body: empty\n"
+	} else if result.DeploymentUUID == "" && result.Status == "" && result.Message == "" {
+		out += "response_body: " + s.coolifySafe(trimmedBody) + "\n"
+	}
+	return out, nil
 }
 
 func (s *Service) getPlatformApp(appID string) (platformApplication, error) {
