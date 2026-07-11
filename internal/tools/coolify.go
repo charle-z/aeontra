@@ -135,7 +135,7 @@ func (c *CoolifyClient) request(ctx context.Context, method, path string, payloa
 		return 0, "", err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 16384))
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	return resp.StatusCode, strings.TrimSpace(string(data)), nil
 }
 
