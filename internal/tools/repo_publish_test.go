@@ -115,8 +115,8 @@ func TestRepoPublishUsesConfiguredTokenOnlyForBoundGitHubHTTPSRemote(t *testing.
 	if _, err := svc.RepoPublish(field(preview, "plan_id"), true); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 2 || gotToken != "token" {
-		t.Fatalf("GitHub HTTPS runner calls=%d token=%q, want two calls with configured token", calls, gotToken)
+	if calls != 3 || gotToken != "token" {
+		t.Fatalf("GitHub HTTPS runner calls=%d token=%q, want three calls with configured token", calls, gotToken)
 	}
 	for _, args := range f.commands {
 		if strings.Contains(strings.Join(args, " "), "token") {

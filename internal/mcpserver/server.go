@@ -171,9 +171,15 @@ func (s *Server) callTool(req rpcRequest) rpcResponse {
 	text, err := entry.handler(params.Arguments)
 	if err != nil {
 		// Tool/policy errors are reported as tool results with isError=true so the
-		// agent can read the (already-redacted) reason, per MCP convention.
+		// agent can read the (already-redacted) reason, per MCP convention. Preserve
+		// diagnostic output returned alongside the error; validation/build tools
+		// commonly return the failing command's log plus a non-zero status.
+		message := err.Error()
+		if text != "" {
+			message = text + "\n\nError: " + err.Error()
+		}
 		return resultResponse(req.ID, toolResult{
-			Content: []contentBlock{{Type: "text", Text: err.Error()}},
+			Content: []contentBlock{{Type: "text", Text: message}},
 			IsError: true,
 		})
 	}

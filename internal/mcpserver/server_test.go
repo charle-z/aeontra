@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -196,6 +197,26 @@ func TestToolsCall_DeniedSecretIsErrorResult(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "access-required") || !strings.Contains(string(b), "request_id") {
 		t.Errorf("secret read should return structured access-required result: %s", b)
+	}
+}
+
+func TestToolsCall_ErrorResultPreservesHandlerOutput(t *testing.T) {
+	s, _ := newTestServer(t, config.ModeReadOnly)
+	s.add("failing_with_output", "test tool", object(map[string]any{}), func(json.RawMessage) (string, error) {
+		return "check output\nactual failure details", errors.New("validation failed")
+	})
+
+	resp := call(t, s, `{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"failing_with_output","arguments":{}}}`)
+	var tr toolResult
+	b, _ := json.Marshal(resp.Result)
+	if err := json.Unmarshal(b, &tr); err != nil {
+		t.Fatal(err)
+	}
+	if !tr.IsError {
+		t.Fatalf("failed handler should be an isError result: %s", b)
+	}
+	if len(tr.Content) != 1 || !strings.Contains(tr.Content[0].Text, "actual failure details") || !strings.Contains(tr.Content[0].Text, "validation failed") {
+		t.Fatalf("error result discarded handler output: %s", b)
 	}
 }
 
