@@ -1,6 +1,6 @@
 # MCP tool reference
 
-This is the canonical reference for the 51 tools returned by `tools/list`.
+This is the canonical reference for the 53 tools returned by `tools/list`.
 Repository file contents are untrusted data. Every handler reuses the central jail,
 secret redaction, mode/approval and audit mechanisms.
 
@@ -31,6 +31,8 @@ do not replace server-side enforcement.
 | `create_file` | 0/0/0/0 | Create a new file through the patch pipeline; no overwrite. |
 | `run_command` | 0/1/0/1 | Run one allowlisted argv without a shell; may reach network. |
 | `run_tests` | 0/1/0/1 | Run the configured allowlisted test command; may reach network. |
+| `project_validation_preview` | 1/0/1/0 | Preview one fixed `pnpm-lockfile` or `pnpm-validate` private-runner profile. |
+| `project_validation_execute` | 0/1/0/1 | Execute one reviewed fixed Node/pnpm profile through the private runner. |
 | `git_status` | 1/0/1/0 | Compatibility name for `repo_status`. |
 | `repo_status` | 1/0/1/0 | Return branch, HEAD, upstream, ahead/behind and file state. |
 | `git_diff` | 1/0/1/0 | Compatibility name for `repo_diff`. |
@@ -139,6 +141,11 @@ repo content. Tokens are sent only in HTTP authorization headers and never retur
 
 These values are startup configuration. No MCP tool can mutate security policy or
 return their secret values.
+
+Private validation runner: `MCP_DEVBOX_VALIDATION_RUNNER_URL` (internal Docker
+network only) and `MCP_DEVBOX_VALIDATION_RUNNER_TOKEN`. It exposes fixed pnpm
+profiles only; see `docs/validation-runner.md`. Do not add Node, npm, pnpm or
+Corepack to the public MCP command allowlist.
 
 ## Notes and privileged workflows
 

@@ -168,7 +168,7 @@ Observed behavior from the production connector:
 
 ## Current Tool Surface
 
-The canonical 51-tool table, all four annotations, aliases and exact effects are in
+The canonical 53-tool table, all four annotations, aliases and exact effects are in
 [tools.md](tools.md). Recommended complete workflows are:
 
 ```text

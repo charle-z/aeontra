@@ -166,6 +166,14 @@ healthcheck and required environment-variable names (never values). Deployment i
 and expected commit. Both write flows use expiring single-use plans and revalidation;
 legacy Coolify names share the same handlers.
 
+GitHub publication and private Coolify sources (2026-07-11): `repo_publish` uses
+credential-safe HTTPS authentication for configured owner-bound GitHub remotes
+without persisting a token in the remote URL. `COOLIFY_GITHUB_APP_UUID` selects the
+configured Coolify GitHub App source and routes application creation through
+`/api/v1/applications/private-github-app`; when it is unset, the public repository
+endpoint remains the backwards-compatible default. Production verified this path by
+creating and deploying a private GitHub repository through the Coolify source.
+
 Controlled privileged profiles (2026-07-10): `privileged_task_preview` and
 `privileged_task_execute` expose only server-defined profiles and are disabled by
 default (`MCP_DEVBOX_PRIVILEGED_TASKS=true` enables them). The client cannot provide
@@ -190,7 +198,7 @@ are not automatically committed into child project repositories.
   sibling-prefix protection, secret path deny, content redaction, command allowlist,
   destructive/injection blocking, in-memory read grants, immutable runtime policy.
 - Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- Tools (`internal/tools`): 51 registered tools with schema, description, four
+- Tools (`internal/tools`): 53 registered tools with schema, description, four
   annotations, handler and tests. See `docs/tools.md` for the canonical complete
   table, compatibility aliases, exact effects, and workflows.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
@@ -271,6 +279,9 @@ Container/Coolify env:
 - `COOLIFY_PROJECT_UUID`
 - `COOLIFY_ENVIRONMENT_NAME` or `COOLIFY_ENVIRONMENT_UUID`
 - `COOLIFY_ALLOWED_DOMAINS` (optional domain suffix allowlist)
+- `COOLIFY_GITHUB_APP_UUID` (optional Coolify GitHub App source for private repos)
+- `MCP_DEVBOX_VALIDATION_RUNNER_URL` and `MCP_DEVBOX_VALIDATION_RUNNER_TOKEN`
+  (optional private fixed-profile pnpm runner; never publicly routed)
 - `MCP_DEVBOX_PRIVILEGED_TASKS` (`true` explicitly enables fixed profiles; default disabled)
 - `MCP_DEVBOX_PRIVILEGED_SERVICES` (optional approved service names)
 - `MCP_DEVBOX_PRIVILEGED_TIMEOUT` (optional, default `2m`)
@@ -314,7 +325,7 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 Date: 2026-07-10. Local secure-builder gates green: `go test ./... -count=1`,
 `go vet ./...`, `go build ./...`, and empty `gofmt -l .`. Wire-level `tools/list`
-coverage asserts 51 unique tools and, for each, a schema, description, all four
+coverage asserts 53 unique tools and, for each, a schema, description, all four
 annotations, handler, tests, and documentation. No push, GitHub creation, Coolify
 deployment, live infrastructure mutation, or secret-bearing API call was performed.
 Production still runs the previously validated baseline until the owner explicitly

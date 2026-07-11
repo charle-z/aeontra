@@ -34,16 +34,17 @@ type Service struct {
 	run        Runner
 	githubRun  GitHubHTTPSRunner
 	sandbox    SandboxRunner
-	testCmd    []string       // the single allowlisted test command (run_tests)
-	coolify    *CoolifyClient // optional; nil/unconfigured = coolify_deploy disabled
-	github     *GitHubClient  // optional; nil/unconfigured = GitHub tools disabled
+	testCmd    []string         // the single allowlisted test command (run_tests)
+	coolify    *CoolifyClient   // optional; nil/unconfigured = coolify_deploy disabled
+	github     *GitHubClient    // optional; nil/unconfigured = GitHub tools disabled
+	validation ValidationRunner // optional private Node/pnpm validation runner
 	plans      *ActionPlanStore
 	privileged PrivilegedConfig
 }
 
 // NewService builds a Service. root must be one of the policy's jail roots.
 func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
-	return &Service{pol: pol, log: log, root: root, run: execRunner, githubRun: execGitHubHTTPSRunner, sandbox: disabledSandboxRunner{}, plans: NewActionPlanStore(log)}
+	return &Service{pol: pol, log: log, root: root, run: execRunner, githubRun: execGitHubHTTPSRunner, sandbox: disabledSandboxRunner{}, validation: disabledValidationRunner{}, plans: NewActionPlanStore(log)}
 }
 
 // WithActionPlanStore overrides the in-memory plan store for deterministic tests.
@@ -70,6 +71,16 @@ func (s *Service) WithCoolify(c *CoolifyClient) *Service { s.coolify = c; return
 
 // WithGitHub sets the optional GitHub API client (nil disables GitHub tools).
 func (s *Service) WithGitHub(c *GitHubClient) *Service { s.github = c; return s }
+
+// WithValidationRunner attaches the private fixed-profile runner. The public MCP
+// still never receives a Docker socket or a general process executor.
+func (s *Service) WithValidationRunner(r ValidationRunner) *Service {
+	if r == nil {
+		r = disabledValidationRunner{}
+	}
+	s.validation = r
+	return s
+}
 
 // WithPrivilegedConfig applies immutable administrator startup configuration for
 // closed privileged profiles. It is not exposed through MCP at runtime.

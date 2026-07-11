@@ -207,5 +207,5 @@ After an authorized push, let the existing Coolify webhook rebuild the branch.
 Verify `/healthz` reports the pushed commit before testing tools. Keep `/repos` and
 `/state` volumes mounted. With persisted OAuth client and refresh stores, ChatGPT
 should reconnect without connector deletion; if OAuth configuration changed,
-reconnect once through the normal OAuth flow. Then call `tools/list`, confirm 51
+reconnect once through the normal OAuth flow. Then call `tools/list`, confirm 53
 tools and all four annotations, and run read-only acceptance tests before any write.

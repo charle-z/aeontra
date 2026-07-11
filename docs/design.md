@@ -38,7 +38,7 @@ local repositories (only configured paths)
 ```
 
 The current secure-builder surface is larger than this original MVP diagram. The
-canonical 51-tool registry, aliases and annotations are in `tools.md`.
+canonical 53-tool registry, aliases and annotations are in `tools.md`.
 Consequential multi-step operations share one in-memory action-plan store:
 
 ```text

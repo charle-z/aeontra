@@ -74,7 +74,7 @@ func (s *Server) annotateTools() {
 	// Local, side-effect-free reads.
 	s.annotate(localRead,
 		"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
-		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "memory_read", "notes_list", "notes_read", "notes_write_preview", "sandbox_status")
+		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "project_validation_preview", "memory_read", "notes_list", "notes_read", "notes_write_preview", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
 		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "platform_app_create_preview", "platform_deploy_preview")
@@ -91,7 +91,7 @@ func (s *Server) annotateTools() {
 	// These tools can replace/delete content or perform effects the server cannot
 	// characterize as additive, so clients must see truthful destructive hints.
 	s.annotate(localDestructive, "apply_patch", "memory_write", "memory_update_handoff", "repo_remote_set", "sandbox_exec")
-	s.annotate(externalDestructive, "run_command", "run_tests", "coolify_deploy", "platform_deploy", "coolify_set_env", "privileged_task_execute")
+	s.annotate(externalDestructive, "run_command", "run_tests", "coolify_deploy", "platform_deploy", "coolify_set_env", "privileged_task_execute", "project_validation_execute")
 }
 
 // register wires every L1 tool. Descriptions are written for the orchestrating
@@ -642,6 +642,40 @@ func (s *Server) register() {
 			}
 			_ = json.Unmarshal(a, &p)
 			return s.svc.RunTestsIn(p.Approve, p.CWD, p.Extra...)
+		})
+
+	s.add("project_validation_preview",
+		"Preview one fixed Node/pnpm validation profile for a direct child repository. Profiles are pnpm-lockfile (generate lockfile and fetch, no lifecycle scripts) and pnpm-validate (offline frozen install, check, test, build). The public MCP never receives Docker access, shell input, or arbitrary command arguments.",
+		object(map[string]any{
+			"repo":    strProp("direct repository name under /repos"),
+			"profile": strProp("one fixed profile: pnpm-lockfile or pnpm-validate"),
+		}, "repo", "profile"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Repo    string `json:"repo"`
+				Profile string `json:"profile"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.ValidationPreview(p.Repo, p.Profile)
+		})
+
+	s.add("project_validation_execute",
+		"Execute one unexpired project_validation_preview plan in the separately deployed private validation runner. The runner accepts only the reviewed profile and repo, starts a hardened ephemeral Node 22 container, and returns redacted bounded output. It is never a free terminal.",
+		object(map[string]any{
+			"plan_id": strProp("plan id returned by project_validation_preview"),
+			"approve": boolProp("execute the reviewed validation plan when approval is required"),
+		}, "plan_id"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.ValidationExecute(p.PlanID, p.Approve)
 		})
 
 	s.add("git_commit",

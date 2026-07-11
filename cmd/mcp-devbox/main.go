@@ -77,6 +77,11 @@ const (
 	privilegedTimeoutEnv  = "MCP_DEVBOX_PRIVILEGED_TIMEOUT"
 )
 
+const (
+	validationRunnerURLEnv   = "MCP_DEVBOX_VALIDATION_RUNNER_URL"
+	validationRunnerTokenEnv = "MCP_DEVBOX_VALIDATION_RUNNER_TOKEN"
+)
+
 // buildOAuthProvider constructs the OAuth provider from env, or returns (nil, nil) when
 // OAuth is not configured. It errors if only one of the two required vars is set, so a
 // half-configured OAuth setup fails loudly rather than silently falling back.
@@ -286,7 +291,8 @@ func serve(args []string) error {
 	}
 	svc := tools.NewService(pol, logger, primary).
 		WithTestCommand(test).
-		WithSandboxRunner(sandboxRunner)
+		WithSandboxRunner(sandboxRunner).
+		WithValidationRunner(tools.NewValidationRunner(os.Getenv(validationRunnerURLEnv), os.Getenv(validationRunnerTokenEnv)))
 	privilegedTimeout := 2 * time.Minute
 	if raw := strings.TrimSpace(os.Getenv(privilegedTimeoutEnv)); raw != "" {
 		parsed, err := time.ParseDuration(raw)
