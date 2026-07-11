@@ -28,10 +28,14 @@ package lifecycle scripts and its output is bounded and redacted.
 
 ## One-time VPS deployment
 
-Build the runner image on the Docker host from the same checked-out repository:
+Build the runner image on the Docker host from a clean checkout of the same
+repository. `/repos/mcp-devbox` is inside the public container, not necessarily a
+host path; clone it to an administrator-only directory on the VPS instead:
 
 ```bash
-cd /repos/mcp-devbox
+git clone https://github.com/charle-z/mcp-devbox.git /opt/mcp-devbox-runner
+cd /opt/mcp-devbox-runner
+git checkout <the-main-commit-being-deployed>
 docker build -f Dockerfile.validation-runner -t mcp-devbox-validation-runner:local .
 ```
 
@@ -40,17 +44,19 @@ for the MCP service and as an environment variable for this private runner; neve
 put it in a repo, prompt, log or `docker inspect` output.
 
 Run the runner with no published ports, on the private `coolify` network, and
-with the Docker socket. The exact host path must be the same directory that holds
-the repositories (`/repos` in this installation):
+with the Docker socket. `MCP_DEVBOX_VALIDATION_RUNNER_ROOT` is the path inside the
+runner container. `MCP_DEVBOX_VALIDATION_RUNNER_HOST_ROOT` is the physical path
+Docker uses on the VPS; they are deliberately separate for Docker named volumes.
 
 ```bash
 docker volume create mcp-devbox-pnpm-store
 docker run -d --name mcp-devbox-validation-runner --restart unless-stopped \
   --network coolify \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /repos:/repos \
+  -v /HOST/PATH/TO/REPOS:/repos \
   -v mcp-devbox-pnpm-store:/pnpm-store \
   -e MCP_DEVBOX_VALIDATION_RUNNER_ROOT=/repos \
+  -e MCP_DEVBOX_VALIDATION_RUNNER_HOST_ROOT=/HOST/PATH/TO/REPOS \
   -e MCP_DEVBOX_VALIDATION_RUNNER_TOKEN='REPLACE_WITH_SECRET' \
   mcp-devbox-validation-runner:local
 ```

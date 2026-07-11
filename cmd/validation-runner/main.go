@@ -25,12 +25,13 @@ const (
 )
 
 type config struct {
-	token   string
-	root    string
-	image   string
-	store   string
-	user    string
-	timeout time.Duration
+	token    string
+	root     string // runner-container path used to inspect the repository
+	hostRoot string // Docker-host path used only in the child bind mount
+	image    string
+	store    string
+	user     string
+	timeout  time.Duration
 }
 
 type request struct {
@@ -69,7 +70,7 @@ func loadConfig() (config, error) {
 	}
 	root := strings.TrimSpace(os.Getenv("MCP_DEVBOX_VALIDATION_RUNNER_ROOT"))
 	if !filepath.IsAbs(root) {
-		return config{}, fmt.Errorf("MCP_DEVBOX_VALIDATION_RUNNER_ROOT must be an absolute host path")
+		return config{}, fmt.Errorf("MCP_DEVBOX_VALIDATION_RUNNER_ROOT must be an absolute container path")
 	}
 	resolved, err := filepath.EvalSymlinks(root)
 	if err != nil {
@@ -79,8 +80,12 @@ func loadConfig() (config, error) {
 	if err != nil || !info.IsDir() {
 		return config{}, fmt.Errorf("runner root is not a directory")
 	}
+	hostRoot := strings.TrimSpace(os.Getenv("MCP_DEVBOX_VALIDATION_RUNNER_HOST_ROOT"))
+	if !filepath.IsAbs(hostRoot) {
+		return config{}, fmt.Errorf("MCP_DEVBOX_VALIDATION_RUNNER_HOST_ROOT must be an absolute Docker-host path")
+	}
 	return config{
-		token: token, root: resolved,
+		token: token, root: resolved, hostRoot: filepath.Clean(hostRoot),
 		image:   valueOr("MCP_DEVBOX_VALIDATION_RUNNER_IMAGE", "node:22-alpine"),
 		store:   valueOr("MCP_DEVBOX_VALIDATION_RUNNER_STORE", "mcp-devbox-pnpm-store"),
 		user:    valueOr("MCP_DEVBOX_VALIDATION_RUNNER_USER", "10001:10001"),
@@ -153,13 +158,21 @@ func (c config) argv(repo, profile string) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("unsupported validation profile")
 	}
+	// `repo` is resolved inside this runner container, while Docker resolves bind
+	// sources on its host. Convert exactly one already-validated child path to the
+	// configured host-side repository directory; never pass an agent-supplied path.
+	rel, err := filepath.Rel(c.root, repo)
+	if err != nil || rel == "." || strings.ContainsAny(rel, `\\/`) {
+		return nil, fmt.Errorf("validated repository is not a direct child of runner root")
+	}
+	hostRepo := filepath.Join(c.hostRoot, rel)
 	return []string{
 		"run", "--rm", "--network", network, "--read-only",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--pids-limit", "256", "--memory", "1024m", "--cpus", "2",
 		"--tmpfs", "/tmp:rw,nosuid,nodev,size=256m",
 		"--user", c.user,
-		"--mount", "type=bind,src=" + repo + ",dst=/workspace",
+		"--mount", "type=bind,src=" + hostRepo + ",dst=/workspace",
 		"--mount", "type=volume,src=" + c.store + ",dst=/pnpm-store",
 		"--workdir", "/workspace",
 		"-e", "COREPACK_HOME=/tmp/corepack", "-e", "PNPM_HOME=/tmp/pnpm", "-e", "PNPM_STORE_DIR=/pnpm-store",

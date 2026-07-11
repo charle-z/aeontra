@@ -8,7 +8,7 @@ import (
 )
 
 func TestValidationProfileIsClosedAndHardened(t *testing.T) {
-	c := config{image: "node:22-alpine", store: "store", user: "10001:10001"}
+	c := config{root: "/repos", hostRoot: "/host/repos", image: "node:22-alpine", store: "store", user: "10001:10001"}
 	args, err := c.argv("/repos/demo", "pnpm-validate")
 	if err != nil {
 		t.Fatal(err)
@@ -19,13 +19,16 @@ func TestValidationProfileIsClosedAndHardened(t *testing.T) {
 			t.Fatalf("missing %q in %q", want, joined)
 		}
 	}
+	if !strings.Contains(joined, "src=/host/repos/demo,dst=/workspace") {
+		t.Fatalf("runner used container path instead of host path: %q", joined)
+	}
 	if _, err := c.argv("/repos/demo", "anything-from-agent"); err == nil {
 		t.Fatal("unknown profile accepted")
 	}
 }
 
 func TestLockfileProfileHasOnlyFixedRegistryNetwork(t *testing.T) {
-	c := config{image: "node:22-alpine", store: "store", user: "10001:10001"}
+	c := config{root: "/repos", hostRoot: "/host/repos", image: "node:22-alpine", store: "store", user: "10001:10001"}
 	args, err := c.argv("/repos/demo", "pnpm-lockfile")
 	if err != nil {
 		t.Fatal(err)
