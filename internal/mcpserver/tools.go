@@ -77,7 +77,7 @@ func (s *Server) annotateTools() {
 		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "project_validation_preview", "memory_read", "notes_list", "notes_read", "notes_write_preview", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
-		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "platform_app_create_preview", "platform_deploy_preview")
+		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "coolify_app_logs", "platform_app_logs", "platform_app_create_preview", "platform_deploy_preview")
 	// Additive/local writes: not read-only, but not destructive (no data loss).
 	s.annotate(localWrite,
 		"create_file", "git_commit")
@@ -325,6 +325,23 @@ func (s *Server) register() {
 				return "", err
 			}
 			return s.svc.PlatformAppStatus(p.App)
+		})
+
+	s.add("coolify_app_logs",
+		"Read the latest bounded application logs from Coolify. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced and secrets are redacted.",
+		object(map[string]any{
+			"app":   strProp("Coolify application uuid"),
+			"lines": intProp("number of log lines from the end, from 1 to 1000; defaults to 100"),
+		}, "app"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				App   string `json:"app"`
+				Lines int    `json:"lines"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.PlatformAppLogs(p.App, p.Lines)
 		})
 
 	s.add("coolify_create_app",
@@ -805,6 +822,7 @@ func (s *Server) register() {
 	s.addAlias("repo_publish", "git_push", "Publish one local branch to one named remote; equivalent to git_push and performs an external write requiring approval in ask mode.")
 	s.addAlias("platform_apps_list", "coolify_list_apps", "List applications from the configured deployment platform; equivalent to coolify_list_apps and performs an external read.")
 	s.addAlias("platform_app_status", "coolify_app_status", "Read one application from the configured deployment platform; equivalent to coolify_app_status and performs an external read.")
+	s.addAlias("platform_app_logs", "coolify_app_logs", "Read bounded application logs from the configured deployment platform; equivalent to coolify_app_logs and performs an external read.")
 	s.addAlias("platform_app_create", "coolify_create_app", "Create an application on the configured deployment platform; equivalent to coolify_create_app and performs an external write requiring approval in ask mode.")
 	s.addAlias("platform_deploy", "coolify_deploy", "Trigger a deployment on the configured platform; equivalent to coolify_deploy and performs an external write requiring approval in ask mode.")
 

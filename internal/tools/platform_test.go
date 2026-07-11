@@ -43,6 +43,32 @@ func TestPlatformAppsListAndStatusReturnSafeSummaries(t *testing.T) {
 	}
 }
 
+func TestPlatformAppLogsReturnsBoundedRedactedLogs(t *testing.T) {
+	var gotLines string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/applications/app1/logs" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		gotLines = r.URL.Query().Get("lines")
+		_, _ = w.Write([]byte(`{"logs":"build started\ncoolify-token\nbuild failed"}`))
+	}))
+	defer ts.Close()
+	svc := configuredPlatformService(t, config.ModeReadOnly, ts.URL)
+	out, err := svc.PlatformAppLogs("app1", 25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotLines != "25" || !strings.Contains(out, "build started") || !strings.Contains(out, "build failed") {
+		t.Fatalf("unexpected logs response lines=%q out=%q", gotLines, out)
+	}
+	if strings.Contains(out, "coolify-token") {
+		t.Fatalf("Coolify token leaked in logs: %q", out)
+	}
+	if _, err := svc.PlatformAppLogs("app1", 1001); err == nil {
+		t.Fatal("oversized log request accepted")
+	}
+}
+
 func TestPlatformAppCreatePlannedSuccess(t *testing.T) {
 	created := 0
 	var payload map[string]any

@@ -150,6 +150,53 @@ func (s *Service) PlatformAppStatus(appID string) (string, error) {
 	return s.redact(formatPlatformApp(app)), nil
 }
 
+func (s *Service) PlatformAppLogs(appID string, lines int) (string, error) {
+	sp := s.log.Start("platform_app_logs")
+	if err := s.coolify.configError(); err != nil {
+		sp.Finish(audit.Deny, "logs "+summarize(appID), nil, err)
+		return "", err
+	}
+	appID = strings.TrimSpace(appID)
+	if !coolifyUUIDRe.MatchString(appID) {
+		err := fmt.Errorf("invalid Coolify application id")
+		sp.Finish(audit.Deny, "logs "+summarize(appID), nil, err)
+		return "", err
+	}
+	if !s.coolify.appAllowed(appID) {
+		err := fmt.Errorf("app %q is not in COOLIFY_ALLOWED_APPS", appID)
+		sp.Finish(audit.Deny, "logs "+appID, nil, err)
+		return "", err
+	}
+	if lines == 0 {
+		lines = 100
+	}
+	if lines < 1 || lines > 1000 {
+		err := fmt.Errorf("lines must be between 1 and 1000")
+		sp.Finish(audit.Deny, "logs "+appID, nil, err)
+		return "", err
+	}
+	path := "/api/v1/applications/" + url.PathEscape(appID) + "/logs?" + url.Values{"lines": []string{strconv.Itoa(lines)}}.Encode()
+	status, body, err := s.coolify.request(context.Background(), http.MethodGet, path, nil)
+	if err != nil {
+		sp.Finish(audit.Error, "logs "+appID, nil, err)
+		return "", fmt.Errorf("Coolify application logs request failed: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		err := fmt.Errorf("Coolify application logs -> HTTP %d: %s", status, s.coolifySafe(body))
+		sp.Finish(audit.Error, "logs "+appID, nil, err)
+		return s.coolifySafe(body), err
+	}
+	var result struct {
+		Logs string `json:"logs"`
+	}
+	if err := json.Unmarshal([]byte(body), &result); err != nil {
+		sp.Finish(audit.Error, "logs "+appID, nil, err)
+		return "", fmt.Errorf("decoding Coolify application logs: %w", err)
+	}
+	sp.Finish(audit.Allow, "logs "+appID, nil, nil)
+	return s.coolifySafe(result.Logs), nil
+}
+
 func (s *Service) PlatformAppCreatePreview(req PlatformAppCreateRequest) (string, error) {
 	sp := s.log.Start("platform_app_create_preview")
 	if err := s.coolify.builderConfigError(); err != nil {
