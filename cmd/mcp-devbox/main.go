@@ -68,6 +68,7 @@ const (
 	coolifyEnvironmentNameEnv = "COOLIFY_ENVIRONMENT_NAME"
 	coolifyEnvironmentUUIDEnv = "COOLIFY_ENVIRONMENT_UUID"
 	coolifyAllowedDomainsEnv  = "COOLIFY_ALLOWED_DOMAINS"
+	coolifyGitHubAppUUIDEnv   = "COOLIFY_GITHUB_APP_UUID"
 )
 
 const (
@@ -309,7 +310,8 @@ func serve(args []string) error {
 				os.Getenv(coolifyEnvironmentNameEnv),
 				os.Getenv(coolifyEnvironmentUUIDEnv),
 				splitCSV(os.Getenv(coolifyAllowedDomainsEnv)),
-			))
+			).
+			WithGitHubApp(os.Getenv(coolifyGitHubAppUUIDEnv)))
 	}
 	if gt := strings.TrimSpace(os.Getenv(githubTokenEnv)); gt != "" {
 		svc = svc.WithGitHub(tools.NewGitHubClient("", gt, os.Getenv(githubOwnerEnv), os.Getenv(githubOwnerTypeEnv), os.Getenv(githubDefaultVisibilityEnv)))

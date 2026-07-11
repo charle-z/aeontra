@@ -32,6 +32,7 @@ type CoolifyClient struct {
 	projectUUID        string
 	environmentName    string
 	environmentUUID    string
+	githubAppUUID      string
 	allowedDomainRules []string
 	do                 func(*http.Request) (*http.Response, error)
 }
@@ -69,6 +70,14 @@ func (c *CoolifyClient) WithBuilderConfig(serverUUID, projectUUID, environmentNa
 			c.allowedDomainRules = append(c.allowedDomainRules, d)
 		}
 	}
+	return c
+}
+
+// WithGitHubApp configures the Coolify GitHub App source used for repository
+// creation. When empty, builder creation retains the public-repository API for
+// backwards compatibility.
+func (c *CoolifyClient) WithGitHubApp(uuid string) *CoolifyClient {
+	c.githubAppUUID = strings.TrimSpace(uuid)
 	return c
 }
 

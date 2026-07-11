@@ -176,6 +176,7 @@ func (s *Service) PlatformAppCreatePreview(req PlatformAppCreateRequest) (string
 		"required_env":         strings.Join(envNames, ","),
 		"server_uuid":          s.coolify.serverUUID, "project_uuid": s.coolify.projectUUID,
 		"environment_uuid": s.coolify.environmentUUID, "environment_name": s.coolify.environmentName,
+		"github_app_uuid": s.coolify.githubAppUUID,
 	}
 	plan, err := s.plans.Create("platform-app-create", args)
 	if err != nil {
@@ -183,9 +184,13 @@ func (s *Service) PlatformAppCreatePreview(req PlatformAppCreateRequest) (string
 		return "", err
 	}
 	sp.Finish(audit.Allow, "preview "+plan.ID, nil, nil)
-	return fmt.Sprintf("server_uuid: %s\nproject_uuid: %s\nenvironment_uuid: %s\nenvironment_name: %s\nrepository: %s\nbranch: %s\nbuild_strategy: %s\ndomain: %s\nport: %s\nhealthcheck_path: %s\nhealthcheck_interval: %d\nhealthcheck_timeout: %d\nrequired_environment_variables: %s\neffect: POST one application to the configured Coolify project/environment\nplan_id: %s\nexpiry: %s\n",
+	sourceType := "public_repository"
+	if s.coolify.githubAppUUID != "" {
+		sourceType = "private_github_app"
+	}
+	return fmt.Sprintf("server_uuid: %s\nproject_uuid: %s\nenvironment_uuid: %s\nenvironment_name: %s\nrepository: %s\nbranch: %s\nsource_type: %s\nbuild_strategy: %s\ndomain: %s\nport: %s\nhealthcheck_path: %s\nhealthcheck_interval: %d\nhealthcheck_timeout: %d\nrequired_environment_variables: %s\neffect: POST one application to the configured Coolify project/environment\nplan_id: %s\nexpiry: %s\n",
 		s.coolify.serverUUID, s.coolify.projectUUID, s.coolify.environmentUUID, s.coolify.environmentName,
-		normalized.GitHubRepo, normalized.Branch, normalized.BuildPack, normalized.Domain, normalized.Port,
+		normalized.GitHubRepo, normalized.Branch, sourceType, normalized.BuildPack, normalized.Domain, normalized.Port,
 		normalized.HealthcheckPath, normalized.HealthcheckInterval, normalized.HealthcheckTimeout,
 		strings.Join(envNames, ","), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
@@ -211,7 +216,8 @@ func (s *Service) PlatformAppCreate(planID string, approve bool) (string, error)
 		return "", err
 	}
 	if plan.Args["server_uuid"] != s.coolify.serverUUID || plan.Args["project_uuid"] != s.coolify.projectUUID ||
-		plan.Args["environment_uuid"] != s.coolify.environmentUUID || plan.Args["environment_name"] != s.coolify.environmentName {
+		plan.Args["environment_uuid"] != s.coolify.environmentUUID || plan.Args["environment_name"] != s.coolify.environmentName ||
+		plan.Args["github_app_uuid"] != s.coolify.githubAppUUID {
 		err := fmt.Errorf("Coolify builder configuration changed after preview")
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
@@ -236,7 +242,12 @@ func (s *Service) PlatformAppCreate(planID string, approve bool) (string, error)
 		payload["health_check_interval"] = parseCount(plan.Args["healthcheck_interval"])
 		payload["health_check_timeout"] = parseCount(plan.Args["healthcheck_timeout"])
 	}
-	status, body, err := s.coolify.request(context.Background(), http.MethodPost, "/api/v1/applications/public", payload)
+	endpoint := "/api/v1/applications/public"
+	if plan.Args["github_app_uuid"] != "" {
+		endpoint = "/api/v1/applications/private-github-app"
+		payload["github_app_uuid"] = plan.Args["github_app_uuid"]
+	}
+	status, body, err := s.coolify.request(context.Background(), http.MethodPost, endpoint, payload)
 	if err != nil {
 		sp.Finish(audit.Error, planID, nil, err)
 		return "", fmt.Errorf("Coolify create application request failed: %w", err)

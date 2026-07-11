@@ -108,6 +108,36 @@ func TestPlatformAppCreateCanonicalizesRepositoryAndDefaultsStaticPort(t *testin
 	}
 }
 
+func TestPlatformAppCreateUsesConfiguredGitHubAppSource(t *testing.T) {
+	var gotPath string
+	var payload map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"uuid":"app1","name":"private-site"}`))
+	}))
+	defer ts.Close()
+
+	svc := configuredPlatformService(t, config.ModeAllow, ts.URL)
+	svc.WithCoolify(svc.coolify.WithGitHubApp("githubapp1"))
+	preview, err := svc.PlatformAppCreatePreview(PlatformAppCreateRequest{
+		Name: "private-site", GitHubRepo: "acme/private-site", Branch: "main", BuildPack: "static",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(preview, "source_type: private_github_app") {
+		t.Fatalf("preview did not identify private GitHub App source:\n%s", preview)
+	}
+	if _, err := svc.PlatformAppCreate(field(preview, "plan_id"), true); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/api/v1/applications/private-github-app" || payload["github_app_uuid"] != "githubapp1" {
+		t.Fatalf("private GitHub App request path=%q payload=%#v", gotPath, payload)
+	}
+}
+
 func TestPlatformAppCreateRejectsConfigurationDomainRepoAndExpiry(t *testing.T) {
 	svc, _ := newTestService(t, config.ModeAllow)
 	if _, err := svc.PlatformAppCreatePreview(PlatformAppCreateRequest{Name: "demo", GitHubRepo: "acme/demo"}); err == nil || !strings.Contains(err.Error(), "COOLIFY_URL") {

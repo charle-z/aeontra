@@ -90,6 +90,8 @@ COOLIFY_SERVER_UUID=<server-uuid>
 COOLIFY_PROJECT_UUID=<project-uuid>
 COOLIFY_ENVIRONMENT_NAME=production
 COOLIFY_ALLOWED_DOMAINS=example.com
+# Optional: use the configured Coolify GitHub App source for private repositories.
+COOLIFY_GITHUB_APP_UUID=<coolify-github-app-uuid>
 
 # Disabled by default; enable only fixed administrator-approved profiles:
 MCP_DEVBOX_PRIVILEGED_TASKS=false
