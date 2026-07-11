@@ -178,7 +178,7 @@ func (c config) argv(repo, profile string) ([]string, error) {
 		"--mount", "type=bind,src=" + hostRepo + ",dst=/workspace",
 		"--mount", "type=volume,src=" + c.store + ",dst=/pnpm-store",
 		"--workdir", "/workspace",
-		"-e", "COREPACK_HOME=/tmp/corepack", "-e", "PNPM_HOME=/tmp/pnpm", "-e", "PNPM_STORE_DIR=/pnpm-store",
+		"-e", "COREPACK_HOME=/pnpm-store/corepack", "-e", "PNPM_HOME=/tmp/pnpm", "-e", "PNPM_STORE_DIR=/pnpm-store",
 		c.image, "sh", "-ec", script,
 	}, nil
 }

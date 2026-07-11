@@ -39,6 +39,19 @@ func TestLockfileProfileHasOnlyFixedRegistryNetwork(t *testing.T) {
 	}
 }
 
+func TestValidationProfilesSharePersistentCorepackCache(t *testing.T) {
+	c := config{root: "/repos", hostRoot: "/host/repos", image: "node:22-alpine", store: "store", user: "10001:10001"}
+	for _, profile := range []string{"pnpm-lockfile", "pnpm-validate"} {
+		args, err := c.argv("/repos/demo", profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if joined := strings.Join(args, " "); !strings.Contains(joined, "COREPACK_HOME=/pnpm-store/corepack") {
+			t.Fatalf("profile %s does not reuse the persistent Corepack cache: %s", profile, joined)
+		}
+	}
+}
+
 func TestRepoPathRejectsTraversalAndOnlyAcceptsDirectChild(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "portfolio")
