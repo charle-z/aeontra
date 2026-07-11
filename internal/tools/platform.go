@@ -148,16 +148,13 @@ func (s *Service) PlatformAppStatus(appID string) (string, error) {
 	}
 	sp.Finish(audit.Allow, "status "+app.UUID, nil, nil)
 	out := s.redact(formatPlatformApp(app))
-	status := strings.ToLower(app.Status)
-	if strings.Contains(status, "unhealthy") || strings.Contains(status, "exited") {
-		logs, logErr := s.PlatformAppLogs(app.UUID, 100)
-		if logErr != nil {
-			out += "logs_error: " + s.redact(logErr.Error()) + "\n"
-		} else if strings.TrimSpace(logs) != "" {
-			out += "logs:\n" + logs
-			if !strings.HasSuffix(out, "\n") {
-				out += "\n"
-			}
+	logs, logErr := s.PlatformAppLogs(app.UUID, 100)
+	if logErr != nil {
+		out += "logs_error: " + s.redact(logErr.Error()) + "\n"
+	} else if strings.TrimSpace(logs) != "" {
+		out += "logs:\n" + logs
+		if !strings.HasSuffix(out, "\n") {
+			out += "\n"
 		}
 	}
 	return out, nil
