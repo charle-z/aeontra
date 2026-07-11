@@ -74,11 +74,37 @@ func TestPlatformAppCreatePlannedSuccess(t *testing.T) {
 	if err != nil || !strings.Contains(out, "uuid: app1") || created != 1 {
 		t.Fatalf("create: out=%q err=%v created=%d", out, err, created)
 	}
-	if payload["server_uuid"] != "server1" || payload["git_repository"] != "acme/demo" || payload["health_check_path"] != "/healthz" {
+	if payload["server_uuid"] != "server1" || payload["git_repository"] != "https://github.com/acme/demo.git" || payload["health_check_path"] != "/healthz" {
 		t.Fatalf("bad payload: %#v", payload)
 	}
 	if _, err := svc.PlatformAppCreate(planID, true); err == nil || !strings.Contains(err.Error(), "already used") {
 		t.Fatalf("replay must fail: %v", err)
+	}
+}
+
+func TestPlatformAppCreateCanonicalizesRepositoryAndDefaultsStaticPort(t *testing.T) {
+	var payload map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"uuid":"app1","name":"static-site"}`))
+	}))
+	defer ts.Close()
+	svc := configuredPlatformService(t, config.ModeAllow, ts.URL)
+	preview, err := svc.PlatformAppCreatePreview(PlatformAppCreateRequest{
+		Name: "static-site", GitHubRepo: "acme/static-site", BuildPack: "static",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(preview, "repository: https://github.com/acme/static-site.git") || !strings.Contains(preview, "port: 80") {
+		t.Fatalf("preview did not canonicalize the Coolify payload:\n%s", preview)
+	}
+	if _, err := svc.PlatformAppCreate(field(preview, "plan_id"), true); err != nil {
+		t.Fatal(err)
+	}
+	if payload["git_repository"] != "https://github.com/acme/static-site.git" || payload["ports_exposes"] != "80" {
+		t.Fatalf("bad static payload: %#v", payload)
 	}
 }
 

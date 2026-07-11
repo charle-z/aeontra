@@ -372,6 +372,10 @@ func (s *Service) normalizePlatformCreate(req PlatformAppCreateRequest) (Platfor
 		if len(parts) != 2 || !strings.EqualFold(parts[0], s.github.owner) || !safeCloneDir(parts[1]) {
 			return req, fmt.Errorf("repository must be under configured GITHUB_OWNER %q", s.github.owner)
 		}
+		// Coolify's public-application API requires a clone URL. Keep the MCP
+		// input ergonomic (owner/repo) while storing the exact HTTPS URL in the
+		// reviewed plan.
+		repo = "https://github.com/" + parts[0] + "/" + parts[1] + ".git"
 	}
 	req.GitHubRepo = repo
 	req.Branch = defaultGitName(req.Branch, "main")
@@ -384,6 +388,11 @@ func (s *Service) normalizePlatformCreate(req PlatformAppCreateRequest) (Platfor
 	}
 	if !validCoolifyBuildPack(req.BuildPack) {
 		return req, fmt.Errorf("invalid build pack %q", req.BuildPack)
+	}
+	// Coolify's current API requires ports_exposes even for its static build
+	// pack. Static sites are served by the generated web server on port 80.
+	if req.BuildPack == "static" && strings.TrimSpace(req.Port) == "" {
+		req.Port = "80"
 	}
 	req.Domain = strings.TrimSpace(req.Domain)
 	if req.Domain != "" && !s.coolify.domainAllowed(req.Domain) {
