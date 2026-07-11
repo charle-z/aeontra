@@ -21,6 +21,9 @@ single repository mount and a runner-owned pnpm cache volume. The project script
 in the validation profile are code execution, but they execute only in that
 contained child with no host socket and no network.
 
+The profiles intentionally invoke `corepack pnpm`, not `corepack enable`: enabling
+would try to write package-manager shims into the read-only image filesystem.
+
 The `pnpm-lockfile` profile intentionally has a narrow network exception. A
 package manifest can name dependencies fetched from third parties, so this is a
 reviewed supply-chain action rather than a harmless local check. It never runs

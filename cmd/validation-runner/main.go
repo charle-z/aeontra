@@ -152,9 +152,12 @@ func (c config) argv(repo, profile string) ([]string, error) {
 	switch profile {
 	case "pnpm-lockfile":
 		network = "bridge" // required solely to resolve/fetch the declared dependency graph.
-		script = "corepack enable && corepack prepare pnpm@10.13.1 --activate && pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org && pnpm fetch --ignore-scripts --registry=https://registry.npmjs.org"
+		// Do not use `corepack enable`: it writes shims into the image filesystem,
+		// which is intentionally read-only. `corepack pnpm` uses only COREPACK_HOME
+		// under /tmp and keeps the exact package-manager version fixed.
+		script = "corepack prepare pnpm@10.13.1 --activate && corepack pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org && corepack pnpm fetch --ignore-scripts --registry=https://registry.npmjs.org"
 	case "pnpm-validate":
-		script = "corepack enable && corepack prepare pnpm@10.13.1 --activate && pnpm install --offline --frozen-lockfile --ignore-scripts && pnpm run check && pnpm test && pnpm run build"
+		script = "corepack prepare pnpm@10.13.1 --activate && corepack pnpm install --offline --frozen-lockfile --ignore-scripts && corepack pnpm run check && corepack pnpm test && corepack pnpm run build"
 	default:
 		return nil, fmt.Errorf("unsupported validation profile")
 	}
@@ -194,6 +197,9 @@ func dockerRun(ctx context.Context, argv []string) (string, int, error) {
 	}
 	if _, ok := err.(*exec.ExitError); ok {
 		err = nil
+	}
+	if code != 0 && strings.TrimSpace(buf.String()) == "" {
+		return "container exited without diagnostic output; inspect the private runner logs and verify repository mount permissions", code, err
 	}
 	return buf.String(), code, err
 }
