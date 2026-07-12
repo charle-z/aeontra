@@ -161,7 +161,7 @@ func (c config) argv(repo, profile string) ([]string, error) {
 		// archive while network is available, install that archive into COREPACK_HOME,
 		// then reuse it with network disabled. This avoids `corepack prepare` trying to
 		// contact npm again in the validation container.
-		script = "corepack pack pnpm@10.13.1 -o /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack install -g --cache-only /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org && corepack pnpm fetch --ignore-scripts --registry=https://registry.npmjs.org"
+		script = "COREPACK_ENABLE_NETWORK=1 corepack pack pnpm@10.13.1 -o /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack install -g --cache-only /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org && corepack pnpm fetch --ignore-scripts --registry=https://registry.npmjs.org"
 	case "pnpm-validate":
 		script = "test -s /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack install -g --cache-only /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack pnpm install --offline --frozen-lockfile --ignore-scripts && corepack pnpm run check && corepack pnpm test && corepack pnpm run build"
 	default:
