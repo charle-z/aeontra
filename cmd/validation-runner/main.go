@@ -186,6 +186,8 @@ func (c config) argv(repo, profile string) ([]string, error) {
 		"--workdir", "/workspace",
 		"-e", "COREPACK_HOME=/pnpm-store/corepack", "-e", "COREPACK_ENABLE_NETWORK=0", "-e", "COREPACK_DEFAULT_TO_LATEST=0",
 		"-e", "PNPM_HOME=/tmp/pnpm", "-e", "PNPM_STORE_DIR=/pnpm-store",
+		"-e", "HOME=/tmp/home", "-e", "XDG_CONFIG_HOME=/tmp/config",
+		"-e", "ASTRO_TELEMETRY_DISABLED=1",
 		c.image, "sh", "-ec", script,
 	}, nil
 }
