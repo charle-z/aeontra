@@ -21,6 +21,7 @@ do not replace server-side enforcement.
 
 | Tool | R/D/I/O | Effect |
 |---|---:|---|
+| `system_runtime_info` | 1/0/1/0 | Return safe live build and deterministic catalog identity. |
 | `build_context_pack` | 1/0/1/0 | Read a compact jailed repo context pack. |
 | `list_dir` | 1/0/1/0 | Compatibility name for `repo_list`. |
 | `repo_list` | 1/0/1/0 | List jailed directories and identify Git repos. |

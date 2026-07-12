@@ -78,7 +78,7 @@ func (s *Server) annotateTools() {
 	externalDestructive := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
 	// Local, side-effect-free reads.
 	s.annotate(localRead,
-		"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
+		"system_runtime_info", "build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
 		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "project_validation_preview", "memory_read", "notes_list", "notes_read", "notes_write_preview", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
@@ -103,6 +103,21 @@ func (s *Server) annotateTools() {
 // agent; all enforcement happens in the tool/policy layer regardless of how a
 // client calls them.
 func (s *Server) register() {
+	s.add("system_runtime_info",
+		"Return the live non-sensitive server version, commit, protocol version, tool count, and deterministic catalog hash.",
+		object(map[string]any{}),
+		func(json.RawMessage) (string, error) {
+			info, err := s.RuntimeInfo()
+			if err != nil {
+				return "", err
+			}
+			encoded, err := json.Marshal(info)
+			if err != nil {
+				return "", err
+			}
+			return string(encoded), nil
+		})
+
 	s.add("build_context_pack",
 		"Return relevant repo context in one call (file tree, key files, agent memory, git status). Optional repo scopes the pack to a jailed child repo under /repos. Secrets redacted, jail-confined.",
 		object(map[string]any{"repo": strProp("optional repo directory, absolute or relative to the workspace root")}),
