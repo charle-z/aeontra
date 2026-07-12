@@ -38,6 +38,7 @@ const DefaultMCPPath = "/mcp"
 // All request bodies are treated as untrusted input. Tool results still carry repo
 // file contents as DATA, never instructions.
 func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.Handler {
+	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
 	sessionID := newHTTPSessionID()
 
@@ -71,6 +72,16 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 		_, _ = io.WriteString(w, "ok mcp-devbox "+buildinfo.Version+" "+buildinfo.Commit+"\n")
 	})
 
+	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(runtimeInfo)
+	})
+
 	mux.HandleFunc(DefaultMCPPath, func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
@@ -93,7 +104,18 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 		}
 	})
 
-	return mux
+	return withRuntimeHeaders(mux, runtimeInfo)
+}
+
+func withRuntimeHeaders(next http.Handler, info RuntimeInfo) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("X-MCP-Server-Commit", info.Commit)
+		w.Header().Set("X-MCP-Catalog-Hash", info.CatalogHash)
+		w.Header().Set("X-MCP-Tool-Count", fmt.Sprintf("%d", info.ToolCount))
+		next.ServeHTTP(w, r)
+	})
 }
 
 // authOK authorizes a request by matching the configured token against either the
@@ -136,7 +158,7 @@ func newHTTPSessionID() string {
 // the stream carries only keep-alive comments.
 func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 

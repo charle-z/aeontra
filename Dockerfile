@@ -6,6 +6,7 @@ FROM golang:1.26-alpine AS build
 # Because ARG changes bust the build cache from this point on, every new commit also
 # forces a genuine rebuild instead of reusing a stale cached image layer.
 ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
 
 WORKDIR /src
 COPY go.mod ./
@@ -13,7 +14,7 @@ COPY cmd ./cmd
 COPY internal ./internal
 
 RUN CGO_ENABLED=0 go build -trimpath \
-	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=${GIT_SHA}" \
+	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=${GIT_SHA} -X github.com/charle-z/mcp-devbox/internal/buildinfo.BuiltAt=${BUILD_TIME}" \
 	-o /out/mcp-devbox ./cmd/mcp-devbox
 
 # Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can

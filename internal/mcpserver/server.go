@@ -118,10 +118,18 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 			version = p.ProtocolVersion
 		}
 	}
+	runtimeInfo := s.mustRuntimeInfo()
 	return map[string]any{
 		"protocolVersion": version,
 		"capabilities":    map[string]any{"tools": map[string]any{}},
-		"serverInfo":      map[string]any{"name": s.name, "version": buildinfo.Version, "commit": buildinfo.Commit},
+		"serverInfo": map[string]any{
+			"name":        s.name,
+			"version":     runtimeInfo.Version,
+			"commit":      runtimeInfo.Commit,
+			"builtAt":     runtimeInfo.BuiltAt,
+			"toolCount":   runtimeInfo.ToolCount,
+			"catalogHash": runtimeInfo.CatalogHash,
+		},
 		"instructions": "Secure-by-default repository builder; use one focused tool call per message. " +
 			"Session preflight: repo_list, build_context_pack with repo, then repo_status. Work loop: plan, act, observe, " +
 			"run_tests when code changed, revise on failure, and record durable state in memory. Sync only with repo_fetch, " +

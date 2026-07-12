@@ -71,7 +71,8 @@ Transport:
 
 - stdio for local clients.
 - HTTP `POST /mcp` JSON-RPC, bearer or `?key=` token required.
-- `/healthz` for health checks.
+- `/healthz` for liveness and `/version` for safe build/catalog identity.
+- Dynamic HTTP responses disable caching and include live commit/catalog headers.
 - Authenticated `GET /mcp` returns a minimal SSE stream; unauthenticated `GET /mcp`
   returns 401.
 - HTTP `initialize` responses include `Mcp-Session-Id`; later POSTs may send that

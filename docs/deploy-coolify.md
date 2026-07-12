@@ -62,6 +62,13 @@ jail) so agents cannot edit OAuth server state through normal file tools.
 
 ### Verify a redeploy actually shipped
 
+`GET https://mcp.example.com/version` returns JSON containing only the live semantic
+version, MCP protocol version, commit, optional build time, registered tool count,
+and deterministic catalog hash. The same commit/hash/count are sent as response
+headers. Compare these values before reconnecting a client: if they match the pushed
+build while the client still shows an older tool surface, the remaining staleness is
+client-side rather than a failed server deployment.
+
 `GET https://mcp.example.com/healthz` returns `ok mcp-devbox <version> <commit>`. Compare
 `<commit>` to `git rev-parse HEAD` on `main`. If it lags, the deploy did not ship the
 latest code — check the webhook fired and that Coolify rebuilt (didn't reuse a cached
@@ -184,6 +191,7 @@ After deployment, run from your local machine:
 
 ```bash
 curl -i https://mcp.example.com/healthz
+curl -i https://mcp.example.com/version
 curl -i https://mcp.example.com/mcp
 curl -i "https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>"
 curl -i -X POST "https://mcp.example.com/mcp" \
@@ -197,6 +205,8 @@ curl -i -X POST "https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>" \
 Expected:
 
 - `/healthz` returns `200`
+- `/version` returns `200`, JSON, `Cache-Control: no-store`, and matching
+  `X-MCP-Server-Commit` / `X-MCP-Catalog-Hash` headers
 - `GET /mcp` without token returns `401`
 - `GET /mcp?key=<token>` returns `200` with `text/event-stream`
 - `POST /mcp` without token returns `401`
