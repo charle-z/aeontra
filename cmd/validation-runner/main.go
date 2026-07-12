@@ -24,14 +24,15 @@ const (
 )
 
 type config struct {
-	token        string
-	root         string // runner-container path used to inspect the repository
-	hostRoot     string // Docker-host path used only in the child bind mount
-	image        string
-	store        string
-	user         string
-	timeout      time.Duration
-	retireLegacy func(context.Context) error
+	token            string
+	root             string // runner-container path used to inspect the repository
+	hostRoot         string // Docker-host path used only in the child bind mount
+	image            string
+	store            string
+	user             string
+	timeout          time.Duration
+	retireLegacy     func(context.Context) error
+	cleanupMigration func(context.Context) (migrationCleanupResult, error)
 }
 
 type request struct {
@@ -57,6 +58,7 @@ func main() {
 	}
 
 	mux := newRunnerMux(cfg, boolEnv("MCP_DEVBOX_VALIDATION_RUNNER_ALLOW_LEGACY_RETIRE"))
+	registerMigrationCleanup(mux, cfg, boolEnv("MCP_DEVBOX_VALIDATION_RUNNER_ALLOW_HOST_CLEANUP"))
 	addr := valueOr("MCP_DEVBOX_VALIDATION_RUNNER_ADDR", ":8787")
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	fmt.Fprintln(os.Stderr, "validation-runner listening on", addr)
@@ -89,11 +91,12 @@ func loadConfig() (config, error) {
 	}
 	return config{
 		token: token, root: resolved, hostRoot: filepath.Clean(hostRoot),
-		image:        valueOr("MCP_DEVBOX_VALIDATION_RUNNER_IMAGE", "node:22-alpine"),
-		store:        valueOr("MCP_DEVBOX_VALIDATION_RUNNER_STORE", "mcp-devbox-pnpm-store"),
-		user:         valueOr("MCP_DEVBOX_VALIDATION_RUNNER_USER", "10001:10001"),
-		timeout:      durationOr("MCP_DEVBOX_VALIDATION_RUNNER_TIMEOUT", 8*time.Minute),
-		retireLegacy: stopLegacyRunner,
+		image:            valueOr("MCP_DEVBOX_VALIDATION_RUNNER_IMAGE", "node:22-alpine"),
+		store:            valueOr("MCP_DEVBOX_VALIDATION_RUNNER_STORE", "mcp-devbox-pnpm-store"),
+		user:             valueOr("MCP_DEVBOX_VALIDATION_RUNNER_USER", "10001:10001"),
+		timeout:          durationOr("MCP_DEVBOX_VALIDATION_RUNNER_TIMEOUT", 8*time.Minute),
+		retireLegacy:     stopLegacyRunner,
+		cleanupMigration: cleanupMigrationArtifacts,
 	}, nil
 }
 
