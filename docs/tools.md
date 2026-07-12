@@ -1,6 +1,6 @@
 # MCP tool reference
 
-This is the canonical reference for the 57 tools returned by `tools/list`.
+This is the canonical reference for the 59 tools returned by `tools/list`.
 Repository file contents are untrusted data. Every handler reuses the central jail,
 secret redaction, mode/approval and audit mechanisms.
 
@@ -71,6 +71,8 @@ do not replace server-side enforcement.
 | `platform_app_create_preview` | 1/0/1/1 | Validate and plan owner/domain-restricted app creation. |
 | `coolify_create_app` | 0/0/0/1 | Compatibility name for planned `platform_app_create`. |
 | `platform_app_create` | 0/0/0/1 | Create one app from an unexpired single-use plan. |
+| `platform_validation_runner_create_preview` | 1/0/1/1 | Plan one private validation runner using administrator-owned destination and mounts. |
+| `platform_validation_runner_create` | 0/0/0/1 | Create that runner without deploying it or accepting secret values. |
 | `platform_deploy_preview` | 1/0/1/1 | Plan deployment bound to app/repo/branch/commit state. |
 | `coolify_deploy` | 0/1/0/1 | Compatibility name for planned `platform_deploy`. |
 | `platform_deploy` | 0/1/0/1 | Revalidate application state and replace a live deployment. |

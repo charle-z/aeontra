@@ -33,7 +33,9 @@ type CoolifyClient struct {
 	environmentName    string
 	environmentUUID    string
 	githubAppUUID      string
+	destinationUUID    string
 	allowedDomainRules []string
+	allowedMounts      map[string]bool
 	do                 func(*http.Request) (*http.Response, error)
 }
 
@@ -46,10 +48,11 @@ func NewCoolifyClient(baseURL, token string, allowedApps []string) *CoolifyClien
 		}
 	}
 	return &CoolifyClient{
-		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-		token:   strings.TrimSpace(token),
-		allowed: allowed,
-		do:      (&http.Client{Timeout: 30 * time.Second}).Do,
+		baseURL:       strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		token:         strings.TrimSpace(token),
+		allowed:       allowed,
+		allowedMounts: map[string]bool{},
+		do:            (&http.Client{Timeout: 30 * time.Second}).Do,
 	}
 }
 
@@ -79,6 +82,24 @@ func (c *CoolifyClient) WithBuilderConfig(serverUUID, projectUUID, environmentNa
 func (c *CoolifyClient) WithGitHubApp(uuid string) *CoolifyClient {
 	c.githubAppUUID = strings.TrimSpace(uuid)
 	return c
+}
+
+// WithBuilderRuntime fixes the deployment destination and the exact mount specs an
+// agent may request. Repository content and model output cannot enlarge this
+// administrator-owned allowlist.
+func (c *CoolifyClient) WithBuilderRuntime(destinationUUID string, allowedMounts []string) *CoolifyClient {
+	c.destinationUUID = strings.TrimSpace(destinationUUID)
+	c.allowedMounts = map[string]bool{}
+	for _, mount := range allowedMounts {
+		if mount = strings.TrimSpace(mount); mount != "" {
+			c.allowedMounts[mount] = true
+		}
+	}
+	return c
+}
+
+func (c *CoolifyClient) mountAllowed(mount string) bool {
+	return c != nil && c.allowedMounts[strings.TrimSpace(mount)]
 }
 
 func (c *CoolifyClient) appAllowed(uuid string) bool {

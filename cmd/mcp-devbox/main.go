@@ -70,6 +70,8 @@ const (
 	coolifyEnvironmentUUIDEnv = "COOLIFY_ENVIRONMENT_UUID"
 	coolifyAllowedDomainsEnv  = "COOLIFY_ALLOWED_DOMAINS"
 	coolifyGitHubAppUUIDEnv   = "COOLIFY_GITHUB_APP_UUID"
+	coolifyDestinationUUIDEnv = "COOLIFY_DESTINATION_UUID"
+	coolifyAllowedMountsEnv   = "COOLIFY_ALLOWED_MOUNTS"
 )
 
 const (
@@ -318,7 +320,8 @@ func serve(args []string) error {
 				os.Getenv(coolifyEnvironmentUUIDEnv),
 				splitCSV(os.Getenv(coolifyAllowedDomainsEnv)),
 			).
-			WithGitHubApp(os.Getenv(coolifyGitHubAppUUIDEnv)))
+			WithGitHubApp(os.Getenv(coolifyGitHubAppUUIDEnv)).
+			WithBuilderRuntime(os.Getenv(coolifyDestinationUUIDEnv), splitSemicolon(os.Getenv(coolifyAllowedMountsEnv))))
 	}
 	if gt := strings.TrimSpace(os.Getenv(githubTokenEnv)); gt != "" {
 		svc = svc.WithGitHub(tools.NewGitHubClient("", gt, os.Getenv(githubOwnerEnv), os.Getenv(githubOwnerTypeEnv), os.Getenv(githubDefaultVisibilityEnv)))
@@ -471,6 +474,16 @@ func splitCSV(s string) []string {
 }
 
 func splitFields(s string) []string { return strings.Fields(strings.TrimSpace(s)) }
+
+func splitSemicolon(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ";") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
 
 func appendUnique(list []string, v string) []string {
 	for _, x := range list {

@@ -77,14 +77,14 @@ func (s *Server) annotateTools() {
 		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "project_validation_preview", "memory_read", "notes_list", "notes_read", "notes_write_preview", "sandbox_status")
 	// Read-only, but reaching external services (GitHub / Coolify APIs).
 	s.annotate(externalRead,
-		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "coolify_app_logs", "platform_app_logs", "coolify_deployment_status", "platform_deployment_status", "platform_app_create_preview", "platform_deploy_preview")
+		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "coolify_app_logs", "platform_app_logs", "coolify_deployment_status", "platform_deployment_status", "platform_app_create_preview", "platform_validation_runner_create_preview", "platform_deploy_preview")
 	// Additive/local writes: not read-only, but not destructive (no data loss).
 	s.annotate(localWrite,
 		"create_file", "git_commit")
 	// External writes are consequential and open-world, but not inherently destructive.
 	s.annotate(externalWrite,
 		"git_clone", "git_push", "repo_publish", "github_create_repo", "source_repo_create",
-		"coolify_create_app", "platform_app_create")
+		"coolify_create_app", "platform_app_create", "platform_validation_runner_create")
 	s.annotate(externalIdempotentWrite, "repo_fetch")
 	s.annotate(localWrite, "repo_fast_forward")
 	s.annotate(localWrite, "notes_write")
@@ -372,6 +372,36 @@ func (s *Server) register() {
 				return "", err
 			}
 			return s.svc.PlatformAppCreate(p.PlanID, p.Approve)
+		})
+
+	s.add("platform_validation_runner_create_preview",
+		"Plan exactly one private Coolify validation-runner application using the administrator-configured destination and exact mount allowlist. It never deploys or accepts secret values.",
+		object(map[string]any{"branch": strProp("source branch; defaults to cubethon-q3")}),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				Branch string `json:"branch"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.PlatformValidationRunnerCreatePreview(p.Branch)
+		})
+
+	s.add("platform_validation_runner_create",
+		"Execute one reviewed validation-runner creation plan. It creates one private, non-deployed Coolify application and configures only non-secret runtime variables; explicit approval is required.",
+		object(map[string]any{
+			"plan_id": strProp("plan id returned by platform_validation_runner_create_preview"),
+			"approve": boolProp("execute the reviewed application creation plan"),
+		}, "plan_id"),
+		func(a json.RawMessage) (string, error) {
+			var p struct {
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
+			}
+			if err := json.Unmarshal(a, &p); err != nil {
+				return "", err
+			}
+			return s.svc.PlatformValidationRunnerCreate(p.PlanID, p.Approve)
 		})
 
 	s.add("platform_app_create_preview",

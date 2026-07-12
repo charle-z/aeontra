@@ -139,6 +139,7 @@ func TestToolsList(t *testing.T) {
 		"memory_update_handoff", "sandbox_status", "sandbox_exec",
 		"coolify_deploy", "coolify_list_apps", "coolify_app_status",
 		"coolify_deployment_status", "coolify_create_app", "coolify_set_env",
+		"platform_validation_runner_create_preview", "platform_validation_runner_create",
 	} {
 		if !strings.Contains(string(b), `"`+name+`"`) {
 			t.Errorf("tools/list missing %q: %s", name, b)
