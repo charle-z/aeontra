@@ -67,7 +67,16 @@ version, MCP protocol version, commit, optional build time, registered tool coun
 and deterministic catalog hash. The same commit/hash/count are sent as response
 headers. Compare these values before reconnecting a client: if they match the pushed
 build while the client still shows an older tool surface, the remaining staleness is
-client-side rather than a failed server deployment.
+client-side rather than a failed server deployment. Run the repository-native
+smoke check from the expected source commit:
+
+```bash
+go run ./cmd/mcp-catalog-smoke \
+  --url https://mcp.example.com \
+  --expected-commit "$(git rev-parse HEAD)"
+```
+
+See `docs/runbooks/catalog-cache.md` for diagnosis and rollback.
 
 `GET https://mcp.example.com/healthz` returns `ok mcp-devbox <version> <commit>`. Compare
 `<commit>` to `git rev-parse HEAD` on `main`. If it lags, the deploy did not ship the

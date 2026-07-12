@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
@@ -41,6 +42,7 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
 	sessionID := newHTTPSessionID()
+	catalogNotifier := &oneShotCatalogNotifier{}
 
 	if oauthProvider != nil {
 		oauthProvider.RegisterRoutes(mux)
@@ -97,7 +99,7 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			handleHTTPGetSSE(w, r)
+			handleHTTPGetSSE(w, r, catalogNotifier)
 		default:
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -154,9 +156,26 @@ func newHTTPSessionID() string {
 // handleHTTPGetSSE serves the server->client SSE stream. It stays open, sending a
 // periodic keep-alive comment, until the client disconnects (request context
 // cancelled). A persistent stream (vs an immediate close) avoids clients such as
-// ChatGPT reconnecting in a loop. We push no server-initiated MCP messages in L1, so
-// the stream carries only keep-alive comments.
-func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request) {
+// ChatGPT reconnecting in a loop. The stream carries keep-alive comments and one
+// standards-based tool-list refresh notification after each process start.
+type oneShotCatalogNotifier struct {
+	mu   sync.Mutex
+	sent bool
+}
+
+func (n *oneShotCatalogNotifier) Notify(write func(string) bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.sent {
+		return
+	}
+	const notification = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\n\n"
+	if write(notification) {
+		n.sent = true
+	}
+}
+
+func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotCatalogNotifier) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -176,6 +195,7 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request) {
 	if !writeChunk(": mcp-devbox stream open\n\n") {
 		return
 	}
+	notifier.Notify(writeChunk)
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	ctx := r.Context()

@@ -121,7 +121,7 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 	runtimeInfo := s.mustRuntimeInfo()
 	return map[string]any{
 		"protocolVersion": version,
-		"capabilities":    map[string]any{"tools": map[string]any{}},
+		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": true}},
 		"serverInfo": map[string]any{
 			"name":        s.name,
 			"version":     runtimeInfo.Version,

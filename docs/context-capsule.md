@@ -9,9 +9,11 @@ the Coolify/VPS deployment over HTTPS and can operate on repos cloned in the VPS
 volume. Current goal: evolve mcp-devbox into a GPT-driven agent tool box that can
 safely do work, while a human keeps control of risky operations.
 
-P0 architecture work began on 2026-07-12. The immediate goal is a deterministic
-tool catalog, centralized build identity, safe version/catalog diagnostics, and
-post-deploy evidence that distinguishes a stale server from a stale client catalog.
+P0 architecture work began on 2026-07-12. The deterministic catalog,
+centralized build identity, safe `/version` diagnostics, no-cache headers,
+`tools.listChanged` notification, and post-deploy catalog smoke command are now
+implemented on `cubethon-q3`. They distinguish a stale server from a stale
+client catalog.
 See `docs/adr/0001-p0-catalog-cache-and-product-foundations.md`,
 `docs/baselines/2026-07-12-p0.md`, and `docs/quality-gates.md`. Existing environment
 variable names and MCP wire contracts are frozen for compatibility during P0-P3.
@@ -319,8 +321,8 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Complete P0: central build info, deterministic catalog manifest/hash, safe
-   version endpoint, HTTP cache policy, and post-deploy catalog smoke checks.
+1. Push and deploy the completed P0 branch, run the catalog smoke check, and
+   record whether ChatGPT honors `notifications/tools/list_changed`.
 2. Refactor tool registration, service capabilities, and application composition in
    small behavior-preserving steps. Do not rename deployed env vars or public tools.
 3. Add CI/DevSecOps gates and structured observability before converting the static
