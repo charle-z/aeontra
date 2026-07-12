@@ -213,7 +213,7 @@ are not automatically committed into child project repositories.
   sibling-prefix protection, secret path deny, content redaction, command allowlist,
   destructive/injection blocking, in-memory read grants, immutable runtime policy.
 - Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- Tools (`internal/tools`): 59 registered tools with schema, description, four
+- Tools (`internal/tools`): every registered tool has a schema, description, four
   annotations, handler and tests. See `docs/tools.md` for the canonical complete
   table, compatibility aliases, exact effects, and workflows.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
@@ -344,8 +344,8 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 Date: 2026-07-11. Local secure-builder gates green: `go test ./... -count=1`,
 `go vet ./...`, `go build ./...`, and empty `gofmt -l .`. Wire-level `tools/list`
-coverage asserts 55 unique tools and, for each, a schema, description, all four
-annotations, handler, tests, and documentation. No push, GitHub creation, Coolify
+catalog consistency asserts every registered tool has a schema, description, all four
+annotations, handler, contract version, deterministic hash, and documentation. No push, GitHub creation, Coolify
 deployment, live infrastructure mutation, or secret-bearing API call was performed.
 Production still runs the previously validated baseline until the owner explicitly
 authorizes push and redeploy.

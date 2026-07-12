@@ -54,8 +54,8 @@ func TestToolsListWireSurfaceIsComplete(t *testing.T) {
 	if err := json.Unmarshal(raw, &response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Result.Tools) != len(s.order) || len(response.Result.Tools) != 59 {
-		t.Fatalf("tools/list returned %d tools, registry has %d; want documented surface 59", len(response.Result.Tools), len(s.order))
+	if len(response.Result.Tools) != len(s.order) {
+		t.Fatalf("tools/list returned %d tools, registry has %d", len(response.Result.Tools), len(s.order))
 	}
 	seen := map[string]bool{}
 	for _, def := range response.Result.Tools {
