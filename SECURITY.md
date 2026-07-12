@@ -56,4 +56,5 @@ Please report suspected vulnerabilities privately to the maintainer rather than
 opening a public issue. Include reproduction steps and the affected version/commit.
 We aim to acknowledge reports promptly and will credit reporters who wish it.
 
-This software is provided "as is" (see LICENSE); no security guarantees are made.
+No open-source license has been granted until the owner adds a `LICENSE` file. No
+security guarantees are made.

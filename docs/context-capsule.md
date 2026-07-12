@@ -240,6 +240,7 @@ are not automatically committed into child project repositories.
 | `docs/deploy-coolify.md` | VPS/Coolify deployment guide. |
 | `docs/product-roadmap.md` | Cubethon, universal profiles, edge, orchestrator, and authorized-security roadmap. |
 | `docs/security-engagements.md` | Generic private engagement authority and edge-enforced security workflow. |
+| `docs/open-source-release.md` | Proposed public/private boundary and release-readiness checklist. |
 
 ## Commands
 
