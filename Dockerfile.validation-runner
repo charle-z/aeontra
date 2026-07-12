@@ -6,6 +6,7 @@ COPY cmd/validation-runner ./cmd/validation-runner
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/validation-runner ./cmd/validation-runner
 
 FROM docker:29-cli
+RUN apk add --no-cache curl
 COPY --from=build /out/validation-runner /usr/local/bin/validation-runner
 EXPOSE 8787
 ENTRYPOINT ["/usr/local/bin/validation-runner"]

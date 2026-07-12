@@ -51,6 +51,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "validation-runner:", err)
 		os.Exit(1)
 	}
+	if err := prepareStore(storeMountPath, cfg.user); err != nil {
+		fmt.Fprintln(os.Stderr, "validation-runner:", err)
+		os.Exit(1)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok validation-runner\n") })
 	mux.HandleFunc(runPath, cfg.handleRun)
