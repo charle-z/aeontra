@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/policy"
@@ -298,8 +299,8 @@ func TestInitialize_DefaultsProtocolVersionWhenAbsent(t *testing.T) {
 	s, _ := newTestServer(t, config.ModeReadOnly)
 	resp := call(t, s, `{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
 	b, _ := json.Marshal(resp.Result)
-	if !strings.Contains(string(b), `"protocolVersion":"`+protocolVersion+`"`) {
-		t.Errorf("server should default protocolVersion to %s: %s", protocolVersion, b)
+	if !strings.Contains(string(b), `"protocolVersion":"`+buildinfo.ProtocolVersion+`"`) {
+		t.Errorf("server should default protocolVersion to %s: %s", buildinfo.ProtocolVersion, b)
 	}
 }
 

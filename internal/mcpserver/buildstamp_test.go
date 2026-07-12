@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
@@ -26,9 +27,9 @@ func stampServer(t *testing.T) *Server {
 }
 
 func TestInitialize_CarriesCommit(t *testing.T) {
-	old := Commit
-	Commit = "deadbeefcafe"
-	defer func() { Commit = old }()
+	old := buildinfo.Commit
+	buildinfo.Commit = "deadbeefcafe"
+	defer func() { buildinfo.Commit = old }()
 
 	s := stampServer(t)
 	resp := s.handle([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
@@ -50,9 +51,9 @@ func TestInitialize_CarriesCommit(t *testing.T) {
 }
 
 func TestHealthz_CarriesCommit(t *testing.T) {
-	old := Commit
-	Commit = "abc123sha"
-	defer func() { Commit = old }()
+	old := buildinfo.Commit
+	buildinfo.Commit = "abc123sha"
+	defer func() { buildinfo.Commit = old }()
 
 	h := stampServer(t).HTTPHandler("tok", nil)
 	rr := do(t, h, "GET", "/healthz", "", "")

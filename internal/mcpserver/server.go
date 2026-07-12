@@ -14,23 +14,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
-
-const protocolVersion = "2024-11-05"
-
-// serverVersion is the human semantic version reported to clients.
-const serverVersion = "0.2.0"
-
-// Commit is the git SHA of the running build, so a deployed instance can report exactly
-// which commit is live (surfaced in /healthz and the initialize serverInfo). It defaults
-// to "unknown" and is set either at build time via
-//
-//	-ldflags "-X github.com/charle-z/mcp-devbox/internal/mcpserver.Commit=<sha>"
-//
-// or at startup from an environment variable (see cmd/mcp-devbox). This is the primary
-// way to confirm a redeploy actually shipped the latest commit.
-var Commit = "unknown"
 
 // Server dispatches MCP requests to the tool service.
 type Server struct {
@@ -122,7 +108,7 @@ func (s *Server) handle(raw []byte) []byte {
 func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 	// Echo the client's requested protocol version when present (improves client
 	// compatibility); otherwise advertise our default.
-	version := protocolVersion
+	version := buildinfo.ProtocolVersion
 	if len(params) > 0 {
 		var p struct {
 			ProtocolVersion string `json:"protocolVersion"`
@@ -134,7 +120,7 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 	return map[string]any{
 		"protocolVersion": version,
 		"capabilities":    map[string]any{"tools": map[string]any{}},
-		"serverInfo":      map[string]any{"name": s.name, "version": serverVersion, "commit": Commit},
+		"serverInfo":      map[string]any{"name": s.name, "version": buildinfo.Version, "commit": buildinfo.Commit},
 		"instructions": "Secure-by-default repository builder; use one focused tool call per message. " +
 			"Session preflight: repo_list, build_context_pack with repo, then repo_status. Work loop: plan, act, observe, " +
 			"run_tests when code changed, revise on failure, and record durable state in memory. Sync only with repo_fetch, " +

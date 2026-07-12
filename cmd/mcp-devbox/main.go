@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/grantadmin"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
@@ -27,8 +28,6 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
-
-const version = "0.2.0"
 
 // tokenEnv is the preferred way to supply the HTTP bearer token (keeps it out of
 // the process argument list / shell history).
@@ -132,7 +131,7 @@ var commitEnvVars = []string{"MCP_DEVBOX_COMMIT", "SOURCE_COMMIT"}
 func stampCommit() {
 	for _, name := range commitEnvVars {
 		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
-			mcpserver.Commit = v
+			buildinfo.Commit = v
 			return
 		}
 	}
@@ -156,7 +155,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "version", "--version", "-v":
-		fmt.Println("mcp-devbox " + version + " (commit " + mcpserver.Commit + ")")
+		fmt.Println("mcp-devbox " + buildinfo.Version + " (commit " + buildinfo.Commit + ")")
 	case "help", "--help", "-h":
 		usage()
 	default:
@@ -167,7 +166,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `mcp-devbox `+version+` — secure-by-default local MCP server
+	fmt.Fprint(os.Stderr, `mcp-devbox `+buildinfo.Version+` — secure-by-default local MCP server
 
 Usage:
   mcp-devbox serve --root <ABS_PATH> [--mode read-only|ask|allow] [flags]
@@ -385,14 +384,14 @@ func serve(args []string) error {
 			}
 		}
 		fmt.Fprintf(os.Stderr, "mcp-devbox %s serving HTTP on %s (mode=%s, roots=%v, audit=%s)\n",
-			version, addr, pol.Mode(), pol.Roots(), ap)
+			buildinfo.Version, addr, pol.Mode(), pol.Roots(), ap)
 		fmt.Fprintf(os.Stderr, "MCP endpoint: POST http://%s%s  (%s)\n",
 			addr, mcpserver.DefaultMCPPath, authDesc)
 		return srv.ServeHTTP(ctx, addr, token, oauthProvider)
 	}
 
 	fmt.Fprintf(os.Stderr, "mcp-devbox %s serving stdio (mode=%s, roots=%v, audit=%s)\n",
-		version, pol.Mode(), pol.Roots(), ap)
+		buildinfo.Version, pol.Mode(), pol.Roots(), ap)
 	return srv.Serve(os.Stdin, os.Stdout)
 }
 

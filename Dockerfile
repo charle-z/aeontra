@@ -13,7 +13,7 @@ COPY cmd ./cmd
 COPY internal ./internal
 
 RUN CGO_ENABLED=0 go build -trimpath \
-	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/mcpserver.Commit=${GIT_SHA}" \
+	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=${GIT_SHA}" \
 	-o /out/mcp-devbox ./cmd/mcp-devbox
 
 # Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can

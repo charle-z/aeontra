@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
 )
 
@@ -67,7 +68,7 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, "ok mcp-devbox "+serverVersion+" "+Commit+"\n")
+		_, _ = io.WriteString(w, "ok mcp-devbox "+buildinfo.Version+" "+buildinfo.Commit+"\n")
 	})
 
 	mux.HandleFunc(DefaultMCPPath, func(w http.ResponseWriter, r *http.Request) {

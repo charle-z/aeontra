@@ -66,7 +66,7 @@ jail) so agents cannot edit OAuth server state through normal file tools.
 `<commit>` to `git rev-parse HEAD` on `main`. If it lags, the deploy did not ship the
 latest code — check the webhook fired and that Coolify rebuilt (didn't reuse a cached
 image). To stamp the commit, either let Coolify inject `SOURCE_COMMIT` (read at startup)
-or pass a build argument `GIT_SHA=$(git rev-parse HEAD)` (baked via `-ldflags`). Changing
+or pass a build argument `GIT_SHA=$(git rev-parse HEAD)` (baked into `internal/buildinfo` via `-ldflags`). Changing
 `GIT_SHA` also busts the Docker build cache, forcing a genuine rebuild per commit.
 
 4. Add persistent volumes:
