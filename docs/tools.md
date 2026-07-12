@@ -79,6 +79,8 @@ do not replace server-side enforcement.
 | `platform_deploy_preview` | 1/0/1/1 | Plan deployment bound to app/repo/branch/commit state. |
 | `coolify_deploy` | 0/1/0/1 | Compatibility name for planned `platform_deploy`. |
 | `platform_deploy` | 0/1/0/1 | Revalidate application state and replace a live deployment. |
+| `platform_deploy_without_cache_preview` | 1/0/1/1 | Plan a force=true deployment bound to app/repo/branch/commit state. |
+| `platform_deploy_without_cache` | 0/1/0/1 | Revalidate and request a Coolify rebuild/deploy without reusable build cache. |
 | `coolify_set_env` | 0/1/0/1 | Set/replace validated env keys; values are never returned or audited. |
 
 ## Memory, notes, sandbox, and privileged profiles
@@ -124,7 +126,7 @@ Steps 7-10 are needed only when creating/configuring a new GitHub repository.
 2. `platform_app_create_preview`
 3. `platform_app_create`
 4. `platform_deploy_preview`
-5. `platform_deploy`
+5. `platform_deploy` or the explicit `platform_deploy_without_cache_preview` / `platform_deploy_without_cache` pair
 6. `platform_app_status`
 7. `platform_app_logs`
 

@@ -394,7 +394,7 @@ func (s *Service) PlatformDeploy(planID string, approve bool) (string, error) {
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
-	status, body, err := s.coolify.deploy(context.Background(), app.UUID)
+	status, body, err := s.coolify.deploy(context.Background(), app.UUID, false)
 	if err != nil {
 		sp.Finish(audit.Error, planID, nil, err)
 		return "", fmt.Errorf("Coolify deployment request failed: %w", err)

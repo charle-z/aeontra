@@ -116,8 +116,12 @@ func (c *CoolifyClient) builderConfigured() bool {
 
 // deploy calls Coolify's deploy-by-uuid endpoint. Returns status code + (truncated)
 // body. The token rides only in the header.
-func (c *CoolifyClient) deploy(ctx context.Context, uuid string) (int, string, error) {
-	u := c.baseURL + "/api/v1/deploy?" + url.Values{"uuid": {uuid}, "force": {"false"}}.Encode()
+func (c *CoolifyClient) deploy(ctx context.Context, uuid string, force bool) (int, string, error) {
+	forceValue := "false"
+	if force {
+		forceValue = "true"
+	}
+	u := c.baseURL + "/api/v1/deploy?" + url.Values{"uuid": {uuid}, "force": {forceValue}}.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return 0, "", err
@@ -191,7 +195,7 @@ func (s *Service) CoolifyDeploy(app string, approve bool) (string, error) {
 		sp.Finish(audit.Ask, "coolify_deploy "+app, nil, nil)
 		return fmt.Sprintf("APPROVAL REQUIRED: coolify_deploy would trigger a deploy of app %s. Re-invoke with approve=true.", app), nil
 	}
-	status, body, err := s.coolify.deploy(context.Background(), app)
+	status, body, err := s.coolify.deploy(context.Background(), app, false)
 	if err != nil {
 		sp.Finish(audit.Error, "coolify_deploy "+app, nil, err)
 		return "", fmt.Errorf("coolify deploy request failed: %w", err)

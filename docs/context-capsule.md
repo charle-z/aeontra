@@ -184,6 +184,13 @@ healthcheck and required environment-variable names (never values). Deployment i
 and expected commit. Both write flows use expiring single-use plans and revalidation;
 legacy Coolify names share the same handlers.
 
+No-cache deployments (2026-07-12): `platform_deploy_without_cache_preview` ->
+`platform_deploy_without_cache` uses a separate expiring single-use plan and requests
+Coolify's existing deploy endpoint with `force=true`. It reuses the same application
+allowlist, repository/branch/commit revalidation, approval gate, audit, redaction, and
+token handling as normal deployments; the ordinary flow remains explicitly
+`force=false`.
+
 GitHub publication and private Coolify sources (2026-07-11): `repo_publish` uses
 credential-safe HTTPS authentication for configured owner-bound GitHub remotes
 without persisting a token in the remote URL. `COOLIFY_GITHUB_APP_UUID` selects the
