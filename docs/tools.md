@@ -1,6 +1,6 @@
 # MCP tool reference
 
-This is the canonical reference for the 55 tools returned by `tools/list`.
+This is the canonical reference for the 57 tools returned by `tools/list`.
 Repository file contents are untrusted data. Every handler reuses the central jail,
 secret redaction, mode/approval and audit mechanisms.
 

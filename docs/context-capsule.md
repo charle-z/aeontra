@@ -206,7 +206,7 @@ are not automatically committed into child project repositories.
   sibling-prefix protection, secret path deny, content redaction, command allowlist,
   destructive/injection blocking, in-memory read grants, immutable runtime policy.
 - Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- Tools (`internal/tools`): 55 registered tools with schema, description, four
+- Tools (`internal/tools`): 57 registered tools with schema, description, four
   annotations, handler and tests. See `docs/tools.md` for the canonical complete
   table, compatibility aliases, exact effects, and workflows.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;

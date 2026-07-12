@@ -54,8 +54,12 @@ WORKDIR /repos
 VOLUME ["/repos"]
 EXPOSE 8765
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=12 \
 	CMD wget -qO- http://127.0.0.1:8765/healthz >/dev/null || exit 1
+
+# Coolify/Docker use SIGTERM for rolling replacement. The Go server catches it,
+# stops accepting new traffic, and drains in-flight requests before exit.
+STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["/bin/sh", "-c"]
 CMD ["exec /usr/local/bin/mcp-devbox serve --root \"${MCP_DEVBOX_ROOT:-/repos/workspace}\" --mode \"${MCP_DEVBOX_MODE:-read-only}\" --http 0.0.0.0:8765"]

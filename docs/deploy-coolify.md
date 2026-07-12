@@ -12,6 +12,7 @@ The Docker image is multi-stage:
 - runtime: `alpine`, non-root user `10001`, includes Go, `git`, Node.js, `npm`,
   and `wget`
 - healthcheck: `GET http://127.0.0.1:8765/healthz`
+- graceful replacement: Docker `SIGTERM` is handled and active requests get up to five seconds to drain before exit.
 
 Default container command:
 
@@ -110,6 +111,10 @@ contained administrator runner if that architecture is added later.
 publish `8765` directly on the VPS host firewall.
 7. Deploy.
 
+### Rolling updates without dropping the old container
+
+The repository is prepared for Coolify rolling replacement: Dockerfile deployment, no fixed `container_name`, no host port binding, an internal `/healthz` check with a startup window, and graceful `SIGTERM` handling. Keep `/repos` and `/state` as persistent volumes. Coolify must keep the previous healthy container serving until the candidate passes its healthcheck, then switch Traefik traffic and stop the old instance. A failed candidate must not replace the healthy instance. During the brief overlap, avoid starting consequential writes from two clients at once; the overlap is for readiness and traffic handoff, not parallel agent execution.
+
 If you manage Traefik labels manually, the service should route HTTPS traffic to
 container port `8765` only. Example labels:
 
@@ -207,5 +212,4 @@ After an authorized push, let the existing Coolify webhook rebuild the branch.
 Verify `/healthz` reports the pushed commit before testing tools. Keep `/repos` and
 `/state` volumes mounted. With persisted OAuth client and refresh stores, ChatGPT
 should reconnect without connector deletion; if OAuth configuration changed,
-reconnect once through the normal OAuth flow. Then call `tools/list`, confirm 53
-tools and all four annotations, and run read-only acceptance tests before any write.
+reconnect once through the normal OAuth flow. Then call `tools/list`, confirm the documented tool count in `docs/tools.md` and all four annotations, and run read-only acceptance tests before any write.

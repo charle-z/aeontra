@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
@@ -369,7 +370,9 @@ func serve(args []string) error {
 				tokenEnv, publicURLEnv, oauthPassphraseEnv)
 		}
 		addr := normalizeHTTPAddr(*httpAddr)
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		// Docker and Coolify stop containers with SIGTERM. Listening only for
+		// os.Interrupt would prevent graceful draining during rolling replacement.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		authDesc := "Authorization: Bearer <token>"
 		if oauthProvider != nil {

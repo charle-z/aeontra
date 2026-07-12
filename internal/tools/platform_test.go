@@ -226,6 +226,56 @@ func TestPlatformDeployPlannedSuccessAndChangedState(t *testing.T) {
 	}
 }
 
+func TestPlatformDeployParsesWrappedCoolifyResponse(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/deploy" {
+			_, _ = w.Write([]byte("{\"deployments\":[{\"deployment_uuid\":\"dep-wrapped\",\"status\":\"queued\",\"message\":\"deployment queued\"}]}"))
+			return
+		}
+		_, _ = w.Write([]byte("{\"uuid\":\"app1\",\"name\":\"demo\",\"status\":\"running\",\"git_repository\":\"acme/demo\",\"git_branch\":\"main\",\"git_commit_sha\":\"abc123\"}"))
+	}))
+	defer ts.Close()
+	svc := configuredPlatformService(t, config.ModeAllow, ts.URL)
+	preview, err := svc.PlatformDeployPreview("app1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := svc.PlatformDeploy(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"deployment_id: dep-wrapped", "status: queued", "message: deployment queued"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("wrapped deploy response missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestPlatformDeploymentStatusReturnsSafeSummary(t *testing.T) {
+	var gotPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte("{\"deployment_uuid\":\"dep1\",\"application_name\":\"demo\",\"status\":\"finished\",\"commit\":\"abc123\",\"commit_message\":\"ship it\",\"created_at\":\"2026-07-12T10:00:00Z\",\"updated_at\":\"2026-07-12T10:01:00Z\",\"finished_at\":\"2026-07-12T10:01:00Z\"}"))
+	}))
+	defer ts.Close()
+	svc := configuredPlatformService(t, config.ModeReadOnly, ts.URL)
+	out, err := svc.PlatformDeploymentStatus("dep1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/api/v1/deployments/dep1" {
+		t.Fatalf("path=%q", gotPath)
+	}
+	for _, want := range []string{"deployment_id: dep1", "application: demo", "status: finished", "commit: abc123", "finished_at: 2026-07-12T10:01:00Z"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("deployment summary missing %q:\n%s", want, out)
+		}
+	}
+	if _, err := svc.PlatformDeploymentStatus("../unsafe"); err == nil {
+		t.Fatal("unsafe deployment id accepted")
+	}
+}
+
 func TestPlatformAPIErrorsRedactToken(t *testing.T) {
 	secret := "ghp_0123456789abcdefghijklmnopqrstuvwxyz"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

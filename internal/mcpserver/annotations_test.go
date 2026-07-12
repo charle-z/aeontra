@@ -8,17 +8,18 @@ import (
 )
 
 var compatibilityAliases = map[string]string{
-	"repo_list":           "list_dir",
-	"repo_status":         "git_status",
-	"repo_diff":           "git_diff",
-	"source_repo_info":    "github_repo_info",
-	"source_repo_create":  "github_create_repo",
-	"repo_publish":        "git_push",
-	"platform_apps_list":  "coolify_list_apps",
-	"platform_app_status": "coolify_app_status",
-	"platform_app_logs":   "coolify_app_logs",
-	"platform_app_create": "coolify_create_app",
-	"platform_deploy":     "coolify_deploy",
+	"repo_list":                  "list_dir",
+	"repo_status":                "git_status",
+	"repo_diff":                  "git_diff",
+	"source_repo_info":           "github_repo_info",
+	"source_repo_create":         "github_create_repo",
+	"repo_publish":               "git_push",
+	"platform_apps_list":         "coolify_list_apps",
+	"platform_app_status":        "coolify_app_status",
+	"platform_app_logs":          "coolify_app_logs",
+	"platform_deployment_status": "coolify_deployment_status",
+	"platform_app_create":        "coolify_create_app",
+	"platform_deploy":            "coolify_deploy",
 }
 
 func TestToolAnnotations_AreCompleteAndSerialize(t *testing.T) {
@@ -53,8 +54,8 @@ func TestToolsListWireSurfaceIsComplete(t *testing.T) {
 	if err := json.Unmarshal(raw, &response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Result.Tools) != len(s.order) || len(response.Result.Tools) != 55 {
-		t.Fatalf("tools/list returned %d tools, registry has %d; want documented surface 55", len(response.Result.Tools), len(s.order))
+	if len(response.Result.Tools) != len(s.order) || len(response.Result.Tools) != 57 {
+		t.Fatalf("tools/list returned %d tools, registry has %d; want documented surface 57", len(response.Result.Tools), len(s.order))
 	}
 	seen := map[string]bool{}
 	for _, def := range response.Result.Tools {
@@ -133,7 +134,7 @@ func TestToolAnnotationClassifications(t *testing.T) {
 	for _, name := range []string{"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files", "search_code", "git_status", "repo_status", "git_diff", "repo_diff", "memory_read", "sandbox_status"} {
 		assertHints(name, true, false, true, false)
 	}
-	for _, name := range []string{"github_repo_info", "source_repo_info", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "coolify_app_logs", "platform_app_logs"} {
+	for _, name := range []string{"github_repo_info", "source_repo_info", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "coolify_app_logs", "platform_app_logs", "coolify_deployment_status", "platform_deployment_status"} {
 		assertHints(name, true, false, true, true)
 	}
 	for _, name := range []string{"git_push", "repo_publish", "github_create_repo", "source_repo_create", "coolify_create_app", "platform_app_create"} {

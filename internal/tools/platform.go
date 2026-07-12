@@ -404,19 +404,8 @@ func (s *Service) PlatformDeploy(planID string, approve bool) (string, error) {
 		sp.Finish(audit.Error, planID, nil, err)
 		return s.coolifySafe(body), err
 	}
-	var result struct {
-		DeploymentUUID string `json:"deployment_uuid"`
-		UUID           string `json:"uuid"`
-		Status         string `json:"status"`
-		Message        string `json:"message"`
-	}
+	result := decodePlatformDeployResponse(body)
 	trimmedBody := strings.TrimSpace(body)
-	if trimmedBody != "" {
-		_ = json.Unmarshal([]byte(trimmedBody), &result)
-	}
-	if result.DeploymentUUID == "" {
-		result.DeploymentUUID = result.UUID
-	}
 	sp.Finish(audit.Allow, planID, nil, nil)
 	out := fmt.Sprintf("http_status: %d\ndeployment_id: %s\nstatus: %s\n", status, result.DeploymentUUID, result.Status)
 	if result.Message != "" {
@@ -428,6 +417,95 @@ func (s *Service) PlatformDeploy(planID string, approve bool) (string, error) {
 		out += "response_body: " + s.coolifySafe(trimmedBody) + "\n"
 	}
 	return out, nil
+}
+
+type platformDeployResult struct {
+	DeploymentUUID string
+	Status         string
+	Message        string
+}
+
+func decodePlatformDeployResponse(body string) platformDeployResult {
+	var direct struct {
+		DeploymentUUID string `json:"deployment_uuid"`
+		UUID           string `json:"uuid"`
+		Status         string `json:"status"`
+		Message        string `json:"message"`
+		Deployments    []struct {
+			DeploymentUUID string `json:"deployment_uuid"`
+			UUID           string `json:"uuid"`
+			Status         string `json:"status"`
+			Message        string `json:"message"`
+		} `json:"deployments"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(body)), &direct) != nil {
+		return platformDeployResult{}
+	}
+	if direct.DeploymentUUID == "" {
+		direct.DeploymentUUID = direct.UUID
+	}
+	if direct.DeploymentUUID != "" || direct.Status != "" || direct.Message != "" {
+		return platformDeployResult{direct.DeploymentUUID, direct.Status, direct.Message}
+	}
+	if len(direct.Deployments) == 0 {
+		return platformDeployResult{}
+	}
+	item := direct.Deployments[0]
+	if item.DeploymentUUID == "" {
+		item.DeploymentUUID = item.UUID
+	}
+	return platformDeployResult{item.DeploymentUUID, item.Status, item.Message}
+}
+
+type platformDeployment struct {
+	DeploymentUUID string  `json:"deployment_uuid"`
+	Status         string  `json:"status"`
+	Commit         string  `json:"commit"`
+	CommitMessage  string  `json:"commit_message"`
+	Application    string  `json:"application_name"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+	FinishedAt     *string `json:"finished_at"`
+}
+
+func (s *Service) PlatformDeploymentStatus(deploymentID string) (string, error) {
+	sp := s.log.Start("platform_deployment_status")
+	if err := s.coolify.configError(); err != nil {
+		sp.Finish(audit.Deny, "deployment "+summarize(deploymentID), nil, err)
+		return "", err
+	}
+	deploymentID = strings.TrimSpace(deploymentID)
+	if !coolifyUUIDRe.MatchString(deploymentID) {
+		err := fmt.Errorf("invalid Coolify deployment id")
+		sp.Finish(audit.Deny, "deployment "+summarize(deploymentID), nil, err)
+		return "", err
+	}
+	status, body, err := s.coolify.request(context.Background(), http.MethodGet, "/api/v1/deployments/"+url.PathEscape(deploymentID), nil)
+	if err != nil {
+		sp.Finish(audit.Error, "deployment "+deploymentID, nil, err)
+		return "", fmt.Errorf("Coolify deployment status request failed: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		err := fmt.Errorf("Coolify deployment status -> HTTP %d: %s", status, s.coolifySafe(body))
+		sp.Finish(audit.Error, "deployment "+deploymentID, nil, err)
+		return s.coolifySafe(body), err
+	}
+	var deployment platformDeployment
+	if err := json.Unmarshal([]byte(body), &deployment); err != nil {
+		sp.Finish(audit.Error, "deployment "+deploymentID, nil, err)
+		return "", fmt.Errorf("decoding Coolify deployment status: %w", err)
+	}
+	if deployment.DeploymentUUID == "" {
+		deployment.DeploymentUUID = deploymentID
+	}
+	finished := ""
+	if deployment.FinishedAt != nil {
+		finished = *deployment.FinishedAt
+	}
+	sp.Finish(audit.Allow, "deployment "+deploymentID, nil, nil)
+	return s.redact(fmt.Sprintf("deployment_id: %s\napplication: %s\nstatus: %s\ncommit: %s\ncommit_message: %s\ncreated_at: %s\nupdated_at: %s\nfinished_at: %s\n",
+		deployment.DeploymentUUID, deployment.Application, deployment.Status, deployment.Commit,
+		deployment.CommitMessage, deployment.CreatedAt, deployment.UpdatedAt, finished)), nil
 }
 
 func (s *Service) getPlatformApp(appID string) (platformApplication, error) {
