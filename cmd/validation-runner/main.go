@@ -152,12 +152,13 @@ func (c config) argv(repo, profile string) ([]string, error) {
 	switch profile {
 	case "pnpm-lockfile":
 		network = "bridge" // required solely to resolve/fetch the declared dependency graph.
-		// Do not use `corepack enable`: it writes shims into the image filesystem,
-		// which is intentionally read-only. `corepack pnpm` uses only COREPACK_HOME
-		// under /tmp and keeps the exact package-manager version fixed.
-		script = "corepack prepare pnpm@10.13.1 --activate && corepack pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org && corepack pnpm fetch --ignore-scripts --registry=https://registry.npmjs.org"
+		// Corepack's documented offline workflow is explicit: create a package-manager
+		// archive while network is available, install that archive into COREPACK_HOME,
+		// then reuse it with network disabled. This avoids `corepack prepare` trying to
+		// contact npm again in the validation container.
+		script = "corepack pack pnpm@10.13.1 -o /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack install -g --cache-only /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org && corepack pnpm fetch --ignore-scripts --registry=https://registry.npmjs.org"
 	case "pnpm-validate":
-		script = "corepack prepare pnpm@10.13.1 --activate && corepack pnpm install --offline --frozen-lockfile --ignore-scripts && corepack pnpm run check && corepack pnpm test && corepack pnpm run build"
+		script = "test -s /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack install -g --cache-only /pnpm-store/corepack-pnpm-10.13.1.tgz && corepack pnpm install --offline --frozen-lockfile --ignore-scripts && corepack pnpm run check && corepack pnpm test && corepack pnpm run build"
 	default:
 		return nil, fmt.Errorf("unsupported validation profile")
 	}
@@ -178,7 +179,8 @@ func (c config) argv(repo, profile string) ([]string, error) {
 		"--mount", "type=bind,src=" + hostRepo + ",dst=/workspace",
 		"--mount", "type=volume,src=" + c.store + ",dst=/pnpm-store",
 		"--workdir", "/workspace",
-		"-e", "COREPACK_HOME=/pnpm-store/corepack", "-e", "PNPM_HOME=/tmp/pnpm", "-e", "PNPM_STORE_DIR=/pnpm-store",
+		"-e", "COREPACK_HOME=/pnpm-store/corepack", "-e", "COREPACK_ENABLE_NETWORK=0", "-e", "COREPACK_DEFAULT_TO_LATEST=0",
+		"-e", "PNPM_HOME=/tmp/pnpm", "-e", "PNPM_STORE_DIR=/pnpm-store",
 		c.image, "sh", "-ec", script,
 	}, nil
 }

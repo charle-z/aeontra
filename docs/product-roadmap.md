@@ -28,11 +28,12 @@ The product has five deliberately separate surfaces:
 2. **Execution profiles (private):** isolated, versioned runners for individual
    stacks and task families. `node-pnpm` is the first real profile, not the product
    identity.
-3. **Edge agents (private):** outbound-only connectors on a personal PC, WSL, or
-   Parrot host. Each edge exposes only administrator-approved roots and capabilities.
-4. **Optional orchestrator (private):** provider adapters for ChatGPT, MiniMax,
-   OpenCode Go, or future agents. It coordinates structured tasks but cannot bypass
-   the MCP policy layer.
+3. **Edge workcells (private):** outbound-only connectors on a personal PC, WSL,
+   Parrot, or lab host. A local agent may use an installed toolchain flexibly inside
+   administrator-owned filesystem, network, privilege, time, and evidence boundaries.
+4. **Optional orchestrator (private):** provider-neutral adapters for hosted model
+   APIs, local agents, OpenCode-compatible processes, or future providers. It runs a
+   durable task loop but cannot bypass the MCP policy or edge authority layers.
 5. **Console/showcase (public-safe):** a visual explanation, sanitized status, and
    recorded replays. It is never an unauthenticated control panel.
 
@@ -72,7 +73,9 @@ ChatGPT / OpenCode Go / MiniMax / other MCP client
 ```
 
 The orchestrator and edge channel are optional. ChatGPT may continue calling MCP
-Devbox directly, which remains the simplest and safest default.
+Devbox directly, which remains the simplest and safest default. Complex local work
+uses workcells rather than hundreds of rigid one-tool wrappers; see
+`docs/edge-workcells.md`.
 
 ## Milestone 0 - Cubethon submission foundation
 
@@ -200,7 +203,9 @@ Acceptance:
 ## Milestone 2 - Private edge agents for PC, WSL, and Parrot
 
 Goal: use MCP Devbox with machines outside the VPS without exposing inbound ports or
-turning the VPS into an unrestricted remote shell.
+turning the VPS into an unrestricted remote shell, while still allowing a local agent
+to combine the installed development, infrastructure, and authorized-security
+toolchain inside a bounded workcell.
 
 ### M2.1 Edge transport
 
@@ -209,8 +214,10 @@ turning the VPS into an unrestricted remote shell.
 - Edge initiates the connection outbound; no public listener on the personal host.
 - Pair devices with short-lived codes plus mutually authenticated long-term device
   credentials stored locally.
-- Give every device its own identity, revocation state, allowed roots, profiles,
-  concurrency, and expiration.
+- Give every device its own identity, revocation state, allowed roots, workcell
+  classes, network claims, concurrency, and expiration.
+- Support provider-neutral local-agent adapters that receive a structured goal and
+  bounded environment rather than infrastructure secrets.
 - Keep local-human approval on the edge for sensitive reads or elevated actions.
 - Heartbeats reveal only safe capability/status metadata.
 
@@ -230,7 +237,9 @@ Acceptance:
 
 - Disconnecting the VPS or revoking the device prevents new work.
 - Compromise of one edge credential does not authorize another device.
-- No arbitrary host path, shell, Docker socket, or private network is exposed.
+- No arbitrary host path, Docker socket, or private network is exposed. A workcell
+  may permit a local shell to its contained agent, but the shell cannot enlarge the
+  administrator-owned filesystem, network, privilege, duration, or engagement scope.
 - All results are bounded, redacted, and tied to a task/plan id.
 
 ## Milestone 3 - Optional multi-model orchestrator

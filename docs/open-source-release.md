@@ -1,24 +1,18 @@
 # Open-source release boundary
 
-MCP Devbox benefits from an open-source core: its security claims become auditable,
-contributors can test policy invariants, and the Cubethon demonstration is easier to
-trust and reproduce. Public source is especially valuable for a tool that mediates
-AI access to repositories and infrastructure.
+MCP Devbox is currently source-visible but not open source. Copyright © 2026
+Carlos Acosta. All rights reserved. The `COPYRIGHT` file is the current legal notice.
 
-Public visibility alone is not an open-source license. This repository currently has
-no `LICENSE` file, so a license must be selected before describing the project as
-open source.
+Public visibility alone does not grant permission to use, copy, modify, distribute,
+sublicense, sell, or create derivative works. Do not describe the project as open
+source until the owner intentionally adds an open-source license.
 
-## Recommended license
+## Future licensing options
 
-The recommended default is **Apache License 2.0** because it is permissive, widely
-understood, and includes an explicit patent grant. MIT is simpler but has no equally
-explicit patent language. AGPL-3.0 is appropriate only if requiring hosted modified
-versions to publish their source is more important than broad adoption and simple
-integration.
-
-License selection is an owner/legal decision. Do not add one merely because an agent
-recommended it.
+The owner may later choose AGPL-3.0 plus a separate commercial license, a permissive
+license, or another explicit arrangement. That decision is deferred until after the
+Cubethon and should consider contribution goals, hosted-service reuse, attribution,
+and commercial strategy.
 
 ## Public repository
 
@@ -45,7 +39,8 @@ Never publish:
 
 ## Release blockers
 
-- [ ] Owner chooses and adds `LICENSE`.
+- [x] Current copyright posture documented in `COPYRIGHT`; no open-source license granted.
+- [ ] Owner chooses a future open-source, source-available, or dual-license model if desired.
 - [ ] README comparison claims have dated primary sources.
 - [ ] Full working tree and complete Git history are scanned for secrets.
 - [ ] `SECURITY.md` matches implemented isolation/egress limitations.

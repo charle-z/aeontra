@@ -14,7 +14,7 @@ func TestValidationProfileIsClosedAndHardened(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"--network none", "--read-only", "--cap-drop ALL", "no-new-privileges", "--user 10001:10001", "corepack pnpm install --offline --frozen-lockfile --ignore-scripts"} {
+	for _, want := range []string{"--network none", "--read-only", "--cap-drop ALL", "no-new-privileges", "--user 10001:10001", "corepack install -g --cache-only /pnpm-store/corepack-pnpm-10.13.1.tgz", "corepack pnpm install --offline --frozen-lockfile --ignore-scripts", "COREPACK_ENABLE_NETWORK=0"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing %q in %q", want, joined)
 		}
@@ -34,7 +34,7 @@ func TestLockfileProfileHasOnlyFixedRegistryNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	if strings.Contains(joined, "corepack enable") || !strings.Contains(joined, "--network bridge") || !strings.Contains(joined, "corepack pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org") {
+	if strings.Contains(joined, "corepack enable") || !strings.Contains(joined, "--network bridge") || !strings.Contains(joined, "corepack pack pnpm@10.13.1 -o /pnpm-store/corepack-pnpm-10.13.1.tgz") || !strings.Contains(joined, "corepack pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org") {
 		t.Fatalf("unexpected lockfile argv: %s", joined)
 	}
 }

@@ -25,8 +25,7 @@ FROM golang:1.26-alpine
 # For fully reproducible prod builds, pin the base by digest (golang:1.26-alpine@sha256:...).
 LABEL org.opencontainers.image.title="mcp-devbox" \
 	org.opencontainers.image.description="Secure-by-default local MCP server for AI coding agents" \
-	org.opencontainers.image.source="https://github.com/charle-z/mcp-devbox" \
-	org.opencontainers.image.licenses="MIT"
+	org.opencontainers.image.source="https://github.com/charle-z/mcp-devbox"
 
 RUN apk add --no-cache ca-certificates git nodejs npm wget \
 	&& (corepack enable 2>/dev/null || true) \

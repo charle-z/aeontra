@@ -39,10 +39,11 @@ remain unfinished.
 
 ## Licensing status
 
-This repository does not yet contain a `LICENSE` file. Public visibility alone does
-not grant an open-source license. See `docs/open-source-release.md` for the proposed
-public/private boundary and release checklist; the owner must explicitly choose the
-license before calling the project open source.
+Copyright © 2026 Carlos Acosta. All rights reserved. This repository does not
+contain an open-source `LICENSE`; public visibility does not grant permission to use,
+copy, modify, distribute, sublicense, sell, or create derivative works. See
+`COPYRIGHT` and `docs/open-source-release.md`. A future open-source or dual-license
+release remains an explicit owner decision.
 
 ## Status
 
@@ -56,7 +57,7 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **mandatory bearer auth**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the server now exposes 55 deliberately annotated
+**Secure builder evolution:** the server now exposes 57 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
 private validation profiles, bounded Coolify logs, and disabled-by-default
@@ -93,8 +94,8 @@ repo_list -> repo_status -> repo_fetch
 -> repo_publish_preview -> repo_publish
 
 platform_apps_list -> platform_app_create_preview -> platform_app_create
--> platform_deploy_preview -> platform_deploy -> platform_app_status
--> platform_app_logs
+-> platform_deploy_preview -> platform_deploy -> platform_deployment_status
+-> platform_app_status -> platform_app_logs
 ```
 
 Use one tool call per message when that is more reliable for the ChatGPT connector.
@@ -122,5 +123,7 @@ writes require explicit approval in ask mode; aliases never weaken policy.
   orchestration, and authorized-security roadmap.
 - `docs/security-engagements.md` — generic design for private, scope-bound,
   edge-enforced authorized security workspaces.
+- `docs/edge-workcells.md` — flexible outbound WSL/Parrot workcells, local agents,
+  privilege challenges, and infrastructure/security boundaries.
 - `docs/open-source-release.md` — proposed public/private boundary, license options,
   and release-readiness checklist.

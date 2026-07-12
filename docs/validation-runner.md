@@ -22,7 +22,11 @@ in the validation profile are code execution, but they execute only in that
 contained child with no host socket and no network.
 
 The profiles intentionally invoke `corepack pnpm`, not `corepack enable`: enabling
-would try to write package-manager shims into the read-only image filesystem.
+would try to write package-manager shims into the read-only image filesystem. The
+networked profile also creates a pinned Corepack archive in the runner-owned volume
+and installs it into `COREPACK_HOME`. The offline profile refuses to start unless
+that archive exists, installs it with `--cache-only`, and sets
+`COREPACK_ENABLE_NETWORK=0` before any project command runs.
 
 The `pnpm-lockfile` profile intentionally has a narrow network exception. A
 package manifest can name dependencies fetched from third parties, so this is a
