@@ -287,6 +287,9 @@ This milestone assists investigation and reporting; it cannot promise a finding.
 Program rules and scope change over time and must be imported from the authoritative
 program source before each engagement.
 
+The concrete authority, data-separation, credential, stop-condition, and initial
+tool design is specified in `docs/security-engagements.md`.
+
 ### M4.1 Engagement authority
 
 Create an administrator-only engagement store outside `/repos`, for example under

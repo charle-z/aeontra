@@ -107,3 +107,5 @@ writes require explicit approval in ask mode; aliases never weaken policy.
 - `docs/tools.md` — canonical tool, alias, annotation, workflow, and approval reference.
 - `docs/product-roadmap.md` — Cubethon delivery plus universal profiles, edge,
   orchestration, and authorized-security roadmap.
+- `docs/security-engagements.md` — generic design for private, scope-bound,
+  edge-enforced authorized security workspaces.

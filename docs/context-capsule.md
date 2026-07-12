@@ -239,6 +239,7 @@ are not automatically committed into child project repositories.
 | `docs/connect-remote.md` | ChatGPT/local client setup and real-world connector notes. |
 | `docs/deploy-coolify.md` | VPS/Coolify deployment guide. |
 | `docs/product-roadmap.md` | Cubethon, universal profiles, edge, orchestrator, and authorized-security roadmap. |
+| `docs/security-engagements.md` | Generic private engagement authority and edge-enforced security workflow. |
 
 ## Commands
 
