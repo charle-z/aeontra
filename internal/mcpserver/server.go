@@ -35,6 +35,7 @@ type toolDef struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
+	Version     string         `json:"-"`
 	// Annotations are MCP tool behavior hints (readOnlyHint, destructiveHint,
 	// idempotentHint, openWorldHint). Clients use them to decide what to auto-run vs.
 	// confirm/gate. We label honestly: read-only tools are marked so, side-effecting

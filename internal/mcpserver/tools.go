@@ -32,7 +32,12 @@ func intProp(desc string) map[string]any {
 // add registers a tool definition and handler.
 func (s *Server) add(name, desc string, schema map[string]any, h func(json.RawMessage) (string, error)) {
 	s.table[name] = toolEntry{
-		def:     toolDef{Name: name, Description: desc, InputSchema: schema},
+		def: toolDef{
+			Name:        name,
+			Description: desc,
+			InputSchema: schema,
+			Version:     defaultToolContractVersion,
+		},
 		handler: h,
 	}
 	s.order = append(s.order, name)
