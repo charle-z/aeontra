@@ -9,6 +9,13 @@ the Coolify/VPS deployment over HTTPS and can operate on repos cloned in the VPS
 volume. Current goal: evolve mcp-devbox into a GPT-driven agent tool box that can
 safely do work, while a human keeps control of risky operations.
 
+P0 architecture work began on 2026-07-12. The immediate goal is a deterministic
+tool catalog, centralized build identity, safe version/catalog diagnostics, and
+post-deploy evidence that distinguishes a stale server from a stale client catalog.
+See `docs/adr/0001-p0-catalog-cache-and-product-foundations.md`,
+`docs/baselines/2026-07-12-p0.md`, and `docs/quality-gates.md`. Existing environment
+variable names and MCP wire contracts are frozen for compatibility during P0-P3.
+
 Product roadmap (2026-07-11): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
 edge agents, provider-neutral MiniMax/OpenCode orchestration, and scope-bound
@@ -206,7 +213,7 @@ are not automatically committed into child project repositories.
   sibling-prefix protection, secret path deny, content redaction, command allowlist,
   destructive/injection blocking, in-memory read grants, immutable runtime policy.
 - Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- Tools (`internal/tools`): 57 registered tools with schema, description, four
+- Tools (`internal/tools`): 59 registered tools with schema, description, four
   annotations, handler and tests. See `docs/tools.md` for the canonical complete
   table, compatibility aliases, exact effects, and workflows.
 - Writes: `apply_patch` is patch-first and validates with `git apply --check`;
@@ -311,13 +318,14 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Configure Coolify with a persistent `/state` volume and
-   `MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json`, then reconnect once.
-   Future redeploys should not require deleting the ChatGPT connector.
-2. P2-7 implementation now has the `SandboxRunner` contract and `sandbox_status`
-   diagnostic. Next: wire a Linux backend behind explicit config, keeping the Docker
-   socket out of the public MCP container and keeping broad commands disabled until
-   adversarial L3 tests pass.
+1. Complete P0: central build info, deterministic catalog manifest/hash, safe
+   version endpoint, HTTP cache policy, and post-deploy catalog smoke checks.
+2. Refactor tool registration, service capabilities, and application composition in
+   small behavior-preserving steps. Do not rename deployed env vars or public tools.
+3. Add CI/DevSecOps gates and structured observability before converting the static
+   console into the authenticated operator product.
+4. Keep PC/WSL edge workcells, IaC, and security workcells deferred until the core
+   and console contracts are stable.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
