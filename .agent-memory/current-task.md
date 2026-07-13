@@ -21,10 +21,11 @@ Completed commits:
 - Step 43 `dd421b7`: Git acquisition.
 - Step 44 `f7b5b41`: Git fast-forward.
 - Step 45 `8a68627`: Git publication.
+- Step 46 `ebf12fb`: source repository creation.
 
-Current Step 46 candidate:
-- added `internal/mcpserver/catalog/source_repo_creation.go` with a narrow `SourceRepoCreationService` interface;
-- moved `github_create_repo` and `source_repo_create_preview` into `RegisterSourceRepoCreation` while preserving their historical catalog order;
+Current Step 47 candidate:
+- added `internal/mcpserver/catalog/source_repo_info.go` with a narrow `SourceRepoInfoService` interface;
+- moved `github_repo_info` into `RegisterSourceRepoInfo` at its original catalog position;
 - added focused contract and handler-routing tests.
 
 Compatibility preserved:
@@ -32,9 +33,9 @@ Compatibility preserved:
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
 - names, order, descriptions, schemas, versions, annotations, aliases, handlers, approvals, and envs unchanged.
 
-Step 46 verification:
-- RED failed because `RegisterSourceRepoCreation` did not exist;
+Step 47 verification:
+- RED failed because `RegisterSourceRepoInfo` did not exist;
 - focused and full tests passed;
 - `go vet ./...`, `go build ./...`, diff review, and production catalog smoke passed.
 
-Next in the requested five-step batch: Step 47 source repository info and Step 48 remote management. No publish, merge, or deploy.
+Next in the requested five-step batch: Step 48 remote management. No publish, merge, or deploy.

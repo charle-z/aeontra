@@ -150,18 +150,7 @@ func (s *Server) register() {
 
 	catalog.RegisterSourceRepoCreation(s.addCatalogTool, s.svc)
 
-	s.add("github_repo_info",
-		"Read basic metadata for a repository under the configured GitHub owner. Token is never exposed and output is redacted.",
-		object(map[string]any{"name": strProp("repository name")}, "name"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Name string `json:"name"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.SourceRepoInfo(p.Name)
-		})
+	catalog.RegisterSourceRepoInfo(s.addCatalogTool, s.svc)
 
 	s.add("repo_remote_preview",
 		"Create a read-only, exact, expiring and single-use plan to add or update one named Git remote in a jailed repository. The destination must be credential-free and stay under configured GITHUB_OWNER.",
