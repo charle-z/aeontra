@@ -45,9 +45,9 @@ paths, and bound HTTP JSON-RPC batches to 128 items. Production is healthy with 
 tools and the unchanged deterministic catalog hash.
 
 P5 deeper testing is active on branch `p5-deeper-testing`. Foundation, deterministic
-concurrency, curated fuzz seeds, and the tested package-specific coverage gate are
-complete. The race command remains honestly blocked by `CGO_ENABLED=0` in the
-production builder and must run in P6. Next is the hermetic integration matrix. P5
+concurrency, curated fuzz seeds, package-specific coverage, and the hermetic
+integration matrix are complete. The race command remains honestly blocked by
+`CGO_ENABLED=0` in the production builder and must run in P6. Next is P5 closure. P5
 adds evidence only: no public MCP contract change.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path

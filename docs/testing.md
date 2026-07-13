@@ -109,6 +109,27 @@ current measured value so the gate detects regression without turning coverage i
 line-count gaming. P6 will run the same two commands as a blocking CI job and retain
 only safe coverage artifacts.
 
+## Hermetic integration matrix — P5 Step 83
+
+The local integration suite validates complete contracts without external services,
+real credentials, arbitrary processes, or production traffic:
+
+- **stdio/HTTP catalog parity:** both transports return the same ordered 62-tool
+  catalog, and HTTP headers match the deterministic catalog identity;
+- **bearer fail-closed:** unauthenticated HTTP receives 401 and the server refuses to
+  start when neither bearer nor OAuth authentication exists;
+- **OAuth challenge:** the synthetic loopback provider exposes protected-resource
+  metadata and returns the correct `resource_metadata` challenge;
+- **runtime identity:** `/version`, runtime headers, and the in-process catalog agree;
+- **local grant approval:** a sensitive read is denied, approved through the local
+  admin handler, returned redacted once, and rejected on replay;
+- **planned note workflow:** preview, explicit approval, execution, persisted result,
+  audit evidence, and single-use replay denial are exercised end to end.
+
+All HTTP interactions use `httptest` and loopback URLs. State lives only in temporary
+directories and in-memory stores. The matrix reads no external credentials and makes
+no network call outside the test process.
+
 ## P5 deeper-testing sequence
 
 1. Add bounded deterministic concurrency tests around shared state.

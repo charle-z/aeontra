@@ -21,6 +21,6 @@ P5 deeper testing is active and defined by `specs/002-deeper-testing/`.
 
 ## Next safe step
 
-T01-T06 are complete: foundation, honest race prerequisite, deterministic
-concurrency, curated fuzz seeds, and the package-specific coverage gate. Next build the
-hermetic integration matrix, then close P5. Race and timed fuzz execution remain P6.
+T01-T07 are complete: foundation, honest race prerequisite, deterministic
+concurrency, curated fuzz seeds, package-specific coverage, and hermetic integration
+contracts. Next close P5 with a baseline and branch audit. Race and timed fuzz remain P6.
