@@ -9,7 +9,7 @@ Status: **active**.
 - [x] **T05 fuzz protocol/state** — JSON-RPC message/batch and action-plan operation/single-use fuzz targets with curated seeds.
 - [x] **T06 coverage gate** — tested coverprofile parser, reproducible CLI, and package-specific security thresholds passing against the full suite.
 - [x] **T07 integration matrix** — hermetic stdio/HTTP/auth/catalog/runtime/grant/plan contracts pass with loopback-only synthetic state.
-- [ ] **T08 P5 closure** — baseline, documentation synchronization, branch audit, full gates, and release posture.
+- [x] **T08 P5 closure** — baseline, documentation synchronization, branch audit, full gates, and merge-ready release posture complete.
 
 ## Boundary
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestP5DeeperTestingIsDefinedAndActive(t *testing.T) {
+func TestP5DeeperTestingDefinitionRemainsCurrent(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		content, err := os.ReadFile(path)
@@ -41,8 +41,9 @@ func TestP5DeeperTestingIsDefinedAndActive(t *testing.T) {
 	for _, required := range []string{
 		"P4 targeted Layer-1 hardening is deployed",
 		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
-		"P5 deeper testing is active",
+		"P5 deeper testing is complete",
 		"p5-deeper-testing",
+		"merge-ready",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("capsule does not contain %q", required)
@@ -51,7 +52,7 @@ func TestP5DeeperTestingIsDefinedAndActive(t *testing.T) {
 	if !strings.Contains(roadmap, "| P4 targeted L1 hardening | Deployed |") {
 		t.Error("roadmap does not mark P4 deployed")
 	}
-	if !strings.Contains(roadmap, "| P5 deeper testing | In progress |") {
-		t.Error("roadmap does not mark P5 in progress")
+	if !strings.Contains(roadmap, "| P5 deeper testing | Complete / merge-ready |") {
+		t.Error("roadmap does not mark P5 complete / merge-ready")
 	}
 }

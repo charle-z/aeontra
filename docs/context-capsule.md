@@ -44,11 +44,11 @@ spoofing, enforce grant/request bounds, keep documentation state tested, redact 
 paths, and bound HTTP JSON-RPC batches to 128 items. Production is healthy with 62
 tools and the unchanged deterministic catalog hash.
 
-P5 deeper testing is active on branch `p5-deeper-testing`. Foundation, deterministic
-concurrency, curated fuzz seeds, package-specific coverage, and the hermetic
-integration matrix are complete. The race command remains honestly blocked by
-`CGO_ENABLED=0` in the production builder and must run in P6. Next is P5 closure. P5
-adds evidence only: no public MCP contract change.
+P5 deeper testing is complete on branch `p5-deeper-testing` and is merge-ready.
+It adds deterministic concurrency, curated fuzz seeds, package-specific coverage, and
+a hermetic integration matrix without changing the 62-tool MCP contract. The race
+detector remains honestly blocked by `CGO_ENABLED=0` in the production builder; P6
+must execute the real CGO-enabled gate. P5 is not yet deployed.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -389,5 +389,5 @@ Date: 2026-07-13. P4 is deployed and healthy on `main` at commit
 `4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`. Production reports 62 tools and
 deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-P5 deeper testing is active on `p5-deeper-testing`; its spec/plan/tasks define race,
-fuzz, coverage, and integration evidence without changing runtime authority.
+P5 deeper testing is complete and merge-ready on `p5-deeper-testing`; its baseline
+records concurrency, fuzz, coverage, integration, and the CGO-blocked race handoff.

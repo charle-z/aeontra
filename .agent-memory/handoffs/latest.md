@@ -21,6 +21,6 @@ P5 deeper testing is active and defined by `specs/002-deeper-testing/`.
 
 ## Next safe step
 
-T01-T07 are complete: foundation, honest race prerequisite, deterministic
-concurrency, curated fuzz seeds, package-specific coverage, and hermetic integration
-contracts. Next close P5 with a baseline and branch audit. Race and timed fuzz remain P6.
+P5 is complete and merge-ready with `docs/baselines/2026-07-13-p5.md`. Next publish
+the branch, fast-forward `main`, deploy, verify production, and open P6 from the exact
+verified commit. Race execution and timed fuzz become P6 blocking/reporting work.

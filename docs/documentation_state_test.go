@@ -72,8 +72,9 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"dd055e251c455086ddcb02bc302d9f406b05d6ce",
 		"P4 targeted Layer-1 hardening is deployed",
 		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
-		"P5 deeper testing is active",
+		"P5 deeper testing is complete",
 		"p5-deeper-testing",
+		"merge-ready",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("context capsule does not contain %q", required)
@@ -89,7 +90,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"Deployed",
 		"P4 targeted L1 hardening",
 		"P5 deeper testing",
-		"In progress",
+		"Complete / merge-ready",
 		"Console/showcase",
 		"Not started",
 		"Universal execution profiles",
