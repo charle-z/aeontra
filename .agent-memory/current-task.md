@@ -8,10 +8,11 @@ Completed commits:
 - Step 30 `6be7af2`: moved contiguous `memory_read` and `memory_write` behind a narrow `MemoryService` interface.
 - Step 31 `2b16807`: moved `memory_update_handoff` behind a narrow `HandoffService` interface.
 - Step 32 `e33d376`: moved `run_tests`, `project_validation_preview`, and `project_validation_execute` behind a narrow `ValidationService` interface.
+- Step 33 `da8074c`: moved `build_context_pack`, `list_dir`, `read_file`, `read_many_files`, and `search_code` behind a narrow `RepositoryReadService` interface.
 
-Current Step 33 candidate:
-- added `internal/mcpserver/catalog/repository_reads.go` with a narrow `RepositoryReadService` interface;
-- moved the contiguous `build_context_pack`, `list_dir`, `read_file`, `read_many_files`, and `search_code` registrations into `RegisterRepositoryReads` at their original catalog position;
+Current Step 34 candidate:
+- added `internal/mcpserver/catalog/repository_writes.go` with a narrow `RepositoryWriteService` interface;
+- moved the contiguous `apply_patch` and `create_file` registrations into `RegisterRepositoryWrites` at their original catalog position;
 - added focused module tests for names, order, descriptions, schemas, versions, and handler routing.
 
 Compatibility preserved across all cuts:
@@ -19,8 +20,8 @@ Compatibility preserved across all cuts:
 - deterministic catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
 - same names, order, descriptions, schemas, versions, annotations, handlers, aliases, approval posture, and environment variables.
 
-Step 33 verification:
-- RED focused test failed before implementation because `RegisterRepositoryReads` did not exist;
+Step 34 verification:
+- RED focused test failed before implementation because `RegisterRepositoryWrites` did not exist;
 - `go test ./internal/mcpserver/catalog -count=1` passed;
 - `go test ./... -count=1` passed;
 - `go vet ./...` passed;
@@ -29,4 +30,4 @@ Step 33 verification:
 
 Capabilities decision: defer a generic capability dispatcher until P1-P3 are stable. Reassess when catalog growth/change frequency justifies the additional dispatcher, discovery, schema, audit, and policy complexity.
 
-Next recommended domain: contiguous repository write tools (`apply_patch`, `create_file`), one group per commit. Do not publish, merge, or deploy until several stable groups are complete and explicitly approved.
+Next recommended domain: command and sandbox tools, starting with a small contiguous group and one commit. Do not publish, merge, or deploy until several stable groups are complete and explicitly approved.

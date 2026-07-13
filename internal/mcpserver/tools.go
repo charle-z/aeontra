@@ -126,45 +126,7 @@ func (s *Server) register() {
 
 	catalog.RegisterRepositoryReads(s.addCatalogTool, s.svc)
 
-	s.add("apply_patch",
-		"Apply a unified diff (patch-first). Optional repo makes patch paths relative to that jailed repo. Validated with 'git apply --check' first; targets jailed and secret-protected. In ask mode, set approve=true to apply after review.",
-		object(map[string]any{
-			"patch":   strProp("unified diff text"),
-			"approve": boolProp("apply even when approval is required"),
-			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
-		}, "patch"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Patch   string `json:"patch"`
-				Approve bool   `json:"approve"`
-				Repo    string `json:"repo"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.ApplyPatchIn(p.Repo, p.Patch, p.Approve)
-		})
-
-	s.add("create_file",
-		"Create a NEW file (patch-first: built as a diff and validated; refuses to overwrite — use apply_patch to modify). Jailed and secret-protected. In ask mode set approve=true.",
-		object(map[string]any{
-			"path":    strProp("new file path relative to the project root"),
-			"content": strProp("file content"),
-			"approve": boolProp("create even when approval is required"),
-			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
-		}, "path", "content"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Path    string `json:"path"`
-				Content string `json:"content"`
-				Approve bool   `json:"approve"`
-				Repo    string `json:"repo"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.CreateFileIn(p.Repo, p.Path, p.Content, p.Approve)
-		})
+	catalog.RegisterRepositoryWrites(s.addCatalogTool, s.svc)
 
 	s.add("run_command",
 		"Run a single allowlisted program with args (e.g. [\"go\",\"vet\",\"./...\"]). NOT a shell: only allowlisted programs, no metacharacters. Optional cwd is jailed under the workspace. Mode-gated (read-only denies; ask needs approve=true). Output redacted.",
