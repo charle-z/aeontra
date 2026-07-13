@@ -5,9 +5,7 @@ package tools
 
 import (
 	"context"
-	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/policy"
@@ -44,7 +42,7 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		pol:   pol,
 		log:   log,
 		root:  root,
-		run:   execRunner,
+		run:   newExecRunner(pol.Roots()),
 		plans: NewActionPlanStore(log),
 	}
 	source := &SourceCapability{serviceCore: core}
@@ -121,17 +119,6 @@ func (s *Service) WithValidationRunner(r ValidationRunner) *Service {
 func (s *Service) WithPrivilegedConfig(cfg PrivilegedConfig) *Service {
 	s.ExecutionCapability.configurePrivileged(cfg)
 	return s
-}
-
-// execRunner is the default Runner: explicit argv, jailed working directory, a
-// timeout, and combined output. It NEVER invokes a shell.
-func execRunner(ctx context.Context, dir, prog string, args []string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, prog, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	return string(out), err
 }
 
 // redact applies content-level secret scanning to any output before return.

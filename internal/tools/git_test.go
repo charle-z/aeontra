@@ -253,7 +253,7 @@ func TestExecRunner_RunsInDir(t *testing.T) {
 		t.Skip("git not on PATH")
 	}
 	dir := t.TempDir()
-	out, err := execRunner(context.Background(), dir, "git", []string{"version"})
+	out, err := newExecRunner([]string{dir})(context.Background(), dir, "git", []string{"version"})
 	if err != nil {
 		t.Fatal(err)
 	}

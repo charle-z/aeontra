@@ -2,21 +2,19 @@
 
 Status: in progress on branch `p4-l1-hardening` from deployed `main` commit `dd055e251c455086ddcb02bc302d9f406b05d6ce`.
 
-P3 release verification:
-- feature branch published and `main` advanced by fast-forward only;
-- Coolify deployment `f6jm69yfz9qeh9r9gqllco9v` finished successfully;
-- production is healthy at commit `dd055e251c455086ddcb02bc302d9f406b05d6ce`;
-- catalog remains 62 tools with hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+Completed:
+- Step 70 `8a3c118`: rejected path-qualified, drive-qualified and whitespace-disguised executable names so repository-local binaries cannot impersonate allowlisted commands.
 
-Current Step 70 candidate:
-- closed an allowlist-bypass class where path-qualified executables were normalized to their basename;
-- repository-local or arbitrary paths such as `./git`, `../git`, `/usr/bin/git`, Windows drive paths and whitespace-disguised names can no longer impersonate an allowlisted program;
-- bare executable names such as `git`, `GIT`, `git.exe` and `go` remain compatible;
-- always-blocked shells and privilege/network tools still retain the stronger destructive-command classification even when path-qualified.
+Current Step 71 candidate:
+- replaced direct PATH execution with a trusted executable resolver bound to the configured workspace roots;
+- the resolver requires an absolute lookup result, canonicalizes symlinks and rejects any executable located inside a configured workspace root;
+- a hostile PATH entry pointing bare `git` or `go` at `/repos/...` can no longer redirect execution to repository-controlled code;
+- the runner executes the canonical absolute path rather than re-looking up the bare name;
+- legitimate system executables outside the workspace and sibling-prefix paths remain allowed.
 
-Step 70 verification:
-- RED failed because path-qualified allowlisted names were accepted and no dedicated error existed;
-- focused command-policy tests passed after the fix;
+Step 71 verification:
+- RED failed because trusted resolution and workspace-executable errors did not exist;
+- focused resolver tests passed for workspace paths, relative PATH results, sibling paths and symlink targets;
 - `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and `git diff --check` passed.
 
-Next autonomous step: harden trusted executable resolution so a hostile or misconfigured PATH cannot redirect a bare allowlisted name to a repository-local executable. Do not publish, merge or deploy P4 without explicit owner approval.
+Next autonomous step: enforce grant TTL bounds in the policy core itself so direct/internal callers cannot create negative or overlong grants despite the HTTP adapter validation. Do not publish, merge or deploy P4 without explicit owner approval.
