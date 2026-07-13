@@ -204,6 +204,26 @@ operation: mismatch does not consume the plan, so the next correctly bound attem
 returns `expired`. The case is now a curated seed and the runtime behavior was not
 changed.
 
+## Observed GitHub Actions — P6 Step 90
+
+The first real runs were inspected through GitHub's Actions and Checks APIs rather
+than inferred from local success:
+
+- CI run `29260843017` failed before creating jobs. `actionlint@v1.7.12` reproduced
+  the schema error: `runner.temp` is unavailable in job-level `env`; the Staticcheck
+  cache is now scoped to its execution step and actionlint is a permanent Verify gate.
+- Security run `29260848623` showed that CodeQL passed, dependency review correctly
+  skipped on a push, and the container scan failed because at least one High or Critical
+  vulnerability exists in the image. The severity threshold was not lowered.
+- Anchore now writes `grype.json` without ending the action early. The tested
+  `cmd/grype-gate` parses that report, emits bounded GitHub annotations containing the
+  CVE, package, installed version, fix version, type, and location, then fails at the
+  same High threshold. Malformed reports and unknown severities fail closed.
+
+This diagnostic step does not suppress or downgrade findings. The next observed run
+will expose the exact vulnerable package so the image can be remediated rather than
+ignored.
+
 ## Safety rules
 
 - Do not run active DAST against production.

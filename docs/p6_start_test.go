@@ -45,7 +45,7 @@ func TestP6CIDevSecOpsIsDefinedAndActive(t *testing.T) {
 		"P5 deeper testing is deployed",
 		"4a68ca054a5f077d62a0f887234866673feb7353",
 		"P6 CI/DevSecOps is active",
-		"p6-step89-scheduled-fuzz",
+		"p6-step90-observed-actions",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("capsule does not contain %q", required)

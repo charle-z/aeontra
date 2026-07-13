@@ -41,6 +41,9 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Validate GitHub Actions
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
   race:
     name: Race detector
     runs-on: ubuntu-latest
@@ -65,8 +68,6 @@ jobs:
     name: Staticcheck
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      XDG_CACHE_HOME: ${{ runner.temp }}/staticcheck-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -78,6 +79,8 @@ jobs:
           cache: true
 
       - name: Run staticcheck
+        env:
+          XDG_CACHE_HOME: ${{ runner.temp }}/staticcheck-cache
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
 
   govulncheck:

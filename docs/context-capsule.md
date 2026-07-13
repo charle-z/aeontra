@@ -49,10 +49,12 @@ P5 deeper testing is deployed on `main` at commit
 62 tools and catalog hash. P5 added concurrency, fuzz seeds, package coverage, and
 hermetic integration evidence without runtime authority changes.
 
-P6 CI/DevSecOps is active on branch `p6-step89-scheduled-fuzz`. Foundation,
-workflow policy, core CI, security/container evidence, and bounded scheduled fuzzing
-are complete. Every known fuzz target is covered by a weekly/manual matrix with fixed
-time and CPU bounds. Next is observed GitHub Actions verification and P6 closure.
+P6 CI/DevSecOps is active on branch `p6-step90-observed-actions`. Real Actions
+runs exposed two reproducible issues: invalid job-level `runner.temp` usage prevented
+CI jobs from starting, and the image contains at least one High/Critical vulnerability.
+The CI schema is fixed and pinned actionlint is permanent. A tested Grype JSON gate now
+emits exact GitHub annotations without lowering severity. Next is another observed run,
+image remediation, and P6 closure.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot

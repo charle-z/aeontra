@@ -20,7 +20,9 @@ Workflow policy (always through `go test ./...`): dangerous triggers, permission
 secrets, mutable versions, missing timeouts, and production actions fail before merge.
 
 Core CI is split into independent blocking verify, CGO race, staticcheck, and
-govulncheck jobs so one failure remains attributable.
+govulncheck jobs so one failure remains attributable. Pinned actionlint validates
+workflow expressions/schema, and `cmd/grype-gate` converts the JSON image report into
+actionable annotations without lowering the High threshold.
 
 Core Go:
 

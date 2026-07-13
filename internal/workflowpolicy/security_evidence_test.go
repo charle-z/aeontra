@@ -29,12 +29,13 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"upload-release-assets: false",
 		"anchore/scan-action@v7.4.0",
 		"image: mcp-devbox:ci",
-		"fail-build: true",
+		"fail-build: false",
 		"severity-cutoff: high",
 		"output-format: json",
 		"output-file: grype.json",
 		"test -s sbom.spdx.json",
 		"test -s grype.json",
+		"go run ./cmd/grype-gate --report grype.json --minimum high --annotation-file Dockerfile",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("security.yml does not contain %q", required)
@@ -47,6 +48,7 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"push: true",
 		"continue-on-error: true",
 		"mcp-devbox-charlez.duckdns.org",
+		"fail-build: true",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("security.yml contains forbidden %q", forbidden)

@@ -27,6 +27,7 @@ func TestCoreCIContainsBlockingVerifyRaceStaticAndVulnerabilityJobs(t *testing.T
 		"XDG_CACHE_HOME: ${{ runner.temp }}/staticcheck-cache",
 		"honnef.co/go/tools/cmd/staticcheck@v0.7.0",
 		"golang.org/x/vuln/cmd/govulncheck@v1.6.0",
+		"github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("ci.yml does not contain %q", required)
@@ -35,6 +36,9 @@ func TestCoreCIContainsBlockingVerifyRaceStaticAndVulnerabilityJobs(t *testing.T
 
 	if strings.Contains(text, "continue-on-error: true") {
 		t.Error("core CI jobs must remain blocking")
+	}
+	if strings.Contains(text, "staticcheck:\n    name: Staticcheck\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    env:") {
+		t.Error("runner.temp is invalid in job-level env; staticcheck cache must be step-scoped")
 	}
 	if got := strings.Count(text, "timeout-minutes:"); got != 4 {
 		t.Fatalf("timeout count = %d, want 4 core jobs", got)

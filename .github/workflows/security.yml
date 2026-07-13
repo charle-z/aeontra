@@ -65,6 +65,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.4"
+          cache: true
+
       - name: Build local image
         run: docker build --file Dockerfile --tag mcp-devbox:ci .
 
@@ -85,7 +91,7 @@ jobs:
         uses: anchore/scan-action@v7.4.0
         with:
           image: mcp-devbox:ci
-          fail-build: true
+          fail-build: false
           severity-cutoff: high
           output-format: json
           output-file: grype.json
@@ -93,3 +99,6 @@ jobs:
 
       - name: Verify vulnerability report
         run: test -s grype.json
+
+      - name: Enforce vulnerability threshold
+        run: go run ./cmd/grype-gate --report grype.json --minimum high --annotation-file Dockerfile
