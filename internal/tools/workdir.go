@@ -9,7 +9,7 @@ import (
 
 // workdir resolves an optional tool working directory through the Policy jail.
 // Empty means the service root. Non-empty may be absolute or relative to the root.
-func (s *Service) workdir(input string) (string, error) {
+func (s *serviceCore) workdir(input string) (string, error) {
 	if strings.TrimSpace(input) == "" {
 		return s.root, nil
 	}
