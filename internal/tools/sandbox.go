@@ -106,7 +106,7 @@ func (p pendingSandboxRunner) Run(context.Context, SandboxRunRequest) (SandboxRu
 // (read-only denies; ask needs approve=true; allow runs), audited, and its combined
 // output is redacted before return. This is "broad execution, contained": it never
 // grants the model a general-purpose control plane over the host.
-func (s *Service) SandboxExec(argv []string, approve bool) (string, error) {
+func (s *ExecutionCapability) SandboxExec(argv []string, approve bool) (string, error) {
 	sp := s.log.Start("sandbox_exec")
 	if len(argv) == 0 {
 		err := fmt.Errorf("command is required")
@@ -142,7 +142,7 @@ func (s *Service) SandboxExec(argv []string, approve bool) (string, error) {
 
 // SandboxStatus reports whether an L3 backend is configured. This is diagnostic
 // only; it does not grant extra command capability.
-func (s *Service) SandboxStatus() string {
+func (s *ExecutionCapability) SandboxStatus() string {
 	sp := s.log.Start("sandbox_status")
 	status := s.sandbox.Status(context.Background())
 	sp.Finish(audit.Allow, "sandbox status", nil, nil)

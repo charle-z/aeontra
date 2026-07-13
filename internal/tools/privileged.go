@@ -44,7 +44,7 @@ func normalizePrivilegedConfig(cfg PrivilegedConfig) PrivilegedConfig {
 	return cfg
 }
 
-func (s *Service) PrivilegedTaskPreview(repo, profile string, params map[string]string) (string, error) {
+func (s *ExecutionCapability) PrivilegedTaskPreview(repo, profile string, params map[string]string) (string, error) {
 	sp := s.log.Start("privileged_task_preview")
 	profile = strings.TrimSpace(profile)
 	if !s.privileged.Enabled {
@@ -73,7 +73,7 @@ func (s *Service) PrivilegedTaskPreview(repo, profile string, params map[string]
 		definition.Effect, definition.Risk, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) PrivilegedTaskExecute(planID string, approve bool) (string, error) {
+func (s *ExecutionCapability) PrivilegedTaskExecute(planID string, approve bool) (string, error) {
 	sp := s.log.Start("privileged_task_execute")
 	if !s.privileged.Enabled {
 		err := fmt.Errorf("privileged task profiles are disabled by administrator configuration")
@@ -136,7 +136,7 @@ func (s *Service) PrivilegedTaskExecute(planID string, approve bool) (string, er
 	return s.redact(out), nil
 }
 
-func (s *Service) buildPrivilegedProfile(repo, profile string, params map[string]string) (privilegedProfile, error) {
+func (s *ExecutionCapability) buildPrivilegedProfile(repo, profile string, params map[string]string) (privilegedProfile, error) {
 	params = clonePlanArgs(params)
 	requireDir := profile != "inspect-approved-service-status" && profile != "restart-approved-service"
 	dir := s.root

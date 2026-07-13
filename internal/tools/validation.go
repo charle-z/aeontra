@@ -75,7 +75,7 @@ func (disabledValidationRunner) Run(context.Context, string, string) (Validation
 	return ValidationResult{}, fmt.Errorf("private validation runner is not configured")
 }
 
-func (s *Service) ValidationPreview(repo, profile string) (string, error) {
+func (s *ExecutionCapability) ValidationPreview(repo, profile string) (string, error) {
 	sp := s.log.Start("project_validation_preview")
 	if !s.validation.Available() {
 		err := fmt.Errorf("private validation runner is not configured; set MCP_DEVBOX_VALIDATION_RUNNER_URL and MCP_DEVBOX_VALIDATION_RUNNER_TOKEN in the MCP service after deploying the private runner")
@@ -118,7 +118,7 @@ func (s *Service) ValidationPreview(repo, profile string) (string, error) {
 	return fmt.Sprintf("Repository: %s\nProfile: %s\n\nEffect: %s\nNetwork: %s\nContainer posture: private runner only; no Docker socket or host terminal is exposed to the public MCP.\n\nPlan ID: %s\nExpiry: %s\n", filepath.Base(dir), profile, effect, network, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) ValidationExecute(planID string, approve bool) (string, error) {
+func (s *ExecutionCapability) ValidationExecute(planID string, approve bool) (string, error) {
 	sp := s.log.Start("project_validation_execute")
 	if !s.validation.Available() {
 		err := fmt.Errorf("private validation runner is not configured")

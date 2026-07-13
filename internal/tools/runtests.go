@@ -13,14 +13,14 @@ import (
 // allow runs). This is NOT a free terminal — only allowlisted programs run, no shell,
 // no metacharacters. Output is redacted. For the project's fixed test command, prefer
 // run_tests.
-func (s *Service) RunCommand(prog string, args []string, approve bool) (string, error) {
+func (s *ExecutionCapability) RunCommand(prog string, args []string, approve bool) (string, error) {
 	return s.RunCommandIn(prog, args, approve, "")
 }
 
 // RunCommandIn is RunCommand with an explicit, jailed working directory. This is
 // how a global /repos root can safely operate inside one selected repo without a
 // mutable session-level "cd".
-func (s *Service) RunCommandIn(prog string, args []string, approve bool, cwd string) (string, error) {
+func (s *ExecutionCapability) RunCommandIn(prog string, args []string, approve bool, cwd string) (string, error) {
 	sp := s.log.Start("run_command")
 	summary := summarize(append([]string{prog}, args...)...)
 	dir, err := s.workdir(cwd)
@@ -50,12 +50,12 @@ func (s *Service) RunCommandIn(prog string, args []string, approve bool, cwd str
 // gated by the write/command posture: read-only denies; ask requires approve=true;
 // allow runs. The base command must be configured (WithTestCommand) and pass the
 // allowlist gate. Output is redacted before return.
-func (s *Service) RunTests(approve bool, extra ...string) (string, error) {
+func (s *ExecutionCapability) RunTests(approve bool, extra ...string) (string, error) {
 	return s.RunTestsIn(approve, "", extra...)
 }
 
 // RunTestsIn is RunTests with an explicit, jailed working directory.
-func (s *Service) RunTestsIn(approve bool, cwd string, extra ...string) (string, error) {
+func (s *ExecutionCapability) RunTestsIn(approve bool, cwd string, extra ...string) (string, error) {
 	sp := s.log.Start("run_tests")
 	if len(s.testCmd) == 0 {
 		err := fmt.Errorf("no test command configured for this project")
