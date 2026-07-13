@@ -65,6 +65,12 @@ privileged profiles. Consequential operations use
 cryptographically named, expiring, single-use plans and revalidate state before
 execution. See [docs/tools.md](docs/tools.md).
 
+**Architecture foundations:** P1 moved the complete public catalog into declarative
+modules under `internal/mcpserver/catalog`. P2 split the implementation into focused
+capability services over one shared policy, audit, root, runner, redaction, and
+action-plan core. The public 62-tool wire contract remains unchanged while the
+internal boundaries are easier to test and extend safely.
+
 Quick start:
 
 ```bash

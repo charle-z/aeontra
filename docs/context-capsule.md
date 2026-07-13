@@ -18,14 +18,20 @@ See `docs/adr/0001-p0-catalog-cache-and-product-foundations.md`,
 `docs/baselines/2026-07-12-p0.md`, and `docs/quality-gates.md`. Existing environment
 variable names and MCP wire contracts are frozen for compatibility during P0-P3.
 
-P1 catalog modularization is complete on branch `p1-tool-catalog-runtime`. All
-public tool registrations, compatibility aliases, and behavior annotations are now
-declarative under `internal/mcpserver/catalog`; `tools.go` is limited to composition
-and server adapters, with an AST boundary test preventing direct registration from
-returning. The wire surface remains 62 tools with catalog hash
+P1 catalog modularization is deployed on `main` at commit
+`0de426e088466a1421b527f8ce1bf83cb53bd2a9`. Public tool registrations, aliases,
+and annotations are declarative under `internal/mcpserver/catalog`; `tools.go` is
+composition-only and protected by an AST boundary test. Production and the connected
+ChatGPT client both verified 62 tools with catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-The branch is merge-ready pending explicit owner approval; production remains on the
-previous `main` baseline until merge and deployment are authorized.
+
+P2 capability service split is complete on branch `p2-capability-services`. One
+central `serviceCore` owns policy, audit, root, runner, redaction, workdir resolution,
+and action plans. Repository, Git, source-hosting, platform, and execution behavior
+are owned by focused capability services; `Service` remains only the compatible
+composition/configuration facade. Compile-time interface checks and an AST guard
+protect the boundary. The branch is merge-ready pending explicit owner approval and
+keeps the same 62 tools and deterministic catalog hash.
 
 Product roadmap (2026-07-11): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -337,15 +343,15 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Review and merge `p1-tool-catalog-runtime` into `main` only after explicit owner
-   approval; then deploy and verify `/version`, the 62-tool catalog, its hash, and
-   read-only acceptance calls from the connected client.
-2. Start P2/P3 work from a fresh branch after the production baseline is verified;
-   do not mix catalog closure with console, dynamic capabilities, or edge-agent work.
-3. Add CI/DevSecOps gates and structured observability before converting the static
-   console into the authenticated operator product.
-4. Keep PC/WSL edge workcells, IaC, and security workcells deferred until the core
-   and console contracts are stable.
+1. Review and merge `p2-capability-services` into `main` only after explicit owner
+   approval; deploy and verify the new commit, 62-tool count, deterministic hash,
+   runtime health, and representative read-only calls from the connected client.
+2. Start P3 from a fresh branch: reduce `cmd/mcp-devbox/main.go` to a composition
+   root without renaming environment variables or changing public MCP contracts.
+3. Keep dynamic capabilities, the authenticated console, edge agents, IaC workcells,
+   and security workcells outside P3 until the P0-P3 foundations are deployed.
+4. Add CI/DevSecOps gates and structured observability before expanding operator
+   workflows or exposing broader execution.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -362,11 +368,13 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P1 catalog modularization is merge-ready on
-`p1-tool-catalog-runtime`. `go test ./... -count=1`, `go vet ./...`,
-`go build ./...`, formatting/diff checks, catalog boundary tests, and the production
-catalog smoke are green. The public surface remains 62 tools with deterministic hash
+Date: 2026-07-13. P2 capability service split is merge-ready on
+`p2-capability-services` against refreshed `origin/main` commit
+`0de426e088466a1421b527f8ce1bf83cb53bd2a9`. Capability compile assertions, the
+Service facade AST boundary, `go test ./... -count=1`, `go vet ./...`,
+`go build ./...`, formatting/diff checks, and the production catalog smoke are green.
+The public surface remains 62 tools with deterministic hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-The branch was compared with refreshed `origin/main`; commit messages contain no AI
-signatures, and no publish, merge, deployment, infrastructure mutation, or
-secret-bearing API call was performed during P1 closure.
+Commit messages and changed files were audited; no AI signatures, binary/SDK/cache,
+secret file, credential-bearing configuration, publish, merge, deployment, or
+infrastructure mutation was introduced during P2 closure.

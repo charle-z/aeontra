@@ -13,7 +13,9 @@ Operating rules for any AI agent working in this repo. Read this first, then
   and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
   audit, persistent notes, and adversarial tests. The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
-  `docs/context-capsule.md` and `docs/tools.md`.
+  `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into
+  focused capability services over one shared policy/audit/root/runner/plan core;
+  `Service` is only the backwards-compatible composition and configuration facade.
 
 ## Source Of Truth
 
