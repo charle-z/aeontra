@@ -94,7 +94,7 @@ misleading global percentage:
 | Package suffix | Minimum | Step 82 baseline |
 |---|---:|---:|
 | `internal/policy` | 80% | 84.6% |
-| `internal/mcpserver` | 80% | 83.7% |
+| `internal/mcpserver` | 80% | 82.7% |
 | `internal/mcpserver/catalog` | 80% | 84.4% |
 | `internal/oauth` | 80% | 85.3% |
 | `internal/audit` | 80% | 86.2% |

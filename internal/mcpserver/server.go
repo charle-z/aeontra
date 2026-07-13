@@ -220,11 +220,6 @@ func (s *Server) listTools() []toolDef {
 	return defs
 }
 
-func (s *Server) callTool(req rpcRequest) rpcResponse {
-	response, _, _, _ := s.callToolObserved(req)
-	return response
-}
-
 func (s *Server) callToolObserved(req rpcRequest) (rpcResponse, string, observability.Outcome, observability.ErrorClass) {
 	var params struct {
 		Name      string          `json:"name"`
