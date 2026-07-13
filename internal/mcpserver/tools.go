@@ -136,48 +136,7 @@ func (s *Server) register() {
 
 	catalog.RegisterPlatformAppPreview(s.addCatalogTool, platformAppPreviewAdapter{service: s.svc})
 
-	s.add("platform_deploy_preview",
-		"Read one allowed Coolify application and create an expiring single-use deployment plan bound to its repository, branch and expected commit. It does not deploy.",
-		object(map[string]any{"app": strProp("Coolify application UUID")}, "app"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				App string `json:"app"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.PlatformDeployPreview(p.App)
-		})
-
-	s.add("platform_deploy_without_cache_preview",
-		"Read one allowed Coolify application and create an expiring single-use force=true deployment plan bound to its repository, branch, and expected commit. It does not deploy.",
-		object(map[string]any{"app": strProp("Coolify application UUID")}, "app"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				App string `json:"app"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.PlatformDeployWithoutCachePreview(p.App)
-		})
-
-	s.add("platform_deploy_without_cache",
-		"Execute one reviewed platform_deploy_without_cache_preview plan after revalidating the application repository, branch, and expected commit. It requests Coolify force=true and requires explicit approval in ask mode.",
-		object(map[string]any{
-			"plan_id": strProp("plan id returned by platform_deploy_without_cache_preview"),
-			"approve": boolProp("execute the force=true deployment plan when approval is required"),
-		}, "plan_id"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				PlanID  string `json:"plan_id"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.PlatformDeployWithoutCache(p.PlanID, p.Approve)
-		})
+	catalog.RegisterPlatformDeployment(s.addCatalogTool, s.svc)
 
 	s.add("coolify_set_env",
 		"Set environment variables on one Coolify application. Values are sent to Coolify but redacted from output/audit. Denied in read-only; in ask mode set approve=true.",
