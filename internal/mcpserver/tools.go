@@ -144,35 +144,7 @@ func (s *Server) register() {
 
 	catalog.RegisterGitAcquisition(s.addCatalogTool, s.svc)
 
-	s.add("repo_fast_forward_preview",
-		"Create a read-only, short-lived, single-use plan for an exact clean-tree fast-forward of the current attached branch to its existing upstream tracking ref. It does not fetch or modify the repository.",
-		object(map[string]any{"repo": strProp("repository directory, absolute or relative to the workspace root")}, "repo"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Repo string `json:"repo"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.RepoFastForwardPreview(p.Repo)
-		})
-
-	s.add("repo_fast_forward",
-		"Execute one previously reviewed, unexpired and unused fast-forward plan using exactly 'git merge --ff-only <upstream>'. Repository, branch, HEAD, target and clean state are revalidated; requires approval in ask mode.",
-		object(map[string]any{
-			"plan_id": strProp("plan id returned by repo_fast_forward_preview"),
-			"approve": boolProp("execute the plan when approval is required"),
-		}, "plan_id"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				PlanID  string `json:"plan_id"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.RepoFastForward(p.PlanID, p.Approve)
-		})
+	catalog.RegisterGitFastForward(s.addCatalogTool, s.svc)
 
 	s.add("git_push",
 		"Execute a previously reviewed repo_publish_preview plan for one local branch and one named owner-restricted remote. No force, mirror, tags, refspecs, URL remotes, or extra arguments are accepted; requires approval in ask mode.",
