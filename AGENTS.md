@@ -9,16 +9,15 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P8 authenticated dark console** on branch
-  `p8-authenticated-dark-console`. P7 closure `30ae8a7e9d7b73584b34ef3bbbc952407faa5117`
-  is deployed. P8 is embedded in the existing Go HTTP application, reuses existing
-  bearer/OAuth authentication, creates only opaque digest-backed in-memory sessions,
-  and remains presentation-only. It cannot execute tools, approve plans, enumerate
-  private repositories, or expose prompts, paths, targets, credentials, identities,
-  audit, observability history, or raw errors. Asset Broker, universal profiles, and
-  Edge Agent remain separate later milestones; Edge Agent is last. The project has
-  stdio and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
-  audit, persistent notes, and adversarial tests.
+- Current phase: **P8 closed / P9 Brain next**. P8 merge
+  `605a56d48a495f3c8a2ce62471223187ef2f5685` is deployed; closure evidence is in
+  `docs/baselines/2026-07-13-p8.md`. P9 must use a fresh `p9-brain` branch/spec,
+  Markdown/frontmatter files as truth, pure-Go SQLite FTS5 only as a disposable cache,
+  and no resident service, embeddings, queue, model, or database server. Agents may
+  write only `working/` with provenance/review dates; `curated/` remains owner-only.
+  Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
+  Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
+  62 annotated MCP tools, action plans, audit, persistent notes, and adversarial tests.
   The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
   `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into

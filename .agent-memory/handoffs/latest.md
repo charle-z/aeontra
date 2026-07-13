@@ -2,35 +2,37 @@
 
 Date: 2026-07-13
 Branch: `p8-authenticated-dark-console`
-Deployed base: `main` at P7 closure `30ae8a7e9d7b73584b34ef3bbbc952407faa5117`
+Production: `main` at `605a56d48a495f3c8a2ce62471223187ef2f5685`
 
 ## Current phase
 
-P8 authenticated dark console is implemented locally and awaiting final gates,
-publication, automatic deployment, and authenticated production smoke.
+P8 authenticated dark console is closed technically and deployed. This branch contains
+only the formal closure candidate. P9 has not started.
 
-## Security boundary
+## Remote evidence
 
-- Presentation-only embedded surface in the existing Go HTTP application.
-- Existing bearer/OAuth authentication only; no new credential or OAuth mutation.
-- Opaque digest-only in-memory sessions; eight-hour TTL; cap 128; restart revokes all.
-- Exact public runtime status only; no repositories, paths, source, prompts, params,
-  results, targets, logs, audit, observability history, identities, or control actions.
-- No new application, listener, npm/CDN dependency, database, volume, or exporter.
+- PR #2: `https://github.com/charle-z/mcp-devbox/pull/2`.
+- Final PR runs: CI `29290411676` and Security Evidence `29290411679`, all jobs green.
+- Post-merge runs: CI `29290609147` and Security Evidence `29290609178`, green;
+  Dependency Review correctly skipped on push.
+- Production: exact merge `605a56d48a495f3c8a2ce62471223187ef2f5685`,
+  healthy, 62 tools, unchanged catalog hash.
+- `cmd/console-smoke` passed with Secure opaque cookie, exact status schema, commit,
+  tool count, and hash without printing token/session values.
+- Logs contain only content-free 303/200 `route=console` events.
 
-## Local evidence
+## Closure candidate
 
-- Full suite, atomic coverage/package gate, vet, build, actionlint, Govulncheck,
-  focused security tests, docs, and whitespace checks pass.
-- Console coverage is 84.2% against an 80% gate; console-smoke coverage is 76.5%.
-- `cmd/console-smoke` validates login, secure cookie, headers, exact status schema,
-  expected commit, 62 tools, and catalog hash without printing token/session values.
-- Staticcheck and Race are runner-authoritative because the local non-root container
-  lacks a writable Staticcheck cache and CGO.
+- `docs/baselines/2026-07-13-p8.md`.
+- `docs/p8_closure_test.go`.
+- Console coverage 84.3% against an 80% gate.
+- External audit nits are fixed and documented: nonce-free error CSP and accepted
+  state-creating authenticated `GET /console` bootstrap.
 
 ## Next safe step
 
-Remove the final helper, audit/stage the diff, commit/publish P8, observe every
-main-branch Action, verify automatic deployment and authenticated console smoke, then
-create the P8 closure baseline. Start Asset Broker only on a fresh branch/spec after
-P8 closes.
+Run closure gates, commit/publish, open and merge the closure PR with green remote
+gates, verify production, then create annotated p6/p7/p8 tags. Only afterward create
+`p9-brain` with `specs/006-brain/`. P9 must use Markdown/frontmatter files as truth,
+pure-Go SQLite FTS5 only as a disposable cache, and no resident service, embeddings,
+queue, model, or database server.

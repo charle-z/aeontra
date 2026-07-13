@@ -1,6 +1,6 @@
 # Tasks — P8 authenticated dark console
 
-Status: **active**.
+Status: **complete**.
 
 - [x] **T01 P8 definition** — independent branch/spec, presentation-only boundary,
   authentication/session contract, and no new application.
@@ -12,8 +12,9 @@ Status: **active**.
 - [x] **T06 adversarial tests** — token/session/content/path/target leakage and auth bypass.
 - [x] **T07 operations documentation** — setup, HTTPS cookie behavior, rollback,
   troubleshooting, and limitations.
-- [ ] **T08 P8 closure** — baseline, full gates, Actions, fast-forward, deployment, and
-  authenticated production validation.
+- [x] **T08 P8 closure** — `docs/baselines/2026-07-13-p8.md` records PR #2,
+  Step 1 audit nits, green PR/post-merge gates, merge commit, automatic deployment,
+  exact runtime identity, authenticated console smoke, and safe `route=console` logs.
 
 ## Boundary
 

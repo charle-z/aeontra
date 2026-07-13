@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestP8AuthenticatedDarkConsoleIsDefinedAndActive(t *testing.T) {
+func TestP8AuthenticatedDarkConsoleIsDefinedAndDeployed(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		content, err := os.ReadFile(path)
@@ -35,8 +35,8 @@ func TestP8AuthenticatedDarkConsoleIsDefinedAndActive(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"p8-authenticated-dark-console",
-		"P8 authenticated dark console is active",
+		"P8 authenticated dark console is deployed",
+		"605a56d48a495f3c8a2ce62471223187ef2f5685",
 		"presentation-only",
 		"62 tools",
 		"unchanged catalog hash",
@@ -45,12 +45,12 @@ func TestP8AuthenticatedDarkConsoleIsDefinedAndActive(t *testing.T) {
 			t.Errorf("capsule does not contain %q", required)
 		}
 	}
-	if !strings.Contains(roadmap, "| Console/showcase | In progress |") {
-		t.Error("roadmap does not mark the console in progress")
+	if !strings.Contains(roadmap, "| Console/showcase | Deployed |") {
+		t.Error("roadmap does not mark the console deployed")
 	}
 	for _, content := range []string{readme, agents} {
-		if !strings.Contains(content, "P8 authenticated dark console") || !strings.Contains(content, "p8-authenticated-dark-console") {
-			t.Error("README/AGENTS do not identify the active P8 branch")
+		if !strings.Contains(content, "P8") || !strings.Contains(content, "605a56d48a495f3c8a2ce62471223187ef2f5685") {
+			t.Error("README/AGENTS do not identify the deployed P8 release")
 		}
 	}
 	for _, required := range []string{
