@@ -152,41 +152,7 @@ func (s *Server) register() {
 
 	catalog.RegisterSourceRepoInfo(s.addCatalogTool, s.svc)
 
-	s.add("repo_remote_preview",
-		"Create a read-only, exact, expiring and single-use plan to add or update one named Git remote in a jailed repository. The destination must be credential-free and stay under configured GITHUB_OWNER.",
-		object(map[string]any{
-			"repo":       strProp("repository directory, absolute or relative to the workspace root"),
-			"remote":     strProp("remote name, defaults to origin"),
-			"repository": strProp("repository name under configured owner, or an allowed credential-free HTTPS/SSH GitHub URL"),
-		}, "repo", "repository"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Repo       string `json:"repo"`
-				Remote     string `json:"remote"`
-				Repository string `json:"repository"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.RepoRemotePreview(p.Repo, p.Remote, p.Repository)
-		})
-
-	s.add("repo_remote_set",
-		"Execute one reviewed repo_remote_preview plan. It revalidates the current remote state and runs exactly git remote add or git remote set-url; requires approval in ask mode.",
-		object(map[string]any{
-			"plan_id": strProp("plan id returned by repo_remote_preview"),
-			"approve": boolProp("execute the remote plan when approval is required"),
-		}, "plan_id"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				PlanID  string `json:"plan_id"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.RepoRemoteSet(p.PlanID, p.Approve)
-		})
+	catalog.RegisterGitRemoteManagement(s.addCatalogTool, s.svc)
 
 	catalog.RegisterValidation(s.addCatalogTool, s.svc)
 

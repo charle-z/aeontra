@@ -22,20 +22,21 @@ Completed commits:
 - Step 44 `f7b5b41`: Git fast-forward.
 - Step 45 `8a68627`: Git publication.
 - Step 46 `ebf12fb`: source repository creation.
+- Step 47 `a05903d`: source repository info.
 
-Current Step 47 candidate:
-- added `internal/mcpserver/catalog/source_repo_info.go` with a narrow `SourceRepoInfoService` interface;
-- moved `github_repo_info` into `RegisterSourceRepoInfo` at its original catalog position;
+Current Step 48 candidate:
+- added `internal/mcpserver/catalog/git_remote_management.go` with a narrow `GitRemoteManagementService` interface;
+- moved `repo_remote_preview` and `repo_remote_set` into `RegisterGitRemoteManagement` at their original contiguous catalog positions;
 - added focused contract and handler-routing tests.
 
-Compatibility preserved:
+Compatibility preserved across Steps 44-48:
 - 62 public tools;
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
 - names, order, descriptions, schemas, versions, annotations, aliases, handlers, approvals, and envs unchanged.
 
-Step 47 verification:
-- RED failed because `RegisterSourceRepoInfo` did not exist;
+Step 48 verification:
+- RED failed because `RegisterGitRemoteManagement` did not exist;
 - focused and full tests passed;
 - `go vet ./...`, `go build ./...`, diff review, and production catalog smoke passed.
 
-Next in the requested five-step batch: Step 48 remote management. No publish, merge, or deploy.
+The requested five-step batch is complete after committing Step 48. No publish, merge, or deploy has occurred. Next natural cut: `git_commit`, followed by alias/annotation modularization or P1 closure review.
