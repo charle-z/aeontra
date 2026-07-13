@@ -74,8 +74,8 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
 		"P5 deeper testing is deployed",
 		"4a68ca054a5f077d62a0f887234866673feb7353",
-		"P6 CI/DevSecOps is active",
-		"p6-step90-observed-actions",
+		"P6 CI/DevSecOps Step 91 is active",
+		"p6-step91-security-remediation",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("context capsule does not contain %q", required)
@@ -105,8 +105,8 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"p6-step90-observed-actions",
-		"e70b10351e6820a4e9f6c827dcb11acc57dbb9c1",
+		"p6-step91-security-remediation",
+		"112ca8ce06ffdeba570e486a548801ee21692a6f",
 		"specs/003-ci-devsecops/",
 		"workflow policy guard",
 		"CGO race",

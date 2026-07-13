@@ -9,8 +9,6 @@ import (
 	"strings"
 )
 
-const defaultToolContractVersion = "1"
-
 // CatalogTool is the deterministic contract identity of one MCP tool. Descriptions
 // and handlers are intentionally excluded: they can change without changing the
 // machine-facing wire contract.

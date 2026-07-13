@@ -7,7 +7,9 @@ Status: **active**.
 - [x] **T03 core CI** — blocking verify, atomic coverage/package gate, vet, build, CGO race, pinned staticcheck, and pinned govulncheck jobs defined and policy-validated.
 - [x] **T04 security workflows** — least-privilege CodeQL, PR dependency review, local Docker build, SBOM generation, and blocking high-severity image scan defined and policy-validated.
 - [x] **T05 scheduled fuzz** — weekly/manual matrix covers all seven known fuzz targets with 30-second budgets, two CPUs, no secrets, and blocking failures.
-- [ ] **T06 observed GitHub run** — publish branch, inspect all workflow conclusions, and fix reproducible failures.
+- [ ] **T06 observed GitHub run** — Step 90 exposed exact Staticcheck, Govulncheck, and
+  five High container findings; Step 91 remediates them and remains open until the
+  pull-request and post-merge Actions are green with zero High/Critical findings.
 - [ ] **T07 P6 closure** — baseline, documentation synchronization, audit, full gates, and release/deployment posture.
 
 ## Boundary

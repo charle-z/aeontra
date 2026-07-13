@@ -1,0 +1,53 @@
+package workflowpolicy
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
+	files := map[string]string{
+		"go.mod":                       "../../go.mod",
+		"ci.yml":                       "../../.github/workflows/ci.yml",
+		"security.yml":                 "../../.github/workflows/security.yml",
+		"fuzz.yml":                     "../../.github/workflows/fuzz.yml",
+		"Dockerfile":                   "../../Dockerfile",
+		"Dockerfile.validation-runner": "../../Dockerfile.validation-runner",
+	}
+	contents := make(map[string]string, len(files))
+	for name, path := range files {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		contents[name] = string(content)
+	}
+
+	if !strings.Contains(contents["go.mod"], "go 1.26.5") {
+		t.Error("go.mod must require the Go 1.26.5 security release")
+	}
+	for _, workflow := range []string{"ci.yml", "security.yml", "fuzz.yml"} {
+		if !strings.Contains(contents[workflow], `go-version: "1.26.5"`) {
+			t.Errorf("%s must use Go 1.26.5", workflow)
+		}
+	}
+	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.validation-runner"} {
+		if !strings.Contains(contents[dockerfile], "golang:1.26.5-alpine3.24") {
+			t.Errorf("%s must use the fixed versioned Go/Alpine base", dockerfile)
+		}
+	}
+
+	dockerfile := contents["Dockerfile"]
+	if strings.Contains(dockerfile, "apk add --no-cache ca-certificates git nodejs npm wget") {
+		t.Error("the final image must not install the vulnerable GNU wget package")
+	}
+	for _, required := range []string{
+		"npm install --global npm@12.0.1 --ignore-scripts",
+		"busybox wget -qO- http://127.0.0.1:8765/healthz",
+	} {
+		if !strings.Contains(dockerfile, required) {
+			t.Errorf("Dockerfile does not contain %q", required)
+		}
+	}
+}

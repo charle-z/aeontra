@@ -48,7 +48,7 @@ func (s *PlatformCapability) PlatformValidationRunnerCreatePreview(branch string
 		return "", err
 	}
 	if exists {
-		err := fmt.Errorf("Coolify application %q already exists", managedValidationRunnerName)
+		err := fmt.Errorf("coolify application %q already exists", managedValidationRunnerName)
 		sp.Finish(audit.Deny, "preview", nil, err)
 		return "", err
 	}
@@ -110,7 +110,7 @@ func (s *PlatformCapability) PlatformValidationRunnerCreate(planID string, appro
 		return "", err
 	}
 	if exists {
-		err := fmt.Errorf("Coolify application %q already exists", managedValidationRunnerName)
+		err := fmt.Errorf("coolify application %q already exists", managedValidationRunnerName)
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
@@ -141,17 +141,17 @@ func (s *PlatformCapability) PlatformValidationRunnerCreate(planID string, appro
 	status, body, err := s.coolify.request(context.Background(), http.MethodPost, "/api/v1/applications/public", payload)
 	if err != nil {
 		sp.Finish(audit.Error, planID, nil, err)
-		return "", fmt.Errorf("Coolify create validation runner request failed: %w", err)
+		return "", fmt.Errorf("coolify create validation runner request failed: %w", err)
 	}
 	if status < 200 || status >= 300 {
-		err := fmt.Errorf("Coolify create validation runner -> HTTP %d: %s", status, s.coolifySafe(body))
+		err := fmt.Errorf("coolify create validation runner -> HTTP %d: %s", status, s.coolifySafe(body))
 		sp.Finish(audit.Error, planID, nil, err)
 		return s.coolifySafe(body), err
 	}
 	apps, err := decodePlatformApplications("[" + body + "]")
 	if err != nil || len(apps) != 1 || apps[0].UUID == "" {
 		sp.Finish(audit.Error, planID, nil, err)
-		return s.coolifySafe(body), fmt.Errorf("Coolify created the application but its UUID could not be decoded")
+		return s.coolifySafe(body), fmt.Errorf("coolify created the application but its UUID could not be decoded")
 	}
 	app := apps[0]
 	env := map[string]string{

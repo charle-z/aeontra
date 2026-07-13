@@ -49,12 +49,14 @@ P5 deeper testing is deployed on `main` at commit
 62 tools and catalog hash. P5 added concurrency, fuzz seeds, package coverage, and
 hermetic integration evidence without runtime authority changes.
 
-P6 CI/DevSecOps is active on branch `p6-step90-observed-actions`. Real Actions
-runs exposed two reproducible issues: invalid job-level `runner.temp` usage prevented
-CI jobs from starting, and the image contains at least one High/Critical vulnerability.
-The CI schema is fixed and pinned actionlint is permanent. A tested Grype JSON gate now
-emits exact GitHub annotations without lowering severity. Next is another observed run,
-image remediation, and P6 closure.
+P6 CI/DevSecOps Step 91 is active on branch `p6-step91-security-remediation`.
+Step 90 is deployed at `112ca8ce06ffdeba570e486a548801ee21692a6f` and exposed
+the exact remaining failures: reachable `GO-2026-5856`, five High container findings,
+and 25 Staticcheck findings. Step 91 pins Go 1.26.5, removes standalone GNU Wget,
+upgrades the final image to `npm@12.0.1`, fixes Staticcheck, adds a regression guard,
+versions the security report, and adds the connector reliability runbook. P6 remains
+open until pull-request Actions, final SBOM/Grype, deployment, and production smoke are
+green.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -147,7 +149,7 @@ such as shell command substitutions (`$(...)`), env-var refs (`$TOKEN`, `${TOKEN
 `your-token-here`).
 
 CI (2026-06-30): `.github/workflows/ci.yml` runs `go test ./... -count=1` and
-`go vet ./...` on push/PR with Go 1.26.4.
+`go vet ./...` on push/PR with Go 1.26.5.
 
 Agent instructions (updated 2026-07-10): `initialize.instructions` uses recommended
 names and one focused tool call per message: `repo_list`, `build_context_pack`, and
@@ -369,12 +371,11 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Execute `specs/002-deeper-testing/tasks.md` in order: race baseline, deterministic
-   concurrency, fuzz seeds, coverage gate, and hermetic integration matrix.
-2. Keep P5 runtime-neutral and preserve the 62-tool catalog/hash.
-3. Close and release P5 before starting P6 CI/DevSecOps on a fresh branch.
-4. Keep console, asset broker, universal profiles, and edge-agent work in separate
-   specs/phases; PC/WSL edge validation remains pending the owner machine.
+1. Publish Step 91 through a pull request and require all CI/security jobs to pass.
+2. Prove the final image has zero High/Critical findings, then fast-forward `main`.
+3. Deploy the existing Coolify application, verify the exact commit, health, 62 tools,
+   and unchanged catalog hash, then create the P6 closure baseline.
+4. Start P7 structured observability on a fresh branch/spec only after P6 closes.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -391,9 +392,10 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P4 is deployed and healthy on `main` at commit
-`4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`. Production reports 62 tools and
+Date: 2026-07-13. Step 90 is deployed and healthy on `main` at commit
+`112ca8ce06ffdeba570e486a548801ee21692a6f`. Production reports 62 tools and
 deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-P5 deeper testing is complete and merge-ready on `p5-deeper-testing`; its baseline
-records concurrency, fuzz, coverage, integration, and the CGO-blocked race handoff.
+Step 91 is a local remediation candidate; it is not merged or deployed and cannot be
+called complete until pull-request Actions, SBOM, Grype, merge, deployment, and
+production smoke are green.

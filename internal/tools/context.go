@@ -80,12 +80,8 @@ func (s *RepositoryCapability) BuildContextPackIn(repo string) (string, error) {
 	return s.redact(b.String()), nil
 }
 
-// fileTree returns a bounded, sorted listing of repo files relative to the root,
+// fileTreeIn returns a bounded, sorted listing of repo files relative to the root,
 // skipping ignored and secret-named directories/files.
-func (s *RepositoryCapability) fileTree() string {
-	return s.fileTreeIn(s.root)
-}
-
 func (s *RepositoryCapability) fileTreeIn(root string) string {
 	var entries []string
 	count := 0

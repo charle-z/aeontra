@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS build
+FROM golang:1.26.5-alpine3.24 AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
 # --build-arg GIT_SHA=$(git rev-parse HEAD). It is baked into the binary via -ldflags so
@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
 # Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can
 # run common Go and web project checks in the VPS container. (Bigger image, but this
 # is a dev-agent box.)
-FROM golang:1.26-alpine
+FROM golang:1.26.5-alpine3.24
 
 # OCI metadata (good practice; helps registries/scanners identify the image).
 # For fully reproducible prod builds, pin the base by digest (golang:1.26-alpine@sha256:...).
@@ -28,7 +28,9 @@ LABEL org.opencontainers.image.title="mcp-devbox" \
 	org.opencontainers.image.description="Secure-by-default local MCP server for AI coding agents" \
 	org.opencontainers.image.source="https://github.com/charle-z/mcp-devbox"
 
-RUN apk add --no-cache ca-certificates git nodejs npm wget \
+RUN apk add --no-cache ca-certificates git nodejs npm \
+	&& npm install --global npm@12.0.1 --ignore-scripts \
+	&& npm cache clean --force \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
@@ -55,7 +57,7 @@ VOLUME ["/repos"]
 EXPOSE 8765
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=12 \
-	CMD wget -qO- http://127.0.0.1:8765/healthz >/dev/null || exit 1
+	CMD busybox wget -qO- http://127.0.0.1:8765/healthz >/dev/null || exit 1
 
 # Coolify/Docker use SIGTERM for rolling replacement. The Go server catches it,
 # stops accepting new traffic, and drains in-flight requests before exit.

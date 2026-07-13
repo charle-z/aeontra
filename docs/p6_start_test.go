@@ -44,8 +44,8 @@ func TestP6CIDevSecOpsIsDefinedAndActive(t *testing.T) {
 	for _, required := range []string{
 		"P5 deeper testing is deployed",
 		"4a68ca054a5f077d62a0f887234866673feb7353",
-		"P6 CI/DevSecOps is active",
-		"p6-step90-observed-actions",
+		"P6 CI/DevSecOps Step 91 is active",
+		"p6-step91-security-remediation",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("capsule does not contain %q", required)

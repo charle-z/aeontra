@@ -12,8 +12,10 @@ Status: **active**.
 4. **Security workflows** — CodeQL, dependency review, Docker build, SBOM, and local
    vulnerability scan with minimal permissions.
 5. **Scheduled fuzz** — run each known fuzz target with a fixed budget and no secrets.
-6. **Observed execution** — publish the feature branch, inspect GitHub Actions results,
-   fix only reproducible failures, and retain exact evidence.
+6. **Observed execution and remediation** — publish through a pull request, inspect
+   every job/check, record package/layer/reachability evidence, fix reproducible
+   failures without ignores or threshold reduction, and prove zero High/Critical image
+   findings before merge.
 7. **Closure** — baseline, audit, release posture, merge/deploy, production smoke.
 
 ## Design rules

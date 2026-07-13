@@ -98,10 +98,6 @@ func (c *CoolifyClient) WithBuilderRuntime(destinationUUID string, allowedMounts
 	return c
 }
 
-func (c *CoolifyClient) mountAllowed(mount string) bool {
-	return c != nil && c.allowedMounts[strings.TrimSpace(mount)]
-}
-
 func (c *CoolifyClient) appAllowed(uuid string) bool {
 	if len(c.allowed) == 0 {
 		return true // no allowlist configured -> any valid uuid (still mode-gated)

@@ -14,7 +14,7 @@ go run ./cmd/coverage-gate --profile coverage.out
 ```
 
 The gate is package-specific, rejects a missing package, and never substitutes one
-global coverage percentage for critical-package evidence. P6 will make it blocking.
+global coverage percentage for critical-package evidence. P6 makes it blocking.
 
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.
@@ -49,6 +49,8 @@ Security evidence added by P6:
 - CodeQL Go analysis with minimal `security-events: write`;
 - pull-request dependency review at moderate severity;
 - local Docker build, SPDX JSON SBOM, and blocking high-severity Grype scan;
+- versioned finding/remediation evidence under `docs/security-reports/` with package,
+  layer, reachability, fix, workflow run, and before/after identity;
 - no registry credentials, push, production DAST, or secret-bearing artifacts.
 
 - race detector with CGO enabled;

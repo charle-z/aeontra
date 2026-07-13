@@ -70,10 +70,10 @@ func (s *PlatformCapability) PlatformDeployWithoutCache(planID string, approve b
 	status, body, err := s.coolify.deploy(context.Background(), app.UUID, true)
 	if err != nil {
 		sp.Finish(audit.Error, planID, nil, err)
-		return "", fmt.Errorf("Coolify deployment without cache request failed: %w", err)
+		return "", fmt.Errorf("coolify deployment without cache request failed: %w", err)
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		err := fmt.Errorf("Coolify deployment without cache -> HTTP %d: %s", status, s.coolifySafe(body))
+		err := fmt.Errorf("coolify deployment without cache -> HTTP %d: %s", status, s.coolifySafe(body))
 		sp.Finish(audit.Error, planID, nil, err)
 		return s.coolifySafe(body), err
 	}

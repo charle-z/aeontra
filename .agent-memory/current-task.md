@@ -1,31 +1,37 @@
 # P6 CI/DevSecOps
 
-Status: Step 90 candidate on branch `p6-step90-observed-actions`, based on deployed `main` commit `e70b10351e6820a4e9f6c827dcb11acc57dbb9c1`.
+Status: Step 91 remediation candidate on branch `p6-step91-security-remediation`, based on deployed `main` commit `112ca8ce06ffdeba570e486a548801ee21692a6f`.
 
-Deployed completed steps:
-- Step 85 `fda8c77`: P6 foundation.
-- Step 86 `daeb3b4`: workflow policy guard.
-- Step 87 `099ca51`: blocking core CI.
-- Step 88 `72cd64d`: CodeQL, dependency review, container SBOM/vulnerability evidence.
-- Step 89 `e70b103`: bounded scheduled fuzz.
+## Verified deployed base
 
-Observed GitHub Actions evidence:
-- CI run `29260843017` failed before creating jobs. Pinned actionlint reproduced the exact schema error: `${{ runner.temp }}` was used in job-level env where the runner context is unavailable.
-- Security run `29260848623`: CodeQL passed; dependency review skipped correctly for a push; container scan failed because at least one High/Critical vulnerability exists.
-- The public check annotation confirmed `Failed minimum severity level. Found vulnerabilities with level 'high' or higher`; the severity threshold has not been lowered.
+- Coolify deployment `bn9ehyy686ag4zm5os5cijxl` finished successfully.
+- Production serves exact commit `112ca8ce06ffdeba570e486a548801ee21692a6f`.
+- Health is green; tool count is 62; catalog hash remains `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
 
-Current Step 90 candidate:
-- moved `XDG_CACHE_HOME=${{ runner.temp }}/staticcheck-cache` to the Staticcheck step, where the runner context is valid;
-- added pinned `actionlint@v1.7.12` to the blocking Verify job and contract tests so workflow schema/expression errors fail before future publication;
-- added tested `internal/grypegate` and `cmd/grype-gate` to parse Grype JSON, reject malformed/unknown data, sort High/Critical findings, emit bounded escaped GitHub annotations with CVE/package/version/fix/type/location, and fail closed;
-- changed Anchore scan action to generate the JSON report without terminating the step, then apply the same High threshold through `grype-gate`; no finding is suppressed or downgraded;
-- updated workflow contracts, testing/quality docs, capsule, roadmap, handoff, and documentation assertions.
+## Observed Actions evidence
 
-Step 90 verification so far:
-- RED reproduced missing Grype diagnostics and workflow-schema evidence;
-- grype parser/CLI tests pass, including annotation injection/escaping cases;
-- workflow policy and exact CI/security contracts pass;
-- `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12` passes on all workflows;
-- remaining: full atomic coverage suite, package gate, vet, build, cleanup, diff review/check, commit, publish/deploy, and observe exact image findings from GitHub.
+- CI run `29263139285`: Verify and Race passed; Staticcheck job `86861702398` and Govulncheck job `86861702481` failed.
+- Security run `29263139756`: CodeQL passed; Dependency Review correctly skipped on push; container job `86861700073` failed the unchanged High threshold.
+- Exact findings: reachable `GO-2026-5856`; GNU Wget `CVE-2026-58469`, `CVE-2026-58471`, `CVE-2026-58472`; npm `GHSA-52v5-jr5w-gjxr` and `GHSA-c2c7-rcm5-vvqj`; 25 Staticcheck findings.
 
-T06 remains open until the corrected GitHub Actions runs complete and the image finding is remediated. No public MCP contract change.
+## Step 91 implementation
+
+- Go pinned to 1.26.5 in `go.mod`, all Actions workflows, `Dockerfile`, and `Dockerfile.validation-runner`.
+- Production image uses `golang:1.26.5-alpine3.24`.
+- Standalone GNU Wget removed; healthcheck calls the BusyBox applet.
+- Final image installs exact `npm@12.0.1`; inspected bundle contains fixed `sigstore@5.0.0` and `picomatch@4.0.5`.
+- Three unused declarations removed and 22 Staticcheck error-string findings fixed.
+- Regression tests, versioned security report, connector reliability runbook, specs, roadmap, capsule, README, AGENTS, documentation map, and handoff are synchronized.
+- Temporary diagnostic helpers were removed from the working tree.
+
+## Verification before commit
+
+- RED policy test failed before implementation and passes after implementation.
+- Formatting, ordinary tests, atomic coverage/package gate, vet, build, actionlint, govulncheck, focused workflow/Grype tests, and documentation tests pass.
+- Public MCP has no Docker socket; pull-request Actions are authoritative for Staticcheck with runner cache, Docker build, SBOM, and Grype.
+
+## Next exact action
+
+Run the final full gate set and diff check, commit Step 91, publish the branch, open a pull request, and inspect every job/check. Correct reproducible failures before any main fast-forward or deployment.
+
+No public MCP tool/schema/annotation/environment contract change.

@@ -79,7 +79,7 @@ func (c *CoolifyClient) configError() error {
 		missing = append(missing, "COOLIFY_API_TOKEN")
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("Coolify configuration missing: %s", strings.Join(missing, ", "))
+		return fmt.Errorf("coolify configuration missing: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }
@@ -99,7 +99,7 @@ func (c *CoolifyClient) builderConfigError() error {
 		missing = append(missing, "COOLIFY_ENVIRONMENT_UUID or COOLIFY_ENVIRONMENT_NAME")
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("Coolify builder configuration missing: %s", strings.Join(missing, ", "))
+		return fmt.Errorf("coolify builder configuration missing: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }
@@ -113,10 +113,10 @@ func (s *PlatformCapability) PlatformAppsList() (string, error) {
 	status, body, err := s.coolify.request(context.Background(), http.MethodGet, "/api/v1/applications", nil)
 	if err != nil {
 		sp.Finish(audit.Error, "list", nil, err)
-		return "", fmt.Errorf("Coolify application list request failed: %w", err)
+		return "", fmt.Errorf("coolify application list request failed: %w", err)
 	}
 	if status < 200 || status >= 300 {
-		err := fmt.Errorf("Coolify application list -> HTTP %d: %s", status, s.coolifySafe(body))
+		err := fmt.Errorf("coolify application list -> HTTP %d: %s", status, s.coolifySafe(body))
 		sp.Finish(audit.Error, "list", nil, err)
 		return s.coolifySafe(body), err
 	}
@@ -211,10 +211,10 @@ func (s *PlatformCapability) PlatformAppLogs(appID string, lines int) (string, e
 	status, body, err := s.coolify.request(context.Background(), http.MethodGet, path, nil)
 	if err != nil {
 		sp.Finish(audit.Error, "logs "+appID, nil, err)
-		return "", fmt.Errorf("Coolify application logs request failed: %w", err)
+		return "", fmt.Errorf("coolify application logs request failed: %w", err)
 	}
 	if status < 200 || status >= 300 {
-		err := fmt.Errorf("Coolify application logs -> HTTP %d: %s", status, s.coolifySafe(body))
+		err := fmt.Errorf("coolify application logs -> HTTP %d: %s", status, s.coolifySafe(body))
 		sp.Finish(audit.Error, "logs "+appID, nil, err)
 		return s.coolifySafe(body), err
 	}
@@ -297,7 +297,7 @@ func (s *PlatformCapability) PlatformAppCreate(planID string, approve bool) (str
 	if plan.Args["server_uuid"] != s.coolify.serverUUID || plan.Args["project_uuid"] != s.coolify.projectUUID ||
 		plan.Args["environment_uuid"] != s.coolify.environmentUUID || plan.Args["environment_name"] != s.coolify.environmentName ||
 		plan.Args["github_app_uuid"] != s.coolify.githubAppUUID {
-		err := fmt.Errorf("Coolify builder configuration changed after preview")
+		err := fmt.Errorf("coolify builder configuration changed after preview")
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
@@ -329,10 +329,10 @@ func (s *PlatformCapability) PlatformAppCreate(planID string, approve bool) (str
 	status, body, err := s.coolify.request(context.Background(), http.MethodPost, endpoint, payload)
 	if err != nil {
 		sp.Finish(audit.Error, planID, nil, err)
-		return "", fmt.Errorf("Coolify create application request failed: %w", err)
+		return "", fmt.Errorf("coolify create application request failed: %w", err)
 	}
 	if status < 200 || status >= 300 {
-		err := fmt.Errorf("Coolify create application -> HTTP %d: %s", status, s.coolifySafe(body))
+		err := fmt.Errorf("coolify create application -> HTTP %d: %s", status, s.coolifySafe(body))
 		sp.Finish(audit.Error, planID, nil, err)
 		return s.coolifySafe(body), err
 	}
@@ -397,10 +397,10 @@ func (s *PlatformCapability) PlatformDeploy(planID string, approve bool) (string
 	status, body, err := s.coolify.deploy(context.Background(), app.UUID, false)
 	if err != nil {
 		sp.Finish(audit.Error, planID, nil, err)
-		return "", fmt.Errorf("Coolify deployment request failed: %w", err)
+		return "", fmt.Errorf("coolify deployment request failed: %w", err)
 	}
 	if status < 200 || status >= 300 {
-		err := fmt.Errorf("Coolify deployment -> HTTP %d: %s", status, s.coolifySafe(body))
+		err := fmt.Errorf("coolify deployment -> HTTP %d: %s", status, s.coolifySafe(body))
 		sp.Finish(audit.Error, planID, nil, err)
 		return s.coolifySafe(body), err
 	}
@@ -483,10 +483,10 @@ func (s *PlatformCapability) PlatformDeploymentStatus(deploymentID string) (stri
 	status, body, err := s.coolify.request(context.Background(), http.MethodGet, "/api/v1/deployments/"+url.PathEscape(deploymentID), nil)
 	if err != nil {
 		sp.Finish(audit.Error, "deployment "+deploymentID, nil, err)
-		return "", fmt.Errorf("Coolify deployment status request failed: %w", err)
+		return "", fmt.Errorf("coolify deployment status request failed: %w", err)
 	}
 	if status < 200 || status >= 300 {
-		err := fmt.Errorf("Coolify deployment status -> HTTP %d: %s", status, s.coolifySafe(body))
+		err := fmt.Errorf("coolify deployment status -> HTTP %d: %s", status, s.coolifySafe(body))
 		sp.Finish(audit.Error, "deployment "+deploymentID, nil, err)
 		return s.coolifySafe(body), err
 	}
@@ -521,10 +521,10 @@ func (s *PlatformCapability) getPlatformApp(appID string) (platformApplication, 
 	}
 	status, body, err := s.coolify.request(context.Background(), http.MethodGet, "/api/v1/applications/"+url.PathEscape(appID), nil)
 	if err != nil {
-		return platformApplication{}, fmt.Errorf("Coolify application request failed: %w", err)
+		return platformApplication{}, fmt.Errorf("coolify application request failed: %w", err)
 	}
 	if status < 200 || status >= 300 {
-		return platformApplication{}, fmt.Errorf("Coolify application -> HTTP %d: %s", status, s.coolifySafe(body))
+		return platformApplication{}, fmt.Errorf("coolify application -> HTTP %d: %s", status, s.coolifySafe(body))
 	}
 	var app platformApplication
 	if err := json.Unmarshal([]byte(body), &app); err != nil {

@@ -166,8 +166,8 @@ bound.
   runner-temporary cache;
 - **Govulncheck:** `golang.org/x/vuln/cmd/govulncheck@v1.6.0`.
 
-Every job checks out independently, uses Go 1.26.4, has a bounded timeout, and remains
-blocking. Local `govulncheck` completed with no vulnerabilities. Local `staticcheck`
+Every job checks out independently, uses Go 1.26.5, has a bounded timeout, and remains
+blocking. Local `govulncheck` now completes with no vulnerabilities. Local `staticcheck`
 initialization was blocked because the production builder HOME is intentionally not
 writable; CI sets `XDG_CACHE_HOME` to `${{ runner.temp }}/staticcheck-cache` instead of
 mutating the production container. The actual race and staticcheck conclusions must be
@@ -223,6 +223,38 @@ than inferred from local success:
 This diagnostic step does not suppress or downgrade findings. The next observed run
 will expose the exact vulnerable package so the image can be remediated rather than
 ignored.
+
+## Security remediation — P6 Step 91
+
+The corrected runs for commit `112ca8ce06ffdeba570e486a548801ee21692a6f`
+created real jobs. CI run `29263139285` proved Verify and Race green while
+Staticcheck and Govulncheck failed. Security run `29263139756` proved CodeQL green,
+Dependency Review correctly skipped on push, and the container gate failed with five
+High findings.
+
+Exact findings and provenance are versioned in
+`docs/security-reports/2026-07-13-p6-ci-container-findings.md`:
+
+- reachable `GO-2026-5856` in Go 1.26.4, fixed by Go 1.26.5;
+- three GNU Wget High CVEs (`CVE-2026-58469`, `CVE-2026-58471`, and
+  `CVE-2026-58472`) introduced in the final `apk add` layer;
+- `GHSA-52v5-jr5w-gjxr` in npm's bundled `sigstore@4.1.0`;
+- `GHSA-c2c7-rcm5-vvqj` in npm's bundled `picomatch@4.0.3`;
+- 25 Staticcheck findings: three dead declarations and 22 capitalized error strings.
+
+The remediation pins Go 1.26.5 across the module, Actions, production image, and
+validation-runner build; removes standalone GNU Wget in favor of the existing
+BusyBox applet; and installs exact `npm@12.0.1`, whose inspected bundled tree contains
+fixed `sigstore@5.0.0` and `picomatch@4.0.5`. A repository policy test locks these
+choices. No vulnerability was ignored, allowlisted, downgraded, or hidden.
+
+Local Step 91 verification passes formatting, ordinary tests, atomic coverage and
+the package gate, vet, build, actionlint, govulncheck, and focused workflow/Grype
+tests. Staticcheck, Docker build, SBOM, and final Grype execution remain authoritative
+in the pull-request Actions runner because the public MCP intentionally exposes no
+Docker socket and the previously deployed non-root image has no writable Staticcheck
+cache. P6 remains open until those runs are green and the exact remediation commit is
+deployed and smoke-tested.
 
 ## Safety rules
 
