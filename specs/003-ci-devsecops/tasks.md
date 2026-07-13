@@ -4,7 +4,7 @@ Status: **active**.
 
 - [x] **T01 P6 foundation** — P5 deployment recorded, P6 defined, documentation synchronized, and the 62-tool runtime contract preserved.
 - [x] **T02 workflow policy** — tested YAML guard rejects dangerous triggers, broad permissions, PR secrets/production actions, mutable refs/tools, missing timeouts, and malformed workflows.
-- [ ] **T03 core CI** — formatting, atomic coverage/package gate, vet, build, staticcheck, govulncheck, and CGO race jobs.
+- [x] **T03 core CI** — blocking verify, atomic coverage/package gate, vet, build, CGO race, pinned staticcheck, and pinned govulncheck jobs defined and policy-validated.
 - [ ] **T04 security workflows** — CodeQL, dependency review, Docker build, SBOM, and local vulnerability scan.
 - [ ] **T05 scheduled fuzz** — explicit bounded execution for every P5 fuzz target.
 - [ ] **T06 observed GitHub run** — publish branch, inspect all workflow conclusions, and fix reproducible failures.

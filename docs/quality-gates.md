@@ -19,6 +19,9 @@ global coverage percentage for critical-package evidence. P6 will make it blocki
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.
 
+Core CI is split into independent blocking verify, CGO race, staticcheck, and
+govulncheck jobs so one failure remains attributable.
+
 Core Go:
 
 - formatting check;

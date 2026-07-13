@@ -10,8 +10,78 @@ permissions:
   contents: read
 
 jobs:
-  go:
-    name: Go
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.4"
+          cache: true
+
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          test -z "$files" || { echo "$files"; exit 1; }
+
+      - name: Test with atomic coverage
+        run: go test ./... -coverprofile=coverage.out -covermode=atomic -count=1
+
+      - name: Enforce package coverage
+        run: go run ./cmd/coverage-gate --profile coverage.out
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+  race:
+    name: Race detector
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CGO_ENABLED: "1"
+      CC: gcc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.4"
+          cache: true
+
+      - name: Run race detector
+        run: go test -race ./... -count=1
+
+  staticcheck:
+    name: Staticcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      XDG_CACHE_HOME: ${{ runner.temp }}/staticcheck-cache
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.4"
+          cache: true
+
+      - name: Run staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
+
+  govulncheck:
+    name: Govulncheck
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -24,8 +94,5 @@ jobs:
           go-version: "1.26.4"
           cache: true
 
-      - name: Test
-        run: go test ./... -count=1
-
-      - name: Vet
-        run: go vet ./...
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...

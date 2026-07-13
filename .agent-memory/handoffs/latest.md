@@ -21,5 +21,5 @@ P6 CI/DevSecOps is active and defined by `specs/003-ci-devsecops/`.
 
 ## Next safe step
 
-T01 foundation and T02 workflow policy are complete. Next replace the minimal CI
-with blocking verify/race/static/vulnerability jobs, then add security and fuzz workflows.
+T01-T03 are complete: foundation, workflow policy, and blocking core CI. Next add
+CodeQL, dependency review, Docker/SBOM/vulnerability evidence, then scheduled fuzz.

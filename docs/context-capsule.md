@@ -49,9 +49,9 @@ P5 deeper testing is deployed on `main` at commit
 62 tools and catalog hash. P5 added concurrency, fuzz seeds, package coverage, and
 hermetic integration evidence without runtime authority changes.
 
-P6 CI/DevSecOps is active on branch `p6-ci-devsecops`. Foundation and the tested
-workflow policy guard are complete; the guard already forced a bounded timeout on the
-existing CI job. Next are core CI, security/container workflows, and scheduled fuzzing.
+P6 CI/DevSecOps is active on branch `p6-ci-devsecops`. Foundation, workflow policy,
+and blocking core CI are complete: verify, CGO race, pinned staticcheck, and pinned
+govulncheck. Next are CodeQL/dependency/container evidence and bounded scheduled fuzz.
 No workflow may use secrets from pull requests or contact production.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path

@@ -156,6 +156,23 @@ The guard permits the narrow `security-events: write` capability required by Cod
 The existing CI job gained a 20-minute timeout after the guard detected the missing
 bound.
 
+## Core CI — P6 Step 87
+
+`.github/workflows/ci.yml` now contains four blocking jobs:
+
+- **Verify:** formatting, atomic full-suite coverage, package coverage gate, vet, and build;
+- **Race detector:** `CGO_ENABLED=1`, `CC=gcc`, and `go test -race ./... -count=1`;
+- **Staticcheck:** `honnef.co/go/tools/cmd/staticcheck@v0.7.0` with a writable
+  runner-temporary cache;
+- **Govulncheck:** `golang.org/x/vuln/cmd/govulncheck@v1.6.0`.
+
+Every job checks out independently, uses Go 1.26.4, has a bounded timeout, and remains
+blocking. Local `govulncheck` completed with no vulnerabilities. Local `staticcheck`
+initialization was blocked because the production builder HOME is intentionally not
+writable; CI sets `XDG_CACHE_HOME` to `${{ runner.temp }}/staticcheck-cache` instead of
+mutating the production container. The actual race and staticcheck conclusions must be
+observed from GitHub Actions after publication.
+
 ## Safety rules
 
 - Do not run active DAST against production.
