@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	minGrantTTL     = time.Second
-	defaultGrantTTL = 5 * time.Minute
-	maxGrantTTL     = time.Hour
+	minGrantTTL              = time.Second
+	defaultGrantTTL          = 5 * time.Minute
+	maxGrantTTL              = time.Hour
+	pendingRequestTTL        = 15 * time.Minute
+	maxPendingAccessRequests = 256
 )
 
 var (
@@ -22,6 +24,8 @@ var (
 	ErrAccessGrantPathMismatch = errors.New("policy: access grant path mismatch")
 	ErrRawAccessDenied         = errors.New("policy: raw secret access requires explicit raw grant")
 	ErrAccessGrantTTL          = errors.New("policy: access grant ttl must be between 1s and 1h")
+	ErrAccessRequestExpired    = errors.New("policy: access request expired")
+	ErrAccessRequestLimit      = errors.New("policy: too many pending access requests")
 )
 
 // AccessRequest is created when a tool asks for a secret-named path. It is not a
@@ -32,6 +36,7 @@ type AccessRequest struct {
 	Reason       string
 	RawRequested bool
 	CreatedAt    time.Time
+	ExpiresAt    time.Time
 }
 
 // AccessDecision records a local human decision for an access request.
@@ -93,17 +98,30 @@ func (g *AccessGrants) SetNotifier(notify func(AccessRequest)) {
 }
 
 func (g *AccessGrants) Request(path string, raw bool) (AccessRequest, error) {
+	now := g.now().UTC()
 	id, err := g.newID()
 	if err != nil {
 		return AccessRequest{}, err
 	}
 	g.mu.Lock()
+	g.pruneExpiredLocked(now)
+	for _, existing := range g.requests {
+		if existing.Path == path && existing.RawRequested == raw {
+			g.mu.Unlock()
+			return existing, nil
+		}
+	}
+	if len(g.requests) >= maxPendingAccessRequests {
+		g.mu.Unlock()
+		return AccessRequest{}, ErrAccessRequestLimit
+	}
 	req := AccessRequest{
 		ID:           id,
 		Path:         path,
 		Reason:       "secret path read requires local human approval",
 		RawRequested: raw,
-		CreatedAt:    g.now().UTC(),
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(pendingRequestTTL),
 	}
 	g.requests[id] = req
 	notify := g.notify
@@ -117,10 +135,16 @@ func (g *AccessGrants) Request(path string, raw bool) (AccessRequest, error) {
 func (g *AccessGrants) Approve(id string, raw bool, ttl time.Duration) (AccessDecision, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	now := g.now().UTC()
 	req, ok := g.requests[id]
 	if !ok {
 		return AccessDecision{}, ErrAccessGrantInvalid
 	}
+	if now.After(req.ExpiresAt) {
+		delete(g.requests, id)
+		return AccessDecision{}, ErrAccessRequestExpired
+	}
+	g.pruneExpiredLocked(now)
 	if ttl == 0 {
 		ttl = defaultGrantTTL
 	}
@@ -131,7 +155,7 @@ func (g *AccessGrants) Approve(id string, raw bool, ttl time.Duration) (AccessDe
 		RequestID: id,
 		Path:      req.Path,
 		Raw:       raw,
-		ExpiresAt: g.now().Add(ttl).UTC(),
+		ExpiresAt: now.Add(ttl),
 	}
 	g.grants[id] = readGrant{path: req.Path, raw: raw, expiresAt: decision.ExpiresAt}
 	delete(g.requests, id)
@@ -161,6 +185,19 @@ func (g *AccessGrants) Consume(id, path string, raw bool) (bool, error) {
 	grant.used = true
 	g.grants[id] = grant
 	return grant.raw, nil
+}
+
+func (g *AccessGrants) pruneExpiredLocked(now time.Time) {
+	for id, req := range g.requests {
+		if now.After(req.ExpiresAt) {
+			delete(g.requests, id)
+		}
+	}
+	for id, grant := range g.grants {
+		if now.After(grant.expiresAt) {
+			delete(g.grants, id)
+		}
+	}
 }
 
 func randomID() (string, error) {
