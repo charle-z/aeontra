@@ -1,0 +1,76 @@
+package docs_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestP7StructuredObservabilityIsDefinedAndActive(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return string(content)
+	}
+
+	spec := read("../specs/004-structured-observability/spec.md")
+	plan := read("../specs/004-structured-observability/plan.md")
+	tasks := read("../specs/004-structured-observability/tasks.md")
+	threat := read("../specs/004-structured-observability/threat-model.md")
+	operations := read("observability.md")
+	capsule := read("context-capsule.md")
+	roadmap := read("product-roadmap.md")
+	readme := read("../README.md")
+	agents := read("../AGENTS.md")
+
+	for name, content := range map[string]string{
+		"spec": spec, "plan": plan, "tasks": tasks, "threat model": threat,
+	} {
+		if !strings.Contains(content, "P7") || !strings.Contains(content, "structured observability") {
+			t.Errorf("%s does not define P7 structured observability", name)
+		}
+	}
+	for _, required := range []string{
+		"p7-structured-observability",
+		"P7 structured observability is active",
+		"62 tools",
+		"unchanged catalog hash",
+	} {
+		if !strings.Contains(capsule, required) {
+			t.Errorf("capsule does not contain %q", required)
+		}
+	}
+	if !strings.Contains(roadmap, "| P7 structured observability | In progress |") {
+		t.Error("roadmap does not mark P7 in progress")
+	}
+	for _, content := range []string{readme, agents} {
+		if !strings.Contains(content, "P7 structured observability") || !strings.Contains(content, "p7-structured-observability") {
+			t.Error("README/AGENTS do not identify the active P7 branch")
+		}
+	}
+	for _, required := range []string{
+		"MCP_DEVBOX_OBSERVABILITY",
+		"MCP_DEVBOX_OBSERVABILITY_PATH",
+		"MCP_DEVBOX_OBSERVABILITY_MAX_BYTES",
+		"0700",
+		"0600",
+		"one `.1` backup",
+		"X-MCP-Request-ID",
+		"Rollback",
+		"Troubleshooting",
+	} {
+		if !strings.Contains(operations, required) {
+			t.Errorf("observability operations do not contain %q", required)
+		}
+	}
+	for _, forbiddenBoundary := range []string{
+		"prompt", "params", "response", "path", "target", "token", "raw error",
+	} {
+		if !strings.Contains(strings.ToLower(threat), forbiddenBoundary) {
+			t.Errorf("threat model does not prohibit %q", forbiddenBoundary)
+		}
+	}
+}

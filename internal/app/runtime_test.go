@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/observability"
 )
 
 func clearRuntimeEnv(t *testing.T) {
@@ -127,7 +129,7 @@ func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 	if runtime.PrimaryRoot != filepath.Clean(root) || runtime.AuditPath != auditPath {
 		t.Fatalf("runtime paths = %#v", runtime)
 	}
-	if runtime.Policy == nil || runtime.Service == nil || runtime.Server == nil || runtime.Logger == nil {
+	if runtime.Policy == nil || runtime.Service == nil || runtime.Server == nil || runtime.Logger == nil || runtime.Observer == nil {
 		t.Fatal("runtime composition is incomplete")
 	}
 	if runtime.Policy.Mode() != config.ModeReadOnly {
@@ -135,5 +137,44 @@ func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 	}
 	if status := runtime.Service.SandboxStatus(); !strings.Contains(status, "backend: none") {
 		t.Fatalf("sandbox status = %q", status)
+	}
+}
+
+func TestBuildRuntimeOpensPrivateObservabilityFile(t *testing.T) {
+	clearRuntimeEnv(t)
+	root := t.TempDir()
+	path := filepath.Join(root, "private", "observability.jsonl")
+	cfg, err := config.New(config.Config{
+		Roots:           []string{root},
+		Mode:            config.ModeReadOnly,
+		AllowedCommands: []string{"git"},
+		SandboxBackend:  "none",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := buildRuntime(serveOptions{
+		Config: cfg,
+		Observability: observability.Config{
+			Mode:     observability.ModeFile,
+			Path:     path,
+			MaxBytes: observability.MinMaxBytes,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Observer.Emit(observability.Event{Level: observability.LevelInfo, Component: observability.ComponentServer, Name: observability.EventServerStart}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"event":"server_start"`) {
+		t.Fatalf("events = %s", data)
 	}
 }

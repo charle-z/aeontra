@@ -9,11 +9,12 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P6 CI/DevSecOps closure** on branch `p6-step92-closure`.
-  P6 is deployed on `main` at `539e4d96c95aedd492ac36b428d4159054e183f4`; exact
-  evidence is in `docs/baselines/2026-07-13-p6.md` and the versioned security report.
-  P7 structured observability is next and requires a fresh branch/spec. The project has
-  stdio and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
+- Current phase: **P7 structured observability** on branch
+  `p7-structured-observability`. P6 closure `ab0cf153fe898784dac6d48a062de78abb4d5f5d`
+  is deployed. P7 adds only content-free closed-schema operational events and must not
+  capture prompts, params, results, source, paths, targets, tokens, identities, or raw
+  errors. It adds no MCP tool, exporter, listener, dashboard, or application. The project
+  has stdio and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
   audit, persistent notes, and adversarial tests. The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
   `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into

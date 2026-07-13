@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
+	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
@@ -17,6 +19,7 @@ import (
 type appRuntime struct {
 	Policy      *policy.Policy
 	Logger      *audit.Logger
+	Observer    *observability.Logger
 	Service     *tools.Service
 	Server      *mcpserver.Server
 	PrimaryRoot string
@@ -24,10 +27,20 @@ type appRuntime struct {
 }
 
 func (r *appRuntime) Close() error {
-	if r == nil || r.Logger == nil {
+	if r == nil {
 		return nil
 	}
-	return r.Logger.Close()
+	var auditErr, observabilityErr error
+	if r.Logger != nil {
+		auditErr = r.Logger.Close()
+	}
+	if r.Observer != nil {
+		observabilityErr = r.Observer.Close()
+	}
+	if auditErr != nil || observabilityErr != nil {
+		return errors.New("runtime log close failed")
+	}
+	return nil
 }
 
 func buildRuntime(opts serveOptions) (*appRuntime, error) {
@@ -47,16 +60,28 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening audit log: %w", err)
 	}
+	observabilityConfig, err := resolveObservabilityConfig(opts.Observability, primary)
+	if err != nil {
+		_ = logger.Close()
+		return nil, err
+	}
+	observer, err := observability.Open(observabilityConfig, os.Stderr)
+	if err != nil {
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening observability sink: %w", err)
+	}
 	service, err := buildToolService(opts.Config, pol, logger, primary)
 	if err != nil {
+		_ = observer.Close()
 		_ = logger.Close()
 		return nil, err
 	}
 	return &appRuntime{
 		Policy:      pol,
 		Logger:      logger,
+		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.New(service),
+		Server:      mcpserver.NewWithObserver(service, observer),
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,
 	}, nil

@@ -1,54 +1,52 @@
-# P6 CI/DevSecOps closure
+# P7 structured observability
 
-Status: P6 implementation commit `539e4d96c95aedd492ac36b428d4159054e183f4` is fast-forwarded to `main`, published, deployed, and production-verified. Branch `p6-step92-closure` contains the reviewed closure baseline, synchronized sources of truth, and a regression test for the final state.
+Status: implementation candidate is complete on branch `p7-structured-observability`, based on deployed P6 closure commit `ab0cf153fe898784dac6d48a062de78abb4d5f5d`.
 
-## Verified implementation
+## Implemented
 
-- PR CI `29272847130`: Verify, Race detector, Staticcheck, and Govulncheck passed.
-- PR Security Evidence `29272847139`: CodeQL, Dependency Review, and container SBOM/vulnerability gate passed.
-- Dependency graph update `29273109419`: passed.
-- Push CI `29273109759`: passed.
-- Push Security Evidence `29273109780`: passed; Dependency Review correctly skipped on push after passing on the PR.
-- Final image: zero High/Critical findings at the unchanged threshold.
+- Independent spec, plan, tasks, threat model, operator guide, and documentation regression test.
+- Closed-schema JSONL sink under `internal/observability`.
+- Modes `off|stderr|file|both`; default stderr; optional private bounded file rotation.
+- Immutable flags/env: `MCP_DEVBOX_OBSERVABILITY`, `MCP_DEVBOX_OBSERVABILITY_PATH`, `MCP_DEVBOX_OBSERVABILITY_MAX_BYTES`.
+- Dedicated default file path: `<root>/.agent-memory/observability/observability.jsonl`.
+- Private directory/file posture: 0700/0600, one `.1` backup, bounded size, symlink/ancestor rejection, broad-directory rejection, and generic path-safe errors.
+- Internally generated request IDs shared by HTTP and JSON-RPC events; client request IDs are ignored.
+- Safe lifecycle, HTTP, JSON-RPC, batch parse, and known public tool completion events.
+- Closed labels only: normalized route/method/tool/outcome/status/duration/error class and public build identity/count/hash.
+- No prompts, bodies, params, results, source, paths, repository names, commands, targets, URLs, queries, headers, tokens, identities, IPs/domains, raw errors, or arbitrary attribute maps.
+- Timestamp and schema version are always server-owned.
+- Multi-writer mode continues writing to healthy destinations when another fails; failures are counted without retaining raw error text.
+- Startup diagnostics no longer print roots, audit paths, bind address, or authentication details; off mode retains a sanitized diagnostic.
+- Public catalog remains 62 tools with the unchanged expected hash.
 
-## Production
+## Final local verification
 
-- Application: `jqf7qz5ensoqtvl1tb197gcv`.
-- URL: `https://mcp-devbox-charlez.duckdns.org`.
-- Runtime status: healthy.
-- Served commit: `539e4d96c95aedd492ac36b428d4159054e183f4`.
-- Tool count: 62.
-- Catalog hash: `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-- The deployment request caused the expected MCP self-restart, so the deployment UUID was not returned. Safe status/runtime reads proved the replacement succeeded; no UUID was invented.
-
-## Closure artifacts
-
-- `docs/baselines/2026-07-13-p6.md`.
-- `docs/security-reports/2026-07-13-p6-ci-container-findings.md`.
-- `docs/runbooks/client-connector-reliability.md`.
-- `docs/p6_closure_test.go` guards final commit/run/production evidence.
-- P6 spec, plan, tasks, capsule, roadmap, README, AGENTS, testing guide, current task, and handoff are synchronized.
-- All temporary inspection/migration files were removed.
-
-## Closure verification
-
-Passed on the final working tree:
+Passed:
 
 - `go fmt ./...`.
 - `go test ./... -count=1`.
-- atomic coverage plus all package thresholds.
+- atomic coverage profile and package gate.
+- `internal/observability` coverage 74.4% against a 70% minimum.
 - `go vet ./...`.
 - `go build ./...`.
 - actionlint v1.7.12.
 - govulncheck v1.6.0: no vulnerabilities.
-- focused workflowpolicy/grypegate tests.
+- focused observability/app/mcpserver/workflow/Grype tests.
 - `git diff --check`.
+
+Runner-authoritative gates:
+
+- Local Staticcheck cannot initialize `/home/mcpdevbox/.cache/staticcheck` because the deployed non-root container has no writable home. GitHub Actions uses `runner.temp` and must pass before merge/deploy.
+- Local race cannot run because CGO is disabled. GitHub Actions must run the CGO-enabled race job.
+- Docker build, SBOM, Grype, CodeQL, and Dependency Review remain mandatory in Actions.
 
 ## Next exact actions
 
-1. Stage and commit Step 92 closure.
-2. Publish `p6-step92-closure`, open a PR, and require all PR Actions to pass.
-3. Fast-forward/publish `main`, deploy the exact closure commit to the existing application, and verify commit/health/62 tools/hash plus post-merge Actions.
-4. Create P7 structured observability on a fresh branch/spec. Do not mix console, Asset Broker, universal profiles, or Edge Agent into P7.
+1. Audit/stage the exact P7 diff and commit it.
+2. Publish `p7-structured-observability`.
+3. Because the current token may lack pull-request write permission, either create a PR through the connected GitHub action if available or fast-forward `main` only under the repository's authorized flow and observe all push gates.
+4. Correct any reproducible CI/security failure before deployment.
+5. Deploy only existing application `jqf7qz5ensoqtvl1tb197gcv`, preserve the deployment id if returned, and verify exact commit/health/62 tools/hash.
+6. Inspect safe JSONL application logs and create the P7 closure baseline before starting the console milestone.
 
-No public MCP tool/schema/annotation/environment contract change.
+No public MCP tool/schema/annotation/approval/OAuth authority change.

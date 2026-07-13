@@ -32,6 +32,12 @@ const (
 )
 
 const (
+	observabilityModeEnv     = "MCP_DEVBOX_OBSERVABILITY"
+	observabilityPathEnv     = "MCP_DEVBOX_OBSERVABILITY_PATH"
+	observabilityMaxBytesEnv = "MCP_DEVBOX_OBSERVABILITY_MAX_BYTES"
+)
+
+const (
 	githubTokenEnv             = "GITHUB_TOKEN"
 	githubOwnerEnv             = "GITHUB_OWNER"
 	githubOwnerTypeEnv         = "GITHUB_OWNER_TYPE"

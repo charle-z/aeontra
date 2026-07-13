@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/observability"
 )
 
 // rootsFlag collects --root (repeatable and/or comma-separated).
@@ -24,10 +25,11 @@ func (r *rootsFlag) Set(v string) error {
 }
 
 type serveOptions struct {
-	Config    config.Config
-	AuditPath string
-	HTTPAddr  string
-	HTTPToken string
+	Config        config.Config
+	AuditPath     string
+	HTTPAddr      string
+	HTTPToken     string
+	Observability observability.Config
 }
 
 func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
@@ -42,6 +44,9 @@ func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
 	httpAddr := fs.String("http", "", "serve MCP over HTTP at ADDR (e.g. :8765); omit for stdio")
 	httpToken := fs.String("http-token", "", "bearer token for HTTP (prefer "+tokenEnv+" env)")
 	sandbox := fs.String("sandbox", "", "L3 sandbox backend: none (default)|docker|nsjail|gvisor (plumbed, not yet enabled)")
+	observabilityMode := fs.String("observability", "", "structured events: off|stderr|file|both (default: stderr)")
+	observabilityPath := fs.String("observability-path", "", "absolute private JSONL path for file/both mode")
+	observabilityMaxBytes := fs.String("observability-max-bytes", "", "rotation limit in bytes (default: 16777216)")
 	if err := fs.Parse(args); err != nil {
 		return serveOptions{}, err
 	}
@@ -81,10 +86,15 @@ func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
 	if err != nil {
 		return serveOptions{}, err
 	}
+	observabilityConfig, err := parseObservabilityConfig(*observabilityMode, *observabilityPath, *observabilityMaxBytes)
+	if err != nil {
+		return serveOptions{}, err
+	}
 	return serveOptions{
-		Config:    cfg,
-		AuditPath: *auditPath,
-		HTTPAddr:  *httpAddr,
-		HTTPToken: *httpToken,
+		Config:        cfg,
+		AuditPath:     *auditPath,
+		HTTPAddr:      *httpAddr,
+		HTTPToken:     *httpToken,
+		Observability: observabilityConfig,
 	}, nil
 }

@@ -105,11 +105,11 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"p6-step92-closure",
-		"539e4d96c95aedd492ac36b428d4159054e183f4",
-		"docs/baselines/2026-07-13-p6.md",
-		"zero-High/Critical",
-		"CGO race",
+		"p7-structured-observability",
+		"ab0cf153fe898784dac6d48a062de78abb4d5f5d",
+		"content-free JSONL",
+		"74.4%",
+		"No tool, endpoint, exporter",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)

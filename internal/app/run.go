@@ -61,6 +61,9 @@ serve flags:
   --http        serve MCP over HTTP at ADDR (e.g. :8765). Omit for stdio (default).
                 A host-less ADDR binds to 127.0.0.1 (use a tunnel for remote access).
   --http-token  bearer token for the HTTP endpoint. Prefer the `+tokenEnv+` env var.
+  --observability  structured events: off, stderr (default), file, or both
+  --observability-path  absolute private JSONL path for file/both mode
+  --observability-max-bytes  one-backup rotation limit (default: 16777216)
 
 Transports:
   stdio (default)  JSON-RPC on stdin/stdout (local clients: Cursor, Claude Desktop).
@@ -68,6 +71,7 @@ Transports:
                    "Authorization: Bearer <t>" OR "/mcp?key=<t>" (ChatGPT can't send a
                    header → use ?key= + "Sin autenticación"). See docs/connect-remote.md.
 
-Diagnostics go to stderr; the bearer token is never printed.
+Structured content-free observability defaults to JSONL on stderr; bearer tokens,
+request bodies, params, paths, targets, identities, and raw errors are never emitted.
 `)
 }

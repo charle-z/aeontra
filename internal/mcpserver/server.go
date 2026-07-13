@@ -13,17 +13,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
+	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
 // Server dispatches MCP requests to the tool service.
 type Server struct {
-	svc   *tools.Service
-	name  string
-	table map[string]toolEntry
-	order []string
+	svc      *tools.Service
+	name     string
+	table    map[string]toolEntry
+	order    []string
+	observer *observability.Logger
 }
 
 type toolEntry struct {
@@ -43,9 +46,14 @@ type toolDef struct {
 	Annotations map[string]any `json:"annotations,omitempty"`
 }
 
-// New builds a Server over the given tool service.
+// New builds a Server over the given tool service with observability disabled.
 func New(svc *tools.Service) *Server {
-	s := &Server{svc: svc, name: "mcp-devbox", table: map[string]toolEntry{}}
+	return NewWithObserver(svc, nil)
+}
+
+// NewWithObserver builds a Server with a content-free structured event sink.
+func NewWithObserver(svc *tools.Service, observer *observability.Logger) *Server {
+	s := &Server{svc: svc, name: "mcp-devbox", table: map[string]toolEntry{}, observer: observer}
 	s.register()
 	return s
 }
@@ -65,7 +73,7 @@ func (s *Server) Serve(in io.Reader, out io.Writer) error {
 		if line == "" {
 			continue
 		}
-		resp := s.handle([]byte(line))
+		resp := s.handleObserved([]byte(line), observability.TransportStdio, observability.NewRequestID())
 		if resp != nil {
 			if _, err := w.Write(append(resp, '\n')); err != nil {
 				return err
@@ -78,30 +86,91 @@ func (s *Server) Serve(in io.Reader, out io.Writer) error {
 	return r.Err()
 }
 
-// handle processes one raw JSON-RPC message and returns the response bytes, or nil
-// for notifications.
+// handle processes one internal JSON-RPC message. Tests and non-transport callers
+// retain this compatibility wrapper while receiving the same safe event semantics.
 func (s *Server) handle(raw []byte) []byte {
+	return s.handleObserved(raw, observability.TransportInternal, observability.NewRequestID())
+}
+
+func (s *Server) emitRPCFailure(transport observability.Transport, requestID string, errorClass observability.ErrorClass, started time.Time) {
+	if s.observer == nil {
+		return
+	}
+	_ = s.observer.Emit(observability.Event{
+		Level:      observability.LevelError,
+		Component:  observability.ComponentMCP,
+		Name:       observability.EventRPCRequest,
+		RequestID:  requestID,
+		Transport:  transport,
+		Method:     observability.MethodOther,
+		Outcome:    observability.OutcomeError,
+		DurationMS: time.Since(started).Milliseconds(),
+		ErrorClass: errorClass,
+	})
+}
+
+func (s *Server) handleObserved(raw []byte, transport observability.Transport, requestID string) (response []byte) {
+	started := time.Now()
+	event := observability.Event{
+		Level:     observability.LevelInfo,
+		Component: observability.ComponentMCP,
+		Name:      observability.EventRPCRequest,
+		RequestID: requestID,
+		Transport: transport,
+		Method:    observability.MethodOther,
+		Outcome:   observability.OutcomeSuccess,
+	}
+	defer func() {
+		event.DurationMS = time.Since(started).Milliseconds()
+		if event.Outcome == observability.OutcomeError {
+			event.Level = observability.LevelError
+		}
+		if s.observer != nil {
+			_ = s.observer.Emit(event)
+		}
+	}()
+
 	var req rpcRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
+		event.Outcome = observability.OutcomeError
+		event.ErrorClass = observability.ErrorParse
 		return mustMarshal(errorResponse(nil, -32700, "parse error"))
 	}
 	isNotification := len(req.ID) == 0
 
 	switch req.Method {
 	case "initialize":
+		event.Method = observability.MethodInitialize
 		return mustMarshal(resultResponse(req.ID, s.initializeResult(req.Params)))
-	case "notifications/initialized", "notifications/cancelled":
+	case "notifications/initialized":
+		event.Method = observability.MethodNotification
+		event.Outcome = observability.OutcomeAccepted
+		return nil
+	case "notifications/cancelled":
+		event.Method = observability.MethodNotification
+		event.Outcome = observability.OutcomeCancelled
 		return nil
 	case "ping":
+		event.Method = observability.MethodPing
 		return mustMarshal(resultResponse(req.ID, map[string]any{}))
 	case "tools/list":
+		event.Method = observability.MethodToolsList
 		return mustMarshal(resultResponse(req.ID, map[string]any{"tools": s.listTools()}))
 	case "tools/call":
-		return mustMarshal(s.callTool(req))
+		event.Method = observability.MethodToolsCall
+		result, tool, outcome, errorClass := s.callToolObserved(req)
+		event.Tool = tool
+		event.Outcome = outcome
+		event.ErrorClass = errorClass
+		return mustMarshal(result)
 	default:
+		event.Method = observability.MethodOther
 		if isNotification {
+			event.Outcome = observability.OutcomeAccepted
 			return nil
 		}
+		event.Outcome = observability.OutcomeError
+		event.ErrorClass = observability.ErrorUnknownMethod
 		return mustMarshal(errorResponse(req.ID, -32601, "method not found: "+req.Method))
 	}
 }
@@ -152,16 +221,21 @@ func (s *Server) listTools() []toolDef {
 }
 
 func (s *Server) callTool(req rpcRequest) rpcResponse {
+	response, _, _, _ := s.callToolObserved(req)
+	return response
+}
+
+func (s *Server) callToolObserved(req rpcRequest) (rpcResponse, string, observability.Outcome, observability.ErrorClass) {
 	var params struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	}
 	if err := json.Unmarshal(req.Params, &params); err != nil {
-		return errorResponse(req.ID, -32602, "invalid params")
+		return errorResponse(req.ID, -32602, "invalid params"), "", observability.OutcomeError, observability.ErrorInvalidParams
 	}
 	entry, ok := s.table[params.Name]
 	if !ok {
-		return errorResponse(req.ID, -32602, "unknown tool: "+params.Name)
+		return errorResponse(req.ID, -32602, "unknown tool: "+params.Name), "unknown", observability.OutcomeError, observability.ErrorUnknownTool
 	}
 	text, err := entry.handler(params.Arguments)
 	if err != nil {
@@ -176,11 +250,11 @@ func (s *Server) callTool(req rpcRequest) rpcResponse {
 		return resultResponse(req.ID, toolResult{
 			Content: []contentBlock{{Type: "text", Text: message}},
 			IsError: true,
-		})
+		}), params.Name, observability.OutcomeError, observability.ErrorTool
 	}
 	return resultResponse(req.ID, toolResult{
 		Content: []contentBlock{{Type: "text", Text: text}},
-	})
+	}), params.Name, observability.OutcomeSuccess, observability.ErrorNone
 }
 
 func mustMarshal(v any) []byte {

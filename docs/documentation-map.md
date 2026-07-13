@@ -16,7 +16,7 @@ The repository is the source of truth; chat history is not.
 | Why was an architecture decision made? | `docs/adr/` | Accepted/replaced architecture decision. Do not rewrite accepted history. |
 | What was true at a phase closure? | `docs/baselines/` | Create a new dated baseline; do not rewrite old evidence. |
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
-| How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
+| How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |
 
 ## Status vocabulary

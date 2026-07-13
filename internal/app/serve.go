@@ -1,8 +1,11 @@
 package app
 
-import "os"
+import (
+	"errors"
+	"os"
+)
 
-func serve(args []string) error {
+func serve(args []string) (serveErr error) {
 	opts, err := parseServeOptions(args, os.Stderr)
 	if err != nil {
 		return err
@@ -11,7 +14,9 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer runtime.Close()
+	defer func() {
+		serveErr = errors.Join(serveErr, runtime.Close())
+	}()
 
 	admin, err := startLocalGrantAdmin(runtime, os.Stderr)
 	if err != nil {

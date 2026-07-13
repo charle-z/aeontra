@@ -98,8 +98,9 @@ misleading global percentage:
 | `internal/mcpserver/catalog` | 80% | 84.4% |
 | `internal/oauth` | 80% | 85.3% |
 | `internal/audit` | 80% | 86.2% |
+| `internal/observability` | 70% | 74.4% |
 | `internal/tools` | 70% | 73.3% |
-| `internal/app` | 65% | 69.0% |
+| `internal/app` | 65% | 67.5% |
 | `internal/grantadmin` | 55% | 59.6% |
 
 The gate fails with an explicit missing package error when a threshold package is
@@ -257,6 +258,26 @@ zero-High/Critical container gate. Fast-forward push runs `29273109759` and
 its successful PR execution. Production serves exact commit
 `539e4d96c95aedd492ac36b428d4159054e183f4` with 62 tools and the unchanged hash.
 P6 closure evidence is versioned in `docs/baselines/2026-07-13-p6.md`.
+
+## Structured observability — P7
+
+P7 adds `internal/observability` with a closed JSONL schema and a 70% package
+coverage minimum. The measured local baseline is 74.4%. Tests cover:
+
+- mode/default/range/path validation and flag-over-environment precedence;
+- one-record JSON encoding, concurrent writes, joined multi-writer failures, and a
+  failure counter that stores no raw error text;
+- private 0700 directories, 0600 active/backup files, and one bounded `.1` rotation;
+- internally generated request ids shared across HTTP and JSON-RPC events;
+- normalized lifecycle, route, method, public tool, outcome, status, duration, and
+  closed error-class fields;
+- canaries containing prompts, bodies, params, paths, targets, URLs, query tokens,
+  client-controlled request ids, unknown tool names, and secret-shaped strings;
+- absence of new tools, endpoints, exporters, collectors, dashboards, or applications.
+
+Local Staticcheck remains blocked before analysis by the deployed non-root container's
+unwritable default cache path. The existing GitHub Actions job supplies a writable
+runner-temporary cache and remains the authoritative blocking result after publication.
 
 ## Safety rules
 

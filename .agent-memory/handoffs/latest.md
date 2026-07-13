@@ -1,31 +1,33 @@
 # Latest handoff — MCP Devbox
 
 Date: 2026-07-13
-Branch: `p6-step92-closure`
-Deployed base: `main` at `539e4d96c95aedd492ac36b428d4159054e183f4`
+Branch: `p7-structured-observability`
+Deployed base: `main` at `ab0cf153fe898784dac6d48a062de78abb4d5f5d`
 
 ## Current phase
 
-P6 CI/DevSecOps is implemented, fast-forwarded, deployed, and production-verified.
-The baseline is `docs/baselines/2026-07-13-p6.md`; detailed vulnerability evidence
-is in `docs/security-reports/2026-07-13-p6-ci-container-findings.md`.
+P7 structured observability is active. It is separate from the private append-only
+audit log and has a closed content-free JSONL schema.
 
-## Verified gates
+## Local implementation
 
-- PR CI `29272847130`: Verify, CGO race, Staticcheck, Govulncheck success.
-- PR Security Evidence `29272847139`: CodeQL, Dependency Review, Docker/SBOM,
-  and zero-High/Critical Grype gate success.
-- Push CI `29273109759` and Security Evidence `29273109780`: success.
-- Dependency graph update `29273109419`: success.
-- Production: exact commit `539e4d96c95aedd492ac36b428d4159054e183f4`, healthy,
-  62 tools, unchanged catalog hash.
+- Safe sink, private one-backup rotation, config flags/env, lifecycle/HTTP/RPC/tool
+  instrumentation, internal request IDs, failure count, adversarial tests, and operator
+  documentation are implemented.
+- No tool, endpoint, exporter, external collector, dashboard, console, OAuth change,
+  or new application is introduced.
+- Full suite currently passes; observability coverage baseline is 74.4% with a 70% gate.
 
-The deployment UUID was not returned because the MCP restarted during its own
-replacement. Exact runtime identity proves success; no UUID was invented.
+## Security boundary
+
+Never add prompts, bodies, params, results, source, paths, repos, commands, targets,
+URLs, queries, headers, tokens, identities, IPs/domains, raw errors, or arbitrary
+attribute maps to observability. Known public tool names and coarse durations are the
+only capability-level dimensions.
 
 ## Next safe step
 
-Publish, review, fast-forward, and deploy this P6 closure record. Then create a fresh
-P7 structured-observability branch/spec. Do not mix console, Asset Broker, universal
-profiles, or Edge Agent into P7. Edge physical PC/WSL validation remains pending the
-owner machine.
+Complete documentation tests and all gates, remove temporary files, commit/publish P7, observe
+main Actions, deploy the existing Coolify application, verify exact runtime identity
+and safe JSONL logs, then create the P7 closure baseline. Start the console only on a
+new branch/spec after P7 closes.

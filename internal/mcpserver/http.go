@@ -17,6 +17,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
+	"github.com/charle-z/mcp-devbox/internal/observability"
 )
 
 // maxHTTPBody caps a single MCP request body. MCP messages are small; this bounds
@@ -110,7 +111,7 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 		}
 	})
 
-	return withRuntimeHeaders(mux, runtimeInfo)
+	return s.withHTTPObservability(withRuntimeHeaders(mux, runtimeInfo))
 }
 
 func withRuntimeHeaders(next http.Handler, info RuntimeInfo) http.Handler {
@@ -122,6 +123,110 @@ func withRuntimeHeaders(next http.Handler, info RuntimeInfo) http.Handler {
 		w.Header().Set("X-MCP-Tool-Count", fmt.Sprintf("%d", info.ToolCount))
 		next.ServeHTTP(w, r)
 	})
+}
+
+type requestIDContextKey struct{}
+
+type observabilityResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *observabilityResponseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *observabilityResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *observabilityResponseWriter) Flush() {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Unwrap preserves optional ResponseController interfaces of the underlying writer.
+func (w *observabilityResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		requestID := observability.NewRequestID()
+		w.Header().Set("X-MCP-Request-ID", requestID)
+		recorder := &observabilityResponseWriter{ResponseWriter: w}
+		ctx := context.WithValue(r.Context(), requestIDContextKey{}, requestID)
+		next.ServeHTTP(recorder, r.WithContext(ctx))
+		status := recorder.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		outcome := observability.OutcomeSuccess
+		level := observability.LevelInfo
+		errorClass := observability.ErrorNone
+		switch {
+		case status == http.StatusAccepted:
+			outcome = observability.OutcomeAccepted
+		case status == http.StatusUnauthorized || status == http.StatusForbidden:
+			outcome = observability.OutcomeDenied
+		case status >= http.StatusBadRequest:
+			outcome = observability.OutcomeError
+			level = observability.LevelError
+			errorClass = observability.ErrorTransport
+		}
+		if s.observer != nil {
+			_ = s.observer.Emit(observability.Event{
+				Level:      level,
+				Component:  observability.ComponentHTTP,
+				Name:       observability.EventHTTPRequest,
+				RequestID:  requestID,
+				Transport:  observability.TransportHTTP,
+				Route:      normalizedRoute(r.URL.Path),
+				Outcome:    outcome,
+				StatusCode: status,
+				DurationMS: time.Since(started).Milliseconds(),
+				ErrorClass: errorClass,
+			})
+		}
+	})
+}
+
+func requestIDFromContext(ctx context.Context) string {
+	if requestID, ok := ctx.Value(requestIDContextKey{}).(string); ok && requestID != "" {
+		return requestID
+	}
+	return observability.NewRequestID()
+}
+
+func normalizedRoute(path string) observability.Route {
+	switch {
+	case path == DefaultMCPPath:
+		return observability.RouteMCP
+	case path == "/healthz":
+		return observability.RouteHealth
+	case path == "/version":
+		return observability.RouteVersion
+	case strings.HasPrefix(path, "/.well-known/"),
+		strings.HasPrefix(path, "/oauth/"),
+		path == "/authorize",
+		path == "/token",
+		path == "/register":
+		return observability.RouteOAuth
+	default:
+		return observability.RouteOther
+	}
 }
 
 // authOK authorizes a request by matching the configured token against either the
@@ -241,7 +346,7 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 
 	// JSON-RPC batch (array) support.
 	if trimmed[0] == '[' {
-		responses := s.handleBatch([]byte(trimmed))
+		responses := s.handleBatchObserved([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()))
 		if len(responses) == 0 {
 			w.WriteHeader(http.StatusAccepted)
 			return
@@ -259,7 +364,7 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 		return
 	}
 
-	resp := s.handle([]byte(trimmed))
+	resp := s.handleObserved([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()))
 	if resp == nil {
 		// Notification: nothing to return.
 		w.WriteHeader(http.StatusAccepted)
@@ -290,12 +395,19 @@ func containsInitialize(raw []byte) bool {
 	return false
 }
 
-// handleBatch processes each element of a JSON-RPC batch, dropping notification
-// (nil) replies, and returns the raw response messages.
+// handleBatch processes one internal JSON-RPC batch.
 func (s *Server) handleBatch(raw []byte) [][]byte {
+	return s.handleBatchObserved(raw, observability.TransportInternal, observability.NewRequestID())
+}
+
+// handleBatchObserved processes each element of a JSON-RPC batch, dropping notification
+// replies and sharing one server-generated request id across the transport operation.
+func (s *Server) handleBatchObserved(raw []byte, transport observability.Transport, requestID string) [][]byte {
+	started := time.Now()
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	token, err := decoder.Token()
 	if err != nil || token != json.Delim('[') {
+		s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
 		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
 	}
 
@@ -304,24 +416,29 @@ func (s *Server) handleBatch(raw []byte) [][]byte {
 	for decoder.More() {
 		count++
 		if count > maxHTTPBatchItems {
+			s.emitRPCFailure(transport, requestID, observability.ErrorInvalidParams, started)
 			return [][]byte{mustMarshal(errorResponse(nil, -32600, "invalid request: batch too large"))}
 		}
 		var message json.RawMessage
 		if err := decoder.Decode(&message); err != nil {
+			s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
 			return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
 		}
-		if response := s.handle(message); response != nil {
+		if response := s.handleObserved(message, transport, requestID); response != nil {
 			out = append(out, response)
 		}
 	}
 	if count == 0 {
+		s.emitRPCFailure(transport, requestID, observability.ErrorInvalidParams, started)
 		return [][]byte{mustMarshal(errorResponse(nil, -32600, "invalid request: empty batch"))}
 	}
 	if _, err := decoder.Token(); err != nil {
+		s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
 		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
+		s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
 		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
 	}
 	return out

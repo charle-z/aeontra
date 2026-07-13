@@ -50,6 +50,7 @@ func DefaultThresholds() []Threshold {
 		{Package: "github.com/charle-z/mcp-devbox/internal/mcpserver/catalog", Minimum: 80},
 		{Package: "github.com/charle-z/mcp-devbox/internal/oauth", Minimum: 80},
 		{Package: "github.com/charle-z/mcp-devbox/internal/audit", Minimum: 80},
+		{Package: "github.com/charle-z/mcp-devbox/internal/observability", Minimum: 70},
 		{Package: "github.com/charle-z/mcp-devbox/internal/tools", Minimum: 70},
 		{Package: "github.com/charle-z/mcp-devbox/internal/app", Minimum: 65},
 		{Package: "github.com/charle-z/mcp-devbox/internal/grantadmin", Minimum: 55},

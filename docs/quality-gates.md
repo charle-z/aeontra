@@ -14,7 +14,8 @@ go run ./cmd/coverage-gate --profile coverage.out
 ```
 
 The gate is package-specific, rejects a missing package, and never substitutes one
-global coverage percentage for critical-package evidence. P6 makes it blocking.
+global coverage percentage for critical-package evidence. P6 makes it blocking. P7
+adds `internal/observability` at a 70% minimum against a measured 74.4% baseline.
 
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.
@@ -23,6 +24,17 @@ Core CI is split into independent blocking verify, CGO race, staticcheck, and
 govulncheck jobs so one failure remains attributable. Pinned actionlint validates
 workflow expressions/schema, and `cmd/grype-gate` converts the JSON image report into
 actionable annotations without lowering the High threshold.
+
+Structured observability added by P7 is also blocking through ordinary tests:
+
+- closed event schema with no free-form map/message/body/params/result/path/target/error;
+- internally generated request ids and normalized methods/routes;
+- canary tests for prompts, secret-shaped tokens, paths, query values, client ids,
+  unknown tool names, and raw errors;
+- concurrent line-safe JSONL;
+- private 0700/0600 file permissions and bounded one-backup rotation;
+- startup failure on invalid/unwritable configuration;
+- no public MCP tool, endpoint, exporter, or application.
 
 Core Go:
 

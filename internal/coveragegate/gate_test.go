@@ -94,6 +94,7 @@ func TestDefaultThresholdsCoverSecurityCriticalPackages(t *testing.T) {
 		"github.com/charle-z/mcp-devbox/internal/mcpserver/catalog": 80,
 		"github.com/charle-z/mcp-devbox/internal/oauth":             80,
 		"github.com/charle-z/mcp-devbox/internal/audit":             80,
+		"github.com/charle-z/mcp-devbox/internal/observability":     70,
 		"github.com/charle-z/mcp-devbox/internal/tools":             70,
 		"github.com/charle-z/mcp-devbox/internal/app":               65,
 		"github.com/charle-z/mcp-devbox/internal/grantadmin":        55,

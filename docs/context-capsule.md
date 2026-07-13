@@ -55,8 +55,14 @@ Race, Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker build, SPDX SB
 and the unchanged High/Critical Grype gate are green. Production is healthy with 62
 tools and the unchanged catalog hash. Exact findings, remediation, restart evidence,
 and closure are recorded in `docs/security-reports/2026-07-13-p6-ci-container-findings.md`
-and `docs/baselines/2026-07-13-p6.md`. Branch `p6-step92-closure` finalizes the
-versioned closure record; P7 structured observability is next on a fresh branch/spec.
+and `docs/baselines/2026-07-13-p6.md`. P6 closure branch `p6-step92-closure`
+produced commit `ab0cf153fe898784dac6d48a062de78abb4d5f5d`, which is deployed and verified.
+
+P7 structured observability is active on branch `p7-structured-observability`.
+It adds a separate closed-schema JSONL stream for server, HTTP, JSON-RPC, and tool
+completion timing. It excludes prompts, bodies, params, results, source, paths,
+repositories, commands, targets, URLs, query strings, headers, tokens, identities,
+and raw errors. The public MCP remains 62 tools with the unchanged catalog hash.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -371,9 +377,9 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Publish and deploy the P6 closure record from `p6-step92-closure`.
-2. Verify the exact closure commit, health, 62 tools, and unchanged catalog hash.
-3. Start P7 structured observability on a fresh branch and independent spec.
+1. Finish P7 structured observability on `p7-structured-observability`.
+2. Run the complete quality/security gates and preserve the 62-tool catalog/hash.
+3. Publish, fast-forward, deploy, and verify the exact P7 commit and JSONL events.
 4. Keep console, Asset Broker, universal profiles, and Edge Agent in later separate milestones.
 
 Publication now exists only through the planned `repo_publish_preview` /
@@ -391,10 +397,9 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P6 implementation commit
-`539e4d96c95aedd492ac36b428d4159054e183f4` is fast-forwarded to `main`,
-served by healthy production, and verified by green pull-request/post-merge Actions.
-Production reports 62 tools and deterministic catalog hash
+Date: 2026-07-13. P6 closure commit
+`ab0cf153fe898784dac6d48a062de78abb4d5f5d` is deployed and healthy. Production
+reports 62 tools and deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-The deployment tool connection dropped during the expected self-restart, so its UUID
-was not returned; exact runtime identity independently proves the successful replacement.
+P7 structured observability is under local implementation on its independent branch;
+it is not merged or deployed until all gates and production smoke pass.

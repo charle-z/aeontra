@@ -10,7 +10,9 @@ Create one incident row before retrying anything:
 |---|---|
 | Incident time | UTC timestamp and local timezone |
 | Client symptom | Exact visible message; whether tool list, response stream, or authentication failed |
-| MCP request/tool | Tool name and bounded operation, if known |
+| MCP request/tool | Public tool name only, if known; never copy params, paths, targets, or bodies into the incident row |
+| MCP request ID | Server-generated `X-MCP-Request-ID` / `request_id`, when available |
+| Safe observability | Timestamp, component, event, normalized route/method, outcome, status, duration, error_class, commit/tool_count/hash |
 | Deployment ID | Active/recent Coolify deployment UUID, or `none` |
 | Deployment state | queued, in_progress, finished, failed, cancelled, unknown |
 | `/version` commit | Exact served commit |
@@ -28,9 +30,12 @@ Never use a later healthy snapshot as proof that the server was healthy at the i
 2. Query that exact deployment with `platform_deployment_status`.
 3. Query `system_runtime_info` and the application status.
 4. Run `cmd/mcp-catalog-smoke` against production with the commit that should be live.
-5. If a deployment is active, retry the same deployment status after a bounded interval. Do not create a deploy loop.
-6. Only consider another deployment after the prior deployment is terminal and the served commit, health, and Coolify state prove it is necessary.
-7. If the client shows fewer tools than `system_runtime_info`, treat it as a client catalog/cache discrepancy; do not redeploy solely for that symptom.
+5. Correlate the server-generated request id with content-free observability events. Use
+   only normalized fields; do not copy request bodies, params, paths, targets, headers,
+   tokens, identities, or raw errors into incident records.
+6. If a deployment is active, retry the same deployment status after a bounded interval. Do not create a deploy loop.
+7. Only consider another deployment after the prior deployment is terminal and the served commit, health, and Coolify state prove it is necessary.
+8. If the client shows fewer tools than `system_runtime_info`, treat it as a client catalog/cache discrepancy; do not redeploy solely for that symptom.
 
 ## Classification matrix
 
@@ -83,10 +88,16 @@ Classify as a tool timeout/error when:
 
 - the MCP server remains healthy and serves the same commit;
 - one named operation exceeds its configured timeout or returns an explicit bounded error;
-- audit/application logs identify the tool, start/end timestamps, duration, and result;
+- content-free observability identifies the public tool, request id, timestamps,
+  duration, outcome, and closed error class;
 - unrelated tools continue to work.
 
-Record the operation, parameters after redaction, configured timeout, observed duration, exit/error class, and whether the server cancelled the work. Distinguish policy denial, approval required, subprocess timeout, upstream API timeout, and malformed response. Do not redeploy for a reproducible input/policy error.
+Record the public operation, configured timeout, observed duration, closed error class,
+and whether the server cancelled the work. Keep params, paths, targets, source, results,
+tokens, identities, and raw errors in the separately authorized private evidence path;
+do not copy them into observability or this incident table. Distinguish policy denial,
+approval required, subprocess timeout, upstream API timeout, and malformed response.
+Do not redeploy for a reproducible input/policy error.
 
 ### 4. Coolify/build/deployment failure
 
