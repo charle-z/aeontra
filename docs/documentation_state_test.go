@@ -93,7 +93,9 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"P6 CI/DevSecOps",
 		"539e4d96c95aedd492ac36b428d4159054e183f4",
 		"Console/showcase",
-		"In progress",
+		"Deployed",
+		"Brain memory",
+		"Planned",
 		"Universal execution profiles",
 		"Planned",
 		"Edge agents",
@@ -105,10 +107,10 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"p8-authenticated-dark-console",
-		"30ae8a7e9d7b73584b34ef3bbbc952407faa5117",
-		"Presentation-only",
-		"84.2%",
+		"P8 authenticated dark console is closed",
+		"605a56d48a495f3c8a2ce62471223187ef2f5685",
+		"p9-brain",
+		"84.3%",
 		"console-smoke",
 	} {
 		if !strings.Contains(handoff, required) {

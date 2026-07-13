@@ -24,7 +24,7 @@ func TestP7StructuredObservabilityIsDefinedAndDeployed(t *testing.T) {
 	capsule := read("context-capsule.md")
 	roadmap := read("product-roadmap.md")
 	readme := read("../README.md")
-	agents := read("../AGENTS.md")
+	baseline := read("baselines/2026-07-13-p7.md")
 
 	for name, content := range map[string]string{
 		"spec": spec, "plan": plan, "tasks": tasks, "threat model": threat,
@@ -50,8 +50,8 @@ func TestP7StructuredObservabilityIsDefinedAndDeployed(t *testing.T) {
 	if !strings.Contains(readme, "P7 structured observability") || !strings.Contains(readme, "d1309ed08db0170e5165f78bf406e94cfa56cc11") {
 		t.Error("README does not identify the deployed P7 release")
 	}
-	if !strings.Contains(agents, "P7 closure") || !strings.Contains(agents, "30ae8a7e9d7b73584b34ef3bbbc952407faa5117") {
-		t.Error("AGENTS does not identify the deployed P7 closure")
+	if !strings.Contains(baseline, "P7 closure baseline") || !strings.Contains(baseline, "d1309ed08db0170e5165f78bf406e94cfa56cc11") {
+		t.Error("P7 baseline does not identify the deployed closure")
 	}
 	for _, required := range []string{
 		"MCP_DEVBOX_OBSERVABILITY",

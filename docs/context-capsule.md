@@ -70,15 +70,15 @@ catalog hash; real logs prove shared opaque request IDs and content-free events.
 Closure evidence is in `docs/baselines/2026-07-13-p7.md`. Closure commit
 `30ae8a7e9d7b73584b34ef3bbbc952407faa5117` is deployed and verified.
 
-P8 authenticated dark console is active on branch
-`p8-authenticated-dark-console`. It is embedded in the existing Go HTTP
-application and creates no new listener, Coolify application, dependency manager, or
-credential. The surface is presentation-only: public runtime identity and static
-architecture/security explanations behind the existing bearer/OAuth authentication.
-Opaque digest-only sessions expire after eight hours and are capped at 128. The
-console cannot execute tools, approve plans, enumerate repositories, or expose
-prompts, paths, targets, tokens, identities, audit, logs, or raw operational data.
-The public MCP remains 62 tools with the unchanged catalog hash.
+P8 authenticated dark console is deployed on `main` at
+`605a56d48a495f3c8a2ce62471223187ef2f5685`. PR #2 and post-merge runs passed
+Verify, Race, Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker build, SPDX
+SBOM, and the unchanged High/Critical Grype gate. `cmd/console-smoke` passed against
+production with a Secure opaque cookie, exact safe schema, 62 tools, and the unchanged
+catalog hash. Logs show only content-free `route=console` classifications. P8 adds no
+new resident service, Coolify application, listener, database, queue, model, credential,
+or OAuth protocol change. Closure evidence is in
+`docs/baselines/2026-07-13-p8.md`.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -393,11 +393,14 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Finish P8 authenticated dark console on `p8-authenticated-dark-console`.
-2. Run complete local and GitHub quality/security gates while preserving 62 tools/hash.
-3. Publish, fast-forward, let the existing app autodeploy, and validate authenticated
-   the /console route with `cmd/console-smoke` without printing token or cookie values.
-4. Close P8 before starting Asset Broker; universal profiles and Edge Agent remain later, with Edge Agent last.
+1. Start P9 Brain on a fresh `p9-brain` branch with `specs/006-brain/` and ADR 0003.
+2. Keep Markdown files as truth under `MCP_DEVBOX_BRAIN_ROOT`; SQLite FTS5 is only a
+   disposable pure-Go cache. Add no resident service, database server, embeddings,
+   queue, or model to the resource-constrained VPS.
+3. Enforce owner-only `curated/`, agent-writable `working/` with provenance/review dates,
+   hard bounds, secret denial, path-safe slugs, backlinks, and demand-driven retrieval.
+4. Close P9 through a PR, remote gates, baseline, production verification, and tag
+   before drafting the P10 Layer 2/3 spec. Edge Agent remains last.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -414,10 +417,11 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P7 closure commit
-`30ae8a7e9d7b73584b34ef3bbbc952407faa5117` is deployed and healthy. Production
+Date: 2026-07-13. P8 merge commit
+`605a56d48a495f3c8a2ce62471223187ef2f5685` is deployed and healthy. Production
 reports 62 tools and deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-P8 authenticated dark console is under local implementation on its independent branch;
-it is not merged or deployed until local gates, runner-authoritative Actions, exact
-runtime smoke, and authenticated console smoke pass.
+PR CI runs `29290411676`/`29290411679` and post-merge runs
+`29290609147`/`29290609178` are green. Authenticated console smoke passed, and
+content-free logs show the expected 303/200 `route=console` events. P9 Brain is next
+on a fresh branch/spec and must not add a resident service.

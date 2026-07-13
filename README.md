@@ -88,13 +88,15 @@ green; production logs and the unchanged 62-tool catalog are recorded in
 `docs/baselines/2026-07-13-p7.md`. It adds no public tool, endpoint, exporter,
 or application; see `docs/observability.md`.
 
-**P8 authenticated dark console is active on `p8-authenticated-dark-console`:**
-a dependency-free presentation surface embedded in the existing Go HTTP application.
-It reuses existing bearer/OAuth authentication, stores only digest-only in-memory
-sessions, displays the public runtime identity and static security/architecture
-explanations, and cannot execute tools, approve plans, list private resources, or read
-audit/observability history. No new Coolify application, credential, listener, npm
-bundle, CDN, or OAuth protocol change is introduced; see `docs/console.md`.
+**P8 authenticated dark console is deployed at
+`605a56d48a495f3c8a2ce62471223187ef2f5685`:** a dependency-free presentation
+surface embedded in the existing Go HTTP application. PR and post-merge gates are
+green; authenticated `cmd/console-smoke` verifies a Secure opaque session, exact
+runtime schema, 62 tools, and the unchanged catalog hash. It cannot execute tools,
+approve plans, list private resources, or read audit/observability history. No new
+resident service, Coolify application, credential, listener, npm bundle, CDN, or OAuth
+protocol change is introduced. See `docs/console.md` and
+`docs/baselines/2026-07-13-p8.md`.
 
 Quick start:
 

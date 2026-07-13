@@ -1,6 +1,6 @@
 # Spec — P8 authenticated dark console
 
-Status: **active** on branch `p8-authenticated-dark-console`.
+Status: **complete** on `main` at `605a56d48a495f3c8a2ce62471223187ef2f5685`.
 
 ## Goal
 

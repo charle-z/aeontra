@@ -1,6 +1,6 @@
 # Plan — P8 authenticated dark console
 
-Status: **active**.
+Status: **complete**.
 
 1. **Threat model and route contract** — define presentation-only data, authentication,
    session lifecycle, browser headers, and explicit forbidden authority.
@@ -16,8 +16,8 @@ Status: **active**.
    malformed forms, method confusion, and unauthorized asset/status access.
 7. **Operations** — installation, secure cookie/public URL behavior, login/logout,
    update, rollback, troubleshooting, and limitations.
-8. **Closure** — full gates, baseline, clean fast-forward, automatic deployment,
-   authenticated production validation, and observed Actions.
+8. **Closure** — complete: PR and post-merge gates, dated baseline, PR merge,
+   automatic deployment, authenticated production smoke, and safe console log evidence.
 
 ## Design rules
 

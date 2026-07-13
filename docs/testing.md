@@ -99,7 +99,7 @@ misleading global percentage:
 | `internal/oauth` | 80% | 85.3% |
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
-| `internal/console` | 80% | 84.2% |
+| `internal/console` | 80% | 84.3% |
 | `internal/tools` | 70% | 73.3% |
 | `internal/app` | 65% | 67.8% |
 | `internal/grantadmin` | 55% | 59.6% |
@@ -291,7 +291,7 @@ versioned in `docs/baselines/2026-07-13-p7.md`.
 ## Authenticated dark console — P8
 
 P8 adds `internal/console` with an 80% package coverage minimum and a measured
-84.2% local baseline. Ordinary and integration tests cover:
+84.3% local baseline. Ordinary and integration tests cover:
 
 - digest-only opaque sessions, eight-hour TTL, 128-session cap, expiry, revocation,
   collision retry, and restart-only persistence;
@@ -307,6 +307,14 @@ P8 adds `internal/console` with an 80% package coverage minimum and a measured
   browser storage, `innerHTML`, WebSocket, or JavaScript-readable cookie;
 - `cmd/console-smoke`, which reads the existing token only from the environment,
   validates login/session/status/headers/commit/catalog, and prints no secret/cookie.
+
+PR #2 final runs `29290411676` and `29290411679` passed Verify, Race,
+Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker/SBOM, and the unchanged
+High/Critical gate. Post-merge runs `29290609147` and `29290609178` also passed;
+Dependency Review correctly skipped on push. Production serves
+`605a56d48a495f3c8a2ce62471223187ef2f5685`, console-smoke passed, and safe logs
+show only 303/200 `route=console` events. Full evidence is versioned in
+`docs/baselines/2026-07-13-p8.md`.
 
 ## Safety rules
 

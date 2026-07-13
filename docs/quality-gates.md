@@ -16,7 +16,7 @@ go run ./cmd/coverage-gate --profile coverage.out
 The gate is package-specific, rejects a missing package, and never substitutes one
 global coverage percentage for critical-package evidence. P6 makes it blocking. P7
 adds `internal/observability` at a 70% minimum against a measured 74.4% baseline.
-P8 adds `internal/console` at an 80% minimum against a measured 84.2% baseline.
+P8 adds `internal/console` at an 80% minimum against a measured 84.3% baseline.
 
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.
