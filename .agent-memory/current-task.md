@@ -6,18 +6,19 @@ Completed:
 - Step 54 `2ef5414`: central service core and five capability services.
 - Step 55 `b9556a3`: shared jailed workdir resolution moved to the core.
 - Step 56 `0992d46`: repository/filesystem/memory/notes methods moved to `RepositoryCapability`.
-- Step 57 `d76a9a0`: Git reads, commits, synchronization, publication, and remote management moved to `GitCapability`.
+- Step 57 `d76a9a0`: Git methods moved to `GitCapability`.
+- Step 58 `570f042`: GitHub/source-hosting methods moved to `SourceCapability`.
 
-Current Step 58 candidate:
-- `SourceCapability` now owns GitHub API repository lookup/creation helpers and the planned source repository info/create workflow;
-- compile-time assertions prove it implements the source repository creation and metadata catalog interfaces;
-- `GitCapability` and `PlatformCapability` continue sharing this exact configured source capability rather than copying tokens or owner state;
+Current Step 59 candidate:
+- `PlatformCapability` now owns legacy Coolify operations, planned application creation/deployment, logs/status, environment mutation, force-without-cache deployment, and managed validation-runner application creation;
+- compile-time assertions prove it implements the platform core, deployment, environment, validation-runner platform, and application-preview contracts;
+- it shares the central policy/audit/root/plan core and the exact configured `SourceCapability` for GitHub owner validation;
 - the aggregate `Service` remains backwards compatible through promoted methods.
 
-Step 58 verification:
-- RED failed on both missing source-hosting catalog interfaces;
+Step 59 verification:
+- RED failed on all five missing platform contracts;
 - focused and full tests passed after receiver migration;
 - `go vet ./...` and `go build ./...` passed;
 - production catalog smoke remains 62 tools with the unchanged hash.
 
-Next autonomous step: migrate legacy Coolify, planned platform application/deployment, force deployment, and managed validation-runner platform methods to `PlatformCapability`. Do not publish, merge, or deploy P2 without explicit owner approval.
+Next autonomous step: migrate command/test, sandbox, private validation, and privileged profile methods to `ExecutionCapability`. Do not publish, merge, or deploy P2 without explicit owner approval.

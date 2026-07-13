@@ -20,7 +20,7 @@ const (
 // PlatformValidationRunnerCreatePreview plans one narrowly defined private Coolify
 // application. The agent supplies only the source branch; destination and mount
 // authority remain administrator-owned configuration.
-func (s *Service) PlatformValidationRunnerCreatePreview(branch string) (string, error) {
+func (s *PlatformCapability) PlatformValidationRunnerCreatePreview(branch string) (string, error) {
 	sp := s.log.Start("platform_validation_runner_create_preview")
 	if err := s.coolify.builderConfigError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
@@ -71,7 +71,7 @@ func (s *Service) PlatformValidationRunnerCreatePreview(branch string) (string, 
 		strings.Join(mounts, " | "), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) PlatformValidationRunnerCreate(planID string, approve bool) (string, error) {
+func (s *PlatformCapability) PlatformValidationRunnerCreate(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_validation_runner_create")
 	if err := s.coolify.builderConfigError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
@@ -172,7 +172,7 @@ func (s *Service) PlatformValidationRunnerCreate(planID string, approve bool) (s
 		app.UUID, managedValidationRunnerName, plan.Args["branch"]), nil
 }
 
-func (s *Service) validationRunnerRuntimeConfig() ([]string, string, string, error) {
+func (s *PlatformCapability) validationRunnerRuntimeConfig() ([]string, string, string, error) {
 	if s.coolify == nil || len(s.coolify.allowedMounts) != 3 {
 		return nil, "", "", fmt.Errorf("COOLIFY_ALLOWED_MOUNTS must contain exactly the three validation-runner mounts")
 	}
@@ -210,7 +210,7 @@ func (s *Service) validationRunnerRuntimeConfig() ([]string, string, string, err
 	return mounts, repoHostRoot, store, nil
 }
 
-func (s *Service) platformAppNameExists(name string) (bool, error) {
+func (s *PlatformCapability) platformAppNameExists(name string) (bool, error) {
 	status, body, err := s.coolify.request(context.Background(), http.MethodGet, "/api/v1/applications", nil)
 	if err != nil {
 		return false, fmt.Errorf("listing Coolify applications: %w", err)
@@ -230,7 +230,7 @@ func (s *Service) platformAppNameExists(name string) (bool, error) {
 	return false, nil
 }
 
-func (s *Service) setPlatformEnvironment(app string, vars map[string]string) error {
+func (s *PlatformCapability) setPlatformEnvironment(app string, vars map[string]string) error {
 	keys := make([]string, 0, len(vars))
 	for key := range vars {
 		keys = append(keys, key)

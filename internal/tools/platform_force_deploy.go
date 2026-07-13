@@ -15,7 +15,7 @@ const platformDeployWithoutCacheOperation = "platform-deploy-without-cache"
 // PlatformDeployWithoutCachePreview creates an exact, short-lived plan for one
 // force=true Coolify deployment. It binds the plan to the current application UUID,
 // repository, branch, and commit so the later execution cannot target changed state.
-func (s *Service) PlatformDeployWithoutCachePreview(appID string) (string, error) {
+func (s *PlatformCapability) PlatformDeployWithoutCachePreview(appID string) (string, error) {
 	sp := s.log.Start("platform_deploy_without_cache_preview")
 	app, err := s.getPlatformApp(appID)
 	if err != nil {
@@ -37,7 +37,7 @@ func (s *Service) PlatformDeployWithoutCachePreview(appID string) (string, error
 // PlatformDeployWithoutCache executes one reviewed force=true deployment plan. It
 // retains the same policy, approval, allowlist, token handling, and state
 // revalidation as the normal deployment flow.
-func (s *Service) PlatformDeployWithoutCache(planID string, approve bool) (string, error) {
+func (s *PlatformCapability) PlatformDeployWithoutCache(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_deploy_without_cache")
 	if err := s.coolify.configError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)

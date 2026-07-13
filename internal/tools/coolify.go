@@ -168,7 +168,7 @@ func (c *CoolifyClient) request(ctx context.Context, method, path string, payloa
 // instance. It is disabled unless configured, mode-gated (read-only denies; ask needs
 // approve=true), optionally allowlisted, audited, and its response is redacted. The
 // API token is never exposed to the agent.
-func (s *Service) CoolifyDeploy(app string, approve bool) (string, error) {
+func (s *PlatformCapability) CoolifyDeploy(app string, approve bool) (string, error) {
 	sp := s.log.Start("coolify_deploy")
 	if s.coolify == nil || !s.coolify.Configured() {
 		err := fmt.Errorf("coolify_deploy is not configured (set COOLIFY_URL and COOLIFY_API_TOKEN)")
@@ -204,7 +204,7 @@ func (s *Service) CoolifyDeploy(app string, approve bool) (string, error) {
 	return fmt.Sprintf("coolify deploy %s -> HTTP %d\n%s", app, status, s.redact(body)), nil
 }
 
-func (s *Service) CoolifyListApps() (string, error) {
+func (s *PlatformCapability) CoolifyListApps() (string, error) {
 	sp := s.log.Start("coolify_list_apps")
 	if s.coolify == nil || !s.coolify.Configured() {
 		err := fmt.Errorf("coolify_list_apps is not configured (set COOLIFY_URL and COOLIFY_API_TOKEN)")
@@ -224,7 +224,7 @@ func (s *Service) CoolifyListApps() (string, error) {
 	return s.redact(body), nil
 }
 
-func (s *Service) CoolifyAppStatus(app string) (string, error) {
+func (s *PlatformCapability) CoolifyAppStatus(app string) (string, error) {
 	sp := s.log.Start("coolify_app_status")
 	if s.coolify == nil || !s.coolify.Configured() {
 		err := fmt.Errorf("coolify_app_status is not configured (set COOLIFY_URL and COOLIFY_API_TOKEN)")
@@ -248,7 +248,7 @@ func (s *Service) CoolifyAppStatus(app string) (string, error) {
 	return s.redact(body), nil
 }
 
-func (s *Service) CoolifyCreateApp(name, githubRepo, branch, buildPack, port, domain string, approve bool) (string, error) {
+func (s *PlatformCapability) CoolifyCreateApp(name, githubRepo, branch, buildPack, port, domain string, approve bool) (string, error) {
 	sp := s.log.Start("coolify_create_app")
 	if s.coolify == nil || !s.coolify.Configured() {
 		err := fmt.Errorf("coolify_create_app is not configured (set COOLIFY_URL and COOLIFY_API_TOKEN)")
@@ -332,7 +332,7 @@ func (s *Service) CoolifyCreateApp(name, githubRepo, branch, buildPack, port, do
 	return fmt.Sprintf("coolify create app -> HTTP %d\n%s", status, s.redact(body)), nil
 }
 
-func (s *Service) CoolifySetEnv(app string, vars map[string]string, approve bool) (string, error) {
+func (s *PlatformCapability) CoolifySetEnv(app string, vars map[string]string, approve bool) (string, error) {
 	sp := s.log.Start("coolify_set_env")
 	if s.coolify == nil || !s.coolify.Configured() {
 		err := fmt.Errorf("coolify_set_env is not configured (set COOLIFY_URL and COOLIFY_API_TOKEN)")
@@ -385,7 +385,7 @@ func (s *Service) CoolifySetEnv(app string, vars map[string]string, approve bool
 	return "coolify env updated:\n" + strings.Join(summaries, "\n"), nil
 }
 
-func (s *Service) checkCoolifyApp(tool, app string, sp *audit.Span) error {
+func (s *PlatformCapability) checkCoolifyApp(tool, app string, sp *audit.Span) error {
 	if !coolifyUUIDRe.MatchString(app) {
 		err := fmt.Errorf("invalid app id (expected an alphanumeric Coolify uuid)")
 		sp.Finish(audit.Deny, tool+" "+summarize(app), nil, err)

@@ -104,7 +104,7 @@ func (c *CoolifyClient) builderConfigError() error {
 	return nil
 }
 
-func (s *Service) PlatformAppsList() (string, error) {
+func (s *PlatformCapability) PlatformAppsList() (string, error) {
 	sp := s.log.Start("platform_apps_list")
 	if err := s.coolify.configError(); err != nil {
 		sp.Finish(audit.Deny, "list", nil, err)
@@ -161,7 +161,7 @@ func decodePlatformApplications(body string) ([]platformApplication, error) {
 	return wrapped.Data, nil
 }
 
-func (s *Service) PlatformAppStatus(appID string) (string, error) {
+func (s *PlatformCapability) PlatformAppStatus(appID string) (string, error) {
 	sp := s.log.Start("platform_app_status")
 	app, err := s.getPlatformApp(appID)
 	if err != nil {
@@ -182,7 +182,7 @@ func (s *Service) PlatformAppStatus(appID string) (string, error) {
 	return out, nil
 }
 
-func (s *Service) PlatformAppLogs(appID string, lines int) (string, error) {
+func (s *PlatformCapability) PlatformAppLogs(appID string, lines int) (string, error) {
 	sp := s.log.Start("platform_app_logs")
 	if err := s.coolify.configError(); err != nil {
 		sp.Finish(audit.Deny, "logs "+summarize(appID), nil, err)
@@ -229,7 +229,7 @@ func (s *Service) PlatformAppLogs(appID string, lines int) (string, error) {
 	return s.coolifySafe(result.Logs), nil
 }
 
-func (s *Service) PlatformAppCreatePreview(req PlatformAppCreateRequest) (string, error) {
+func (s *PlatformCapability) PlatformAppCreatePreview(req PlatformAppCreateRequest) (string, error) {
 	sp := s.log.Start("platform_app_create_preview")
 	if err := s.coolify.builderConfigError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
@@ -274,7 +274,7 @@ func (s *Service) PlatformAppCreatePreview(req PlatformAppCreateRequest) (string
 		strings.Join(envNames, ","), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) PlatformAppCreate(planID string, approve bool) (string, error) {
+func (s *PlatformCapability) PlatformAppCreate(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_app_create")
 	if err := s.coolify.builderConfigError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
@@ -345,7 +345,7 @@ func (s *Service) PlatformAppCreate(planID string, approve bool) (string, error)
 	return s.redact(formatPlatformApp(app)), nil
 }
 
-func (s *Service) PlatformDeployPreview(appID string) (string, error) {
+func (s *PlatformCapability) PlatformDeployPreview(appID string) (string, error) {
 	sp := s.log.Start("platform_deploy_preview")
 	app, err := s.getPlatformApp(appID)
 	if err != nil {
@@ -364,7 +364,7 @@ func (s *Service) PlatformDeployPreview(appID string) (string, error) {
 		app.UUID, app.Name, app.repo(), app.branch(), app.commit(), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) PlatformDeploy(planID string, approve bool) (string, error) {
+func (s *PlatformCapability) PlatformDeploy(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_deploy")
 	if err := s.coolify.configError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
@@ -468,7 +468,7 @@ type platformDeployment struct {
 	FinishedAt     *string `json:"finished_at"`
 }
 
-func (s *Service) PlatformDeploymentStatus(deploymentID string) (string, error) {
+func (s *PlatformCapability) PlatformDeploymentStatus(deploymentID string) (string, error) {
 	sp := s.log.Start("platform_deployment_status")
 	if err := s.coolify.configError(); err != nil {
 		sp.Finish(audit.Deny, "deployment "+summarize(deploymentID), nil, err)
@@ -508,7 +508,7 @@ func (s *Service) PlatformDeploymentStatus(deploymentID string) (string, error) 
 		deployment.CommitMessage, deployment.CreatedAt, deployment.UpdatedAt, finished)), nil
 }
 
-func (s *Service) getPlatformApp(appID string) (platformApplication, error) {
+func (s *PlatformCapability) getPlatformApp(appID string) (platformApplication, error) {
 	if err := s.coolify.configError(); err != nil {
 		return platformApplication{}, err
 	}
@@ -536,7 +536,7 @@ func (s *Service) getPlatformApp(appID string) (platformApplication, error) {
 	return app, nil
 }
 
-func (s *Service) normalizePlatformCreate(req PlatformAppCreateRequest) (PlatformAppCreateRequest, error) {
+func (s *PlatformCapability) normalizePlatformCreate(req PlatformAppCreateRequest) (PlatformAppCreateRequest, error) {
 	req.Name = strings.TrimSpace(req.Name)
 	if !safeCloneDir(req.Name) {
 		return req, fmt.Errorf("invalid Coolify application name %q", req.Name)
@@ -638,7 +638,7 @@ func safePlatformURL(raw string) string {
 	return clean
 }
 
-func (s *Service) coolifySafe(body string) string {
+func (s *PlatformCapability) coolifySafe(body string) string {
 	if s.coolify != nil && s.coolify.token != "" {
 		body = strings.ReplaceAll(body, s.coolify.token, "[REDACTED]")
 	}
