@@ -16,6 +16,7 @@ func FuzzActionPlanSingleUseAndOperationBinding(f *testing.F) {
 		{"deploy", "publish", int64(time.Minute)},
 		{"", "", int64(time.Second)},
 		{"deploy", "deploy", -1},
+		{"deploy", "publish", -1},
 	}
 	for _, seed := range seeds {
 		f.Add(seed.operation, seed.consume, seed.ttlNanos)
@@ -50,9 +51,13 @@ func FuzzActionPlanSingleUseAndOperationBinding(f *testing.F) {
 			if secondErr != nil {
 				t.Fatalf("operation mismatch consumed the plan: %v", secondErr)
 			}
-		default:
+		case ttl <= 0 && consumeOperation == operation:
 			if secondErr == nil || !strings.Contains(secondErr.Error(), "already used") {
 				t.Fatalf("consumed expired plan error = %v, want already used", secondErr)
+			}
+		default:
+			if secondErr == nil || !strings.Contains(secondErr.Error(), "expired") {
+				t.Fatalf("mismatched expired plan error = %v, want expired", secondErr)
 			}
 		}
 	})

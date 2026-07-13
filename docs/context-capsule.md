@@ -49,11 +49,10 @@ P5 deeper testing is deployed on `main` at commit
 62 tools and catalog hash. P5 added concurrency, fuzz seeds, package coverage, and
 hermetic integration evidence without runtime authority changes.
 
-P6 CI/DevSecOps is active on branch `p6-step88-security-evidence`. Foundation,
-workflow policy, blocking core CI, and least-privilege security/container evidence are
-complete. Step 88 adds CodeQL, PR dependency review, local Docker build, SPDX SBOM,
-and a blocking high-severity image scan without secrets, registry push, or production
-traffic. Next is bounded scheduled fuzzing.
+P6 CI/DevSecOps is active on branch `p6-step89-scheduled-fuzz`. Foundation,
+workflow policy, core CI, security/container evidence, and bounded scheduled fuzzing
+are complete. Every known fuzz target is covered by a weekly/manual matrix with fixed
+time and CPU bounds. Next is observed GitHub Actions verification and P6 closure.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot

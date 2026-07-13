@@ -1,0 +1,47 @@
+name: Scheduled Fuzz
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOMAXPROCS: "2"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: ./internal/policy
+            target: FuzzJailResolveNeverReturnsOutsideRoot
+          - package: ./internal/policy
+            target: FuzzCheckCommandAllowedResultSatisfiesAllGates
+          - package: ./internal/policy
+            target: FuzzRedactIsIdempotent
+          - package: ./internal/policy
+            target: FuzzAccessGrantTTLBoundary
+          - package: ./internal/mcpserver
+            target: FuzzJSONRPCHandleReturnsValidJSONOrNotification
+          - package: ./internal/mcpserver
+            target: FuzzJSONRPCBatchResponsesStayBoundedAndValid
+          - package: ./internal/tools
+            target: FuzzActionPlanSingleUseAndOperationBinding
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.4"
+          cache: true
+
+      - name: Run bounded fuzz target
+        run: go test ${{ matrix.package }} -run=NoTests -fuzz=${{ matrix.target }} -fuzztime=30s

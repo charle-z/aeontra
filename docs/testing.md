@@ -190,6 +190,20 @@ endpoint, or active DAST exists. SBOM and Grype JSON are verified as non-empty l
 files and disappear with the ephemeral runner. Real action conclusions are observed
 after branch publication.
 
+## Scheduled fuzzing — P6 Step 89
+
+`.github/workflows/fuzz.yml` runs weekly at `17 3 * * 1` and supports manual dispatch.
+A seven-entry matrix maps every Go fuzz function to its exact package. Each target gets
+a 30-second fuzz budget, a 10-minute job timeout, `GOMAXPROCS=2`, read-only repository
+access, and no secrets or network credentials. Timed fuzzing is not added to push or
+pull-request latency.
+
+All seven targets were also executed locally with a one-second budget. That run found
+an incomplete test invariant for an expired plan first consumed with the wrong
+operation: mismatch does not consume the plan, so the next correctly bound attempt
+returns `expired`. The case is now a curated seed and the runtime behavior was not
+changed.
+
 ## Safety rules
 
 - Do not run active DAST against production.

@@ -60,6 +60,9 @@ Security evidence added by P6:
 
 ## Scheduled or ephemeral staging
 
+P6 scheduled fuzz runs every known target in a bounded matrix; adding a Go fuzz
+function without adding its workflow entry fails repository tests.
+
 - fuzzing and longer adversarial tests;
 - recovery/rollback drills;
 - Playwright smoke tests;
