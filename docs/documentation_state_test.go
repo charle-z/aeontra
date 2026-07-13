@@ -93,7 +93,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"P6 CI/DevSecOps",
 		"539e4d96c95aedd492ac36b428d4159054e183f4",
 		"Console/showcase",
-		"Not started",
+		"In progress",
 		"Universal execution profiles",
 		"Planned",
 		"Edge agents",
@@ -105,11 +105,11 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"p7-structured-observability",
-		"d1309ed08db0170e5165f78bf406e94cfa56cc11",
-		"content-free JSONL",
-		"29281156750",
-		"authenticated dark console",
+		"p8-authenticated-dark-console",
+		"30ae8a7e9d7b73584b34ef3bbbc952407faa5117",
+		"Presentation-only",
+		"84.2%",
+		"console-smoke",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)

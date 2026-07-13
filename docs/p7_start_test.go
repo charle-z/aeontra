@@ -47,10 +47,11 @@ func TestP7StructuredObservabilityIsDefinedAndDeployed(t *testing.T) {
 	if !strings.Contains(roadmap, "| P7 structured observability | Deployed |") {
 		t.Error("roadmap does not mark P7 deployed")
 	}
-	for _, content := range []string{readme, agents} {
-		if !strings.Contains(content, "P7 structured observability") || !strings.Contains(content, "d1309ed08db0170e5165f78bf406e94cfa56cc11") {
-			t.Error("README/AGENTS do not identify the deployed P7 release")
-		}
+	if !strings.Contains(readme, "P7 structured observability") || !strings.Contains(readme, "d1309ed08db0170e5165f78bf406e94cfa56cc11") {
+		t.Error("README does not identify the deployed P7 release")
+	}
+	if !strings.Contains(agents, "P7 closure") || !strings.Contains(agents, "30ae8a7e9d7b73584b34ef3bbbc952407faa5117") {
+		t.Error("AGENTS does not identify the deployed P7 closure")
 	}
 	for _, required := range []string{
 		"MCP_DEVBOX_OBSERVABILITY",

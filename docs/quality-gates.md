@@ -16,6 +16,7 @@ go run ./cmd/coverage-gate --profile coverage.out
 The gate is package-specific, rejects a missing package, and never substitutes one
 global coverage percentage for critical-package evidence. P6 makes it blocking. P7
 adds `internal/observability` at a 70% minimum against a measured 74.4% baseline.
+P8 adds `internal/console` at an 80% minimum against a measured 84.2% baseline.
 
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.
@@ -46,13 +47,15 @@ Core Go:
 - focused Semgrep rules;
 - generated catalog/docs consistency.
 
-Console:
+Authenticated console:
 
-- frozen pnpm install;
-- Astro/TypeScript check;
-- unit and component tests;
-- production build;
-- focused Semgrep rules.
+- digest-only bounded session-store tests and constant-time static-token validation;
+- exact safe status schema and unchanged MCP/OAuth/catalog integration tests;
+- CSP, cookie, method, body-limit, cache, and cross-origin header tests;
+- dependency-free embedded asset tests forbidding external origins, analytics, browser
+  storage, service workers, `innerHTML`, eval, and WebSockets;
+- authenticated `cmd/console-smoke` after deployment, with token read only from the
+  environment and no token/session output.
 
 ## Main branch or protected merge
 

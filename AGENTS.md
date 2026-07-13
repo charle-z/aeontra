@@ -9,14 +9,16 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P7 structured observability closure / authenticated dark console next**. P7 is deployed
-  on `main` at `d1309ed08db0170e5165f78bf406e94cfa56cc11`; milestone branch
-  `p7-structured-observability` and `docs/baselines/2026-07-13-p7.md` retain
-  the evidence. The next product must use a fresh branch/spec and remain authenticated,
-  dark, presentation-only, and unable to execute tools or reveal private state. Asset
-  Broker, universal profiles, and Edge Agent remain separate later milestones; Edge
-  Agent is last. The project has stdio and HTTP/OAuth transports, policy core, 62
-  annotated MCP tools, action plans, audit, persistent notes, and adversarial tests.
+- Current phase: **P8 authenticated dark console** on branch
+  `p8-authenticated-dark-console`. P7 closure `30ae8a7e9d7b73584b34ef3bbbc952407faa5117`
+  is deployed. P8 is embedded in the existing Go HTTP application, reuses existing
+  bearer/OAuth authentication, creates only opaque digest-backed in-memory sessions,
+  and remains presentation-only. It cannot execute tools, approve plans, enumerate
+  private repositories, or expose prompts, paths, targets, credentials, identities,
+  audit, observability history, or raw errors. Asset Broker, universal profiles, and
+  Edge Agent remain separate later milestones; Edge Agent is last. The project has
+  stdio and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
+  audit, persistent notes, and adversarial tests.
   The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
   `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into

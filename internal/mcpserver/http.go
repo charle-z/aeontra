@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
+	"github.com/charle-z/mcp-devbox/internal/console"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 )
@@ -44,6 +45,12 @@ const DefaultMCPPath = "/mcp"
 // All request bodies are treated as untrusted input. Tool results still carry repo
 // file contents as DATA, never instructions.
 func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.Handler {
+	return s.HTTPHandlerWithOptions(token, oauthProvider, HTTPOptions{})
+}
+
+// HTTPHandlerWithOptions preserves the existing MCP/OAuth routes and adds only the
+// authenticated presentation console configured by opts.
+func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provider, opts HTTPOptions) http.Handler {
 	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
 	sessionID := newHTTPSessionID()
@@ -70,6 +77,24 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp-devbox"`)
 		}
 	}
+
+	consoleHandler, err := console.New(console.Config{
+		StaticToken:   token,
+		SecureCookies: opts.ConsoleSecureCookies,
+		Runtime: console.Status{
+			Status:          runtimeInfo.Status,
+			Version:         runtimeInfo.Version,
+			ProtocolVersion: runtimeInfo.ProtocolVersion,
+			Commit:          runtimeInfo.Commit,
+			ToolCount:       runtimeInfo.ToolCount,
+			CatalogHash:     runtimeInfo.CatalogHash,
+		},
+		Authorize: authorized,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("invalid console configuration: %v", err))
+	}
+	consoleHandler.Register(mux)
 
 	// Unauthenticated liveness probe. It reports the running version + git commit so a
 	// deploy can be confirmed to have shipped the latest code (no sensitive information).
@@ -218,6 +243,8 @@ func normalizedRoute(path string) observability.Route {
 		return observability.RouteHealth
 	case path == "/version":
 		return observability.RouteVersion
+	case path == "/console", strings.HasPrefix(path, "/console/"):
+		return observability.RouteConsole
 	case strings.HasPrefix(path, "/.well-known/"),
 		strings.HasPrefix(path, "/oauth/"),
 		path == "/authorize",
@@ -449,12 +476,18 @@ func (s *Server) handleBatchObserved(raw []byte, transport observability.Transpo
 // mechanism must be configured: it refuses to start only when there is neither a static
 // token NOR an OAuth provider (fail closed — never serve MCP unauthenticated).
 func (s *Server) ServeHTTP(ctx context.Context, addr, token string, oauthProvider *oauth.Provider) error {
+	return s.ServeHTTPWithOptions(ctx, addr, token, oauthProvider, HTTPOptions{})
+}
+
+// ServeHTTPWithOptions starts the existing HTTP transport with additive presentation
+// options. Authentication remains mandatory and the MCP wire contract is unchanged.
+func (s *Server) ServeHTTPWithOptions(ctx context.Context, addr, token string, oauthProvider *oauth.Provider, opts HTTPOptions) error {
 	if token == "" && oauthProvider == nil {
 		return errors.New("http transport requires auth: set a bearer token or enable OAuth (refusing to start without auth)")
 	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.HTTPHandler(token, oauthProvider),
+		Handler:           s.HTTPHandlerWithOptions(token, oauthProvider, opts),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errCh := make(chan error, 1)

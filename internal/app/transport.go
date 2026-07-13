@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
+	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 )
@@ -21,11 +22,12 @@ const (
 )
 
 type transportConfig struct {
-	Mode            transportMode
-	Addr            string
-	Token           string
-	OAuth           *oauth.Provider
-	AuthDescription string
+	Mode                 transportMode
+	Addr                 string
+	Token                string
+	OAuth                *oauth.Provider
+	AuthDescription      string
+	ConsoleSecureCookies bool
 }
 
 func resolveTransport(opts serveOptions) (transportConfig, error) {
@@ -53,11 +55,12 @@ func resolveTransport(opts serveOptions) (transportConfig, error) {
 		}
 	}
 	return transportConfig{
-		Mode:            transportHTTP,
-		Addr:            normalizeHTTPAddr(opts.HTTPAddr),
-		Token:           token,
-		OAuth:           oauthProvider,
-		AuthDescription: authDescription,
+		Mode:                 transportHTTP,
+		Addr:                 normalizeHTTPAddr(opts.HTTPAddr),
+		Token:                token,
+		OAuth:                oauthProvider,
+		AuthDescription:      authDescription,
+		ConsoleSecureCookies: strings.HasPrefix(strings.ToLower(strings.TrimSpace(os.Getenv(publicURLEnv))), "https://"),
 	}, nil
 }
 
@@ -86,7 +89,9 @@ func serveTransport(runtime *appRuntime, transport transportConfig) (serveErr er
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return runtime.Server.ServeHTTP(ctx, transport.Addr, transport.Token, transport.OAuth)
+	return runtime.Server.ServeHTTPWithOptions(ctx, transport.Addr, transport.Token, transport.OAuth, mcpserver.HTTPOptions{
+		ConsoleSecureCookies: transport.ConsoleSecureCookies,
+	})
 }
 
 func startupDiagnostic(runtime *appRuntime, transport transportConfig, version string) string {

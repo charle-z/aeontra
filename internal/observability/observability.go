@@ -77,6 +77,7 @@ const (
 	RouteMCP     Route = "mcp"
 	RouteHealth  Route = "health"
 	RouteVersion Route = "version"
+	RouteConsole Route = "console"
 	RouteOAuth   Route = "oauth"
 	RouteOther   Route = "other"
 )
@@ -333,7 +334,7 @@ func validTransport(value Transport) bool {
 }
 
 func validRoute(value Route) bool {
-	return value == RouteMCP || value == RouteHealth || value == RouteVersion || value == RouteOAuth || value == RouteOther
+	return value == RouteMCP || value == RouteHealth || value == RouteVersion || value == RouteConsole || value == RouteOAuth || value == RouteOther
 }
 
 func validMethod(value Method) bool {

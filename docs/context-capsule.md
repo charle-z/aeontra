@@ -67,7 +67,18 @@ source, paths, repositories, commands, targets, URLs, queries, headers, tokens,
 identities, and raw errors. CI, Race, Staticcheck, Govulncheck, CodeQL, SBOM, and the
 container gate are green. Production is healthy with 62 tools and the unchanged
 catalog hash; real logs prove shared opaque request IDs and content-free events.
-Closure evidence is in `docs/baselines/2026-07-13-p7.md`.
+Closure evidence is in `docs/baselines/2026-07-13-p7.md`. Closure commit
+`30ae8a7e9d7b73584b34ef3bbbc952407faa5117` is deployed and verified.
+
+P8 authenticated dark console is active on branch
+`p8-authenticated-dark-console`. It is embedded in the existing Go HTTP
+application and creates no new listener, Coolify application, dependency manager, or
+credential. The surface is presentation-only: public runtime identity and static
+architecture/security explanations behind the existing bearer/OAuth authentication.
+Opaque digest-only sessions expire after eight hours and are capped at 128. The
+console cannot execute tools, approve plans, enumerate repositories, or expose
+prompts, paths, targets, tokens, identities, audit, logs, or raw operational data.
+The public MCP remains 62 tools with the unchanged catalog hash.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -382,11 +393,11 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Start the authenticated dark console on a fresh branch and independent spec.
-2. Keep the console presentation-only: no tool execution, approvals, private repos,
-   prompts, paths, targets, tokens, identities, or raw operational data.
-3. Close/publish/deploy the console milestone before starting Asset Broker.
-4. Keep universal profiles and Edge Agent in later separate milestones; Edge Agent is last.
+1. Finish P8 authenticated dark console on `p8-authenticated-dark-console`.
+2. Run complete local and GitHub quality/security gates while preserving 62 tools/hash.
+3. Publish, fast-forward, let the existing app autodeploy, and validate authenticated
+   the /console route with `cmd/console-smoke` without printing token or cookie values.
+4. Close P8 before starting Asset Broker; universal profiles and Edge Agent remain later, with Edge Agent last.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -403,10 +414,10 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P7 correction commit
-`d1309ed08db0170e5165f78bf406e94cfa56cc11` is deployed and healthy. Production
+Date: 2026-07-13. P7 closure commit
+`30ae8a7e9d7b73584b34ef3bbbc952407faa5117` is deployed and healthy. Production
 reports 62 tools and deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-CI run `29281156750` and Security Evidence run `29281156767` are green;
-production JSONL was inspected and contains only the closed safe schema. The next
-milestone is an authenticated dark console on a fresh branch/spec.
+P8 authenticated dark console is under local implementation on its independent branch;
+it is not merged or deployed until local gates, runner-authoritative Actions, exact
+runtime smoke, and authenticated console smoke pass.
