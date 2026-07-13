@@ -15,10 +15,11 @@ Completed commits:
 - Step 37 `1f5c057`: core Coolify tools.
 - Step 38 `03d1685`: validation-runner platform creation.
 - Step 39 `f7380a8`: platform application creation preview.
+- Step 40 `758bd0c`: platform deployment planning and force-without-cache execution.
 
-Current Step 40 candidate:
-- added `internal/mcpserver/catalog/platform_deployment.go` with a narrow `PlatformDeploymentService` interface;
-- moved `platform_deploy_preview`, `platform_deploy_without_cache_preview`, and `platform_deploy_without_cache` into `RegisterPlatformDeployment` at their original catalog positions;
+Current Step 41 candidate:
+- added `internal/mcpserver/catalog/platform_environment.go` with a narrow `PlatformEnvironmentService` interface;
+- moved `coolify_set_env` into `RegisterPlatformEnvironment` at its original catalog position;
 - added focused contract and handler-routing tests.
 
 Compatibility preserved:
@@ -26,9 +27,9 @@ Compatibility preserved:
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
 - names, order, descriptions, schemas, versions, annotations, aliases, handlers, approvals, and envs unchanged.
 
-Step 40 verification:
-- RED failed because `RegisterPlatformDeployment` did not exist;
+Step 41 verification:
+- RED failed because `RegisterPlatformEnvironment` did not exist;
 - focused and full tests passed;
 - `go vet ./...`, `go build ./...`, diff review, and production catalog smoke passed.
 
-Next in the requested five-step batch: Step 41 environment mutation, Step 42 Git reads, Step 43 Git acquisition. No publish, merge, or deploy.
+Next in the requested five-step batch: Step 42 Git reads and Step 43 Git acquisition. No publish, merge, or deploy.

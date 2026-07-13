@@ -138,24 +138,7 @@ func (s *Server) register() {
 
 	catalog.RegisterPlatformDeployment(s.addCatalogTool, s.svc)
 
-	s.add("coolify_set_env",
-		"Set environment variables on one Coolify application. Values are sent to Coolify but redacted from output/audit. Denied in read-only; in ask mode set approve=true.",
-		object(map[string]any{
-			"app":     strProp("Coolify application uuid"),
-			"vars":    map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "environment variables to set"},
-			"approve": boolProp("set env vars even when approval is required"),
-		}, "app", "vars"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				App     string            `json:"app"`
-				Vars    map[string]string `json:"vars"`
-				Approve bool              `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.CoolifySetEnv(p.App, p.Vars, p.Approve)
-		})
+	catalog.RegisterPlatformEnvironment(s.addCatalogTool, s.svc)
 
 	s.add("git_status", "Show git working-tree status (read-only). Optional repo is a jailed directory, useful when the workspace root is /repos.",
 		object(map[string]any{"repo": strProp("optional repo directory, absolute or relative to the workspace root")}),
