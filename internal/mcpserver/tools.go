@@ -844,59 +844,7 @@ func (s *Server) register() {
 			return s.svc.MemoryWriteIn(p.Repo, p.Section, p.Content, p.Approve)
 		})
 
-	s.add("notes_list",
-		"List persistent Markdown user notes stored under the workspace root's .agent-memory/notes directory. Returns only validated names, update times and sizes; symlinks and non-Markdown files are skipped.",
-		object(map[string]any{}),
-		func(json.RawMessage) (string, error) { return s.svc.NotesList() })
-
-	s.add("notes_read",
-		"Read one persistent Markdown user note by validated lowercase slug. The path is jailed, symlinks are rejected and content-level secrets are redacted.",
-		object(map[string]any{"name": strProp("validated note slug without .md")}, "name"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Name string `json:"name"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.NotesRead(p.Name)
-		})
-
-	s.add("notes_write_preview",
-		"Validate and redact Markdown content for a create-or-append note operation, enforce the note size limit and current target state, and return an exact expiring single-use plan. It never overwrites or writes during preview.",
-		object(map[string]any{
-			"name":    strProp("validated lowercase note slug without .md"),
-			"content": strProp("Markdown note content; secrets are redacted before planning"),
-			"mode":    strProp("create or append; create refuses existing notes"),
-		}, "name", "content", "mode"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Name    string `json:"name"`
-				Content string `json:"content"`
-				Mode    string `json:"mode"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.NotesWritePreview(p.Name, p.Content, p.Mode)
-		})
-
-	s.add("notes_write",
-		"Execute one reviewed notes_write_preview plan. It creates without overwrite or appends only if the existing content hash is unchanged; plan is expiring and single-use and requires approval in ask mode.",
-		object(map[string]any{
-			"plan_id": strProp("plan id returned by notes_write_preview"),
-			"approve": boolProp("execute the note plan when approval is required"),
-		}, "plan_id"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				PlanID  string `json:"plan_id"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.NotesWrite(p.PlanID, p.Approve)
-		})
+	catalog.RegisterNotes(s.addCatalogTool, s.svc)
 
 	s.add("memory_update_handoff",
 		"Write a handoff note into .agent-memory/handoffs/ so any agent can resume. Denied in read-only mode; content redacted.",

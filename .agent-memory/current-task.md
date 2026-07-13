@@ -2,19 +2,23 @@
 
 Status: in progress on branch `p1-tool-catalog-runtime`.
 
-Completed first behavior-preserving cut:
-- introduced `internal/mcpserver/catalog` as a declarative registration package;
-- moved only `system_runtime_info` into `catalog.RegisterRuntime`;
-- mcpserver.Server still owns ordering, annotations, dispatch, and policy-backed handlers;
-- no environment variable, public tool name, schema, description, annotation, approval posture, or behavior changed.
+Completed:
+- Step 28: introduced `internal/mcpserver/catalog` and moved `system_runtime_info` into `RegisterRuntime`.
+- Step 29 candidate: added shared schema helpers and a narrow `NotesService` interface, then moved `notes_list`, `notes_read`, `notes_write_preview`, and `notes_write` into `RegisterNotes` at their original registration position.
 
-Verification:
-- `go test ./internal/mcpserver/catalog -count=1` passed;
+Compatibility preserved:
+- 62 public tools;
+- deterministic catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
+- same names, order, descriptions, schemas, versions, annotations, handlers, aliases, approval posture, and environment variables.
+
+Verification for Step 29 candidate:
+- catalog notes RED test failed before implementation;
+- `go test ./internal/mcpserver/catalog -run TestRegisterNotes -count=1` passed;
 - `go test ./... -count=1` passed;
 - `go vet ./...` passed;
 - `go build ./...` passed;
-- local refactor matches production: 62 tools and catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+- `mcp-catalog-smoke` matched production count/hash.
 
-Decision on dynamic capabilities: defer implementation until P1-P3 are stable. It may become valuable if the tool surface keeps growing or changes frequently, but a generic dispatcher now would concentrate authority and add schema/audit/policy complexity.
+Capabilities decision: defer a generic capability dispatcher until P1-P3 are stable. Reassess only if the public tool catalog continues to grow/change frequently; keep current typed tools as the secure compatibility surface meanwhile.
 
-Next: commit this runtime registrar step, then migrate one additional low-coupling read-only domain while preserving the catalog hash.
+Next recommended domain: memory/handoff tools, because they are adjacent, local, and can use another narrow interface without external-service coupling.
