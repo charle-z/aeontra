@@ -9,17 +9,19 @@ Completed:
 - Step 57 `d76a9a0`: Git methods moved to `GitCapability`.
 - Step 58 `570f042`: GitHub/source-hosting methods moved to `SourceCapability`.
 - Step 59 `6056b5a`: Coolify/platform methods moved to `PlatformCapability`.
+- Step 60 `bede1c2`: command/test/sandbox/validation/privileged methods moved to `ExecutionCapability`.
 
-Current Step 60 candidate:
-- `ExecutionCapability` now owns allowlisted command execution, configured tests, sandbox execution/status, private fixed-profile validation, and administrator-defined privileged profiles;
-- compile-time assertions prove it implements the execution, validation, and privileged catalog interfaces;
-- it shares the central policy/audit/root/runner/plan core and retains the existing sandbox, validation-runner, test-command, and privileged configuration dependencies;
-- no command allowlist, sandbox posture, approval path, or privileged profile changed.
+Current Step 61 candidate:
+- added an AST boundary test that rejects operational methods on the aggregate `Service` facade and direct facade mutation of capability/core state;
+- all public `With...` configuration methods now delegate to the owning shared core or capability;
+- policy, audit, root, command runner, and action-plan store remain centralized in `serviceCore`;
+- source, platform, Git, and execution-specific dependencies are configured only by their owning capability;
+- existing fluent configuration API remains unchanged.
 
-Step 60 verification:
-- RED failed on all three missing execution catalog interfaces;
-- focused and full tests passed after receiver migration;
-- `go vet ./...` and `go build ./...` passed;
+Step 61 verification:
+- RED reported every direct facade mutation;
+- the focused boundary test passed after delegation was introduced;
+- full tests, `go vet ./...`, and `go build ./...` passed;
 - production catalog smoke remains 62 tools with the unchanged hash.
 
-Next autonomous step: enforce the capability boundary so only composition/configuration methods remain on `Service`, then remove any residual coupling and run the P2 closure audit. Do not publish, merge, or deploy P2 without explicit owner approval.
+Next autonomous step: P2 documentation/baseline closure, branch-vs-main audit, final gates, and merge-readiness verdict. Do not publish, merge, or deploy P2 without explicit owner approval.

@@ -72,44 +72,54 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 }
 
 // WithActionPlanStore overrides the in-memory plan store for deterministic tests.
-func (s *Service) WithActionPlanStore(store *ActionPlanStore) *Service { s.plans = store; return s }
+func (s *Service) WithActionPlanStore(store *ActionPlanStore) *Service {
+	s.serviceCore.configureActionPlanStore(store)
+	return s
+}
 
 // WithRunner overrides the command runner (tests).
 func (s *Service) WithRunner(r Runner) *Service {
-	s.run = r
+	s.serviceCore.configureRunner(r)
 	// Tests and alternative runners retain control of the exact git invocation.
-	s.githubRun = func(ctx context.Context, dir, prog string, args []string, _ string) (string, error) {
-		return r(ctx, dir, prog, args)
-	}
+	s.GitCapability.configureRunner(r)
 	return s
 }
 
 // WithSandboxRunner overrides the L3 sandbox runner (tests/future backends).
-func (s *Service) WithSandboxRunner(r SandboxRunner) *Service { s.sandbox = r; return s }
+func (s *Service) WithSandboxRunner(r SandboxRunner) *Service {
+	s.ExecutionCapability.configureSandbox(r)
+	return s
+}
 
 // WithTestCommand sets the allowlisted command used by run_tests (e.g. {"go","test","./..."}).
-func (s *Service) WithTestCommand(cmd []string) *Service { s.testCmd = cmd; return s }
+func (s *Service) WithTestCommand(cmd []string) *Service {
+	s.ExecutionCapability.configureTestCommand(cmd)
+	return s
+}
 
 // WithCoolify sets the optional Coolify deploy client (nil disables coolify_deploy).
-func (s *Service) WithCoolify(c *CoolifyClient) *Service { s.coolify = c; return s }
+func (s *Service) WithCoolify(c *CoolifyClient) *Service {
+	s.PlatformCapability.configureCoolify(c)
+	return s
+}
 
 // WithGitHub sets the optional GitHub API client (nil disables GitHub tools).
-func (s *Service) WithGitHub(c *GitHubClient) *Service { s.github = c; return s }
+func (s *Service) WithGitHub(c *GitHubClient) *Service {
+	s.SourceCapability.configureGitHub(c)
+	return s
+}
 
 // WithValidationRunner attaches the private fixed-profile runner. The public MCP
 // still never receives a Docker socket or a general process executor.
 func (s *Service) WithValidationRunner(r ValidationRunner) *Service {
-	if r == nil {
-		r = disabledValidationRunner{}
-	}
-	s.validation = r
+	s.ExecutionCapability.configureValidationRunner(r)
 	return s
 }
 
 // WithPrivilegedConfig applies immutable administrator startup configuration for
 // closed privileged profiles. It is not exposed through MCP at runtime.
 func (s *Service) WithPrivilegedConfig(cfg PrivilegedConfig) *Service {
-	s.privileged = normalizePrivilegedConfig(cfg)
+	s.ExecutionCapability.configurePrivileged(cfg)
 	return s
 }
 

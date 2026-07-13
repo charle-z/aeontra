@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"context"
+
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 )
@@ -52,4 +54,45 @@ type ExecutionCapability struct {
 	testCmd    []string
 	validation ValidationRunner
 	privileged PrivilegedConfig
+}
+
+func (c *serviceCore) configureActionPlanStore(store *ActionPlanStore) {
+	c.plans = store
+}
+
+func (c *serviceCore) configureRunner(r Runner) {
+	c.run = r
+}
+
+func (c *GitCapability) configureRunner(r Runner) {
+	c.githubRun = func(ctx context.Context, dir, prog string, args []string, _ string) (string, error) {
+		return r(ctx, dir, prog, args)
+	}
+}
+
+func (c *SourceCapability) configureGitHub(client *GitHubClient) {
+	c.github = client
+}
+
+func (c *PlatformCapability) configureCoolify(client *CoolifyClient) {
+	c.coolify = client
+}
+
+func (c *ExecutionCapability) configureSandbox(runner SandboxRunner) {
+	c.sandbox = runner
+}
+
+func (c *ExecutionCapability) configureTestCommand(command []string) {
+	c.testCmd = command
+}
+
+func (c *ExecutionCapability) configureValidationRunner(runner ValidationRunner) {
+	if runner == nil {
+		runner = disabledValidationRunner{}
+	}
+	c.validation = runner
+}
+
+func (c *ExecutionCapability) configurePrivileged(config PrivilegedConfig) {
+	c.privileged = normalizePrivilegedConfig(config)
 }
