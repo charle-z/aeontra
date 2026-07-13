@@ -16,6 +16,8 @@ Operating rules for any AI agent working in this repo. Read this first, then
   `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into
   focused capability services over one shared policy/audit/root/runner/plan core;
   `Service` is only the backwards-compatible composition and configuration facade.
+  The executable is also a strict composition root: `cmd/mcp-devbox/main.go` delegates
+  to focused process-orchestration modules under `internal/app`.
 
 ## Source Of Truth
 

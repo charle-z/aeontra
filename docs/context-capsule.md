@@ -25,13 +25,20 @@ composition-only and protected by an AST boundary test. Production and the conne
 ChatGPT client both verified 62 tools with catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
 
-P2 capability service split is complete on branch `p2-capability-services`. One
-central `serviceCore` owns policy, audit, root, runner, redaction, workdir resolution,
-and action plans. Repository, Git, source-hosting, platform, and execution behavior
-are owned by focused capability services; `Service` remains only the compatible
-composition/configuration facade. Compile-time interface checks and an AST guard
-protect the boundary. The branch is merge-ready pending explicit owner approval and
-keeps the same 62 tools and deterministic catalog hash.
+P2 capability service split is deployed on `main` at commit
+`ea332d173b4be1908bcf1c1abbe77ece610a6761`. One central `serviceCore` owns
+policy, audit, root, runner, redaction, workdir resolution and action plans. Focused
+repository, Git, source-hosting, platform and execution capabilities implement the
+catalog contracts behind the compatible `Service` facade. Production is healthy and
+retains the same 62 tools and deterministic catalog hash.
+
+P3 composition root is complete on branch `p3-composition-root`.
+`cmd/mcp-devbox/main.go` now delegates only to `app.Main()`. Focused modules under
+`internal/app` own command dispatch, deployed environment contracts, serve option
+parsing, OAuth, runtime composition, local grant administration and stdio/HTTP
+transport lifecycle. AST guards protect both the executable boundary and centralized
+environment-variable names. The branch is merge-ready pending explicit owner
+approval and does not change the public MCP surface.
 
 Product roadmap (2026-07-11): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -343,15 +350,15 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Review and merge `p2-capability-services` into `main` only after explicit owner
-   approval; deploy and verify the new commit, 62-tool count, deterministic hash,
-   runtime health, and representative read-only calls from the connected client.
-2. Start P3 from a fresh branch: reduce `cmd/mcp-devbox/main.go` to a composition
-   root without renaming environment variables or changing public MCP contracts.
-3. Keep dynamic capabilities, the authenticated console, edge agents, IaC workcells,
-   and security workcells outside P3 until the P0-P3 foundations are deployed.
-4. Add CI/DevSecOps gates and structured observability before expanding operator
-   workflows or exposing broader execution.
+1. Review and merge `p3-composition-root` into `main` only after explicit owner
+   approval; deploy and verify the new commit, health, 62-tool count, catalog hash,
+   version command, HTTP/OAuth startup and representative read-only MCP calls.
+2. Begin P4 from a fresh branch: targeted L1 hardening without changing the public
+   tool or environment contracts established by P0-P3.
+3. Continue P5-P7 with deeper testing, CI/DevSecOps gates and structured
+   observability before building the authenticated operator console.
+4. Keep dynamic capabilities, console, edge agents, IaC and security workcells out
+   of the P3 merge and deploy.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -368,13 +375,14 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P2 capability service split is merge-ready on
-`p2-capability-services` against refreshed `origin/main` commit
-`0de426e088466a1421b527f8ce1bf83cb53bd2a9`. Capability compile assertions, the
-Service facade AST boundary, `go test ./... -count=1`, `go vet ./...`,
-`go build ./...`, formatting/diff checks, and the production catalog smoke are green.
-The public surface remains 62 tools with deterministic hash
+Date: 2026-07-13. P3 composition root is merge-ready on
+`p3-composition-root` against refreshed `origin/main` commit
+`ea332d173b4be1908bcf1c1abbe77ece610a6761`. Composition-root and environment
+boundary tests, command/flag/env/runtime/transport compatibility tests,
+`go test ./... -count=1`, `go vet ./...`, `go build ./...`, formatting/diff checks,
+and the production catalog smoke are green. The public surface remains 62 tools with
+deterministic hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
 Commit messages and changed files were audited; no AI signatures, binary/SDK/cache,
-secret file, credential-bearing configuration, publish, merge, deployment, or
-infrastructure mutation was introduced during P2 closure.
+secret file, credential-bearing configuration, P3 publish, merge, deployment or
+infrastructure mutation was introduced during closure.

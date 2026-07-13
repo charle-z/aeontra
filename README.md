@@ -69,7 +69,10 @@ execution. See [docs/tools.md](docs/tools.md).
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused
 capability services over one shared policy, audit, root, runner, redaction, and
 action-plan core. The public 62-tool wire contract remains unchanged while the
-internal boundaries are easier to test and extend safely.
+internal boundaries are easier to test and extend safely. P3 reduces
+`cmd/mcp-devbox/main.go` to a true composition root and moves process orchestration
+into focused modules under `internal/app`, while preserving every deployed command,
+flag, environment variable and wire contract.
 
 Quick start:
 
