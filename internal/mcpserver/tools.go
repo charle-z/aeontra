@@ -156,24 +156,7 @@ func (s *Server) register() {
 
 	catalog.RegisterValidation(s.addCatalogTool, s.svc)
 
-	s.add("git_commit",
-		"Stage all changes and commit them in the root or optional selected repo. Write action: denied in read-only; in ask mode set approve=true. Does not push.",
-		object(map[string]any{
-			"message": strProp("commit message"),
-			"approve": boolProp("commit even when approval is required"),
-			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
-		}, "message"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Message string `json:"message"`
-				Approve bool   `json:"approve"`
-				Repo    string `json:"repo"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.GitCommitIn(p.Repo, p.Message, p.Approve)
-		})
+	catalog.RegisterGitCommit(s.addCatalogTool, s.svc)
 
 	catalog.RegisterMemory(s.addCatalogTool, s.svc)
 
