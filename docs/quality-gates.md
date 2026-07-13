@@ -16,6 +16,9 @@ go run ./cmd/coverage-gate --profile coverage.out
 The gate is package-specific, rejects a missing package, and never substitutes one
 global coverage percentage for critical-package evidence. P6 will make it blocking.
 
+Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
+secrets, mutable versions, missing timeouts, and production actions fail before merge.
+
 Core Go:
 
 - formatting check;

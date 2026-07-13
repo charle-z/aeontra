@@ -2,25 +2,21 @@
 
 Status: in progress on branch `p6-ci-devsecops` from deployed `main` commit `4a68ca054a5f077d62a0f887234866673feb7353`.
 
-P5 release verification:
-- feature branch published and `main` advanced by fast-forward only;
-- Coolify deployment `tsrkggf8hf5aaq3c40qy9lv5` finished successfully;
-- production runtime commit is `4a68ca054a5f077d62a0f887234866673feb7353`;
-- application is healthy;
-- catalog remains 62 tools with hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+Completed:
+- Step 85 `fda8c77`: defined P6, recorded the verified P5 deployment, synchronized documentation, and froze the runtime catalog.
 
-Current Step 85 candidate — P6 foundation:
-- created `specs/003-ci-devsecops/spec.md`, `plan.md`, and `tasks.md`;
-- scope covers workflow policy, core CI, CGO race, static/vulnerability analysis, CodeQL/dependency review, container evidence, and bounded scheduled fuzz;
-- explicitly excludes PR deployment, production DAST, repository secrets in fork-facing jobs, runtime authority, and public MCP changes;
-- transitioned capsule, roadmap, README, AGENTS, Layer-1 follow-on tasks, P5 assertions, documentation-state assertions, and handoff from merge-ready P5 to deployed P5 / active P6;
-- historical P5 closure baseline remains unchanged;
-- T01 is marked complete.
+Current Step 86 candidate — workflow policy guard:
+- added `go.yaml.in/yaml/v3 v3.0.4` as the only runtime-independent parser dependency;
+- added `internal/workflowpolicy` with errors and tests for forbidden `pull_request_target`, broad/write permissions, missing/overlong timeouts, PR secret/production actions, mutable action/tool refs, malformed documents, and missing jobs;
+- repository test validates every `.github/workflows/*.yml|yaml` file during ordinary `go test ./...`;
+- CodeQL's narrow `security-events: write` remains allowed;
+- the guard found the existing CI job lacked a timeout, so it now has a 20-minute bound;
+- marked T02 complete and synchronized testing/quality docs, capsule, roadmap, and handoff.
 
-Step 85 verification:
-- RED failed because P6 had no specification or active state;
-- focused and full documentation/tests pass;
-- package coverage gate, `go vet ./...`, `go build ./...`, and formatting pass;
-- remaining: cleanup temporary helpers, diff review/check, stage, and commit.
+Step 86 verification so far:
+- RED compile failed before the policy existed;
+- repository RED then failed on the missing CI timeout;
+- focused policy and repository workflow tests pass after the bound was added;
+- remaining: full tests, coverage gate, vet, build, diff review/check, cleanup, and commit.
 
-Next: Step 86 tested workflow policy guard before modifying GitHub Actions. Do not publish, merge, or deploy P6 until observed Actions and phase closure.
+Next: Step 87 core CI with blocking verify, CGO race, staticcheck, and govulncheck jobs. No publish/merge/deploy until observed GitHub Actions and P6 closure.

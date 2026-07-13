@@ -138,6 +138,24 @@ no network call outside the test process.
 4. Run hermetic integration contracts for transport/auth/catalog/grants/plans.
 5. Re-run the race command in the P6 environment.
 
+## Workflow policy guard — P6 Step 86
+
+`internal/workflowpolicy` parses every file under `.github/workflows` and fails the
+ordinary Go suite when a workflow violates repository policy. It rejects:
+
+- `pull_request_target`;
+- absent or broad root/job permissions, including contents/id-token write;
+- missing or over-90-minute job timeouts;
+- repository secret references in pull-request workflows;
+- production host/deploy/active DAST commands in pull-request jobs;
+- actions using `@main`, `@master`, `@latest`, missing refs, or Go tools using
+  `@latest`;
+- malformed workflows or missing jobs.
+
+The guard permits the narrow `security-events: write` capability required by CodeQL.
+The existing CI job gained a 20-minute timeout after the guard detected the missing
+bound.
+
 ## Safety rules
 
 - Do not run active DAST against production.

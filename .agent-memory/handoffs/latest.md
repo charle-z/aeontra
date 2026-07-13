@@ -21,5 +21,5 @@ P6 CI/DevSecOps is active and defined by `specs/003-ci-devsecops/`.
 
 ## Next safe step
 
-T01 foundation is complete. Implement the tested workflow policy guard before
-changing GitHub Actions, then add CI/security/fuzz workflows and observe real results.
+T01 foundation and T02 workflow policy are complete. Next replace the minimal CI
+with blocking verify/race/static/vulnerability jobs, then add security and fuzz workflows.

@@ -3,7 +3,7 @@
 Status: **active**.
 
 - [x] **T01 P6 foundation** — P5 deployment recorded, P6 defined, documentation synchronized, and the 62-tool runtime contract preserved.
-- [ ] **T02 workflow policy** — tested parser/guard for triggers, permissions, secrets, timeouts, and forbidden production actions.
+- [x] **T02 workflow policy** — tested YAML guard rejects dangerous triggers, broad permissions, PR secrets/production actions, mutable refs/tools, missing timeouts, and malformed workflows.
 - [ ] **T03 core CI** — formatting, atomic coverage/package gate, vet, build, staticcheck, govulncheck, and CGO race jobs.
 - [ ] **T04 security workflows** — CodeQL, dependency review, Docker build, SBOM, and local vulnerability scan.
 - [ ] **T05 scheduled fuzz** — explicit bounded execution for every P5 fuzz target.

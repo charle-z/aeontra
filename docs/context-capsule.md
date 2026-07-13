@@ -49,10 +49,10 @@ P5 deeper testing is deployed on `main` at commit
 62 tools and catalog hash. P5 added concurrency, fuzz seeds, package coverage, and
 hermetic integration evidence without runtime authority changes.
 
-P6 CI/DevSecOps is active on branch `p6-ci-devsecops`. It will make the CGO race
-detector, coverage/integration gates, vulnerability analysis, CodeQL/dependency
-review, container evidence, and bounded scheduled fuzzing reproducible in GitHub
-Actions without secrets or production DAST.
+P6 CI/DevSecOps is active on branch `p6-ci-devsecops`. Foundation and the tested
+workflow policy guard are complete; the guard already forced a bounded timeout on the
+existing CI job. Next are core CI, security/container workflows, and scheduled fuzzing.
+No workflow may use secrets from pull requests or contact production.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
