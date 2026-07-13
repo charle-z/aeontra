@@ -78,7 +78,18 @@ production with a Secure opaque cookie, exact safe schema, 62 tools, and the unc
 catalog hash. Logs show only content-free `route=console` classifications. P8 adds no
 new resident service, Coolify application, listener, database, queue, model, credential,
 or OAuth protocol change. Closure evidence is in
-`docs/baselines/2026-07-13-p8.md`.
+`docs/baselines/2026-07-13-p8.md`. Formal closure commit
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8` and deployed.
+
+P9 Brain is active on branch `p9-brain`, based exactly on P8 closure
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259`. It defines server-anchored,
+cross-repository memory with Markdown/frontmatter files as truth, owner-only
+`curated/`, agent-writable `working/` with provenance and review dates, explicit
+`[[slug]]` links, a pure-Go SQLite FTS5 disposable cache, and five bounded tools.
+The resource invariant is no resident service: no database server, embeddings model,
+vector daemon, queue, worker, port, or new Coolify application. P9 implementation has
+not started beyond contract, threat model, plan, tasks, ADR 0003, and RED documentation
+tests.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot

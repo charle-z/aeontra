@@ -9,12 +9,14 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P8 closed / P9 Brain next**. P8 merge
-  `605a56d48a495f3c8a2ce62471223187ef2f5685` is deployed; closure evidence is in
-  `docs/baselines/2026-07-13-p8.md`. P9 must use a fresh `p9-brain` branch/spec,
-  Markdown/frontmatter files as truth, pure-Go SQLite FTS5 only as a disposable cache,
-  and no resident service, embeddings, queue, model, or database server. Agents may
-  write only `working/` with provenance/review dates; `curated/` remains owner-only.
+- Current phase: **P9 Brain Step 1** on branch `p9-brain`, based on P8 closure
+  `2e3429c9d6342e8e091cadf65293c5c85b1b3259`. Contracts live under
+  `specs/006-brain/` and ADR 0003. Markdown/frontmatter files are truth; pure-Go
+  SQLite FTS5 is only a disposable cache. The hard resource invariant is no resident service, embeddings model, vector
+  daemon, queue, worker, database server, port, or
+  new Coolify application. Agents may write only `working/` with provenance/review
+  dates; `curated/` remains owner-only. No Brain runtime code/dependency/tool is added
+  until Step 1 is committed and green.
   Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
   Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
   62 annotated MCP tools, action plans, audit, persistent notes, and adversarial tests.

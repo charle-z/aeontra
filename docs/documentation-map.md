@@ -17,8 +17,9 @@ The repository is the source of truth; chat history is not.
 | What was true at a phase closure? | `docs/baselines/` | Create a new dated baseline; do not rewrite old evidence. |
 
 Current P8 closure evidence: `docs/baselines/2026-07-13-p8.md` plus
-`docs/p8_closure_test.go`. The next implementation state belongs to P9 and must not
-rewrite the P8 baseline.
+`docs/p8_closure_test.go`. P9 architecture is governed by `specs/006-brain/` and
+`docs/adr/0003-p9-markdown-truth-sqlite-fts5-cache.md`; it must not rewrite P8 evidence.
+The P9 resource invariant is no resident service.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |

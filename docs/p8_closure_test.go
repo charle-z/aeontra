@@ -68,17 +68,6 @@ func TestP8ClosureEvidenceIsSynchronized(t *testing.T) {
 		t.Error("tasks do not close T08")
 	}
 
-	handoff := read("../.agent-memory/handoffs/latest.md")
-	for _, required := range []string{
-		"P8 authenticated dark console is closed",
-		"605a56d48a495f3c8a2ce62471223187ef2f5685",
-		"p9-brain",
-	} {
-		if !strings.Contains(handoff, required) {
-			t.Errorf("handoff does not contain %q", required)
-		}
-	}
-
 	documentationMap := read("documentation-map.md")
 	if !strings.Contains(documentationMap, "P8 closure evidence") {
 		t.Error("documentation map does not identify P8 closure evidence")

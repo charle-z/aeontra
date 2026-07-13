@@ -98,6 +98,15 @@ resident service, Coolify application, credential, listener, npm bundle, CDN, or
 protocol change is introduced. See `docs/console.md` and
 `docs/baselines/2026-07-13-p8.md`.
 
+**P9 Brain is active on `p9-brain` from P8 closure
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259`:** server-anchored cross-repository
+memory with Markdown/frontmatter files as truth, owner-only curated notes,
+agent-authored working notes with provenance/review dates, `[[slug]]` links, and an
+in-process pure-Go SQLite FTS5 disposable cache. The invariant is no resident service:
+no database server, embeddings model, vector daemon, queue, worker, port, or new
+Coolify application. Step 1 currently contains only contracts, ADR 0003, threat model,
+plan/tasks, and documentation tests; no Brain runtime dependency or tool is deployed.
+
 Quick start:
 
 ```bash

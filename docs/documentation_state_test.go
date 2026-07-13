@@ -95,7 +95,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"Console/showcase",
 		"Deployed",
 		"Brain memory",
-		"Planned",
+		"In progress",
 		"Universal execution profiles",
 		"Planned",
 		"Edge agents",
@@ -107,11 +107,11 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"P8 authenticated dark console is closed",
-		"605a56d48a495f3c8a2ce62471223187ef2f5685",
+		"P9 Brain Step 1 contract is active",
 		"p9-brain",
-		"84.3%",
-		"console-smoke",
+		"2e3429c9d6342e8e091cadf65293c5c85b1b3259",
+		"modernc.org/sqlite@v1.53.0",
+		"No resident service",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)

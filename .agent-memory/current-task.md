@@ -1,36 +1,40 @@
-# P8 authenticated dark console closure
+# P9 Brain — Step 1 contract
 
-Status: P8 is merged through PR #2, deployed, and production-verified at
-`605a56d48a495f3c8a2ce62471223187ef2f5685`. The current branch is aligned with the
-merge and contains the closure candidate only.
+Status: active on branch `p9-brain`, based exactly on deployed/tagged P8 closure
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259`.
 
-## Verified evidence
+## Current scope
 
-- Initial implementation: `5f4ffb7d86857759342fc9883149c2dbe1a0030f`.
-- Step 1 audit correction: `7cd3e450f5b09744a6eae0b1b0d896d50b5a1968`.
-- PR: `https://github.com/charle-z/mcp-devbox/pull/2`.
-- Final PR CI/Security: `29290411676` and `29290411679`, all required jobs green.
-- Merge commit: `605a56d48a495f3c8a2ce62471223187ef2f5685`.
-- Post-merge CI/Security: `29290609147` and `29290609178`, green; Dependency Review correctly skipped on push.
-- Production: running and healthy, exact merge commit, 62 tools, unchanged catalog hash.
-- Authenticated `cmd/console-smoke`: pass without token/cookie/session output.
-- Logs: content-free 303/200 `route=console` events only.
-- Console coverage: 84.3% against an 80% minimum.
+- `specs/006-brain/spec.md` defines Markdown/frontmatter truth, curated/working trust,
+  five bounded tools, hard limits, local Git history, dedicated jail, and no full
+  context injection.
+- `specs/006-brain/threat-model.md` maps traversal, curated writes, secrets, drift,
+  cache authority, FTS injection, concurrency, Git hooks/remotes, and resource abuse
+  to explicit controls and stop conditions.
+- `specs/006-brain/plan.md` is test-first and separates note/store/Git/index/tools/
+  runtime/release steps with rollback.
+- `specs/006-brain/tasks.md` keeps implementation tasks open after T01.
+- ADR 0003 accepts Markdown truth plus `modernc.org/sqlite@v1.53.0` FTS5 cache and
+  rejects embeddings/resident services for the 4 GB RAM / 2 vCPU VPS.
+- `docs/p9_start_test.go` protects the initial contract and current-state documents.
 
-## Closure artifacts
+## Invariants
 
-- `docs/baselines/2026-07-13-p8.md`.
-- `docs/p8_closure_test.go`.
-- P8 spec, plan, tasks, threat model, ADR, console guide, capsule, roadmap, README,
-  AGENTS, testing, quality gates, documentation map, and handoff are synchronized.
+- `MCP_DEVBOX_BRAIN_ROOT` is a dedicated jailed persistent volume, never a general
+  repository root.
+- `curated/` is owner-only; agent tools write only `working/` with provenance and
+  review dates.
+- Files are truth; SQLite is disposable/redacted cache; local Git has no remote.
+- Exactly five future Brain tools; the existing 62 contracts remain unchanged.
+- No resident service, database server, embeddings/vector model, queue, worker, port,
+  or new Coolify application.
+- P10 implementation is forbidden until P9 is closed/tagged.
 
 ## Next exact actions
 
-1. Run all closure gates and commit/publish the closure on the P8 branch.
-2. Open a closure PR to `main`, require all remote gates, merge through the PR, and
-   verify production identity remains healthy.
-3. Create annotated tags p6, p7, and p8 on their verified closure commits and push tags.
-4. Create fresh branch `p9-brain` and `specs/006-brain/`. No P9 implementation begins
-   until P8 closure PR and tags are complete.
-
-No public MCP tool/schema/annotation/approval or OAuth protocol change.
+1. Make the Step 1 documentation RED test green and run the full local gates.
+2. Commit/publish Step 1 on `p9-brain`; no PR required until an implementation release
+   candidate, but no later Step begins with a dirty/uncommitted Step 1.
+3. Begin Step 2 with RED tests for curated-write denial, secret canaries, strict YAML,
+   slugs/traversal/fuzz, links, dates, bounds, and dedicated jail.
+4. Do not add `modernc.org/sqlite` until Step 4 has a failing FTS5 test.
