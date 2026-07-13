@@ -44,11 +44,11 @@ spoofing, enforce grant/request bounds, keep documentation state tested, redact 
 paths, and bound HTTP JSON-RPC batches to 128 items. Production is healthy with 62
 tools and the unchanged deterministic catalog hash.
 
-P5 deeper testing is active on branch `p5-deeper-testing`. T01 foundation is
-complete. The Step 79 race command is documented but blocked in the production builder
-because `CGO_ENABLED=0`; this is not reported as green, and P6 must run it with CGO
-enabled. Next are deterministic concurrency, fuzz, coverage, and integration evidence.
-P5 adds evidence only: no public MCP contract change.
+P5 deeper testing is active on branch `p5-deeper-testing`. T01 foundation and
+Step 80 deterministic concurrency coverage are complete. The Step 79 race command is
+documented but blocked in the production builder because `CGO_ENABLED=0`; P6 must run
+it with CGO enabled. Next are fuzz, coverage, and integration evidence. P5 adds
+evidence only: no public MCP contract change.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot

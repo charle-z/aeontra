@@ -47,6 +47,21 @@ development gate. P6 must execute the canonical command in GitHub Actions or ano
 approved ephemeral Go 1.26 environment with CGO and a C compiler enabled, retain the
 result, and make the gate blocking only after it is stable.
 
+## Deterministic concurrency evidence — P5 Step 80
+
+Bounded goroutine tests cover:
+
+- duplicate access requests reuse one id and emit one notification; an approved grant
+  is consumed successfully exactly once;
+- an action plan executes successfully exactly once under concurrent consume attempts;
+- 128 concurrent audit writes produce 128 complete JSONL objects with path redaction;
+- OAuth authorization codes and refresh tokens are consumed exactly once, while
+  concurrent access-token put/get operations remain consistent.
+
+These tests passed immediately against the existing mutex boundaries. They provide
+correctness evidence under interleaving but do not replace the still-pending
+CGO-enabled race detector in P6.
+
 ## P5 deeper-testing sequence
 
 1. Add bounded deterministic concurrency tests around shared state.
