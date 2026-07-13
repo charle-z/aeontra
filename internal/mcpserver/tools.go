@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/charle-z/mcp-devbox/internal/mcpserver/catalog"
 	"github.com/charle-z/mcp-devbox/internal/tools"
@@ -128,52 +127,7 @@ func (s *Server) register() {
 
 	catalog.RegisterRepositoryWrites(s.addCatalogTool, s.svc)
 
-	s.add("run_command",
-		"Run a single allowlisted program with args (e.g. [\"go\",\"vet\",\"./...\"]). NOT a shell: only allowlisted programs, no metacharacters. Optional cwd is jailed under the workspace. Mode-gated (read-only denies; ask needs approve=true). Output redacted.",
-		object(map[string]any{
-			"command": strArrProp("program and arguments; command[0] is the program"),
-			"approve": boolProp("run even when approval is required"),
-			"cwd":     strProp("optional working directory, absolute or relative to the workspace root"),
-		}, "command"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Command []string `json:"command"`
-				Approve bool     `json:"approve"`
-				CWD     string   `json:"cwd"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			if len(p.Command) == 0 {
-				return "", fmt.Errorf("command must have at least the program name")
-			}
-			return s.svc.RunCommandIn(p.Command[0], p.Command[1:], p.Approve, p.CWD)
-		})
-
-	s.add("sandbox_status",
-		"Report L3 sandbox availability. Diagnostic only: unavailable by default, no free terminal, no Docker socket in the public MCP container.",
-		object(map[string]any{}),
-		func(json.RawMessage) (string, error) { return s.svc.SandboxStatus(), nil })
-
-	s.add("sandbox_exec",
-		"Run an ARBITRARY command INSIDE the L3 sandbox (contained: no network, read-only rootfs, workspace-only, resource-limited). NOT allowlist-limited — the sandbox contains it. Requires a configured backend (MCP_DEVBOX_SANDBOX=docker on a host with Docker); denied in read-only; set approve=true in ask mode.",
-		object(map[string]any{
-			"command": strArrProp("program and arguments; command[0] is the program"),
-			"approve": boolProp("run even when approval is required"),
-		}, "command"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Command []string `json:"command"`
-				Approve bool     `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			if len(p.Command) == 0 {
-				return "", fmt.Errorf("command must have at least the program name")
-			}
-			return s.svc.SandboxExec(p.Command, p.Approve)
-		})
+	catalog.RegisterExecution(s.addCatalogTool, s.svc)
 
 	s.add("privileged_task_preview",
 		"Preview one administrator-enabled, server-defined privileged profile. The client supplies only a profile name and narrow validated parameters, never an executable, argv, or shell string. Returns the exact command, jailed working directory, network/filesystem posture, effect, risk, short-lived plan id and expiry. Disabled by default.",
