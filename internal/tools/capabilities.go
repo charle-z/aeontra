@@ -1,0 +1,54 @@
+package tools
+
+import (
+	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/policy"
+)
+
+// serviceCore centralizes the security and execution dependencies that every
+// capability must share. Capabilities never own independent policy, audit, root, or
+// action-plan state.
+type serviceCore struct {
+	pol   *policy.Policy
+	log   *audit.Logger
+	root  string
+	run   Runner
+	plans *ActionPlanStore
+}
+
+// RepositoryCapability owns repository, filesystem, memory, and notes behavior.
+type RepositoryCapability struct {
+	*serviceCore
+}
+
+// SourceCapability owns configured source-hosting API behavior.
+type SourceCapability struct {
+	*serviceCore
+	github *GitHubClient
+}
+
+// GitCapability owns local/remote Git behavior and reuses the configured source
+// capability for owner-bound GitHub authentication.
+type GitCapability struct {
+	*serviceCore
+	*SourceCapability
+	githubRun GitHubHTTPSRunner
+}
+
+// PlatformCapability owns deployment-platform behavior and reuses source-hosting
+// configuration when application definitions reference GitHub repositories.
+type PlatformCapability struct {
+	*serviceCore
+	*SourceCapability
+	coolify *CoolifyClient
+}
+
+// ExecutionCapability owns process, sandbox, validation, and privileged-profile
+// behavior.
+type ExecutionCapability struct {
+	*serviceCore
+	sandbox    SandboxRunner
+	testCmd    []string
+	validation ValidationRunner
+	privileged PrivilegedConfig
+}

@@ -26,25 +26,47 @@ type Runner func(ctx context.Context, dir, prog string, args []string) (output s
 // command argv, audit record, or tool result.
 type GitHubHTTPSRunner func(ctx context.Context, dir, prog string, args []string, token string) (output string, err error)
 
-// Service is the L1 tool surface.
+// Service is the backwards-compatible L1 facade. Its promoted methods are owned
+// by focused capability services that all share one central security core.
 type Service struct {
-	pol        *policy.Policy
-	log        *audit.Logger
-	root       string // primary project root: working dir for commands
-	run        Runner
-	githubRun  GitHubHTTPSRunner
-	sandbox    SandboxRunner
-	testCmd    []string         // the single allowlisted test command (run_tests)
-	coolify    *CoolifyClient   // optional; nil/unconfigured = coolify_deploy disabled
-	github     *GitHubClient    // optional; nil/unconfigured = GitHub tools disabled
-	validation ValidationRunner // optional private Node/pnpm validation runner
-	plans      *ActionPlanStore
-	privileged PrivilegedConfig
+	*serviceCore
+	*RepositoryCapability
+	*GitCapability
+	*SourceCapability
+	*PlatformCapability
+	*ExecutionCapability
 }
 
-// NewService builds a Service. root must be one of the policy's jail roots.
+// NewService builds the shared core and every capability. root must be one of the
+// policy's jail roots.
 func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
-	return &Service{pol: pol, log: log, root: root, run: execRunner, githubRun: execGitHubHTTPSRunner, sandbox: disabledSandboxRunner{}, validation: disabledValidationRunner{}, plans: NewActionPlanStore(log)}
+	core := &serviceCore{
+		pol:   pol,
+		log:   log,
+		root:  root,
+		run:   execRunner,
+		plans: NewActionPlanStore(log),
+	}
+	source := &SourceCapability{serviceCore: core}
+	return &Service{
+		serviceCore:          core,
+		RepositoryCapability: &RepositoryCapability{serviceCore: core},
+		GitCapability: &GitCapability{
+			serviceCore:      core,
+			SourceCapability: source,
+			githubRun:        execGitHubHTTPSRunner,
+		},
+		SourceCapability: source,
+		PlatformCapability: &PlatformCapability{
+			serviceCore:      core,
+			SourceCapability: source,
+		},
+		ExecutionCapability: &ExecutionCapability{
+			serviceCore: core,
+			sandbox:     disabledSandboxRunner{},
+			validation:  disabledValidationRunner{},
+		},
+	}
 }
 
 // WithActionPlanStore overrides the in-memory plan store for deterministic tests.
@@ -101,7 +123,7 @@ func execRunner(ctx context.Context, dir, prog string, args []string) (string, e
 }
 
 // redact applies content-level secret scanning to any output before return.
-func (s *Service) redact(content string) string {
+func (s *serviceCore) redact(content string) string {
 	out, _ := s.pol.Redact(content)
 	return out
 }
