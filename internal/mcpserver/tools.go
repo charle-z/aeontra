@@ -83,41 +83,6 @@ func (s *Server) annotate(hints map[string]any, names ...string) {
 	}
 }
 
-// annotateTools labels every tool with MCP behavior hints so clients can distinguish
-// safe reads from consequential actions. Labeling is HONEST: side-effecting tools are
-// never marked read-only. This mainly stops clients (e.g. ChatGPT) from over-blocking
-// harmless read-only tools like git_status/list_dir.
-func (s *Server) annotateTools() {
-	localRead := map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
-	externalRead := map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
-	localWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
-	externalWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
-	externalIdempotentWrite := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
-	localDestructive := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
-	externalDestructive := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
-	// Local, side-effect-free reads.
-	s.annotate(localRead,
-		"system_runtime_info", "build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
-		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "project_validation_preview", "memory_read", "notes_list", "notes_read", "notes_write_preview", "sandbox_status")
-	// Read-only, but reaching external services (GitHub / Coolify APIs).
-	s.annotate(externalRead,
-		"github_repo_info", "source_repo_info", "source_repo_create_preview", "repo_publish_preview", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "coolify_app_logs", "platform_app_logs", "coolify_deployment_status", "platform_deployment_status", "platform_app_create_preview", "platform_validation_runner_create_preview", "platform_deploy_preview", "platform_deploy_without_cache_preview")
-	// Additive/local writes: not read-only, but not destructive (no data loss).
-	s.annotate(localWrite,
-		"create_file", "git_commit")
-	// External writes are consequential and open-world, but not inherently destructive.
-	s.annotate(externalWrite,
-		"git_clone", "git_push", "repo_publish", "github_create_repo", "source_repo_create",
-		"coolify_create_app", "platform_app_create", "platform_validation_runner_create")
-	s.annotate(externalIdempotentWrite, "repo_fetch")
-	s.annotate(localWrite, "repo_fast_forward")
-	s.annotate(localWrite, "notes_write")
-	// These tools can replace/delete content or perform effects the server cannot
-	// characterize as additive, so clients must see truthful destructive hints.
-	s.annotate(localDestructive, "apply_patch", "memory_write", "memory_update_handoff", "repo_remote_set", "sandbox_exec")
-	s.annotate(externalDestructive, "run_command", "run_tests", "coolify_deploy", "platform_deploy", "platform_deploy_without_cache", "coolify_set_env", "privileged_task_execute", "project_validation_execute")
-}
-
 // register wires every L1 tool. Descriptions are written for the orchestrating
 // agent; all enforcement happens in the tool/policy layer regardless of how a
 // client calls them.
@@ -170,5 +135,5 @@ func (s *Server) register() {
 
 	catalog.RegisterAliases(s.addCatalogAlias)
 
-	s.annotateTools()
+	catalog.RegisterAnnotations(s.annotate)
 }
