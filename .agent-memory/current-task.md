@@ -16,10 +16,11 @@ Completed commits:
 - Step 38 `03d1685`: validation-runner platform creation.
 - Step 39 `f7380a8`: platform application creation preview.
 - Step 40 `758bd0c`: platform deployment planning and force-without-cache execution.
+- Step 41 `9853ee2`: platform environment mutation.
 
-Current Step 41 candidate:
-- added `internal/mcpserver/catalog/platform_environment.go` with a narrow `PlatformEnvironmentService` interface;
-- moved `coolify_set_env` into `RegisterPlatformEnvironment` at its original catalog position;
+Current Step 42 candidate:
+- added `internal/mcpserver/catalog/git_reads.go` with a narrow `GitReadService` interface;
+- moved `git_status` and `git_diff` into `RegisterGitReads` at their original contiguous catalog positions;
 - added focused contract and handler-routing tests.
 
 Compatibility preserved:
@@ -27,9 +28,11 @@ Compatibility preserved:
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
 - names, order, descriptions, schemas, versions, annotations, aliases, handlers, approvals, and envs unchanged.
 
-Step 41 verification:
-- RED failed because `RegisterPlatformEnvironment` did not exist;
-- focused and full tests passed;
+Step 42 verification:
+- RED failed because `RegisterGitReads` did not exist;
+- focused tests passed;
+- the first full suite detected that `tools.Service.GitStatus` retains a variadic compatibility signature; the interface and fake were corrected to match it exactly;
+- focused and full tests then passed;
 - `go vet ./...`, `go build ./...`, diff review, and production catalog smoke passed.
 
-Next in the requested five-step batch: Step 42 Git reads and Step 43 Git acquisition. No publish, merge, or deploy.
+Next in the requested five-step batch: Step 43 Git acquisition. No publish, merge, or deploy.

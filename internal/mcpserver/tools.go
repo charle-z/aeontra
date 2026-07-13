@@ -140,29 +140,7 @@ func (s *Server) register() {
 
 	catalog.RegisterPlatformEnvironment(s.addCatalogTool, s.svc)
 
-	s.add("git_status", "Show git working-tree status (read-only). Optional repo is a jailed directory, useful when the workspace root is /repos.",
-		object(map[string]any{"repo": strProp("optional repo directory, absolute or relative to the workspace root")}),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Repo string `json:"repo"`
-			}
-			_ = json.Unmarshal(a, &p)
-			return s.svc.GitStatus(p.Repo)
-		})
-
-	s.add("git_diff", "Show a git diff (read-only). Optional repo is a jailed directory, useful when the workspace root is /repos. Optional extra args (e.g. --staged or a pathspec).",
-		object(map[string]any{
-			"repo": strProp("optional repo directory, absolute or relative to the workspace root"),
-			"args": strArrProp("extra git diff arguments"),
-		}),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Args []string `json:"args"`
-				Repo string   `json:"repo"`
-			}
-			_ = json.Unmarshal(a, &p)
-			return s.svc.GitDiffIn(p.Repo, p.Args...)
-		})
+	catalog.RegisterGitReads(s.addCatalogTool, s.svc)
 
 	s.add("git_clone",
 		"Clone a Git repository into a new simple directory under the workspace root. No embedded credentials in URLs; target cannot escape the jail. Denied in read-only; in ask mode set approve=true.",
