@@ -148,41 +148,7 @@ func (s *Server) register() {
 
 	catalog.RegisterGitPublication(s.addCatalogTool, s.svc)
 
-	s.add("github_create_repo",
-		"Execute a previously reviewed source_repo_create_preview plan to create one GitHub repository under the configured owner. The plan is exact, expiring and single-use; token is never exposed; requires approval in ask mode.",
-		object(map[string]any{
-			"plan_id": strProp("plan id returned by source_repo_create_preview"),
-			"approve": boolProp("execute the create plan when approval is required"),
-		}, "plan_id"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				PlanID  string `json:"plan_id"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.SourceRepoCreate(p.PlanID, p.Approve)
-		})
-
-	s.add("source_repo_create_preview",
-		"Check that a repository is absent under the configured GitHub owner and create a read-only, exact, expiring and single-use creation plan. Private is the default; public must be explicit. Nothing is created.",
-		object(map[string]any{
-			"name":        strProp("new repository name under the configured owner"),
-			"visibility":  strProp("optional private or public visibility; defaults to configured private posture"),
-			"description": strProp("optional repository description; redacted before planning"),
-		}, "name"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Name        string `json:"name"`
-				Visibility  string `json:"visibility"`
-				Description string `json:"description"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.SourceRepoCreatePreview(p.Name, p.Visibility, p.Description)
-		})
+	catalog.RegisterSourceRepoCreation(s.addCatalogTool, s.svc)
 
 	s.add("github_repo_info",
 		"Read basic metadata for a repository under the configured GitHub owner. Token is never exposed and output is redacted.",
