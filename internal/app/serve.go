@@ -1,17 +1,11 @@
-// Package app owns mcp-devbox process orchestration behind the command composition
-// root.
 package app
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -24,174 +18,9 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/grantadmin"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
-	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
-
-// tokenEnv is the preferred way to supply the HTTP bearer token (keeps it out of
-// the process argument list / shell history).
-const tokenEnv = "MCP_DEVBOX_TOKEN"
-
-// Env fallbacks for the test/allowlist commands so a containerized deploy (Coolify)
-// can configure them without baking flags into the image. A flag, when set, wins.
-const (
-	testCmdEnv  = "MCP_DEVBOX_TEST_CMD"
-	allowCmdEnv = "MCP_DEVBOX_ALLOW_CMD"
-	sandboxEnv  = "MCP_DEVBOX_SANDBOX"
-)
-
-// OAuth env. When both are set, the HTTP transport enables its in-process OAuth
-// authorization server (see internal/oauth). publicURLEnv is the public HTTPS base URL
-// (the OAuth issuer); the canonical MCP resource used as the token audience is that base
-// plus the MCP path.
-const (
-	publicURLEnv             = "MCP_DEVBOX_PUBLIC_URL"
-	oauthPassphraseEnv       = "MCP_DEVBOX_OAUTH_PASSPHRASE"
-	oauthClientStorePathEnv  = "MCP_DEVBOX_OAUTH_CLIENT_STORE"
-	oauthRefreshStorePathEnv = "MCP_DEVBOX_OAUTH_REFRESH_STORE"
-)
-
-const (
-	githubTokenEnv             = "GITHUB_TOKEN"
-	githubOwnerEnv             = "GITHUB_OWNER"
-	githubOwnerTypeEnv         = "GITHUB_OWNER_TYPE"
-	githubDefaultVisibilityEnv = "GITHUB_DEFAULT_VISIBILITY"
-)
-
-const (
-	coolifyURLEnv             = "COOLIFY_URL"
-	coolifyAPITokenEnv        = "COOLIFY_API_TOKEN"
-	coolifyAllowedAppsEnv     = "COOLIFY_ALLOWED_APPS"
-	coolifyServerUUIDEnv      = "COOLIFY_SERVER_UUID"
-	coolifyProjectUUIDEnv     = "COOLIFY_PROJECT_UUID"
-	coolifyEnvironmentNameEnv = "COOLIFY_ENVIRONMENT_NAME"
-	coolifyEnvironmentUUIDEnv = "COOLIFY_ENVIRONMENT_UUID"
-	coolifyAllowedDomainsEnv  = "COOLIFY_ALLOWED_DOMAINS"
-	coolifyGitHubAppUUIDEnv   = "COOLIFY_GITHUB_APP_UUID"
-	coolifyDestinationUUIDEnv = "COOLIFY_DESTINATION_UUID"
-	coolifyAllowedMountsEnv   = "COOLIFY_ALLOWED_MOUNTS"
-)
-
-const (
-	privilegedTasksEnv    = "MCP_DEVBOX_PRIVILEGED_TASKS"
-	privilegedServicesEnv = "MCP_DEVBOX_PRIVILEGED_SERVICES"
-	privilegedTimeoutEnv  = "MCP_DEVBOX_PRIVILEGED_TIMEOUT"
-)
-
-const (
-	validationRunnerURLEnv   = "MCP_DEVBOX_VALIDATION_RUNNER_URL"
-	validationRunnerTokenEnv = "MCP_DEVBOX_VALIDATION_RUNNER_TOKEN"
-)
-
-// buildOAuthProvider constructs the OAuth provider from env, or returns (nil, nil) when
-// OAuth is not configured. It errors if only one of the two required vars is set, so a
-// half-configured OAuth setup fails loudly rather than silently falling back.
-func buildOAuthProvider() (*oauth.Provider, error) {
-	publicURL := strings.TrimSpace(os.Getenv(publicURLEnv))
-	passphrase := os.Getenv(oauthPassphraseEnv)
-	if publicURL == "" && strings.TrimSpace(passphrase) == "" {
-		return nil, nil // OAuth disabled
-	}
-	if publicURL == "" || strings.TrimSpace(passphrase) == "" {
-		return nil, fmt.Errorf("OAuth requires BOTH %s and %s to be set", publicURLEnv, oauthPassphraseEnv)
-	}
-	issuer := strings.TrimRight(publicURL, "/")
-	p, err := oauth.NewProvider(oauth.Config{
-		Issuer:           issuer,
-		Resource:         issuer + mcpserver.DefaultMCPPath,
-		Passphrase:       passphrase,
-		ClientStorePath:  os.Getenv(oauthClientStorePathEnv),
-		RefreshStorePath: os.Getenv(oauthRefreshStorePathEnv),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("configuring OAuth: %w", err)
-	}
-	return p, nil
-}
-
-// envFallback returns flagVal when non-empty (after trimming), otherwise the value
-// of the named environment variable.
-func envFallback(flagVal, envName string) string {
-	if strings.TrimSpace(flagVal) != "" {
-		return flagVal
-	}
-	return os.Getenv(envName)
-}
-
-const adminTokenEnv = "MCP_DEVBOX_ADMIN_TOKEN"
-
-// commitEnvVars are consulted (in order) at startup to stamp the running git commit when
-// it was not baked in via -ldflags. SOURCE_COMMIT is injected by Coolify at deploy time.
-var commitEnvVars = []string{"MCP_DEVBOX_COMMIT", "SOURCE_COMMIT"}
-
-// stampCommit sets the build commit from the environment when present, so /healthz and
-// the MCP initialize response report exactly which commit is live even if the image was
-// not built with an -ldflags stamp.
-func stampCommit() {
-	for _, name := range commitEnvVars {
-		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
-			buildinfo.Commit = v
-			return
-		}
-	}
-}
-
-func Main() {
-	stampCommit()
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
-	}
-	switch os.Args[1] {
-	case "serve":
-		if err := serve(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "mcp-devbox: "+err.Error())
-			os.Exit(1)
-		}
-	case "grant":
-		if err := grant(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "mcp-devbox: "+err.Error())
-			os.Exit(1)
-		}
-	case "version", "--version", "-v":
-		fmt.Println("mcp-devbox " + buildinfo.Version + " (commit " + buildinfo.Commit + ")")
-	case "help", "--help", "-h":
-		usage()
-	default:
-		fmt.Fprintln(os.Stderr, "unknown command: "+os.Args[1])
-		usage()
-		os.Exit(2)
-	}
-}
-
-func usage() {
-	fmt.Fprint(os.Stderr, `mcp-devbox `+buildinfo.Version+` — secure-by-default local MCP server
-
-Usage:
-  mcp-devbox serve --root <ABS_PATH> [--mode read-only|ask|allow] [flags]
-  mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> [--ttl 5m] [--raw --confirm-raw] <REQUEST_ID>
-  mcp-devbox version
-
-serve flags:
-  --root        project root (absolute). Repeat or comma-separate for multiple.
-  --mode        access posture: read-only (default), ask, allow
-  --allow-cmd   comma-separated command allowlist (default: git,go,ls,cat)
-  --test-cmd    command for run_tests, e.g. "go test ./..."
-  --audit       audit log path (default: <root>/.agent-memory/audit.log)
-  --http        serve MCP over HTTP at ADDR (e.g. :8765). Omit for stdio (default).
-                A host-less ADDR binds to 127.0.0.1 (use a tunnel for remote access).
-  --http-token  bearer token for the HTTP endpoint. Prefer the `+tokenEnv+` env var.
-
-Transports:
-  stdio (default)  JSON-RPC on stdin/stdout (local clients: Cursor, Claude Desktop).
-  http (--http)    JSON-RPC over POST /mcp; AUTH REQUIRED. Pass the token as
-                   "Authorization: Bearer <t>" OR "/mcp?key=<t>" (ChatGPT can't send a
-                   header → use ?key= + "Sin autenticación"). See docs/connect-remote.md.
-
-Diagnostics go to stderr; the bearer token is never printed.
-`)
-}
 
 // rootsFlag collects --root (repeatable and/or comma-separated).
 type rootsFlag []string
@@ -395,58 +224,6 @@ func serve(args []string) error {
 	return srv.Serve(os.Stdin, os.Stdout)
 }
 
-func grant(args []string) error {
-	fs := flag.NewFlagSet("grant", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	admin := fs.String("admin", "", "local grant admin base URL printed by the daemon")
-	adminToken := fs.String("admin-token", "", "local admin token printed by the daemon (or "+adminTokenEnv+")")
-	ttl := fs.String("ttl", "5m", "short grant ttl, e.g. 5m")
-	raw := fs.Bool("raw", false, "approve unredacted secret output")
-	confirmRaw := fs.Bool("confirm-raw", false, "required together with --raw")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if fs.NArg() != 1 {
-		return fmt.Errorf("grant requires exactly one REQUEST_ID")
-	}
-	if strings.TrimSpace(*admin) == "" {
-		return fmt.Errorf("--admin is required")
-	}
-	token := *adminToken
-	if token == "" {
-		token = os.Getenv(adminTokenEnv)
-	}
-	if token == "" {
-		return fmt.Errorf("--admin-token is required (or set %s)", adminTokenEnv)
-	}
-	if *raw && !*confirmRaw {
-		return fmt.Errorf("--raw requires --confirm-raw")
-	}
-	body, err := json.Marshal(map[string]any{"ttl": *ttl, "raw": *raw})
-	if err != nil {
-		return err
-	}
-	url := strings.TrimRight(*admin, "/") + grantadmin.DefaultPath + "/" + fs.Arg(0)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("grant rejected: %s: %s", resp.Status, strings.TrimSpace(string(respBody)))
-	}
-	fmt.Fprintln(os.Stdout, strings.TrimSpace(string(respBody)))
-	return nil
-}
-
 // normalizeHTTPAddr binds host-less addresses to loopback by default. A bare port
 // ("8765") or ":8765" becomes "127.0.0.1:8765"; an explicit host is preserved.
 // Keeping the listener on loopback means a Cloudflare Tunnel (which connects out
@@ -460,37 +237,6 @@ func normalizeHTTPAddr(a string) string {
 		a = "127.0.0.1" + a
 	}
 	return a
-}
-
-func splitCSV(s string) []string {
-	var out []string
-	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-func splitFields(s string) []string { return strings.Fields(strings.TrimSpace(s)) }
-
-func splitSemicolon(s string) []string {
-	var out []string
-	for _, p := range strings.Split(s, ";") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-func appendUnique(list []string, v string) []string {
-	for _, x := range list {
-		if x == v {
-			return list
-		}
-	}
-	return append(list, v)
 }
 
 func randomHexToken() (string, error) {
