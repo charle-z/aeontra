@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/charle-z/mcp-devbox/internal/mcpserver/catalog"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
@@ -41,6 +42,22 @@ func (s *Server) add(name, desc string, schema map[string]any, h func(json.RawMe
 		handler: h,
 	}
 	s.order = append(s.order, name)
+}
+
+// addCatalogTool adapts one declarative domain registration into the server-owned
+// registry. The server remains responsible for annotations, ordering, dispatch,
+// and the shared policy-backed service handlers.
+func (s *Server) addCatalogTool(tool catalog.Tool) {
+	s.table[tool.Name] = toolEntry{
+		def: toolDef{
+			Name:        tool.Name,
+			Description: tool.Description,
+			InputSchema: tool.InputSchema,
+			Version:     tool.Version,
+		},
+		handler: tool.Handler,
+	}
+	s.order = append(s.order, tool.Name)
 }
 
 // addAlias exposes a stable recommended name while preserving the exact handler,
@@ -103,20 +120,9 @@ func (s *Server) annotateTools() {
 // agent; all enforcement happens in the tool/policy layer regardless of how a
 // client calls them.
 func (s *Server) register() {
-	s.add("system_runtime_info",
-		"Return the live non-sensitive server version, commit, protocol version, tool count, and deterministic catalog hash.",
-		object(map[string]any{}),
-		func(json.RawMessage) (string, error) {
-			info, err := s.RuntimeInfo()
-			if err != nil {
-				return "", err
-			}
-			encoded, err := json.Marshal(info)
-			if err != nil {
-				return "", err
-			}
-			return string(encoded), nil
-		})
+	catalog.RegisterRuntime(s.addCatalogTool, func() (any, error) {
+		return s.RuntimeInfo()
+	})
 
 	s.add("build_context_pack",
 		"Return relevant repo context in one call (file tree, key files, agent memory, git status). Optional repo scopes the pack to a jailed child repo under /repos. Secrets redacted, jail-confined.",
