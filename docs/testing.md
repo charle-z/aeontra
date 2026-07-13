@@ -62,6 +62,23 @@ These tests passed immediately against the existing mutex boundaries. They provi
 correctness evidence under interleaving but do not replace the still-pending
 CGO-enabled race detector in P6.
 
+## Fuzz seed coverage — P5 Step 81
+
+Go fuzz targets now cover:
+
+- jail containment: any accepted result remains within the configured root;
+- command policy: any allowed result satisfies bare-name, allowlist, injection, blocked
+  program, and destructive-invocation gates;
+- redaction output idempotence and grant TTL boundaries;
+- JSON-RPC single-message and bounded batch response validity;
+- action-plan operation binding, expiry, and single-use behavior.
+
+Regular `go test` executes the curated seeds. Longer fuzz runs are deferred to P6 so
+they execute in ephemeral CI with bounded time and retained crash corpora. Seed
+execution corrected two test assumptions: redaction may re-detect an unchanged
+placeholder, and an expired plan is consumed before subsequent replay. No runtime
+change was required.
+
 ## P5 deeper-testing sequence
 
 1. Add bounded deterministic concurrency tests around shared state.

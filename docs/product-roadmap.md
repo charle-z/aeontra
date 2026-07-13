@@ -11,7 +11,7 @@ criteria below remain future requirements until their status changes with eviden
 |---|---|---|
 | P0-P4 architecture and L1 hardening | Deployed | `main` at `4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`; production healthy; 62 tools. |
 | P4 targeted L1 hardening | Deployed | `main` includes Steps 70-77; production verified. |
-| P5 deeper testing | In progress | Foundation and deterministic concurrency complete; race execution pending P6; fuzz/coverage/integration pending. |
+| P5 deeper testing | In progress | Foundation, concurrency, and fuzz seeds complete; race pending P6; coverage/integration pending. |
 | P6 CI/DevSecOps | Planned | Quality gates are designed; implementation evidence incomplete. |
 | P7 structured observability | Planned | Must exclude prompts, source, secrets, and private targets. |
 | Console/showcase | Not started | Requires a separate public-safe spec; no control-plane authority. |

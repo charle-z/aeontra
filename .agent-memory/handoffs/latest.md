@@ -21,7 +21,7 @@ P5 deeper testing is active and defined by `specs/002-deeper-testing/`.
 
 ## Next safe step
 
-T01 foundation, T02 race baseline documentation, and T03 deterministic concurrency
-coverage are complete. Existing mutex boundaries passed exactly-once and concurrent
-write invariants. Next add safe fuzz targets and curated seeds, then coverage and
-integration. The actual race detector remains pending P6 with CGO enabled.
+T01-T05 are complete: foundation, honest race prerequisite, deterministic
+concurrency, and curated policy/protocol/state fuzz seeds. Next implement the tested
+package-specific coverage gate, then the hermetic integration matrix. The actual race
+detector and timed fuzz execution remain pending P6.
