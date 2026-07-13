@@ -68,6 +68,10 @@ func (s *Server) addAlias(name, target, desc string) {
 	s.order = append(s.order, name)
 }
 
+func (s *Server) addCatalogAlias(alias catalog.Alias) {
+	s.addAlias(alias.Name, alias.Target, alias.Description)
+}
+
 // annotate attaches the same behavior hints to each named tool (no-op for names that
 // were not registered, e.g. a tool gated off by configuration).
 func (s *Server) annotate(hints map[string]any, names ...string) {
@@ -164,20 +168,7 @@ func (s *Server) register() {
 
 	catalog.RegisterHandoff(s.addCatalogTool, s.svc)
 
-	// Compatibility names remain available. Recommended names share the exact same
-	// handler and schema, so aliases cannot bypass or duplicate policy enforcement.
-	s.addAlias("repo_list", "list_dir", "List one jailed repository directory without reading file contents; equivalent to list_dir.")
-	s.addAlias("repo_status", "git_status", "Show read-only status for one jailed repository; equivalent to git_status.")
-	s.addAlias("repo_diff", "git_diff", "Show a read-only diff for one jailed repository; equivalent to git_diff.")
-	s.addAlias("source_repo_info", "github_repo_info", "Read metadata for a repository under the configured source-host owner; equivalent to github_repo_info and performs an external read.")
-	s.addAlias("source_repo_create", "github_create_repo", "Create a repository under the configured source-host owner; equivalent to github_create_repo and performs an external write requiring approval in ask mode.")
-	s.addAlias("repo_publish", "git_push", "Publish one local branch to one named remote; equivalent to git_push and performs an external write requiring approval in ask mode.")
-	s.addAlias("platform_apps_list", "coolify_list_apps", "List applications from the configured deployment platform; equivalent to coolify_list_apps and performs an external read.")
-	s.addAlias("platform_app_status", "coolify_app_status", "Read one application from the configured deployment platform; equivalent to coolify_app_status and performs an external read.")
-	s.addAlias("platform_app_logs", "coolify_app_logs", "Read bounded application logs from the configured deployment platform; equivalent to coolify_app_logs and performs an external read.")
-	s.addAlias("platform_deployment_status", "coolify_deployment_status", "Read one deployment from the configured deployment platform; equivalent to coolify_deployment_status and performs an external read.")
-	s.addAlias("platform_app_create", "coolify_create_app", "Create an application on the configured deployment platform; equivalent to coolify_create_app and performs an external write requiring approval in ask mode.")
-	s.addAlias("platform_deploy", "coolify_deploy", "Trigger a deployment on the configured platform; equivalent to coolify_deploy and performs an external write requiring approval in ask mode.")
+	catalog.RegisterAliases(s.addCatalogAlias)
 
 	s.annotateTools()
 }
