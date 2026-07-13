@@ -1,6 +1,6 @@
 # Tasks — P7 structured observability
 
-Status: **active**.
+Status: **complete**.
 
 - [x] **T01 P7 definition** — independent branch/spec and closed data boundary.
 - [x] **T02 safe JSONL sink** — schema, concurrency, private bounded rotation.
@@ -10,8 +10,9 @@ Status: **active**.
 - [x] **T06 adversarial verification** — secret/body/path/target/raw-error non-disclosure.
 - [x] **T07 operations documentation** — mounts, permissions, retention, update, rollback,
   and troubleshooting.
-- [ ] **T08 P7 closure** — baseline, full gates, Actions, fast-forward, deployment, and
-  exact production smoke.
+- [x] **T08 P7 closure** — `docs/baselines/2026-07-13-p7.md` records local gates,
+  the initial Staticcheck U1000, corrective green Actions, automatic deployment, exact
+  production identity, unchanged catalog, and inspected content-free JSONL events.
 
 ## Boundary
 

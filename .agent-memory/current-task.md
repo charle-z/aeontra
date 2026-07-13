@@ -1,52 +1,53 @@
-# P7 structured observability
+# P7 structured observability closure
 
-Status: implementation candidate is complete on branch `p7-structured-observability`, based on deployed P6 closure commit `ab0cf153fe898784dac6d48a062de78abb4d5f5d`.
+Status: P7 correction commit `d1309ed08db0170e5165f78bf406e94cfa56cc11` is
+fast-forwarded to `main`, automatically deployed, and production-verified. Branch
+`p7-structured-observability` contains the closure baseline and synchronized
+documentation candidate.
 
-## Implemented
+## Verified release
 
-- Independent spec, plan, tasks, threat model, operator guide, and documentation regression test.
-- Closed-schema JSONL sink under `internal/observability`.
-- Modes `off|stderr|file|both`; default stderr; optional private bounded file rotation.
-- Immutable flags/env: `MCP_DEVBOX_OBSERVABILITY`, `MCP_DEVBOX_OBSERVABILITY_PATH`, `MCP_DEVBOX_OBSERVABILITY_MAX_BYTES`.
-- Dedicated default file path: `<root>/.agent-memory/observability/observability.jsonl`.
-- Private directory/file posture: 0700/0600, one `.1` backup, bounded size, symlink/ancestor rejection, broad-directory rejection, and generic path-safe errors.
-- Internally generated request IDs shared by HTTP and JSON-RPC events; client request IDs are ignored.
-- Safe lifecycle, HTTP, JSON-RPC, batch parse, and known public tool completion events.
-- Closed labels only: normalized route/method/tool/outcome/status/duration/error class and public build identity/count/hash.
-- No prompts, bodies, params, results, source, paths, repository names, commands, targets, URLs, queries, headers, tokens, identities, IPs/domains, raw errors, or arbitrary attribute maps.
-- Timestamp and schema version are always server-owned.
-- Multi-writer mode continues writing to healthy destinations when another fails; failures are counted without retaining raw error text.
-- Startup diagnostics no longer print roots, audit paths, bind address, or authentication details; off mode retains a sanitized diagnostic.
-- Public catalog remains 62 tools with the unchanged expected hash.
+- Initial implementation: `2e3245e920ae0d50c8814893f220575ec35203d1`.
+- Initial CI `29280567173`: Verify, Race, and Govulncheck passed; Staticcheck job
+  `86920444713` found one obsolete `callTool` wrapper (U1000).
+- Initial Security Evidence `29280567261`: CodeQL and container SBOM/High-Critical
+  gate passed.
+- Corrective commit: `d1309ed08db0170e5165f78bf406e94cfa56cc11`.
+- Corrective CI `29281156750`: Verify, Race, Staticcheck, and Govulncheck passed.
+- Corrective Security Evidence `29281156767`: CodeQL and container SBOM/
+  vulnerability gate passed; Dependency Review correctly skipped on push.
 
-## Final local verification
+## Production
 
-Passed:
+- Application `jqf7qz5ensoqtvl1tb197gcv`: running and healthy.
+- Served commit: `d1309ed08db0170e5165f78bf406e94cfa56cc11`.
+- Tool count: 62.
+- Catalog hash: `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+- Automatic deployment caused one expected MCP network interruption; exact runtime
+  identity proved the successful self-restart.
+- The deployment UUID was not returned and is not invented.
+- Real logs show content-free JSONL lifecycle, HTTP, RPC, public tool, status,
+  duration, request-id, commit/count/hash fields with no params, paths, targets,
+  tokens, identities, results, or raw errors.
 
-- `go fmt ./...`.
-- `go test ./... -count=1`.
-- atomic coverage profile and package gate.
-- `internal/observability` coverage 74.4% against a 70% minimum.
-- `go vet ./...`.
-- `go build ./...`.
-- actionlint v1.7.12.
-- govulncheck v1.6.0: no vulnerabilities.
-- focused observability/app/mcpserver/workflow/Grype tests.
-- `git diff --check`.
+## Closure artifacts
 
-Runner-authoritative gates:
-
-- Local Staticcheck cannot initialize `/home/mcpdevbox/.cache/staticcheck` because the deployed non-root container has no writable home. GitHub Actions uses `runner.temp` and must pass before merge/deploy.
-- Local race cannot run because CGO is disabled. GitHub Actions must run the CGO-enabled race job.
-- Docker build, SBOM, Grype, CodeQL, and Dependency Review remain mandatory in Actions.
+- `docs/baselines/2026-07-13-p7.md`.
+- `docs/observability.md`.
+- `docs/p7_closure_test.go`.
+- P7 spec, plan, tasks, threat model, capsule, roadmap, README, AGENTS, testing,
+  quality gates, connector runbook, and documentation tests are synchronized.
 
 ## Next exact actions
 
-1. Audit/stage the exact P7 diff and commit it.
-2. Publish `p7-structured-observability`.
-3. Because the current token may lack pull-request write permission, either create a PR through the connected GitHub action if available or fast-forward `main` only under the repository's authorized flow and observe all push gates.
-4. Correct any reproducible CI/security failure before deployment.
-5. Deploy only existing application `jqf7qz5ensoqtvl1tb197gcv`, preserve the deployment id if returned, and verify exact commit/health/62 tools/hash.
-6. Inspect safe JSONL application logs and create the P7 closure baseline before starting the console milestone.
+1. Remove temporary documentation editors.
+2. Run full local gates and audit the closure-only diff.
+3. Commit/publish the P7 closure branch.
+4. Fast-forward/publish `main`; observe closure-commit Actions and verify exact
+   production commit, 62 tools/hash, and safe JSONL logs.
+5. Create a fresh authenticated-dark-console branch/spec. The console must remain
+   presentation-only and unable to execute tools, approve plans, enumerate private
+   repositories, or reveal prompts, paths, targets, tokens, identities, or raw data.
 
-No public MCP tool/schema/annotation/approval/OAuth authority change.
+Asset Broker, universal profiles, and Edge Agent remain separate later milestones.
+Edge Agent is last.

@@ -58,11 +58,16 @@ and closure are recorded in `docs/security-reports/2026-07-13-p6-ci-container-fi
 and `docs/baselines/2026-07-13-p6.md`. P6 closure branch `p6-step92-closure`
 produced commit `ab0cf153fe898784dac6d48a062de78abb4d5f5d`, which is deployed and verified.
 
-P7 structured observability is active on branch `p7-structured-observability`.
-It adds a separate closed-schema JSONL stream for server, HTTP, JSON-RPC, and tool
-completion timing. It excludes prompts, bodies, params, results, source, paths,
-repositories, commands, targets, URLs, query strings, headers, tokens, identities,
-and raw errors. The public MCP remains 62 tools with the unchanged catalog hash.
+P7 structured observability is deployed on `main` at
+`d1309ed08db0170e5165f78bf406e94cfa56cc11`; branch
+`p7-structured-observability` preserves the milestone history. The separate
+closed-schema JSONL stream covers server, HTTP, JSON-RPC, malformed batch, and known
+public tool completion events while excluding prompts, bodies, params, results,
+source, paths, repositories, commands, targets, URLs, queries, headers, tokens,
+identities, and raw errors. CI, Race, Staticcheck, Govulncheck, CodeQL, SBOM, and the
+container gate are green. Production is healthy with 62 tools and the unchanged
+catalog hash; real logs prove shared opaque request IDs and content-free events.
+Closure evidence is in `docs/baselines/2026-07-13-p7.md`.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -377,10 +382,11 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Finish P7 structured observability on `p7-structured-observability`.
-2. Run the complete quality/security gates and preserve the 62-tool catalog/hash.
-3. Publish, fast-forward, deploy, and verify the exact P7 commit and JSONL events.
-4. Keep console, Asset Broker, universal profiles, and Edge Agent in later separate milestones.
+1. Start the authenticated dark console on a fresh branch and independent spec.
+2. Keep the console presentation-only: no tool execution, approvals, private repos,
+   prompts, paths, targets, tokens, identities, or raw operational data.
+3. Close/publish/deploy the console milestone before starting Asset Broker.
+4. Keep universal profiles and Edge Agent in later separate milestones; Edge Agent is last.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -397,9 +403,10 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P6 closure commit
-`ab0cf153fe898784dac6d48a062de78abb4d5f5d` is deployed and healthy. Production
+Date: 2026-07-13. P7 correction commit
+`d1309ed08db0170e5165f78bf406e94cfa56cc11` is deployed and healthy. Production
 reports 62 tools and deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-P7 structured observability is under local implementation on its independent branch;
-it is not merged or deployed until all gates and production smoke pass.
+CI run `29281156750` and Security Evidence run `29281156767` are green;
+production JSONL was inspected and contains only the closed safe schema. The next
+milestone is an authenticated dark console on a fresh branch/spec.

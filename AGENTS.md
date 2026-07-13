@@ -9,13 +9,15 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P7 structured observability** on branch
-  `p7-structured-observability`. P6 closure `ab0cf153fe898784dac6d48a062de78abb4d5f5d`
-  is deployed. P7 adds only content-free closed-schema operational events and must not
-  capture prompts, params, results, source, paths, targets, tokens, identities, or raw
-  errors. It adds no MCP tool, exporter, listener, dashboard, or application. The project
-  has stdio and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
-  audit, persistent notes, and adversarial tests. The cheap-model worker plan is
+- Current phase: **P7 structured observability closure / authenticated dark console next**. P7 is deployed
+  on `main` at `d1309ed08db0170e5165f78bf406e94cfa56cc11`; milestone branch
+  `p7-structured-observability` and `docs/baselines/2026-07-13-p7.md` retain
+  the evidence. The next product must use a fresh branch/spec and remain authenticated,
+  dark, presentation-only, and unable to execute tools or reveal private state. Asset
+  Broker, universal profiles, and Edge Agent remain separate later milestones; Edge
+  Agent is last. The project has stdio and HTTP/OAuth transports, policy core, 62
+  annotated MCP tools, action plans, audit, persistent notes, and adversarial tests.
+  The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
   `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into
   focused capability services over one shared policy/audit/root/runner/plan core;

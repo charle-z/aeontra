@@ -1,6 +1,6 @@
 # Spec — P7 structured observability
 
-Status: **active** on branch `p7-structured-observability`.
+Status: **complete** on `main` at `d1309ed08db0170e5165f78bf406e94cfa56cc11`.
 
 ## Goal
 

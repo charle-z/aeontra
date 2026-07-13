@@ -13,7 +13,7 @@ criteria below remain future requirements until their status changes with eviden
 | P4 targeted L1 hardening | Deployed | `main` includes Steps 70-77; production verified. |
 | P5 deeper testing | Deployed | `main` includes Steps 78-84; production verified; runtime catalog unchanged. |
 | P6 CI/DevSecOps | Deployed | `main` and production serve `539e4d96c95aedd492ac36b428d4159054e183f4`; PR/push CI, CodeQL, Dependency Review, SBOM, and zero-High/Critical container gate are green. |
-| P7 structured observability | In progress | Branch `p7-structured-observability` implements closed-schema content-free JSONL, private bounded rotation, internal request IDs, and no exporter/listener. |
+| P7 structured observability | Deployed | `main` and production serve `d1309ed08db0170e5165f78bf406e94cfa56cc11`; green Race/Staticcheck/CodeQL/container gates and real content-free JSONL logs are recorded in the P7 baseline. |
 | Console/showcase | Not started | Requires a separate public-safe spec; no control-plane authority. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
 | Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |

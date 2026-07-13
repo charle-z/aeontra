@@ -1,6 +1,6 @@
 # Plan — P7 structured observability
 
-Status: **active**.
+Status: **complete**.
 
 1. **Threat model and schema** — define allowed fields, forbidden data, trust boundaries,
    retention, and failure posture.
@@ -15,8 +15,8 @@ Status: **active**.
    strings, and raw failures do not appear.
 7. **Operations** — document installation, mounts, permissions, rotation, updates,
    rollback, troubleshooting, and correlation with connector/Coolify incidents.
-8. **Closure** — full gates, baseline, publication, deployment, exact production smoke,
-   and observed GitHub Actions.
+8. **Closure** — complete: full local/remote gates, dated baseline, clean fast-forward,
+   automatic production deployment, exact runtime smoke, and real JSONL log inspection.
 
 ## Design rules
 

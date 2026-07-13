@@ -106,10 +106,10 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 
 	for _, required := range []string{
 		"p7-structured-observability",
-		"ab0cf153fe898784dac6d48a062de78abb4d5f5d",
+		"d1309ed08db0170e5165f78bf406e94cfa56cc11",
 		"content-free JSONL",
-		"74.4%",
-		"No tool, endpoint, exporter",
+		"29281156750",
+		"authenticated dark console",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)

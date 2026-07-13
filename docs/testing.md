@@ -275,9 +275,17 @@ coverage minimum. The measured local baseline is 74.4%. Tests cover:
   client-controlled request ids, unknown tool names, and secret-shaped strings;
 - absence of new tools, endpoints, exporters, collectors, dashboards, or applications.
 
-Local Staticcheck remains blocked before analysis by the deployed non-root container's
-unwritable default cache path. The existing GitHub Actions job supplies a writable
-runner-temporary cache and remains the authoritative blocking result after publication.
+Local Staticcheck remained blocked before analysis by the deployed non-root
+container's unwritable default cache path; the GitHub runner supplied a writable cache.
+The first P7 push run `29280567173` passed Verify, Race, and Govulncheck but
+Staticcheck job `86920444713` found the obsolete `callTool` wrapper (U1000).
+The wrapper was removed without suppression. Corrective CI run `29281156750`
+then passed Verify, Race, Staticcheck, and Govulncheck. Security Evidence run
+`29281156767` passed CodeQL and the Docker/SBOM/zero-High-Critical gate;
+Dependency Review was correctly skipped on push. Production serves exact commit
+`d1309ed08db0170e5165f78bf406e94cfa56cc11` with 62 tools and the unchanged
+hash, and its JSONL logs were inspected for the closed data contract. Full evidence is
+versioned in `docs/baselines/2026-07-13-p7.md`.
 
 ## Safety rules
 

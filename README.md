@@ -79,11 +79,14 @@ with the public 62-tool contract unchanged. Blocking CI, race, Staticcheck,
 Govulncheck, CodeQL, Dependency Review, Docker/SBOM, and zero-High/Critical container
 gates are proven in `docs/baselines/2026-07-13-p6.md`.
 
-**P7 structured observability is active on `p7-structured-observability`:** a
-separate closed-schema JSONL stream for lifecycle, HTTP, JSON-RPC, and tool completion
-without prompts, params, results, source, paths, targets, tokens, identities, or raw
-errors. It adds no public tool, endpoint, exporter, or application; see
-`docs/observability.md`.
+**P7 structured observability is deployed at
+`d1309ed08db0170e5165f78bf406e94cfa56cc11`:** a separate closed-schema JSONL
+stream for lifecycle, HTTP, JSON-RPC, malformed batches, and known public tool
+completion without prompts, params, results, source, paths, targets, tokens,
+identities, or raw errors. Race, Staticcheck, CodeQL, SBOM, and container gates are
+green; production logs and the unchanged 62-tool catalog are recorded in
+`docs/baselines/2026-07-13-p7.md`. It adds no public tool, endpoint, exporter,
+or application; see `docs/observability.md`.
 
 Quick start:
 

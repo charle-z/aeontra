@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestP7StructuredObservabilityIsDefinedAndActive(t *testing.T) {
+func TestP7StructuredObservabilityIsDefinedAndDeployed(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		content, err := os.ReadFile(path)
@@ -35,7 +35,8 @@ func TestP7StructuredObservabilityIsDefinedAndActive(t *testing.T) {
 	}
 	for _, required := range []string{
 		"p7-structured-observability",
-		"P7 structured observability is active",
+		"P7 structured observability is deployed",
+		"d1309ed08db0170e5165f78bf406e94cfa56cc11",
 		"62 tools",
 		"unchanged catalog hash",
 	} {
@@ -43,12 +44,12 @@ func TestP7StructuredObservabilityIsDefinedAndActive(t *testing.T) {
 			t.Errorf("capsule does not contain %q", required)
 		}
 	}
-	if !strings.Contains(roadmap, "| P7 structured observability | In progress |") {
-		t.Error("roadmap does not mark P7 in progress")
+	if !strings.Contains(roadmap, "| P7 structured observability | Deployed |") {
+		t.Error("roadmap does not mark P7 deployed")
 	}
 	for _, content := range []string{readme, agents} {
-		if !strings.Contains(content, "P7 structured observability") || !strings.Contains(content, "p7-structured-observability") {
-			t.Error("README/AGENTS do not identify the active P7 branch")
+		if !strings.Contains(content, "P7 structured observability") || !strings.Contains(content, "d1309ed08db0170e5165f78bf406e94cfa56cc11") {
+			t.Error("README/AGENTS do not identify the deployed P7 release")
 		}
 	}
 	for _, required := range []string{
