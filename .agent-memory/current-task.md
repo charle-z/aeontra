@@ -10,21 +10,22 @@ Completed commits:
 - Step 32 `e33d376`: tests and project validation.
 - Step 33 `da8074c`: repository reads.
 - Step 34 `a61f8df`: repository writes.
+- Step 35 `2c5a073`: command and sandbox execution.
 
-Current Step 35 candidate:
-- added `internal/mcpserver/catalog/execution.go` with a narrow `ExecutionService` interface;
-- moved contiguous `run_command`, `sandbox_status`, and `sandbox_exec` into `RegisterExecution` at their original position;
-- added focused tests for names, order, descriptions, schemas, versions, validation of empty commands, and handler routing.
+Current Step 36 candidate:
+- added `internal/mcpserver/catalog/privileged.go` with a narrow `PrivilegedService` interface;
+- moved `privileged_task_preview` and `privileged_task_execute` into `RegisterPrivileged` at their original position;
+- added focused tests for names, order, descriptions, schemas, versions, and handler routing.
 
 Compatibility preserved:
 - 62 tools;
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
-- names, order, descriptions, schemas, versions, annotations, handlers, aliases, approvals, and envs unchanged.
+- public contracts, annotations, handlers, approvals, aliases, and envs unchanged.
 
-Step 35 verification:
-- RED failed because `RegisterExecution` did not exist;
+Step 36 verification:
+- RED failed because `RegisterPrivileged` did not exist;
 - focused tests passed;
-- full tests initially caught and then resolved the now-unused `fmt` import;
+- full tests detected temporary transform helpers and passed after those non-product files were removed;
 - `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and production catalog smoke passed.
 
-Next in the current four-step batch: Step 36 privileged profiles, Step 37 core Coolify tools, Step 38 validation-runner platform creation. No publish, merge, or deploy.
+Next in the current four-step batch: Step 37 core Coolify tools and Step 38 validation-runner platform creation. No publish, merge, or deploy.

@@ -129,45 +129,7 @@ func (s *Server) register() {
 
 	catalog.RegisterExecution(s.addCatalogTool, s.svc)
 
-	s.add("privileged_task_preview",
-		"Preview one administrator-enabled, server-defined privileged profile. The client supplies only a profile name and narrow validated parameters, never an executable, argv, or shell string. Returns the exact command, jailed working directory, network/filesystem posture, effect, risk, short-lived plan id and expiry. Disabled by default.",
-		object(map[string]any{
-			"repo":    strProp("jailed repository directory when the selected profile applies to a repository"),
-			"profile": strProp("one approved server-defined profile name"),
-			"params": map[string]any{
-				"type":                 "object",
-				"additionalProperties": map[string]any{"type": "string"},
-				"description":          "narrow profile parameters such as remote, branch, or allowlisted service name",
-			},
-		}, "profile"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Repo    string            `json:"repo"`
-				Profile string            `json:"profile"`
-				Params  map[string]string `json:"params"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.PrivilegedTaskPreview(p.Repo, p.Profile, p.Params)
-		})
-
-	s.add("privileged_task_execute",
-		"Execute one unexpired unused privileged_task_preview plan after policy approval. The exact server-generated command, jailed cwd, timeout and profile remain fixed. Docker profiles fail securely when safe containment is unavailable; no free host terminal is exposed.",
-		object(map[string]any{
-			"plan_id": strProp("plan id returned by privileged_task_preview"),
-			"approve": boolProp("execute the privileged profile when approval is required"),
-		}, "plan_id"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				PlanID  string `json:"plan_id"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.PrivilegedTaskExecute(p.PlanID, p.Approve)
-		})
+	catalog.RegisterPrivileged(s.addCatalogTool, s.svc)
 
 	s.add("coolify_deploy",
 		"Execute one previously reviewed platform_deploy_preview plan after revalidating the application repository, branch and expected commit. The plan is expiring and single-use; requires approval in ask mode; token is never exposed.",
