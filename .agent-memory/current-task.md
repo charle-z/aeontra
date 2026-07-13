@@ -19,10 +19,11 @@ Completed commits:
 - Step 41 `9853ee2`: platform environment mutation.
 - Step 42 `04dba6c`: Git reads.
 - Step 43 `dd421b7`: Git acquisition.
+- Step 44 `f7b5b41`: Git fast-forward.
 
-Current Step 44 candidate:
-- added `internal/mcpserver/catalog/git_fast_forward.go` with a narrow `GitFastForwardService` interface;
-- moved `repo_fast_forward_preview` and `repo_fast_forward` into `RegisterGitFastForward` at their original contiguous catalog positions;
+Current Step 45 candidate:
+- added `internal/mcpserver/catalog/git_publication.go` with a narrow `GitPublicationService` interface;
+- moved `git_push` and `repo_publish_preview` into `RegisterGitPublication` while preserving their historical catalog order;
 - added focused contract and handler-routing tests.
 
 Compatibility preserved:
@@ -30,9 +31,9 @@ Compatibility preserved:
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
 - names, order, descriptions, schemas, versions, annotations, aliases, handlers, approvals, and envs unchanged.
 
-Step 44 verification:
-- RED failed because `RegisterGitFastForward` did not exist;
+Step 45 verification:
+- RED failed because `RegisterGitPublication` did not exist;
 - focused and full tests passed;
 - `go vet ./...`, `go build ./...`, diff review, and production catalog smoke passed.
 
-Next in the requested five-step batch: Step 45 publication, Step 46 source repository creation, Step 47 source repository info, Step 48 remote management. No publish, merge, or deploy.
+Next in the requested five-step batch: Step 46 source repository creation, Step 47 source repository info, Step 48 remote management. No publish, merge, or deploy.

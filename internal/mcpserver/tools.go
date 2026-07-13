@@ -146,41 +146,7 @@ func (s *Server) register() {
 
 	catalog.RegisterGitFastForward(s.addCatalogTool, s.svc)
 
-	s.add("git_push",
-		"Execute a previously reviewed repo_publish_preview plan for one local branch and one named owner-restricted remote. No force, mirror, tags, refspecs, URL remotes, or extra arguments are accepted; requires approval in ask mode.",
-		object(map[string]any{
-			"plan_id": strProp("plan id returned by repo_publish_preview"),
-			"approve": boolProp("execute the publication plan when approval is required"),
-		}, "plan_id"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				PlanID  string `json:"plan_id"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.RepoPublish(p.PlanID, p.Approve)
-		})
-
-	s.add("repo_publish_preview",
-		"Validate a clean attached current branch and one named credential-free GitHub remote, inspect the exact remote branch state, reject behind/diverged publication, and create a read-only expiring single-use push plan. It does not push.",
-		object(map[string]any{
-			"repo":   strProp("repository directory, absolute or relative to the workspace root"),
-			"remote": strProp("remote name, defaults to origin; URLs and option-like names are rejected"),
-			"branch": strProp("branch name, defaults to and must equal the current attached branch"),
-		}, "repo"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Repo   string `json:"repo"`
-				Remote string `json:"remote"`
-				Branch string `json:"branch"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.RepoPublishPreview(p.Repo, p.Remote, p.Branch)
-		})
+	catalog.RegisterGitPublication(s.addCatalogTool, s.svc)
 
 	s.add("github_create_repo",
 		"Execute a previously reviewed source_repo_create_preview plan to create one GitHub repository under the configured owner. The plan is exact, expiring and single-use; token is never exposed; requires approval in ask mode.",
