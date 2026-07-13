@@ -42,6 +42,13 @@ Console:
 
 ## Main branch or protected merge
 
+Security evidence added by P6:
+
+- CodeQL Go analysis with minimal `security-events: write`;
+- pull-request dependency review at moderate severity;
+- local Docker build, SPDX JSON SBOM, and blocking high-severity Grype scan;
+- no registry credentials, push, production DAST, or secret-bearing artifacts.
+
 - race detector with CGO enabled;
 - coverage report and security-package thresholds;
 - `govulncheck`;

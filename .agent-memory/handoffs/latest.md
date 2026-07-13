@@ -1,8 +1,8 @@
 # Latest handoff — MCP Devbox
 
 Date: 2026-07-13
-Branch: `p6-ci-devsecops`
-Deployed base: `main` at `4a68ca054a5f077d62a0f887234866673feb7353`
+Branch: `p6-step88-security-evidence`
+Deployed base: `main` at `099ca51de0db536b31dfe5c18a81f4a7bcf7ca97`
 
 ## Current phase
 
@@ -21,5 +21,6 @@ P6 CI/DevSecOps is active and defined by `specs/003-ci-devsecops/`.
 
 ## Next safe step
 
-T01-T03 are complete: foundation, workflow policy, and blocking core CI. Next add
-CodeQL, dependency review, Docker/SBOM/vulnerability evidence, then scheduled fuzz.
+T01-T04 are complete: foundation, workflow policy, blocking core CI, CodeQL,
+dependency review, and local Docker/SBOM/vulnerability evidence. Next add bounded
+scheduled fuzz for every P5 target, then observe GitHub Actions.

@@ -173,6 +173,23 @@ writable; CI sets `XDG_CACHE_HOME` to `${{ runner.temp }}/staticcheck-cache` ins
 mutating the production container. The actual race and staticcheck conclusions must be
 observed from GitHub Actions after publication.
 
+## Security and container evidence — P6 Step 88
+
+`.github/workflows/security.yml` adds three bounded jobs:
+
+- **CodeQL:** Go manual build analysis with `github/codeql-action@v4.37.0`; only
+  `contents: read` and `security-events: write` are granted;
+- **Dependency review:** `actions/dependency-review-action@v5.0.0` runs only for pull
+  requests and blocks moderate-or-higher introduced vulnerabilities without PR comments;
+- **Container evidence:** builds `mcp-devbox:ci` locally, generates
+  `sbom.spdx.json` with `anchore/sbom-action@v0.24.0`, and scans the local image with
+  `anchore/scan-action@v7.4.0`, failing on high-or-critical findings.
+
+No registry login, image push, workflow secret, artifact/release upload, production
+endpoint, or active DAST exists. SBOM and Grype JSON are verified as non-empty local
+files and disappear with the ephemeral runner. Real action conclusions are observed
+after branch publication.
+
 ## Safety rules
 
 - Do not run active DAST against production.

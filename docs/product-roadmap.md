@@ -12,7 +12,7 @@ criteria below remain future requirements until their status changes with eviden
 | P0-P5 architecture, hardening, and deeper testing | Deployed | `main` at `4a68ca054a5f077d62a0f887234866673feb7353`; production healthy; 62 tools. |
 | P4 targeted L1 hardening | Deployed | `main` includes Steps 70-77; production verified. |
 | P5 deeper testing | Deployed | `main` includes Steps 78-84; production verified; runtime catalog unchanged. |
-| P6 CI/DevSecOps | In progress | Foundation, workflow policy, and core CI complete; security/container/fuzz and observed runs pending. |
+| P6 CI/DevSecOps | In progress | Foundation, workflow policy, core CI, and security/container evidence complete; fuzz and observed runs pending. |
 | P7 structured observability | Planned | Must exclude prompts, source, secrets, and private targets. |
 | Console/showcase | Not started | Requires a separate public-safe spec; no control-plane authority. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |

@@ -1,27 +1,26 @@
 # P6 CI/DevSecOps
 
-Status: in progress on branch `p6-ci-devsecops` from deployed `main` commit `4a68ca054a5f077d62a0f887234866673feb7353`.
+Status: Step 88 candidate on branch `p6-step88-security-evidence`, based on deployed `main` commit `099ca51de0db536b31dfe5c18a81f4a7bcf7ca97`.
 
-Completed:
-- Step 85 `fda8c77`: defined P6, recorded the verified P5 deployment, synchronized documentation, and froze the runtime catalog.
-- Step 86 `daeb3b4`: added the tested workflow policy guard and bounded the existing CI job.
+Deployed completed steps:
+- Step 85 `fda8c77`: P6 foundation.
+- Step 86 `daeb3b4`: workflow policy guard.
+- Step 87 `099ca51`: blocking verify, CGO race, staticcheck, and govulncheck CI; published, fast-forwarded, deployed, and production-verified with 62 tools and unchanged catalog hash.
 
-Current Step 87 candidate — core CI:
-- replaced the single minimal Go job with four independent blocking jobs: verify, CGO race, staticcheck, and govulncheck;
-- verify enforces gofmt, atomic full-suite coverage, package-specific coverage thresholds, vet, and build;
-- race uses `CGO_ENABLED=1`, `CC=gcc`, and `go test -race ./... -count=1` in an ephemeral GitHub runner;
-- staticcheck is pinned to `honnef.co/go/tools/cmd/staticcheck@v0.7.0` and uses `${{ runner.temp }}/staticcheck-cache` because the production builder HOME is intentionally not writable;
-- govulncheck is pinned to `golang.org/x/vuln/cmd/govulncheck@v1.6.0`;
-- all jobs use Go 1.26.4, independent checkout/setup, bounded timeouts, read-only contents permission, and no `continue-on-error`;
-- added a workflow contract test that requires all jobs/commands and verifies blocking posture;
-- marked T03 complete and synchronized testing, quality-gate, capsule, roadmap, and handoff documentation.
+Current Step 88 candidate — security/container evidence:
+- added `.github/workflows/security.yml` with three bounded, blocking jobs;
+- CodeQL uses `github/codeql-action/init/analyze@v4.37.0`, Go 1.26.4, manual build, `contents: read`, and only `security-events: write` beyond root read access;
+- dependency review uses `actions/dependency-review-action@v5.0.0`, executes only on pull requests, blocks moderate-or-higher introduced vulnerabilities, and never writes PR comments;
+- container evidence builds `mcp-devbox:ci` locally, creates an SPDX JSON SBOM with `anchore/sbom-action@v0.24.0`, and scans the local image with `anchore/scan-action@v7.4.0`, failing on high-or-critical findings;
+- no secrets, registry login, image push, artifact/release upload, production endpoint, or active DAST exists;
+- added exact workflow contract tests and the existing workflow policy validates the new file;
+- marked T04 complete and synchronized testing, quality-gate, capsule, roadmap, documentation assertions, and handoff state.
 
-Step 87 verification:
-- RED failed because the four jobs and commands did not exist;
-- focused workflow-policy tests pass;
+Step 88 verification:
+- RED failed because `security.yml` did not exist;
+- focused workflow policy/contract tests pass;
 - atomic full-suite coverage and all eight package thresholds pass;
-- `go vet ./...`, `go build ./...`, and local `govulncheck@v1.6.0 ./...` pass with no vulnerabilities;
-- local staticcheck analysis remains environment-blocked by the non-writable production HOME, but the exact pinned binary/version was verified and CI supplies a writable temp cache;
-- remaining: final diff review/check, commit, publish, fast-forward main, deploy, and production verification as explicitly requested per point.
+- `go fmt ./...`, `go vet ./...`, and `go build ./...` pass;
+- real CodeQL/dependency/container conclusions remain to be observed after publication.
 
-Next after release: Step 88 CodeQL, dependency review, Docker build, SBOM, and local vulnerability scan. No runtime/catalog change.
+Remaining: clean temporary helpers, final diff/check, commit, publish branch, fast-forward `main`, deploy, verify production, then open Step 89 scheduled fuzz from the deployed commit.
