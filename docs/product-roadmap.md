@@ -9,10 +9,10 @@ criteria below remain future requirements until their status changes with eviden
 
 | Surface | Status | Evidence / next boundary |
 |---|---|---|
-| P0-P4 architecture and L1 hardening | Deployed | `main` at `4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`; production healthy; 62 tools. |
+| P0-P5 architecture, hardening, and deeper testing | Deployed | `main` at `4a68ca054a5f077d62a0f887234866673feb7353`; production healthy; 62 tools. |
 | P4 targeted L1 hardening | Deployed | `main` includes Steps 70-77; production verified. |
-| P5 deeper testing | Complete / merge-ready | T01-T08 and closure gates passed; runtime catalog unchanged; not deployed. |
-| P6 CI/DevSecOps | Planned | Quality gates are designed; implementation evidence incomplete. |
+| P5 deeper testing | Deployed | `main` includes Steps 78-84; production verified; runtime catalog unchanged. |
+| P6 CI/DevSecOps | In progress | `p6-ci-devsecops`; specification active, workflow implementation pending. |
 | P7 structured observability | Planned | Must exclude prompts, source, secrets, and private targets. |
 | Console/showcase | Not started | Requires a separate public-safe spec; no control-plane authority. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |

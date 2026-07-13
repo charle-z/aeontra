@@ -44,11 +44,15 @@ spoofing, enforce grant/request bounds, keep documentation state tested, redact 
 paths, and bound HTTP JSON-RPC batches to 128 items. Production is healthy with 62
 tools and the unchanged deterministic catalog hash.
 
-P5 deeper testing is complete on branch `p5-deeper-testing` and is merge-ready.
-It adds deterministic concurrency, curated fuzz seeds, package-specific coverage, and
-a hermetic integration matrix without changing the 62-tool MCP contract. The race
-detector remains honestly blocked by `CGO_ENABLED=0` in the production builder; P6
-must execute the real CGO-enabled gate. P5 is not yet deployed.
+P5 deeper testing is deployed on `main` at commit
+`4a68ca054a5f077d62a0f887234866673feb7353`. Production is healthy with the same
+62 tools and catalog hash. P5 added concurrency, fuzz seeds, package coverage, and
+hermetic integration evidence without runtime authority changes.
+
+P6 CI/DevSecOps is active on branch `p6-ci-devsecops`. It will make the CGO race
+detector, coverage/integration gates, vulnerability analysis, CodeQL/dependency
+review, container evidence, and bounded scheduled fuzzing reproducible in GitHub
+Actions without secrets or production DAST.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot

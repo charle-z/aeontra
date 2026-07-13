@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestP5DeeperTestingDefinitionRemainsCurrent(t *testing.T) {
+func TestP6CIDevSecOpsIsDefinedAndActive(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		content, err := os.ReadFile(path)
@@ -16,42 +16,45 @@ func TestP5DeeperTestingDefinitionRemainsCurrent(t *testing.T) {
 		return string(content)
 	}
 
-	spec := read("../specs/002-deeper-testing/spec.md")
-	plan := read("../specs/002-deeper-testing/plan.md")
-	tasks := read("../specs/002-deeper-testing/tasks.md")
+	spec := read("../specs/003-ci-devsecops/spec.md")
+	plan := read("../specs/003-ci-devsecops/plan.md")
+	tasks := read("../specs/003-ci-devsecops/tasks.md")
 	capsule := read("context-capsule.md")
 	roadmap := read("product-roadmap.md")
 
 	for path, content := range map[string]string{"spec": spec, "plan": plan, "tasks": tasks} {
-		if !strings.Contains(content, "P5") || !strings.Contains(content, "deeper testing") {
-			t.Errorf("%s does not define P5 deeper testing", path)
+		if !strings.Contains(content, "P6") || !strings.Contains(content, "CI/DevSecOps") {
+			t.Errorf("%s does not define P6 CI/DevSecOps", path)
 		}
 	}
 	for _, required := range []string{
 		"race detector",
-		"fuzz",
 		"coverage",
-		"integration",
-		"no public MCP contract change",
+		"govulncheck",
+		"CodeQL",
+		"dependency review",
+		"Scheduled fuzzing",
+		"No active DAST against production",
+		"No public MCP contract change",
 	} {
 		if !strings.Contains(spec, required) {
-			t.Errorf("P5 spec does not contain %q", required)
+			t.Errorf("P6 spec does not contain %q", required)
 		}
 	}
 	for _, required := range []string{
-		"P4 targeted Layer-1 hardening is deployed",
-		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
 		"P5 deeper testing is deployed",
 		"4a68ca054a5f077d62a0f887234866673feb7353",
+		"P6 CI/DevSecOps is active",
+		"p6-ci-devsecops",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("capsule does not contain %q", required)
 		}
 	}
-	if !strings.Contains(roadmap, "| P4 targeted L1 hardening | Deployed |") {
-		t.Error("roadmap does not mark P4 deployed")
-	}
 	if !strings.Contains(roadmap, "| P5 deeper testing | Deployed |") {
 		t.Error("roadmap does not mark P5 deployed")
+	}
+	if !strings.Contains(roadmap, "| P6 CI/DevSecOps | In progress |") {
+		t.Error("roadmap does not mark P6 in progress")
 	}
 }

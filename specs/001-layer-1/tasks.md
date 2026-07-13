@@ -29,8 +29,8 @@ steps in `.agent-memory/current-task.md` and dated baselines under `docs/baselin
 - [x] P2 capability-service split.
 - [x] P3 composition root.
 - [x] P4 targeted Layer-1 hardening — deployed on `main`.
-- [ ] P5 deeper testing — active on `p5-deeper-testing`.
-- [ ] P6 CI/DevSecOps gates.
+- [x] P5 deeper testing — deployed on `main`.
+- [ ] P6 CI/DevSecOps gates — active on `p6-ci-devsecops`.
 - [ ] P7 structured observability.
 - [ ] Authenticated console, asset broker, universal profiles, and edge-agent work as
   separate roadmap milestones with their own specs and acceptance evidence.

@@ -72,9 +72,10 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"dd055e251c455086ddcb02bc302d9f406b05d6ce",
 		"P4 targeted Layer-1 hardening is deployed",
 		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
-		"P5 deeper testing is complete",
-		"p5-deeper-testing",
-		"merge-ready",
+		"P5 deeper testing is deployed",
+		"4a68ca054a5f077d62a0f887234866673feb7353",
+		"P6 CI/DevSecOps is active",
+		"p6-ci-devsecops",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("context capsule does not contain %q", required)
@@ -86,11 +87,11 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 
 	for _, required := range []string{
 		"## Status snapshot — 2026-07-13",
-		"P0-P4 architecture and L1 hardening",
+		"P0-P5 architecture, hardening, and deeper testing",
 		"Deployed",
-		"P4 targeted L1 hardening",
 		"P5 deeper testing",
-		"Complete / merge-ready",
+		"P6 CI/DevSecOps",
+		"In progress",
 		"Console/showcase",
 		"Not started",
 		"Universal execution profiles",
@@ -104,11 +105,11 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"p5-deeper-testing",
-		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
-		"specs/002-deeper-testing/",
-		"race detector",
-		"coverage gate",
+		"p6-ci-devsecops",
+		"4a68ca054a5f077d62a0f887234866673feb7353",
+		"specs/003-ci-devsecops/",
+		"workflow policy guard",
+		"CGO race",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)
