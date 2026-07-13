@@ -7,17 +7,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/grantadmin"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/policy"
-	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
 func serve(args []string) error {
@@ -25,74 +22,15 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg := opts.Config
-	pol, err := policy.NewPolicy(cfg)
+	runtime, err := buildRuntime(opts)
 	if err != nil {
 		return err
 	}
-	primary := pol.Roots()[0]
-
-	ap := opts.AuditPath
-	if ap == "" {
-		ap = filepath.Join(primary, ".agent-memory", "audit.log")
-	}
-	if err := os.MkdirAll(filepath.Dir(ap), 0o755); err != nil {
-		return fmt.Errorf("creating audit dir: %w", err)
-	}
-	logger, err := audit.Open(ap)
-	if err != nil {
-		return fmt.Errorf("opening audit log: %w", err)
-	}
-	defer logger.Close()
-
-	// Select the L3 sandbox runner. "docker" gets the real hardened backend; other
-	// named backends (nsjail/gvisor) stay pending until implemented; "none" disabled.
-	// NOTE: the runner currently backs sandbox_status only — no tool routes command
-	// execution through it yet (broad exec stays gated until adversarial Linux tests
-	// pass; see docs/l3-sandbox-plan.md).
-	sandboxRunner := tools.NewSandboxRunner(cfg.SandboxBackend)
-	if cfg.SandboxBackend == "docker" {
-		img := os.Getenv("MCP_DEVBOX_SANDBOX_IMAGE")
-		if img == "" {
-			img = "golang:1.26-alpine"
-		}
-		sandboxRunner = tools.NewDockerSandboxRunner(tools.DockerSandboxConfig{Image: img, Root: primary})
-	}
-	svc := tools.NewService(pol, logger, primary).
-		WithTestCommand(cfg.TestCommand).
-		WithSandboxRunner(sandboxRunner).
-		WithValidationRunner(tools.NewValidationRunner(os.Getenv(validationRunnerURLEnv), os.Getenv(validationRunnerTokenEnv)))
-	privilegedTimeout := 2 * time.Minute
-	if raw := strings.TrimSpace(os.Getenv(privilegedTimeoutEnv)); raw != "" {
-		parsed, err := time.ParseDuration(raw)
-		if err != nil || parsed <= 0 {
-			return fmt.Errorf("%s must be a positive duration", privilegedTimeoutEnv)
-		}
-		privilegedTimeout = parsed
-	}
-	svc = svc.WithPrivilegedConfig(tools.PrivilegedConfig{
-		Enabled:         strings.EqualFold(strings.TrimSpace(os.Getenv(privilegedTasksEnv)), "true"),
-		AllowedServices: splitCSV(os.Getenv(privilegedServicesEnv)),
-		Timeout:         privilegedTimeout,
-	})
-	// Optional Coolify deploy capability (disabled unless configured). The API token
-	// is a secret read from env; it is never exposed to the agent.
-	if cu := strings.TrimSpace(os.Getenv(coolifyURLEnv)); cu != "" {
-		svc = svc.WithCoolify(tools.NewCoolifyClient(cu, os.Getenv(coolifyAPITokenEnv), splitCSV(os.Getenv(coolifyAllowedAppsEnv))).
-			WithBuilderConfig(
-				os.Getenv(coolifyServerUUIDEnv),
-				os.Getenv(coolifyProjectUUIDEnv),
-				os.Getenv(coolifyEnvironmentNameEnv),
-				os.Getenv(coolifyEnvironmentUUIDEnv),
-				splitCSV(os.Getenv(coolifyAllowedDomainsEnv)),
-			).
-			WithGitHubApp(os.Getenv(coolifyGitHubAppUUIDEnv)).
-			WithBuilderRuntime(os.Getenv(coolifyDestinationUUIDEnv), splitSemicolon(os.Getenv(coolifyAllowedMountsEnv))))
-	}
-	if gt := strings.TrimSpace(os.Getenv(githubTokenEnv)); gt != "" {
-		svc = svc.WithGitHub(tools.NewGitHubClient("", gt, os.Getenv(githubOwnerEnv), os.Getenv(githubOwnerTypeEnv), os.Getenv(githubDefaultVisibilityEnv)))
-	}
-	srv := mcpserver.New(svc)
+	defer runtime.Close()
+	pol := runtime.Policy
+	logger := runtime.Logger
+	srv := runtime.Server
+	ap := runtime.AuditPath
 	adminToken, err := randomHexToken()
 	if err != nil {
 		return fmt.Errorf("creating admin token: %w", err)

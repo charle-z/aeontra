@@ -14,9 +14,10 @@ const tokenEnv = "MCP_DEVBOX_TOKEN"
 // Env fallbacks for the test/allowlist commands so a containerized deploy (Coolify)
 // can configure them without baking flags into the image. A flag, when set, wins.
 const (
-	testCmdEnv  = "MCP_DEVBOX_TEST_CMD"
-	allowCmdEnv = "MCP_DEVBOX_ALLOW_CMD"
-	sandboxEnv  = "MCP_DEVBOX_SANDBOX"
+	testCmdEnv      = "MCP_DEVBOX_TEST_CMD"
+	allowCmdEnv     = "MCP_DEVBOX_ALLOW_CMD"
+	sandboxEnv      = "MCP_DEVBOX_SANDBOX"
+	sandboxImageEnv = "MCP_DEVBOX_SANDBOX_IMAGE"
 )
 
 // OAuth env. When both are set, the HTTP transport enables its in-process OAuth

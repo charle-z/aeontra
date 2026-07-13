@@ -5,17 +5,18 @@ Status: in progress on branch `p3-composition-root` from deployed `main` commit 
 Completed:
 - Step 63 `73f9df4`: extracted the command composition root into `internal/app` and reduced `cmd/mcp-devbox/main.go` to `app.Main()`.
 - Step 64 `fd6d2ac`: split application orchestration into command, environment, OAuth, serve/bootstrap and grant modules.
+- Step 65 `9bde22e`: isolated serve flag/env normalization in a tested immutable options parser.
 
-Current Step 65 candidate:
-- added `serveOptions` and `parseServeOptions` so CLI/env normalization is independent of daemon construction;
-- preserved repeatable/comma-separated roots, mode, audit path, HTTP address/token, command allowlist, test command and sandbox backend;
-- flags continue to override `MCP_DEVBOX_ALLOW_CMD`, `MCP_DEVBOX_TEST_CMD`, and `MCP_DEVBOX_SANDBOX`;
-- test-command programs are still appended uniquely to the effective allowlist;
-- `serve` now consumes the validated immutable config rather than owning flag parsing.
+Current Step 66 candidate:
+- introduced `appRuntime` to compose policy, audit logger, capability service and MCP server independently of transport lifecycle;
+- extracted sandbox, private validation, privileged-profile, Coolify and GitHub dependency builders;
+- froze `MCP_DEVBOX_SANDBOX_IMAGE` alongside the existing environment contracts;
+- optional integrations remain disabled unless their original configuration variables are present;
+- runtime construction closes the audit logger on partial failure and exposes one explicit Close path.
 
-Step 65 verification:
-- RED failed because the parser did not exist;
-- compatibility tests passed for flag precedence, existing env names, root handling, defaults and required-root failure;
+Step 66 verification:
+- RED failed because runtime builders and environment adapters did not exist;
+- tests passed for privileged timeout/services, optional GitHub/Coolify/validation construction, sandbox posture and complete runtime composition;
 - full tests, `go vet ./...`, and `go build ./...` passed.
 
-Next autonomous step: extract runtime/service composition from transport lifecycle and test optional GitHub, Coolify, validation, sandbox and privileged configuration without exposing secret values. Do not publish, merge or deploy P3 without explicit owner approval.
+Next autonomous step: isolate local grant-admin and HTTP/stdio transport lifecycle, then add fail-closed auth and address-normalization tests without changing auth semantics. Do not publish, merge or deploy P3 without explicit owner approval.

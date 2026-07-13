@@ -1,0 +1,139 @@
+package app
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/config"
+)
+
+func clearRuntimeEnv(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{
+		sandboxImageEnv,
+		validationRunnerURLEnv, validationRunnerTokenEnv,
+		privilegedTasksEnv, privilegedServicesEnv, privilegedTimeoutEnv,
+		githubTokenEnv, githubOwnerEnv, githubOwnerTypeEnv, githubDefaultVisibilityEnv,
+		coolifyURLEnv, coolifyAPITokenEnv, coolifyAllowedAppsEnv, coolifyServerUUIDEnv,
+		coolifyProjectUUIDEnv, coolifyEnvironmentNameEnv, coolifyEnvironmentUUIDEnv,
+		coolifyAllowedDomainsEnv, coolifyGitHubAppUUIDEnv, coolifyDestinationUUIDEnv,
+		coolifyAllowedMountsEnv,
+	} {
+		t.Setenv(name, "")
+	}
+}
+
+func TestLoadPrivilegedConfigPreservesEnvironmentContract(t *testing.T) {
+	clearRuntimeEnv(t)
+	t.Setenv(privilegedTasksEnv, "true")
+	t.Setenv(privilegedServicesEnv, "alpha,beta_service")
+	t.Setenv(privilegedTimeoutEnv, "45s")
+
+	cfg, err := loadPrivilegedConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Enabled || cfg.Timeout != 45*time.Second {
+		t.Fatalf("privileged config = %#v", cfg)
+	}
+	if strings.Join(cfg.AllowedServices, ",") != "alpha,beta_service" {
+		t.Fatalf("services = %#v", cfg.AllowedServices)
+	}
+}
+
+func TestLoadPrivilegedConfigRejectsInvalidTimeout(t *testing.T) {
+	clearRuntimeEnv(t)
+	t.Setenv(privilegedTimeoutEnv, "0s")
+	if _, err := loadPrivilegedConfig(); err == nil || !strings.Contains(err.Error(), privilegedTimeoutEnv) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestOptionalRuntimeClientsUseExistingEnvironmentNames(t *testing.T) {
+	clearRuntimeEnv(t)
+	if buildGitHubClientFromEnv() != nil {
+		t.Fatal("GitHub client should be disabled without GITHUB_TOKEN")
+	}
+	if buildCoolifyClientFromEnv() != nil {
+		t.Fatal("Coolify client should be disabled without COOLIFY_URL")
+	}
+	if buildValidationRunnerFromEnv().Available() {
+		t.Fatal("validation runner should be disabled without its URL/token")
+	}
+
+	t.Setenv(githubTokenEnv, "test-token")
+	t.Setenv(githubOwnerEnv, "charle-z")
+	t.Setenv(githubOwnerTypeEnv, "user")
+	t.Setenv(githubDefaultVisibilityEnv, "private")
+	if buildGitHubClientFromEnv() == nil {
+		t.Fatal("GitHub client was not configured from existing env names")
+	}
+
+	t.Setenv(coolifyURLEnv, "https://coolify.example")
+	t.Setenv(coolifyAPITokenEnv, "test-token")
+	t.Setenv(coolifyAllowedAppsEnv, "app-a,app-b")
+	t.Setenv(coolifyAllowedDomainsEnv, "example.com")
+	if buildCoolifyClientFromEnv() == nil {
+		t.Fatal("Coolify client was not configured from existing env names")
+	}
+
+	t.Setenv(validationRunnerURLEnv, "http://127.0.0.1:9090")
+	t.Setenv(validationRunnerTokenEnv, strings.Repeat("x", 32))
+	if !buildValidationRunnerFromEnv().Available() {
+		t.Fatal("validation runner was not configured from existing env names")
+	}
+}
+
+func TestBuildSandboxRunnerPreservesBackendPosture(t *testing.T) {
+	clearRuntimeEnv(t)
+	root := t.TempDir()
+
+	pending := buildSandboxRunner(config.Config{SandboxBackend: "gvisor"}, root).Status(context.Background())
+	if pending.Available || pending.Backend != "gvisor" || pending.FreeTerminal {
+		t.Fatalf("pending sandbox status = %#v", pending)
+	}
+
+	t.Setenv(sandboxImageEnv, "golang:1.26-alpine")
+	docker := buildSandboxRunner(config.Config{SandboxBackend: "docker"}, root).Status(context.Background())
+	if !docker.Available || docker.Backend != "docker" || docker.DefaultEgress != "none" || docker.FreeTerminal {
+		t.Fatalf("docker sandbox status = %#v", docker)
+	}
+}
+
+func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
+	clearRuntimeEnv(t)
+	root := t.TempDir()
+	auditPath := filepath.Join(root, "logs", "audit.jsonl")
+	cfg, err := config.New(config.Config{
+		Roots:           []string{root},
+		Mode:            config.ModeReadOnly,
+		AllowedCommands: []string{"git", "go"},
+		TestCommand:     []string{"go", "test", "./..."},
+		SandboxBackend:  "none",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runtime, err := buildRuntime(serveOptions{Config: cfg, AuditPath: auditPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+
+	if runtime.PrimaryRoot != filepath.Clean(root) || runtime.AuditPath != auditPath {
+		t.Fatalf("runtime paths = %#v", runtime)
+	}
+	if runtime.Policy == nil || runtime.Service == nil || runtime.Server == nil || runtime.Logger == nil {
+		t.Fatal("runtime composition is incomplete")
+	}
+	if runtime.Policy.Mode() != config.ModeReadOnly {
+		t.Fatalf("mode = %q", runtime.Policy.Mode())
+	}
+	if status := runtime.Service.SandboxStatus(); !strings.Contains(status, "backend: none") {
+		t.Fatalf("sandbox status = %q", status)
+	}
+}
