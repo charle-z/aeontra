@@ -25,12 +25,12 @@ var memoryWriteSections = map[string]string{
 // MemoryRead returns the repo's agent memory: all Markdown under .agent-memory/,
 // concatenated and redacted. It is a read and works in any mode. Missing memory is
 // not an error — it returns a short note.
-func (s *Service) MemoryRead() (string, error) {
+func (s *RepositoryCapability) MemoryRead() (string, error) {
 	return s.MemoryReadIn("")
 }
 
 // MemoryReadIn reads memory under an optional selected repo/workdir inside the jail.
-func (s *Service) MemoryReadIn(repo string) (string, error) {
+func (s *RepositoryCapability) MemoryReadIn(repo string) (string, error) {
 	sp := s.log.Start("memory_read")
 	dir, err := s.workdir(repo)
 	if err != nil {
@@ -82,7 +82,7 @@ func (s *Service) MemoryReadIn(repo string) (string, error) {
 // mode (constitution Article I.1). The note is secret-scanned/redacted before
 // persisting so secrets are never written into memory. Writes are confined to the
 // memory directory inside the jail.
-func (s *Service) MemoryUpdateHandoff(content string) (string, error) {
+func (s *RepositoryCapability) MemoryUpdateHandoff(content string) (string, error) {
 	sp := s.log.Start("memory_update_handoff")
 	if s.pol.Mode() == config.ModeReadOnly {
 		err := fmt.Errorf("memory_update_handoff blocked: server is read-only")
@@ -122,13 +122,13 @@ func (s *Service) MemoryUpdateHandoff(content string) (string, error) {
 // MemoryWrite writes one structured memory section under .agent-memory/. Sections
 // are closed-set names, not paths. The destination still goes through the Policy
 // write gate so jail, secret-path deny, and mode posture remain centralized.
-func (s *Service) MemoryWrite(section, content string, approve bool) (string, error) {
+func (s *RepositoryCapability) MemoryWrite(section, content string, approve bool) (string, error) {
 	return s.MemoryWriteIn("", section, content, approve)
 }
 
 // MemoryWriteIn writes structured memory under an optional selected repo/workdir
 // inside the jail.
-func (s *Service) MemoryWriteIn(repo, section, content string, approve bool) (string, error) {
+func (s *RepositoryCapability) MemoryWriteIn(repo, section, content string, approve bool) (string, error) {
 	sp := s.log.Start("memory_write")
 	dir, err := s.workdir(repo)
 	if err != nil {

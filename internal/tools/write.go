@@ -13,13 +13,13 @@ import (
 // validation, and ask-mode approval all apply exactly as for any other write. This
 // keeps the "patch-first, no full-file writes" invariant intact while giving the
 // agent an ergonomic create tool. Use apply_patch to modify existing files.
-func (s *Service) CreateFile(path, content string, approve bool) (string, error) {
+func (s *RepositoryCapability) CreateFile(path, content string, approve bool) (string, error) {
 	return s.CreateFileIn("", path, content, approve)
 }
 
 // CreateFileIn creates a new file relative to an optional selected repo/workdir
 // inside the jail.
-func (s *Service) CreateFileIn(repo, path, content string, approve bool) (string, error) {
+func (s *RepositoryCapability) CreateFileIn(repo, path, content string, approve bool) (string, error) {
 	dir, err := s.workdir(repo)
 	if err != nil {
 		return "", err

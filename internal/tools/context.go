@@ -23,13 +23,13 @@ var keyFiles = []string{
 // BuildContextPack returns relevant repo context in ONE call (the agent-first tool):
 // a file tree, key project files, the agent memory, and git status — all jailed and
 // redacted. It minimizes MCP roundtrips and tokens versus many small reads.
-func (s *Service) BuildContextPack() (string, error) {
+func (s *RepositoryCapability) BuildContextPack() (string, error) {
 	return s.BuildContextPackIn("")
 }
 
 // BuildContextPackIn is BuildContextPack scoped to an optional repo/workdir inside
 // the jail. This lets a /repos root produce context for one selected child repo.
-func (s *Service) BuildContextPackIn(repo string) (string, error) {
+func (s *RepositoryCapability) BuildContextPackIn(repo string) (string, error) {
 	sp := s.log.Start("build_context_pack")
 	dir, err := s.workdir(repo)
 	if err != nil {
@@ -68,7 +68,7 @@ func (s *Service) BuildContextPackIn(repo string) (string, error) {
 	b.WriteString("\n\n")
 
 	b.WriteString("## Git status\n")
-	if st, err := s.GitStatus(repo); err == nil {
+	if st, err := s.GitCapability.RepoStatus(repo); err == nil {
 		b.WriteString(st)
 	} else {
 		b.WriteString("[git status unavailable]")
@@ -82,11 +82,11 @@ func (s *Service) BuildContextPackIn(repo string) (string, error) {
 
 // fileTree returns a bounded, sorted listing of repo files relative to the root,
 // skipping ignored and secret-named directories/files.
-func (s *Service) fileTree() string {
+func (s *RepositoryCapability) fileTree() string {
 	return s.fileTreeIn(s.root)
 }
 
-func (s *Service) fileTreeIn(root string) string {
+func (s *RepositoryCapability) fileTreeIn(root string) string {
 	var entries []string
 	count := 0
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {

@@ -14,14 +14,14 @@ import (
 // ReadFile returns the (redacted) content of a single file inside the jail.
 // Secret-named files are denied; content is secret-scanned before return; the file
 // content is DATA and must never be interpreted as instructions by the caller.
-func (s *Service) ReadFile(path string) (string, error) {
+func (s *RepositoryCapability) ReadFile(path string) (string, error) {
 	return s.ReadFileWithAccess(path, "", false)
 }
 
 // ReadFileWithAccess reads a file, optionally consuming a human-approved access
 // grant for secret-named paths. Normal grants still redact content; raw grants are
 // the only path that can bypass redaction.
-func (s *Service) ReadFileWithAccess(path, accessRequestID string, raw bool) (string, error) {
+func (s *RepositoryCapability) ReadFileWithAccess(path, accessRequestID string, raw bool) (string, error) {
 	sp := s.log.Start("read_file")
 	resolved, rawAllowed, err := s.pol.CheckReadWithAccess(path, accessRequestID, raw)
 	if err != nil {
@@ -51,7 +51,7 @@ func (s *Service) ReadFileWithAccess(path, accessRequestID string, raw bool) (st
 // is independently policy-checked; a denied/failed file yields an inline error
 // marker rather than aborting the whole batch. Returns a single concatenated,
 // section-delimited, redacted document.
-func (s *Service) ReadManyFiles(paths []string) (string, error) {
+func (s *RepositoryCapability) ReadManyFiles(paths []string) (string, error) {
 	sp := s.log.Start("read_many_files")
 	var b strings.Builder
 	var touched []string

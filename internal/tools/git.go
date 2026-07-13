@@ -97,13 +97,13 @@ func (s *Service) GitCommitIn(repo, message string, approve bool) (string, error
 // patch's target files and policy-checks each as a write (jail + secret + mode),
 // (2) validates with `git apply --check` BEFORE applying, (3) in ask mode returns
 // "approval required" without applying unless approve is true.
-func (s *Service) ApplyPatch(patch string, approve bool) (string, error) {
+func (s *RepositoryCapability) ApplyPatch(patch string, approve bool) (string, error) {
 	return s.ApplyPatchIn("", patch, approve)
 }
 
 // ApplyPatchIn applies a patch relative to an optional selected repo/workdir
 // inside the jail.
-func (s *Service) ApplyPatchIn(repo, patch string, approve bool) (string, error) {
+func (s *RepositoryCapability) ApplyPatchIn(repo, patch string, approve bool) (string, error) {
 	sp := s.log.Start("apply_patch")
 	dir, err := s.workdir(repo)
 	if err != nil {

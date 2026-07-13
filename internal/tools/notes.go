@@ -20,7 +20,7 @@ const (
 
 var noteSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
-func (s *Service) NotesList() (string, error) {
+func (s *RepositoryCapability) NotesList() (string, error) {
 	sp := s.log.Start("notes_list")
 	base, err := s.pol.CheckRead(filepath.Join(s.root, filepath.FromSlash(notesDir)))
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *Service) NotesList() (string, error) {
 	return b.String(), nil
 }
 
-func (s *Service) NotesRead(name string) (string, error) {
+func (s *RepositoryCapability) NotesRead(name string) (string, error) {
 	sp := s.log.Start("notes_read")
 	target, err := s.noteTarget(name)
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *Service) NotesRead(name string) (string, error) {
 	return s.redact(content), nil
 }
 
-func (s *Service) NotesWritePreview(name, content, mode string) (string, error) {
+func (s *RepositoryCapability) NotesWritePreview(name, content, mode string) (string, error) {
 	sp := s.log.Start("notes_write_preview")
 	name = strings.TrimSpace(name)
 	target, err := s.noteTarget(name)
@@ -170,7 +170,7 @@ func (s *Service) NotesWritePreview(name, content, mode string) (string, error) 
 		filepath.ToSlash(filepath.Join(notesDir, name+".md")), mode, resultSize, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) NotesWrite(planID string, approve bool) (string, error) {
+func (s *RepositoryCapability) NotesWrite(planID string, approve bool) (string, error) {
 	sp := s.log.Start("notes_write")
 	needsApproval, err := s.pol.CheckAction()
 	if err != nil {
@@ -257,7 +257,7 @@ func (s *Service) NotesWrite(planID string, approve bool) (string, error) {
 	return fmt.Sprintf("note %s: %s", plan.Args["mode"], filepath.ToSlash(filepath.Join(notesDir, plan.Args["name"]+".md"))), nil
 }
 
-func (s *Service) noteTarget(name string) (string, error) {
+func (s *RepositoryCapability) noteTarget(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if !noteSlugRe.MatchString(name) {
 		return "", fmt.Errorf("invalid note name %q (use lowercase slug characters a-z, 0-9, _ or -)", name)

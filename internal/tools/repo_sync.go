@@ -28,7 +28,7 @@ type repositoryStatus struct {
 
 // RepoStatus returns a stable, argument-free view of repository synchronization
 // and working-tree state. It never accepts arbitrary git arguments.
-func (s *Service) RepoStatus(repo string) (string, error) {
+func (s *GitCapability) RepoStatus(repo string) (string, error) {
 	sp := s.log.Start("repo_status")
 	status, err := s.readRepositoryStatus(repo)
 	if err != nil {
@@ -39,7 +39,7 @@ func (s *Service) RepoStatus(repo string) (string, error) {
 	return formatRepositoryStatus(status), nil
 }
 
-func (s *Service) readRepositoryStatus(repo string) (repositoryStatus, error) {
+func (s *GitCapability) readRepositoryStatus(repo string) (repositoryStatus, error) {
 	dir, err := s.workdir(repo)
 	if err != nil {
 		return repositoryStatus{}, err
@@ -274,7 +274,7 @@ func (s *Service) RepoFastForward(planID string, approve bool) (string, error) {
 	return s.redact(out), nil
 }
 
-func (s *Service) gitRead(dir string, args ...string) (string, error) {
+func (s *GitCapability) gitRead(dir string, args ...string) (string, error) {
 	if err := s.pol.CheckCommandAllowed("git", args); err != nil {
 		return "", err
 	}

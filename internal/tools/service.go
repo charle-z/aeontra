@@ -48,15 +48,17 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		plans: NewActionPlanStore(log),
 	}
 	source := &SourceCapability{serviceCore: core}
+	git := &GitCapability{
+		serviceCore:      core,
+		SourceCapability: source,
+		githubRun:        execGitHubHTTPSRunner,
+	}
+	repository := &RepositoryCapability{serviceCore: core, GitCapability: git}
 	return &Service{
 		serviceCore:          core,
-		RepositoryCapability: &RepositoryCapability{serviceCore: core},
-		GitCapability: &GitCapability{
-			serviceCore:      core,
-			SourceCapability: source,
-			githubRun:        execGitHubHTTPSRunner,
-		},
-		SourceCapability: source,
+		RepositoryCapability: repository,
+		GitCapability:        git,
+		SourceCapability:     source,
 		PlatformCapability: &PlatformCapability{
 			serviceCore:      core,
 			SourceCapability: source,

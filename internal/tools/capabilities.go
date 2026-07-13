@@ -19,6 +19,7 @@ type serviceCore struct {
 // RepositoryCapability owns repository, filesystem, memory, and notes behavior.
 type RepositoryCapability struct {
 	*serviceCore
+	*GitCapability
 }
 
 // SourceCapability owns configured source-hosting API behavior.

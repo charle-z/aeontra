@@ -15,7 +15,7 @@ const maxListEntries = 300
 
 // ListDir lists one jailed directory without reading file contents. It skips secret
 // names and noisy internals, and marks directories that look like Git repositories.
-func (s *Service) ListDir(path string) (string, error) {
+func (s *RepositoryCapability) ListDir(path string) (string, error) {
 	sp := s.log.Start("list_dir")
 	dir, err := s.workdir(path)
 	if err != nil {

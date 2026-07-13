@@ -24,7 +24,7 @@ const maxSearchMatches = 200
 // SearchCode searches the jail for a regular expression. It skips ignored dirs and
 // secret-named paths entirely, never reads outside the jail, and redacts every
 // returned line so a search cannot be used to surface a secret value.
-func (s *Service) SearchCode(query string) (string, error) {
+func (s *RepositoryCapability) SearchCode(query string) (string, error) {
 	sp := s.log.Start("search_code")
 	re, err := regexp.Compile(query)
 	if err != nil {
@@ -71,7 +71,7 @@ func (s *Service) SearchCode(query string) (string, error) {
 
 // searchFile scans one file and writes "relpath:line: text" for each match,
 // incrementing the shared match counter via total.
-func searchFile(b *strings.Builder, s *Service, re *regexp.Regexp, path string, total *int) {
+func searchFile(b *strings.Builder, s *RepositoryCapability, re *regexp.Regexp, path string, total *int) {
 	f, err := os.Open(path)
 	if err != nil {
 		return
