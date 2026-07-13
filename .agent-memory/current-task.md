@@ -12,20 +12,21 @@ Completed commits:
 - Step 34 `a61f8df`: repository writes.
 - Step 35 `2c5a073`: command and sandbox execution.
 - Step 36 `f9010db`: privileged profiles.
+- Step 37 `1f5c057`: core Coolify tools.
 
-Current Step 37 candidate:
-- added `internal/mcpserver/catalog/platform_core.go` with a narrow `PlatformCoreService` interface;
-- moved contiguous `coolify_deploy`, `coolify_list_apps`, `coolify_app_status`, `coolify_deployment_status`, `coolify_app_logs`, and `coolify_create_app` into `RegisterPlatformCore`;
-- added focused contract and routing tests.
+Current Step 38 candidate:
+- added `internal/mcpserver/catalog/validation_runner_platform.go` with a narrow `ValidationRunnerPlatformService` interface;
+- moved `platform_validation_runner_create_preview` and `platform_validation_runner_create` into `RegisterValidationRunnerPlatform` at their original position;
+- added focused tests for names, order, descriptions, schemas, versions, and handler routing.
 
-Compatibility preserved:
-- 62 tools;
+Compatibility preserved across Steps 35-38:
+- 62 public tools;
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
-- public contracts, aliases, annotations, handlers, approvals, and envs unchanged.
+- names, order, descriptions, schemas, versions, annotations, aliases, handlers, approvals, and envs unchanged.
 
-Step 37 verification:
-- RED failed because `RegisterPlatformCore` did not exist;
+Step 38 verification:
+- RED failed because `RegisterValidationRunnerPlatform` did not exist;
 - focused and full tests passed;
 - `go vet ./...`, `go build ./...`, diff review, and production catalog smoke passed.
 
-Next in the current four-step batch: Step 38 validation-runner platform creation. No publish, merge, or deploy.
+The requested four-step batch is complete after committing Step 38. No publish, merge, or deploy has occurred. Next natural domain: platform app creation/deployment planning block, still one stable group per commit.

@@ -133,35 +133,7 @@ func (s *Server) register() {
 
 	catalog.RegisterPlatformCore(s.addCatalogTool, s.svc)
 
-	s.add("platform_validation_runner_create_preview",
-		"Plan exactly one private Coolify validation-runner application using the administrator-configured destination and exact mount allowlist. It never deploys or accepts secret values.",
-		object(map[string]any{"branch": strProp("source branch; defaults to cubethon-q3")}),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Branch string `json:"branch"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.PlatformValidationRunnerCreatePreview(p.Branch)
-		})
-
-	s.add("platform_validation_runner_create",
-		"Execute one reviewed validation-runner creation plan. It creates one private, non-deployed Coolify application and configures only non-secret runtime variables; explicit approval is required.",
-		object(map[string]any{
-			"plan_id": strProp("plan id returned by platform_validation_runner_create_preview"),
-			"approve": boolProp("execute the reviewed application creation plan"),
-		}, "plan_id"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				PlanID  string `json:"plan_id"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.PlatformValidationRunnerCreate(p.PlanID, p.Approve)
-		})
+	catalog.RegisterValidationRunnerPlatform(s.addCatalogTool, s.svc)
 
 	s.add("platform_app_create_preview",
 		"Validate a Coolify application definition against configured server/project/environment, GitHub owner and domain allowlist, then create a read-only expiring single-use plan. Required environment variable names are shown; no secret values are accepted or returned.",
