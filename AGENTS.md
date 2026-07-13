@@ -10,7 +10,7 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
 - Current phase: **Layer 1 + remote connectivity + secure builder workflow.** stdio
-  and HTTP/OAuth transports, policy core, 51 annotated MCP tools, action plans,
+  and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
   audit, persistent notes, and adversarial tests. The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
   `docs/context-capsule.md` and `docs/tools.md`.

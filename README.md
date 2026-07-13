@@ -57,7 +57,7 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **mandatory bearer auth**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the server now exposes 59 deliberately annotated
+**Secure builder evolution:** the server now exposes 62 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
 private validation profiles, bounded Coolify logs, and disabled-by-default

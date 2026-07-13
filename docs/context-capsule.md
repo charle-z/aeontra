@@ -18,6 +18,15 @@ See `docs/adr/0001-p0-catalog-cache-and-product-foundations.md`,
 `docs/baselines/2026-07-12-p0.md`, and `docs/quality-gates.md`. Existing environment
 variable names and MCP wire contracts are frozen for compatibility during P0-P3.
 
+P1 catalog modularization is complete on branch `p1-tool-catalog-runtime`. All
+public tool registrations, compatibility aliases, and behavior annotations are now
+declarative under `internal/mcpserver/catalog`; `tools.go` is limited to composition
+and server adapters, with an AST boundary test preventing direct registration from
+returning. The wire surface remains 62 tools with catalog hash
+`sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+The branch is merge-ready pending explicit owner approval; production remains on the
+previous `main` baseline until merge and deployment are authorized.
+
 Product roadmap (2026-07-11): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
 edge agents, provider-neutral MiniMax/OpenCode orchestration, and scope-bound
@@ -328,10 +337,11 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Push and deploy the completed P0 branch, run the catalog smoke check, and
-   record whether ChatGPT honors `notifications/tools/list_changed`.
-2. Refactor tool registration, service capabilities, and application composition in
-   small behavior-preserving steps. Do not rename deployed env vars or public tools.
+1. Review and merge `p1-tool-catalog-runtime` into `main` only after explicit owner
+   approval; then deploy and verify `/version`, the 62-tool catalog, its hash, and
+   read-only acceptance calls from the connected client.
+2. Start P2/P3 work from a fresh branch after the production baseline is verified;
+   do not mix catalog closure with console, dynamic capabilities, or edge-agent work.
 3. Add CI/DevSecOps gates and structured observability before converting the static
    console into the authenticated operator product.
 4. Keep PC/WSL edge workcells, IaC, and security workcells deferred until the core
@@ -352,10 +362,11 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-11. Local secure-builder gates green: `go test ./... -count=1`,
-`go vet ./...`, `go build ./...`, and empty `gofmt -l .`. Wire-level `tools/list`
-catalog consistency asserts every registered tool has a schema, description, all four
-annotations, handler, contract version, deterministic hash, and documentation. No push, GitHub creation, Coolify
-deployment, live infrastructure mutation, or secret-bearing API call was performed.
-Production still runs the previously validated baseline until the owner explicitly
-authorizes push and redeploy.
+Date: 2026-07-13. P1 catalog modularization is merge-ready on
+`p1-tool-catalog-runtime`. `go test ./... -count=1`, `go vet ./...`,
+`go build ./...`, formatting/diff checks, catalog boundary tests, and the production
+catalog smoke are green. The public surface remains 62 tools with deterministic hash
+`sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+The branch was compared with refreshed `origin/main`; commit messages contain no AI
+signatures, and no publish, merge, deployment, infrastructure mutation, or
+secret-bearing API call was performed during P1 closure.
