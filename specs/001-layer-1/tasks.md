@@ -1,22 +1,36 @@
 # Tasks — Layer 1
 
-Each task = one TDD step = one commit. RED→GREEN→suite→vet→commit.
-Adversarial tests are part of the same step that builds the control.
+Status: **completed**. Each original task was delivered with tests and remains covered
+by the current full suite. New architecture/security work is tracked by numbered P0+
+steps in `.agent-memory/current-task.md` and dated baselines under `docs/baselines/`.
 
-- [ ] **T01 Setup** — Go toolchain, git+branch, `go mod init`, module layout, AGENTS.md commands.
-- [ ] **T02 config** — secure-default `Config`/`Policy` structs; load project root; immutable.
-- [ ] **T03 path jail** — `CheckRead/CheckWrite(path)` contain to roots. Adversarial: `../`, absolute, UNC, symlink escape.
-- [ ] **T04 secret deny by path** — `.env`, `.env.*`, `.ssh`, key/cred/browser/OS-store paths denied. Adversarial: case, nested, traversal-to-secret.
-- [ ] **T05 content scan + redact** — `Redact(content)`: API keys, tokens, `BEGIN ... PRIVATE KEY`, common creds. Adversarial: secret in source/log not just .env.
-- [ ] **T06 command allowlist + destructive block** — `CheckCommand(prog,args)`. Adversarial: chained `;`/`&&`/`|`, quoted, arg-injection, non-allowlisted, destructive.
-- [ ] **T07 audit log** — append-only JSONL: ts, tool, args summary, files, decision, duration.
-- [ ] **T08 policy composition** — `policy.Policy` single gate; verify no runtime mutation path.
-- [ ] **T09 read tools** — `read_file`, `read_many_files` (jail+secret+scan); prompt-injection: content returned as data.
-- [ ] **T10 search_code** — jailed search, secret paths skipped, matches redacted.
-- [ ] **T11 build_context_pack** — one-call relevant context (tree + key files + memory), redacted.
-- [ ] **T12 apply_patch** — patch-first; `git apply --check` before apply; jailed; ask-gated.
-- [ ] **T13 git_status / git_diff** — controlled git read; diff output redacted.
-- [ ] **T14 run_tests** — allowlisted test command only; output redacted; jailed.
-- [ ] **T15 memory** — `memory_read`, `memory_update_handoff` over `.agent-memory/` (jail+scan).
-- [ ] **T16 mcpserver + serve** — stdio MCP wiring; every handler audits + gates.
-- [ ] **T17 adversarial consolidation** — full bypass suite green; `go vet`/build green; capsule update.
+- [x] **T01 Setup** — Go module, repository layout, agent instructions, build commands.
+- [x] **T02 config** — secure-default immutable startup configuration.
+- [x] **T03 path jail** — filesystem/command containment with traversal, UNC, sibling-prefix, and symlink defenses.
+- [x] **T04 secret deny by path** — `.env*`, `.ssh`, keys, credentials, browser/OS stores.
+- [x] **T05 content scan + redact** — provider tokens, private keys, credential assignments, output redaction.
+- [x] **T06 command allowlist + destructive block** — explicit argv, no shell, injection/destructive blocking.
+- [x] **T07 audit log** — append-only, redacted, concurrency-safe JSONL.
+- [x] **T08 policy composition** — one immutable policy authority with no MCP mutation path.
+- [x] **T09 read tools** — jailed, secret-aware, redacted single/multi-file reads.
+- [x] **T10 search_code** — jailed search, secret-path skipping, redacted matches.
+- [x] **T11 build_context_pack** — bounded repository context, memory, tree, and Git state.
+- [x] **T12 apply_patch** — patch-first writes with `git apply --check` and approval gates.
+- [x] **T13 git_status / git_diff** — controlled Git reads with redacted output.
+- [x] **T14 run_tests** — configured allowlisted command, jailed cwd, redacted output.
+- [x] **T15 memory** — structured Markdown memory and latest handoff support.
+- [x] **T16 mcpserver + serve** — stdio MCP wiring, centralized handlers, audit and gates.
+- [x] **T17 adversarial consolidation** — bypass suite, full tests, vet/build, capsule.
+
+## Follow-on phases
+
+- [x] P0 deterministic catalog and deployment identity.
+- [x] P1 catalog modularization.
+- [x] P2 capability-service split.
+- [x] P3 composition root.
+- [ ] P4 targeted Layer-1 hardening — active on `p4-l1-hardening`.
+- [ ] P5 deeper testing.
+- [ ] P6 CI/DevSecOps gates.
+- [ ] P7 structured observability.
+- [ ] Authenticated console, asset broker, universal profiles, and edge-agent work as
+  separate roadmap milestones with their own specs and acceptance evidence.

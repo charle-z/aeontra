@@ -1,62 +1,75 @@
 # Spec — Layer 1: Secure local MCP tools (MVP)
 
-Status: **active** · Scope: **L1 only** (see `docs/features.md`).
+Status: **completed and evolved** · Original scope: **Layer 1**.
 Governed by `.specify/memory/constitution.md`.
+
+This document is the historical acceptance baseline for the first usable product. It
+is not the current roadmap. Current deployed state and active work live in
+`docs/context-capsule.md`, `docs/product-roadmap.md`, and
+`.agent-memory/current-task.md`.
 
 ## Goal
 
-A secure-by-default local MCP daemon (Go) that lets an MCP client (ChatGPT, Claude,
-Cursor…) read / search / patch / test a local repo **safely**: secrets never leak
-(by path AND content), commands cannot leave the jail, every action is audited, and
-risky actions ask for approval. Already more secure than Desktop Commander.
+Build a secure-by-default Go daemon that lets an MCP client read, search, patch,
+validate, and keep memory for a jailed repository without exposing secrets or a free
+terminal. Repository content is untrusted data; the daemon owns policy, execution,
+redaction, approval, and audit.
 
-## In scope (L1)
+## Original Layer 1 scope — completed
 
-- **Policy core** (the product): path jail (fs + commands), secret deny by path,
-  content secret-scan + redaction, command allowlist + destructive block, audit log,
-  approval gating for risky actions. Policy is immutable at runtime.
-- **MCP tools:** `build_context_pack`, `read_file`, `read_many_files`, `search_code`,
-  `apply_patch`, `git_status`, `git_diff`, `run_tests`, `memory_read`,
-  `memory_update_handoff`. (`project_list`/`project_scan` thin, optional.)
-- **Memory:** `.agent-memory/` Markdown + handoffs.
-- **Transport / CLI:** stdio MCP transport; `mcp-devbox serve`. (HTTP/tunnel = later.)
-- **Tests:** functional per tool + adversarial bypass suite + content-scan redaction.
+- Immutable policy core with filesystem/command jail, secret-path denial, content
+  redaction, command allowlist, destructive-command blocking, approval gates, and
+  audit logging.
+- Read/search/context, patch/create, Git read/commit, test/command, and Markdown
+  memory/handoff tools.
+- MCP stdio transport and `mcp-devbox serve` CLI.
+- Functional and adversarial tests for traversal, symlink escape, command injection,
+  allowlist bypass, secret exfiltration, and prompt-injection data handling.
 
-## Out of scope (NOT this session)
+## Evolution beyond the original scope
 
-L2 cheap-model worker · L3 OS sandbox / egress control · L4 multi-client install /
-Cloudflare Tunnel / relay decision · HTTP transport · UI / dashboard · DB · job queue.
+The product now also includes HTTP/OAuth connectivity, persistent notes, planned Git
+and Coolify workflows, deterministic catalog identity, modular catalog registration,
+capability services, and a strict command composition root. Production exposes 62
+annotated tools. These additions do not weaken the original Layer 1 invariants.
 
-## Actors
-
-- **Orchestrating client** (untrusted in the prompt-injection sense): calls MCP tools.
-- **Daemon** (trusted): enforces policy, executes, audits.
-- **Repo files** (untrusted DATA): never interpreted as instructions.
-- **Human owner**: approves risky actions; owns the policy config (not the agent).
+The public console, universal profile registry, asset broker, and private PC/WSL edge
+agent remain separate roadmap work and are not claimed as completed here.
 
 ## Functional requirements
 
-| ID | Requirement |
-|----|-------------|
-| FR-1 | All fs + command operations resolve to a real path **inside** a configured project root; anything else is denied. |
-| FR-2 | Reads of secret paths (`.env`, `.env.*`, `.ssh`, key/cred files, browser profiles, OS stores) are denied regardless of jail. |
-| FR-3 | Before returning ANY file content, scan for secret patterns and redact matches. |
-| FR-4 | Only allowlisted command programs run; destructive commands are blocked even if allowlisted-looking. |
-| FR-5 | Writes happen only via `apply_patch`, validated with `git apply --check` before applying; default policy = ask/read-only. |
-| FR-6 | Every tool call is appended to an audit log (timestamp, tool, args summary, files, decision, duration). |
-| FR-7 | `build_context_pack` returns relevant repo context in one call (fewer roundtrips/tokens). |
-| FR-8 | Memory tools read/update Markdown in `.agent-memory/` (jailed, secret-scanned). |
-| FR-9 | The policy cannot be modified through any MCP tool at runtime. |
+| ID | Requirement | State |
+|----|-------------|-------|
+| FR-1 | Filesystem and command workdirs resolve inside configured roots. | Implemented and adversarially tested. |
+| FR-2 | Secret paths are denied regardless of jail membership. | Implemented; temporary local-human grants remain exact-path and bounded. |
+| FR-3 | Returned file and command content is secret-scanned and redacted. | Implemented. |
+| FR-4 | Only allowlisted, non-destructive programs run without a shell. | Implemented; P4 additionally rejects path/PATH executable spoofing. |
+| FR-5 | Repository writes are patch-first and checked before application. | Implemented. |
+| FR-6 | Tool activity is appended to a redacted audit log. | Implemented. |
+| FR-7 | `build_context_pack` returns bounded relevant repository context. | Implemented. |
+| FR-8 | Structured memory and handoffs use jailed Markdown under `.agent-memory/`. | Implemented. |
+| FR-9 | No MCP tool can relax runtime policy. | Implemented and protected by architecture tests. |
 
-## Security requirements (from `docs/security.md`)
+## Security requirements
 
-- Path traversal (`../`, absolute, UNC) and symlink escape are blocked.
-- Command/arg injection and allowlist bypass (chained `;`/`&&`/`|`, quoting) are blocked.
-- A secret cannot be exfiltrated through a permitted command's output (content scan applies to command output too).
-- Instructions embedded in repo files are never executed.
+- Traversal, absolute/UNC escapes, sibling-prefix confusion, and symlink escapes fail.
+- Shell metacharacters, path-qualified allowlist spoofing, hostile workspace `PATH`
+  targets, and destructive command forms fail.
+- A permitted command cannot exfiltrate an unredacted secret through stdout/stderr.
+- Instructions embedded in repository content are never treated as authority.
+- Sensitive-read requests and grants are exact-path, local-human-approved, bounded,
+  expiring, and single-use.
 
-## Acceptance (L1 DoD)
+## Acceptance evidence
 
-`go test ./...` green incl. adversarial suite; `go vet`/build green; tools usable over
-stdio MCP; secrets blocked by path+content; commands jailed; audit present; risky
-actions gated. `docs/context-capsule.md` updated.
+Layer 1 is complete and has remained green through the P0–P3 architecture changes and
+current P4 hardening:
+
+```text
+go test ./... -count=1
+go vet ./...
+go build ./...
+```
+
+Production at the P3 baseline serves 62 tools with deterministic catalog hash
+`sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.

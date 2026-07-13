@@ -9,10 +9,9 @@ the Coolify/VPS deployment over HTTPS and can operate on repos cloned in the VPS
 volume. Current goal: evolve mcp-devbox into a GPT-driven agent tool box that can
 safely do work, while a human keeps control of risky operations.
 
-P0 architecture work began on 2026-07-12. The deterministic catalog,
-centralized build identity, safe `/version` diagnostics, no-cache headers,
-`tools.listChanged` notification, and post-deploy catalog smoke command are now
-implemented on `cubethon-q3`. They distinguish a stale server from a stale
+P0 architecture foundations are deployed. The deterministic catalog, centralized
+build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`
+notification, and post-deploy catalog smoke distinguish a stale server from a stale
 client catalog.
 See `docs/adr/0001-p0-catalog-cache-and-product-foundations.md`,
 `docs/baselines/2026-07-12-p0.md`, and `docs/quality-gates.md`. Existing environment
@@ -32,15 +31,19 @@ repository, Git, source-hosting, platform and execution capabilities implement t
 catalog contracts behind the compatible `Service` facade. Production is healthy and
 retains the same 62 tools and deterministic catalog hash.
 
-P3 composition root is complete on branch `p3-composition-root`.
-`cmd/mcp-devbox/main.go` now delegates only to `app.Main()`. Focused modules under
-`internal/app` own command dispatch, deployed environment contracts, serve option
-parsing, OAuth, runtime composition, local grant administration and stdio/HTTP
-transport lifecycle. AST guards protect both the executable boundary and centralized
-environment-variable names. The branch is merge-ready pending explicit owner
-approval and does not change the public MCP surface.
+P3 composition root is deployed on `main` at commit
+`dd055e251c455086ddcb02bc302d9f406b05d6ce`. `cmd/mcp-devbox/main.go` delegates
+only to `app.Main()`. Focused modules under `internal/app` own command dispatch,
+deployed environment contracts, serve option parsing, OAuth, runtime composition,
+local grant administration and stdio/HTTP transport lifecycle. Production is healthy
+and retains the same 62-tool public surface and catalog hash.
 
-Product roadmap (2026-07-11): `docs/product-roadmap.md` defines the complete path
+P4 targeted Layer-1 hardening is active on branch `p4-l1-hardening`. Through Step 73
+it blocks path-qualified command spoofing, rejects workspace-controlled executable
+resolution, enforces grant TTL bounds in policy, and expires/caps/deduplicates pending
+sensitive-read requests. P4 is not yet published, merged, or deployed.
+
+Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
 edge agents, provider-neutral MiniMax/OpenCode orchestration, and scope-bound
 authorized security research. The public console is presentation-only; MCP Devbox
@@ -118,7 +121,9 @@ Ephemeral grants:
 - A denied secret read returns structured `access-required` with a request id.
 - Only the local human can approve through the daemon's loopback admin channel using
   `mcp-devbox grant`.
-- Grants are in-memory, exact-path, single-use, and TTL-bounded.
+- Grants are in-memory, exact-path, single-use, and TTL-bounded. Pending requests
+  expire after 15 minutes, are capped at 256, and exact duplicate requests reuse the
+  same id to prevent approval spam.
 - Normal grants still redact. Raw output requires `--raw --confirm-raw`.
 - No MCP tool can approve grants.
 
@@ -252,8 +257,9 @@ are not automatically committed into child project repositories.
   `create_file` refuses overwrite and goes through the same patch pipeline. Both
   accept an optional `repo` selector for `/repos/<repo>` workspaces.
 - Commands: `run_command` and `run_tests` are allowlist-only, mode-gated, no shell,
-  output redacted. Both accept an optional jailed `cwd` so a `/repos` root can run
-  repo-local commands without mutable session `cd`.
+  output redacted. Both accept an optional jailed `cwd`. P4 additionally requires bare
+  executable names and resolves them to canonical absolute paths outside configured
+  workspace roots, preventing `./git` and hostile workspace `PATH` spoofing.
 - L3 status: `sandbox_status` reports the current sandbox backend state. It is
   diagnostic only; the default is unavailable and `run_command` remains L1
   allowlist-only.
@@ -350,15 +356,14 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Review and merge `p3-composition-root` into `main` only after explicit owner
-   approval; deploy and verify the new commit, health, 62-tool count, catalog hash,
-   version command, HTTP/OAuth startup and representative read-only MCP calls.
-2. Begin P4 from a fresh branch: targeted L1 hardening without changing the public
-   tool or environment contracts established by P0-P3.
-3. Continue P5-P7 with deeper testing, CI/DevSecOps gates and structured
-   observability before building the authenticated operator console.
-4. Keep dynamic capabilities, console, edge agents, IaC and security workcells out
-   of the P3 merge and deploy.
+1. Continue P4 only with confirmed Layer-1 security gaps and RED tests; keep the
+   62-tool public contract stable unless a documented security fix requires change.
+2. Close P4 with a dated baseline, full branch audit, publication, fast-forward,
+   deployment, and production commit/catalog verification.
+3. Start P5 deeper testing, P6 CI/DevSecOps, and P7 observability on fresh branches.
+4. Create separate specs before implementing the authenticated console, asset broker,
+   universal profiles, or edge agent. PC/WSL edge claims remain validation pending
+   until tested on the owner’s machine.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -375,14 +380,11 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P3 composition root is merge-ready on
-`p3-composition-root` against refreshed `origin/main` commit
-`ea332d173b4be1908bcf1c1abbe77ece610a6761`. Composition-root and environment
-boundary tests, command/flag/env/runtime/transport compatibility tests,
-`go test ./... -count=1`, `go vet ./...`, `go build ./...`, formatting/diff checks,
-and the production catalog smoke are green. The public surface remains 62 tools with
-deterministic hash
+Date: 2026-07-13. P3 is deployed and healthy on `main` at commit
+`dd055e251c455086ddcb02bc302d9f406b05d6ce`, with 62 tools and deterministic
+catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-Commit messages and changed files were audited; no AI signatures, binary/SDK/cache,
-secret file, credential-bearing configuration, P3 publish, merge, deployment or
-infrastructure mutation was introduced during closure.
+P4 is active on `p4-l1-hardening`; Steps 70-73 passed focused tests,
+`go test ./... -count=1`, `go vet ./...`, `go build ./...`, and diff checks. P4 has
+not been published, merged, or deployed. Documentation state is now guarded by an
+automated consistency test and `docs/documentation-map.md`.

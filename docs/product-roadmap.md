@@ -1,6 +1,25 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-07-11
+Last updated: 2026-07-13
+
+## Status snapshot — 2026-07-13
+
+This table distinguishes implemented state from roadmap intent. Detailed acceptance
+criteria below remain future requirements until their status changes with evidence.
+
+| Surface | Status | Evidence / next boundary |
+|---|---|---|
+| P0-P3 architecture foundations | Deployed | `main` at `dd055e251c455086ddcb02bc302d9f406b05d6ce`; production healthy; 62 tools. |
+| P4 targeted L1 hardening | In progress | `p4-l1-hardening`; Steps 70-73 complete, not deployed. |
+| P5 deeper testing | Planned | Separate branch/spec after P4 release. |
+| P6 CI/DevSecOps | Planned | Quality gates are designed; implementation evidence incomplete. |
+| P7 structured observability | Planned | Must exclude prompts, source, secrets, and private targets. |
+| Console/showcase | Not started | Requires a separate public-safe spec; no control-plane authority. |
+| Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
+| Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |
+| Edge agents | Planned; PC/WSL validation pending | Setup must be outbound-only, easy to configure, revocable, and locally bounded. |
+| Multi-model orchestrator | Planned | Must remain provider-neutral and subordinate to policy. |
+| Authorized security workspaces | Planned | Requires administrator-owned active engagement scope. |
 
 ## Product definition
 

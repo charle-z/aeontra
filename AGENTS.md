@@ -9,7 +9,7 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **Layer 1 + remote connectivity + secure builder workflow.** stdio
+- Current phase: **P4 targeted Layer-1 hardening** over the deployed secure builder. stdio
   and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
   audit, persistent notes, and adversarial tests. The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
@@ -27,6 +27,7 @@ Before writing code, read:
 3. `docs/security.md` — the security model (this IS the product).
 4. `docs/connect-remote.md` — how clients (ChatGPT/Cursor/Claude) connect.
 5. `docs/tools.md` — canonical registered tool surface, aliases and annotations.
+6. `docs/documentation-map.md` — source hierarchy, status vocabulary, and update rules.
 
 The chat session is **not** the source of truth. The repo is.
 
@@ -37,7 +38,9 @@ The chat session is **not** the source of truth. The repo is.
 3. REFACTOR: clean without changing behavior.
 4. FULL SUITE: run the project test command; must be green.
 5. QUALITY: run lint/type/security gates; zero errors.
-6. COMMIT: one commit per step. Update `docs/context-capsule.md` if state changed.
+6. DOCUMENT: update current-task and every affected spec, capsule, roadmap, runbook,
+   baseline, README, or handoff; run documentation consistency tests.
+7. COMMIT: one commit per step.
 
 Do not mark a step done without running its verification.
 
@@ -107,5 +110,5 @@ run     go run ./cmd/mcp-devbox serve --root <ABS_PROJECT_PATH>
 
 - Tests pass; lint/type/security gates pass.
 - Security invariants enforced and tested (path jail, secret deny, allowlist).
-- `docs/context-capsule.md` updated if behavior changed.
+- Documentation state synchronized according to `docs/documentation-map.md`.
 - Commit created (no AI signature).

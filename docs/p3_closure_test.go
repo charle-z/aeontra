@@ -33,11 +33,10 @@ func TestP3ClosureDocumentationIsCurrent(t *testing.T) {
 	for _, required := range []string{
 		"P2 capability service split is deployed",
 		"ea332d173b4be1908bcf1c1abbe77ece610a6761",
-		"P3 composition root is complete",
-		"p3-composition-root",
+		"P3 composition root is deployed",
+		"dd055e251c455086ddcb02bc302d9f406b05d6ce",
 		"62 tools",
 		"sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c",
-		"merge-ready",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("context-capsule.md does not contain %q", required)
@@ -45,6 +44,9 @@ func TestP3ClosureDocumentationIsCurrent(t *testing.T) {
 	}
 	if strings.Contains(capsule, "P2 capability service split is complete on branch") {
 		t.Error("context-capsule.md still describes deployed P2 as an unmerged branch")
+	}
+	if strings.Contains(capsule, "P3 composition root is complete on branch") {
+		t.Error("context-capsule.md still describes deployed P3 as an unmerged branch")
 	}
 
 	for _, required := range []string{

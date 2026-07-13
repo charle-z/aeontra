@@ -72,7 +72,8 @@ action-plan core. The public 62-tool wire contract remains unchanged while the
 internal boundaries are easier to test and extend safely. P3 reduces
 `cmd/mcp-devbox/main.go` to a true composition root and moves process orchestration
 into focused modules under `internal/app`, while preserving every deployed command,
-flag, environment variable and wire contract.
+flag, environment variable and wire contract. P3 is deployed; P4 targeted L1
+hardening is active and remains unreleased until its phase closure gates pass.
 
 Quick start:
 
@@ -127,6 +128,7 @@ writes require explicit approval in ask mode; aliases never weaken policy.
 - `docs/design.md` — architecture, language/platform/tunnel decisions, MVP scope.
 - `docs/security.md` — threat model + secure-by-default invariants (the product).
 - `docs/context-capsule.md` — current state for resuming without re-hydrating chat.
+- `docs/documentation-map.md` — documentation sources, status terms, and update rules.
 - `docs/tools.md` — canonical tool, alias, annotation, workflow, and approval reference.
 - `docs/product-roadmap.md` — Cubethon delivery plus universal profiles, edge,
   orchestration, and authorized-security roadmap.

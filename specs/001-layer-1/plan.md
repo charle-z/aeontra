@@ -1,63 +1,64 @@
 # Plan — Layer 1
 
-Governed by `.specify/memory/constitution.md` and `spec.md`. Go monolith.
+Status: **completed; architecture evolved through P3**.
+Governed by `.specify/memory/constitution.md` and `spec.md`.
 
-## Module layout
+This is the historical implementation plan for the Layer 1 MVP. It remains useful as
+an audit trail, but current architecture and future sequencing are defined by
+`docs/context-capsule.md`, `docs/design.md`, `docs/product-roadmap.md`, and the active
+`.agent-memory/current-task.md`.
 
-```
-cmd/mcp-devbox/         # main: CLI (serve), flag parsing, wiring
+## Original module layout — completed
+
+```text
+cmd/mcp-devbox/        # now a strict app.Main composition root
 internal/
-  config/              # project roots + policy config (loaded once, immutable at runtime)
-  policy/              # THE CORE — built & tested first, before any tool
-    jail.go            # path jail: resolve + contain (fs AND commands)
-    secrets.go         # secret deny by path
-    scan.go            # content secret-scan + redaction
-    commands.go        # command allowlist + destructive block + arg parsing
-    policy.go          # Policy struct = composition; single decision surface
-  audit/               # append-only audit log
-  tools/               # MCP tool implementations (each calls policy first)
-  mcpserver/           # MCP protocol wiring over stdio
-  memory/              # .agent-memory markdown read/handoff
+  app/                 # command/env/runtime/admin/transport composition added in P3
+  config/              # immutable startup configuration
+  policy/              # jail, secret controls, command policy, grants
+  audit/               # append-only redacted audit log
+  tools/               # capability services over one shared security core
+  mcpserver/           # declarative catalog and stdio/HTTP MCP wiring
 ```
 
-## Build order (strict — core before tools)
+The original plan described a single `cmd/mcp-devbox/main.go` wiring file and stdio
+only. That was correct for the MVP but is no longer the deployed architecture.
 
-1. `config` minimal (project root, policy struct, defaults = secure).
-2. **policy/jail** (RED→GREEN) — fs + command path containment.
-3. **policy/secrets** — path denylist.
-4. **policy/scan** — content secret patterns + redaction.
-5. **policy/commands** — allowlist + destructive block + safe arg parsing.
-6. **audit** — append-only log.
-7. `policy.Policy` composition = the one gate every tool consults.
-8. tools (read/search first; apply_patch; git; run_tests; memory).
-9. mcpserver stdio wiring + `serve`.
-10. adversarial suite consolidation; vet/lint; capsule.
+## Original build order — completed
 
-## Key design decisions
+1. [x] Minimal secure-default config.
+2. [x] Filesystem and command path containment.
+3. [x] Secret denial by path.
+4. [x] Content scanning and redaction.
+5. [x] Command allowlist and destructive/injection blocking.
+6. [x] Append-only audit log.
+7. [x] One immutable policy decision surface.
+8. [x] Read/search/context/write/Git/test/memory tools.
+9. [x] MCP stdio server and CLI.
+10. [x] Adversarial suite, quality gates, and capsule.
 
-- **One decision surface:** `policy.Policy` exposes `CheckRead(path)`,
-  `CheckWrite(path)`, `CheckCommand(prog, args)`, `Redact(content)`. Tools never
-  re-implement checks; they call these. Easier to audit, no drift.
-- **Jail = resolve then contain.** Resolve symlinks (`filepath.EvalSymlinks`) and
-  clean the path, then assert it is within an allowed root using a path-segment
-  prefix check (not raw string prefix — avoid `/repo-evil` matching `/repo`).
-- **Commands are not shell strings.** Reject shell metacharacters; run via exec
-  with an explicit argv (no `sh -c`). Allowlist matches the program basename.
-- **Content scan applies to ALL returned content** incl. command stdout and patch
-  context, so a permitted command can't be used to exfil a secret.
-- **Policy immutable:** loaded from config at startup into an unexported struct;
-  no setter, no MCP tool can mutate it.
-- **Approval gating:** writes/commands carry a risk level; when policy = ask, the
-  tool returns an approval-required result rather than executing (client/human gate).
+## Preserved design decisions
 
-## Dependencies
+- Policy remains the single authority for jail, secrets, command posture, redaction,
+  approvals, and grants.
+- Commands are explicit argv, never shell strings.
+- Repository files remain untrusted data.
+- Writes remain patch-first and checked before application.
+- Risky external operations use exact, expiring, single-use plans with revalidation.
+- Public compatibility aliases reuse the same schemas, handlers, and policy path.
 
-- Go stdlib first. MCP: use the official Go SDK (`github.com/modelcontextprotocol/go-sdk`)
-  if it resolves cleanly; otherwise a minimal JSON-RPC stdio loop (small, no security
-  surface). Decide at step 9 after the core is proven. `git` invoked as a subprocess
-  (allowlisted, jailed) for `apply_patch`/`git_status`/`git_diff`.
+## Architecture evolution after Layer 1
 
-## Verification per step
+- **P0:** deterministic catalog/build identity, no-cache diagnostics, catalog smoke.
+- **P1:** declarative catalog modules, aliases, and annotations.
+- **P2:** repository, Git, source, platform, and execution capability services over a
+  shared policy/audit/root/runner/plan core.
+- **P3:** strict executable composition root and focused `internal/app` modules.
+- **P4:** targeted Layer-1 hardening; active, behavior-preserving security fixes.
 
-`go test ./internal/<pkg>/... -run ...` (RED first), then `go test ./...`,
-then `go vet ./...` + `go build ./...`. One commit per step, no AI signature.
+## Verification discipline
+
+Every numbered step uses RED → minimum GREEN → full suite → vet/build → diff review →
+documentation/memory → one commit without AI signatures. Phase completion additionally
+requires branch audit, baseline, publication/fast-forward, deployment, and production
+commit/catalog verification.
