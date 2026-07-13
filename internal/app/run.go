@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
@@ -9,34 +10,42 @@ import (
 
 func Main() {
 	stampCommit()
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		usage(stderr)
+		return 2
 	}
-	switch os.Args[1] {
+	switch args[0] {
 	case "serve":
-		if err := serve(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "mcp-devbox: "+err.Error())
-			os.Exit(1)
+		if err := serve(args[1:]); err != nil {
+			fmt.Fprintln(stderr, "mcp-devbox: "+err.Error())
+			return 1
 		}
+		return 0
 	case "grant":
-		if err := grant(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "mcp-devbox: "+err.Error())
-			os.Exit(1)
+		if err := grant(args[1:]); err != nil {
+			fmt.Fprintln(stderr, "mcp-devbox: "+err.Error())
+			return 1
 		}
+		return 0
 	case "version", "--version", "-v":
-		fmt.Println("mcp-devbox " + buildinfo.Version + " (commit " + buildinfo.Commit + ")")
+		fmt.Fprintln(stdout, "mcp-devbox "+buildinfo.Version+" (commit "+buildinfo.Commit+")")
+		return 0
 	case "help", "--help", "-h":
-		usage()
+		usage(stderr)
+		return 0
 	default:
-		fmt.Fprintln(os.Stderr, "unknown command: "+os.Args[1])
-		usage()
-		os.Exit(2)
+		fmt.Fprintln(stderr, "unknown command: "+args[0])
+		usage(stderr)
+		return 2
 	}
 }
 
-func usage() {
-	fmt.Fprint(os.Stderr, `mcp-devbox `+buildinfo.Version+` — secure-by-default local MCP server
+func usage(output io.Writer) {
+	fmt.Fprint(output, `mcp-devbox `+buildinfo.Version+` — secure-by-default local MCP server
 
 Usage:
   mcp-devbox serve --root <ABS_PATH> [--mode read-only|ask|allow] [flags]
