@@ -1,51 +1,31 @@
 # Latest handoff — MCP Devbox
 
 Date: 2026-07-13
-Branch: `p6-step91-security-remediation`
-Deployed base: `main` at `112ca8ce06ffdeba570e486a548801ee21692a6f`
+Branch: `p6-step92-closure`
+Deployed base: `main` at `539e4d96c95aedd492ac36b428d4159054e183f4`
 
 ## Current phase
 
-Step 90 is published, fast-forwarded, deployed, and production-verified at 62 tools
-with catalog hash
-`sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-P6 CI/DevSecOps Step 91 is active and governed by `specs/003-ci-devsecops/`.
-The workflow policy guard and blocking CGO race remain part of the required gates.
+P6 CI/DevSecOps is implemented, fast-forwarded, deployed, and production-verified.
+The baseline is `docs/baselines/2026-07-13-p6.md`; detailed vulnerability evidence
+is in `docs/security-reports/2026-07-13-p6-ci-container-findings.md`.
 
-## Exact observed failures
+## Verified gates
 
-- CI run `29263139285`: Verify and CGO race passed; Staticcheck and Govulncheck failed.
-- Security run `29263139756`: CodeQL passed; Dependency Review correctly skipped on
-  push; the container gate reported five High findings.
-- Reachable Go finding: `GO-2026-5856`.
-- Final-image findings: three GNU Wget CVEs plus npm `sigstore` and `picomatch` GHSAs.
-- Staticcheck: three unused declarations and 22 capitalized error strings.
+- PR CI `29272847130`: Verify, CGO race, Staticcheck, Govulncheck success.
+- PR Security Evidence `29272847139`: CodeQL, Dependency Review, Docker/SBOM,
+  and zero-High/Critical Grype gate success.
+- Push CI `29273109759` and Security Evidence `29273109780`: success.
+- Dependency graph update `29273109419`: success.
+- Production: exact commit `539e4d96c95aedd492ac36b428d4159054e183f4`, healthy,
+  62 tools, unchanged catalog hash.
 
-## Step 91 remediation
-
-- Go 1.26.5 is pinned in the module, Actions, production image, and validation runner.
-- Standalone GNU Wget is removed; health checks use the BusyBox applet.
-- Exact `npm@12.0.1` is installed and Alpine's vulnerable bootstrap npm is removed.
-- All Staticcheck findings are fixed without public contract changes.
-- Regression tests, the detailed security report, and connector reliability runbook
-  are versioned.
-
-## Verified
-
-- Current remediation commit: `adc9ad59eab329fa4b654f66a410cecf1fc87791`.
-- CI run `29270949295` passed Verify, Race, Staticcheck, and Govulncheck.
-- Security run `29270949313` passed CodeQL, image build, SPDX SBOM generation and
-  verification, Grype scan/report verification, and the unchanged High/Critical gate.
-- The final image has zero remaining High/Critical findings.
-- Dependency Review cannot execute because GitHub Dependency Graph is disabled for
-  the repository. Exact failed job: `86888187941` in run `29270949313`.
-- The connector exposes repository admin metadata but not the security-setting write.
-  A repository administrator must enable Dependency Graph and re-run the failed job;
-  do not skip, soften, or mark the check non-blocking.
+The deployment UUID was not returned because the MCP restarted during its own
+replacement. Exact runtime identity proves success; no UUID was invented.
 
 ## Next safe step
 
-After a repository administrator enables GitHub Dependency Graph, re-run Dependency
-Review and require it to pass. Then record the final run, fast-forward/publish `main`,
-deploy only application `jqf7qz5ensoqtvl1tb197gcv`, smoke-test exact commit/health/62
-tools/hash, observe post-merge Actions, create the P6 baseline/audit, and close P6.
+Publish, review, fast-forward, and deploy this P6 closure record. Then create a fresh
+P7 structured-observability branch/spec. Do not mix console, Asset Broker, universal
+profiles, or Edge Agent into P7. Edge physical PC/WSL validation remains pending the
+owner machine.

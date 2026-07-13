@@ -12,7 +12,7 @@ criteria below remain future requirements until their status changes with eviden
 | P0-P5 architecture, hardening, and deeper testing | Deployed | `main` at `4a68ca054a5f077d62a0f887234866673feb7353`; production healthy; 62 tools. |
 | P4 targeted L1 hardening | Deployed | `main` includes Steps 70-77; production verified. |
 | P5 deeper testing | Deployed | `main` includes Steps 78-84; production verified; runtime catalog unchanged. |
-| P6 CI/DevSecOps | In progress | Blocked on repository setting: Step 91 technical gates are green in PR #1; GitHub Dependency Graph must be enabled so mandatory Dependency Review can execute before merge/deploy. |
+| P6 CI/DevSecOps | Deployed | `main` and production serve `539e4d96c95aedd492ac36b428d4159054e183f4`; PR/push CI, CodeQL, Dependency Review, SBOM, and zero-High/Critical container gate are green. |
 | P7 structured observability | Planned | Must exclude prompts, source, secrets, and private targets. |
 | Console/showcase | Not started | Requires a separate public-safe spec; no control-plane authority. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |

@@ -250,15 +250,13 @@ choices. No vulnerability was ignored, allowlisted, downgraded, or hidden.
 
 Local Step 91 verification passes formatting, ordinary tests, atomic coverage and
 the package gate, vet, build, actionlint, govulncheck, and focused workflow/Grype tests.
-Pull-request CI run `29270949295` passed Verify, Race, Staticcheck, and Govulncheck.
-Security Evidence run `29270949313` passed CodeQL, Docker build, SPDX SBOM
-generation/verification, Grype scan, and the unchanged High/Critical gate after the
-bootstrap Alpine npm package was removed.
-
-The workflow remains globally failed only because Dependency Review cannot execute
-while GitHub Dependency Graph is disabled for the repository. P6 remains open until an
-administrator enables Dependency Graph, the failed job passes, and the exact
-remediation commit is merged, deployed, and smoke-tested.
+After Dependency Graph activation, PR CI run `29272847130` and Security Evidence
+run `29272847139` passed every required job, including Dependency Review and the
+zero-High/Critical container gate. Fast-forward push runs `29273109759` and
+`29273109780` also passed; Dependency Review was correctly skipped on push after
+its successful PR execution. Production serves exact commit
+`539e4d96c95aedd492ac36b428d4159054e183f4` with 62 tools and the unchanged hash.
+P6 closure evidence is versioned in `docs/baselines/2026-07-13-p6.md`.
 
 ## Safety rules
 

@@ -1,6 +1,6 @@
 # Spec — P6 CI/DevSecOps
 
-Status: **active** on branch `p6-step91-security-remediation`.
+Status: **complete** on `main` at `539e4d96c95aedd492ac36b428d4159054e183f4`.
 Governed by `.specify/memory/constitution.md`, `docs/quality-gates.md`, and
 `docs/testing.md`.
 
@@ -51,5 +51,6 @@ production.
 - Workflow permissions are minimal and secrets are absent from PR verification.
 - Exact findings, package/layer provenance, reachability, remediation, and before/after
   workflow evidence are versioned under `docs/security-reports/`.
-- P6 closes with a baseline, branch audit, and observed GitHub Actions result before
-  deployment.
+- P6 closed with `docs/baselines/2026-07-13-p6.md`, a branch/file audit, green
+  pull-request and post-merge Actions, exact production identity, and an unchanged
+  62-tool catalog.

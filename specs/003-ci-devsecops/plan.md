@@ -1,6 +1,6 @@
 # Plan — P6 CI/DevSecOps
 
-Status: **active**.
+Status: **complete**.
 
 ## Sequence
 
@@ -16,7 +16,8 @@ Status: **active**.
    every job/check, record package/layer/reachability evidence, fix reproducible
    failures without ignores or threshold reduction, and prove zero High/Critical image
    findings before merge.
-7. **Closure** — baseline, audit, release posture, merge/deploy, production smoke.
+7. **Closure** — complete: baseline, audit, release posture, fast-forward merge,
+   production deployment/smoke, and observed post-merge Actions.
 
 ## Design rules
 

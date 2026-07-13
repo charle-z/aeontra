@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestP6CIDevSecOpsIsDefinedAndActive(t *testing.T) {
+func TestP6CIDevSecOpsIsClosedAndDeployed(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		content, err := os.ReadFile(path)
@@ -44,8 +44,8 @@ func TestP6CIDevSecOpsIsDefinedAndActive(t *testing.T) {
 	for _, required := range []string{
 		"P5 deeper testing is deployed",
 		"4a68ca054a5f077d62a0f887234866673feb7353",
-		"P6 CI/DevSecOps Step 91 is active",
-		"p6-step91-security-remediation",
+		"P6 CI/DevSecOps is deployed",
+		"p6-step92-closure",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("capsule does not contain %q", required)
@@ -54,7 +54,7 @@ func TestP6CIDevSecOpsIsDefinedAndActive(t *testing.T) {
 	if !strings.Contains(roadmap, "| P5 deeper testing | Deployed |") {
 		t.Error("roadmap does not mark P5 deployed")
 	}
-	if !strings.Contains(roadmap, "| P6 CI/DevSecOps | In progress |") {
-		t.Error("roadmap does not mark P6 in progress")
+	if !strings.Contains(roadmap, "| P6 CI/DevSecOps | Deployed |") {
+		t.Error("roadmap does not mark P6 deployed")
 	}
 }

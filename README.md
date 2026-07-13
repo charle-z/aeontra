@@ -74,10 +74,10 @@ internal boundaries are easier to test and extend safely. P3 reduces
 into focused modules under `internal/app`, while preserving every deployed command,
 flag, environment variable and wire contract. P4 is deployed at
 `4a68ca054a5f077d62a0f887234866673feb7353`; P5 deeper testing is deployed and
-P6 CI/DevSecOps Step 91 is active, with the public 62-tool contract unchanged. The
-current remediation pins Go 1.26.5, removes vulnerable standalone GNU Wget, upgrades
-the retained npm builder to 12.0.1, fixes Staticcheck findings, and records exact
-CI/container evidence under `docs/security-reports/`.
+P6 CI/DevSecOps is deployed at `539e4d96c95aedd492ac36b428d4159054e183f4`
+with the public 62-tool contract unchanged. Blocking CI, race, Staticcheck,
+Govulncheck, CodeQL, Dependency Review, Docker/SBOM, and zero-High/Critical container
+gates are proven in `docs/baselines/2026-07-13-p6.md`.
 
 Quick start:
 

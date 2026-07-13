@@ -160,30 +160,30 @@ Passed locally on branch `p6-step91-security-remediation`:
 
 Staticcheck cannot initialize its cache in the currently deployed non-root production container because that old image has an unwritable HOME and no general XDG cache setting. The GitHub job already uses a runner-temporary cache and is the authoritative execution environment for this gate. Docker build, SBOM, and Grype also require the ephemeral Actions runner because the public MCP deliberately has no Docker socket.
 
-## Post-remediation pull-request evidence
+## Post-remediation and closure evidence
 
-- PR: `#1`, branch `p6-step91-security-remediation`.
-- Remediation commits: `c54090f2ab01099f3b85e88c45c709bd18876e7d` and
-  `adc9ad59eab329fa4b654f66a410cecf1fc87791`.
-- CI run `29270949295`: completed successfully.
-  - Verify: success.
-  - Race detector: success.
-  - Staticcheck: success.
-  - Govulncheck: success.
-- Security Evidence run `29270949313`:
-  - CodeQL: success.
-  - Docker image build: success.
-  - SPDX SBOM generation and non-empty verification: success.
-  - Grype scan and JSON verification: success.
-  - High/Critical enforcement gate: success, proving zero remaining findings at the
-    unchanged High threshold.
-  - Dependency Review: did not execute analysis because GitHub Dependency Graph is
-    disabled for the repository. The exact action error is `Dependency review is not
-    supported on this repository. Please ensure that Dependency graph is enabled`.
+The first repaired image run `29270350078` exposed the duplicate Alpine npm tree.
+The follow-up commit removed it; CI run `29270949295` and Security Evidence run
+`29270949313` then proved Verify, Race, Staticcheck, Govulncheck, CodeQL, Docker
+build, SPDX SBOM, Grype scan, and the unchanged High/Critical gate. That gate reported
+zero remaining findings.
 
-The technical vulnerability remediation is therefore green. P6 remains open because
-Dependency Review is a mandatory check and cannot pass until a repository administrator
-enables Dependency Graph and re-runs the failed job. No workflow suppression or severity
-change is acceptable.
+GitHub Dependency Graph was subsequently enabled. Final PR commit
+`539e4d96c95aedd492ac36b428d4159054e183f4` produced:
 
-After that external prerequisite passes, the remaining closure evidence is the exact
+- CI run `29272847130`: Verify, Race, Staticcheck, and Govulncheck success.
+- Security Evidence run `29272847139`: CodeQL, Dependency Review, and container
+  SBOM/vulnerability gate success.
+
+The same commit was fast-forwarded to `main`. Dependency graph update run
+`29273109419`, CI push run `29273109759`, and Security Evidence push run
+`29273109780` completed successfully. Dependency Review was correctly skipped on
+push after passing on the PR.
+
+Production now reports `status=ok`, commit
+`539e4d96c95aedd492ac36b428d4159054e183f4`, `tool_count=62`, and catalog hash
+`sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+The deployment request caused the expected MCP self-restart and the connection ended
+before the deployment UUID was returned. The available safe read surfaces confirmed
+healthy exact runtime identity but could not recover that UUID; no identifier is
+invented. Full closure evidence is in `docs/baselines/2026-07-13-p6.md`.

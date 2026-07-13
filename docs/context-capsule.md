@@ -49,14 +49,14 @@ P5 deeper testing is deployed on `main` at commit
 62 tools and catalog hash. P5 added concurrency, fuzz seeds, package coverage, and
 hermetic integration evidence without runtime authority changes.
 
-P6 CI/DevSecOps Step 91 is active on branch `p6-step91-security-remediation`.
-Step 90 is deployed at `112ca8ce06ffdeba570e486a548801ee21692a6f` and exposed
-the exact remaining failures: reachable `GO-2026-5856`, five High container findings,
-and 25 Staticcheck findings. Step 91 pins Go 1.26.5, removes standalone GNU Wget,
-upgrades the final image to `npm@12.0.1`, fixes Staticcheck, adds a regression guard,
-versions the security report, and adds the connector reliability runbook. P6 remains
-open until pull-request Actions, final SBOM/Grype, deployment, and production smoke are
-green.
+P6 CI/DevSecOps is deployed on `main` at commit
+`539e4d96c95aedd492ac36b428d4159054e183f4`. Pull-request and post-merge CI,
+Race, Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker build, SPDX SBOM,
+and the unchanged High/Critical Grype gate are green. Production is healthy with 62
+tools and the unchanged catalog hash. Exact findings, remediation, restart evidence,
+and closure are recorded in `docs/security-reports/2026-07-13-p6-ci-container-findings.md`
+and `docs/baselines/2026-07-13-p6.md`. Branch `p6-step92-closure` finalizes the
+versioned closure record; P7 structured observability is next on a fresh branch/spec.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -371,11 +371,10 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Publish Step 91 through a pull request and require all CI/security jobs to pass.
-2. Prove the final image has zero High/Critical findings, then fast-forward `main`.
-3. Deploy the existing Coolify application, verify the exact commit, health, 62 tools,
-   and unchanged catalog hash, then create the P6 closure baseline.
-4. Start P7 structured observability on a fresh branch/spec only after P6 closes.
+1. Publish and deploy the P6 closure record from `p6-step92-closure`.
+2. Verify the exact closure commit, health, 62 tools, and unchanged catalog hash.
+3. Start P7 structured observability on a fresh branch and independent spec.
+4. Keep console, Asset Broker, universal profiles, and Edge Agent in later separate milestones.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -392,10 +391,10 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. Step 90 is deployed and healthy on `main` at commit
-`112ca8ce06ffdeba570e486a548801ee21692a6f`. Production reports 62 tools and
-deterministic catalog hash
+Date: 2026-07-13. P6 implementation commit
+`539e4d96c95aedd492ac36b428d4159054e183f4` is fast-forwarded to `main`,
+served by healthy production, and verified by green pull-request/post-merge Actions.
+Production reports 62 tools and deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-Step 91 is a local remediation candidate; it is not merged or deployed and cannot be
-called complete until pull-request Actions, SBOM, Grype, merge, deployment, and
-production smoke are green.
+The deployment tool connection dropped during the expected self-restart, so its UUID
+was not returned; exact runtime identity independently proves the successful replacement.

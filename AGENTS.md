@@ -9,9 +9,10 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P6 CI/DevSecOps Step 91 security remediation** over deployed
-  Step 90. The active branch is `p6-step91-security-remediation`; exact findings and
-  evidence are in `docs/security-reports/2026-07-13-p6-ci-container-findings.md`.
+- Current phase: **P6 CI/DevSecOps closure** on branch `p6-step92-closure`.
+  P6 is deployed on `main` at `539e4d96c95aedd492ac36b428d4159054e183f4`; exact
+  evidence is in `docs/baselines/2026-07-13-p6.md` and the versioned security report.
+  P7 structured observability is next and requires a fresh branch/spec. The project has
   stdio and HTTP/OAuth transports, policy core, 62 annotated MCP tools, action plans,
   audit, persistent notes, and adversarial tests. The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
