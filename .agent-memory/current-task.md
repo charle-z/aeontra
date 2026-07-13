@@ -3,22 +3,19 @@
 Status: in progress on branch `p3-composition-root` from deployed `main` commit `ea332d173b4be1908bcf1c1abbe77ece610a6761`.
 
 Completed:
-- Step 63 `73f9df4`: moved process orchestration into `internal/app`, reduced `cmd/mcp-devbox/main.go` to `app.Main()`, moved its tests, and added an AST composition-root guard.
+- Step 63 `73f9df4`: extracted the command composition root into `internal/app` and reduced `cmd/mcp-devbox/main.go` to `app.Main()`.
+- Step 64 `fd6d2ac`: split application orchestration into command, environment, OAuth, serve/bootstrap and grant modules.
 
-Current Step 64 candidate:
-- replaced the temporary 500-line `internal/app/app.go` with concern-based modules:
-  - `run.go` for command dispatch and usage;
-  - `env.go` for the frozen environment-variable contracts and parsing helpers;
-  - `oauth.go` for OAuth construction;
-  - `serve.go` for daemon bootstrap, service wiring, grant-admin lifecycle and transports;
-  - `grant.go` for the local grant client;
-- added a RED layout test that rejects the app monolith;
-- preserved the version command and all existing behavior.
+Current Step 65 candidate:
+- added `serveOptions` and `parseServeOptions` so CLI/env normalization is independent of daemon construction;
+- preserved repeatable/comma-separated roots, mode, audit path, HTTP address/token, command allowlist, test command and sandbox backend;
+- flags continue to override `MCP_DEVBOX_ALLOW_CMD`, `MCP_DEVBOX_TEST_CMD`, and `MCP_DEVBOX_SANDBOX`;
+- test-command programs are still appended uniquely to the effective allowlist;
+- `serve` now consumes the validated immutable config rather than owning flag parsing.
 
-Step 64 verification:
-- RED failed because none of the focused modules existed and `app.go` remained;
-- focused app tests passed after the split;
-- `go run ./cmd/mcp-devbox version` preserved runtime identity output;
-- `go test ./... -count=1`, `go vet ./...`, and `go build ./...` passed.
+Step 65 verification:
+- RED failed because the parser did not exist;
+- compatibility tests passed for flag precedence, existing env names, root handling, defaults and required-root failure;
+- full tests, `go vet ./...`, and `go build ./...` passed.
 
-Next autonomous step: isolate serve flag/env normalization from runtime construction and add exact compatibility tests for flags, environment precedence, roots, allowlists, test commands, sandbox and audit path. Do not publish, merge or deploy P3 without explicit owner approval.
+Next autonomous step: extract runtime/service composition from transport lifecycle and test optional GitHub, Coolify, validation, sandbox and privileged configuration without exposing secret values. Do not publish, merge or deploy P3 without explicit owner approval.

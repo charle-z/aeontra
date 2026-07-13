@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -15,86 +14,25 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
-	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/grantadmin"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
-// rootsFlag collects --root (repeatable and/or comma-separated).
-type rootsFlag []string
-
-func (r *rootsFlag) String() string { return strings.Join(*r, ",") }
-func (r *rootsFlag) Set(v string) error {
-	for _, p := range strings.Split(v, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			*r = append(*r, p)
-		}
-	}
-	return nil
-}
-
 func serve(args []string) error {
-	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	var roots rootsFlag
-	fs.Var(&roots, "root", "project root (absolute); repeatable or comma-separated")
-	mode := fs.String("mode", string(config.ModeReadOnly), "read-only|ask|allow")
-	allowCmd := fs.String("allow-cmd", "", "comma-separated command allowlist")
-	testCmd := fs.String("test-cmd", "", `run_tests command, e.g. "go test ./..."`)
-	auditPath := fs.String("audit", "", "audit log path")
-	httpAddr := fs.String("http", "", "serve MCP over HTTP at ADDR (e.g. :8765); omit for stdio")
-	httpToken := fs.String("http-token", "", "bearer token for HTTP (prefer "+tokenEnv+" env)")
-	sandbox := fs.String("sandbox", "", "L3 sandbox backend: none (default)|docker|nsjail|gvisor (plumbed, not yet enabled)")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if len(roots) == 0 {
-		return fmt.Errorf("at least one --root is required")
-	}
-
-	// Resolve roots to absolute paths (the policy requires absolute roots).
-	absRoots := make([]string, 0, len(roots))
-	for _, r := range roots {
-		abs, err := filepath.Abs(r)
-		if err != nil {
-			return fmt.Errorf("resolving root %q: %w", r, err)
-		}
-		absRoots = append(absRoots, abs)
-	}
-
-	// Flags win; otherwise fall back to env (handy for container deploys).
-	*allowCmd = envFallback(*allowCmd, allowCmdEnv)
-	*testCmd = envFallback(*testCmd, testCmdEnv)
-	*sandbox = envFallback(*sandbox, sandboxEnv)
-
-	allow := config.SecureDefaults().AllowedCommands
-	if strings.TrimSpace(*allowCmd) != "" {
-		allow = splitCSV(*allowCmd)
-	}
-	test := splitFields(*testCmd)
-	if len(test) > 0 {
-		allow = appendUnique(allow, test[0]) // ensure the test program is allowlisted
-	}
-
-	cfg, err := config.New(config.Config{
-		Roots:           absRoots,
-		Mode:            config.Mode(*mode),
-		AllowedCommands: allow,
-		TestCommand:     test,
-		SandboxBackend:  *sandbox,
-	})
+	opts, err := parseServeOptions(args, os.Stderr)
 	if err != nil {
 		return err
 	}
+	cfg := opts.Config
 	pol, err := policy.NewPolicy(cfg)
 	if err != nil {
 		return err
 	}
 	primary := pol.Roots()[0]
 
-	ap := *auditPath
+	ap := opts.AuditPath
 	if ap == "" {
 		ap = filepath.Join(primary, ".agent-memory", "audit.log")
 	}
@@ -121,7 +59,7 @@ func serve(args []string) error {
 		sandboxRunner = tools.NewDockerSandboxRunner(tools.DockerSandboxConfig{Image: img, Root: primary})
 	}
 	svc := tools.NewService(pol, logger, primary).
-		WithTestCommand(test).
+		WithTestCommand(cfg.TestCommand).
 		WithSandboxRunner(sandboxRunner).
 		WithValidationRunner(tools.NewValidationRunner(os.Getenv(validationRunnerURLEnv), os.Getenv(validationRunnerTokenEnv)))
 	privilegedTimeout := 2 * time.Minute
@@ -183,8 +121,8 @@ func serve(args []string) error {
 		adminBase)
 
 	// HTTP transport (remote) when --http is set; stdio (local) otherwise.
-	if strings.TrimSpace(*httpAddr) != "" {
-		token := *httpToken
+	if strings.TrimSpace(opts.HTTPAddr) != "" {
+		token := opts.HTTPToken
 		if token == "" {
 			token = os.Getenv(tokenEnv)
 		}
@@ -200,7 +138,7 @@ func serve(args []string) error {
 				"or enable OAuth with %s + %s. Refusing to start without auth",
 				tokenEnv, publicURLEnv, oauthPassphraseEnv)
 		}
-		addr := normalizeHTTPAddr(*httpAddr)
+		addr := normalizeHTTPAddr(opts.HTTPAddr)
 		// Docker and Coolify stop containers with SIGTERM. Listening only for
 		// os.Interrupt would prevent graceful draining during rolling replacement.
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
