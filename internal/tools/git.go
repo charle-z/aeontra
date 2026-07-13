@@ -12,7 +12,7 @@ import (
 
 // GitStatus returns the working-tree status (read-only; works in any mode). When
 // repo is provided, it is resolved as a working directory inside the jail.
-func (s *Service) GitStatus(repo ...string) (string, error) {
+func (s *GitCapability) GitStatus(repo ...string) (string, error) {
 	dirArg := ""
 	if len(repo) > 0 {
 		dirArg = repo[0]
@@ -22,12 +22,12 @@ func (s *Service) GitStatus(repo ...string) (string, error) {
 
 // GitDiff returns a diff (read-only). Optional extra args (e.g. "--staged" or a
 // pathspec) are validated by the allowlist gate (no metacharacters/injection).
-func (s *Service) GitDiff(extra ...string) (string, error) {
+func (s *GitCapability) GitDiff(extra ...string) (string, error) {
 	return s.GitDiffIn("", extra...)
 }
 
 // GitDiffIn is GitDiff with an explicit, jailed repo working directory.
-func (s *Service) GitDiffIn(repo string, extra ...string) (string, error) {
+func (s *GitCapability) GitDiffIn(repo string, extra ...string) (string, error) {
 	sp := s.log.Start("git_diff")
 	dir, err := s.workdir(repo)
 	if err != nil {
@@ -51,13 +51,13 @@ func (s *Service) GitDiffIn(repo string, extra ...string) (string, error) {
 // GitCommit stages all changes and commits them. It is a write action: gated by the
 // write/command posture (read-only denies, ask requires approve=true, allow commits).
 // The message is passed via argv (never a shell), so normal punctuation is safe.
-func (s *Service) GitCommit(message string, approve bool) (string, error) {
+func (s *GitCapability) GitCommit(message string, approve bool) (string, error) {
 	return s.GitCommitIn("", message, approve)
 }
 
 // GitCommitIn stages and commits changes in an optional selected repo/workdir
 // inside the jail. The root-level GitCommit behavior is preserved when repo is empty.
-func (s *Service) GitCommitIn(repo, message string, approve bool) (string, error) {
+func (s *GitCapability) GitCommitIn(repo, message string, approve bool) (string, error) {
 	sp := s.log.Start("git_commit")
 	dir, err := s.workdir(repo)
 	if err != nil {

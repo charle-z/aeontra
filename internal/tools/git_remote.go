@@ -18,7 +18,7 @@ var gitSafeDirRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 // GitClone clones a repository into a new directory directly under the service
 // root. It is controlled command execution: no shell, no embedded credentials, no
 // target escapes, mode-gated, audited, and output-redacted.
-func (s *Service) GitClone(remoteURL, dir string, approve bool) (string, error) {
+func (s *GitCapability) GitClone(remoteURL, dir string, approve bool) (string, error) {
 	sp := s.log.Start("git_clone")
 	remoteURL = strings.TrimSpace(remoteURL)
 	if err := validateCloneURL(remoteURL); err != nil {
@@ -75,7 +75,7 @@ func (s *Service) GitClone(remoteURL, dir string, approve bool) (string, error) 
 // GitPush pushes one branch to one named remote from a selected repo. It does not
 // accept extra git args, so force pushes, tag pushes, and URL remotes are not
 // expressible through this tool.
-func (s *Service) GitPush(repo, remote, branch string, approve bool) (string, error) {
+func (s *GitCapability) GitPush(repo, remote, branch string, approve bool) (string, error) {
 	sp := s.log.Start("git_push")
 	dir, err := s.workdir(repo)
 	if err != nil {

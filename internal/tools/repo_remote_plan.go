@@ -11,7 +11,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/audit"
 )
 
-func (s *Service) RepoRemotePreview(repo, remote, repository string) (string, error) {
+func (s *GitCapability) RepoRemotePreview(repo, remote, repository string) (string, error) {
 	sp := s.log.Start("repo_remote_preview")
 	if err := s.github.configError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
@@ -60,7 +60,7 @@ func (s *Service) RepoRemotePreview(repo, remote, repository string) (string, er
 		filepath.Base(dir), remote, current, proposed, action, command, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) RepoRemoteSet(planID string, approve bool) (string, error) {
+func (s *GitCapability) RepoRemoteSet(planID string, approve bool) (string, error) {
 	sp := s.log.Start("repo_remote_set")
 	if err := s.github.configError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
@@ -118,7 +118,7 @@ func (s *Service) RepoRemoteSet(planID string, approve bool) (string, error) {
 	return fmt.Sprintf("remote %s %s: %s", plan.Args["remote"], plan.Args["action"], proposed), nil
 }
 
-func (s *Service) currentRemoteURL(dir, remote string) (string, bool, error) {
+func (s *GitCapability) currentRemoteURL(dir, remote string) (string, bool, error) {
 	args := []string{"remote", "get-url", remote}
 	if err := s.pol.CheckCommandAllowed("git", args); err != nil {
 		return "", false, err

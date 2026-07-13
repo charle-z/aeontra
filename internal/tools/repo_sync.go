@@ -121,7 +121,7 @@ func writeStatusFiles(b *strings.Builder, label string, files []string) {
 
 // RepoFetch runs exactly `git fetch <remote>` after jail, name, policy, approval,
 // and audit checks. Refspecs and extra arguments are not representable.
-func (s *Service) RepoFetch(repo, remote string, approve bool) (string, error) {
+func (s *GitCapability) RepoFetch(repo, remote string, approve bool) (string, error) {
 	sp := s.log.Start("repo_fetch")
 	dir, err := s.workdir(repo)
 	if err != nil {
@@ -157,7 +157,7 @@ func (s *Service) RepoFetch(repo, remote string, approve bool) (string, error) {
 	return s.redact(out), nil
 }
 
-func (s *Service) RepoFastForwardPreview(repo string) (string, error) {
+func (s *GitCapability) RepoFastForwardPreview(repo string) (string, error) {
 	sp := s.log.Start("repo_fast_forward_preview")
 	st, err := s.readRepositoryStatus(repo)
 	if err != nil {
@@ -211,7 +211,7 @@ func (s *Service) RepoFastForwardPreview(repo string) (string, error) {
 		st.Repository, st.Branch, st.Upstream, st.Head, target, strings.TrimSpace(commits), st.Upstream, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) RepoFastForward(planID string, approve bool) (string, error) {
+func (s *GitCapability) RepoFastForward(planID string, approve bool) (string, error) {
 	sp := s.log.Start("repo_fast_forward")
 	needsApproval, err := s.pol.CheckAction()
 	if err != nil {

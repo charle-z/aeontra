@@ -21,7 +21,7 @@ var gitObjectIDRe = regexp.MustCompile(`^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$`)
 // RepoPublishPreview validates one current local branch against one named,
 // owner-restricted remote. No push URL, refspec, force, mirror, or tag option is
 // accepted from the caller.
-func (s *Service) RepoPublishPreview(repo, remote, branch string) (string, error) {
+func (s *GitCapability) RepoPublishPreview(repo, remote, branch string) (string, error) {
 	sp := s.log.Start("repo_publish_preview")
 	if err := s.github.configError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
@@ -122,7 +122,7 @@ func (s *Service) RepoPublishPreview(repo, remote, branch string) (string, error
 		filepath.Base(st.Dir), branch, st.Head, remote, remoteURL, remoteState.Exists, ahead, behind, command, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) RepoPublish(planID string, approve bool) (string, error) {
+func (s *GitCapability) RepoPublish(planID string, approve bool) (string, error) {
 	sp := s.log.Start("repo_publish")
 	needsApproval, err := s.pol.CheckAction()
 	if err != nil {
@@ -193,7 +193,7 @@ func (s *Service) RepoPublish(planID string, approve bool) (string, error) {
 	return s.redact(out), nil
 }
 
-func (s *Service) readRemoteBranch(dir, remoteURL, remote, branch string) (remoteBranchState, error) {
+func (s *GitCapability) readRemoteBranch(dir, remoteURL, remote, branch string) (remoteBranchState, error) {
 	if !safeGitName(remote) || strings.Contains(remote, "/") || !safeGitName(branch) {
 		return remoteBranchState{}, fmt.Errorf("unsafe remote or branch")
 	}

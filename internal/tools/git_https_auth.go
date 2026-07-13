@@ -12,7 +12,7 @@ import (
 // runGitHubRemote uses the configured GitHub token only for a credential-free,
 // owner-bound https://github.com remote. SSH remotes deliberately keep their existing
 // SSH-agent/deploy-key behavior, and every other remote uses the normal runner.
-func (s *Service) runGitHubRemote(ctx context.Context, dir, remoteURL string, args []string) (string, error) {
+func (s *GitCapability) runGitHubRemote(ctx context.Context, dir, remoteURL string, args []string) (string, error) {
 	if s.github == nil || strings.TrimSpace(s.github.token) == "" {
 		return s.run(ctx, dir, "git", args)
 	}
