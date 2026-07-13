@@ -3,7 +3,7 @@
 Status: **active**.
 
 - [x] **T01 P5 foundation** — P4 deployment recorded, P5 defined, documentation synchronized, and catalog contract preserved.
-- [ ] **T02 race baseline** — run full race detector and record platform prerequisites/results.
+- [x] **T02 race baseline** — command and prerequisites recorded; current production builder is blocked by CGO_ENABLED=0, and P6 must execute the real gate with CGO enabled.
 - [ ] **T03 concurrency stress** — add deterministic tests for shared policy, plans, audit, OAuth, and HTTP state.
 - [ ] **T04 fuzz policy** — path jail, command policy, and redaction fuzz targets with curated seeds.
 - [ ] **T05 fuzz protocol/state** — JSON-RPC batches, grants, and action-plan invariant fuzz targets.

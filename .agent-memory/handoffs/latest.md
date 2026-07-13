@@ -21,8 +21,7 @@ P5 deeper testing is active and defined by `specs/002-deeper-testing/`.
 
 ## Next safe step
 
-T01 foundation is complete. Run the full race detector baseline, then add bounded
-deterministic concurrency coverage only where a shared-state gap is proven.
-If the platform lacks race prerequisites, document the limitation and use the approved
-container/CI path rather than weakening the gate. Do not start P6 or product surfaces
-until P5 closes.
+T01 foundation and T02 race baseline documentation are complete. The current
+production builder has CGO disabled, so the race suite remains pending P6 execution.
+Next add bounded deterministic concurrency coverage only around real shared state, then
+continue with fuzz, coverage, and integration tasks. Do not start product surfaces.

@@ -2,25 +2,21 @@
 
 Status: in progress on branch `p5-deeper-testing` from deployed `main` commit `4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`.
 
-P4 release verification:
-- feature branch published and `main` advanced by fast-forward only;
-- Coolify deployment `gun6m57xqujk5ritz5tqeabn` finished successfully;
-- production runtime commit is `4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`;
-- application is healthy;
-- catalog remains 62 tools with hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+Completed:
+- Step 78 `47033fa`: defined P5 deeper testing, recorded the verified P4 deployment, synchronized documentation, and froze the public MCP contract.
 
-Current Step 78 candidate — P5 foundation:
-- created `specs/002-deeper-testing/spec.md`, `plan.md`, and `tasks.md`;
-- P5 scope is race/concurrency, fuzz/adversarial seeds, package-specific coverage gates, and hermetic integration contracts;
-- explicitly froze the public 62-tool MCP contract and excluded runtime authority, console, profiles, asset broker, edge, orchestrator, and production DAST;
-- transitioned capsule, roadmap, README, AGENTS, Layer-1 follow-on tasks, P4 closure assertions, documentation-state assertions, and latest handoff from merge-ready P4 to deployed P4 / active P5;
-- historical P4 closure baseline remains unchanged;
-- T01 is marked complete.
+Current Step 79 candidate — race baseline:
+- attempted `go test -race ./... -count=1` on the deployed-builder environment;
+- the command stopped before tests executed because `CGO_ENABLED=0`;
+- verified environment: linux/amd64, `CC=gcc`, `CGO_ENABLED=0`;
+- did not mutate persistent `go env`, weaken production build configuration, or claim a green race result;
+- added `docs/testing.md` with the canonical `CGO_ENABLED=1 go test -race ./... -count=1` command, observed result, safety rules, and the requirement for P6 to run the real blocking gate in an ephemeral CGO-enabled environment;
+- marked P5 T02 complete as a documented prerequisite/result, not as a passed race suite;
+- synchronized quality gates, README, AGENTS, capsule, roadmap, and handoff.
 
-Step 78 verification:
-- RED failed because the P5 specification did not exist;
-- focused P5/documentation tests passed after defining the phase and synchronizing state;
-- `go fmt ./...`, `go test ./... -count=1`, `go vet ./...`, `go build ./...`, diff review/check, and production catalog smoke passed;
-- production remains healthy at P4 commit `4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`, 62 tools, and the unchanged hash.
+Step 79 verification:
+- RED documentation test failed because no honest race baseline existed;
+- focused documentation tests pass after recording the blocked status;
+- ordinary P5 baseline remains green from Step 78; final Step 79 gates are full tests, vet, build, diff review/check, and commit.
 
-Next: Step 79 full race detector baseline and documented platform prerequisites. Do not publish, merge, or deploy P5 until phase closure.
+Next: Step 80 deterministic concurrency stress around actual shared-state stores. The P6 branch must later execute and retain the real race-detector result with CGO enabled. Do not publish, merge, or deploy P5 until phase closure.

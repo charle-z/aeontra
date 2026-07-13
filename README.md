@@ -131,6 +131,7 @@ writes require explicit approval in ask mode; aliases never weaken policy.
 - `docs/context-capsule.md` — current state for resuming without re-hydrating chat.
 - `docs/documentation-map.md` — documentation sources, status terms, and update rules.
 - `docs/tools.md` — canonical tool, alias, annotation, workflow, and approval reference.
+- `docs/testing.md` — reproducible gates, prerequisites, and honest blocked/pass status.
 - `docs/product-roadmap.md` — Cubethon delivery plus universal profiles, edge,
   orchestration, and authorized-security roadmap.
 - `docs/security-engagements.md` — generic design for private, scope-bound,

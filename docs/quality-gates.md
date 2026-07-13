@@ -1,7 +1,8 @@
 # Quality and security gates
 
 This document defines the intended delivery gates. A gate is added only when its
-failure is actionable and its runtime cost matches where it runs.
+failure is actionable and its runtime cost matches where it runs. Current commands,
+prerequisites, and honest execution status are recorded in `docs/testing.md`.
 
 ## Pull request: fast feedback
 

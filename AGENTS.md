@@ -28,6 +28,7 @@ Before writing code, read:
 4. `docs/connect-remote.md` — how clients (ChatGPT/Cursor/Claude) connect.
 5. `docs/tools.md` — canonical registered tool surface, aliases and annotations.
 6. `docs/documentation-map.md` — source hierarchy, status vocabulary, and update rules.
+7. `docs/testing.md` — gate commands, prerequisites, and current execution evidence.
 
 The chat session is **not** the source of truth. The repo is.
 
