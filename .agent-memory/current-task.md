@@ -13,20 +13,22 @@ Completed commits:
 - Step 35 `2c5a073`: command and sandbox execution.
 - Step 36 `f9010db`: privileged profiles.
 - Step 37 `1f5c057`: core Coolify tools.
+- Step 38 `03d1685`: validation-runner platform creation.
 
-Current Step 38 candidate:
-- added `internal/mcpserver/catalog/validation_runner_platform.go` with a narrow `ValidationRunnerPlatformService` interface;
-- moved `platform_validation_runner_create_preview` and `platform_validation_runner_create` into `RegisterValidationRunnerPlatform` at their original position;
-- added focused tests for names, order, descriptions, schemas, versions, and handler routing.
+Current Step 39 candidate:
+- added `internal/mcpserver/catalog/platform_app_preview.go` with a narrow `PlatformAppPreviewService` and catalog-layer request;
+- added `internal/mcpserver/catalog_adapters.go` to convert the catalog request to `tools.PlatformAppCreateRequest` without creating a package cycle;
+- moved `platform_app_create_preview` into `RegisterPlatformAppPreview` at its original catalog position;
+- added focused contract and handler-routing tests.
 
-Compatibility preserved across Steps 35-38:
+Compatibility preserved:
 - 62 public tools;
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
 - names, order, descriptions, schemas, versions, annotations, aliases, handlers, approvals, and envs unchanged.
 
-Step 38 verification:
-- RED failed because `RegisterValidationRunnerPlatform` did not exist;
+Step 39 verification:
+- RED failed because the request type and `RegisterPlatformAppPreview` did not exist;
 - focused and full tests passed;
 - `go vet ./...`, `go build ./...`, diff review, and production catalog smoke passed.
 
-The requested four-step batch is complete after committing Step 38. No publish, merge, or deploy has occurred. Next natural domain: platform app creation/deployment planning block, still one stable group per commit.
+Next in the requested five-step batch: Step 40 deployment planning/no-cache, Step 41 environment mutation, Step 42 Git reads, Step 43 Git acquisition. No publish, merge, or deploy.

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 
 	"github.com/charle-z/mcp-devbox/internal/mcpserver/catalog"
-	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
 // object builds a JSON-Schema object node.
@@ -135,43 +134,7 @@ func (s *Server) register() {
 
 	catalog.RegisterValidationRunnerPlatform(s.addCatalogTool, s.svc)
 
-	s.add("platform_app_create_preview",
-		"Validate a Coolify application definition against configured server/project/environment, GitHub owner and domain allowlist, then create a read-only expiring single-use plan. Required environment variable names are shown; no secret values are accepted or returned.",
-		object(map[string]any{
-			"name":                 strProp("new application name"),
-			"github_repo":          strProp("owner/repo or allowed credential-free GitHub URL"),
-			"branch":               strProp("branch, defaults to main"),
-			"domain":               strProp("optional domain restricted by COOLIFY_ALLOWED_DOMAINS"),
-			"port":                 strProp("optional exposed port from 1 to 65535"),
-			"build_pack":           strProp("nixpacks, dockerfile, static, or dockercompose"),
-			"healthcheck_path":     strProp("optional absolute HTTP healthcheck path"),
-			"healthcheck_interval": intProp("optional healthcheck interval in seconds"),
-			"healthcheck_timeout":  intProp("optional healthcheck timeout in seconds"),
-			"required_env":         strArrProp("names of required environment variables; never values"),
-		}, "name", "github_repo"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Name                string   `json:"name"`
-				GitHubRepo          string   `json:"github_repo"`
-				Branch              string   `json:"branch"`
-				Domain              string   `json:"domain"`
-				Port                string   `json:"port"`
-				BuildPack           string   `json:"build_pack"`
-				HealthcheckPath     string   `json:"healthcheck_path"`
-				HealthcheckInterval int      `json:"healthcheck_interval"`
-				HealthcheckTimeout  int      `json:"healthcheck_timeout"`
-				RequiredEnv         []string `json:"required_env"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.PlatformAppCreatePreview(tools.PlatformAppCreateRequest{
-				Name: p.Name, GitHubRepo: p.GitHubRepo, Branch: p.Branch, Domain: p.Domain,
-				Port: p.Port, BuildPack: p.BuildPack, HealthcheckPath: p.HealthcheckPath,
-				HealthcheckInterval: p.HealthcheckInterval, HealthcheckTimeout: p.HealthcheckTimeout,
-				RequiredEnv: p.RequiredEnv,
-			})
-		})
+	catalog.RegisterPlatformAppPreview(s.addCatalogTool, platformAppPreviewAdapter{service: s.svc})
 
 	s.add("platform_deploy_preview",
 		"Read one allowed Coolify application and create an expiring single-use deployment plan bound to its repository, branch and expected commit. It does not deploy.",
