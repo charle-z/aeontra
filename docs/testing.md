@@ -79,6 +79,36 @@ execution corrected two test assumptions: redaction may re-detect an unchanged
 placeholder, and an expired plan is consumed before subsequent replay. No runtime
 change was required.
 
+## Package-specific coverage gate — P5 Step 82
+
+Generate and evaluate the profile with:
+
+```text
+go test ./... -coverprofile=coverage.out -covermode=atomic -count=1
+go run ./cmd/coverage-gate --profile coverage.out
+```
+
+Versioned minimums protect security-critical packages rather than relying on one
+misleading global percentage:
+
+| Package suffix | Minimum | Step 82 baseline |
+|---|---:|---:|
+| `internal/policy` | 80% | 84.6% |
+| `internal/mcpserver` | 80% | 83.7% |
+| `internal/mcpserver/catalog` | 80% | 84.4% |
+| `internal/oauth` | 80% | 85.3% |
+| `internal/audit` | 80% | 86.2% |
+| `internal/tools` | 70% | 73.3% |
+| `internal/app` | 65% | 69.0% |
+| `internal/grantadmin` | 55% | 59.6% |
+
+The gate fails with an explicit missing package error when a threshold package is
+absent, when a profile is malformed, or when a package drops below its minimum.
+Output is package-specific and actionable. Thresholds are deliberately below the
+current measured value so the gate detects regression without turning coverage into
+line-count gaming. P6 will run the same two commands as a blocking CI job and retain
+only safe coverage artifacts.
+
 ## P5 deeper-testing sequence
 
 1. Add bounded deterministic concurrency tests around shared state.

@@ -6,6 +6,16 @@ prerequisites, and honest execution status are recorded in `docs/testing.md`.
 
 ## Pull request: fast feedback
 
+Coverage prerequisite added by P5:
+
+```text
+go test ./... -coverprofile=coverage.out -covermode=atomic -count=1
+go run ./cmd/coverage-gate --profile coverage.out
+```
+
+The gate is package-specific, rejects a missing package, and never substitutes one
+global coverage percentage for critical-package evidence. P6 will make it blocking.
+
 Core Go:
 
 - formatting check;

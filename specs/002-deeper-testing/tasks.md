@@ -7,7 +7,7 @@ Status: **active**.
 - [x] **T03 concurrency stress** — deterministic exactly-once and concurrent-write tests cover grants, action plans, audit JSONL, and OAuth token state; current locking passed without a runtime change.
 - [x] **T04 fuzz policy** — path jail, command policy, redaction idempotence, and grant TTL fuzz targets with curated seeds.
 - [x] **T05 fuzz protocol/state** — JSON-RPC message/batch and action-plan operation/single-use fuzz targets with curated seeds.
-- [ ] **T06 coverage gate** — tested coverprofile parser and package-specific security thresholds.
+- [x] **T06 coverage gate** — tested coverprofile parser, reproducible CLI, and package-specific security thresholds passing against the full suite.
 - [ ] **T07 integration matrix** — stdio/HTTP/auth/catalog/grants/plans/runtime synthetic integration tests.
 - [ ] **T08 P5 closure** — baseline, documentation synchronization, branch audit, full gates, and release posture.
 
