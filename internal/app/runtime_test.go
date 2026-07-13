@@ -15,6 +15,9 @@ import (
 func clearRuntimeEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
+		tokenEnv, publicURLEnv, oauthPassphraseEnv,
+		oauthClientStorePathEnv, oauthRefreshStorePathEnv,
+		observabilityModeEnv, observabilityPathEnv, observabilityMaxBytesEnv,
 		sandboxImageEnv,
 		validationRunnerURLEnv, validationRunnerTokenEnv,
 		privilegedTasksEnv, privilegedServicesEnv, privilegedTimeoutEnv,

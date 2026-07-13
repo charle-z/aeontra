@@ -99,8 +99,9 @@ misleading global percentage:
 | `internal/oauth` | 80% | 85.3% |
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
+| `internal/console` | 80% | 84.2% |
 | `internal/tools` | 70% | 73.3% |
-| `internal/app` | 65% | 67.5% |
+| `internal/app` | 65% | 67.8% |
 | `internal/grantadmin` | 55% | 59.6% |
 
 The gate fails with an explicit missing package error when a threshold package is
@@ -286,6 +287,26 @@ Dependency Review was correctly skipped on push. Production serves exact commit
 `d1309ed08db0170e5165f78bf406e94cfa56cc11` with 62 tools and the unchanged
 hash, and its JSONL logs were inspected for the closed data contract. Full evidence is
 versioned in `docs/baselines/2026-07-13-p7.md`.
+
+## Authenticated dark console — P8
+
+P8 adds `internal/console` with an 80% package coverage minimum and a measured
+84.2% local baseline. Ordinary and integration tests cover:
+
+- digest-only opaque sessions, eight-hour TTL, 128-session cap, expiry, revocation,
+  collision retry, and restart-only persistence;
+- static-token form login, OAuth/bearer bootstrap, logout, cookie scope/security, and
+  exact method/content-type/body-size failures;
+- authenticated assets/status, exact safe status keys, unchanged MCP authorization,
+  and unchanged 62-tool catalog/hash;
+- CSP, frame/referrer/content-type/permissions/cache/cross-origin headers on pages,
+  JSON, assets, errors, and redirects;
+- canaries for tokens, cookies, query secrets, paths, prompts, targets, identities,
+  and observability leakage;
+- embedded assets with no CDN, analytics, remote font, npm runtime, service worker,
+  browser storage, `innerHTML`, WebSocket, or JavaScript-readable cookie;
+- `cmd/console-smoke`, which reads the existing token only from the environment,
+  validates login/session/status/headers/commit/catalog, and prints no secret/cookie.
 
 ## Safety rules
 

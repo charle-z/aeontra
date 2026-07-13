@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-07-12
 - Scope: `mcp-devbox`, validation runner, console, CI/CD
+- Amendment: P8 console item 6 and the Astro/BFF choice are superseded by ADR 0002.
 
 ## Context
 
@@ -25,7 +26,7 @@ Work proceeds in this order:
 3. P2: split the tool service by capability while keeping policy/audit/plans central.
 4. P3: reduce `cmd/mcp-devbox/main.go` to a composition root without renaming envs.
 5. P4-P7: L1 hardening, testing, CI/DevSecOps, and observability.
-6. P8: an Astro SSR operator console using a server-side BFF.
+6. P8: operator console; implementation choice superseded by ADR 0002.
 7. P9: an asset broker with provenance, licensing, ranking, and automatic selection.
 
 Every numbered implementation step follows RED -> GREEN -> REFACTOR -> full suite ->
@@ -112,13 +113,11 @@ active scanning requires an isolated target and a separate approval.
 
 ## Console security
 
-The console uses Astro SSR + TypeScript. Security decisions remain in Go. The browser
-receives only an httpOnly session and talks to a server-side BFF; it never receives
-MCP, GitHub, Coolify, or runner tokens.
-
-Required controls include contextual output escaping, no untrusted raw HTML, strict
-CSP, CSRF protection for state changes, secure/SameSite cookies, server-side input
-validation, authorization on every BFF operation, dependency scanning, and DAST.
+The original Astro SSR + server-side BFF implementation choice is superseded by
+ADR 0002. The enduring controls remain: contextual output safety, no untrusted raw
+HTML, strict CSP, secure/SameSite cookies, server-side validation, authentication on
+every private route, no browser-accessible infrastructure token, and adversarial
+security testing.
 
 ## Skills and agent continuity
 

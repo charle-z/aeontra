@@ -14,7 +14,7 @@ criteria below remain future requirements until their status changes with eviden
 | P5 deeper testing | Deployed | `main` includes Steps 78-84; production verified; runtime catalog unchanged. |
 | P6 CI/DevSecOps | Deployed | `main` and production serve `539e4d96c95aedd492ac36b428d4159054e183f4`; PR/push CI, CodeQL, Dependency Review, SBOM, and zero-High/Critical container gate are green. |
 | P7 structured observability | Deployed | `main` and production serve `d1309ed08db0170e5165f78bf406e94cfa56cc11`; green Race/Staticcheck/CodeQL/container gates and real content-free JSONL logs are recorded in the P7 baseline. |
-| Console/showcase | Not started | Requires a separate public-safe spec; no control-plane authority. |
+| Console/showcase | In progress | P8 branch `p8-authenticated-dark-console` adds an authenticated, dark, presentation-only console inside the existing Go app; no new application or control-plane authority. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
 | Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |
 | Edge agents | Planned; PC/WSL validation pending | Setup must be outbound-only, easy to configure, revocable, and locally bounded. |
@@ -122,10 +122,12 @@ Acceptance:
 
 ### M0.2 Build MCP Devbox Console
 
-Create a separate presentation application, initially using Astro + TypeScript for
-delivery speed. This choice applies only to the console, not to MCP Devbox.
+Ship the authenticated dark console first as embedded, dependency-free assets inside
+the existing Go application. A separate unauthenticated public showcase may be built
+later only if a submission or public demo requires it; it must remain presentation-only
+and must never proxy the private MCP control plane.
 
-Public console scope:
+Authenticated console scope:
 
 - Product statement and clear problem/solution.
 - Animated pipeline: Request -> Plan -> Patch -> Validate -> Commit -> Publish ->
@@ -145,8 +147,10 @@ must be clearly labeled as recorded/sanitized rather than live execution.
 
 Acceptance:
 
-- Public incognito access works on desktop and mobile.
-- No authentication secret is present in frontend bundles or browser requests.
+- Authenticated HTTPS access works on desktop and mobile; unauthenticated users see
+  only a minimal login surface.
+- No authentication secret is present in frontend bundles, status payloads, logs, or
+  JavaScript-readable browser storage.
 - Accessibility basics, reduced motion, metadata, Open Graph, 404, and HTTPS work.
 - The console stays useful when ChatGPT, GitHub, or Coolify is temporarily down.
 

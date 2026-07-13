@@ -1,36 +1,36 @@
 # Latest handoff — MCP Devbox
 
 Date: 2026-07-13
-Branch: `p7-structured-observability`
-Deployed base: `main` at `d1309ed08db0170e5165f78bf406e94cfa56cc11`
+Branch: `p8-authenticated-dark-console`
+Deployed base: `main` at P7 closure `30ae8a7e9d7b73584b34ef3bbbc952407faa5117`
 
 ## Current phase
 
-P7 structured observability is technically complete, deployed, and
-production-verified. The closure candidate is versioning final evidence before the
-next milestone.
+P8 authenticated dark console is implemented locally and awaiting final gates,
+publication, automatic deployment, and authenticated production smoke.
 
-## Verified gates
+## Security boundary
 
-- Corrective CI `29281156750`: Verify, CGO Race, Staticcheck, Govulncheck success.
-- Corrective Security Evidence `29281156767`: CodeQL and container SBOM/
-  vulnerability gate success; Dependency Review correctly skipped on push.
-- Production: exact commit `d1309ed08db0170e5165f78bf406e94cfa56cc11`, healthy,
-  62 tools, unchanged catalog hash.
-- Real application logs show shared opaque request ids and the content-free JSONL
-  closed schema; no prompts, params, paths, targets, tokens, identities, results, or
-  raw errors were observed.
+- Presentation-only embedded surface in the existing Go HTTP application.
+- Existing bearer/OAuth authentication only; no new credential or OAuth mutation.
+- Opaque digest-only in-memory sessions; eight-hour TTL; cap 128; restart revokes all.
+- Exact public runtime status only; no repositories, paths, source, prompts, params,
+  results, targets, logs, audit, observability history, identities, or control actions.
+- No new application, listener, npm/CDN dependency, database, volume, or exporter.
 
-The initial implementation run `29280567173` found one Staticcheck U1000 in an
-obsolete wrapper. Commit `d1309ed08db0170e5165f78bf406e94cfa56cc11` removed it;
-the failure remains documented in the P7 baseline.
+## Local evidence
 
-The automatic deployment restarted the MCP before a deployment UUID reached the
-client. Exact runtime identity proves success; no UUID is invented.
+- Full suite, atomic coverage/package gate, vet, build, actionlint, Govulncheck,
+  focused security tests, docs, and whitespace checks pass.
+- Console coverage is 84.2% against an 80% gate; console-smoke coverage is 76.5%.
+- `cmd/console-smoke` validates login, secure cookie, headers, exact status schema,
+  expected commit, 62 tools, and catalog hash without printing token/session values.
+- Staticcheck and Race are runner-authoritative because the local non-root container
+  lacks a writable Staticcheck cache and CGO.
 
 ## Next safe step
 
-Run closure-document gates, commit/publish the P7 baseline, fast-forward `main`,
-observe the closure commit, and verify production again. Then create a fresh spec and
-branch for an authenticated dark console. Do not mix Asset Broker, universal
-profiles, or Edge Agent into the console milestone; Edge Agent remains last.
+Remove the final helper, audit/stage the diff, commit/publish P8, observe every
+main-branch Action, verify automatic deployment and authenticated console smoke, then
+create the P8 closure baseline. Start Asset Broker only on a fresh branch/spec after
+P8 closes.
