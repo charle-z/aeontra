@@ -100,6 +100,7 @@ misleading global percentage:
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
 | `internal/console` | 80% | 84.3% |
+| `internal/brain` | 80% | 82.9% |
 | `internal/tools` | 70% | 73.3% |
 | `internal/app` | 65% | 67.8% |
 | `internal/grantadmin` | 55% | 59.6% |
@@ -315,6 +316,25 @@ Dependency Review correctly skipped on push. Production serves
 `605a56d48a495f3c8a2ce62471223187ef2f5685`, console-smoke passed, and safe logs
 show only 303/200 `route=console` events. Full evidence is versioned in
 `docs/baselines/2026-07-13-p8.md`.
+
+## P9 Brain — Step 2 model and store jail
+
+`internal/brain` has an 80% package gate and a measured 82.9% Step 2 baseline.
+The current package contains no SQLite or Git implementation yet. Tests cover:
+
+- strict known-fields YAML frontmatter and deterministic render/parse round trips;
+- kebab-case slug validation, traversal/path/Unicode rejection, and fuzz seeds;
+- curated owner-only versus working agent-author policy;
+- provenance, server-owned UTC timestamps, review dates, type/title/body/file bounds;
+- cross-author update denial and created-timestamp preservation;
+- secret-canary rejection before rendering/persistence and defensive read redaction;
+- strict `[[slug]]` extraction and invalid/unclosed link denial;
+- dedicated absolute jail, private 0700 root/trust/cache directories, symlink and broad
+  permission rejection, regular 0600-style source checks, and global slug uniqueness;
+- a runtime-capable injected clock so expiry remains correct in long-lived processes.
+
+YAML is now a direct dependency because production code parses frontmatter. The
+`modernc.org/sqlite` dependency remains absent until Step 4 has a failing FTS5 test.
 
 ## Safety rules
 

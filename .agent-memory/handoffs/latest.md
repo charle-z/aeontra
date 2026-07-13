@@ -2,38 +2,29 @@
 
 Date: 2026-07-13
 Branch: `p9-brain`
-Base: P8 closure/tag `2e3429c9d6342e8e091cadf65293c5c85b1b3259`
+Base: Step 1 `9e2ca7202f5776f4afbe140eb89f65984ce4b26e` / P8 tag `2e3429c9d6342e8e091cadf65293c5c85b1b3259`
 
 ## Current phase
 
-P9 Brain Step 1 contract is active. P8 is closed, tagged, deployed, and no longer the
-working branch. No Brain implementation or dependency has been added yet.
+P9 Brain Step 2 is implemented locally and awaiting final gates/commit. No Git,
+SQLite, MCP tool, runtime configuration, volume, or deployment change exists yet.
 
-## Architecture fixed by owner/external review
+## Step 2 security behavior
 
-- Markdown with strict YAML frontmatter is source of truth under
-  `MCP_DEVBOX_BRAIN_ROOT`.
-- Trust levels: owner-only `curated/` and agent-writable `working/` with provenance
-  and mandatory review date.
-- Explicit `[[slug]]` links; backlinks derived at index time.
-- Pure-Go `modernc.org/sqlite@v1.53.0` FTS5 as a disposable redacted cache.
-- Five maximum tools: search, read, write, index, context.
-- Dedicated Brain jail; never add Brain root to general repository roots.
-- Local Git only, no remote by default or tool-mediated remote operation.
-- No resident service, database server, embeddings/vector model, queue, worker, port,
-  or new Coolify application on the 4 GB / 2 vCPU VPS.
-
-## Step 1 artifacts
-
-- `specs/006-brain/spec.md`
-- `specs/006-brain/threat-model.md`
-- `specs/006-brain/plan.md`
-- `specs/006-brain/tasks.md`
-- `docs/adr/0003-p9-markdown-truth-sqlite-fts5-cache.md`
-- `docs/p9_start_test.go`
+- strict known-fields YAML frontmatter and deterministic Markdown rendering;
+- curated owner-only and working agent-author validation;
+- mandatory provenance/review dates and server-owned timestamps for agent drafts;
+- hard slug/title/provenance/body/file bounds and validated `[[slug]]` links;
+- secret-shaped agent content rejected before persistence; manual reads redacted;
+- dedicated Brain jail outside general repository roots;
+- private 0700 layout, regular private source files, symlink/ancestor defense;
+- global curated/working slug uniqueness;
+- traversal and link fuzz seeds;
+- 82.9% package coverage with an 80% gate.
 
 ## Next safe step
 
-Finish and commit Step 1 gates. Then Step 2 begins only with failing tests for strict
-frontmatter, curated-write denial, secret rejection, traversal/fuzz, links, review
-dates, bounds, symlink safety, and dedicated root jail. Do not add SQLite until Step 4.
+Commit/publish Step 2 after full gates. Step 3 begins with failing tests for controlled
+local Git initialization and atomic working-note writes/rollback. Do not add SQLite,
+register tools, or wire runtime configuration before their planned steps. The
+invariant is no resident service.

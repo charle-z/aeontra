@@ -4,7 +4,7 @@ Status: **active**.
 
 - [x] **T01 P9 definition** — independent branch/spec, trust levels, hard bounds,
   no-resident-service invariant, local Git posture, and P10 stop boundary.
-- [ ] **T02 strict note model** — YAML known-fields parser/renderer, slug/type/author/
+- [x] **T02 strict note model** — YAML known-fields parser/renderer, slug/type/author/
   dates/provenance/review/link/size validation, curated/working policy, secret rejection.
 - [ ] **T03 source store and Git** — dedicated jail, private layout, symlink defense,
   atomic working writes, controlled local commits, rollback, no remote.

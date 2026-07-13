@@ -107,11 +107,11 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"P9 Brain Step 1 contract is active",
+		"P9 Brain Step 2 is implemented locally",
 		"p9-brain",
-		"2e3429c9d6342e8e091cadf65293c5c85b1b3259",
-		"modernc.org/sqlite@v1.53.0",
-		"No resident service",
+		"9e2ca7202f5776f4afbe140eb89f65984ce4b26e",
+		"82.9%",
+		"no resident service",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)

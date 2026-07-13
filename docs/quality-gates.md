@@ -17,6 +17,8 @@ The gate is package-specific, rejects a missing package, and never substitutes o
 global coverage percentage for critical-package evidence. P6 makes it blocking. P7
 adds `internal/observability` at a 70% minimum against a measured 74.4% baseline.
 P8 adds `internal/console` at an 80% minimum against a measured 84.3% baseline.
+P9 Step 2 adds `internal/brain` at an 80% minimum against a measured 82.9% baseline;
+SQLite/Git/tool/runtime code is not included in this baseline.
 
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.

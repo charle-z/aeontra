@@ -87,9 +87,11 @@ cross-repository memory with Markdown/frontmatter files as truth, owner-only
 `curated/`, agent-writable `working/` with provenance and review dates, explicit
 `[[slug]]` links, a pure-Go SQLite FTS5 disposable cache, and five bounded tools.
 The resource invariant is no resident service: no database server, embeddings model,
-vector daemon, queue, worker, port, or new Coolify application. P9 implementation has
-not started beyond contract, threat model, plan, tasks, ADR 0003, and RED documentation
-tests.
+vector daemon, queue, worker, port, or new Coolify application. Step 2 now implements
+the strict note model and dedicated store jail under `internal/brain`: known-fields YAML,
+server-owned timestamps, curated/working trust, secret denial/redaction, link parsing,
+private layout, symlink defense, global slug uniqueness, fuzz seeds, and an 80% coverage
+gate. Git history, SQLite, tools, and runtime wiring remain unimplemented.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot

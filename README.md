@@ -104,8 +104,11 @@ memory with Markdown/frontmatter files as truth, owner-only curated notes,
 agent-authored working notes with provenance/review dates, `[[slug]]` links, and an
 in-process pure-Go SQLite FTS5 disposable cache. The invariant is no resident service:
 no database server, embeddings model, vector daemon, queue, worker, port, or new
-Coolify application. Step 1 currently contains only contracts, ADR 0003, threat model,
-plan/tasks, and documentation tests; no Brain runtime dependency or tool is deployed.
+Coolify application. Step 2 implements only the strict note model and dedicated private store jail:
+known-fields YAML, trust/date/provenance/bounds validation, secret denial/redaction,
+`[[slug]]` parsing, symlink defense, global slug uniqueness, and fuzz seeds. YAML is a
+direct dependency; Git history, SQLite, the five tools, and runtime wiring are still
+absent and nothing is deployed.
 
 Quick start:
 
