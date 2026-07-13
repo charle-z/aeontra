@@ -28,6 +28,7 @@
 | Session fixation | Ignore supplied cookie on login and always generate a new cryptographic id. |
 | Session replay after logout/expiry/restart | Digest removed on logout, checked against expiry, in-memory store disappears on restart. |
 | Unbounded session growth | Global cap 128; expired entries pruned before admission; oldest expiry evicted if needed. |
+| `GET /console` with existing bearer/OAuth auth creates session state | Accepted bootstrap behavior: the request already carries valid existing authorization, always mints a fresh opaque session, redirects to the clean `/console` URL, and grants no authority beyond the existing credential. |
 | CSRF logout/login abuse | SameSite=Strict cookie; login creates a new session only after secret validation; logout only clears/revokes current session. |
 | Brute-force login | Constant-time compare, bounded body, generic response; deployment should retain reverse-proxy rate limiting. No username oracle exists. |
 | XSS through runtime values | Runtime fields are encoded into JSON and text nodes; no `innerHTML`; HTML is static embedded content. |
@@ -43,6 +44,9 @@
   logout, expiry, or restart.
 - A stolen MCP bearer token already grants MCP authentication and can also create a
   console session; P8 does not increase that credential's existing authority.
+- `GET /console` is intentionally state-creating only when the request already passes
+  existing bearer/OAuth authorization. This exception is accepted to remove tokens
+  from subsequent browser requests and redirects immediately to a clean URL.
 - Global login rate limiting remains a reverse-proxy/operator responsibility; the
   application adds no IP/identity tracking because those values are private and would
   create a new data store.

@@ -151,7 +151,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/x-www-form-urlencoded" {
-		hardenResponse(w, loginCSP("invalid"))
+		hardenResponse(w, errorCSP())
 		http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
 		return
 	}
@@ -159,7 +159,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			hardenResponse(w, loginCSP("oversize"))
+			hardenResponse(w, errorCSP())
 			http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
 			return
 		}
@@ -379,6 +379,10 @@ func hardenResponse(w http.ResponseWriter, csp string) {
 
 func loginCSP(nonce string) string {
 	return "default-src 'none'; style-src 'nonce-" + nonce + "'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+}
+
+func errorCSP() string {
+	return "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 }
 
 func hardenRedirect(w http.ResponseWriter) {
