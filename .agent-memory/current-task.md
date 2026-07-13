@@ -6,17 +6,17 @@ Completed:
 - Step 63 `73f9df4`: extracted the command composition root into `internal/app` and reduced `cmd/mcp-devbox/main.go` to `app.Main()`.
 - Step 64 `fd6d2ac`: split application orchestration into command, environment, OAuth, serve/bootstrap and grant modules.
 - Step 65 `9bde22e`: isolated serve flag/env normalization in a tested immutable options parser.
+- Step 66 `45ee0fa`: extracted policy/audit/service/server and optional integration composition into `appRuntime`.
 
-Current Step 66 candidate:
-- introduced `appRuntime` to compose policy, audit logger, capability service and MCP server independently of transport lifecycle;
-- extracted sandbox, private validation, privileged-profile, Coolify and GitHub dependency builders;
-- froze `MCP_DEVBOX_SANDBOX_IMAGE` alongside the existing environment contracts;
-- optional integrations remain disabled unless their original configuration variables are present;
-- runtime construction closes the audit logger on partial failure and exposes one explicit Close path.
+Current Step 67 candidate:
+- extracted loopback grant-admin startup, notifier wiring, token generation and bounded shutdown into `grant_admin.go`;
+- extracted stdio/HTTP selection, bearer/OAuth resolution, fail-closed authentication, address normalization, signal draining and transport diagnostics into `transport.go`;
+- reduced `serve.go` to parse options -> build runtime -> start local admin -> resolve transport -> serve;
+- startup diagnostics continue to hide the admin token until a local access request requires the human approval command.
 
-Step 66 verification:
-- RED failed because runtime builders and environment adapters did not exist;
-- tests passed for privileged timeout/services, optional GitHub/Coolify/validation construction, sandbox posture and complete runtime composition;
+Step 67 verification:
+- RED failed because transport resolution and local grant-admin lifecycle abstractions did not exist;
+- tests passed for loopback address normalization, stdio posture, HTTP fail-closed behavior, bearer precedence, OAuth configuration and local grant-admin lifecycle/token secrecy;
 - full tests, `go vet ./...`, and `go build ./...` passed.
 
-Next autonomous step: isolate local grant-admin and HTTP/stdio transport lifecycle, then add fail-closed auth and address-normalization tests without changing auth semantics. Do not publish, merge or deploy P3 without explicit owner approval.
+Next autonomous step: add a package boundary guard and command-level compatibility tests, then close P3 documentation/baseline and run the final branch audit. Do not publish, merge or deploy P3 without explicit owner approval.
