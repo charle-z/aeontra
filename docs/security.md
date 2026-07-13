@@ -62,10 +62,13 @@ Grant properties:
 - Exact resolved path only; no wildcards, parent directories, sibling files, or jail
   expansion.
 - Single-use and TTL-bounded; default TTL is 5 minutes, maximum accepted TTL is 1 hour.
+- Pending requests expire after 15 minutes, are capped at 256, and exact duplicate
+  path/raw requests reuse one id so an agent cannot create unbounded approval spam.
 - Normal grants still run content redaction before returning data.
 - Raw unredacted output requires `--raw --confirm-raw`; `--raw` alone is rejected.
 - Requests and approvals are audit logged with request id, path, TTL, raw flag, and
-  decision. Secret values are still scrubbed from audit fields.
+  decision. Args, errors, and every file/path entry are independently secret-scrubbed
+  before JSONL persistence.
 
 ### Always-blocked commands
 `rm -rf`, `del /s`, `format`, `mkfs`, `curl|bash`, `wget|bash`,
@@ -129,7 +132,7 @@ For a security product, tests must **attempt to bypass** the controls, not just
 confirm happy paths:
 - path traversal (`../`, absolute paths, UNC), symlink escape
 - command injection via tool arguments
-- allowlist bypass (chained/quoted commands)
+- allowlist bypass (chained/quoted commands, path-qualified names, hostile workspace PATH)
 - secret exfiltration through a *permitted* command
 - prompt-injection from a repo file trying to elicit a forbidden action
 > This is exactly the owner's red-team domain — the security testing of mcp-devbox
@@ -146,7 +149,7 @@ policy. Keep the MIT "as is" disclaimer. Never claim guarantees that can't be he
 - path traversal blocked · access outside workspace blocked · `.env`/`.ssh` blocked
 - destructive commands blocked · non-allowlist commands blocked
 - `apply_patch` validates before applying · allowed read/search work
-- audit log records actions · repo-file instructions are NOT executed
+- audit log records actions and redacts args/errors/file paths · repo-file instructions are NOT executed
 - **content secret-scan redacts keys/tokens in returned files**
 - **bypass attempts (traversal/symlink/arg-injection/allowlist) all fail**
 - access grants: agent cannot self-approve; expired/used grants fail; exact path only;

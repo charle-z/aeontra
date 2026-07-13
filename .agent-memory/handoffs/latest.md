@@ -3,42 +3,32 @@
 Date: 2026-07-13
 Branch: `p4-l1-hardening`
 Deployed base: `main` at `dd055e251c455086ddcb02bc302d9f406b05d6ce`
-Working HEAD before documentation synchronization: `fe2e903`
+Working HEAD before Step 75: `78a6ffffd1ce7807ea45d7bc0955e310a9738faa`
 
 ## Current phase
 
-P4 targeted Layer-1 hardening is active. P0–P3 are already published, fast-forwarded,
-deployed, and production-verified at 62 tools with catalog hash
+P4 targeted Layer-1 hardening is active and unreleased. P0–P3 are deployed and
+production-verified at 62 tools with catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
 
 Completed P4 commits:
 
-- `8a3c118` — reject path-qualified command spoofing.
-- `821c252` — reject relative/workspace-controlled executable resolution.
-- `9af06c4` — enforce grant TTL bounds in policy.
-- `fe2e903` — expire, cap, prune, and deduplicate pending access requests.
-
-All completed steps passed focused tests, `go test ./... -count=1`, `go vet ./...`,
-`go build ./...`, and diff checks.
+- `8a3c118` — path-qualified command spoofing blocked.
+- `821c252` — relative/workspace-controlled executable resolution blocked.
+- `9af06c4` — grant TTL bounds enforced in policy.
+- `fe2e903` — pending requests expired, capped, pruned, and deduplicated.
+- `78a6fff` — documentation synchronization across `specs/001-layer-1`,
+  `.specify/memory/constitution.md`, capsule, roadmap, README, AGENTS, and handoff.
 
 ## Current work
 
-Step 74 is documentation synchronization. A RED test found material drift in:
-
-- `specs/001-layer-1` — completed MVP tasks were still unchecked and the original
-  stdio-only scope was presented as current.
-- `.specify/memory/constitution.md` — still froze the project to the first L1 session.
-- `docs/context-capsule.md` — still treated deployed P3 as pending merge.
-- `docs/product-roadmap.md` — lacked an explicit implemented/in-progress/planned
-  status snapshot.
-- this handoff — previously described a July 1 worker plan that is superseded.
-
-The documentation synchronization must update those files, add a documentation map,
-keep historical baselines immutable, run documentation/full quality gates, and commit
-as one step.
+Step 75 redacts every audit `Files` entry in addition to args and errors. The RED
+test proved that a token embedded in a path was persisted before the fix. The logger
+now copies the caller slice and redacts each path before JSON encoding, preserving
+safe paths and caller-owned input.
 
 ## Next safe step
 
-After Step 74, continue P4 only with a confirmed Layer-1 security gap and a RED test.
-Do not start console, profiles, asset broker, or edge implementation on the P4 branch.
-Do not publish, merge, or deploy P4 until its closure audit is complete.
+Finish Step 75 gates and commit. Then continue P4 only with another confirmed
+Layer-1 security gap and RED test. Do not start console, profiles, asset broker, or
+edge work on this branch. Do not publish, merge, or deploy P4 before closure audit.

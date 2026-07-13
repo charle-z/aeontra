@@ -64,14 +64,20 @@ func (l *Logger) Close() error {
 	return nil
 }
 
-// Log writes an entry. Time is set if empty; Args/Error are secret-scrubbed so the
-// audit log itself can never become a place secrets leak.
+// Log writes an entry. Time is set if empty; Args, Error, and each Files entry
+// are secret-scrubbed so the audit log itself can never become a place secrets leak.
 func (l *Logger) Log(e Entry) error {
 	if e.Time == "" {
 		e.Time = l.now().UTC().Format(time.RFC3339Nano)
 	}
 	e.Args, _ = policy.Redact(e.Args)
 	e.Error, _ = policy.Redact(e.Error)
+	if len(e.Files) > 0 {
+		e.Files = append([]string(nil), e.Files...)
+		for i := range e.Files {
+			e.Files[i], _ = policy.Redact(e.Files[i])
+		}
+	}
 
 	b, err := json.Marshal(e)
 	if err != nil {

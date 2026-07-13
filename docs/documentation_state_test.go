@@ -72,7 +72,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"dd055e251c455086ddcb02bc302d9f406b05d6ce",
 		"P4 targeted Layer-1 hardening is active",
 		"p4-l1-hardening",
-		"Step 73",
+		"Step 75",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("context capsule does not contain %q", required)
