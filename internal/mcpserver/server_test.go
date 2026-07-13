@@ -12,6 +12,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/mcpserver/catalog"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
@@ -203,8 +204,14 @@ func TestToolsCall_DeniedSecretIsErrorResult(t *testing.T) {
 
 func TestToolsCall_ErrorResultPreservesHandlerOutput(t *testing.T) {
 	s, _ := newTestServer(t, config.ModeReadOnly)
-	s.add("failing_with_output", "test tool", object(map[string]any{}), func(json.RawMessage) (string, error) {
-		return "check output\nactual failure details", errors.New("validation failed")
+	s.addCatalogTool(catalog.Tool{
+		Name:        "failing_with_output",
+		Description: "test tool",
+		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+		Version:     "1",
+		Handler: func(json.RawMessage) (string, error) {
+			return "check output\nactual failure details", errors.New("validation failed")
+		},
 	})
 
 	resp := call(t, s, `{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"failing_with_output","arguments":{}}}`)

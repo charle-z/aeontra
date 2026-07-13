@@ -1,46 +1,8 @@
 package mcpserver
 
 import (
-	"encoding/json"
-
 	"github.com/charle-z/mcp-devbox/internal/mcpserver/catalog"
 )
-
-// object builds a JSON-Schema object node.
-func object(props map[string]any, required ...string) map[string]any {
-	schema := map[string]any{"type": "object", "properties": props}
-	if len(required) > 0 {
-		schema["required"] = required
-	}
-	return schema
-}
-
-func strProp(desc string) map[string]any {
-	return map[string]any{"type": "string", "description": desc}
-}
-func strArrProp(desc string) map[string]any {
-	return map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": desc}
-}
-func boolProp(desc string) map[string]any {
-	return map[string]any{"type": "boolean", "description": desc}
-}
-func intProp(desc string) map[string]any {
-	return map[string]any{"type": "integer", "description": desc}
-}
-
-// add registers a tool definition and handler.
-func (s *Server) add(name, desc string, schema map[string]any, h func(json.RawMessage) (string, error)) {
-	s.table[name] = toolEntry{
-		def: toolDef{
-			Name:        name,
-			Description: desc,
-			InputSchema: schema,
-			Version:     defaultToolContractVersion,
-		},
-		handler: h,
-	}
-	s.order = append(s.order, name)
-}
 
 // addCatalogTool adapts one declarative domain registration into the server-owned
 // registry. The server remains responsible for annotations, ordering, dispatch,
