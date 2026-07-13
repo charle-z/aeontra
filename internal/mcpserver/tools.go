@@ -817,18 +817,7 @@ func (s *Server) register() {
 
 	catalog.RegisterNotes(s.addCatalogTool, s.svc)
 
-	s.add("memory_update_handoff",
-		"Write a handoff note into .agent-memory/handoffs/ so any agent can resume. Denied in read-only mode; content redacted.",
-		object(map[string]any{"content": strProp("handoff note (Markdown)")}, "content"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Content string `json:"content"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.MemoryUpdateHandoff(p.Content)
-		})
+	catalog.RegisterHandoff(s.addCatalogTool, s.svc)
 
 	// Compatibility names remain available. Recommended names share the exact same
 	// handler and schema, so aliases cannot bypass or duplicate policy enforcement.
