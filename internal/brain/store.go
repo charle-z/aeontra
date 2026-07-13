@@ -1,12 +1,14 @@
 package brain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/policy"
@@ -18,6 +20,8 @@ type Store struct {
 	root string
 	jail *policy.Jail
 	now  func() time.Time
+	mu   sync.Mutex
+	git  *localGit
 }
 
 // OpenStore creates or verifies the private source/cache layout without initializing
@@ -59,6 +63,32 @@ func (s *Store) Root() string {
 		return ""
 	}
 	return s.root
+}
+
+// InitializeGit creates or verifies the private local-only history repository. It is
+// idempotent and never creates or contacts a remote.
+func (s *Store) InitializeGit(ctx context.Context) error {
+	if s == nil || s.jail == nil {
+		return errors.New("brain: store is unavailable")
+	}
+	if ctx == nil {
+		return errors.New("brain: context is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.git != nil {
+		return nil
+	}
+	runner, err := newExecGitRunner(s.root)
+	if err != nil {
+		return err
+	}
+	repository := &localGit{root: s.root, runner: runner}
+	if err := repository.initialize(ctx, s.now()); err != nil {
+		return err
+	}
+	s.git = repository
+	return nil
 }
 
 func ensurePrivateDirectory(path string) error {

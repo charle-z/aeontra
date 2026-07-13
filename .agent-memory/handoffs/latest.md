@@ -2,29 +2,28 @@
 
 Date: 2026-07-13
 Branch: `p9-brain`
-Base: Step 1 `9e2ca7202f5776f4afbe140eb89f65984ce4b26e` / P8 tag `2e3429c9d6342e8e091cadf65293c5c85b1b3259`
+Base: Step 2 `fd810aad507ef118570a5097b40945f7138a57df` / P8 tag `2e3429c9d6342e8e091cadf65293c5c85b1b3259`
 
 ## Current phase
 
-P9 Brain Step 2 is implemented locally and awaiting final gates/commit. No Git,
-SQLite, MCP tool, runtime configuration, volume, or deployment change exists yet.
+P9 Brain Step 3 is implemented locally and awaiting final gates/commit. SQLite,
+MCP tools, runtime configuration, volume, and deployment remain absent.
 
-## Step 2 security behavior
+## Step 3 security behavior
 
-- strict known-fields YAML frontmatter and deterministic Markdown rendering;
-- curated owner-only and working agent-author validation;
-- mandatory provenance/review dates and server-owned timestamps for agent drafts;
-- hard slug/title/provenance/body/file bounds and validated `[[slug]]` links;
-- secret-shaped agent content rejected before persistence; manual reads redacted;
-- dedicated Brain jail outside general repository roots;
-- private 0700 layout, regular private source files, symlink/ancestor defense;
-- global curated/working slug uniqueness;
-- traversal and link fuzz seeds;
-- 82.9% package coverage with an 80% gate.
+- private local repository with exact cache ignore and no remote;
+- fixed absolute Git binary, stripped environment, no shell, no prompt, no hooks,
+  no filters, no global/system config, denied protocols, bounded output;
+- local plumbing-only commits and compare-and-swap ref updates;
+- atomic mode-0600 working writes, one commit per success, same-author updates;
+- serialized concurrency and clean linear history;
+- rollback on commit/ref failure and independent verification of ambiguous ref results;
+- symlink/metadata-swap/unsafe ignore/remote rejection;
+- generic errors without paths, Git stderr, slugs, or note contents;
+- 80.5% package coverage with an 80% gate.
 
 ## Next safe step
 
-Commit/publish Step 2 after full gates. Step 3 begins with failing tests for controlled
-local Git initialization and atomic working-note writes/rollback. Do not add SQLite,
-register tools, or wire runtime configuration before their planned steps. The
-invariant is no resident service.
+Commit/publish Step 3 after full gates. Step 4 starts with failing FTS5/index tests and
+only then adds `modernc.org/sqlite@v1.53.0`. Do not register tools or wire runtime env
+before their planned steps. The invariant is no resident service.

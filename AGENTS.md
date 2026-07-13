@@ -9,14 +9,15 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P9 Brain Step 2 complete / Step 3 next** on branch `p9-brain`,
-  based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`. Contracts live under
-  `specs/006-brain/` and ADR 0003. `internal/brain` now implements strict YAML note
-  validation, curated/working trust, server timestamps, review/provenance/bounds,
-  secret denial/redaction, links, dedicated jail, private layout, symlink defense,
-  global slug uniqueness, and fuzz seeds. The hard resource invariant is no resident service: no embeddings model, vector
-  daemon, queue, worker, database server, port, or
-  new Coolify application. Git history, SQLite, tools, and runtime wiring remain absent.
+- Current phase: **P9 Brain Step 3 complete / Step 4 FTS5 next** on branch
+  `p9-brain`, based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`.
+  `internal/brain` now implements strict YAML notes, curated/working trust, secret
+  denial/redaction, links, a dedicated private jail, atomic agent writes, and
+  controlled local Git history. Git uses fixed plumbing only, disables hooks/filters,
+  creates no remote, and rolls source/index state back on failure. The hard resource
+  invariant is no resident service: no embeddings model, vector daemon, queue, worker,
+  database server, port, or new Coolify application. SQLite, FTS5, tools, runtime
+  configuration, persistent mount, and deployment remain absent.
   Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
   Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
   62 annotated MCP tools, action plans, audit, persistent notes, and adversarial tests.

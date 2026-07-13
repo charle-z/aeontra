@@ -1,37 +1,41 @@
-# P9 Brain — Step 2 note model and store jail
+# P9 Brain — Step 3 local Git history and atomic writes
 
-Status: Step 2 implementation is complete locally on `p9-brain`. The resource
-invariant remains no resident service. This work is based on Step 1 commit `9e2ca7202f5776f4afbe140eb89f65984ce4b26e` and P8 closure
-`2e3429c9d6342e8e091cadf65293c5c85b1b3259`.
+Status: Step 3 is complete locally on `p9-brain`. It builds on Step 2 commit
+`fd810aad507ef118570a5097b40945f7138a57df` and P8 closure
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259`. The invariant remains no resident service.
 
 ## Implemented
 
-- `internal/brain/model.go`: strict known-fields YAML parser, deterministic renderer,
-  Note/Metadata/AgentDraft types, five note types, owner/agent author rules, canonical
-  UTC timestamps, review dates, provenance/title/body/file bounds, server-owned write
-  timestamps, same-author updates, and explicit expired state.
-- Strict ASCII kebab-case slug grammar and validated sorted unique `[[slug]]` links.
-- Existing policy secret scanner rejects agent drafts before rendering and redacts
-  manual source reads defensively.
-- `internal/brain/store.go`: independent absolute jail, private 0700 layout for root,
-  curated/working/cache, symlink-ancestor/source rejection, broad-permission denial,
-  global curated/working slug uniqueness, redacted source reads, and dynamic clock.
-- Tests include curated-target denial, secret canary, traversal/path/Unicode table,
-  fuzz seeds, malformed/unknown/duplicate YAML, dates, trust, bounds, symlinks,
-  permissions, duplicates, redaction, and deterministic round trip.
-- `internal/brain` coverage 82.9% with an 80% gate.
-- `go.yaml.in/yaml/v3` is now direct because production code uses it.
+- `internal/brain/git.go` resolves a fixed absolute Git executable outside the Brain
+  root and runs it directly with a stripped environment, no shell, prompts disabled,
+  global/system config disabled, hooks redirected to the null device, filters bypassed,
+  protocol access denied, and bounded output.
+- Local repository initialization creates/validates private `.git/` and `.gitignore`,
+  rejects symlinks/unsafe ignore files/existing remotes, creates one bootstrap commit,
+  and is idempotent.
+- Writes use Git plumbing: `read-tree`, `hash-object --no-filters`, `update-index`,
+  `write-tree`, `commit-tree`, and compare-and-swap `update-ref`.
+- `internal/brain/write.go` serializes working-note writes, rejects curated duplicates,
+  preserves same-author ownership and created timestamps, writes mode 0600 atomically,
+  creates exactly one local commit, and restores source/index state when Git fails.
+- A bounded independent critical context avoids ambiguous client cancellation after
+  source mutation. If `update-ref` reports an error after applying, HEAD is verified
+  independently before deciding success versus rollback.
+- Tests cover hooks, remotes, metadata swaps, unsafe ignore files, secret/cancelled/
+  cross-author writes, commit/ref failures, ambiguous ref results, concurrency, clean
+  history, generic errors, and allowed command surface.
+- `internal/brain` coverage is 80.5% against an 80% gate.
 
 ## Not implemented yet
 
-- no source writes or local Git initialization/commits;
-- no SQLite dependency, cache, FTS5, search, backlinks, or reindex;
+- no SQLite dependency, cache schema, FTS5, search, backlinks, or reindex;
 - no Brain capability, MCP tools, runtime env, persistent mount, or deployment;
 - existing 62-tool catalog remains unchanged.
 
 ## Next exact actions
 
-1. Run final Step 2 gates, clean helpers, commit/publish as `Step 2`.
-2. Begin Step 3 with RED tests for private Git initialization, no remotes/hooks,
-   atomic working upsert, one local commit, source/index rollback, and no curated write.
-3. Do not add `modernc.org/sqlite` until Step 4.
+1. Run final Step 3 gates, clean helpers, commit/publish as `Step 3`.
+2. Begin Step 4 with RED tests for FTS5 availability, schema/version probe, bounded
+   full reindex, incremental update, BM25 plain-text search, links/backlinks, broken
+   links, deletion/rebuild equivalence, and concurrent read/reindex/write behavior.
+3. Add exact `modernc.org/sqlite@v1.53.0` only after the FTS5 RED test exists.

@@ -100,7 +100,7 @@ misleading global percentage:
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
 | `internal/console` | 80% | 84.3% |
-| `internal/brain` | 80% | 82.9% |
+| `internal/brain` | 80% | 80.5% |
 | `internal/tools` | 70% | 73.3% |
 | `internal/app` | 65% | 67.8% |
 | `internal/grantadmin` | 55% | 59.6% |
@@ -317,24 +317,29 @@ Dependency Review correctly skipped on push. Production serves
 show only 303/200 `route=console` events. Full evidence is versioned in
 `docs/baselines/2026-07-13-p8.md`.
 
-## P9 Brain — Step 2 model and store jail
+## P9 Brain — Step 3 model, store jail, and local Git history
 
-`internal/brain` has an 80% package gate and a measured 82.9% Step 2 baseline.
-The current package contains no SQLite or Git implementation yet. Tests cover:
+`internal/brain` has an 80% package gate and a measured 80.5% Step 3 baseline.
+SQLite, Brain tools, runtime configuration, and deployment wiring remain absent. Tests
+now cover the complete Step 2 model/jail behavior plus:
 
-- strict known-fields YAML frontmatter and deterministic render/parse round trips;
-- kebab-case slug validation, traversal/path/Unicode rejection, and fuzz seeds;
-- curated owner-only versus working agent-author policy;
-- provenance, server-owned UTC timestamps, review dates, type/title/body/file bounds;
-- cross-author update denial and created-timestamp preservation;
-- secret-canary rejection before rendering/persistence and defensive read redaction;
-- strict `[[slug]]` extraction and invalid/unclosed link denial;
-- dedicated absolute jail, private 0700 root/trust/cache directories, symlink and broad
-  permission rejection, regular 0600-style source checks, and global slug uniqueness;
-- a runtime-capable injected clock so expiry remains correct in long-lived processes.
+- private local Git initialization with exact `/.cache/` ignore and one bootstrap commit;
+- no configured remote, fixed local-only plumbing, hooks disabled, filters bypassed,
+  global/system config disabled, prompt disabled, and no shell/remote commands;
+- private `.git/` and `.gitignore` posture, symlink/metadata-swap rejection, and
+  revalidation before each write;
+- serialized atomic `working/<slug>.md` create/update with mode 0600;
+- exactly one local commit per successful write and immutable cross-author ownership;
+- secret and cancelled writes failing before source or commit mutation;
+- source/index rollback on `commit-tree` or `update-ref` failure;
+- independent ref verification when `update-ref` succeeds but reports an ambiguous
+  transport/timeout error;
+- concurrent writes producing a clean linear local history;
+- non-reflective public errors that omit slugs, note content, private paths, and Git
+  stderr.
 
-YAML is now a direct dependency because production code parses frontmatter. The
-`modernc.org/sqlite` dependency remains absent until Step 4 has a failing FTS5 test.
+YAML remains the only new direct dependency. `modernc.org/sqlite` remains absent until
+Step 4 begins with a failing FTS5 test.
 
 ## Safety rules
 

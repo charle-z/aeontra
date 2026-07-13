@@ -104,11 +104,11 @@ memory with Markdown/frontmatter files as truth, owner-only curated notes,
 agent-authored working notes with provenance/review dates, `[[slug]]` links, and an
 in-process pure-Go SQLite FTS5 disposable cache. The invariant is no resident service:
 no database server, embeddings model, vector daemon, queue, worker, port, or new
-Coolify application. Step 2 implements only the strict note model and dedicated private store jail:
-known-fields YAML, trust/date/provenance/bounds validation, secret denial/redaction,
-`[[slug]]` parsing, symlink defense, global slug uniqueness, and fuzz seeds. YAML is a
-direct dependency; Git history, SQLite, the five tools, and runtime wiring are still
-absent and nothing is deployed.
+Coolify application. Step 3 implements the strict note model, dedicated private jail, atomic agent writes,
+and controlled local Git history. Git uses fixed plumbing only, disables hooks and
+filters, creates no remote, emits generic errors, and restores source/index state on
+failure. YAML is the only new direct dependency. SQLite/FTS5, backlinks, five tools,
+runtime configuration, persistent mount, and deployment remain absent.
 
 Quick start:
 
