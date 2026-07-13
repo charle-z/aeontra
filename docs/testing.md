@@ -249,12 +249,16 @@ fixed `sigstore@5.0.0` and `picomatch@4.0.5`. A repository policy test locks the
 choices. No vulnerability was ignored, allowlisted, downgraded, or hidden.
 
 Local Step 91 verification passes formatting, ordinary tests, atomic coverage and
-the package gate, vet, build, actionlint, govulncheck, and focused workflow/Grype
-tests. Staticcheck, Docker build, SBOM, and final Grype execution remain authoritative
-in the pull-request Actions runner because the public MCP intentionally exposes no
-Docker socket and the previously deployed non-root image has no writable Staticcheck
-cache. P6 remains open until those runs are green and the exact remediation commit is
-deployed and smoke-tested.
+the package gate, vet, build, actionlint, govulncheck, and focused workflow/Grype tests.
+Pull-request CI run `29270949295` passed Verify, Race, Staticcheck, and Govulncheck.
+Security Evidence run `29270949313` passed CodeQL, Docker build, SPDX SBOM
+generation/verification, Grype scan, and the unchanged High/Critical gate after the
+bootstrap Alpine npm package was removed.
+
+The workflow remains globally failed only because Dependency Review cannot execute
+while GitHub Dependency Graph is disabled for the repository. P6 remains open until an
+administrator enables Dependency Graph, the failed job passes, and the exact
+remediation commit is merged, deployed, and smoke-tested.
 
 ## Safety rules
 

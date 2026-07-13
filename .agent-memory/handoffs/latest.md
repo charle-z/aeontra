@@ -21,42 +21,31 @@ The workflow policy guard and blocking CGO race remain part of the required gate
 - Final-image findings: three GNU Wget CVEs plus npm `sigstore` and `picomatch` GHSAs.
 - Staticcheck: three unused declarations and 22 capitalized error strings.
 
-## Step 91 candidate
+## Step 91 remediation
 
-- pin Go 1.26.5 in the module, Actions, production image, and validation-runner build;
-- remove standalone GNU Wget and use the BusyBox applet for health checks;
-- install exact `npm@12.0.1`, whose inspected bundle contains fixed dependency versions;
-- fix all Staticcheck findings without changing public tools or successful responses;
-- add a regression policy test;
-- version the detailed report under `docs/security-reports/`;
-- add `docs/runbooks/client-connector-reliability.md` to distinguish expected restart,
-  VPS saturation, tool timeout, Coolify failure, and client/transport presentation
-  problems using timestamped evidence.
+- Go 1.26.5 is pinned in the module, Actions, production image, and validation runner.
+- Standalone GNU Wget is removed; health checks use the BusyBox applet.
+- Exact `npm@12.0.1` is installed and Alpine's vulnerable bootstrap npm is removed.
+- All Staticcheck findings are fixed without public contract changes.
+- Regression tests, the detailed security report, and connector reliability runbook
+  are versioned.
 
-## Verified locally
+## Verified
 
-Formatting, ordinary tests, atomic coverage/package gate, vet, build, actionlint,
-govulncheck, and focused workflow/Grype tests pass. Public MCP has no Docker socket,
-so Staticcheck with its runner cache, Docker build, SBOM, and Grype must be proven by
-pull-request Actions before main changes.
-
-## PR #1 observation
-
-- Commit `c54090f2ab01099f3b85e88c45c709bd18876e7d` is published in PR #1.
-- CI run `29270350188` passed Verify, Race, Staticcheck, and Govulncheck.
-- Security run `29270350078` passed CodeQL, image build, SBOM generation, and scan
-  execution, but Grype proved the vulnerable Alpine npm tree remained under `/usr/lib`
-  beside the fixed global npm under `/usr/local`.
-- The follow-up removes the bootstrap package with `apk del npm` after installing
-  `npm@12.0.1`; local full gates pass again and a new PR run is required.
+- Current remediation commit: `adc9ad59eab329fa4b654f66a410cecf1fc87791`.
+- CI run `29270949295` passed Verify, Race, Staticcheck, and Govulncheck.
+- Security run `29270949313` passed CodeQL, image build, SPDX SBOM generation and
+  verification, Grype scan/report verification, and the unchanged High/Critical gate.
+- The final image has zero remaining High/Critical findings.
 - Dependency Review cannot execute because GitHub Dependency Graph is disabled for
-  the repository. The connector cannot change that repository security setting. A
-  repository administrator must enable Dependency Graph and re-run the failed job;
+  the repository. Exact failed job: `86888187941` in run `29270949313`.
+- The connector exposes repository admin metadata but not the security-setting write.
+  A repository administrator must enable Dependency Graph and re-run the failed job;
   do not skip, soften, or mark the check non-blocking.
 
 ## Next safe step
 
-Commit and publish the `apk del npm` follow-up, then inspect the replacement PR runs.
-Require zero High/Critical findings. After a repository administrator enables GitHub
-Dependency Graph, re-run Dependency Review and require it to pass. Only then may main
-be fast-forwarded, deployed, smoke-tested, observed again, and P6 closed.
+After a repository administrator enables GitHub Dependency Graph, re-run Dependency
+Review and require it to pass. Then record the final run, fast-forward/publish `main`,
+deploy only application `jqf7qz5ensoqtvl1tb197gcv`, smoke-test exact commit/health/62
+tools/hash, observe post-merge Actions, create the P6 baseline/audit, and close P6.

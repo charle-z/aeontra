@@ -24,6 +24,9 @@ func TestP6SecurityRemediationAndConnectorRunbookAreDocumented(t *testing.T) {
 		"npm@12.0.1",
 		"apk del npm",
 		"29270350078",
+		"29270949295",
+		"29270949313",
+		"zero remaining findings",
 		"BusyBox",
 		"No finding was ignored",
 	} {

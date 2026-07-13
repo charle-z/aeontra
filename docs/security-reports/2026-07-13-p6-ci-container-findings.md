@@ -160,15 +160,30 @@ Passed locally on branch `p6-step91-security-remediation`:
 
 Staticcheck cannot initialize its cache in the currently deployed non-root production container because that old image has an unwritable HOME and no general XDG cache setting. The GitHub job already uses a runner-temporary cache and is the authoritative execution environment for this gate. Docker build, SBOM, and Grype also require the ephemeral Actions runner because the public MCP deliberately has no Docker socket.
 
-## Required post-remediation evidence
+## Post-remediation pull-request evidence
 
-Before P6 closes, append:
+- PR: `#1`, branch `p6-step91-security-remediation`.
+- Remediation commits: `c54090f2ab01099f3b85e88c45c709bd18876e7d` and
+  `adc9ad59eab329fa4b654f66a410cecf1fc87791`.
+- CI run `29270949295`: completed successfully.
+  - Verify: success.
+  - Race detector: success.
+  - Staticcheck: success.
+  - Govulncheck: success.
+- Security Evidence run `29270949313`:
+  - CodeQL: success.
+  - Docker image build: success.
+  - SPDX SBOM generation and non-empty verification: success.
+  - Grype scan and JSON verification: success.
+  - High/Critical enforcement gate: success, proving zero remaining findings at the
+    unchanged High threshold.
+  - Dependency Review: did not execute analysis because GitHub Dependency Graph is
+    disabled for the repository. The exact action error is `Dependency review is not
+    supported on this repository. Please ensure that Dependency graph is enabled`.
 
-1. remediation commit SHA and PR number;
-2. CI and Security Evidence run IDs;
-3. all job/check conclusions, including Staticcheck, Govulncheck, CodeQL, Race, container build, SBOM, and gate;
-4. post-remediation `grype.json` High/Critical count of zero;
-5. SBOM proof that GNU Wget is absent and npm contains fixed bundled versions;
-6. exact production deployment ID and served commit;
-7. production health, 62-tool count, and unchanged catalog hash;
-8. final `git diff --check`, file audit, and branch/main fast-forward evidence.
+The technical vulnerability remediation is therefore green. P6 remains open because
+Dependency Review is a mandatory check and cannot pass until a repository administrator
+enables Dependency Graph and re-runs the failed job. No workflow suppression or severity
+change is acceptable.
+
+After that external prerequisite passes, the remaining closure evidence is the exact
