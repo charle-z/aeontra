@@ -15,27 +15,29 @@ Status: Step 91 technical remediation is green in PR #1 on branch `p6-step91-sec
 - npm `GHSA-52v5-jr5w-gjxr` and `GHSA-c2c7-rcm5-vvqj` fixed by installing `npm@12.0.1` and deleting Alpine's vulnerable bootstrap npm tree with `apk del npm`.
 - All 25 Staticcheck findings fixed.
 
-## PR #1 evidence
+## PR #1 evidence before Dependency Graph activation
 
-- Current remediation commit: `adc9ad59eab329fa4b654f66a410cecf1fc87791`.
-- CI run `29270949295`: success. Verify, Race, Staticcheck, and Govulncheck all passed.
-- Security Evidence run `29270949313`:
+- Current remediation commit: `6b692892427a05f4cdfad48d476781bd79111cf9`.
+- CI run `29271700972`: success. Verify, Race, Staticcheck, and Govulncheck all passed.
+- Security Evidence run `29271701096`:
   - CodeQL: success.
   - Docker build: success.
   - SPDX SBOM generation/verification: success.
   - Grype scan/report verification: success.
   - unchanged High/Critical gate: success, proving zero remaining High/Critical image findings.
-  - Dependency Review: failure before analysis because GitHub Dependency Graph is disabled.
-- Exact Dependency Review error: `Dependency review is not supported on this repository. Please ensure that Dependency graph is enabled`.
+  - Dependency Review failed before analysis because GitHub Dependency Graph was disabled.
 
-## External blocker
+## Dependency Graph activation
 
-A repository administrator must enable GitHub Dependency Graph for `charle-z/mcp-devbox`, then re-run failed job `86888187941` or failed Security Evidence run `29270949313`. The connected GitHub tools expose admin repository metadata but do not expose the repository security-setting mutation. Do not bypass the check with skip logic, `continue-on-error`, severity reduction, or allowlisting.
+- The repository administrator confirmed that GitHub Dependency Graph is now enabled.
+- The production container's `GITHUB_TOKEN` exists but lacks `Actions: write`; a direct rerun API request returned 403.
+- The MCP command policy also rejects the `gh` binary, so no unsafe bypass or policy weakening was used.
+- A minimal versioned state update will be committed to the existing PR branch. Its push will naturally create fresh PR workflows and execute Dependency Review with Dependency Graph enabled.
 
-## Next exact actions after Dependency Graph is enabled
+## Next exact actions
 
-1. Re-run the failed Dependency Review job and require success.
-2. Record the latest run evidence in the versioned report.
+1. Commit and publish this state update to trigger fresh PR workflows.
+2. Require CI, CodeQL, container/SBOM/Grype, and Dependency Review all to pass.
 3. Fast-forward `main`, publish it, deploy only application `jqf7qz5ensoqtvl1tb197gcv`, preserve the deployment ID, and smoke-test exact commit/health/62 tools/hash.
 4. Observe post-merge Actions, create the P6 baseline/audit, close P6, then create a fresh P7 structured-observability branch/spec.
 
