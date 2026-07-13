@@ -112,7 +112,7 @@ func (c *GitHubClient) doJSON(ctx context.Context, method, path string, body []b
 	return resp.StatusCode, strings.TrimSpace(string(data)), nil
 }
 
-func (s *Service) GitHubCreateRepo(name, description, visibility string, approve bool) (string, error) {
+func (s *SourceCapability) GitHubCreateRepo(name, description, visibility string, approve bool) (string, error) {
 	sp := s.log.Start("github_create_repo")
 	if s.github == nil || !s.github.Configured() {
 		err := fmt.Errorf("github_create_repo is not configured (set GITHUB_TOKEN, GITHUB_OWNER, and GITHUB_OWNER_TYPE)")
@@ -153,7 +153,7 @@ func (s *Service) GitHubCreateRepo(name, description, visibility string, approve
 	return s.formatGitHubRepo(body, "github repo created")
 }
 
-func (s *Service) GitHubRepoInfo(name string) (string, error) {
+func (s *SourceCapability) GitHubRepoInfo(name string) (string, error) {
 	sp := s.log.Start("github_repo_info")
 	if s.github == nil || !s.github.Configured() {
 		err := fmt.Errorf("github_repo_info is not configured (set GITHUB_TOKEN, GITHUB_OWNER, and GITHUB_OWNER_TYPE)")
@@ -179,7 +179,7 @@ func (s *Service) GitHubRepoInfo(name string) (string, error) {
 	return s.formatGitHubRepo(body, "github repo")
 }
 
-func (s *Service) formatGitHubRepo(body, header string) (string, error) {
+func (s *SourceCapability) formatGitHubRepo(body, header string) (string, error) {
 	var repo githubRepoResponse
 	if err := json.Unmarshal([]byte(body), &repo); err != nil {
 		return s.redact(body), nil

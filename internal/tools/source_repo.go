@@ -30,7 +30,7 @@ func (c *GitHubClient) configError() error {
 
 // SourceRepoInfo reads one repository under the fixed configured owner. A 404 is
 // represented as exists:false rather than being confused with a transport failure.
-func (s *Service) SourceRepoInfo(name string) (string, error) {
+func (s *SourceCapability) SourceRepoInfo(name string) (string, error) {
 	sp := s.log.Start("source_repo_info")
 	if err := s.github.configError(); err != nil {
 		sp.Finish(audit.Deny, "source_repo_info", nil, err)
@@ -65,7 +65,7 @@ func (s *Service) SourceRepoInfo(name string) (string, error) {
 	return formatSourceRepo(s.github.owner, repo, true), nil
 }
 
-func (s *Service) SourceRepoCreatePreview(name, visibility, description string) (string, error) {
+func (s *SourceCapability) SourceRepoCreatePreview(name, visibility, description string) (string, error) {
 	sp := s.log.Start("source_repo_create_preview")
 	if err := s.github.configError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
@@ -112,7 +112,7 @@ func (s *Service) SourceRepoCreatePreview(name, visibility, description string) 
 		s.github.owner, s.github.owner, name, visibility, safeDescription, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
-func (s *Service) SourceRepoCreate(planID string, approve bool) (string, error) {
+func (s *SourceCapability) SourceRepoCreate(planID string, approve bool) (string, error) {
 	sp := s.log.Start("source_repo_create")
 	if err := s.github.configError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
