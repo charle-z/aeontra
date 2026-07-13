@@ -22,6 +22,8 @@ func TestP6SecurityRemediationAndConnectorRunbookAreDocumented(t *testing.T) {
 		"GHSA-c2c7-rcm5-vvqj",
 		"Go 1.26.5",
 		"npm@12.0.1",
+		"apk del npm",
+		"29270350078",
 		"BusyBox",
 		"No finding was ignored",
 	} {

@@ -112,7 +112,15 @@ Primary advisory: `https://github.com/advisories/GHSA-52v5-jr5w-gjxr`.
 
 Primary advisory: `https://github.com/advisories/GHSA-c2c7-rcm5-vvqj`.
 
-The exact npm remediation is at `Dockerfile:32`. Node compatibility was checked against Alpine 3.24's `nodejs 24.17.0-r0`; npm 12.0.1 declares support for Node `^24.15.0`. The npm tarball was inspected before selection rather than assuming the top-level npm version fixed its bundled tree.
+The exact npm remediation starts at `Dockerfile:32`. Node compatibility was checked against Alpine 3.24's `nodejs 24.17.0-r0`; npm 12.0.1 declares support for Node `^24.15.0`. The npm tarball was inspected before selection rather than assuming the top-level npm version fixed its bundled tree.
+
+The first Step 91 PR image build (`Security Evidence` run `29270350078`, container job
+`86886191169`) proved that installing npm 12 globally did **not** remove Alpine's
+bootstrap npm tree. Grype still found `sigstore@4.1.0` and `picomatch@4.0.3` under
+`/usr/lib/node_modules/npm/`, while the fixed npm existed separately under
+`/usr/local`. The follow-up remediation therefore runs `apk del npm` after the safe
+global installation and cache cleanup. This removes the vulnerable distro copy from
+the final image rather than hiding duplicate-package findings.
 
 ## Staticcheck findings
 

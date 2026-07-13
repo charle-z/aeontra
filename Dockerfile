@@ -31,6 +31,7 @@ LABEL org.opencontainers.image.title="mcp-devbox" \
 RUN apk add --no-cache ca-certificates git nodejs npm \
 	&& npm install --global npm@12.0.1 --ignore-scripts \
 	&& npm cache clean --force \
+	&& apk del npm \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \

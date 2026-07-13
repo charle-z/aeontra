@@ -40,9 +40,23 @@ govulncheck, and focused workflow/Grype tests pass. Public MCP has no Docker soc
 so Staticcheck with its runner cache, Docker build, SBOM, and Grype must be proven by
 pull-request Actions before main changes.
 
+## PR #1 observation
+
+- Commit `c54090f2ab01099f3b85e88c45c709bd18876e7d` is published in PR #1.
+- CI run `29270350188` passed Verify, Race, Staticcheck, and Govulncheck.
+- Security run `29270350078` passed CodeQL, image build, SBOM generation, and scan
+  execution, but Grype proved the vulnerable Alpine npm tree remained under `/usr/lib`
+  beside the fixed global npm under `/usr/local`.
+- The follow-up removes the bootstrap package with `apk del npm` after installing
+  `npm@12.0.1`; local full gates pass again and a new PR run is required.
+- Dependency Review cannot execute because GitHub Dependency Graph is disabled for
+  the repository. The connector cannot change that repository security setting. A
+  repository administrator must enable Dependency Graph and re-run the failed job;
+  do not skip, soften, or mark the check non-blocking.
+
 ## Next safe step
 
-Finish the diff/docs audit, remove `.tmp` helpers, commit Step 91, publish the branch,
-open a pull request, and inspect every job/check. Correct any reproducible failure.
-Only after all required checks pass and the final image has zero High/Critical findings
-may main be fast-forwarded, deployed, smoke-tested, observed again, and P6 closed.
+Commit and publish the `apk del npm` follow-up, then inspect the replacement PR runs.
+Require zero High/Critical findings. After a repository administrator enables GitHub
+Dependency Graph, re-run Dependency Review and require it to pass. Only then may main
+be fast-forwarded, deployed, smoke-tested, observed again, and P6 closed.
