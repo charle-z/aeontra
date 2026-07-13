@@ -38,11 +38,15 @@ deployed environment contracts, serve option parsing, OAuth, runtime composition
 local grant administration and stdio/HTTP transport lifecycle. Production is healthy
 and retains the same 62-tool public surface and catalog hash.
 
-P4 targeted Layer-1 hardening is complete on branch `p4-l1-hardening` and is
-merge-ready. Steps 70-76 block command/PATH spoofing, enforce grant/request bounds,
-keep documentation state tested, redact audit paths, and bound HTTP JSON-RPC batches
-to 128 items with invalid empty-batch handling. The public surface remains 62 tools
-with the same deterministic catalog hash. P4 is not yet deployed.
+P4 targeted Layer-1 hardening is deployed on `main` at commit
+`4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`. Steps 70-76 block command/PATH
+spoofing, enforce grant/request bounds, keep documentation state tested, redact audit
+paths, and bound HTTP JSON-RPC batches to 128 items. Production is healthy with 62
+tools and the unchanged deterministic catalog hash.
+
+P5 deeper testing is active on branch `p5-deeper-testing`. Its tested scope is race
+detection/concurrency, fuzz/adversarial seeds, package-specific coverage gates, and
+hermetic integration contracts. P5 adds evidence only: no public MCP contract change.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -357,14 +361,12 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Publish `p4-l1-hardening`, fast-forward `main`, deploy the existing Coolify
-   application, and verify the exact commit, health, 62-tool count, catalog hash,
-   trusted command execution, bounded grants, audit redaction, and HTTP batch limits.
-2. Start P5 deeper testing from a fresh branch after P4 production verification.
-3. Continue P6 CI/DevSecOps and P7 structured observability on separate branches.
-4. Create separate specs before implementing the authenticated console, asset broker,
-   universal profiles, or edge agent. PC/WSL edge claims remain validation pending
-   until tested on the owner’s machine.
+1. Execute `specs/002-deeper-testing/tasks.md` in order: race baseline, deterministic
+   concurrency, fuzz seeds, coverage gate, and hermetic integration matrix.
+2. Keep P5 runtime-neutral and preserve the 62-tool catalog/hash.
+3. Close and release P5 before starting P6 CI/DevSecOps on a fresh branch.
+4. Keep console, asset broker, universal profiles, and edge-agent work in separate
+   specs/phases; PC/WSL edge validation remains pending the owner machine.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -381,11 +383,9 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-13. P4 targeted Layer-1 hardening is complete and merge-ready on
-`p4-l1-hardening` against refreshed `origin/main` commit
-`dd055e251c455086ddcb02bc302d9f406b05d6ce`. Steps 70-76, documentation
-consistency tests, `go fmt ./...`, `go test ./... -count=1`, `go vet ./...`,
-`go build ./...`, branch/commit/file audit, and production catalog smoke are green.
-The public surface remains 62 tools with deterministic hash
+Date: 2026-07-13. P4 is deployed and healthy on `main` at commit
+`4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`. Production reports 62 tools and
+deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-P4 has not yet been published, merged, or deployed.
+P5 deeper testing is active on `p5-deeper-testing`; its spec/plan/tasks define race,
+fuzz, coverage, and integration evidence without changing runtime authority.

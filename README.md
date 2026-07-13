@@ -72,8 +72,9 @@ action-plan core. The public 62-tool wire contract remains unchanged while the
 internal boundaries are easier to test and extend safely. P3 reduces
 `cmd/mcp-devbox/main.go` to a true composition root and moves process orchestration
 into focused modules under `internal/app`, while preserving every deployed command,
-flag, environment variable and wire contract. P3 is deployed; P4 targeted L1
-hardening is complete and merge-ready, with the public 62-tool contract unchanged.
+flag, environment variable and wire contract. P4 is deployed at
+`4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`; P5 deeper testing is active, with
+the public 62-tool contract unchanged.
 
 Quick start:
 

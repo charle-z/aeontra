@@ -70,9 +70,10 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	for _, required := range []string{
 		"P3 composition root is deployed",
 		"dd055e251c455086ddcb02bc302d9f406b05d6ce",
-		"P4 targeted Layer-1 hardening is complete",
-		"p4-l1-hardening",
-		"merge-ready",
+		"P4 targeted Layer-1 hardening is deployed",
+		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
+		"P5 deeper testing is active",
+		"p5-deeper-testing",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("context capsule does not contain %q", required)
@@ -84,10 +85,11 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 
 	for _, required := range []string{
 		"## Status snapshot — 2026-07-13",
-		"P0-P3 architecture foundations",
+		"P0-P4 architecture and L1 hardening",
 		"Deployed",
 		"P4 targeted L1 hardening",
-		"Complete / merge-ready",
+		"P5 deeper testing",
+		"In progress",
 		"Console/showcase",
 		"Not started",
 		"Universal execution profiles",
@@ -101,11 +103,11 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"p4-l1-hardening",
-		"fe2e903",
-		"documentation synchronization",
-		"specs/001-layer-1",
-		".specify/memory/constitution.md",
+		"p5-deeper-testing",
+		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
+		"specs/002-deeper-testing/",
+		"race detector",
+		"coverage gate",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)

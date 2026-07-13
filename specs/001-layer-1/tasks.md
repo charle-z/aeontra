@@ -28,8 +28,8 @@ steps in `.agent-memory/current-task.md` and dated baselines under `docs/baselin
 - [x] P1 catalog modularization.
 - [x] P2 capability-service split.
 - [x] P3 composition root.
-- [x] P4 targeted Layer-1 hardening — complete and merge-ready on `p4-l1-hardening`.
-- [ ] P5 deeper testing.
+- [x] P4 targeted Layer-1 hardening — deployed on `main`.
+- [ ] P5 deeper testing — active on `p5-deeper-testing`.
 - [ ] P6 CI/DevSecOps gates.
 - [ ] P7 structured observability.
 - [ ] Authenticated console, asset broker, universal profiles, and edge-agent work as
