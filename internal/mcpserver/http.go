@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -20,7 +21,10 @@ import (
 
 // maxHTTPBody caps a single MCP request body. MCP messages are small; this bounds
 // memory and abuse over the network transport.
-const maxHTTPBody = 4 << 20 // 4 MiB
+const (
+	maxHTTPBody       = 4 << 20 // 4 MiB
+	maxHTTPBatchItems = 128
+)
 
 // DefaultMCPPath is the endpoint that speaks MCP (streamable-HTTP subset).
 const DefaultMCPPath = "/mcp"
@@ -289,15 +293,36 @@ func containsInitialize(raw []byte) bool {
 // handleBatch processes each element of a JSON-RPC batch, dropping notification
 // (nil) replies, and returns the raw response messages.
 func (s *Server) handleBatch(raw []byte) [][]byte {
-	var msgs []json.RawMessage
-	if err := json.Unmarshal(raw, &msgs); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('[') {
 		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
 	}
-	var out [][]byte
-	for _, m := range msgs {
-		if resp := s.handle(m); resp != nil {
-			out = append(out, resp)
+
+	out := make([][]byte, 0)
+	count := 0
+	for decoder.More() {
+		count++
+		if count > maxHTTPBatchItems {
+			return [][]byte{mustMarshal(errorResponse(nil, -32600, "invalid request: batch too large"))}
 		}
+		var message json.RawMessage
+		if err := decoder.Decode(&message); err != nil {
+			return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
+		}
+		if response := s.handle(message); response != nil {
+			out = append(out, response)
+		}
+	}
+	if count == 0 {
+		return [][]byte{mustMarshal(errorResponse(nil, -32600, "invalid request: empty batch"))}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
 	}
 	return out
 }

@@ -38,11 +38,10 @@ deployed environment contracts, serve option parsing, OAuth, runtime composition
 local grant administration and stdio/HTTP transport lifecycle. Production is healthy
 and retains the same 62-tool public surface and catalog hash.
 
-P4 targeted Layer-1 hardening is active on branch `p4-l1-hardening`. Through Step 75
-it blocks path-qualified command spoofing, rejects workspace-controlled executable
-resolution, enforces grant/request bounds, synchronizes tested documentation state,
-and redacts secret-bearing file paths before audit persistence. P4 is not yet
-published, merged, or deployed.
+P4 targeted Layer-1 hardening is active on branch `p4-l1-hardening`. Through Step 76
+it blocks command/PATH spoofing, enforces grant/request bounds, keeps documentation
+state tested, redacts audit paths, and bounds HTTP JSON-RPC batches to 128 items with
+invalid empty-batch handling. P4 is not yet published, merged, or deployed.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -385,7 +384,7 @@ Date: 2026-07-13. P3 is deployed and healthy on `main` at commit
 `dd055e251c455086ddcb02bc302d9f406b05d6ce`, with 62 tools and deterministic
 catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-P4 is active on `p4-l1-hardening`; Steps 70-75 passed focused tests,
+P4 is active on `p4-l1-hardening`; Steps 70-76 passed focused tests,
 `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and diff checks. P4 has
 not been published, merged, or deployed. Documentation state is now guarded by an
 automated consistency test and `docs/documentation-map.md`.

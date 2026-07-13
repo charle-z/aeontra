@@ -10,7 +10,7 @@ criteria below remain future requirements until their status changes with eviden
 | Surface | Status | Evidence / next boundary |
 |---|---|---|
 | P0-P3 architecture foundations | Deployed | `main` at `dd055e251c455086ddcb02bc302d9f406b05d6ce`; production healthy; 62 tools. |
-| P4 targeted L1 hardening | In progress | `p4-l1-hardening`; Steps 70-75 complete, not deployed. |
+| P4 targeted L1 hardening | In progress | `p4-l1-hardening`; Steps 70-76 complete, not deployed. |
 | P5 deeper testing | Planned | Separate branch/spec after P4 release. |
 | P6 CI/DevSecOps | Planned | Quality gates are designed; implementation evidence incomplete. |
 | P7 structured observability | Planned | Must exclude prompts, source, secrets, and private targets. |

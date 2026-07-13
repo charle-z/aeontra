@@ -18,6 +18,8 @@ Security **is the product**. These are invariants, not options.
 5. **Workspace escape** — operations outside configured project paths, including
    via terminal. → **Path jail covering both filesystem AND commands.**
 6. **Public exposure of the daemon** — the tunnel must require auth + TLS.
+7. **HTTP resource exhaustion** — request bodies are capped at 4 MiB; JSON-RPC
+   batches are parsed incrementally, reject empty arrays, and stop after 128 items.
 
 ## Secure-by-default invariants (Layer 1)
 
@@ -152,5 +154,6 @@ policy. Keep the MIT "as is" disclaimer. Never claim guarantees that can't be he
 - audit log records actions and redacts args/errors/file paths · repo-file instructions are NOT executed
 - **content secret-scan redacts keys/tokens in returned files**
 - **bypass attempts (traversal/symlink/arg-injection/allowlist) all fail**
+- HTTP: auth required, oversized bodies fail, empty/over-128 batches fail with bounded errors
 - access grants: agent cannot self-approve; expired/used grants fail; exact path only;
   default output remains redacted; raw requires explicit raw approval; restart clears grants
