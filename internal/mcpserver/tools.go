@@ -813,36 +813,7 @@ func (s *Server) register() {
 			return s.svc.GitCommitIn(p.Repo, p.Message, p.Approve)
 		})
 
-	s.add("memory_read", "Read the root or optional selected repo's agent-agnostic memory (.agent-memory/*.md), redacted.",
-		object(map[string]any{"repo": strProp("optional repo directory, absolute or relative to the workspace root")}),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Repo string `json:"repo"`
-			}
-			_ = json.Unmarshal(a, &p)
-			return s.svc.MemoryReadIn(p.Repo)
-		})
-
-	s.add("memory_write",
-		"Write one structured memory section under .agent-memory/ (current-task, plan, decisions, reflections). Denied in read-only; in ask mode set approve=true. Content is redacted before persisting.",
-		object(map[string]any{
-			"section": strProp("one of: current-task, plan, decisions, reflections"),
-			"content": strProp("Markdown memory content"),
-			"approve": boolProp("write even when approval is required"),
-			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
-		}, "section", "content"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Section string `json:"section"`
-				Content string `json:"content"`
-				Approve bool   `json:"approve"`
-				Repo    string `json:"repo"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.MemoryWriteIn(p.Repo, p.Section, p.Content, p.Approve)
-		})
+	catalog.RegisterMemory(s.addCatalogTool, s.svc)
 
 	catalog.RegisterNotes(s.addCatalogTool, s.svc)
 
