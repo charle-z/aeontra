@@ -17,22 +17,21 @@ Completed commits:
 - Step 39 `f7380a8`: platform application creation preview.
 - Step 40 `758bd0c`: platform deployment planning and force-without-cache execution.
 - Step 41 `9853ee2`: platform environment mutation.
+- Step 42 `04dba6c`: Git reads.
 
-Current Step 42 candidate:
-- added `internal/mcpserver/catalog/git_reads.go` with a narrow `GitReadService` interface;
-- moved `git_status` and `git_diff` into `RegisterGitReads` at their original contiguous catalog positions;
+Current Step 43 candidate:
+- added `internal/mcpserver/catalog/git_acquisition.go` with a narrow `GitAcquisitionService` interface;
+- moved `git_clone` and `repo_fetch` into `RegisterGitAcquisition` at their original contiguous catalog positions;
 - added focused contract and handler-routing tests.
 
-Compatibility preserved:
+Compatibility preserved across Steps 39-43:
 - 62 public tools;
 - catalog hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
 - names, order, descriptions, schemas, versions, annotations, aliases, handlers, approvals, and envs unchanged.
 
-Step 42 verification:
-- RED failed because `RegisterGitReads` did not exist;
-- focused tests passed;
-- the first full suite detected that `tools.Service.GitStatus` retains a variadic compatibility signature; the interface and fake were corrected to match it exactly;
-- focused and full tests then passed;
+Step 43 verification:
+- RED failed because `RegisterGitAcquisition` did not exist;
+- focused and full tests passed;
 - `go vet ./...`, `go build ./...`, diff review, and production catalog smoke passed.
 
-Next in the requested five-step batch: Step 43 Git acquisition. No publish, merge, or deploy.
+The requested five-step batch is complete after committing Step 43. No publish, merge, or deploy has occurred. Next natural domain: fast-forward planning/execution followed by publication and source-repository management.

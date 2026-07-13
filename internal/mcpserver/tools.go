@@ -142,43 +142,7 @@ func (s *Server) register() {
 
 	catalog.RegisterGitReads(s.addCatalogTool, s.svc)
 
-	s.add("git_clone",
-		"Clone a Git repository into a new simple directory under the workspace root. No embedded credentials in URLs; target cannot escape the jail. Denied in read-only; in ask mode set approve=true.",
-		object(map[string]any{
-			"url":     strProp("remote Git URL, without embedded credentials"),
-			"dir":     strProp("optional simple target directory name under the workspace root; inferred from URL when omitted"),
-			"approve": boolProp("clone even when approval is required"),
-		}, "url"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				URL     string `json:"url"`
-				Dir     string `json:"dir"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.GitClone(p.URL, p.Dir, p.Approve)
-		})
-
-	s.add("repo_fetch",
-		"Fetch one named remote into one jailed Git repository by running exactly 'git fetch <remote>'. No refspecs or extra arguments are accepted. This external action updates local remote-tracking refs and requires approval in ask mode.",
-		object(map[string]any{
-			"repo":    strProp("repository directory, absolute or relative to the workspace root"),
-			"remote":  strProp("remote name, defaults to origin; option-like names are rejected"),
-			"approve": boolProp("execute the fetch when approval is required"),
-		}, "repo"),
-		func(a json.RawMessage) (string, error) {
-			var p struct {
-				Repo    string `json:"repo"`
-				Remote  string `json:"remote"`
-				Approve bool   `json:"approve"`
-			}
-			if err := json.Unmarshal(a, &p); err != nil {
-				return "", err
-			}
-			return s.svc.RepoFetch(p.Repo, p.Remote, p.Approve)
-		})
+	catalog.RegisterGitAcquisition(s.addCatalogTool, s.svc)
 
 	s.add("repo_fast_forward_preview",
 		"Create a read-only, short-lived, single-use plan for an exact clean-tree fast-forward of the current attached branch to its existing upstream tracking ref. It does not fetch or modify the repository.",
