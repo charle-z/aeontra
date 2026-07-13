@@ -1,33 +1,22 @@
-# P3 composition root
+# P4 targeted Layer-1 hardening
 
-Status: complete and merge-ready on branch `p3-composition-root`; explicit owner approval is still required before publication, merge or deployment.
+Status: in progress on branch `p4-l1-hardening` from deployed `main` commit `dd055e251c455086ddcb02bc302d9f406b05d6ce`.
 
-Completed commits:
-- Step 63 `73f9df4`: extracted `cmd/mcp-devbox/main.go` into a strict `app.Main()` composition root with an AST guard.
-- Step 64 `fd6d2ac`: split application orchestration into command, environment, OAuth, serve/bootstrap and grant modules.
-- Step 65 `9bde22e`: isolated flags and environment fallbacks in tested immutable serve options.
-- Step 66 `45ee0fa`: extracted policy/audit/service/server and optional integration composition into `appRuntime`.
-- Step 67 `1966645`: isolated loopback grant-admin and stdio/HTTP transport lifecycle.
-- Step 68 `00bb00f`: locked command output/exit-code and environment-variable contracts.
+P3 release verification:
+- feature branch published and `main` advanced by fast-forward only;
+- Coolify deployment `f6jm69yfz9qeh9r9gqllco9v` finished successfully;
+- production is healthy at commit `dd055e251c455086ddcb02bc302d9f406b05d6ce`;
+- catalog remains 62 tools with hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
 
-Current Step 69 closure candidate:
-- refreshed `origin/main` and confirmed deployed base `ea332d173b4be1908bcf1c1abbe77ece610a6761`;
-- added `docs/p3_closure_test.go` and `docs/baselines/2026-07-13-p3.md`;
-- synchronized README, AGENTS and the context capsule with deployed P2 and merge-ready P3 state;
-- updated the P2 closure test so it truthfully requires deployed P2 rather than the obsolete pre-merge branch state;
-- reviewed Step 63-68 commit bodies: numbered commits, no AI signatures or `Co-Authored-By` lines;
-- reviewed changed files: Go source, tests, docs and agent memory only; no binary, SDK, cache, secret file, token or credential-bearing configuration.
+Current Step 70 candidate:
+- closed an allowlist-bypass class where path-qualified executables were normalized to their basename;
+- repository-local or arbitrary paths such as `./git`, `../git`, `/usr/bin/git`, Windows drive paths and whitespace-disguised names can no longer impersonate an allowlisted program;
+- bare executable names such as `git`, `GIT`, `git.exe` and `go` remain compatible;
+- always-blocked shells and privilege/network tools still retain the stronger destructive-command classification even when path-qualified.
 
-Final P3 verification:
-- executable composition-root AST test passed;
-- complete `internal/app` compatibility and boundary suite passed;
-- P2 and P3 closure documentation tests passed;
-- `go fmt ./...` produced no changes;
-- `go test ./... -count=1` passed;
-- `go vet ./...` passed;
-- `go build ./...` passed;
-- `go run ./cmd/mcp-devbox version` preserved the deployed identity format;
-- `git diff --check` passed;
-- production catalog smoke passed at commit `ea332d173b4be1908bcf1c1abbe77ece610a6761`, 62 tools and hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+Step 70 verification:
+- RED failed because path-qualified allowlisted names were accepted and no dedicated error existed;
+- focused command-policy tests passed after the fix;
+- `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and `git diff --check` passed.
 
-Verdict: P3 is ready to publish and fast-forward into `main`, followed by deployment and runtime/client verification. No P3 publish, merge or deploy has occurred yet.
+Next autonomous step: harden trusted executable resolution so a hostile or misconfigured PATH cannot redirect a bare allowlisted name to a repository-local executable. Do not publish, merge or deploy P4 without explicit owner approval.

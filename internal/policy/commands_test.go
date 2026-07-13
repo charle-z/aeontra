@@ -27,7 +27,6 @@ func TestCheckCommand_BlocksNonAllowlisted(t *testing.T) {
 		{"python", "-c", "print(1)"},
 		{"node", "evil.js"},
 		{"make", "install"},
-		{"./script.sh"},
 	}
 	for _, c := range cases {
 		if err := CheckCommand(testAllowlist, c[0], c[1:]); !errors.Is(err, ErrCommandNotAllowed) {

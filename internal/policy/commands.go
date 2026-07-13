@@ -13,6 +13,8 @@ var (
 	ErrCommandDestructive = errors.New("policy: destructive command blocked")
 	// ErrCommandInjection: an argument contains shell metacharacters / injection.
 	ErrCommandInjection = errors.New("policy: shell metacharacters not permitted in command")
+	// ErrCommandPathQualified: executable selection must come from a bare allowlisted name.
+	ErrCommandPathQualified = errors.New("policy: command must be a bare allowlisted program name")
 )
 
 // alwaysBlockedPrograms are never runnable, even if added to an allowlist by
@@ -58,19 +60,34 @@ func CheckCommand(allowed []string, prog string, args []string) error {
 		}
 	}
 	base := normProgram(prog)
-	// 2. Always-blocked programs (shells, sudo, network pipes, fs-format tools).
+	// 2. Always-blocked programs remain destructive even when path-qualified.
 	if alwaysBlockedPrograms[base] {
 		return ErrCommandDestructive
 	}
-	// 3. Allowlist membership (compared on normalized basename).
+	// 3. Allowlisted executables must be selected by bare name. Otherwise a
+	// repository-local ./git or a path ending in git could spoof the allowlist.
+	if !isBareProgramName(prog) {
+		return ErrCommandPathQualified
+	}
+	// 4. Allowlist membership (compared on normalized basename).
 	if !programAllowed(allowed, base) {
 		return ErrCommandNotAllowed
 	}
-	// 4. Destructive argument patterns on otherwise-allowed programs.
+	// 5. Destructive argument patterns on otherwise-allowed programs.
 	if isDestructiveInvocation(base, args) {
 		return ErrCommandDestructive
 	}
 	return nil
+}
+
+func isBareProgramName(prog string) bool {
+	if prog == "" || strings.TrimSpace(prog) != prog {
+		return false
+	}
+	if strings.ContainsAny(prog, `/\\:`) {
+		return false
+	}
+	return filepath.Base(prog) == prog
 }
 
 func programAllowed(allowed []string, base string) bool {
