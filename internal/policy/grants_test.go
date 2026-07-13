@@ -44,13 +44,16 @@ func TestAccessGrants_ExpiredAndWrongPathDenied(t *testing.T) {
 	secret := filepath.Join(root, ".env")
 	sibling := filepath.Join(root, ".env.local")
 
+	now := time.Now()
+	p.grants.now = func() time.Time { return now }
 	req, err := p.RequestReadAccess(secret, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.ApproveReadAccess(req.ID, false, -time.Second); err != nil {
+	if _, err := p.ApproveReadAccess(req.ID, false, time.Second); err != nil {
 		t.Fatal(err)
 	}
+	now = now.Add(2 * time.Second)
 	if _, err := p.ConsumeReadGrant(req.ID, secret, false); !errors.Is(err, ErrAccessGrantExpired) {
 		t.Fatalf("expired grant should be denied, got %v", err)
 	}

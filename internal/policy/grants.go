@@ -9,7 +9,11 @@ import (
 	"time"
 )
 
-const defaultGrantTTL = 5 * time.Minute
+const (
+	minGrantTTL     = time.Second
+	defaultGrantTTL = 5 * time.Minute
+	maxGrantTTL     = time.Hour
+)
 
 var (
 	ErrAccessGrantInvalid      = errors.New("policy: access grant invalid")
@@ -17,6 +21,7 @@ var (
 	ErrAccessGrantUsed         = errors.New("policy: access grant already used")
 	ErrAccessGrantPathMismatch = errors.New("policy: access grant path mismatch")
 	ErrRawAccessDenied         = errors.New("policy: raw secret access requires explicit raw grant")
+	ErrAccessGrantTTL          = errors.New("policy: access grant ttl must be between 1s and 1h")
 )
 
 // AccessRequest is created when a tool asks for a secret-named path. It is not a
@@ -118,6 +123,9 @@ func (g *AccessGrants) Approve(id string, raw bool, ttl time.Duration) (AccessDe
 	}
 	if ttl == 0 {
 		ttl = defaultGrantTTL
+	}
+	if ttl < minGrantTTL || ttl > maxGrantTTL {
+		return AccessDecision{}, ErrAccessGrantTTL
 	}
 	decision := AccessDecision{
 		RequestID: id,
