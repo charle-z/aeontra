@@ -73,7 +73,7 @@ internal boundaries are easier to test and extend safely. P3 reduces
 `cmd/mcp-devbox/main.go` to a true composition root and moves process orchestration
 into focused modules under `internal/app`, while preserving every deployed command,
 flag, environment variable and wire contract. P3 is deployed; P4 targeted L1
-hardening is active and remains unreleased until its phase closure gates pass.
+hardening is complete and merge-ready, with the public 62-tool contract unchanged.
 
 Quick start:
 

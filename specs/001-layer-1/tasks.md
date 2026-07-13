@@ -28,7 +28,7 @@ steps in `.agent-memory/current-task.md` and dated baselines under `docs/baselin
 - [x] P1 catalog modularization.
 - [x] P2 capability-service split.
 - [x] P3 composition root.
-- [ ] P4 targeted Layer-1 hardening — active on `p4-l1-hardening`.
+- [x] P4 targeted Layer-1 hardening — complete and merge-ready on `p4-l1-hardening`.
 - [ ] P5 deeper testing.
 - [ ] P6 CI/DevSecOps gates.
 - [ ] P7 structured observability.

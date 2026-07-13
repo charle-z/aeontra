@@ -70,9 +70,9 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	for _, required := range []string{
 		"P3 composition root is deployed",
 		"dd055e251c455086ddcb02bc302d9f406b05d6ce",
-		"P4 targeted Layer-1 hardening is active",
+		"P4 targeted Layer-1 hardening is complete",
 		"p4-l1-hardening",
-		"Step 76",
+		"merge-ready",
 	} {
 		if !strings.Contains(capsule, required) {
 			t.Errorf("context capsule does not contain %q", required)
@@ -87,7 +87,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"P0-P3 architecture foundations",
 		"Deployed",
 		"P4 targeted L1 hardening",
-		"In progress",
+		"Complete / merge-ready",
 		"Console/showcase",
 		"Not started",
 		"Universal execution profiles",
