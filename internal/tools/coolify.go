@@ -363,22 +363,35 @@ func (s *PlatformCapability) CoolifySetEnv(app string, vars map[string]string, a
 		sp.Finish(audit.Ask, "coolify_set_env "+app+" "+strings.Join(keys, ","), nil, nil)
 		return fmt.Sprintf("APPROVAL REQUIRED: coolify_set_env would set %d variable(s) on %s. Re-invoke with approve=true.", len(keys), app), nil
 	}
-	var summaries []string
-	for _, k := range keys {
-		payload := map[string]any{"key": k, "value": vars[k]}
-		status, body, err := s.coolify.request(context.Background(), http.MethodPost, "/api/v1/applications/"+url.PathEscape(app)+"/envs", payload)
+	storageSummary := ""
+	if brainRoot, requested := vars["MCP_DEVBOX_BRAIN_ROOT"]; requested {
+		if app != p9BrainAppUUID {
+			err := fmt.Errorf("MCP_DEVBOX_BRAIN_ROOT may only be configured on the fixed P9 Brain application")
+			sp.Finish(audit.Deny, "coolify_set_env "+app+" MCP_DEVBOX_BRAIN_ROOT", nil, err)
+			return "", err
+		}
+		if strings.TrimSpace(brainRoot) != p9BrainMountPath {
+			err := fmt.Errorf("MCP_DEVBOX_BRAIN_ROOT must be exactly %s", p9BrainMountPath)
+			sp.Finish(audit.Deny, "coolify_set_env "+app+" MCP_DEVBOX_BRAIN_ROOT", nil, err)
+			return "", err
+		}
+		storageSummary, err = s.coolify.ensureP9BrainStorage(context.Background())
 		if err != nil {
-			sp.Finish(audit.Error, "coolify_set_env "+app+" "+k, nil, err)
-			return "", fmt.Errorf("coolify set env request failed: %w", err)
+			sp.Finish(audit.Error, "coolify_set_env "+app+" MCP_DEVBOX_BRAIN_ROOT", nil, err)
+			return "", err
 		}
-		if status < 200 || status >= 300 {
-			sp.Finish(audit.Error, "coolify_set_env "+app+" "+k, nil, fmt.Errorf("HTTP %d", status))
-			return s.redact(body), fmt.Errorf("coolify set env -> HTTP %d: %s", status, s.redact(body))
-		}
-		summaries = append(summaries, fmt.Sprintf("%s -> HTTP %d: %s", k, status, s.redact(body)))
+	}
+	summaries, err := s.coolify.setEnvironmentVariables(context.Background(), app, vars, keys)
+	if err != nil {
+		sp.Finish(audit.Error, "coolify_set_env "+app+" "+strings.Join(keys, ","), nil, err)
+		return "", err
 	}
 	sp.Finish(audit.Allow, "coolify_set_env "+app+" "+strings.Join(keys, ","), nil, nil)
-	return "coolify env updated:\n" + strings.Join(summaries, "\n"), nil
+	out := "coolify env updated:\n" + strings.Join(summaries, "\n")
+	if storageSummary != "" {
+		out = storageSummary + "\n" + out
+	}
+	return out, nil
 }
 
 func (s *PlatformCapability) checkCoolifyApp(tool, app string, sp *audit.Span) error {
