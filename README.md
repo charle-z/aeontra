@@ -98,8 +98,9 @@ resident service, Coolify application, credential, listener, npm bundle, CDN, or
 protocol change is introduced. See `docs/console.md` and
 `docs/baselines/2026-07-13-p8.md`.
 
-**P9 Brain is active on `p9-brain` from P8 closure
-`2e3429c9d6342e8e091cadf65293c5c85b1b3259`:** server-anchored cross-repository
+**P9 Brain is complete / merge-ready on `p9-brain` from P8 closure
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259`:** reviewed implementation head
+`96f7ca15183271772aecbf2d0ac2cceb88e20e5d` provides server-anchored cross-repository
 memory with strict Markdown/frontmatter truth, owner-only curated notes, agent working
 notes, local Git history and a pure-Go SQLite FTS5 disposable cache. Step 7 wires the
 optional `MCP_DEVBOX_BRAIN_ROOT` runtime contract. Unset keeps all 67 tools registered

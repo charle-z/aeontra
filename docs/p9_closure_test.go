@@ -60,9 +60,10 @@ func TestP9ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 
 	tasks := read("../specs/006-brain/tasks.md")
 	for _, required := range []string{
-		"[x] **T08 P9 verification**",
+		"[x] **T08 P9 release-candidate verification**",
 		"[x] **T09 P9 release-candidate closure**",
-		"[ ] **T10 post-P9 console spec**",
+		"[ ] **T10 P9 production closure**",
+		"[ ] **T11 post-P9 console spec**",
 	} {
 		if !strings.Contains(tasks, required) {
 			t.Errorf("P9 tasks do not contain %q", required)

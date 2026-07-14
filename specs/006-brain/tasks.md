@@ -17,12 +17,16 @@ gates before the annotated `p9` tag.
   annotations, handlers, docs, original-62 invariance and expected catalog delta.
 - [x] **T07 runtime and operations** — `MCP_DEVBOX_BRAIN_ROOT`, persistent volume,
   startup fail-closed, Git/cache backup/update/rollback/troubleshooting, synthetic smoke.
-- [x] **T08 P9 verification** — full local gates, fuzz/concurrency, PR Race/Staticcheck/
-  CodeQL/Dependency Review/Docker/SBOM/Grype, exact production identity and 67 tools.
+- [x] **T08 P9 release-candidate verification** — full local gates,
+  fuzz/concurrency, PR Race/Staticcheck/CodeQL/Dependency Review/Docker/SBOM/Grype,
+  and exact 67-tool candidate identity.
 - [x] **T09 P9 release-candidate closure** — dated baseline, closure test and
-  synchronized sources of truth; production smoke and the annotated `p9` tag remain
-  post-merge release gates.
-- [ ] **T10 post-P9 console spec** — only after P9 is deployed and tagged, create an
+  synchronized sources of truth.
+- [ ] **T10 P9 production closure** — merge PR #4 after fresh green checks, configure
+  persistent `/brain`, deploy the existing application, verify exact production
+  commit/health/catalog/logs, run both smokes, record deployed evidence, and create the
+  annotated `p9` tag.
+- [ ] **T11 post-P9 console spec** — only after P9 is deployed and tagged, create an
   independent BIOS Operations Console branch/spec; no console, OAuth, Edge or workcell
   implementation belongs to P9.
 

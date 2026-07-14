@@ -6,9 +6,10 @@ Base: Step 6 `022c5fadd820e3249b25da62b387147493010105` / P8 tag `2e3429c9d6342e
 
 ## Current phase
 
-P9 Brain Step 7 is implemented locally and awaiting final gates/commit. The local
-candidate has 67 tools and complete runtime/operations wiring; production remains P8
-with 62 and the current console is unchanged.
+P9 Brain is complete / merge-ready at closure commit `b89236b`. The candidate has 67
+tools and complete runtime/operations wiring. Production remains P8/62 and the current
+console is unchanged until fresh closure-SHA checks pass, PR #4 merges, persistent
+`/brain` is configured, and deployment smoke succeeds.
 
 ## Step 7 evidence
 
@@ -31,9 +32,9 @@ and OAuth-only migration belong to a separate post-P9 branch.
 
 ## Next safe step
 
-Commit/publish Step 7 after full local gates. Then open the P9 PR and require remote
-Race, Staticcheck, CodeQL, Dependency Review, Docker/SBOM/Grype before any merge,
-Coolify env/volume mutation or deploy; no resident service.
+Publish the closure correction SHA, require fresh PR Race, Staticcheck, CodeQL,
+Dependency Review and Docker/SBOM/Grype evidence, then merge PR #4. Do not configure
+or deploy Brain before those checks are green; the no resident service invariant holds.
 
 ## Release-candidate update
 
@@ -43,6 +44,6 @@ P9 Brain is complete / merge-ready at reviewed implementation head
 on `p9-brain`; production remains P8/62 until merge, persistent `/brain` setup,
 deployment and smoke.
 
-Next: run closure-tree local gates, publish the new SHA, require fresh remote checks,
+Next: publish the verified closure correction SHA, require fresh remote checks,
 then merge PR #4. Do not start console, OAuth, Edge, workcells or HTB work before P9
 is deployed, verified and tagged.
