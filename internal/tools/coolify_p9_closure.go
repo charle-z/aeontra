@@ -70,7 +70,7 @@ func (c *CoolifyClient) listStorages(ctx context.Context) ([]coolifyStorage, err
 	if status < 200 || status >= 300 {
 		return nil, fmt.Errorf("coolify list P9 Brain storages -> HTTP %d", status)
 	}
-	entries, err := decodeCoolifyCollection[coolifyStorage](body)
+	entries, err := decodeCoolifyStorages(body)
 	if err != nil {
 		return nil, err
 	}
