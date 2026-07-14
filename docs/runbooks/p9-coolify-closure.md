@@ -79,7 +79,9 @@ The same `coolify_set_env` call first verifies or creates the exact persistent
 storage, then lists the application's existing environment variables. A missing key
 is created with POST. An existing unique key is updated with PATCH on the same
 application `/envs` endpoint, identified by the validated key. Duplicate existing
-keys are rejected before any env write.
+production keys are rejected before any env write. Coolify preview projections are
+ignored when determining production-key uniqueness; they are not deleted or treated
+as independent production variables.
 Submitted values and response bodies containing them are never returned or audited.
 
 ## Deployment gate
