@@ -95,7 +95,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"Console/showcase",
 		"Deployed",
 		"Brain memory",
-		"In progress",
+		"Merge-ready",
 		"Universal execution profiles",
 		"Planned",
 		"Edge agents",
@@ -107,10 +107,13 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"P9 Brain Step 7 is implemented locally",
+		"P9 Brain is complete / merge-ready",
 		"p9-brain",
-		"022c5fadd820e3249b25da62b387147493010105",
+		"96f7ca15183271772aecbf2d0ac2cceb88e20e5d",
+		"29306099092",
+		"29306099088",
 		"MCP_DEVBOX_BRAIN_ROOT",
+		"production remains P8/62",
 		"no resident service",
 	} {
 		if !strings.Contains(handoff, required) {

@@ -1,6 +1,7 @@
 # Tasks — P9 Brain
 
-Status: **active**.
+Status: **complete / merge-ready**; production deployment and smoke remain release
+gates before the annotated `p9` tag.
 
 - [x] **T01 P9 definition** — independent branch/spec, trust levels, hard bounds,
   no-resident-service invariant, local Git posture, and P10 stop boundary.
@@ -16,12 +17,14 @@ Status: **active**.
   annotations, handlers, docs, original-62 invariance and expected catalog delta.
 - [x] **T07 runtime and operations** — `MCP_DEVBOX_BRAIN_ROOT`, persistent volume,
   startup fail-closed, Git/cache backup/update/rollback/troubleshooting, synthetic smoke.
-- [ ] **T08 P9 verification** — full local gates, fuzz/concurrency, PR Race/Staticcheck/
+- [x] **T08 P9 verification** — full local gates, fuzz/concurrency, PR Race/Staticcheck/
   CodeQL/Dependency Review/Docker/SBOM/Grype, exact production identity and 67 tools.
-- [ ] **T09 P9 closure** — dated baseline, closure test, synchronized sources of truth,
-  annotated `p9` tag.
-- [ ] **T10 P10 spec only** — after P9 closure, create `specs/007-layer-2-egress/`;
-  implementation remains owner-decision pending.
+- [x] **T09 P9 release-candidate closure** — dated baseline, closure test and
+  synchronized sources of truth; production smoke and the annotated `p9` tag remain
+  post-merge release gates.
+- [ ] **T10 post-P9 console spec** — only after P9 is deployed and tagged, create an
+  independent BIOS Operations Console branch/spec; no console, OAuth, Edge or workcell
+  implementation belongs to P9.
 
 ## Test-first requirements
 

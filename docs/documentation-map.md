@@ -19,6 +19,9 @@ The repository is the source of truth; chat history is not.
 Current P8 closure evidence: `docs/baselines/2026-07-13-p8.md` plus
 `docs/p8_closure_test.go`. P9 architecture is governed by `specs/006-brain/` and
 `docs/adr/0003-p9-markdown-truth-sqlite-fts5-cache.md`; it must not rewrite P8 evidence.
+P9 release-candidate evidence is `docs/baselines/2026-07-14-p9.md` plus
+`docs/p9_closure_test.go`. It records merge-ready checks honestly while production
+remains P8 until merge, persistent-volume setup, deployment and smoke.
 The P9 resource invariant is no resident service. Runtime setup, curation, backup,
 restore, update, rollback, and troubleshooting are governed by
 `docs/runbooks/brain-operations.md`.

@@ -20,6 +20,10 @@ Operating rules for any AI agent working in this repo. Read this first, then
   hard resource invariant is no resident service. Production and the console remain
   P8/62 until remote gates and release verification; UI/auth changes remain forbidden
   in this branch.
+  P9 is now merge-ready at reviewed implementation head
+  `96f7ca15183271772aecbf2d0ac2cceb88e20e5d`; exact-SHA CI and Security Evidence
+  passed. Production remains P8/62 until PR #4 merge, persistent `/brain` setup,
+  deployment and smoke. The annotated `p9` tag is the final release gate.
   Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
   Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
   67 annotated MCP tools in the P9 candidate, action plans, audit, persistent notes, and adversarial tests.

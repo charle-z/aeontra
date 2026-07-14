@@ -109,8 +109,11 @@ unsafe permissions and malformed truth fail startup. The Docker image now reserv
 dedicated `/brain` volume, and `cmd/brain-smoke` validates production without printing
 credentials or note content. The local catalog remains 67 tools with hash
 `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
-The resource invariant remains no resident service. Production and the deployed
-console remain P8/62 until the release PR is green.
+The resource invariant remains no resident service. PR #4 head
+`96f7ca15183271772aecbf2d0ac2cceb88e20e5d` passed every required remote gate and
+the release-candidate evidence is recorded in `docs/baselines/2026-07-14-p9.md`.
+Production and the deployed console remain P8/62 until merge, persistent `/brain`
+configuration, deployment and smoke.
 
 Optional local Brain startup:
 

@@ -1,6 +1,7 @@
 # Plan — P9 Brain
 
-Status: **active**.
+Status: **complete / merge-ready**; Step 8 production verification remains mandatory
+before the annotated `p9` tag.
 
 ## Delivery sequence
 

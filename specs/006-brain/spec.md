@@ -1,6 +1,7 @@
 # Spec — P9 Brain
 
-Status: **active** on branch `p9-brain`.
+Status: **complete / merge-ready** on branch `p9-brain`; production verification and
+the annotated `p9` tag remain post-merge release gates.
 
 ## Goal
 

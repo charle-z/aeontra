@@ -24,6 +24,12 @@ configured Brain startup fail closed, packaging reserves the dedicated volume, a
 remote smoke exposes no note content or credential. The prior 62-tool contract
 hash/order remain locked inside the 67-tool candidate. Deployment remains pending.
 
+P9 release-candidate head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d` passed CI
+run `29306099092` and Security Evidence run `29306099088`, including Verify, Race,
+Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker build, SPDX SBOM and the
+unchanged zero-High/Critical Grype threshold. The dated baseline is merge-ready;
+production identity and smoke remain pending until merge and `/brain` persistence.
+
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.
 

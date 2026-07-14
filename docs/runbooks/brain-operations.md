@@ -10,6 +10,11 @@ service, port, worker, queue, model, or remote database.
 The deployed console is not part of this milestone and remains unchanged. Until the
 P9 release PR is merged and deployed, production remains P8 with 62 tools.
 
+P9 release-candidate head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d` is
+merge-ready with evidence in `docs/baselines/2026-07-14-p9.md`. Production volume/env
+setup, exact deployment identity, both smoke commands and the annotated `p9` tag remain
+mandatory; no console or OAuth change is authorized during those operations.
+
 ## Runtime configuration
 
 Brain is controlled by one optional environment variable:

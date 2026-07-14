@@ -442,5 +442,11 @@ reports 62 tools and deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
 PR CI runs `29290411676`/`29290411679` and post-merge runs
 `29290609147`/`29290609178` are green. Authenticated console smoke passed, and
-content-free logs show the expected 303/200 `route=console` events. P9 Brain is next
-on a fresh branch/spec and must not add a resident service.
+content-free logs show the expected 303/200 `route=console` events.
+
+P9 Brain is merge-ready at reviewed implementation head
+`96f7ca15183271772aecbf2d0ac2cceb88e20e5d`. Exact-SHA CI run `29306099092` and
+Security Evidence run `29306099088` passed every required gate. Release-candidate
+evidence is in `docs/baselines/2026-07-14-p9.md`. Production remains P8/62 until PR
+#4 is merged, the dedicated `/brain` volume and environment are configured, and the
+merged commit is deployed and smoked.

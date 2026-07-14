@@ -1,6 +1,7 @@
 # Threat model — P9 Brain
 
-Status: **active**.
+Status: **complete / merge-ready**; residual risks and production release gates remain
+binding after merge.
 
 ## Assets
 

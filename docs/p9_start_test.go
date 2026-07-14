@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestP9BrainIsDefinedAndActive(t *testing.T) {
+func TestP9BrainIsDefinedAndReleaseReady(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		content, err := os.ReadFile(path)
@@ -34,8 +34,8 @@ func TestP9BrainIsDefinedAndActive(t *testing.T) {
 		"tasks":        tasks,
 		"threat model": threat,
 	} {
-		if !strings.Contains(content, "P9 Brain") || !strings.Contains(content, "Status: **active**") {
-			t.Errorf("%s does not define active P9 Brain", name)
+		if !strings.Contains(content, "P9 Brain") || !strings.Contains(content, "Status: **complete / merge-ready**") {
+			t.Errorf("%s does not define merge-ready P9 Brain", name)
 		}
 	}
 
@@ -106,8 +106,8 @@ func TestP9BrainIsDefinedAndActive(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(roadmap, "| Brain memory | In progress |") {
-		t.Error("roadmap does not mark Brain memory in progress")
+	if !strings.Contains(roadmap, "| Brain memory | Merge-ready |") {
+		t.Error("roadmap does not mark Brain memory merge-ready")
 	}
 	if !strings.Contains(tasks, "[x] **T01 P9 definition**") {
 		t.Error("P9 tasks do not complete T01")

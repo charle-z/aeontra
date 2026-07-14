@@ -349,6 +349,18 @@ catalog 85.6%; package gates remain green. Production is still P8/62 until the P
 remote Race/Staticcheck/CodeQL/Dependency Review/container gates and deployment smoke
 complete.
 
+### P9 release-candidate evidence
+
+Corrected implementation head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d` passed
+CI run `29306099092` (Verify, Race detector, Staticcheck and Govulncheck) and Security
+Evidence run `29306099088` (CodeQL, Dependency Review, Docker build, SPDX SBOM and the
+unchanged zero-High/Critical Grype threshold). The earlier red Staticcheck result on
+`3ae3158` is not release evidence and was not reused.
+
+The dated release-candidate baseline and closure consistency test are part of the P9
+tree. Production remains P8/62 until fresh checks for the closure SHA pass, PR #4
+merges, `/brain` persistence is configured, and deployment smoke completes.
+
 ## Safety rules
 
 - Do not run active DAST against production.
