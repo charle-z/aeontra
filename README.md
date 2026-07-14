@@ -100,16 +100,24 @@ protocol change is introduced. See `docs/console.md` and
 
 **P9 Brain is active on `p9-brain` from P8 closure
 `2e3429c9d6342e8e091cadf65293c5c85b1b3259`:** server-anchored cross-repository
-memory with Markdown/frontmatter files as truth, owner-only curated notes,
-agent-authored working notes with provenance/review dates, `[[slug]]` links, and an
-in-process pure-Go SQLite FTS5 disposable cache. The invariant is no resident service:
-no database server, embeddings model, vector daemon, queue, worker, port, or new
-Coolify application. Step 6 adds exactly five closed-schema tools—`brain_search`,
-`brain_read`, `brain_write`, `brain_index` and `brain_context`—after an unchanged
-62-tool P8 prefix. The local candidate has 67 tools and deterministic hash
+memory with strict Markdown/frontmatter truth, owner-only curated notes, agent working
+notes, local Git history and a pure-Go SQLite FTS5 disposable cache. Step 7 wires the
+optional `MCP_DEVBOX_BRAIN_ROOT` runtime contract. Unset keeps all 67 tools registered
+but uniformly disabled; setting a dedicated absolute root such as `/brain` initializes
+private layout, local Git, FTS5 and a strict startup reindex, while overlap, remotes,
+unsafe permissions and malformed truth fail startup. The Docker image now reserves a
+dedicated `/brain` volume, and `cmd/brain-smoke` validates production without printing
+credentials or note content. The local catalog remains 67 tools with hash
 `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
-Brain remains disabled until Step 7 runtime configuration; production, console and its
-62-tool identity are unchanged.
+The resource invariant remains no resident service. Production and the deployed
+console remain P8/62 until the release PR is green.
+
+Optional local Brain startup:
+
+```bash
+export MCP_DEVBOX_BRAIN_ROOT=/absolute/private/brain
+go run ./cmd/mcp-devbox serve --root /abs/path/to/repo
+```
 
 Quick start:
 

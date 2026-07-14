@@ -102,7 +102,7 @@ misleading global percentage:
 | `internal/console` | 80% | 84.3% |
 | `internal/brain` | 80% | 81.7% |
 | `internal/tools` | 70% | 73.9% |
-| `internal/app` | 65% | 68.0% |
+| `internal/app` | 65% | 71.3% |
 | `internal/grantadmin` | 55% | 59.6% |
 
 The gate fails with an explicit missing package error when a threshold package is
@@ -320,40 +320,36 @@ Dependency Review correctly skipped on push. Production serves
 show only 303/200 `route=console` events. Full evidence is versioned in
 `docs/baselines/2026-07-13-p8.md`.
 
-## P9 Brain — Step 6 five public tools
+## P9 Brain — Step 7 runtime, volume, and remote smoke
 
-Step 6 appends exactly five declarative Brain tools after the unchanged P8 prefix:
+Step 7 wires the optional `MCP_DEVBOX_BRAIN_ROOT` contract without changing the
+catalog. Runtime tests prove:
 
-- `brain_search` — bounded BM25 plain-text retrieval;
-- `brain_read` — one strict note plus bounded backlinks;
-- `brain_write` — agent-only `working/` mutation with provenance/review date;
-- `brain_index` — status or idempotent transactional cache rebuild;
-- `brain_context` — at most 16 one-line summaries / 4 KiB, without bodies.
+- environment parsing accepts only an absolute path and does not reflect invalid input;
+- unset Brain preserves the 67-tool catalog and one uniform disabled error;
+- configured startup creates private root/trust/cache/Git state, opens FTS5, performs a
+  full reindex, and attaches the isolated capability;
+- Brain remains outside repository policy roots;
+- equal/nested repository overlap, malformed Markdown and an existing Git remote fail
+  startup instead of silently disabling the capability;
+- runtime close releases the index before audit/observability sinks.
 
-The local candidate catalog is 67 tools with deterministic hash
-`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
-A contract test filters the five Brain entries and recomputes the original 62-tool P8
-hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`,
-proving the prior names, schemas, versions, and annotations remain unchanged. The
-first 62 registration names are also compared against the exact historical order.
+The production Dockerfile now copies `go.sum`, prepares `/brain` for non-root
+UID/GID 10001, and declares it as a dedicated volume beside `/repos`. The runbook
+locks private modes, curation, backup excluding disposable cache, restore, update,
+rollback and troubleshooting. No new process, port, service or application is added.
 
-Schemas use `additionalProperties=false` and enforce query, top-k, slug, author, type,
-provenance, review date, body and context bounds. Strict JSON decoding rejects unknown
-fields, multiple values, malformed JSON, and wrong types before capability dispatch.
-Annotations are truthful: search/read/context are local reads, write is a local
-non-idempotent write, and index is a local idempotent derived-cache write.
+`cmd/brain-smoke` performs a read-only remote verification of exact commit/catalog,
+`brain_index status` and bounded `brain_context`. Its integration test uses a real MCP
+HTTP handler and synthetic private note, proving that the output excludes the bearer,
+root, slug, title, provenance and body. Coverage is 76.6% for the command.
 
-Direct catalog tests exercise all five handlers, defaults, strict errors, capability
-error propagation and JSON output. End-to-end MCP tests cover disabled-safe calls and
-an isolated configured write/search/read/status/context workflow. Documentation is
-machine-checked against all 67 registrations. Initialize instructions mention only
-on-demand `brain_context`/`brain_search` and explicitly forbid wholesale injection.
+Coverage after Step 7: `internal/app` 71.3%, Brain 81.7%, tools 73.9%, server 82.6%,
+catalog 85.6%; package gates remain green. Production is still P8/62 until the P9 PR,
+remote Race/Staticcheck/CodeQL/Dependency Review/container gates and deployment smoke
+complete.
 
-Coverage after Step 6: server 82.6%, catalog 85.6%, Brain 81.7%, tools 73.9%, app
-68.0%; every package gate passes. No runtime env, mount, console UI/auth change, or
-production deploy exists yet, so production remains P8 with 62 tools.
-
-## Safety rules## Safety rules
+## Safety rules
 
 - Do not run active DAST against production.
 - Do not persist global Go environment changes on the production container.

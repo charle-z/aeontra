@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -29,7 +30,19 @@ type serveOptions struct {
 	AuditPath     string
 	HTTPAddr      string
 	HTTPToken     string
+	BrainRoot     string
 	Observability observability.Config
+}
+
+func resolveBrainRoot(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if strings.ContainsRune(raw, '\x00') || !filepath.IsAbs(raw) {
+		return "", fmt.Errorf("%s must be an absolute path", brainRootEnv)
+	}
+	return filepath.Clean(raw), nil
 }
 
 func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
@@ -90,11 +103,16 @@ func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
 	if err != nil {
 		return serveOptions{}, err
 	}
+	brainRoot, err := resolveBrainRoot(os.Getenv(brainRootEnv))
+	if err != nil {
+		return serveOptions{}, err
+	}
 	return serveOptions{
 		Config:        cfg,
 		AuditPath:     *auditPath,
 		HTTPAddr:      *httpAddr,
 		HTTPToken:     *httpToken,
+		BrainRoot:     brainRoot,
 		Observability: observabilityConfig,
 	}, nil
 }

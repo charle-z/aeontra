@@ -82,22 +82,22 @@ or OAuth protocol change. Closure evidence is in
 `2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8` and deployed.
 
 P9 Brain is active on branch `p9-brain`, based exactly on P8 closure
-`2e3429c9d6342e8e091cadf65293c5c85b1b3259`. It defines server-anchored,
-cross-repository memory with Markdown/frontmatter files as truth, owner-only
-`curated/`, agent-writable `working/` with provenance and review dates, explicit
-`[[slug]]` links, a pure-Go SQLite FTS5 disposable cache, and five bounded tools.
-The resource invariant is no resident service: no database server, embeddings model,
-vector daemon, queue, worker, port, or new Coolify application. Step 6 appends exactly
-five closed-schema Brain tools after the unchanged 62-tool P8 prefix. The local
-candidate is 67 tools with hash
-`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
-filtering Brain reproduces the P8 hash exactly. Search/read/context are bounded local
-reads, write targets only agent-owned working notes, and index mutates only the
-idempotent derived cache. Strict decoding, disabled-safe and configured MCP workflows,
-docs sync and on-demand initialize instructions are tested. Env/mount wiring,
-operations and deployment remain unimplemented; production stays P8/62. By owner
-decision, the deployed console remains unchanged during P9; BIOS-inspired redesign,
-live task visibility and OAuth-only migration belong to a separate branch afterward.
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259`. Step 7 completes runtime and
+operational wiring for the local 67-tool candidate with hash
+`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
+`MCP_DEVBOX_BRAIN_ROOT` is optional: unset keeps all five tools registered but
+uniformly disabled; configured requires an absolute root disjoint from repository
+roots, initializes private directories/local Git/FTS5, reindexes strict Markdown truth
+before serving, and fails startup on overlap, remotes, symlinks, permissions, duplicate
+slugs, malformed notes or cache errors. The Docker image reserves a dedicated
+`/brain` volume and copies `go.sum` for reproducible pure-Go SQLite builds.
+`cmd/brain-smoke` verifies exact commit/catalog, index readiness/schema, note count and
+context byte count without printing bearer credentials, queries, slugs, paths or note
+content. `docs/runbooks/brain-operations.md` covers setup, curation, backup, restore,
+update, rollback and troubleshooting. App coverage is 71.3% and brain-smoke coverage
+is 76.6%. The invariant remains no resident service. Production remains P8/62 and the
+deployed console remains unchanged; BIOS-inspired UI, live durable state and OAuth-
+only migration belong to a separate post-P9 branch.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot

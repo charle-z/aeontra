@@ -2,32 +2,35 @@
 
 Date: 2026-07-13
 Branch: `p9-brain`
-Base: Step 5 `fa187a58741022cb947f048e8216a9bb6120eb62` / P8 tag `2e3429c9d6342e8e091cadf65293c5c85b1b3259`
+Base: Step 6 `022c5fadd820e3249b25da62b387147493010105` / P8 tag `2e3429c9d6342e8e091cadf65293c5c85b1b3259`
 
 ## Current phase
 
-P9 Brain Step 6 is implemented locally and awaiting final gates/commit. The local
-candidate has 67 tools; production remains P8 with 62. Runtime Brain configuration,
-mount, operations and deployment remain absent.
+P9 Brain Step 7 is implemented locally and awaiting final gates/commit. The local
+candidate has 67 tools and complete runtime/operations wiring; production remains P8
+with 62 and the current console is unchanged.
 
-## Step 6 evidence
+## Step 7 evidence
 
-- exact P8 62-tool order retained as prefix;
-- filtered legacy catalog hash remains
-  `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
-- local P9 67-tool hash is
-  `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
-- five closed bounded schemas, strict decoding, truthful annotations and version 1;
-- disabled-safe and configured MCP workflows pass;
-- docs/tools and initialize guidance are synchronized;
-- coverage: server 82.6%, catalog 85.6%, Brain 81.7%, tools 73.9%, app 68.0%.
+- optional absolute `MCP_DEVBOX_BRAIN_ROOT` with disabled-safe unset behavior;
+- configured startup creates/verifies private layout, local no-remote Git and FTS5,
+  performs strict reindex and fails closed on unsafe/malformed state;
+- Brain root overlap with repository roots is rejected and never reflected in errors;
+- Docker image prepares a dedicated `/brain` persistent volume for non-root UID 10001
+  and reproducibly copies `go.sum`;
+- operational runbook covers curation, backup, restore, update, rollback and failures;
+- read-only `cmd/brain-smoke` verifies production without printing credentials or note
+  content;
+- coverage: app 71.3%, smoke 76.6%, Brain 81.7%, tools 73.9%, server 82.6%, catalog
+  85.6%.
 
 ## Owner decision preserved
 
-The deployed console remains untouched during P9. BIOS-inspired UI, live durable
-state and OAuth-only migration belong to a separate branch after closure.
+Do not change the deployed console during P9. BIOS-inspired UI, live task/device state
+and OAuth-only migration belong to a separate post-P9 branch.
 
 ## Next safe step
 
-Commit/publish Step 6, then implement Step 7 runtime env/mount/operations with RED
-tests. Do not deploy before full P9 PR gates and synthetic smoke; no resident service.
+Commit/publish Step 7 after full local gates. Then open the P9 PR and require remote
+Race, Staticcheck, CodeQL, Dependency Review, Docker/SBOM/Grype before any merge,
+Coolify env/volume mutation or deploy; no resident service.

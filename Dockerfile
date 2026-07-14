@@ -9,7 +9,7 @@ ARG GIT_SHA=unknown
 ARG BUILD_TIME=unknown
 
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
 
@@ -35,8 +35,8 @@ RUN apk add --no-cache ca-certificates git nodejs npm \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
-	&& mkdir -p /repos \
-	&& chown -R mcpdevbox:mcpdevbox /repos \
+	&& mkdir -p /repos /brain \
+	&& chown -R mcpdevbox:mcpdevbox /repos /brain \
 	# Defense in depth: strip setuid/setgid bits so no binary can be used to
 	# escalate privileges (the app runs non-root and needs no setuid tools).
 	&& find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
@@ -54,7 +54,7 @@ COPY --from=build /out/mcp-devbox /usr/local/bin/mcp-devbox
 
 USER 10001:10001
 WORKDIR /repos
-VOLUME ["/repos"]
+VOLUME ["/repos", "/brain"]
 EXPOSE 8765
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=12 \

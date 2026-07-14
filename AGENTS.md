@@ -9,16 +9,17 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P9 Brain Step 6 complete / Step 7 runtime next** on branch
+- Current phase: **P9 Brain Step 7 complete / Step 8 verification next** on branch
   `p9-brain`, based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`.
-  Five closed-schema Brain tools are appended after the unchanged 62-tool P8 prefix;
-  the local 67-tool hash is
-  `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
-  Strict decoding, annotations, disabled/configured workflows and historical order/
-  hash invariance are tested. The hard resource invariant is no resident service.
-  Runtime env/mounts, operations and deployment remain absent. The P8 console is
-  frozen during P9; BIOS-inspired redesign, live task state and OAuth-only migration
-  require a later independent branch.
+  The local 67-tool candidate is runtime-wired through optional
+  `MCP_DEVBOX_BRAIN_ROOT`. Unset is uniformly disabled; configured startup requires a
+  dedicated absolute root disjoint from repository roots, initializes private local
+  Git and FTS5, performs a strict reindex, and fails closed on unsafe/malformed state.
+  The image reserves `/brain`, operational backup/restore/rollback is documented, and
+  `cmd/brain-smoke` verifies only safe counts/state without printing note content. The
+  hard resource invariant is no resident service. Production and the console remain
+  P8/62 until remote gates and release verification; UI/auth changes remain forbidden
+  in this branch.
   Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
   Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
   67 annotated MCP tools in the P9 candidate, action plans, audit, persistent notes, and adversarial tests.

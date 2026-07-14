@@ -14,7 +14,7 @@ Status: **active**.
   configuration, bounded concurrency and close lifecycle.
 - [x] **T06 five public tools** — search/read/write/index/context declarative contracts,
   annotations, handlers, docs, original-62 invariance and expected catalog delta.
-- [ ] **T07 runtime and operations** — `MCP_DEVBOX_BRAIN_ROOT`, persistent volume,
+- [x] **T07 runtime and operations** — `MCP_DEVBOX_BRAIN_ROOT`, persistent volume,
   startup fail-closed, Git/cache backup/update/rollback/troubleshooting, synthetic smoke.
 - [ ] **T08 P9 verification** — full local gates, fuzz/concurrency, PR Race/Staticcheck/
   CodeQL/Dependency Review/Docker/SBOM/Grype, exact production identity and 67 tools.
