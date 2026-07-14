@@ -21,8 +21,9 @@ var p9BrainStoragePayload = map[string]any{
 }
 
 type coolifyEnvironmentVariable struct {
-	UUID string `json:"uuid"`
-	Key  string `json:"key"`
+	UUID      string `json:"uuid"`
+	Key       string `json:"key"`
+	IsPreview bool   `json:"is_preview"`
 }
 
 type coolifyStorage struct {

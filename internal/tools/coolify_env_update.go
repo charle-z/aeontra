@@ -13,6 +13,9 @@ func (c *CoolifyClient) setEnvironmentVariables(ctx context.Context, app string,
 	}
 	byKey := make(map[string][]coolifyEnvironmentVariable, len(entries))
 	for _, entry := range entries {
+		if entry.IsPreview {
+			continue
+		}
 		byKey[entry.Key] = append(byKey[entry.Key], entry)
 	}
 	for _, key := range keys {
