@@ -45,7 +45,7 @@ func OpenStoreWithClock(root string, now func() time.Time) (*Store, error) {
 	if err := rejectSymlinkAncestors(root); err != nil {
 		return nil, err
 	}
-	if err := ensurePrivateDirectory(root); err != nil {
+	if err := ensureConfiguredBrainRoot(root); err != nil {
 		return nil, err
 	}
 	for _, directory := range []string{CuratedDir, WorkingDir, CacheDir} {

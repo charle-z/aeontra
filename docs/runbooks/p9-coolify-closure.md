@@ -59,6 +59,11 @@ then lists storages again and fails unless the exact entry is verified. It never
 DELETE and exposes no arbitrary application, mount, payload, command, terminal, or
 Docker socket.
 
+A newly created managed volume may expose an empty root with platform-default mode
+`0755`. Brain may harden only that empty root to `0700` before creating any content.
+If the root is non-empty, a mode other than `0700` remains a startup failure and no
+existing content or permissions are changed.
+
 Execution flow:
 
 ```text
