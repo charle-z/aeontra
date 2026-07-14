@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 func decodeCoolifyStorages(body string) ([]coolifyStorage, error) {
@@ -19,10 +20,12 @@ func decodeCoolifyStorages(body string) ([]coolifyStorage, error) {
 	entries := make([]coolifyStorage, 0, len(grouped.Persistent)+len(grouped.Files))
 	for _, storage := range grouped.Persistent {
 		storage.Type = "persistent"
+		storage.Name = strings.TrimPrefix(storage.Name, p9BrainAppUUID+"-")
 		entries = append(entries, storage)
 	}
 	for _, storage := range grouped.Files {
 		storage.Type = "file"
+		storage.Name = strings.TrimPrefix(storage.Name, p9BrainAppUUID+"-")
 		entries = append(entries, storage)
 	}
 	return entries, nil
