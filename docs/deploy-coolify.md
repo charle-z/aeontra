@@ -255,6 +255,10 @@ Expected:
 Security invariants remain enforced by mcp-devbox policy inside the container:
 jail, secret deny plus redaction, command allowlist, patch-first writes, and audit.
 
+For API-managed storages, environment create/update semantics, token-permission
+diagnosis, and the rule to avoid unnecessary panel/SSH/Docker-socket work, see
+`docs/runbooks/coolify-api-operations.md`.
+
 ## Redeploy and reconnect
 
 After an authorized push, let the existing Coolify webhook rebuild the branch.

@@ -25,6 +25,9 @@ remains P8 until merge, persistent-volume setup, deployment and smoke.
 The P9 resource invariant is no resident service. Runtime setup, curation, backup,
 restore, update, rollback, and troubleshooting are governed by
 `docs/runbooks/brain-operations.md`.
+Coolify API authority, application storage management, environment create/update
+semantics, token-permission diagnosis, and the rule to prefer narrow API automation
+over manual panel work are governed by `docs/runbooks/coolify-api-operations.md`.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |

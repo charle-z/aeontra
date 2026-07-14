@@ -64,6 +64,10 @@ Do not mark a step done without running its verification.
 ## Anti-Hallucination
 
 - Read files before editing. Search before assuming a function/path/config exists.
+- Before asking the operator for a manual platform action, inspect the official API,
+  existing authenticated client, and current token response. A missing MCP wrapper is
+  an implementation gap, not proof that Coolify requires panel/SSH access. Follow
+  `docs/runbooks/coolify-api-operations.md`.
 - Prefer existing patterns over new abstractions.
 - Don't change public signatures without updating callers and tests.
 - Never remove tests silently; if a test contradicts the new spec, fix it and
