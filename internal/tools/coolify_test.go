@@ -217,6 +217,9 @@ func TestCoolifySetEnv_RedactsValues(t *testing.T) {
 	var gotPath string
 	var gotBody map[string]any
 	svc.WithCoolify(fakeCoolify(t, "https://coolify.example.com", "tok", nil, func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet {
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[]`))}, nil
+		}
 		gotPath = r.URL.Path
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Fatal(err)

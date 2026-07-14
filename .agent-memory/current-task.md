@@ -1,23 +1,36 @@
-# P9 Brain — release candidate closure
+# P9 Brain — Coolify production closure fix
 
-Status: P9 is complete / merge-ready on branch `p9-brain`, based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`. Closure commit `b89236b` records the dated baseline and exact prior-SHA evidence; the verified follow-up correction separates release-candidate verification from still-pending production closure. Production remains P8/62 until fresh checks pass, PR #4 merges, `/brain` persistence is configured, and the merged application is deployed and smoked.
+Status: P9 is merged to `main` at `1faddafd866c426edf5e76d4d336d0b2b7d3f2b6`. Work continues on independent branch `fix/p9-coolify-storage-env`; production deployment and the annotated `p9` tag remain pending.
 
-## Verified
+Historical release-candidate state retained for traceability: P9 Brain was complete / merge-ready on branch `p9-brain`, based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`, while preserving the no resident service invariant. The current fix branch does not reopen or alter that P9 implementation scope.
 
-- P9 candidate identity: 67 tools and `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
-- original 62 P8 contracts remain the exact prefix with historical hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
-- P9 preserves the no resident service invariant;
-- exact implementation head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d` passed CI run `29306099092` and Security Evidence run `29306099088`;
-- closure commit and correction tree passed formatting, full tests, atomic coverage thresholds, vet, build, Actionlint, Govulncheck, both Brain fuzz targets, Staticcheck with temporary writable caches, and `git diff --check`;
-- no runtime, console, OAuth, Edge, workcell or HTB implementation was added by the closure work.
+## Implemented on the fix branch
+
+- fixed `coolify_set_env` to list existing env variables first, use POST only for missing keys, PATCH the same application `/envs` endpoint for unique existing keys identified by `key`, reject duplicate-key conflicts before writes, and never return submitted values or response bodies;
+- validated the production Coolify v4 contract directly: `PATCH /api/v1/applications/{app}/envs` with `{key,value}` returned HTTP 201, while `/envs/{env_uuid}` returned 404 and UUID in the payload was rejected;
+- added a fixed internal P9 Brain storage helper without adding a public tool or privileged-profile dependency;
+- the helper is reachable only inside the existing `coolify_set_env` workflow when the application is exactly `jqf7qz5ensoqtvl1tb197gcv`, the key is `MCP_DEVBOX_BRAIN_ROOT`, and the value is exactly `/brain`;
+- storage handling always GETs first, accepts exactly one matching persistent entry, rejects reserved-name/path/type/duplicate conflicts, POSTs only when absent, omits `host_path`, GETs again to verify, and never calls DELETE;
+- unsafe Brain application/path combinations are rejected before HTTP, and a storage conflict stops before any env read or write;
+- no console, OAuth, Edge, workcell, HTB, free terminal, Docker socket, new application, privileged profile, or catalog registration changed.
+
+## Local verification
+
+- `go fmt ./internal/tools`: clean;
+- `go test ./... -count=1`: pass;
+- `go vet ./...`: pass;
+- `go build ./...`: pass;
+- `git diff --check`: pass;
+- directed storage helper, env create/update/redaction, and Brain ordering/rejection/conflict tests: pass;
+- public P9 catalog remains 67 tools because no catalog registration changed.
 
 ## Next exact actions
 
-1. Commit the verified release-state correction on `p9-brain`.
-2. Publish the branch without force.
-3. Require fresh PR checks for the final SHA; do not reuse checks from `96f7ca1` as final closure evidence.
-4. Merge PR #4 only after every required job succeeds.
-5. Inspect the existing Coolify app `jqf7qz5ensoqtvl1tb197gcv`; configure a persistent `/brain` mount and `MCP_DEVBOX_BRAIN_ROOT=/brain` while preserving `/repos` and `/state`.
-6. Deploy once, observe the same deployment to terminal state, verify exact commit/health/67 tools/hash/logs/Brain readiness, and run `mcp-catalog-smoke` plus `brain-smoke` without private output.
-7. Record deployed evidence and create the annotated `p9` tag only after production verification.
-8. Only then audit the Opus/Fable frontend proposal and create an independent BIOS Operations Console branch/spec.
+1. Commit this fix branch without AI signature.
+2. Publish without force and open an independent PR.
+3. Require all remote checks green, then merge without non-fast-forward conflict.
+4. Deploy the merged fix once with Brain still disabled, retaining and observing that deployment ID to terminal state.
+5. Invoke the exact `coolify_set_env` Brain configuration so storage is verified before the env is created or updated.
+6. Deploy Brain once, retain and observe that deployment ID, then verify exact commit, health, 67 tools, P9 hash, logs, catalog smoke and Brain smoke.
+7. Record production evidence and create annotated tag `p9` only after every check passes.
+8. Do not start frontend work before closure and tagging.
