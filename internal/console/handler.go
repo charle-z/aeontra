@@ -19,17 +19,21 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/oauth"
 )
 
 const (
-	consolePath  = "/console"
-	loginPath    = "/console/login"
-	logoutPath   = "/console/logout"
-	statusPath   = "/console/status"
-	cssPath      = "/console/assets/app.css"
-	jsPath       = "/console/assets/app.js"
-	cookieName   = "mcpdevbox_console"
-	maxLoginBody = 4 << 10
+	consolePath       = "/console"
+	loginPath         = "/console/login"
+	logoutPath        = "/console/logout"
+	statusPath        = "/console/status"
+	oauthStartPath    = "/console/auth/start"
+	oauthCallbackPath = "/console/auth/callback"
+	cssPath           = "/console/assets/app.css"
+	jsPath            = "/console/assets/app.js"
+	cookieName        = "mcpdevbox_console"
+	maxLoginBody      = 4 << 10
 )
 
 //go:embed assets/index.html assets/app.css assets/app.js
@@ -53,6 +57,7 @@ type Config struct {
 	StaticToken   string
 	Runtime       Status
 	Authorize     func(*http.Request) bool
+	OAuthProvider *oauth.Provider
 	SecureCookies bool
 	Session       SessionConfig
 }
@@ -64,6 +69,8 @@ type Handler struct {
 	authorize     func(*http.Request) bool
 	secureCookies bool
 	sessions      *SessionStore
+	oauthClient   *oauth.ConsoleClient
+	oauthFlows    *oauthFlowStore
 	indexHTML     []byte
 	css           []byte
 	js            []byte
@@ -86,6 +93,13 @@ func New(cfg Config) (*Handler, error) {
 	if err != nil {
 		return nil, errors.New("console script asset is unavailable")
 	}
+	var oauthClient *oauth.ConsoleClient
+	if cfg.OAuthProvider != nil {
+		oauthClient, err = cfg.OAuthProvider.NewConsoleClient(oauthCallbackPath)
+		if err != nil {
+			return nil, err
+		}
+	}
 	cfg.Runtime.Authenticated = true
 	cfg.Runtime.Surface = "presentation-only"
 	return &Handler{
@@ -94,6 +108,8 @@ func New(cfg Config) (*Handler, error) {
 		authorize:     cfg.Authorize,
 		secureCookies: cfg.SecureCookies,
 		sessions:      sessions,
+		oauthClient:   oauthClient,
+		oauthFlows:    newOAuthFlowStore(),
 		indexHTML:     indexHTML,
 		css:           css,
 		js:            js,
@@ -108,6 +124,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc(loginPath, h.handleLogin)
 	mux.HandleFunc(logoutPath, h.handleLogout)
 	mux.HandleFunc(statusPath, h.handleStatus)
+	if h.oauthClient != nil {
+		mux.HandleFunc(oauthStartPath, h.handleOAuthStart)
+		mux.HandleFunc(oauthCallbackPath, h.handleOAuthCallback)
+	}
 	mux.HandleFunc(cssPath, h.handleCSS)
 	mux.HandleFunc(jsPath, h.handleJS)
 	mux.HandleFunc(consolePath+"/", h.handleConsoleSubpath)
@@ -170,6 +190,58 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	provided := values["token"]
 	if err != nil || len(values) != 1 || len(provided) != 1 || !h.validStaticToken(provided[0]) {
 		h.writeLoginPage(w, true)
+		return
+	}
+	if err := h.bootstrapSession(w, r); err != nil {
+		writeGenericError(w, http.StatusServiceUnavailable)
+		return
+	}
+	hardenRedirect(w)
+	http.Redirect(w, r, consolePath, http.StatusSeeOther)
+}
+
+func (h *Handler) handleOAuthStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	if h.oauthClient == nil || h.oauthFlows == nil {
+		writeUnauthorized(w)
+		return
+	}
+	state, _, challenge, err := h.oauthFlows.create()
+	if err != nil {
+		writeGenericError(w, http.StatusServiceUnavailable)
+		return
+	}
+	authorizeURL, err := h.oauthClient.AuthorizationURL(state, challenge)
+	if err != nil {
+		_, _ = h.oauthFlows.consume(state)
+		writeGenericError(w, http.StatusServiceUnavailable)
+		return
+	}
+	hardenRedirect(w)
+	http.Redirect(w, r, authorizeURL, http.StatusSeeOther)
+}
+
+func (h *Handler) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	if h.oauthClient == nil || h.oauthFlows == nil {
+		writeUnauthorized(w)
+		return
+	}
+	query := r.URL.Query()
+	codes, states := query["code"], query["state"]
+	if len(query) != 2 || len(codes) != 1 || len(states) != 1 || codes[0] == "" || states[0] == "" {
+		writeUnauthorized(w)
+		return
+	}
+	verifier, ok := h.oauthFlows.consume(states[0])
+	if !ok || !h.oauthClient.Complete(codes[0], verifier) {
+		writeUnauthorized(w)
 		return
 	}
 	if err := h.bootstrapSession(w, r); err != nil {
@@ -262,9 +334,13 @@ func (h *Handler) writeLoginPage(w http.ResponseWriter, failed bool) {
 		status = http.StatusUnauthorized
 		message = `<p class="error" role="alert">Authentication failed.</p>`
 	}
-	loginControl := `<p class="note">OAuth or bearer authentication is required. Open the console through an authenticated client.</p>`
+	loginControl := `<p class="note">No console authentication method is configured.</p>`
+	if h.oauthClient != nil {
+		loginControl = `<p><a class="oauth" href="/console/auth/start">Sign in with OAuth</a></p><p class="note">The owner passphrase is entered only on the OAuth authorization page. Access tokens never reach JavaScript.</p>`
+	}
 	if h.staticToken != "" {
-		loginControl = `<form method="post" action="/console/login" autocomplete="off"><label for="token">Access token</label><input id="token" name="token" type="password" required maxlength="4096" autocomplete="current-password"><button type="submit">Sign in</button></form><p class="note">The token is submitted in the HTTPS request body and is never stored in the browser session cookie.</p>`
+		bearerForm := `<form method="post" action="/console/login" autocomplete="off"><label for="token">Recovery bearer token</label><input id="token" name="token" type="password" required maxlength="4096" autocomplete="current-password"><button type="submit">Sign in with bearer</button></form><p class="note">The bearer is submitted in the HTTPS request body and is never stored in the browser session cookie.</p>`
+		loginControl += bearerForm
 	}
 	page := `<!doctype html>
 <html lang="en">
@@ -280,7 +356,7 @@ main{width:min(28rem,100%);padding:2rem;border:1px solid #263044;border-radius:1
 mark{display:grid;width:3rem;height:3rem;place-items:center;border:1px solid #73f4c366;border-radius:.85rem;color:#73f4c3;background:#73f4c311;font-weight:800}
 h1{margin:1.25rem 0 .5rem;font-size:2rem;letter-spacing:-.04em}p{color:#9ba9bd}label{display:block;margin:1.5rem 0 .45rem;font-weight:700}
 input{width:100%;padding:.8rem;border:1px solid #35415a;border-radius:.7rem;background:#07090d;color:#edf4ff;font:inherit}input:focus{outline:3px solid #8ea8ff;outline-offset:2px}
-button{width:100%;margin-top:1rem;padding:.8rem;border:0;border-radius:.7rem;background:#73f4c3;color:#07100d;font:inherit;font-weight:800;cursor:pointer}
+button,.oauth{display:block;width:100%;margin-top:1rem;padding:.8rem;border:0;border-radius:.7rem;background:#73f4c3;color:#07100d;font:inherit;font-weight:800;cursor:pointer;text-align:center;text-decoration:none;box-sizing:border-box}
 .error{padding:.75rem;border:1px solid #ff8e9e66;border-radius:.65rem;color:#ffb6c0;background:#ff8e9e10}.note{font-size:.82rem}
 </style>
 </head>

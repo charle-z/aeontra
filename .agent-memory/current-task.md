@@ -1,6 +1,6 @@
 # Current task
 
-P8.1 Console 2.0 — Step 1: React/Vite Neo-BIOS frontend foundation.
+P8.1 Console 2.0 — Step 2 complete locally: first half of the OAuth migration.
 
 ## Closed predecessor retained for evidence
 
@@ -8,12 +8,14 @@ P8.1 Console 2.0 — Step 1: React/Vite Neo-BIOS frontend foundation.
 - Its release-candidate state was complete / merge-ready with the invariant **no resident service**.
 - P9 subsequently closed in production and was tagged `p9`; final merge commit: `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-## Active Step 1
+## P8.1 progress
 
-- Branch `console-2.0` was created exactly from the closed P9 merge commit.
-- Design handoff imported from `origin/console-2.0-neo-bios-design` under `docs/console-2.0/`.
-- Frontend source lives under `web/console` using React, TypeScript and Vite. Astro was intentionally not selected because the console is a coordinated interactive application rather than a mostly-static content site.
-- The current shell renders the post-P9 `/console/status` values and marks unavailable backend data honestly; no mock VPS, task, Brain, observability or device metrics are rendered.
-- CI and Docker are being wired to check, test and build the frontend before Go tests/builds.
-- `pnpm-lock.yaml` was generated through the private fixed validation runner. The full `pnpm-validate` execution was blocked by the platform invoker before reaching the runner; source security tests pass and remote CI will be used as an independent frontend build gate if the invoker remains blocked.
-- No production deployment, OAuth change, query-key removal or catalog change has occurred in Step 1.
+- Step 1 commit `c4240672c9abfbb352b7a6b8ea39d7ae0e519d22` established the React/TypeScript/Vite Neo-BIOS frontend and reproducible CI/Docker build.
+- Step 2 adds `/console/auth/start` and `/console/auth/callback` using the existing OAuth provider.
+- The console client has a deterministic public client id and exact same-origin callback.
+- State is stored only as a SHA-256 digest, PKCE S256 is mandatory, flows are TTL/cap bounded, and authorization codes are consumed once.
+- The callback completes OAuth server-side, immediately revokes the internal token pair and creates only an opaque Secure + HttpOnly + SameSite=Strict console cookie.
+- Passphrases remain accepted only by `/oauth/authorize`; codes, state, verifiers and bearers are not returned in final responses.
+- Callback replay and cross-flow state/PKCE substitution are rejected.
+- Static Authorization bearer and the recovery form remain available. `?key=` has deliberately not been removed yet.
+- Full `go test ./...`, `go vet ./...` and `go build ./...` are green.
