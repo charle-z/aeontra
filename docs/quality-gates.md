@@ -17,7 +17,7 @@ The gate is package-specific, rejects a missing package, and never substitutes o
 global coverage percentage for critical-package evidence. P6 makes it blocking. P7
 adds `internal/observability` at a 70% minimum against a measured 74.4% baseline.
 P8 adds `internal/console` at an 80% minimum against a measured 84.3% baseline.
-P9 Step 7 keeps `internal/brain` at 81.7%, `internal/tools` at 73.9%,
+P9 Step 7 keeps `internal/brain` at 81.2%, `internal/tools` at 73.9%,
 `internal/app` at 71.3%, `internal/mcpserver` at 82.6%, and
 `internal/mcpserver/catalog` at 85.6%, all above their minimums. Runtime tests make
 configured Brain startup fail closed, packaging reserves the dedicated volume, and the

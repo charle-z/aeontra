@@ -21,7 +21,7 @@ with 62 and the current console is unchanged.
 - operational runbook covers curation, backup, restore, update, rollback and failures;
 - read-only `cmd/brain-smoke` verifies production without printing credentials or note
   content;
-- coverage: app 71.3%, smoke 76.6%, Brain 81.7%, tools 73.9%, server 82.6%, catalog
+- coverage: app 71.3%, smoke 76.6%, Brain 81.2%, tools 73.9%, server 82.6%, catalog
   85.6%.
 
 ## Owner decision preserved

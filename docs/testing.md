@@ -100,7 +100,7 @@ misleading global percentage:
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
 | `internal/console` | 80% | 84.3% |
-| `internal/brain` | 80% | 81.7% |
+| `internal/brain` | 80% | 81.2% |
 | `internal/tools` | 70% | 73.9% |
 | `internal/app` | 65% | 71.3% |
 | `internal/grantadmin` | 55% | 59.6% |
@@ -344,7 +344,7 @@ rollback and troubleshooting. No new process, port, service or application is ad
 HTTP handler and synthetic private note, proving that the output excludes the bearer,
 root, slug, title, provenance and body. Coverage is 76.6% for the command.
 
-Coverage after Step 7: `internal/app` 71.3%, Brain 81.7%, tools 73.9%, server 82.6%,
+Coverage after Step 7: `internal/app` 71.3%, Brain 81.2%, tools 73.9%, server 82.6%,
 catalog 85.6%; package gates remain green. Production is still P8/62 until the P9 PR,
 remote Race/Staticcheck/CodeQL/Dependency Review/container gates and deployment smoke
 complete.

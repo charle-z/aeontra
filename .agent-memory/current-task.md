@@ -20,7 +20,7 @@ Status: Step 7 is complete locally on `p9-brain`. It builds on Step 6 commit
   verification, backup, restore, update, rollback and troubleshooting;
 - `cmd/brain-smoke` remotely validates exact commit/67-tool hash, index readiness/schema,
   note count and bounded context size without printing credential or private note data;
-- coverage: app 71.3%, brain-smoke 76.6%, Brain 81.7%, tools 73.9%, server 82.6%,
+- coverage: app 71.3%, brain-smoke 76.6%, Brain 81.2%, tools 73.9%, server 82.6%,
   catalog 85.6%.
 
 ## Not done yet

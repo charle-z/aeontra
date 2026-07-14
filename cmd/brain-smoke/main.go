@@ -126,14 +126,14 @@ func run(args []string, output io.Writer, getenv func(string) string, suppliedCl
 		return err
 	}
 	if !status.Ready || status.SchemaVersion != brainpkg.IndexSchemaVersion || status.NoteCount < 0 || status.SourceBytes < 0 || status.LinkCount < 0 || status.BrokenLinkCount < 0 {
-		return fmt.Errorf("Brain index status is invalid")
+		return fmt.Errorf("brain index status is invalid")
 	}
 	contextText, err := callTool(client, endpoint, credential, 2, "brain_context", map[string]any{"limit": brainpkg.MaxContextNotes})
 	if err != nil {
 		return err
 	}
 	if len(contextText) > maxSmokeContextLen {
-		return fmt.Errorf("Brain context exceeds %d bytes", maxSmokeContextLen)
+		return fmt.Errorf("brain context exceeds %d bytes", maxSmokeContextLen)
 	}
 
 	fmt.Fprintln(output, "brain smoke passed")
@@ -236,7 +236,7 @@ func callTool(client *http.Client, endpoint *url.URL, credential string, id int,
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Brain operation returned HTTP %d", response.StatusCode)
+		return "", fmt.Errorf("brain operation returned HTTP %d", response.StatusCode)
 	}
 	body, err := readBounded(response.Body)
 	if err != nil {
@@ -252,7 +252,7 @@ func callTool(client *http.Client, endpoint *url.URL, credential string, id int,
 		return "", err
 	}
 	if envelope.Error != nil {
-		return "", fmt.Errorf("Brain RPC failed with code %d", envelope.Error.Code)
+		return "", fmt.Errorf("brain RPC failed with code %d", envelope.Error.Code)
 	}
 	var result toolResult
 	resultDecoder := json.NewDecoder(bytes.NewReader(envelope.Result))
@@ -264,7 +264,7 @@ func callTool(client *http.Client, endpoint *url.URL, credential string, id int,
 		return "", err
 	}
 	if result.IsError || len(result.Content) != 1 || result.Content[0].Type != "text" {
-		return "", fmt.Errorf("Brain tool returned an error or invalid content shape")
+		return "", fmt.Errorf("brain tool returned an error or invalid content shape")
 	}
 	return result.Content[0].Text, nil
 }
@@ -275,7 +275,7 @@ func readBounded(reader io.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("reading Brain smoke response: %w", err)
 	}
 	if len(body) > maxSmokeResponse {
-		return nil, fmt.Errorf("Brain smoke response exceeds %d bytes", maxSmokeResponse)
+		return nil, fmt.Errorf("brain smoke response exceeds %d bytes", maxSmokeResponse)
 	}
 	return body, nil
 }
@@ -283,7 +283,7 @@ func readBounded(reader io.Reader) ([]byte, error) {
 func ensureEOF(decoder *json.Decoder) error {
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return fmt.Errorf("Brain smoke response contains trailing JSON data")
+		return fmt.Errorf("brain smoke response contains trailing JSON data")
 	}
 	return nil
 }

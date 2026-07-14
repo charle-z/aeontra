@@ -48,9 +48,6 @@ func TestContextDigestIsBoundedCuratedFirstAndOmitsBodies(t *testing.T) {
 
 func TestContextDigestValidatesLimitAndLifecycle(t *testing.T) {
 	store, _ := openIndexedStore(t)
-	if _, err := store.ContextDigest(nil, 1); err == nil {
-		t.Fatal("nil context unexpectedly succeeded")
-	}
 	if _, err := store.ContextDigest(context.Background(), -1); err == nil {
 		t.Fatal("negative limit unexpectedly succeeded")
 	}

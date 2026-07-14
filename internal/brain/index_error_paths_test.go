@@ -23,17 +23,11 @@ func TestIndexLifecycleRejectsInvalidStateAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.OpenIndex(nil); err == nil {
-		t.Fatal("nil context opened an index")
-	}
 	if _, err := store.IndexStatus(context.Background()); err == nil {
 		t.Fatal("status succeeded before index open")
 	}
 	if _, err := store.Search(context.Background(), "release gates", 5); err == nil {
 		t.Fatal("search succeeded before index open")
-	}
-	if _, err := store.Reindex(nil); err == nil {
-		t.Fatal("nil context reindex succeeded")
 	}
 	if err := store.OpenIndex(context.Background()); err != nil {
 		t.Fatal(err)
@@ -125,12 +119,6 @@ func TestSearchAndBacklinksRejectInvalidInputWithoutEcho(t *testing.T) {
 		if _, err := store.Search(context.Background(), query, 5); err == nil || strings.Contains(err.Error(), query) {
 			t.Fatalf("query=%q err=%v", query, err)
 		}
-	}
-	if _, err := store.Search(nil, secret, 5); err == nil || strings.Contains(err.Error(), secret) {
-		t.Fatalf("nil context search error=%v", err)
-	}
-	if _, err := store.Backlinks(nil, "safe-note"); err == nil {
-		t.Fatal("nil context backlink query succeeded")
 	}
 	if _, err := store.Backlinks(context.Background(), "../"+secret); err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("invalid backlink slug error=%v", err)

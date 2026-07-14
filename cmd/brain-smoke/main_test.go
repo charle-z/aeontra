@@ -106,7 +106,7 @@ func TestRunRejectsDisabledBrainWithoutLeakingCredential(t *testing.T) {
 	server, info, token, _ := brainSmokeServer(t, false)
 	defer server.Close()
 	err := run([]string{"--url", server.URL, "--expected-commit", info.Commit}, &bytes.Buffer{}, func(string) string { return token }, server.Client())
-	if err == nil || !strings.Contains(err.Error(), "Brain tool") || strings.Contains(err.Error(), token) {
+	if err == nil || !strings.Contains(err.Error(), "brain tool") || strings.Contains(err.Error(), token) {
 		t.Fatalf("error=%v", err)
 	}
 }

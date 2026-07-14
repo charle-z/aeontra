@@ -207,7 +207,7 @@ func TestBuildRuntimeRejectsBrainRepositoryWithRemote(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	command := fmt.Sprintf("[remote \"origin\"]\n\turl = https://example.invalid/private.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n")
+	command := "[remote \"origin\"]\n\turl = https://example.invalid/private.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n"
 	configPath := filepath.Join(brainRoot, ".git", "config")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
