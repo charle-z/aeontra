@@ -17,9 +17,10 @@ The gate is package-specific, rejects a missing package, and never substitutes o
 global coverage percentage for critical-package evidence. P6 makes it blocking. P7
 adds `internal/observability` at a 70% minimum against a measured 74.4% baseline.
 P8 adds `internal/console` at an 80% minimum against a measured 84.3% baseline.
-P9 Step 3 keeps `internal/brain` at an 80% minimum against a measured 80.5% baseline;
-the model, jail, atomic working writes, and controlled local Git history are included.
-SQLite, tool, runtime, and deployment code are not included yet.
+P9 Step 4 keeps `internal/brain` at an 80% minimum against a measured 81.5% baseline;
+the model, jail, atomic working writes, controlled local Git history, pure-Go SQLite
+FTS5 cache, full/incremental indexing, BM25 search, and backlinks are included. Tool,
+runtime, and deployment code are not included yet.
 
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.

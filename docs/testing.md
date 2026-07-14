@@ -100,7 +100,7 @@ misleading global percentage:
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
 | `internal/console` | 80% | 84.3% |
-| `internal/brain` | 80% | 80.5% |
+| `internal/brain` | 80% | 81.5% |
 | `internal/tools` | 70% | 73.3% |
 | `internal/app` | 65% | 67.8% |
 | `internal/grantadmin` | 55% | 59.6% |
@@ -317,29 +317,34 @@ Dependency Review correctly skipped on push. Production serves
 show only 303/200 `route=console` events. Full evidence is versioned in
 `docs/baselines/2026-07-13-p8.md`.
 
-## P9 Brain — Step 3 model, store jail, and local Git history
+## P9 Brain — Step 4 disposable SQLite FTS5 index
 
-`internal/brain` has an 80% package gate and a measured 80.5% Step 3 baseline.
-SQLite, Brain tools, runtime configuration, and deployment wiring remain absent. Tests
-now cover the complete Step 2 model/jail behavior plus:
+`internal/brain` has an 80% package gate and a measured 81.5% Step 4 baseline.
+`modernc.org/sqlite@v1.53.0` is now the second deliberate direct dependency. It runs
+with `CGO_ENABLED=0` inside the existing process and adds no service, listener, port,
+container, credential, queue, model, or worker.
 
-- private local Git initialization with exact `/.cache/` ignore and one bootstrap commit;
-- no configured remote, fixed local-only plumbing, hooks disabled, filters bypassed,
-  global/system config disabled, prompt disabled, and no shell/remote commands;
-- private `.git/` and `.gitignore` posture, symlink/metadata-swap rejection, and
-  revalidation before each write;
-- serialized atomic `working/<slug>.md` create/update with mode 0600;
-- exactly one local commit per successful write and immutable cross-author ownership;
-- secret and cancelled writes failing before source or commit mutation;
-- source/index rollback on `commit-tree` or `update-ref` failure;
-- independent ref verification when `update-ref` succeeds but reports an ambiguous
-  transport/timeout error;
-- concurrent writes producing a clean linear local history;
-- non-reflective public errors that omit slugs, note content, private paths, and Git
-  stderr.
+Step 4 tests cover the complete note/jail/Git behavior plus:
 
-YAML remains the only new direct dependency. `modernc.org/sqlite` remains absent until
-Step 4 begins with a failing FTS5 test.
+- private mode-0600 `.cache/brain.db` creation and symlink/broad-permission rejection;
+- FTS5/schema/integrity probes and exact schema version;
+- bounded full rebuild from strict Markdown truth inside one transaction;
+- atomic preservation of the previous snapshot when a rebuild source is malformed;
+- BM25 search over title/body with client input converted to quoted plain-text terms;
+- query/top-k/term/excerpt/response/backlink/note-count/aggregate-byte limits;
+- deterministic forward links, backlinks, broken-link counts, and status metadata;
+- manual secret redaction before indexing and proof the raw canary is absent from the
+  SQLite file and search output;
+- incremental index updates tied to successful working-note writes;
+- source/index rollback when the subsequent local Git commit fails;
+- disposable cache deletion followed by equivalent full reconstruction;
+- concurrent search/write/reindex behavior and safe close/reopen;
+- invalid lifecycle, closed-index, unsafe cache, unexpected source entry, invalid
+  context/query/slug, and UTF-8 truncation paths.
+
+Both Brain fuzz targets pass. Local Staticcheck remains blocked before analysis by the
+production container's unwritable cache path, and local Race remains blocked because
+CGO is disabled. Those gates remain blocking and runner-authoritative for the P9 PR.
 
 ## Safety rules
 

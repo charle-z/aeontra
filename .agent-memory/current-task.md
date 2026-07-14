@@ -1,41 +1,56 @@
-# P9 Brain — Step 3 local Git history and atomic writes
+# P9 Brain — Step 4 disposable FTS5 index
 
-Status: Step 3 is complete locally on `p9-brain`. It builds on Step 2 commit
-`fd810aad507ef118570a5097b40945f7138a57df` and P8 closure
+Status: Step 4 is complete locally on `p9-brain`. It builds on Step 3 commit
+`d6654b13214c6c7c170d64a2b905efdd122f1b62` and P8 closure
 `2e3429c9d6342e8e091cadf65293c5c85b1b3259`. The invariant remains no resident service.
 
 ## Implemented
 
-- `internal/brain/git.go` resolves a fixed absolute Git executable outside the Brain
-  root and runs it directly with a stripped environment, no shell, prompts disabled,
-  global/system config disabled, hooks redirected to the null device, filters bypassed,
-  protocol access denied, and bounded output.
-- Local repository initialization creates/validates private `.git/` and `.gitignore`,
-  rejects symlinks/unsafe ignore files/existing remotes, creates one bootstrap commit,
-  and is idempotent.
-- Writes use Git plumbing: `read-tree`, `hash-object --no-filters`, `update-index`,
-  `write-tree`, `commit-tree`, and compare-and-swap `update-ref`.
-- `internal/brain/write.go` serializes working-note writes, rejects curated duplicates,
-  preserves same-author ownership and created timestamps, writes mode 0600 atomically,
-  creates exactly one local commit, and restores source/index state when Git fails.
-- A bounded independent critical context avoids ambiguous client cancellation after
-  source mutation. If `update-ref` reports an error after applying, HEAD is verified
-  independently before deciding success versus rollback.
-- Tests cover hooks, remotes, metadata swaps, unsafe ignore files, secret/cancelled/
-  cross-author writes, commit/ref failures, ambiguous ref results, concurrency, clean
-  history, generic errors, and allowed command surface.
-- `internal/brain` coverage is 80.5% against an 80% gate.
+- Exact direct dependency `modernc.org/sqlite@v1.53.0`, compatible with the Go 1.26.5
+  project and executing with `CGO_ENABLED=0`.
+- Private disposable `.cache/brain.db` with mode 0600, symlink/broad-permission denial,
+  FTS5/schema/integrity probes, exact schema version, per-connection security/busy
+  pragmas, bounded connection pool, and safe close/reopen.
+- Transactional full rebuild from strict Markdown truth with global slug uniqueness,
+  note-count/aggregate-byte limits, malformed-source fail-closed behavior, and previous
+  snapshot preservation.
+- Incremental metadata/FTS/link updates coordinated with atomic working-note writes and
+  rolled back if the subsequent local Git commit fails.
+- BM25 search over title/body. Input is parsed into bounded terms and emitted as quoted
+  FTS literals, so client FTS operators/wildcards are not executed as syntax.
+- Bounded results, provenance, UTF-8 excerpts, top-k, response bytes, backlinks, query
+  bytes/terms, broken-link counts, and safe index status.
+- Manual source secrets are redacted before cache insertion and again before return;
+  a canary is proven absent from the SQLite file.
+- Cache deletion/reindex equivalence and concurrent search/write/reindex tests pass.
+- `internal/brain` coverage is 81.5% against an 80% gate. Both fuzz targets pass.
+
+## Gates
+
+- `go test ./... -count=1`: pass.
+- atomic full coverage + `coverage-gate`: pass.
+- `go vet ./...`, `go build ./...`, actionlint 1.7.12: pass.
+- Govulncheck 1.6.0: no vulnerabilities.
+- Local Staticcheck: blocked before analysis by unwritable production cache path.
+- Local Race: blocked because `CGO_ENABLED=0`; both remain runner-authoritative.
 
 ## Not implemented yet
 
-- no SQLite dependency, cache schema, FTS5, search, backlinks, or reindex;
-- no Brain capability, MCP tools, runtime env, persistent mount, or deployment;
-- existing 62-tool catalog remains unchanged.
+- no Brain capability composition or disabled-safe configuration;
+- no five MCP tools or catalog change;
+- no `MCP_DEVBOX_BRAIN_ROOT` runtime env, persistent mount, runbook, smoke, or deploy;
+- production remains P8 with 62 tools.
+
+## Console decision
+
+The current deployed console is intentionally preserved unchanged during P9. Do not
+modify its UI or authentication in this branch. The owner will provide the visual
+brief for a creative BIOS-inspired operations console; OAuth-only migration and live
+task visibility belong to a separate branch after P9 closure.
 
 ## Next exact actions
 
-1. Run final Step 3 gates, clean helpers, commit/publish as `Step 3`.
-2. Begin Step 4 with RED tests for FTS5 availability, schema/version probe, bounded
-   full reindex, incremental update, BM25 plain-text search, links/backlinks, broken
-   links, deletion/rebuild equivalence, and concurrent read/reindex/write behavior.
-3. Add exact `modernc.org/sqlite@v1.53.0` only after the FTS5 RED test exists.
+1. Clean Step 4 helpers, run final diff checks, commit/publish `Step 4`.
+2. Begin Step 5 with RED tests for an isolated disabled-safe Brain capability sharing
+   audit/redaction but never repository roots, plus safe close/concurrency behavior.
+3. Keep the existing 62-tool catalog unchanged until Step 6.

@@ -17,11 +17,13 @@ import (
 // Store owns the dedicated Brain filesystem jail. It is intentionally separate from
 // repository roots so general filesystem tools cannot select or enumerate it.
 type Store struct {
-	root string
-	jail *policy.Jail
-	now  func() time.Time
-	mu   sync.Mutex
-	git  *localGit
+	root    string
+	jail    *policy.Jail
+	now     func() time.Time
+	mu      sync.Mutex
+	git     *localGit
+	indexMu sync.RWMutex
+	index   *Index
 }
 
 // OpenStore creates or verifies the private source/cache layout without initializing

@@ -59,16 +59,41 @@ func (s *Store) WriteAgent(ctx context.Context, draft AgentDraft) (Note, error) 
 		return Note{}, err
 	}
 	encoded := RenderNote(note)
+	s.indexMu.RLock()
+	defer s.indexMu.RUnlock()
+	index := s.index
 	if err := atomicWritePrivate(target, encoded); err != nil {
 		return Note{}, err
 	}
 
-	relative := filepath.ToSlash(filepath.Join(WorkingDir, draft.Slug+".md"))
 	criticalContext, cancel := context.WithTimeout(context.Background(), gitCriticalTimeout)
 	defer cancel()
+	if index != nil {
+		if err := index.upsert(criticalContext, note, int64(len(encoded))); err != nil {
+			if restoreErr := restoreSource(target, prior, existed); restoreErr != nil {
+				return Note{}, errors.New("brain: SQLite update failed and source rollback failed")
+			}
+			return Note{}, errors.New("brain: SQLite incremental update failed")
+		}
+	}
+
+	relative := filepath.ToSlash(filepath.Join(WorkingDir, draft.Slug+".md"))
 	if _, err := s.git.commitPath(criticalContext, relative, draft.Author, "brain: write "+draft.Slug, now); err != nil {
 		if restoreErr := restoreSource(target, prior, existed); restoreErr != nil {
 			return Note{}, errors.New("brain: local Git failed and source rollback failed")
+		}
+		if index != nil {
+			rollbackContext, rollbackCancel := context.WithTimeout(context.Background(), gitCriticalTimeout)
+			defer rollbackCancel()
+			var indexErr error
+			if existed && existing != nil {
+				indexErr = index.upsert(rollbackContext, *existing, int64(len(prior)))
+			} else {
+				indexErr = index.delete(rollbackContext, draft.Slug)
+			}
+			if indexErr != nil {
+				return Note{}, errors.New("brain: local Git failed and index rollback failed")
+			}
 		}
 		return Note{}, errors.New("brain: local Git write failed")
 	}

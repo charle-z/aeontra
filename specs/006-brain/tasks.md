@@ -8,7 +8,7 @@ Status: **active**.
   dates/provenance/review/link/size validation, curated/working policy, secret rejection.
 - [x] **T03 source store and Git** — dedicated jail, private layout, symlink defense,
   atomic working writes, controlled local commits, rollback, no remote.
-- [ ] **T04 FTS5 index** — exact pure-Go dependency, schema/probe, full/incremental
+- [x] **T04 FTS5 index** — exact pure-Go dependency, schema/probe, full/incremental
   indexing, BM25 search, backlinks, broken links, disposable rebuild.
 - [ ] **T05 Brain capability** — shared audit/redaction, isolated root, disabled-safe
   configuration, bounded concurrency and close lifecycle.

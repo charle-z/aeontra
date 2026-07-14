@@ -87,12 +87,16 @@ cross-repository memory with Markdown/frontmatter files as truth, owner-only
 `curated/`, agent-writable `working/` with provenance and review dates, explicit
 `[[slug]]` links, a pure-Go SQLite FTS5 disposable cache, and five bounded tools.
 The resource invariant is no resident service: no database server, embeddings model,
-vector daemon, queue, worker, port, or new Coolify application. Step 3 now implements
-the strict note model, dedicated store jail, atomic agent writes, and controlled local
-Git history under `internal/brain`. Git uses fixed plumbing only, no hooks/filters/
-shell/remotes, generic errors, private metadata, one commit per successful write, and
-source/index rollback on failure. Coverage is 80.5% with an 80% gate. SQLite, FTS5,
-backlinks, tools, runtime env, persistent mount, and deployment remain unimplemented.
+vector daemon, queue, worker, port, or new Coolify application. Step 4 now implements
+the strict note model, dedicated store jail, atomic agent writes, controlled local Git
+history, and an in-process pure-Go SQLite FTS5 disposable cache. Full and incremental
+indexing, BM25 plain-text search, links/backlinks, secret-redacted cache contents,
+transactional rebuild, Git-failure index rollback, cache reconstruction, hard bounds,
+and concurrent readers/reindex/write tests pass. Coverage is 81.5% with an 80% gate.
+Five MCP tools, runtime env, persistent mount, operations, and deployment remain
+unimplemented. By owner decision, the deployed P8 console remains unchanged during
+P9; its future BIOS-inspired redesign and OAuth-only migration belong to a separate
+branch after Brain closure.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
