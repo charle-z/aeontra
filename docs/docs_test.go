@@ -71,9 +71,10 @@ func TestToolReferenceDocumentsAllRegisteredToolsAndInvariants(t *testing.T) {
 		"repo_status", "run_command", "run_tests", "sandbox_exec", "sandbox_status",
 		"search_code", "source_repo_create", "source_repo_create_preview", "source_repo_info",
 		"project_validation_preview", "project_validation_execute",
+		"brain_search", "brain_read", "brain_write", "brain_index", "brain_context",
 	}
-	if len(tools) != 57 {
-		t.Fatalf("test inventory has %d tools, want 57", len(tools))
+	if len(tools) != 62 {
+		t.Fatalf("test inventory has %d tools, want 62", len(tools))
 	}
 	for _, name := range tools {
 		if !strings.Contains(doc, "`"+name+"`") {

@@ -14,11 +14,8 @@ import (
 // It reveals no path, configuration name, or partial capability state.
 var ErrBrainNotConfigured = errors.New("brain is not configured")
 
-// BrainReadResult combines one validated/redacted source note with bounded backlinks.
-type BrainReadResult struct {
-	Note      brainpkg.Note
-	Backlinks []string
-}
+// BrainReadResult preserves the public alias while the domain owns its JSON shape.
+type BrainReadResult = brainpkg.ReadResult
 
 // BrainCapability owns the isolated Brain store. It shares the service audit and
 // redaction core but never receives or mutates repository roots.

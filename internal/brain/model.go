@@ -62,23 +62,29 @@ var (
 
 // Metadata is the exact YAML frontmatter schema. Unknown fields are rejected.
 type Metadata struct {
-	Slug       string   `yaml:"slug"`
-	Title      string   `yaml:"title"`
-	Type       NoteType `yaml:"type"`
-	Author     string   `yaml:"author"`
-	Created    string   `yaml:"created"`
-	Updated    string   `yaml:"updated"`
-	Provenance string   `yaml:"provenance"`
-	ReviewBy   string   `yaml:"review_by,omitempty"`
+	Slug       string   `yaml:"slug" json:"slug"`
+	Title      string   `yaml:"title" json:"title"`
+	Type       NoteType `yaml:"type" json:"type"`
+	Author     string   `yaml:"author" json:"author"`
+	Created    string   `yaml:"created" json:"created"`
+	Updated    string   `yaml:"updated" json:"updated"`
+	Provenance string   `yaml:"provenance" json:"provenance"`
+	ReviewBy   string   `yaml:"review_by,omitempty" json:"review_by,omitempty"`
 }
 
 // Note is one validated source note plus derived trust/link state.
 type Note struct {
-	Metadata Metadata
-	Body     string
-	Trust    TrustLevel
-	Links    []string
-	Expired  bool
+	Metadata Metadata   `json:"metadata"`
+	Body     string     `json:"body"`
+	Trust    TrustLevel `json:"trust"`
+	Links    []string   `json:"links"`
+	Expired  bool       `json:"expired"`
+}
+
+// ReadResult is one validated note plus bounded backlinks.
+type ReadResult struct {
+	Note      Note     `json:"note"`
+	Backlinks []string `json:"backlinks"`
 }
 
 // AgentDraft is the bounded public input used to construct a working note. Clients

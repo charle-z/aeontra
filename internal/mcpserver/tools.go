@@ -97,5 +97,7 @@ func (s *Server) register() {
 
 	catalog.RegisterAliases(s.addCatalogAlias)
 
+	catalog.RegisterBrain(s.addCatalogTool, s.svc)
+
 	catalog.RegisterAnnotations(s.annotate)
 }

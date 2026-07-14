@@ -1,48 +1,42 @@
-# P9 Brain — Step 5 isolated capability
+# P9 Brain — Step 6 five public tools
 
-Status: Step 5 is complete locally on `p9-brain`. It builds on Step 4 commit
-`c11af4a97f9e11cb9a4385e4ee2a56bf663c8938` and P8 closure
+Status: Step 6 is complete locally on `p9-brain`. It builds on Step 5 commit
+`fa187a58741022cb947f048e8216a9bb6120eb62` and P8 closure
 `2e3429c9d6342e8e091cadf65293c5c85b1b3259`. The invariant remains no resident service.
 
 ## Implemented
 
-- `BrainCapability` is composed into every `tools.Service` over the existing shared
-  audit/redaction core, but owns only an independently validated `brain.Store`.
-- Disabled state is the default and all search/read/write/index/context operations
-  return the same `ErrBrainNotConfigured` without exposing paths or partial state.
-- `WithBrainStore` is a startup-only delegating facade method; operational behavior and
-  close lifecycle remain on the owning capability per AST boundary tests.
-- The Brain root is proven outside repository policy roots; no repository tool or
-  command workdir gains access to it.
-- Typed capability operations wrap store search, note+backlinks read, working write,
-  status/reindex, and context digest.
-- Audit spans record only safe operation classifications and bounds; query, body,
-  provenance, private root, and canary values do not appear in JSONL.
-- Returned title/provenance/body/excerpt/digest fields receive another shared redaction
-  pass at the capability boundary.
-- `ContextDigest` is on-demand, at most 16 notes/4 KiB, curated-first, recent working
-  second, omits full bodies, and excludes expired working notes.
-- Capability close waits for active operations, detaches and closes the store, and is
-  idempotent. `appRuntime.Close` closes Brain before audit and observability logs.
-- Coverage: Brain 81.7%, tools 73.9%, app 68.0%; package gates pass.
+- exactly five tools appended after the exact historical 62-name order:
+  `brain_search`, `brain_read`, `brain_write`, `brain_index`, `brain_context`;
+- closed bounded schemas, strict one-object JSON decoding and stable version 1 outputs;
+- truthful read/write/idempotent-cache annotations with no open-world authority;
+- typed JSON note/read/search/status output and a plain bounded context digest;
+- disabled-safe MCP results and a configured end-to-end write/search/read/status/context
+  workflow;
+- contract test recomputing the unchanged 62-tool P8 hash;
+- local 67-tool hash
+  `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
+- tools reference synchronized and initialize instructions require demand-driven Brain
+  retrieval, never wholesale injection;
+- dynamic console smoke/integration fixtures now consume runtime count instead of
+  hard-coding 62; the console implementation/assets remain untouched.
+
+## Gates
+
+- full suite and atomic coverage: pass;
+- coverage gate: server 82.6%, catalog 85.6%, Brain 81.7%, tools 73.9%, app 68.0%;
+- focused catalog/MCP/docs/integration tests: pass.
 
 ## Not implemented yet
 
-- no five public Brain tool registrations or catalog delta;
-- no `MCP_DEVBOX_BRAIN_ROOT` runtime env or persistent mount;
-- no operations/runbook/smoke/deployment;
-- production remains P8 with 62 tools and unchanged console.
-
-## Console decision
-
-The deployed console remains unchanged during P9. Do not modify UI/auth in this branch.
-The owner will provide the creative BIOS-inspired visual brief; OAuth-only migration
-and live task/device status belong to a separate post-P9 branch.
+- no `MCP_DEVBOX_BRAIN_ROOT` env parsing, startup composition or persistent mount;
+- no operations/runbook/synthetic production smoke;
+- no deploy; production remains P8 with 62 tools.
 
 ## Next exact actions
 
-1. Clean helpers, run final Step 5 gates, commit/publish `Step 5`.
-2. Begin Step 6 with RED catalog tests proving the original 62 definitions are
-   unchanged and exactly five Brain tools are appended with bounded schemas and honest
-   annotations.
-3. Keep runtime env/mount configuration deferred to Step 7.
+1. Run final Step 6 quality/security gates, clean helpers, commit/publish `Step 6`.
+2. Step 7 RED: runtime env validation, private startup layout/Git/index/reindex,
+   fail-closed configured startup, disabled-safe unset behavior, runbook and synthetic
+   smoke without private bodies.
+3. Keep console UI/auth unchanged in this branch.

@@ -9,19 +9,19 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P9 Brain Step 5 complete / Step 6 tools next** on branch
+- Current phase: **P9 Brain Step 6 complete / Step 7 runtime next** on branch
   `p9-brain`, based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`.
-  `internal/brain` implements strict files/trust/Git/FTS5 behavior; `BrainCapability`
-  now provides an isolated disabled-safe audit/redaction boundary, bounded context,
-  and coordinated close lifecycle without adding its root to repository roots. The
-  hard resource invariant is no resident service: no embeddings model, vector daemon,
-  queue, worker, database server, port, or new Coolify application. Five public tool
-  registrations, runtime env/mounts, operations, and deployment remain absent. The P8
-  console is frozen during P9; BIOS-inspired redesign and OAuth-only migration require
-  a later independent branch.
+  Five closed-schema Brain tools are appended after the unchanged 62-tool P8 prefix;
+  the local 67-tool hash is
+  `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
+  Strict decoding, annotations, disabled/configured workflows and historical order/
+  hash invariance are tested. The hard resource invariant is no resident service.
+  Runtime env/mounts, operations and deployment remain absent. The P8 console is
+  frozen during P9; BIOS-inspired redesign, live task state and OAuth-only migration
+  require a later independent branch.
   Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
   Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
-  62 annotated MCP tools, action plans, audit, persistent notes, and adversarial tests.
+  67 annotated MCP tools in the P9 candidate, action plans, audit, persistent notes, and adversarial tests.
   The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
   `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into

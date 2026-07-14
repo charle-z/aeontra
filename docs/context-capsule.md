@@ -87,16 +87,17 @@ cross-repository memory with Markdown/frontmatter files as truth, owner-only
 `curated/`, agent-writable `working/` with provenance and review dates, explicit
 `[[slug]]` links, a pure-Go SQLite FTS5 disposable cache, and five bounded tools.
 The resource invariant is no resident service: no database server, embeddings model,
-vector daemon, queue, worker, port, or new Coolify application. Step 5 adds an isolated
-`BrainCapability` over the shared audit/redaction core. It is present but disabled on
-every Service, returns one uniform safe error until a validated store is attached, and
-never adds the Brain root to repository policy roots. Search/read/write/index/context
-operations are audited without query/body/provenance/path data; context is curated-
-first, bounded to 4 KiB, excludes bodies and expired working notes, and runtime close
-releases SQLite before logs. Coverage is Brain 81.7%, tools 73.9%, app 68.0%. Five MCP
-registrations, env/mount wiring, operations, and deployment remain unimplemented. By
-owner decision, the deployed P8 console remains unchanged during P9; its future BIOS-
-inspired redesign and OAuth-only migration belong to a separate branch after closure.
+vector daemon, queue, worker, port, or new Coolify application. Step 6 appends exactly
+five closed-schema Brain tools after the unchanged 62-tool P8 prefix. The local
+candidate is 67 tools with hash
+`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
+filtering Brain reproduces the P8 hash exactly. Search/read/context are bounded local
+reads, write targets only agent-owned working notes, and index mutates only the
+idempotent derived cache. Strict decoding, disabled-safe and configured MCP workflows,
+docs sync and on-demand initialize instructions are tested. Env/mount wiring,
+operations and deployment remain unimplemented; production stays P8/62. By owner
+decision, the deployed console remains unchanged during P9; BIOS-inspired redesign,
+live task visibility and OAuth-only migration belong to a separate branch afterward.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot

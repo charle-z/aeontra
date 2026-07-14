@@ -2,35 +2,32 @@
 
 Date: 2026-07-13
 Branch: `p9-brain`
-Base: Step 4 `c11af4a97f9e11cb9a4385e4ee2a56bf663c8938` / P8 tag `2e3429c9d6342e8e091cadf65293c5c85b1b3259`
+Base: Step 5 `fa187a58741022cb947f048e8216a9bb6120eb62` / P8 tag `2e3429c9d6342e8e091cadf65293c5c85b1b3259`
 
 ## Current phase
 
-P9 Brain Step 5 is implemented locally and awaiting final gates/commit. Public Brain
-tools, runtime configuration, persistent volume, operations, and deployment remain
-absent. Production and the current console remain unchanged at P8.
+P9 Brain Step 6 is implemented locally and awaiting final gates/commit. The local
+candidate has 67 tools; production remains P8 with 62. Runtime Brain configuration,
+mount, operations and deployment remain absent.
 
-## Step 5 behavior
+## Step 6 evidence
 
-- every Service owns one non-nil disabled-safe Brain capability;
-- one uniform not-configured error across search/read/write/index/context;
-- independently validated store root never added to repository policy roots;
-- safe typed search/read+backlinks/write/status+reindex/context methods;
-- audit spans omit query, body, provenance, private root and secret canaries;
-- shared redaction reapplied to all returned textual fields;
-- 16-note/4 KiB curated-first context without bodies or expired working notes;
-- capability and runtime close release SQLite before log sinks;
-- AST boundary preserves Service as configuration-only facade;
-- coverage: Brain 81.7%, tools 73.9%, app 68.0%.
+- exact P8 62-tool order retained as prefix;
+- filtered legacy catalog hash remains
+  `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`;
+- local P9 67-tool hash is
+  `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
+- five closed bounded schemas, strict decoding, truthful annotations and version 1;
+- disabled-safe and configured MCP workflows pass;
+- docs/tools and initialize guidance are synchronized;
+- coverage: server 82.6%, catalog 85.6%, Brain 81.7%, tools 73.9%, app 68.0%.
 
 ## Owner decision preserved
 
-Do not change the deployed console during P9. The creative BIOS-inspired redesign,
-live durable task/device state, and OAuth-only migration belong to a separate branch
-after P9 closure.
+The deployed console remains untouched during P9. BIOS-inspired UI, live durable
+state and OAuth-only migration belong to a separate branch after closure.
 
 ## Next safe step
 
-Commit/publish Step 5. Step 6 starts with failing catalog contract tests for exactly
-five appended Brain tools while proving the prior 62 definitions remain unchanged.
-Do not wire production env/mounts until Step 7. The invariant is no resident service.
+Commit/publish Step 6, then implement Step 7 runtime env/mount/operations with RED
+tests. Do not deploy before full P9 PR gates and synthetic smoke; no resident service.

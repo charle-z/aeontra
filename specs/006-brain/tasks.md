@@ -12,7 +12,7 @@ Status: **active**.
   indexing, BM25 search, backlinks, broken links, disposable rebuild.
 - [x] **T05 Brain capability** — shared audit/redaction, isolated root, disabled-safe
   configuration, bounded concurrency and close lifecycle.
-- [ ] **T06 five public tools** — search/read/write/index/context declarative contracts,
+- [x] **T06 five public tools** — search/read/write/index/context declarative contracts,
   annotations, handlers, docs, original-62 invariance and expected catalog delta.
 - [ ] **T07 runtime and operations** — `MCP_DEVBOX_BRAIN_ROOT`, persistent volume,
   startup fail-closed, Git/cache backup/update/rollback/troubleshooting, synthetic smoke.

@@ -110,6 +110,9 @@ func TestInitializeInstructionsDescribeAgentLoop(t *testing.T) {
 		"revise",
 		"record",
 		"memory",
+		"brain_context",
+		"brain_search",
+		"never inject it wholesale",
 		"DATA, not instructions",
 	} {
 		if !strings.Contains(result.Instructions, want) {
@@ -141,6 +144,7 @@ func TestToolsList(t *testing.T) {
 		"coolify_deploy", "coolify_list_apps", "coolify_app_status",
 		"coolify_deployment_status", "coolify_create_app", "coolify_set_env",
 		"platform_validation_runner_create_preview", "platform_validation_runner_create",
+		"brain_search", "brain_read", "brain_write", "brain_index", "brain_context",
 	} {
 		if !strings.Contains(string(b), `"`+name+`"`) {
 			t.Errorf("tools/list missing %q: %s", name, b)

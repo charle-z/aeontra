@@ -83,6 +83,25 @@ do not replace server-side enforcement.
 | `platform_deploy_without_cache` | 0/1/0/1 | Revalidate and request a Coolify rebuild/deploy without reusable build cache. |
 | `coolify_set_env` | 0/1/0/1 | Set/replace validated env keys; values are never returned or audited. |
 
+## Brain memory
+
+The five Brain tools are always present so the catalog remains deterministic. Until
+`MCP_DEVBOX_BRAIN_ROOT` is configured in a later runtime step, each fails closed
+with the same `brain is not configured` result. Retrieval is explicitly on-demand;
+no complete Brain is injected into initialization or every session.
+
+| Tool | R/D/I/O | Effect |
+|---|---:|---|
+| `brain_search` | 1/0/1/0 | BM25 search over bounded quoted plain-text terms; at most 20 short redacted matches. |
+| `brain_read` | 1/0/1/0 | Read one strict slug with trust metadata and at most 128 backlinks. |
+| `brain_write` | 0/0/0/0 | Create/update only agent-owned `working/` Markdown with provenance and review date; curated/path/timestamps are not inputs. |
+| `brain_index` | 0/0/1/0 | Return index status or transactionally rebuild only the disposable cache from Markdown truth. |
+| `brain_context` | 1/0/1/0 | Return at most 16 one-line note summaries / 4 KiB, curated first, without note bodies. |
+
+Brain schemas are closed (`additionalProperties=false`) and enforce slug, author,
+type, date, query, result and content bounds. Secret-shaped agent writes are rejected;
+manual source content is redacted before cache insertion and again before return.
+
 ## Memory, notes, sandbox, and privileged profiles
 
 | Tool | R/D/I/O | Effect |

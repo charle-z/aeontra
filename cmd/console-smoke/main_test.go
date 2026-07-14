@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func TestRunValidatesAuthenticatedConsoleWithoutPrintingSecrets(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"console smoke passed", "expected-console-sha", "tool_count=62", local.CatalogHash, "surface=presentation-only"} {
+	for _, required := range []string{"console smoke passed", "expected-console-sha", "tool_count=" + strconv.Itoa(local.ToolCount), local.CatalogHash, "surface=presentation-only"} {
 		if !strings.Contains(output.String(), required) {
 			t.Fatalf("output missing %q: %s", required, output.String())
 		}
@@ -156,7 +157,7 @@ func TestConsoleEndpointValidation(t *testing.T) {
 func withRuntimeHeadersForSmoke(next http.Handler, commit string, toolCount int, catalogHash string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-MCP-Server-Commit", commit)
-		w.Header().Set("X-MCP-Tool-Count", "62")
+		w.Header().Set("X-MCP-Tool-Count", strconv.Itoa(toolCount))
 		w.Header().Set("X-MCP-Catalog-Hash", catalogHash)
 		next.ServeHTTP(w, r)
 	})

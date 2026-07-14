@@ -94,8 +94,8 @@ misleading global percentage:
 | Package suffix | Minimum | Step 82 baseline |
 |---|---:|---:|
 | `internal/policy` | 80% | 84.6% |
-| `internal/mcpserver` | 80% | 82.7% |
-| `internal/mcpserver/catalog` | 80% | 84.4% |
+| `internal/mcpserver` | 80% | 82.6% |
+| `internal/mcpserver/catalog` | 80% | 85.6% |
 | `internal/oauth` | 80% | 85.3% |
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
@@ -120,7 +120,7 @@ only safe coverage artifacts.
 The local integration suite validates complete contracts without external services,
 real credentials, arbitrary processes, or production traffic:
 
-- **stdio/HTTP catalog parity:** both transports return the same ordered 62-tool
+- **stdio/HTTP catalog parity:** both transports return the same ordered 67-tool
   catalog, and HTTP headers match the deterministic catalog identity;
 - **bearer fail-closed:** unauthenticated HTTP receives 401 and the server refuses to
   start when neither bearer nor OAuth authentication exists;
@@ -320,45 +320,40 @@ Dependency Review correctly skipped on push. Production serves
 show only 303/200 `route=console` events. Full evidence is versioned in
 `docs/baselines/2026-07-13-p8.md`.
 
-## P9 Brain — Step 5 isolated capability and lifecycle
+## P9 Brain — Step 6 five public tools
 
-Step 5 composes `BrainCapability` over the shared audit/redaction core while keeping
-its store outside repository roots. Brain remains disabled by default and every
-operation returns the same safe `brain is not configured` error until a validated
-store is attached at startup.
+Step 6 appends exactly five declarative Brain tools after the unchanged P8 prefix:
 
-Coverage baselines after Step 5 are:
+- `brain_search` — bounded BM25 plain-text retrieval;
+- `brain_read` — one strict note plus bounded backlinks;
+- `brain_write` — agent-only `working/` mutation with provenance/review date;
+- `brain_index` — status or idempotent transactional cache rebuild;
+- `brain_context` — at most 16 one-line summaries / 4 KiB, without bodies.
 
-- `internal/brain`: 81.7% against an 80% gate;
-- `internal/tools`: 73.9% against a 70% gate;
-- `internal/app`: 68.0% against a 65% gate.
+The local candidate catalog is 67 tools with deterministic hash
+`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
+A contract test filters the five Brain entries and recomputes the original 62-tool P8
+hash `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`,
+proving the prior names, schemas, versions, and annotations remain unchanged. The
+first 62 registration names are also compared against the exact historical order.
 
-Focused tests cover:
+Schemas use `additionalProperties=false` and enforce query, top-k, slug, author, type,
+provenance, review date, body and context bounds. Strict JSON decoding rejects unknown
+fields, multiple values, malformed JSON, and wrong types before capability dispatch.
+Annotations are truthful: search/read/context are local reads, write is a local
+non-idempotent write, and index is a local idempotent derived-cache write.
 
-- a non-nil disabled capability on every Service instance;
-- uniform fail-closed behavior for search/read/write/index/context;
-- an isolated Brain root rejected by the repository policy jail;
-- safe audited search/read/write/status/context operations with no query, body,
-  provenance, root path, or secret canary in audit JSONL;
-- redaction applied again at the capability boundary;
-- owner note read plus bounded backlinks and working-note write through the same
-  isolated store;
-- bounded context digest with curated-first ordering, no full bodies, and expired
-  working notes omitted;
-- invalid index actions using a generic error and safe audit classification;
-- capability close waiting for active calls, detaching the store, closing SQLite, and
-  remaining idempotent;
-- `appRuntime.Close` releasing Brain before audit/observability sinks;
-- Service AST boundaries: operational methods remain on BrainCapability; the Service
-  facade adds only the delegating startup configuration method `WithBrainStore`;
-- the original repository, source, Git, platform, and execution capabilities continue
-  sharing one central service core with Brain.
+Direct catalog tests exercise all five handlers, defaults, strict errors, capability
+error propagation and JSON output. End-to-end MCP tests cover disabled-safe calls and
+an isolated configured write/search/read/status/context workflow. Documentation is
+machine-checked against all 67 registrations. Initialize instructions mention only
+on-demand `brain_context`/`brain_search` and explicitly forbid wholesale injection.
 
-No MCP tool, catalog entry, runtime environment variable, mount, console route, or
-production behavior is added in Step 5. Local Staticcheck and Race remain blocked for
-the previously documented environment reasons and remain runner-authoritative.
+Coverage after Step 6: server 82.6%, catalog 85.6%, Brain 81.7%, tools 73.9%, app
+68.0%; every package gate passes. No runtime env, mount, console UI/auth change, or
+production deploy exists yet, so production remains P8 with 62 tools.
 
-## Safety rules
+## Safety rules## Safety rules
 
 - Do not run active DAST against production.
 - Do not persist global Go environment changes on the production container.
