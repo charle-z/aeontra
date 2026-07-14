@@ -17,6 +17,18 @@ The gate is package-specific, rejects a missing package, and never substitutes o
 global coverage percentage for critical-package evidence. P6 makes it blocking. P7
 adds `internal/observability` at a 70% minimum against a measured 74.4% baseline.
 P8 adds `internal/console` at an 80% minimum against a measured 84.3% baseline.
+P9 Step 7 keeps `internal/brain` at 81.2%, `internal/tools` at 73.9%,
+`internal/app` at 71.3%, `internal/mcpserver` at 82.6%, and
+`internal/mcpserver/catalog` at 85.6%, all above their minimums. Runtime tests make
+configured Brain startup fail closed, packaging reserves the dedicated volume, and the
+remote smoke exposes no note content or credential. The prior 62-tool contract
+hash/order remain locked inside the 67-tool candidate. Deployment remains pending.
+
+P9 release-candidate head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d` passed CI
+run `29306099092` and Security Evidence run `29306099088`, including Verify, Race,
+Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker build, SPDX SBOM and the
+unchanged zero-High/Critical Grype threshold. The dated baseline is merge-ready;
+production identity and smoke remain pending until merge and `/brain` persistence.
 
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
 secrets, mutable versions, missing timeouts, and production actions fail before merge.

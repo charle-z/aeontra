@@ -9,15 +9,24 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P8 closed / P9 Brain next**. P8 merge
-  `605a56d48a495f3c8a2ce62471223187ef2f5685` is deployed; closure evidence is in
-  `docs/baselines/2026-07-13-p8.md`. P9 must use a fresh `p9-brain` branch/spec,
-  Markdown/frontmatter files as truth, pure-Go SQLite FTS5 only as a disposable cache,
-  and no resident service, embeddings, queue, model, or database server. Agents may
-  write only `working/` with provenance/review dates; `curated/` remains owner-only.
+- Current phase: **P9 Brain Step 7 complete / Step 8 verification next** on branch
+  `p9-brain`, based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`.
+  The local 67-tool candidate is runtime-wired through optional
+  `MCP_DEVBOX_BRAIN_ROOT`. Unset is uniformly disabled; configured startup requires a
+  dedicated absolute root disjoint from repository roots, initializes private local
+  Git and FTS5, performs a strict reindex, and fails closed on unsafe/malformed state.
+  The image reserves `/brain`, operational backup/restore/rollback is documented, and
+  `cmd/brain-smoke` verifies only safe counts/state without printing note content. The
+  hard resource invariant is no resident service. Production and the console remain
+  P8/62 until remote gates and release verification; UI/auth changes remain forbidden
+  in this branch.
+  P9 is now merge-ready at reviewed implementation head
+  `96f7ca15183271772aecbf2d0ac2cceb88e20e5d`; exact-SHA CI and Security Evidence
+  passed. Production remains P8/62 until PR #4 merge, persistent `/brain` setup,
+  deployment and smoke. The annotated `p9` tag is the final release gate.
   Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
   Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
-  62 annotated MCP tools, action plans, audit, persistent notes, and adversarial tests.
+  67 annotated MCP tools in the P9 candidate, action plans, audit, persistent notes, and adversarial tests.
   The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
   `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into

@@ -32,7 +32,7 @@ func TestNewServiceBuildsCapabilityServicesOverOneSharedCore(t *testing.T) {
 	if svc.serviceCore == nil {
 		t.Fatal("shared service core is nil")
 	}
-	if svc.RepositoryCapability == nil || svc.GitCapability == nil || svc.SourceCapability == nil || svc.PlatformCapability == nil || svc.ExecutionCapability == nil {
+	if svc.RepositoryCapability == nil || svc.GitCapability == nil || svc.SourceCapability == nil || svc.PlatformCapability == nil || svc.ExecutionCapability == nil || svc.BrainCapability == nil {
 		t.Fatal("one or more capability services are nil")
 	}
 
@@ -42,6 +42,7 @@ func TestNewServiceBuildsCapabilityServicesOverOneSharedCore(t *testing.T) {
 		svc.SourceCapability.serviceCore,
 		svc.PlatformCapability.serviceCore,
 		svc.ExecutionCapability.serviceCore,
+		svc.BrainCapability.serviceCore,
 	}
 	for i, core := range cores {
 		if core != svc.serviceCore {

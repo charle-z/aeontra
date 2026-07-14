@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
+	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 )
 
@@ -33,6 +34,7 @@ type Service struct {
 	*SourceCapability
 	*PlatformCapability
 	*ExecutionCapability
+	*BrainCapability
 }
 
 // NewService builds the shared core and every capability. root must be one of the
@@ -66,6 +68,7 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 			sandbox:     disabledSandboxRunner{},
 			validation:  disabledValidationRunner{},
 		},
+		BrainCapability: &BrainCapability{serviceCore: core},
 	}
 }
 
@@ -118,6 +121,13 @@ func (s *Service) WithValidationRunner(r ValidationRunner) *Service {
 // closed privileged profiles. It is not exposed through MCP at runtime.
 func (s *Service) WithPrivilegedConfig(cfg PrivilegedConfig) *Service {
 	s.ExecutionCapability.configurePrivileged(cfg)
+	return s
+}
+
+// WithBrainStore attaches one already-validated isolated Brain store at startup. The
+// store root is never added to repository policy roots.
+func (s *Service) WithBrainStore(store *brainpkg.Store) *Service {
+	s.BrainCapability.configureStore(store)
 	return s
 }
 

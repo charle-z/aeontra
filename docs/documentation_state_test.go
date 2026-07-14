@@ -95,7 +95,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"Console/showcase",
 		"Deployed",
 		"Brain memory",
-		"Planned",
+		"Merge-ready",
 		"Universal execution profiles",
 		"Planned",
 		"Edge agents",
@@ -107,11 +107,14 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"P8 authenticated dark console is closed",
-		"605a56d48a495f3c8a2ce62471223187ef2f5685",
+		"P9 Brain is complete / merge-ready",
 		"p9-brain",
-		"84.3%",
-		"console-smoke",
+		"96f7ca15183271772aecbf2d0ac2cceb88e20e5d",
+		"29306099092",
+		"29306099088",
+		"MCP_DEVBOX_BRAIN_ROOT",
+		"production remains P8/62",
+		"no resident service",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)

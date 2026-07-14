@@ -94,21 +94,25 @@ misleading global percentage:
 | Package suffix | Minimum | Step 82 baseline |
 |---|---:|---:|
 | `internal/policy` | 80% | 84.6% |
-| `internal/mcpserver` | 80% | 82.7% |
-| `internal/mcpserver/catalog` | 80% | 84.4% |
+| `internal/mcpserver` | 80% | 82.6% |
+| `internal/mcpserver/catalog` | 80% | 85.6% |
 | `internal/oauth` | 80% | 85.3% |
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
 | `internal/console` | 80% | 84.3% |
-| `internal/tools` | 70% | 73.3% |
-| `internal/app` | 65% | 67.8% |
+| `internal/brain` | 80% | 81.2% |
+| `internal/tools` | 70% | 73.9% |
+| `internal/app` | 65% | 71.3% |
 | `internal/grantadmin` | 55% | 59.6% |
 
 The gate fails with an explicit missing package error when a threshold package is
 absent, when a profile is malformed, or when a package drops below its minimum.
-Output is package-specific and actionable. Thresholds are deliberately below the
-current measured value so the gate detects regression without turning coverage into
-line-count gaming. P6 will run the same two commands as a blocking CI job and retain
+Official Go coverprofiles may contain synthetic zero-statement records (`0 0`);
+the parser accepts and ignores those records while rejecting negative statements or
+an impossible executed zero-statement record (`0 1`). A Step 5 regression test
+locks this compatibility with `go tool cover`. Output is package-specific and
+actionable. Thresholds are deliberately below the current measured value so the gate
+detects regression without turning coverage into line-count gaming. P6 will run the same two commands as a blocking CI job and retain
 only safe coverage artifacts.
 
 ## Hermetic integration matrix — P5 Step 83
@@ -116,7 +120,7 @@ only safe coverage artifacts.
 The local integration suite validates complete contracts without external services,
 real credentials, arbitrary processes, or production traffic:
 
-- **stdio/HTTP catalog parity:** both transports return the same ordered 62-tool
+- **stdio/HTTP catalog parity:** both transports return the same ordered 67-tool
   catalog, and HTTP headers match the deterministic catalog identity;
 - **bearer fail-closed:** unauthenticated HTTP receives 401 and the server refuses to
   start when neither bearer nor OAuth authentication exists;
@@ -315,6 +319,47 @@ Dependency Review correctly skipped on push. Production serves
 `605a56d48a495f3c8a2ce62471223187ef2f5685`, console-smoke passed, and safe logs
 show only 303/200 `route=console` events. Full evidence is versioned in
 `docs/baselines/2026-07-13-p8.md`.
+
+## P9 Brain — Step 7 runtime, volume, and remote smoke
+
+Step 7 wires the optional `MCP_DEVBOX_BRAIN_ROOT` contract without changing the
+catalog. Runtime tests prove:
+
+- environment parsing accepts only an absolute path and does not reflect invalid input;
+- unset Brain preserves the 67-tool catalog and one uniform disabled error;
+- configured startup creates private root/trust/cache/Git state, opens FTS5, performs a
+  full reindex, and attaches the isolated capability;
+- Brain remains outside repository policy roots;
+- equal/nested repository overlap, malformed Markdown and an existing Git remote fail
+  startup instead of silently disabling the capability;
+- runtime close releases the index before audit/observability sinks.
+
+The production Dockerfile now copies `go.sum`, prepares `/brain` for non-root
+UID/GID 10001, and declares it as a dedicated volume beside `/repos`. The runbook
+locks private modes, curation, backup excluding disposable cache, restore, update,
+rollback and troubleshooting. No new process, port, service or application is added.
+
+`cmd/brain-smoke` performs a read-only remote verification of exact commit/catalog,
+`brain_index status` and bounded `brain_context`. Its integration test uses a real MCP
+HTTP handler and synthetic private note, proving that the output excludes the bearer,
+root, slug, title, provenance and body. Coverage is 76.6% for the command.
+
+Coverage after Step 7: `internal/app` 71.3%, Brain 81.2%, tools 73.9%, server 82.6%,
+catalog 85.6%; package gates remain green. Production is still P8/62 until the P9 PR,
+remote Race/Staticcheck/CodeQL/Dependency Review/container gates and deployment smoke
+complete.
+
+### P9 release-candidate evidence
+
+Corrected implementation head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d` passed
+CI run `29306099092` (Verify, Race detector, Staticcheck and Govulncheck) and Security
+Evidence run `29306099088` (CodeQL, Dependency Review, Docker build, SPDX SBOM and the
+unchanged zero-High/Critical Grype threshold). The earlier red Staticcheck result on
+`3ae3158` is not release evidence and was not reused.
+
+The dated release-candidate baseline and closure consistency test are part of the P9
+tree. Production remains P8/62 until fresh checks for the closure SHA pass, PR #4
+merges, `/brain` persistence is configured, and deployment smoke completes.
 
 ## Safety rules
 

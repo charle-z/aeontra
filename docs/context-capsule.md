@@ -78,7 +78,26 @@ production with a Secure opaque cookie, exact safe schema, 62 tools, and the unc
 catalog hash. Logs show only content-free `route=console` classifications. P8 adds no
 new resident service, Coolify application, listener, database, queue, model, credential,
 or OAuth protocol change. Closure evidence is in
-`docs/baselines/2026-07-13-p8.md`.
+`docs/baselines/2026-07-13-p8.md`. Formal closure commit
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8` and deployed.
+
+P9 Brain is active on branch `p9-brain`, based exactly on P8 closure
+`2e3429c9d6342e8e091cadf65293c5c85b1b3259`. Step 7 completes runtime and
+operational wiring for the local 67-tool candidate with hash
+`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
+`MCP_DEVBOX_BRAIN_ROOT` is optional: unset keeps all five tools registered but
+uniformly disabled; configured requires an absolute root disjoint from repository
+roots, initializes private directories/local Git/FTS5, reindexes strict Markdown truth
+before serving, and fails startup on overlap, remotes, symlinks, permissions, duplicate
+slugs, malformed notes or cache errors. The Docker image reserves a dedicated
+`/brain` volume and copies `go.sum` for reproducible pure-Go SQLite builds.
+`cmd/brain-smoke` verifies exact commit/catalog, index readiness/schema, note count and
+context byte count without printing bearer credentials, queries, slugs, paths or note
+content. `docs/runbooks/brain-operations.md` covers setup, curation, backup, restore,
+update, rollback and troubleshooting. App coverage is 71.3% and brain-smoke coverage
+is 76.6%. The invariant remains no resident service. Production remains P8/62 and the
+deployed console remains unchanged; BIOS-inspired UI, live durable state and OAuth-
+only migration belong to a separate post-P9 branch.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -423,5 +442,11 @@ reports 62 tools and deterministic catalog hash
 `sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
 PR CI runs `29290411676`/`29290411679` and post-merge runs
 `29290609147`/`29290609178` are green. Authenticated console smoke passed, and
-content-free logs show the expected 303/200 `route=console` events. P9 Brain is next
-on a fresh branch/spec and must not add a resident service.
+content-free logs show the expected 303/200 `route=console` events.
+
+P9 Brain is merge-ready at reviewed implementation head
+`96f7ca15183271772aecbf2d0ac2cceb88e20e5d`. Exact-SHA CI run `29306099092` and
+Security Evidence run `29306099088` passed every required gate. Release-candidate
+evidence is in `docs/baselines/2026-07-14-p9.md`. Production remains P8/62 until PR
+#4 is merged, the dedicated `/brain` volume and environment are configured, and the
+merged commit is deployed and smoked.

@@ -52,6 +52,7 @@ func DefaultThresholds() []Threshold {
 		{Package: "github.com/charle-z/mcp-devbox/internal/audit", Minimum: 80},
 		{Package: "github.com/charle-z/mcp-devbox/internal/observability", Minimum: 70},
 		{Package: "github.com/charle-z/mcp-devbox/internal/console", Minimum: 80},
+		{Package: "github.com/charle-z/mcp-devbox/internal/brain", Minimum: 80},
 		{Package: "github.com/charle-z/mcp-devbox/internal/tools", Minimum: 70},
 		{Package: "github.com/charle-z/mcp-devbox/internal/app", Minimum: 65},
 		{Package: "github.com/charle-z/mcp-devbox/internal/grantadmin", Minimum: 55},
@@ -142,11 +143,11 @@ func parseProfile(reader io.Reader) (map[string]packageCoverage, error) {
 			return nil, fmt.Errorf("%w: line %d has invalid filename", ErrInvalidCoverProfile, lineNumber)
 		}
 		statements, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil || statements <= 0 {
+		if err != nil || statements < 0 {
 			return nil, fmt.Errorf("%w: line %d has invalid statement count", ErrInvalidCoverProfile, lineNumber)
 		}
 		count, err := strconv.ParseInt(fields[2], 10, 64)
-		if err != nil || count < 0 {
+		if err != nil || count < 0 || (statements == 0 && count != 0) {
 			return nil, fmt.Errorf("%w: line %d has invalid execution count", ErrInvalidCoverProfile, lineNumber)
 		}
 		measured := coverage[packagePath]

@@ -1,0 +1,223 @@
+package mcpserver
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/audit"
+	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
+	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/tools"
+)
+
+var p8ToolOrder = []string{
+	"system_runtime_info", "build_context_pack", "list_dir", "read_file", "read_many_files", "search_code",
+	"apply_patch", "create_file", "run_command", "sandbox_status", "sandbox_exec", "privileged_task_preview",
+	"privileged_task_execute", "coolify_deploy", "coolify_list_apps", "coolify_app_status",
+	"coolify_deployment_status", "coolify_app_logs", "coolify_create_app",
+	"platform_validation_runner_create_preview", "platform_validation_runner_create", "platform_app_create_preview",
+	"platform_deploy_preview", "platform_deploy_without_cache_preview", "platform_deploy_without_cache",
+	"coolify_set_env", "git_status", "git_diff", "git_clone", "repo_fetch", "repo_fast_forward_preview",
+	"repo_fast_forward", "git_push", "repo_publish_preview", "github_create_repo", "source_repo_create_preview",
+	"github_repo_info", "repo_remote_preview", "repo_remote_set", "run_tests", "project_validation_preview",
+	"project_validation_execute", "git_commit", "memory_read", "memory_write", "notes_list", "notes_read",
+	"notes_write_preview", "notes_write", "memory_update_handoff", "repo_list", "repo_status", "repo_diff",
+	"source_repo_info", "source_repo_create", "repo_publish", "platform_apps_list", "platform_app_status",
+	"platform_app_logs", "platform_deployment_status", "platform_app_create", "platform_deploy",
+}
+
+var brainToolOrder = []string{"brain_search", "brain_read", "brain_write", "brain_index", "brain_context"}
+
+func TestBrainToolsAppendToUnchangedP8Catalog(t *testing.T) {
+	server := stampServer(t)
+	if len(server.order) != 67 {
+		t.Fatalf("tool order length=%d want=67", len(server.order))
+	}
+	if !reflect.DeepEqual(server.order[:62], p8ToolOrder) {
+		t.Fatalf("P8 tool prefix changed\ngot=%v\nwant=%v", server.order[:62], p8ToolOrder)
+	}
+	if !reflect.DeepEqual(server.order[62:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[62:], brainToolOrder)
+	}
+
+	snapshot, err := server.CatalogInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := make([]CatalogTool, 0, 62)
+	for _, tool := range snapshot.Tools {
+		if !strings.HasPrefix(tool.Name, "brain_") {
+			legacy = append(legacy, tool)
+		}
+	}
+	encoded, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(encoded)
+	legacyHash := "sha256:" + hex.EncodeToString(sum[:])
+	const p8Hash = "sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c"
+	if len(legacy) != 62 || legacyHash != p8Hash {
+		t.Fatalf("legacy catalog changed: count=%d hash=%s", len(legacy), legacyHash)
+	}
+	const p9Hash = "sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed"
+	if snapshot.ToolCount != 67 || snapshot.Hash != p9Hash {
+		t.Fatalf("P9 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
+	}
+}
+
+func TestBrainToolContractsAreClosedBoundedAndAnnotated(t *testing.T) {
+	server := stampServer(t)
+	readHints := map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	writeHints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+	indexHints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	for _, name := range brainToolOrder {
+		entry, ok := server.table[name]
+		if !ok {
+			t.Fatalf("missing %s", name)
+		}
+		if entry.def.Version != "1" {
+			t.Fatalf("%s version=%q", name, entry.def.Version)
+		}
+		if entry.def.InputSchema["additionalProperties"] != false {
+			t.Fatalf("%s schema is not closed: %#v", name, entry.def.InputSchema)
+		}
+		wantHints := readHints
+		if name == "brain_write" {
+			wantHints = writeHints
+		}
+		if name == "brain_index" {
+			wantHints = indexHints
+		}
+		if !reflect.DeepEqual(entry.def.Annotations, wantHints) {
+			t.Fatalf("%s annotations=%#v want=%#v", name, entry.def.Annotations, wantHints)
+		}
+	}
+
+	searchProps := server.table["brain_search"].def.InputSchema["properties"].(map[string]any)
+	if searchProps["query"].(map[string]any)["maxLength"] != float64(brainpkg.MaxQueryBytes) && searchProps["query"].(map[string]any)["maxLength"] != brainpkg.MaxQueryBytes {
+		t.Fatalf("search query bound=%#v", searchProps["query"])
+	}
+	if searchProps["top_k"].(map[string]any)["maximum"] != brainpkg.MaxTopK {
+		t.Fatalf("top_k bound=%#v", searchProps["top_k"])
+	}
+	writeProps := server.table["brain_write"].def.InputSchema["properties"].(map[string]any)
+	for _, forbidden := range []string{"path", "collection", "trust", "created", "updated", "approve"} {
+		if _, ok := writeProps[forbidden]; ok {
+			t.Fatalf("brain_write exposes forbidden property %q", forbidden)
+		}
+	}
+	if writeProps["body"].(map[string]any)["maxLength"] != brainpkg.MaxBodyBytes {
+		t.Fatalf("body bound=%#v", writeProps["body"])
+	}
+}
+
+func TestBrainToolsFailClosedWhenStoreIsNotConfigured(t *testing.T) {
+	server, _ := newTestServer(t, config.ModeReadOnly)
+	calls := map[string]string{
+		"brain_search":  `{"query":"test"}`,
+		"brain_read":    `{"slug":"safe-note"}`,
+		"brain_write":   `{"slug":"safe-note","title":"Safe","type":"note","author":"agent:test","provenance":"test","review_by":"2026-08-13","body":"body"}`,
+		"brain_index":   `{"action":"status"}`,
+		"brain_context": `{}`,
+	}
+	for name, arguments := range calls {
+		response := call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+name+`","arguments":`+arguments+`}}`)
+		var result toolResult
+		encoded, _ := json.Marshal(response.Result)
+		if err := json.Unmarshal(encoded, &result); err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError || len(result.Content) != 1 || result.Content[0].Text != "brain is not configured" {
+			t.Fatalf("%s result=%s", name, encoded)
+		}
+	}
+}
+
+func TestBrainToolsRejectUnknownArgumentsBeforeCapability(t *testing.T) {
+	server, _ := newTestServer(t, config.ModeReadOnly)
+	response := call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"brain_search","arguments":{"query":"test","path":"/private"}}}`)
+	var result toolResult
+	encoded, _ := json.Marshal(response.Result)
+	if err := json.Unmarshal(encoded, &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || !strings.Contains(result.Content[0].Text, "unknown field") || strings.Contains(result.Content[0].Text, "/private") {
+		t.Fatalf("strict decode result=%s", encoded)
+	}
+}
+
+func newConfiguredBrainServer(t *testing.T) (*Server, *brainpkg.Store) {
+	t.Helper()
+	repoRoot := t.TempDir()
+	cfg, err := config.New(config.Config{Roots: []string{repoRoot}, Mode: config.ModeReadOnly, AllowedCommands: []string{"git", "go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pol, err := policy.NewPolicy(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := tools.NewService(pol, audit.New(&bytes.Buffer{}), repoRoot)
+	brainRoot := filepath.Join(t.TempDir(), "brain")
+	store, err := brainpkg.OpenStore(brainRoot, time.Date(2026, 7, 13, 23, 30, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.InitializeGit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.OpenIndex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	service.WithBrainStore(store)
+	t.Cleanup(func() { _ = service.BrainCapability.Close() })
+	return New(service), store
+}
+
+func toolText(t *testing.T, response rpcResponse) string {
+	t.Helper()
+	var result toolResult
+	encoded, _ := json.Marshal(response.Result)
+	if err := json.Unmarshal(encoded, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || len(result.Content) != 1 {
+		t.Fatalf("tool result=%s", encoded)
+	}
+	return result.Content[0].Text
+}
+
+func TestBrainToolsExecuteBoundedWorkflow(t *testing.T) {
+	server, _ := newConfiguredBrainServer(t)
+	write := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"brain_write","arguments":{"slug":"release-observation","title":"Release observation","type":"note","author":"agent:chatgpt","provenance":"owner instruction","review_by":"2026-08-13","body":"Staticcheck and race gates are required."}}}`))
+	if !strings.Contains(write, `"slug":"release-observation"`) || strings.Contains(write, "Metadata") {
+		t.Fatalf("write output=%s", write)
+	}
+	search := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"brain_search","arguments":{"query":"staticcheck race","top_k":5}}}`))
+	if !strings.Contains(search, `"slug":"release-observation"`) {
+		t.Fatalf("search output=%s", search)
+	}
+	read := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"brain_read","arguments":{"slug":"release-observation"}}}`))
+	if !strings.Contains(read, `"backlinks":[]`) || !strings.Contains(read, `"body":"Staticcheck and race gates are required."`) {
+		t.Fatalf("read output=%s", read)
+	}
+	status := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"brain_index","arguments":{"action":"status"}}}`))
+	if !strings.Contains(status, `"note_count":1`) || strings.Contains(status, filepath.Dir(os.TempDir())) {
+		t.Fatalf("status output=%s", status)
+	}
+	contextText := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"brain_context","arguments":{"limit":5}}}`))
+	if !strings.Contains(contextText, "release-observation") || strings.Contains(contextText, "Staticcheck and race gates are required") {
+		t.Fatalf("context output=%s", contextText)
+	}
+}

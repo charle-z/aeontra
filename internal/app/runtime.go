@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
+	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/observability"
@@ -30,15 +32,18 @@ func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var auditErr, observabilityErr error
+	var serviceErr, auditErr, observabilityErr error
+	if r.Service != nil {
+		serviceErr = r.Service.BrainCapability.Close()
+	}
 	if r.Logger != nil {
 		auditErr = r.Logger.Close()
 	}
 	if r.Observer != nil {
 		observabilityErr = r.Observer.Close()
 	}
-	if auditErr != nil || observabilityErr != nil {
-		return errors.New("runtime log close failed")
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil {
+		return errors.New("runtime close failed")
 	}
 	return nil
 }
@@ -70,7 +75,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, fmt.Errorf("opening observability sink: %w", err)
 	}
-	service, err := buildToolService(opts.Config, pol, logger, primary)
+	service, err := buildToolService(opts.Config, pol, logger, primary, opts.BrainRoot)
 	if err != nil {
 		_ = observer.Close()
 		_ = logger.Close()
@@ -87,7 +92,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 	}, nil
 }
 
-func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logger, primary string) (*tools.Service, error) {
+func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logger, primary, brainRoot string) (*tools.Service, error) {
 	service := tools.NewService(pol, logger, primary).
 		WithTestCommand(cfg.TestCommand).
 		WithSandboxRunner(buildSandboxRunner(cfg, primary)).
@@ -104,7 +109,59 @@ func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logge
 	if github := buildGitHubClientFromEnv(); github != nil {
 		service = service.WithGitHub(github)
 	}
+	brainStore, err := buildBrainStore(brainRoot, pol.Roots())
+	if err != nil {
+		return nil, err
+	}
+	if brainStore != nil {
+		service = service.WithBrainStore(brainStore)
+	}
 	return service, nil
+}
+
+func buildBrainStore(root string, repositoryRoots []string) (*brainpkg.Store, error) {
+	if strings.TrimSpace(root) == "" {
+		return nil, nil
+	}
+	for _, repositoryRoot := range repositoryRoots {
+		if pathsOverlap(root, repositoryRoot) {
+			return nil, errors.New("brain root must not overlap repository roots")
+		}
+	}
+	store, err := brainpkg.OpenStoreWithClock(root, time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("initializing brain store: %w", err)
+	}
+	cleanup := func() { _ = store.Close() }
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if err := store.InitializeGit(ctx); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("initializing brain history: %w", err)
+	}
+	if err := store.OpenIndex(ctx); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("opening brain index: %w", err)
+	}
+	if _, err := store.Reindex(ctx); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("reindexing brain: %w", err)
+	}
+	return store, nil
+}
+
+func pathsOverlap(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	return pathContains(left, right) || pathContains(right, left)
+}
+
+func pathContains(root, candidate string) bool {
+	relative, err := filepath.Rel(root, candidate)
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)))
 }
 
 func buildSandboxRunner(cfg config.Config, primary string) tools.SandboxRunner {

@@ -15,7 +15,7 @@ criteria below remain future requirements until their status changes with eviden
 | P6 CI/DevSecOps | Deployed | `main` and production serve `539e4d96c95aedd492ac36b428d4159054e183f4`; PR/push CI, CodeQL, Dependency Review, SBOM, and zero-High/Critical container gate are green. |
 | P7 structured observability | Deployed | `main` and production serve `d1309ed08db0170e5165f78bf406e94cfa56cc11`; green Race/Staticcheck/CodeQL/container gates and real content-free JSONL logs are recorded in the P7 baseline. |
 | Console/showcase | Deployed | P8 merge `605a56d48a495f3c8a2ce62471223187ef2f5685`; PR/post-merge gates green; production console-smoke and safe route logs verified; no new resident service. |
-| Brain memory | Planned | P9 next: Markdown/frontmatter truth plus pure-Go SQLite FTS5 disposable cache; no embeddings, queue, model, or database server. |
+| Brain memory | Merge-ready | PR #4 head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d`; local and remote gates green, dated release-candidate baseline present; production remains P8 until merge, persistent `/brain` setup, deploy and smoke. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
 | Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |
 | Edge agents | Planned; PC/WSL validation pending | Setup must be outbound-only, easy to configure, revocable, and locally bounded. |
