@@ -1,0 +1,14 @@
+{
+  "name": "mcp-devbox-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "check": "corepack pnpm --dir web/console check",
+    "test": "corepack pnpm --dir web/console test",
+    "build": "corepack pnpm --dir web/console build",
+    "console:check": "pnpm --dir web/console check",
+    "console:test": "pnpm --dir web/console test",
+    "console:build": "pnpm --dir web/console build",
+    "console:verify": "pnpm console:check && pnpm console:test && pnpm console:build"
+  }
+}

@@ -9,6 +9,7 @@
 
 # Go
 /vendor/
+node_modules/
 
 # Local runtime / audit artifacts
 *.log

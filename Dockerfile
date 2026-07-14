@@ -1,3 +1,13 @@
+FROM node:22-alpine3.22 AS console-build
+
+WORKDIR /src
+RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/console/package.json web/console/package.json
+RUN pnpm install --frozen-lockfile --ignore-scripts
+COPY web/console web/console
+RUN pnpm console:check && pnpm console:test && pnpm console:build
+
 FROM golang:1.26.5-alpine3.24 AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
@@ -12,6 +22,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
+COPY --from=console-build /src/internal/console/assets ./internal/console/assets
 
 RUN CGO_ENABLED=0 go build -trimpath \
 	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=${GIT_SHA} -X github.com/charle-z/mcp-devbox/internal/buildinfo.BuiltAt=${BUILD_TIME}" \
