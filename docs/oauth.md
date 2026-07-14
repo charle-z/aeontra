@@ -35,10 +35,10 @@ response includes `serverInfo.commit`. The commit is baked at build time
 (injected by Coolify) / `MCP_DEVBOX_COMMIT`. Compare it against `git rev-parse HEAD` on
 `main` to verify a redeploy actually shipped the latest code.
 
-`MCP_DEVBOX_TOKEN` (the legacy static bearer / `?key=`) is now **optional**:
+`MCP_DEVBOX_TOKEN` (the static recovery bearer, header only) is **optional**:
 
-- **OAuth on** → you may drop the static token entirely (OAuth-only). If you keep it, it
-  still works as a fallback during the transition.
+- **OAuth on** → you may drop the static token entirely (OAuth-only). If retained, it
+  works only through `Authorization: Bearer <token>` and the console recovery form.
 - **OAuth off** → a static token is still **required** (the server refuses to start with
   no auth at all).
 
@@ -86,3 +86,7 @@ clients can bootstrap the flow.
 
 Rotate `MCP_DEVBOX_TOKEN` (it was shared during setup) and, once OAuth works end-to-end,
 you may remove the static token to make the server **OAuth-only**.
+
+## Query-string credentials
+
+P8.1 permanently rejects `?key=<token>` with HTTP 401, even when the value matches `MCP_DEVBOX_TOKEN`. Use OAuth for ChatGPT and remote MCP clients. Use an `Authorization: Bearer` header only for explicit recovery clients that can protect headers.

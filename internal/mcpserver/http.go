@@ -35,8 +35,9 @@ const DefaultMCPPath = "/mcp"
 // streamable-HTTP subset (single endpoint, JSON-RPC over POST). Authentication is
 // MANDATORY: every /mcp request must present a valid credential, else 401.
 //
-// Two auth modes coexist during the transition. A static bearer/`?key=` token (legacy)
-// is accepted when token != "". When oauthProvider != nil, its discovery + flow
+// Two auth modes coexist during the transition. A static Authorization bearer
+// is accepted when token != "". Query-string credentials are always rejected.
+// When oauthProvider != nil, its discovery + flow
 // endpoints are mounted and a valid OAuth access token is accepted; a 401 then carries a
 // WWW-Authenticate header pointing at the Protected Resource Metadata so clients such as
 // ChatGPT can bootstrap the OAuth flow. The same Server.handle path (and therefore the
@@ -257,29 +258,20 @@ func normalizedRoute(path string) observability.Route {
 	}
 }
 
-// authOK authorizes a request by matching the configured token against either the
-// "Authorization: Bearer <token>" header (preferred; used by curl, MCP Inspector,
-// Claude/Cursor) OR a "?key=<token>" query parameter. The query form exists because
-// ChatGPT's connector UI cannot send a custom header — the secret then rides in the
-// URL (weaker: may appear in logs; use read-only + a long token, or front with
-// Cloudflare Access OAuth). An empty configured token is "deny all" (fail closed).
+// authOK authorizes only an Authorization: Bearer header. Credentials in
+// query parameters are intentionally ignored so secrets cannot enter URL history,
+// proxy logs, screenshots or referrers. An empty configured token denies all.
 func authOK(r *http.Request, token string) bool {
 	if token == "" {
 		return false
 	}
 	const prefix = "Bearer "
-	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, prefix) {
-		got := strings.TrimSpace(h[len(prefix):])
-		if subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
-			return true
-		}
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, prefix) {
+		return false
 	}
-	if k := r.URL.Query().Get("key"); k != "" {
-		if subtle.ConstantTimeCompare([]byte(k), []byte(token)) == 1 {
-			return true
-		}
-	}
-	return false
+	provided := strings.TrimSpace(header[len(prefix):])
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1
 }
 
 func newHTTPSessionID() string {

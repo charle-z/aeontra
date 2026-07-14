@@ -1,8 +1,7 @@
-# Authenticated dark console
+# Console 2.0 authentication and browser boundary
 
-P8 adds a private, presentation-only console to the existing MCP Devbox HTTP
-application. It creates no new Coolify application, listener, database, frontend
-build, package manager, CDN, or credential.
+P8.1 evolves the private console into the Neo-BIOS operations firmware to the existing MCP Devbox HTTP
+application. React, TypeScript and Vite compile to fixed same-origin assets embedded by Go. Production adds no Node server, database, CDN, or credential: there is no new Coolify application or listener.
 
 ## URL
 
@@ -35,16 +34,11 @@ The server stores only a SHA-256 digest of the cookie value. At most 128 session
 retained; expired sessions are pruned and the oldest expiry is evicted at the cap.
 Logout, expiry, or process restart revokes access.
 
-### OAuth-only deployment
+### OAuth console login
 
-The public login page does not render a static-token form when `MCP_DEVBOX_TOKEN` is
-absent. A request already carrying a valid OAuth or bearer access token can bootstrap
-an opaque console session. P8 does not modify the OAuth protocol, token format,
-provider routes, clients, grants, or persistence.
+`GET /console/auth/start` creates a bounded digest-only state record and redirects to the existing `/oauth/authorize` page. The owner passphrase is accepted only there. PKCE S256 and exact state are mandatory. The server-side callback consumes the single-use code, creates an opaque console cookie, and redirects to the clean `/console` URL. Access tokens never reach JavaScript.
 
-Legacy `?key=` authentication is still recognized by the existing transport, but the
-console immediately redirects to the clean `/console` path after creating a session.
-Use the form login instead so the secret never enters URL history or proxy access logs.
+The static token remains available only as an `Authorization: Bearer` recovery mechanism and through the HTTPS console form. `?key=` query authentication always returns 401.
 
 ## Displayed data
 
@@ -56,14 +50,14 @@ The authenticated status endpoint returns exactly:
   "version": "0.2.0",
   "protocol_version": "2024-11-05",
   "commit": "<git sha>",
-  "tool_count": 62,
+  "tool_count": 67,
   "catalog_hash": "sha256:...",
   "authenticated": true,
   "surface": "presentation-only"
 }
 ```
 
-The page also contains static architecture, delivery-pipeline, security-boundary,
+The React application contains interactive Neo-BIOS screens backed only by strict allowlisted endpoints. Missing data is labeled unavailable rather than fabricated. It also contains architecture, delivery-pipeline, security-boundary,
 capability-state, and limitation text.
 
 It does **not** display or accept repository names, branches, paths, source, prompts,
@@ -76,11 +70,13 @@ or tool execution.
 | Route | Method | Authentication | Purpose |
 |---|---|---|---|
 | `/console` | GET | Login page or session/direct auth | Render the console shell. |
-| `/console/login` | POST | Existing static token in form body | Create an opaque session. |
+| `/console/auth/start` | GET | None | Start the console OAuth PKCE flow. |
+| `/console/auth/callback` | GET | OAuth state + one-use code | Create an opaque session and redirect cleanly. |
+| `/console/login` | POST | Existing static token in form body | Recovery-only opaque session. |
 | `/console/logout` | POST | Current cookie, if present | Revoke and clear the session. |
 | `/console/status` | GET | Session or existing direct auth | Return the fixed safe status schema. |
-| `/console/assets/app.css` | GET | Session or existing direct auth | Embedded dark stylesheet. |
-| `/console/assets/app.js` | GET | Session or existing direct auth | Same-origin status refresh. |
+| `/console/assets/app.css` | GET | Session or existing direct auth | Embedded Neo-BIOS stylesheet. |
+| `/console/assets/app.js` | GET | Session or existing direct auth | Embedded React application bundle. |
 
 Unsupported methods return `405`; login bodies are limited to 4 KiB; malformed or
 oversized bodies fail closed.
@@ -123,7 +119,7 @@ OAuth variables may remain enabled. P8 adds no environment variable.
 
 1. Publish a tested commit to `main`.
 2. Let the existing Coolify application rebuild and restart.
-3. Confirm `/healthz`, exact `/version` commit, 62 tools, and catalog hash.
+3. Confirm `/healthz`, exact `/version` commit, 67 tools, and catalog hash.
 4. Open `/console`, authenticate, and confirm the same commit/tool count/hash.
 5. Inspect content-free JSONL events for normalized `route=console` requests only.
 

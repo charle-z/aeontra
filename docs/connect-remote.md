@@ -5,8 +5,8 @@ mcp-devbox speaks MCP over two transports:
 - **stdio** (default): local clients on the same machine, such as Cursor or Claude Desktop.
 - **HTTP** (`serve --http`): JSON-RPC over `POST /mcp`, auth required. ChatGPT web
   can reach it through a stable HTTPS domain (Coolify/Traefik, Cloudflare Tunnel, or
-  another reverse proxy). Auth is either a **static bearer token** (`?key=` fallback for
-  ChatGPT) or **OAuth 2.1** — the recommended, secret-not-in-URL option. See
+  another reverse proxy). **OAuth 2.1** is the supported ChatGPT path. A static
+  `Authorization: Bearer` header remains available only for recovery clients. See
   [oauth.md](oauth.md).
 
 Security baseline: the daemon still enforces the same L1 policy in every transport:
@@ -82,9 +82,10 @@ Local smoke test:
 ```powershell
 curl.exe http://127.0.0.1:8765/healthz
 curl.exe -i http://127.0.0.1:8765/mcp
-curl.exe -i "http://127.0.0.1:8765/mcp?key=$env:MCP_DEVBOX_TOKEN"
+curl.exe -i -H "Authorization: Bearer $env:MCP_DEVBOX_TOKEN" http://127.0.0.1:8765/mcp
 curl.exe -i -X POST http://127.0.0.1:8765/mcp
-curl.exe -s -X POST "http://127.0.0.1:8765/mcp?key=$env:MCP_DEVBOX_TOKEN" `
+curl.exe -s -X POST http://127.0.0.1:8765/mcp `
+  -H "Authorization: Bearer $env:MCP_DEVBOX_TOKEN" `
   -H "Content-Type: application/json" `
   --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}'
 ```
@@ -92,11 +93,11 @@ curl.exe -s -X POST "http://127.0.0.1:8765/mcp?key=$env:MCP_DEVBOX_TOKEN" `
 Expected:
 
 - `GET /healthz` -> `200`
-- `GET /mcp` without token -> `401`
-- `GET /mcp?key=<token>` -> `200` with `Content-Type: text/event-stream`
-- `POST /mcp` without token -> `401`
-- `POST /mcp?key=<token>` or `Authorization: Bearer <token>` -> JSON-RPC response;
-  `initialize` includes an `Mcp-Session-Id` response header
+- `GET /mcp` without auth -> `401`
+- `GET /mcp` with a bearer header -> `200` and `text/event-stream`
+- `POST /mcp` without auth -> `401`
+- `POST /mcp` with a bearer header -> JSON-RPC response; `initialize` includes an `Mcp-Session-Id` header
+- Any `?key=` query credential -> `401`
 
 ---
 
@@ -106,7 +107,7 @@ For VPS/Coolify deploys, prefer env vars over baked-in flags:
 
 | Env var | Purpose |
 |---|---|
-| `MCP_DEVBOX_TOKEN` | Required bearer token for HTTP transport. ChatGPT can pass it as `?key=` because the connector UI cannot set a custom bearer header. |
+| `MCP_DEVBOX_TOKEN` | Optional recovery bearer when OAuth is enabled; accepted only through an `Authorization` header or the console recovery form. |
 | `MCP_DEVBOX_ROOT` | Docker entrypoint root. Use `/repos` for global-builder mode. |
 | `MCP_DEVBOX_MODE` | Access posture: `read-only` by default; use `ask` when you want GPT to patch/test/commit/push/deploy with explicit approval fields. |
 | `MCP_DEVBOX_TEST_CMD` | Fallback for `--test-cmd`, for example `go test ./... -count=1`; `run_tests` uses this command. |
@@ -125,27 +126,19 @@ For VPS/Coolify deploys, prefer env vars over baked-in flags:
 
 ## ChatGPT Connector
 
-ChatGPT's developer connector UI currently has no field for an `Authorization:
-Bearer <token>` header. Use the query token and select no authentication in the UI:
+Configure the clean endpoint and OAuth:
 
 ```text
-https://<your-domain>/mcp?key=<MCP_DEVBOX_TOKEN>
+https://<your-domain>/mcp
 ```
 
-Setup:
+1. ChatGPT → Settings → Connectors → Advanced → Developer mode.
+2. Create a new app/connector using the server URL option.
+3. URL: `https://<your-domain>/mcp`.
+4. Authentication: OAuth.
+5. Complete the owner passphrase step on `/oauth/authorize`.
 
-1. ChatGPT -> Settings -> Connectors -> Advanced -> Developer mode.
-2. Create a new app/connector.
-3. Connection: choose the server URL option, not ChatGPT's tunnel option.
-4. URL: `https://<your-domain>/mcp?key=<token>`.
-5. Authentication: choose "Sin autenticacion".
-6. Create the connector. ChatGPT should run `initialize` and `tools/list`.
-
-The `?key=` token is a secret. It travels over HTTPS, but it can appear in browser
-history, proxy logs, or screenshots. Use a long random token, keep production in
-`read-only` unless you are actively editing, and rotate the token if it leaks.
-
----
+P8.1 rejects query-string credentials with HTTP 401, including a correct legacy token. Do not select “Sin autenticación” for the clean endpoint. The static bearer exists only for technical recovery clients that can send a protected Authorization header.
 
 ## ChatGPT Operating Notes
 
@@ -265,7 +258,7 @@ cloudflared tunnel --url http://127.0.0.1:8765
 The endpoint is:
 
 ```text
-https://<random>.trycloudflare.com/mcp?key=<MCP_DEVBOX_TOKEN>
+https://<random>.trycloudflare.com/mcp
 ```
 
 For a stable hostname, create a named tunnel and route DNS:
@@ -280,7 +273,7 @@ cloudflared tunnel run mcp-devbox
 Then use:
 
 ```text
-https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>
+https://mcp.example.com/mcp
 ```
 
 Upgrade path: put Cloudflare Access, Traefik basic-auth, or another forward-auth
@@ -298,7 +291,7 @@ npx @modelcontextprotocol/inspector
 ```
 
 Point it at `https://<your-domain>/mcp`, transport Streamable HTTP, and either add
-header `Authorization: Bearer <token>` or use `/mcp?key=<token>`. List tools and call
+an `Authorization: Bearer <token>` recovery header, or complete OAuth. List tools and call
 `read_file` to confirm redaction.
 
 ---
@@ -307,11 +300,12 @@ header `Authorization: Bearer <token>` or use `/mcp?key=<token>`. List tools and
 
 | Symptom | Cause / fix |
 |---|---|
-| `401` from `/mcp` | Missing or wrong token. Provide `Authorization: Bearer <token>` or `?key=<token>` matching `MCP_DEVBOX_TOKEN`. |
-| ChatGPT cannot add a bearer header | Expected. Use `/mcp?key=<token>` plus "Sin autenticacion", or put OAuth/Access in front. |
-| `GET /mcp` returns `401` | Expected without auth. Add `?key=<token>` or a bearer header. |
-| `GET /mcp?key=` returns `200 text/event-stream` | Expected after P1-6. It is a minimal SSE stream for MCP client compatibility; JSON-RPC calls still use `POST /mcp`. |
+| `401` from `/mcp` | Complete OAuth, or supply the configured recovery bearer in the Authorization header. URL query credentials never authorize. |
+| ChatGPT cannot add a bearer header | Expected; configure OAuth on the clean `/mcp` URL. |
+| Authenticated `GET /mcp` returns `200 text/event-stream` | Expected. It is the persistent MCP server-to-client stream; JSON-RPC calls use `POST /mcp`. |
 | Connector lists no tools | Wrong URL, wrong token, reverse proxy not routing to port 8765, or daemon not running. |
 | Tool returns "outside the workspace jail" | The path is not under the configured `--root`/`MCP_DEVBOX_ROOT`. |
 | Secret read returns `access-required` | Expected. Approve only from the daemon host/container using the printed local grant command. |
 | Secret appears unredacted | Treat as a security bug. Normal outputs must redact content-level secrets. |
+
+> P8.1 security change: query-string credentials are rejected with HTTP 401. Configure the clean `/mcp` URL with OAuth. Header bearer remains recovery-only.

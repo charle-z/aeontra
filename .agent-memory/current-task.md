@@ -1,6 +1,6 @@
 # Current task
 
-P8.1 Console 2.0 — Step 2 complete locally: first half of the OAuth migration.
+P8.1 Console 2.0 — Step 3 candidate: query-string credentials removed.
 
 ## Closed predecessor retained for evidence
 
@@ -10,12 +10,10 @@ P8.1 Console 2.0 — Step 2 complete locally: first half of the OAuth migration.
 
 ## P8.1 progress
 
-- Step 1 commit `c4240672c9abfbb352b7a6b8ea39d7ae0e519d22` established the React/TypeScript/Vite Neo-BIOS frontend and reproducible CI/Docker build.
-- Step 2 adds `/console/auth/start` and `/console/auth/callback` using the existing OAuth provider.
-- The console client has a deterministic public client id and exact same-origin callback.
-- State is stored only as a SHA-256 digest, PKCE S256 is mandatory, flows are TTL/cap bounded, and authorization codes are consumed once.
-- The callback completes OAuth server-side, immediately revokes the internal token pair and creates only an opaque Secure + HttpOnly + SameSite=Strict console cookie.
-- Passphrases remain accepted only by `/oauth/authorize`; codes, state, verifiers and bearers are not returned in final responses.
-- Callback replay and cross-flow state/PKCE substitution are rejected.
-- Static Authorization bearer and the recovery form remain available. `?key=` has deliberately not been removed yet.
-- Full `go test ./...`, `go vet ./...` and `go build ./...` are green.
+- Step 1 `c4240672c9abfbb352b7a6b8ea39d7ae0e519d22`: React/TypeScript/Vite Neo-BIOS frontend and reproducible CI/Docker build.
+- Step 2 `1f97c1f`: console OAuth start/callback, digest-only state, PKCE, single-use code and strict opaque cookie while retaining bearer recovery.
+- Step 3 changes `authOK` to accept only `Authorization: Bearer`; URL query values are ignored.
+- The mandatory regression test proves `?key=<valid MCP_DEVBOX_TOKEN>` returns HTTP 401, while the same token in the Authorization header remains valid.
+- OAuth MCP authorization and the console OAuth flow remain green.
+- Operator docs now direct remote clients to clean `/mcp` OAuth and describe bearer as header-only recovery.
+- Frontend check, 3 Vitest tests and Vite build are green after displaying query-key auth as removed.

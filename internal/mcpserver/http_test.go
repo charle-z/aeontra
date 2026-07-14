@@ -266,23 +266,23 @@ func TestHTTP_OversizedBodyRejected(t *testing.T) {
 	}
 }
 
-func TestHTTP_QueryParamTokenAuth(t *testing.T) {
-	// ChatGPT's connector can't send a custom Authorization header, so the token
-	// may travel in the URL as ?key=. A correct key authorizes; a wrong/missing one
-	// is still 401.
+func TestHTTP_QueryParamTokenAlwaysReturns401(t *testing.T) {
 	h, _ := newHTTPServer(t, config.ModeReadOnly)
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize"}`
+	for _, query := range []string{testToken, "wrong", ""} {
+		path := "/mcp"
+		if query != "" {
+			path += "?key=" + query
+		}
+		rr := do(t, h, http.MethodPost, path, "", body)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("query key %q status=%d want=401 body=%s", query, rr.Code, rr.Body.String())
+		}
+	}
 
-	rr := do(t, h, "POST", "/mcp?key="+testToken, "", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("query-param auth: got %d, want 200; body=%s", rr.Code, rr.Body.String())
-	}
-	rr = do(t, h, "POST", "/mcp?key=wrong", "", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("wrong query-param key: got %d, want 401", rr.Code)
-	}
-	rr = do(t, h, "POST", "/mcp", "", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
-	if rr.Code != http.StatusUnauthorized {
-		t.Fatalf("no key at all: got %d, want 401", rr.Code)
+	bearer := do(t, h, http.MethodPost, "/mcp?key=ignored", "Bearer "+testToken, body)
+	if bearer.Code != http.StatusOK {
+		t.Fatalf("header bearer must remain authoritative: status=%d body=%s", bearer.Code, bearer.Body.String())
 	}
 }
 

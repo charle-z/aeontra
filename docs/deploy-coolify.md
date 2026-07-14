@@ -194,29 +194,19 @@ For global-builder mode, keep `MCP_DEVBOX_ROOT=/repos`. ChatGPT should use
 
 ## Connect ChatGPT
 
-Preferred option: use OAuth.
+Deploy with `MCP_DEVBOX_PUBLIC_URL` and `MCP_DEVBOX_OAUTH_PASSPHRASE`, then configure ChatGPT with:
 
 ```text
-Connector URL: https://mcp.example.com/mcp
-Authentication: OAuth
-Client registration: Dynamic Client Registration / DCR
-Token endpoint auth: none / public client
-Scopes: mcp
+https://mcp.example.com/mcp
 ```
 
-If OAuth is unavailable, ChatGPT's connector UI can still use the legacy query-string
-key with "Sin autenticacion":
+Choose OAuth. Persist `MCP_DEVBOX_OAUTH_CLIENT_STORE` and `MCP_DEVBOX_OAUTH_REFRESH_STORE` on `/state` so a container replacement can reconnect without recreating the connector. `MCP_DEVBOX_TOKEN` is optional recovery-only and must travel in an Authorization header, never a URL.
 
-```text
-https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>
-```
-
-Rotate `MCP_DEVBOX_TOKEN` immediately if it appears in logs, browser history, or a
-shared screenshot.
+P8.1 rejects all `?key=` query credentials with HTTP 401.
 
 ## Recommended second gate
 
-Do not rely only on `?key=` for a public VPS domain. Add one of these in front:
+OAuth is necessary but can still be combined with a second public-edge gate. Add one of these in front:
 
 - Cloudflare Access for `mcp.example.com`
 - Traefik `basicAuth` middleware
@@ -232,25 +222,20 @@ After deployment, run from your local machine:
 curl -i https://mcp.example.com/healthz
 curl -i https://mcp.example.com/version
 curl -i https://mcp.example.com/mcp
-curl -i "https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>"
-curl -i -X POST "https://mcp.example.com/mcp" \
-  -H "Content-Type: application/json" \
-  --data '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
-curl -i -X POST "https://mcp.example.com/mcp?key=<MCP_DEVBOX_TOKEN>" \
+curl -i -H "Authorization: Bearer <MCP_DEVBOX_TOKEN>" https://mcp.example.com/mcp
+curl -i -X POST https://mcp.example.com/mcp \
+  -H "Authorization: Bearer <MCP_DEVBOX_TOKEN>" \
   -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
 ```
 
 Expected:
 
-- `/healthz` returns `200`
-- `/version` returns `200`, JSON, `Cache-Control: no-store`, and matching
-  `X-MCP-Server-Commit` / `X-MCP-Catalog-Hash` headers
-- `GET /mcp` without token returns `401`
-- `GET /mcp?key=<token>` returns `200` with `text/event-stream`
-- `POST /mcp` without token returns `401`
-- `POST /mcp?key=<token>` returns an MCP `initialize` result and an
-  `Mcp-Session-Id` response header
+- `/healthz` returns the deployed commit
+- `/version` returns the same commit and catalog headers
+- unauthenticated `GET/POST /mcp` returns `401`
+- OAuth or header bearer authorizes the MCP stream/request
+- `/mcp?key=<even-correct-token>` returns `401`
 
 Security invariants remain enforced by mcp-devbox policy inside the container:
 jail, secret deny plus redaction, command allowlist, patch-first writes, and audit.
@@ -262,3 +247,5 @@ Verify `/healthz` reports the pushed commit before testing tools. Keep `/repos`,
 `/state`, and `/brain` volumes mounted. With persisted OAuth client and refresh stores, ChatGPT
 should reconnect without connector deletion; if OAuth configuration changed,
 reconnect once through the normal OAuth flow. Then call `tools/list`, confirm the documented tool count in `docs/tools.md` and all four annotations, and run read-only acceptance tests before any write.
+
+> P8.1 security change: query-string credentials are rejected with HTTP 401. Configure the clean `/mcp` URL with OAuth. Header bearer remains recovery-only.

@@ -145,7 +145,7 @@ Production:
 - Host: `https://mcp-devbox-charlez.duckdns.org`
 - MCP endpoint: `/mcp`
 - Preferred ChatGPT auth: OAuth with DCR, public client, scope `mcp`.
-- Legacy fallback: `/mcp?key=<MCP_DEVBOX_TOKEN>`.
+- Recovery fallback: `Authorization: Bearer <MCP_DEVBOX_TOKEN>` header only. Query-string credentials return 401.
 - Runtime root: `/repos`
 - Default mode: `read-only`; global-builder production should use `ask`
 - Repos live in the persistent `/repos` volume.
@@ -153,7 +153,7 @@ Production:
 Transport:
 
 - stdio for local clients.
-- HTTP `POST /mcp` JSON-RPC, bearer or `?key=` token required.
+- HTTP `POST /mcp` JSON-RPC requires OAuth or an `Authorization: Bearer` recovery header.
 - `/healthz` for liveness and `/version` for safe build/catalog identity.
 - Dynamic HTTP responses disable caching and include live commit/catalog headers.
 - Authenticated `GET /mcp` returns a minimal SSE stream; unauthenticated `GET /mcp`
@@ -167,8 +167,8 @@ Transport:
   `MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only DCR public client registrations.
   `MCP_DEVBOX_OAUTH_REFRESH_STORE` optionally persists rotating refresh tokens with
   mode 0600 so ChatGPT can survive redeploys without repeating owner login. Access
-  tokens and authorization codes remain in-memory only. Static bearer/`?key=` remains
-  available as fallback.
+  access tokens and authorization codes remain in-memory only. Static bearer remains
+  available as a header-only recovery fallback; query-string credentials are rejected.
   See `docs/oauth.md`.
 
 Ephemeral grants:
@@ -430,8 +430,7 @@ Publication now exists only through the planned `repo_publish_preview` /
   agent-first tooling.
 - ChatGPT remote access exposes a security tool to the internet path; token/auth,
   reverse-proxy gates, and policy all matter.
-- `?key=` is practical for ChatGPT but can leak through URL logs/history; rotate if
-  exposed and prefer an extra front gate such as Cloudflare Access or Traefik auth.
+- Query-string authentication was removed in P8.1. OAuth is the supported ChatGPT path; static bearer is header-only recovery.
 - L3 is the genuinely hard layer. Wrap proven tech; do not invent a sandbox.
 
 ## Last Verified
