@@ -33,6 +33,10 @@ Coolify v4 returns storage lists grouped as `persistent_storages` and
 `file_storages`; the client normalizes the collection name into the storage type
 before applying the exact-name and exact-mount conflict rules.
 
+Coolify prefixes the physical volume name with the fixed application UUID. The
+client removes only that exact platform-owned prefix before comparing the logical
+name `mcp-devbox-brain`; type and mount path remain exact and unchanged.
+
 It accepts idempotent success only when exactly one relevant entry has all of:
 
 ```json
