@@ -29,6 +29,10 @@ The operation always lists storages first with:
 GET /api/v1/applications/jqf7qz5ensoqtvl1tb197gcv/storages
 ```
 
+Coolify v4 returns storage lists grouped as `persistent_storages` and
+`file_storages`; the client normalizes the collection name into the storage type
+before applying the exact-name and exact-mount conflict rules.
+
 It accepts idempotent success only when exactly one relevant entry has all of:
 
 ```json
