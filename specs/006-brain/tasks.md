@@ -10,7 +10,7 @@ Status: **active**.
   atomic working writes, controlled local commits, rollback, no remote.
 - [x] **T04 FTS5 index** — exact pure-Go dependency, schema/probe, full/incremental
   indexing, BM25 search, backlinks, broken links, disposable rebuild.
-- [ ] **T05 Brain capability** — shared audit/redaction, isolated root, disabled-safe
+- [x] **T05 Brain capability** — shared audit/redaction, isolated root, disabled-safe
   configuration, bounded concurrency and close lifecycle.
 - [ ] **T06 five public tools** — search/read/write/index/context declarative contracts,
   annotations, handlers, docs, original-62 invariance and expected catalog delta.

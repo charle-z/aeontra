@@ -1,56 +1,48 @@
-# P9 Brain — Step 4 disposable FTS5 index
+# P9 Brain — Step 5 isolated capability
 
-Status: Step 4 is complete locally on `p9-brain`. It builds on Step 3 commit
-`d6654b13214c6c7c170d64a2b905efdd122f1b62` and P8 closure
+Status: Step 5 is complete locally on `p9-brain`. It builds on Step 4 commit
+`c11af4a97f9e11cb9a4385e4ee2a56bf663c8938` and P8 closure
 `2e3429c9d6342e8e091cadf65293c5c85b1b3259`. The invariant remains no resident service.
 
 ## Implemented
 
-- Exact direct dependency `modernc.org/sqlite@v1.53.0`, compatible with the Go 1.26.5
-  project and executing with `CGO_ENABLED=0`.
-- Private disposable `.cache/brain.db` with mode 0600, symlink/broad-permission denial,
-  FTS5/schema/integrity probes, exact schema version, per-connection security/busy
-  pragmas, bounded connection pool, and safe close/reopen.
-- Transactional full rebuild from strict Markdown truth with global slug uniqueness,
-  note-count/aggregate-byte limits, malformed-source fail-closed behavior, and previous
-  snapshot preservation.
-- Incremental metadata/FTS/link updates coordinated with atomic working-note writes and
-  rolled back if the subsequent local Git commit fails.
-- BM25 search over title/body. Input is parsed into bounded terms and emitted as quoted
-  FTS literals, so client FTS operators/wildcards are not executed as syntax.
-- Bounded results, provenance, UTF-8 excerpts, top-k, response bytes, backlinks, query
-  bytes/terms, broken-link counts, and safe index status.
-- Manual source secrets are redacted before cache insertion and again before return;
-  a canary is proven absent from the SQLite file.
-- Cache deletion/reindex equivalence and concurrent search/write/reindex tests pass.
-- `internal/brain` coverage is 81.5% against an 80% gate. Both fuzz targets pass.
-
-## Gates
-
-- `go test ./... -count=1`: pass.
-- atomic full coverage + `coverage-gate`: pass.
-- `go vet ./...`, `go build ./...`, actionlint 1.7.12: pass.
-- Govulncheck 1.6.0: no vulnerabilities.
-- Local Staticcheck: blocked before analysis by unwritable production cache path.
-- Local Race: blocked because `CGO_ENABLED=0`; both remain runner-authoritative.
+- `BrainCapability` is composed into every `tools.Service` over the existing shared
+  audit/redaction core, but owns only an independently validated `brain.Store`.
+- Disabled state is the default and all search/read/write/index/context operations
+  return the same `ErrBrainNotConfigured` without exposing paths or partial state.
+- `WithBrainStore` is a startup-only delegating facade method; operational behavior and
+  close lifecycle remain on the owning capability per AST boundary tests.
+- The Brain root is proven outside repository policy roots; no repository tool or
+  command workdir gains access to it.
+- Typed capability operations wrap store search, note+backlinks read, working write,
+  status/reindex, and context digest.
+- Audit spans record only safe operation classifications and bounds; query, body,
+  provenance, private root, and canary values do not appear in JSONL.
+- Returned title/provenance/body/excerpt/digest fields receive another shared redaction
+  pass at the capability boundary.
+- `ContextDigest` is on-demand, at most 16 notes/4 KiB, curated-first, recent working
+  second, omits full bodies, and excludes expired working notes.
+- Capability close waits for active operations, detaches and closes the store, and is
+  idempotent. `appRuntime.Close` closes Brain before audit and observability logs.
+- Coverage: Brain 81.7%, tools 73.9%, app 68.0%; package gates pass.
 
 ## Not implemented yet
 
-- no Brain capability composition or disabled-safe configuration;
-- no five MCP tools or catalog change;
-- no `MCP_DEVBOX_BRAIN_ROOT` runtime env, persistent mount, runbook, smoke, or deploy;
-- production remains P8 with 62 tools.
+- no five public Brain tool registrations or catalog delta;
+- no `MCP_DEVBOX_BRAIN_ROOT` runtime env or persistent mount;
+- no operations/runbook/smoke/deployment;
+- production remains P8 with 62 tools and unchanged console.
 
 ## Console decision
 
-The current deployed console is intentionally preserved unchanged during P9. Do not
-modify its UI or authentication in this branch. The owner will provide the visual
-brief for a creative BIOS-inspired operations console; OAuth-only migration and live
-task visibility belong to a separate branch after P9 closure.
+The deployed console remains unchanged during P9. Do not modify UI/auth in this branch.
+The owner will provide the creative BIOS-inspired visual brief; OAuth-only migration
+and live task/device status belong to a separate post-P9 branch.
 
 ## Next exact actions
 
-1. Clean Step 4 helpers, run final diff checks, commit/publish `Step 4`.
-2. Begin Step 5 with RED tests for an isolated disabled-safe Brain capability sharing
-   audit/redaction but never repository roots, plus safe close/concurrency behavior.
-3. Keep the existing 62-tool catalog unchanged until Step 6.
+1. Clean helpers, run final Step 5 gates, commit/publish `Step 5`.
+2. Begin Step 6 with RED catalog tests proving the original 62 definitions are
+   unchanged and exactly five Brain tools are appended with bounded schemas and honest
+   annotations.
+3. Keep runtime env/mount configuration deferred to Step 7.

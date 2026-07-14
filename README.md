@@ -104,13 +104,13 @@ memory with Markdown/frontmatter files as truth, owner-only curated notes,
 agent-authored working notes with provenance/review dates, `[[slug]]` links, and an
 in-process pure-Go SQLite FTS5 disposable cache. The invariant is no resident service:
 no database server, embeddings model, vector daemon, queue, worker, port, or new
-Coolify application. Step 4 implements the strict note model, dedicated private jail, atomic agent writes,
-controlled local Git history, and a disposable in-process SQLite FTS5 index. Search is
-BM25 over bounded quoted plain-text terms; links/backlinks, transactional reindex,
-incremental updates, secret-redacted cache contents, cache deletion/rebuild, rollback,
-and concurrency are tested. YAML and `modernc.org/sqlite@v1.53.0` are the two direct
-dependencies; CGO remains disabled and no resident service is added. Five tools,
-runtime configuration, persistent mount, and deployment remain absent.
+Coolify application. Step 5 adds an isolated `BrainCapability` over the shared audit/redaction core. Every
+Service contains it, but it is disabled by default with one uniform safe error until a
+validated store is attached. The Brain root never enters repository roots; audited
+operations exclude queries, bodies, provenance and private paths; the 4 KiB context
+digest is curated-first and never contains note bodies. Runtime close releases Brain
+before logs. No public tool, environment variable, mount, console change, or deployment
+is introduced yet.
 
 Quick start:
 

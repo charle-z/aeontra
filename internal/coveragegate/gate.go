@@ -143,11 +143,11 @@ func parseProfile(reader io.Reader) (map[string]packageCoverage, error) {
 			return nil, fmt.Errorf("%w: line %d has invalid filename", ErrInvalidCoverProfile, lineNumber)
 		}
 		statements, err := strconv.ParseInt(fields[1], 10, 64)
-		if err != nil || statements <= 0 {
+		if err != nil || statements < 0 {
 			return nil, fmt.Errorf("%w: line %d has invalid statement count", ErrInvalidCoverProfile, lineNumber)
 		}
 		count, err := strconv.ParseInt(fields[2], 10, 64)
-		if err != nil || count < 0 {
+		if err != nil || count < 0 || (statements == 0 && count != 0) {
 			return nil, fmt.Errorf("%w: line %d has invalid execution count", ErrInvalidCoverProfile, lineNumber)
 		}
 		measured := coverage[packagePath]

@@ -32,6 +32,24 @@ example.com/project/internal/oauth/b.go:3.1,4.1 1 0
 	}
 }
 
+func TestEvaluateAcceptsOfficialZeroStatementRecords(t *testing.T) {
+	profile := `mode: atomic
+example.com/project/internal/policy/a.go:1.1,2.1 8 1
+example.com/project/internal/policy/a.go:2.1,2.2 0 0
+example.com/project/internal/policy/b.go:3.1,4.1 2 0
+`
+	results, err := Evaluate(strings.NewReader(profile), []Threshold{{
+		Package: "example.com/project/internal/policy",
+		Minimum: 80,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Total != 10 || results[0].Covered != 8 || results[0].Percent != 80 {
+		t.Fatalf("results = %#v", results)
+	}
+}
+
 func TestEvaluateFailsBelowThresholdWithActionableDetails(t *testing.T) {
 	profile := `mode: atomic
 example.com/project/internal/policy/a.go:1.1,2.1 7 1
@@ -72,12 +90,13 @@ example.com/project/internal/oauth/a.go:1.1,2.1 10 1
 
 func TestEvaluateRejectsMalformedProfile(t *testing.T) {
 	for name, profile := range map[string]string{
-		"missing mode":     "example.com/project/internal/policy/a.go:1.1,2.1 1 1\n",
-		"bad record":       "mode: atomic\nnot-a-record\n",
-		"bad statements":   "mode: atomic\nexample.com/project/a.go:1.1,2.1 nope 1\n",
-		"negative count":   "mode: atomic\nexample.com/project/a.go:1.1,2.1 1 -1\n",
-		"zero statements":  "mode: atomic\nexample.com/project/a.go:1.1,2.1 0 1\n",
-		"missing filename": "mode: atomic\n:1.1,2.1 1 1\n",
+		"missing mode":             "example.com/project/internal/policy/a.go:1.1,2.1 1 1\n",
+		"bad record":               "mode: atomic\nnot-a-record\n",
+		"bad statements":           "mode: atomic\nexample.com/project/a.go:1.1,2.1 nope 1\n",
+		"negative count":           "mode: atomic\nexample.com/project/a.go:1.1,2.1 1 -1\n",
+		"executed zero statements": "mode: atomic\nexample.com/project/a.go:1.1,2.1 0 1\n",
+		"negative statements":      "mode: atomic\nexample.com/project/a.go:1.1,2.1 -1 0\n",
+		"missing filename":         "mode: atomic\n:1.1,2.1 1 1\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Evaluate(strings.NewReader(profile), nil); !errors.Is(err, ErrInvalidCoverProfile) {

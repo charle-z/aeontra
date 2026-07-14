@@ -30,15 +30,18 @@ func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var auditErr, observabilityErr error
+	var serviceErr, auditErr, observabilityErr error
+	if r.Service != nil {
+		serviceErr = r.Service.BrainCapability.Close()
+	}
 	if r.Logger != nil {
 		auditErr = r.Logger.Close()
 	}
 	if r.Observer != nil {
 		observabilityErr = r.Observer.Close()
 	}
-	if auditErr != nil || observabilityErr != nil {
-		return errors.New("runtime log close failed")
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil {
+		return errors.New("runtime close failed")
 	}
 	return nil
 }

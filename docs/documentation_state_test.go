@@ -107,10 +107,10 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"P9 Brain Step 4 is implemented locally",
+		"P9 Brain Step 5 is implemented locally",
 		"p9-brain",
-		"d6654b13214c6c7c170d64a2b905efdd122f1b62",
-		"81.5%",
+		"c11af4a97f9e11cb9a4385e4ee2a56bf663c8938",
+		"81.7%",
 		"no resident service",
 	} {
 		if !strings.Contains(handoff, required) {

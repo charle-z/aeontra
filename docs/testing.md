@@ -100,16 +100,19 @@ misleading global percentage:
 | `internal/audit` | 80% | 86.2% |
 | `internal/observability` | 70% | 74.4% |
 | `internal/console` | 80% | 84.3% |
-| `internal/brain` | 80% | 81.5% |
-| `internal/tools` | 70% | 73.3% |
-| `internal/app` | 65% | 67.8% |
+| `internal/brain` | 80% | 81.7% |
+| `internal/tools` | 70% | 73.9% |
+| `internal/app` | 65% | 68.0% |
 | `internal/grantadmin` | 55% | 59.6% |
 
 The gate fails with an explicit missing package error when a threshold package is
 absent, when a profile is malformed, or when a package drops below its minimum.
-Output is package-specific and actionable. Thresholds are deliberately below the
-current measured value so the gate detects regression without turning coverage into
-line-count gaming. P6 will run the same two commands as a blocking CI job and retain
+Official Go coverprofiles may contain synthetic zero-statement records (`0 0`);
+the parser accepts and ignores those records while rejecting negative statements or
+an impossible executed zero-statement record (`0 1`). A Step 5 regression test
+locks this compatibility with `go tool cover`. Output is package-specific and
+actionable. Thresholds are deliberately below the current measured value so the gate
+detects regression without turning coverage into line-count gaming. P6 will run the same two commands as a blocking CI job and retain
 only safe coverage artifacts.
 
 ## Hermetic integration matrix — P5 Step 83
@@ -317,34 +320,43 @@ Dependency Review correctly skipped on push. Production serves
 show only 303/200 `route=console` events. Full evidence is versioned in
 `docs/baselines/2026-07-13-p8.md`.
 
-## P9 Brain — Step 4 disposable SQLite FTS5 index
+## P9 Brain — Step 5 isolated capability and lifecycle
 
-`internal/brain` has an 80% package gate and a measured 81.5% Step 4 baseline.
-`modernc.org/sqlite@v1.53.0` is now the second deliberate direct dependency. It runs
-with `CGO_ENABLED=0` inside the existing process and adds no service, listener, port,
-container, credential, queue, model, or worker.
+Step 5 composes `BrainCapability` over the shared audit/redaction core while keeping
+its store outside repository roots. Brain remains disabled by default and every
+operation returns the same safe `brain is not configured` error until a validated
+store is attached at startup.
 
-Step 4 tests cover the complete note/jail/Git behavior plus:
+Coverage baselines after Step 5 are:
 
-- private mode-0600 `.cache/brain.db` creation and symlink/broad-permission rejection;
-- FTS5/schema/integrity probes and exact schema version;
-- bounded full rebuild from strict Markdown truth inside one transaction;
-- atomic preservation of the previous snapshot when a rebuild source is malformed;
-- BM25 search over title/body with client input converted to quoted plain-text terms;
-- query/top-k/term/excerpt/response/backlink/note-count/aggregate-byte limits;
-- deterministic forward links, backlinks, broken-link counts, and status metadata;
-- manual secret redaction before indexing and proof the raw canary is absent from the
-  SQLite file and search output;
-- incremental index updates tied to successful working-note writes;
-- source/index rollback when the subsequent local Git commit fails;
-- disposable cache deletion followed by equivalent full reconstruction;
-- concurrent search/write/reindex behavior and safe close/reopen;
-- invalid lifecycle, closed-index, unsafe cache, unexpected source entry, invalid
-  context/query/slug, and UTF-8 truncation paths.
+- `internal/brain`: 81.7% against an 80% gate;
+- `internal/tools`: 73.9% against a 70% gate;
+- `internal/app`: 68.0% against a 65% gate.
 
-Both Brain fuzz targets pass. Local Staticcheck remains blocked before analysis by the
-production container's unwritable cache path, and local Race remains blocked because
-CGO is disabled. Those gates remain blocking and runner-authoritative for the P9 PR.
+Focused tests cover:
+
+- a non-nil disabled capability on every Service instance;
+- uniform fail-closed behavior for search/read/write/index/context;
+- an isolated Brain root rejected by the repository policy jail;
+- safe audited search/read/write/status/context operations with no query, body,
+  provenance, root path, or secret canary in audit JSONL;
+- redaction applied again at the capability boundary;
+- owner note read plus bounded backlinks and working-note write through the same
+  isolated store;
+- bounded context digest with curated-first ordering, no full bodies, and expired
+  working notes omitted;
+- invalid index actions using a generic error and safe audit classification;
+- capability close waiting for active calls, detaching the store, closing SQLite, and
+  remaining idempotent;
+- `appRuntime.Close` releasing Brain before audit/observability sinks;
+- Service AST boundaries: operational methods remain on BrainCapability; the Service
+  facade adds only the delegating startup configuration method `WithBrainStore`;
+- the original repository, source, Git, platform, and execution capabilities continue
+  sharing one central service core with Brain.
+
+No MCP tool, catalog entry, runtime environment variable, mount, console route, or
+production behavior is added in Step 5. Local Staticcheck and Race remain blocked for
+the previously documented environment reasons and remain runner-authoritative.
 
 ## Safety rules
 

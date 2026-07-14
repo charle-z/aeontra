@@ -9,17 +9,16 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P9 Brain Step 4 complete / Step 5 capability next** on branch
+- Current phase: **P9 Brain Step 5 complete / Step 6 tools next** on branch
   `p9-brain`, based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`.
-  `internal/brain` now implements strict YAML notes, curated/working trust, secret
-  denial/redaction, links, a dedicated private jail, atomic agent writes, controlled
-  local Git history, and a pure-Go SQLite FTS5 disposable cache. Rebuild/incremental
-  indexing, BM25 plain-text search, backlinks, hard bounds, redaction, rollback,
-  reconstruction, and concurrency are tested. The hard resource invariant is no resident service: no embeddings model, vector
-  daemon, queue, worker, database
-  server, port, or new Coolify application. Brain capability, tools, runtime config,
-  persistent mount, and deployment remain absent. The P8 console is frozen during P9;
-  BIOS-inspired redesign and OAuth-only migration require a later independent branch.
+  `internal/brain` implements strict files/trust/Git/FTS5 behavior; `BrainCapability`
+  now provides an isolated disabled-safe audit/redaction boundary, bounded context,
+  and coordinated close lifecycle without adding its root to repository roots. The
+  hard resource invariant is no resident service: no embeddings model, vector daemon,
+  queue, worker, database server, port, or new Coolify application. Five public tool
+  registrations, runtime env/mounts, operations, and deployment remain absent. The P8
+  console is frozen during P9; BIOS-inspired redesign and OAuth-only migration require
+  a later independent branch.
   Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
   Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
   62 annotated MCP tools, action plans, audit, persistent notes, and adversarial tests.
