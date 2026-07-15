@@ -99,6 +99,9 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 		panic(fmt.Sprintf("invalid console configuration: %v", err))
 	}
 	consoleHandler.Register(mux)
+	if opts.EdgeHandler != nil {
+		mux.Handle("/edge/v1/", opts.EdgeHandler)
+	}
 
 	// Unauthenticated liveness probe. It reports the running version + git commit so a
 	// deploy can be confirmed to have shipped the latest code (no sensitive information).

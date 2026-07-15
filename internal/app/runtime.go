@@ -12,6 +12,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/policy"
@@ -33,13 +34,14 @@ type appRuntime struct {
 	StateRoot   string
 	Telemetry   *telemetry.Store
 	Results     *resultstore.Store
+	Edge        *edge.Store
 }
 
 func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr, telemetryErr, resultErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, resultErr, edgeErr error
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -55,7 +57,10 @@ func (r *appRuntime) Close() error {
 	if r.Results != nil {
 		resultErr = r.Results.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || resultErr != nil {
+	if r.Edge != nil {
+		edgeErr = r.Edge.Close()
+	}
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || resultErr != nil || edgeErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
@@ -119,6 +124,15 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		return nil, fmt.Errorf("opening result store: %w", err)
 	}
 	service = service.WithResultStore(results)
+	edgeStore, err := edge.Open(edge.Config{Root: filepath.Join(stateRoot, "edge")})
+	if err != nil {
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening edge identity store: %w", err)
+	}
 	return &appRuntime{
 		Policy:      pol,
 		Logger:      logger,
@@ -131,6 +145,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		StateRoot:   stateRoot,
 		Telemetry:   metrics,
 		Results:     results,
+		Edge:        edgeStore,
 	}, nil
 }
 

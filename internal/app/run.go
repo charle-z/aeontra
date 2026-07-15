@@ -31,6 +31,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	case "edge":
+		if err := edgeAdmin(args[1:], stdout, stderr); err != nil {
+			fmt.Fprintln(stderr, "mcp-devbox: "+err.Error())
+			return 1
+		}
+		return 0
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, "mcp-devbox "+buildinfo.Version+" (commit "+buildinfo.Commit+")")
 		return 0
@@ -50,6 +56,8 @@ func usage(output io.Writer) {
 Usage:
   mcp-devbox serve --root <ABS_PATH> [--mode read-only|ask|allow] [flags]
   mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> [--ttl 5m] [--raw --confirm-raw] <REQUEST_ID>
+  mcp-devbox edge pairing-create --state-root <ABS_PRIVATE_PATH> [--ttl 10m]
+  mcp-devbox edge revoke --state-root <ABS_PRIVATE_PATH> --device <DEVICE_ID>
   mcp-devbox version
 
 serve flags:

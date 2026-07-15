@@ -14,16 +14,20 @@ The console reports Edge as `not_paired`; no Edge runtime is claimed.
 Historical candidate evidence remains immutable; production closure is recorded in
 `docs/baselines/2026-07-14-p8_1-production.md`.
 
-P11 Step 2 is implemented locally as the candidate-only `workspace_checkpoint`
-read operation. It advances the local catalog to 68 tools with hash
-`sha256:86ab04ccb609b191aa2c471688100ed5c10a5641a81effba9a8c617fd3ba9c33`
-without changing deployed P8.1 evidence. The measured fixture reduced two MCP calls
-to one, response bytes from 2052 to 406, and repeated bytes from 260 to zero.
+P11 Steps 2-4 are committed locally. They add the compact workspace checkpoint,
+bounded telemetry/operational logs, and a redacted bounded result store. The local
+catalog is 71 tools with hash
+`sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
+No candidate-only change has been deployed.
+
+Step 5 implements Edge device identity and one-time pairing under `/state/edge`:
+Ed25519 per-device credentials, ten-minute one-use pairing codes, signed requests,
+persistent nonce replay rejection, revocation, an isolated `/edge/v1/pair` route,
+and local pairing/revocation commands. It does not yet authorize or execute work.
 
 ## Next safe step
 
-Step 2 is committed. Step 3 adds persistent bounded telemetry/logs under the existing
-state volume. Close its gates and commit, then add the bounded result store before
-Edge device identity, one-use pairing
-and leased-task replay tests. Do not expose a remote shell, pair a real device, install
-WSL automatically, or begin Parrot/HTB authority.
+Close Step 5 verification and commit it. Then implement the leased, idempotent Edge
+task protocol with heartbeat, cancellation, expiry and reconnect tests before the
+single outbound-only `development` WSL workcell. Do not expose a remote shell, pair
+a real device, install WSL automatically, or begin Parrot/HTB authority.
