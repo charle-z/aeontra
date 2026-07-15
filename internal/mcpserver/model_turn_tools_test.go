@@ -32,11 +32,12 @@ func modelTurnServer(t *testing.T) (*Server, *modelturn.Store) {
 func TestModelTurnToolsFailClosedWithoutStore(t *testing.T) {
 	server := stampServer(t)
 	for name, arguments := range map[string]string{
-		"model_runtime_start":  `{}`,
-		"model_runtime_status": `{"runtime_id":"mr_00000000000000000000000000000000"}`,
-		"model_turn_next":      `{"runtime_id":"mr_00000000000000000000000000000000"}`,
-		"model_turn_respond":   `{"runtime_id":"mr_00000000000000000000000000000000","turn_id":"mt_00000000000000000000000000000000","expected_sequence":1,"request_digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","response":{"finish_reason":"stop"}}`,
-		"model_runtime_cancel": `{"runtime_id":"mr_00000000000000000000000000000000"}`,
+		"model_runtime_start":    `{}`,
+		"opencode_runtime_start": `{"device_id":"ed_11111111111111111111111111111111","workspace_id":"ws_22222222222222222222222222222222","goal":"bounded","timeout_seconds":60,"idempotency_key":"key-1"}`,
+		"model_runtime_status":   `{"runtime_id":"mr_00000000000000000000000000000000"}`,
+		"model_turn_next":        `{"runtime_id":"mr_00000000000000000000000000000000"}`,
+		"model_turn_respond":     `{"runtime_id":"mr_00000000000000000000000000000000","turn_id":"mt_00000000000000000000000000000000","expected_sequence":1,"request_digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","response":{"finish_reason":"stop"}}`,
+		"model_runtime_cancel":   `{"runtime_id":"mr_00000000000000000000000000000000"}`,
 	} {
 		response := call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+name+`","arguments":`+arguments+`}}`)
 		var result toolResult
@@ -98,7 +99,7 @@ func TestModelTurnToolsRunBoundedPullWorkflow(t *testing.T) {
 	}
 
 	status := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"model_runtime_status","arguments":{"runtime_id":"`+runtime.RuntimeID+`"}}}`))
-	if !strings.Contains(status, `"last_sequence":1`) || !strings.Contains(status, `"active_turn_status":"consumed"`) {
+	if !strings.Contains(status, `"last_sequence":1`) || strings.Contains(status, `"active_turn_status"`) || strings.Contains(status, `"goal_summary"`) {
 		t.Fatalf("status=%s", status)
 	}
 }
@@ -133,7 +134,7 @@ func TestModelRuntimeCancelCancelsPendingTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancelled := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"model_runtime_cancel","arguments":{"runtime_id":"`+runtime.RuntimeID+`"}}}`))
-	if !strings.Contains(cancelled, `"status":"cancelled"`) {
+	if !strings.Contains(cancelled, `"state":"cancelled"`) || strings.Contains(cancelled, `"status"`) {
 		t.Fatalf("cancelled=%s", cancelled)
 	}
 	record, err := store.Get(context.Background(), turn.ID)

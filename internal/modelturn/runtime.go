@@ -42,6 +42,8 @@ const (
 	ControllerMCPSampling    RuntimeController = "mcp_sampling"
 )
 
+const OpenCodeProviderProfile = "opencode-external-v1"
+
 const MaxGoalBodyBytes = int64(64 << 10)
 
 var (

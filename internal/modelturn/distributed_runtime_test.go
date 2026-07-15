@@ -199,3 +199,66 @@ func TestRuntimeMetadataDoesNotPersistGoalOrForbiddenFields(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscardRuntimeGoalRemovesOnlyUnreferencedStaging(t *testing.T) {
+	store, err := OpenStore(StoreConfig{Root: filepath.Join(t.TempDir(), "turns")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	unreferenced, err := store.StageRuntimeGoal(context.Background(), []byte("discard this staged goal"), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DiscardRuntimeGoal(context.Background(), unreferenced.BodyRef, unreferenced.ContentDigest); err != nil {
+		t.Fatal(err)
+	}
+	var unreferencedCount int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM runtime_bodies WHERE body_ref=?`, unreferenced.BodyRef).Scan(&unreferencedCount); err != nil {
+		t.Fatal(err)
+	}
+	if unreferencedCount != 0 {
+		t.Fatalf("unreferenced goal remains: count=%d", unreferencedCount)
+	}
+
+	goal := []byte("retain this authoritative goal")
+	referenced, err := store.StageRuntimeGoal(context.Background(), goal, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, created, err := store.StartBoundRuntime(context.Background(), BoundRuntimeRequest{
+		DeviceID: "ed_0123456789abcdef0123456789abcdef", WorkspaceID: "ws_abcdefabcdefabcdefabcdefabcdefab",
+		Controller: ControllerRemoteEdge, GoalSummary: GoalSummary(goal), GoalRef: referenced.BodyRef, GoalDigest: referenced.ContentDigest,
+		IdempotencyKeyDigest: IdempotencyDigest("runtime-goal-cleanup-test"), TTL: time.Minute,
+	})
+	if err != nil || !created {
+		t.Fatalf("runtime=%+v created=%t err=%v", runtime, created, err)
+	}
+	if err := store.DiscardRuntimeGoal(context.Background(), referenced.BodyRef, referenced.ContentDigest); err != nil {
+		t.Fatal(err)
+	}
+	content, digest, err := store.RuntimeGoal(context.Background(), runtime.RuntimeID, runtime.DeviceID)
+	if err != nil || string(content) != string(goal) || digest != referenced.ContentDigest {
+		t.Fatalf("authoritative goal changed: content=%q digest=%q err=%v", content, digest, err)
+	}
+}
+
+func TestDiscardRuntimeGoalRejectsMismatchedIdentity(t *testing.T) {
+	store, err := OpenStore(StoreConfig{Root: filepath.Join(t.TempDir(), "turns")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	body, err := store.StageRuntimeGoal(context.Background(), []byte("bounded goal"), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DiscardRuntimeGoal(context.Background(), body.BodyRef, "sha256:0000000000000000000000000000000000000000000000000000000000000000"); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM runtime_bodies WHERE body_ref=?`, body.BodyRef).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("mismatched cleanup removed body: count=%d err=%v", count, err)
+	}
+}

@@ -28,7 +28,8 @@ func (s *Server) WithModelTurnStore(store *modelturn.Store) *Server {
 func (s *Server) addModelTurnTools() {
 	readHints := map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
 	writeHints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
-	cancelHints := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
+	idempotentWriteHints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	cancelHints := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}
 
 	s.addDirectTool(toolDef{
 		Name:        "model_runtime_start",
@@ -39,12 +40,26 @@ func (s *Server) addModelTurnTools() {
 	}, s.handleModelRuntimeStart)
 
 	s.addDirectTool(toolDef{
+		Name:        "opencode_runtime_start",
+		Description: "Request one pinned OpenCode runtime on a paired Edge device using an opaque local workspace and bounded goal.",
+		InputSchema: closedObject(map[string]any{
+			"device_id":       stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35),
+			"workspace_id":    stringSchema("opaque workspace id resolved only by the Edge registry", `^ws_[a-f0-9]{32}$`, 35),
+			"goal":            map[string]any{"type": "string", "minLength": 1, "maxLength": modelturn.MaxGoalBodyBytes},
+			"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
+			"idempotency_key": stringSchema("caller-generated idempotency key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, maxOpenCodeIdempotencyBytes),
+		}, []string{"device_id", "workspace_id", "goal", "timeout_seconds", "idempotency_key"}),
+		Version:     "1",
+		Annotations: idempotentWriteHints,
+	}, s.handleOpenCodeRuntimeStart)
+
+	s.addDirectTool(toolDef{
 		Name:        "model_runtime_status",
 		Description: "Return compact durable status for one external-model runtime.",
 		InputSchema: closedObject(map[string]any{
 			"runtime_id": stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
 		}, []string{"runtime_id"}),
-		Version:     "1",
+		Version:     "2",
 		Annotations: readHints,
 	}, s.handleModelRuntimeStatus)
 
@@ -74,7 +89,7 @@ func (s *Server) addModelTurnTools() {
 		InputSchema: closedObject(map[string]any{
 			"runtime_id": stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
 		}, []string{"runtime_id"}),
-		Version:     "1",
+		Version:     "2",
 		Annotations: cancelHints,
 	}, s.handleModelRuntimeCancel)
 }
@@ -189,7 +204,7 @@ func (s *Server) handleModelRuntimeStatus(arguments json.RawMessage) (string, er
 		return "", err
 	}
 	runtime, err := s.modelTurns.Runtime(context.Background(), params.RuntimeID)
-	return marshalToolValue(runtime, err)
+	return marshalToolValue(publicRuntime(runtime), err)
 }
 
 func (s *Server) handleModelTurnNext(arguments json.RawMessage, sessionKey string) (string, error) {
@@ -333,10 +348,16 @@ func (s *Server) handleModelRuntimeCancel(arguments json.RawMessage) (string, er
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
 	}
-	if err := s.modelTurns.CancelRuntime(context.Background(), params.RuntimeID); err != nil {
-		return "", err
+	err := s.modelTurns.CancelRuntime(context.Background(), params.RuntimeID)
+	runtime, readErr := s.modelTurns.Runtime(context.Background(), params.RuntimeID)
+	if err != nil {
+		if !errors.Is(err, modelturn.ErrTurnConflict) || readErr != nil || runtime.State != modelturn.RuntimeStateCancelled {
+			return "", err
+		}
+	} else if readErr != nil {
+		return "", readErr
 	}
-	return marshalToolValue(map[string]any{"runtime_id": params.RuntimeID, "status": modelturn.RuntimeCancelled}, nil)
+	return marshalToolValue(publicRuntime(runtime), nil)
 }
 
 func decodeClosed(arguments json.RawMessage, target any) error {

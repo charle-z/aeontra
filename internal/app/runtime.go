@@ -153,7 +153,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Logger:      logger,
 		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithModelTurnStore(modelTurns),
+		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore),
 		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,

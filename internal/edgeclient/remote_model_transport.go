@@ -19,7 +19,7 @@ import (
 const (
 	remoteModelRuntimeLeasePath = "/edge/v1/model-runtimes/lease"
 	remoteModelRuntimePrefix    = "/edge/v1/model-runtimes/"
-	remoteProviderProfile       = "opencode-external-v1"
+	remoteProviderProfile       = modelturn.OpenCodeProviderProfile
 	remoteModelResponseLimit    = int64(modelturn.MaxRequestBodyBytes + (512 << 10))
 	remoteModelDefaultWait      = 120 * time.Second
 	remoteModelMaxWait          = 180 * time.Second

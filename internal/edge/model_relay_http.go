@@ -18,7 +18,7 @@ const (
 	modelRuntimePrefix    = "/edge/v1/model-runtimes/"
 	maxModelRelayBody     = modelturn.MaxRequestBodyBytes + (256 << 10)
 	maxModelLongPoll      = 180 * time.Second
-	providerProfile       = "opencode-external-v1"
+	providerProfile       = modelturn.OpenCodeProviderProfile
 )
 
 type modelRelay struct {

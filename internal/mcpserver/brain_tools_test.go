@@ -40,26 +40,26 @@ var brainToolOrder = []string{"brain_search", "brain_read", "brain_write", "brai
 
 func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 77 {
-		t.Fatalf("tool order length=%d want=77", len(server.order))
+	if len(server.order) != 78 {
+		t.Fatalf("tool order length=%d want=78", len(server.order))
 	}
-	if server.order[8] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:10])
+	if server.order[9] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:11])
 	}
-	if !reflect.DeepEqual(server.order[13:16], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[13:16])
+	if !reflect.DeepEqual(server.order[14:17], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[14:17])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
-		if name != "mcp_client_capabilities" && !strings.HasPrefix(name, "model_") && name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") {
+		if name != "mcp_client_capabilities" && !strings.HasPrefix(name, "model_") && !strings.HasPrefix(name, "opencode_") && name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") {
 			historical = append(historical, name)
 		}
 	}
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[72:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[72:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[73:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[73:], brainToolOrder)
 	}
 
 	snapshot, err := server.CatalogInfo()
@@ -68,7 +68,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	legacy := make([]CatalogTool, 0, 62)
 	for _, tool := range snapshot.Tools {
-		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && tool.Name != "workspace_checkpoint" {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && tool.Name != "workspace_checkpoint" {
 			legacy = append(legacy, tool)
 		}
 	}
@@ -84,7 +84,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	previous := make([]CatalogTool, 0, 71)
 	for _, tool := range snapshot.Tools {
-		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") {
 			previous = append(previous, tool)
 		}
 	}
@@ -100,7 +100,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	step1 := make([]CatalogTool, 0, 72)
 	for _, tool := range snapshot.Tools {
-		if !strings.HasPrefix(tool.Name, "model_") {
+		if !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") {
 			step1 = append(step1, tool)
 		}
 	}
@@ -115,9 +115,32 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if len(step1) != 72 || step1ComputedHash != step1Hash {
 		t.Fatalf("Step 1 catalog identity changed: count=%d hash=%s", len(step1), step1ComputedHash)
 	}
+	step4 := make([]CatalogTool, 0, 77)
+	for _, tool := range snapshot.Tools {
+		if tool.Name == "opencode_runtime_start" {
+			continue
+		}
+		if tool.Name == "model_runtime_status" || tool.Name == "model_runtime_cancel" {
+			tool.Version = "1"
+		}
+		if tool.Name == "model_runtime_cancel" {
+			tool.Annotations = map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
+		}
+		step4 = append(step4, tool)
+	}
+	step4Encoded, err := json.Marshal(step4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	step4Sum := sha256.Sum256(step4Encoded)
+	step4ComputedHash := "sha256:" + hex.EncodeToString(step4Sum[:])
 	const step4Hash = "sha256:3f4e1812bd72a0508eba108d97dfd353ea9abc4c883cded262abd768f1f94518"
-	if snapshot.ToolCount != 77 || snapshot.Hash != step4Hash {
-		t.Fatalf("Step 4 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
+	if len(step4) != 77 || step4ComputedHash != step4Hash {
+		t.Fatalf("historical Step 4 catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
+	}
+	const step6Hash = "sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed"
+	if snapshot.ToolCount != 78 || snapshot.Hash != step6Hash {
+		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
 
