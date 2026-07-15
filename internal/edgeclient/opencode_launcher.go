@@ -756,6 +756,35 @@ func (b *boundedSink) Write(payload []byte) (int, error) {
 	return len(payload), nil
 }
 
+func safeProviderMessageSignal(message string) string {
+	text := strings.ToLower(message)
+	checks := []struct {
+		code    string
+		phrases []string
+	}{
+		{"prompt_shape", []string{"prompt must be an array", "message content must be an array", "message must be an object"}},
+		{"prompt_role", []string{"unsupported message role", "unsupported message part"}},
+		{"tool_shape", []string{"provider tools are not supported", "duplicate tool name", "tool input schema", "tool choice"}},
+		{"request_limit", []string{"canonical model request exceeds", "request exceeds the bridge limit"}},
+		{"runtime_status", []string{"runtime status id mismatch", "runtime sequence is invalid", "runtime is terminal"}},
+		{"driver_invalid_request", []string{"model turn request is invalid", "invalid_request"}},
+		{"driver_status", []string{"model turn driver status", "model turn driver returned non-json"}},
+		{"turn_identity", []string{"created turn identity mismatch", "created turn offered-tool set mismatch"}},
+		{"response_identity", []string{"model response identity mismatch", "staged request identity mismatch"}},
+		{"response_shape", []string{"model response", "model tool calls", "finish reason", "unoffered tool", "usage"}},
+		{"abort", []string{"model turn aborted", "model turn timed out"}},
+		{"socket", []string{"enoent", "econnrefused", "econnreset", "epipe", "socket hang up"}},
+	}
+	for _, check := range checks {
+		for _, phrase := range check.phrases {
+			if strings.Contains(text, phrase) {
+				return check.code
+			}
+		}
+	}
+	return ""
+}
+
 func structuredOpenCodeErrorSignal(content []byte) string {
 	lines := bytes.Split(content, []byte{'\n'})
 	for index := len(lines) - 1; index >= 0; index-- {
@@ -775,6 +804,14 @@ func structuredOpenCodeErrorSignal(content []byte) string {
 		case "messageoutputlengtherror":
 			return "output_length"
 		case "unknownerror":
+			if raw, ok := event.Error.Data["message"]; ok {
+				var message string
+				if json.Unmarshal(raw, &message) == nil {
+					if signal := safeProviderMessageSignal(message); signal != "" {
+						return signal
+					}
+				}
+			}
 			for _, field := range []string{"name", "code", "status", "statusCode"} {
 				raw, ok := event.Error.Data[field]
 				if !ok {
