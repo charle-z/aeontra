@@ -86,7 +86,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"## Status snapshot — 2026-07-13",
+		"## Status snapshot — 2026-07-14",
 		"P0-P5 architecture, hardening, and deeper testing",
 		"Deployed",
 		"P5 deeper testing",
@@ -95,7 +95,9 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"Console/showcase",
 		"Deployed",
 		"Brain memory",
-		"Merge-ready",
+		"Deployed",
+		"Console 2.0 / P8.1",
+		"Complete / merge-ready",
 		"Universal execution profiles",
 		"Planned",
 		"Edge agents",
@@ -107,14 +109,12 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"P9 Brain is complete / merge-ready",
-		"p9-brain",
-		"96f7ca15183271772aecbf2d0ac2cceb88e20e5d",
-		"29306099092",
-		"29306099088",
-		"MCP_DEVBOX_BRAIN_ROOT",
-		"production remains P8/62",
+		"P8.1 Console 2.0 is complete / merge-ready",
+		"console-2.0",
+		"4fbe1dda02351c632e67c0f10a5c5b314df745e2",
+		"/state/tasks",
 		"no resident service",
+		"p8.1",
 	} {
 		if !strings.Contains(handoff, required) {
 			t.Errorf("latest handoff does not contain %q", required)

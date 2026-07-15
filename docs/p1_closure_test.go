@@ -25,8 +25,8 @@ func TestP1ClosureDocumentationIsCurrent(t *testing.T) {
 		"README.md": readme,
 		"AGENTS.md": agents,
 	} {
-		if !strings.Contains(content, "62") {
-			t.Errorf("%s does not state the current 62-tool catalog", path)
+		if !strings.Contains(content, "67") {
+			t.Errorf("%s does not state the current 67-tool catalog", path)
 		}
 	}
 	if strings.Contains(readme, "59 deliberately annotated") {

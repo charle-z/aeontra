@@ -24,6 +24,8 @@ configured Brain startup fail closed, packaging reserves the dedicated volume, a
 remote smoke exposes no note content or credential. The prior 62-tool contract
 hash/order remain locked inside the 67-tool candidate. Deployment remains pending.
 
+P8.1 adds `internal/taskjournal` at an 80% minimum and keeps all existing thresholds. The release candidate measures mcpserver 83.7%, OAuth 86.1%, console 83.9%, Brain 80.9%, taskjournal 82.4%, observability 78.8%, tools 74.2% and app 69.8%. React TypeScript, Vitest and Vite build are blocking before Go tests; CodeQL covers JavaScript/TypeScript. Exact allowlist tests reject extra console keys.
+
 P9 release-candidate head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d` passed CI
 run `29306099092` and Security Evidence run `29306099088`, including Verify, Race,
 Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker build, SPDX SBOM and the
@@ -136,3 +138,15 @@ Production is never the target of active scanning from this pipeline.
 A required gate blocks merge or deployment. Experimental gates begin in report-only
 mode with a dated plan to become blocking. Suppressions require a narrow rule,
 justification, owner, and expiry date; global or permanent ignores are not accepted.
+
+
+## P8.1 Console 2.0 gates
+
+- React/TypeScript/Vite builds to fixed embedded assets; no Node service enters production.
+- CSP permits same-origin scripts/connect only; source tests forbid inline scripts, external origins, dangerous DOM injection, browser storage, service workers and WebSockets.
+- OAuth tests cover state digesting, PKCE S256, exact callback/audience/scope, single-use codes, replay/cross-flow rejection and strict opaque cookies.
+- `?key=<valid-token>` must return 401; Authorization bearer recovery and OAuth MCP authorization must remain green.
+- Task journal schemas and files are bounded, private, symlink-safe and content-free; stale active state renders disconnected rather than fake autonomy.
+- SSE is authenticated and best-effort with durable polling fallback.
+- System, payload, observability, Brain graph, security and Edge data use exact nested key allowlists; Brain identifiers are opaque and Edge remains Not paired.
+- Production closure requires exact commit, 67 tools, P9 catalog hash, existing catalog/Brain smokes, console OAuth/status/data/tasks/SSE smoke and no new application or pending deployment.

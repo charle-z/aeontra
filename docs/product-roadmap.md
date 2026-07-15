@@ -1,8 +1,8 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
-## Status snapshot — 2026-07-13
+## Status snapshot — 2026-07-14
 
 This table distinguishes implemented state from roadmap intent. Detailed acceptance
 criteria below remain future requirements until their status changes with evidence.
@@ -14,8 +14,9 @@ criteria below remain future requirements until their status changes with eviden
 | P5 deeper testing | Deployed | `main` includes Steps 78-84; production verified; runtime catalog unchanged. |
 | P6 CI/DevSecOps | Deployed | `main` and production serve `539e4d96c95aedd492ac36b428d4159054e183f4`; PR/push CI, CodeQL, Dependency Review, SBOM, and zero-High/Critical container gate are green. |
 | P7 structured observability | Deployed | `main` and production serve `d1309ed08db0170e5165f78bf406e94cfa56cc11`; green Race/Staticcheck/CodeQL/container gates and real content-free JSONL logs are recorded in the P7 baseline. |
-| Console/showcase | Deployed | P8 merge `605a56d48a495f3c8a2ce62471223187ef2f5685`; PR/post-merge gates green; production console-smoke and safe route logs verified; no new resident service. |
-| Brain memory | Merge-ready | PR #4 head `96f7ca15183271772aecbf2d0ac2cceb88e20e5d`; local and remote gates green, dated release-candidate baseline present; production remains P8 until merge, persistent `/brain` setup, deploy and smoke. |
+| Console/showcase | Deployed | P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8`; the original authenticated console remains historical evidence. |
+| Brain memory | Deployed | P9 merge `4fbe1dda02351c632e67c0f10a5c5b314df745e2` is deployed and tagged `p9`; persistent `/brain`, 67 tools, catalog and Brain smokes are verified. |
+| Console 2.0 / P8.1 | Complete / merge-ready | Branch `console-2.0` is based exactly on deployed P9. React Neo-BIOS UI, console OAuth, query-key removal, durable `/state/tasks`, SSE and safe real-data contracts pass local gates; PR and production evidence remain pending. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
 | Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |
 | Edge agents | Planned; PC/WSL validation pending | Setup must be outbound-only, easy to configure, revocable, and locally bounded. |

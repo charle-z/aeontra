@@ -95,10 +95,8 @@ func TestP9BrainIsDefinedAndReleaseReady(t *testing.T) {
 
 	for _, content := range []string{capsule, readme, agents, currentTask, handoff} {
 		for _, required := range []string{
-			"P9 Brain",
-			"p9-brain",
-			"2e3429c9d6342e8e091cadf65293c5c85b1b3259",
-			"no resident service",
+			"P8.1",
+			"4fbe1dda02351c632e67c0f10a5c5b314df745e2",
 		} {
 			if !strings.Contains(strings.ToLower(content), strings.ToLower(required)) {
 				t.Errorf("current-state document does not contain %q", required)
@@ -106,8 +104,8 @@ func TestP9BrainIsDefinedAndReleaseReady(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(roadmap, "| Brain memory | Merge-ready |") {
-		t.Error("roadmap does not mark Brain memory merge-ready")
+	if !strings.Contains(roadmap, "| Brain memory | Deployed |") {
+		t.Error("roadmap does not mark Brain memory deployed")
 	}
 	if !strings.Contains(tasks, "[x] **T01 P9 definition**") {
 		t.Error("P9 tasks do not complete T01")
