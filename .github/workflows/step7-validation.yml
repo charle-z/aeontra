@@ -42,10 +42,19 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           log = Path("artifacts/opencode-e2e.log").read_text(errors="replace")
-          tail = log[-6000:]
-          escaped = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          lines = log.splitlines()
+          signals = [
+              line for line in lines
+              if re.search(r"(?:FAIL|Error|error:|panic|fatal|permission denied|not found|exit status|docker:)", line, re.I)
+          ]
+          summary_lines = signals[-20:] + ["--- final log lines ---"] + lines[-60:]
+          summary = "\n".join(summary_lines)
+          if len(summary) > 3500:
+              summary = summary[-3500:]
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           print(f"::error file=test/opencode-e2e/run.sh,line=1,title=OpenCode E2E primary failure::{escaped}")
           PY
 
