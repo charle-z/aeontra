@@ -313,7 +313,11 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	if processResult.Err != nil || processResult.ExitCode != 0 {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
-		return result, errors.New("OpenCode terminated unexpectedly")
+		signal := stderr.FailureSignal()
+		if signal == "unknown" {
+			signal = stdout.FailureSignal()
+		}
+		return result, fmt.Errorf("OpenCode terminated unexpectedly (%s)", signal)
 	}
 	if driverErr != nil && !errors.Is(driverErr, context.Canceled) {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
@@ -719,6 +723,7 @@ type boundedSink struct {
 	limit     int64
 	written   int64
 	truncated bool
+	tail      []byte
 }
 
 func newBoundedSink(limit int64) *boundedSink {
@@ -739,7 +744,45 @@ func (b *boundedSink) Write(payload []byte) (int, error) {
 	if b.written >= b.limit && len(payload) > 0 {
 		b.truncated = true
 	}
+	const tailLimit = 8192
+	if len(payload) >= tailLimit {
+		b.tail = append(b.tail[:0], payload[len(payload)-tailLimit:]...)
+	} else {
+		b.tail = append(b.tail, payload...)
+		if len(b.tail) > tailLimit {
+			b.tail = append(b.tail[:0], b.tail[len(b.tail)-tailLimit:]...)
+		}
+	}
 	return len(payload), nil
+}
+
+func (b *boundedSink) FailureSignal() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	text := strings.ToLower(string(b.tail))
+	checks := []struct {
+		code    string
+		phrases []string
+	}{
+		{"cli", []string{"unknown argument", "unknown option", "invalid argument", "usage:"}},
+		{"provider_load", []string{"cannot find package", "module not found", "failed to resolve", "failed to load provider", "provider not found"}},
+		{"driver_connect", []string{"econnrefused", "connection refused", "connect: no such file", "socket not found"}},
+		{"permission", []string{"permission denied", "eacces"}},
+		{"config", []string{"invalid config", "configuration is invalid", "failed to parse config"}},
+		{"model", []string{"model not found", "unknown model", "invalid model"}},
+		{"provider", []string{"provider", "bridge/external-model"}},
+	}
+	for _, check := range checks {
+		for _, phrase := range check.phrases {
+			if strings.Contains(text, phrase) {
+				return check.code
+			}
+		}
+	}
+	if strings.Contains(text, `"type":"error"`) || strings.Contains(text, "error:") {
+		return "runtime_error"
+	}
+	return "unknown"
 }
 
 func (b *boundedSink) Truncated() bool {

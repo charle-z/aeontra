@@ -479,6 +479,34 @@ func TestOpenCodeLauncherRestartAndTerminalReplayDoNotExecuteTwice(t *testing.T)
 	})
 }
 
+func TestBoundedSinkFailureSignalDoesNotExposeRawOutput(t *testing.T) {
+	cases := []struct {
+		text string
+		want string
+	}{
+		{"error: unknown argument --bad /private/path", "cli"},
+		{"Cannot find package secret-provider from /private/path", "provider_load"},
+		{"connect: no such file or directory", "driver_connect"},
+		{"EACCES permission denied", "permission"},
+		{"invalid config at /private/path", "config"},
+		{"unknown model bridge/external-model", "model"},
+		{`{"type":"error","message":"private"}`, "runtime_error"},
+		{"opaque output", "unknown"},
+	}
+	for _, test := range cases {
+		sink := newBoundedSink(4096)
+		if _, err := sink.Write([]byte(test.text)); err != nil {
+			t.Fatal(err)
+		}
+		if got := sink.FailureSignal(); got != test.want {
+			t.Fatalf("output=%q signal=%q want=%q", test.text, got, test.want)
+		}
+		if strings.Contains(sink.FailureSignal(), "/private/path") || strings.Contains(sink.FailureSignal(), "secret-provider") {
+			t.Fatalf("failure signal leaked raw output: %q", sink.FailureSignal())
+		}
+	}
+}
+
 func TestOpenCodeLauncherRefusesRootExecution(t *testing.T) {
 	fixture := newOpenCodeLauncherFixture(t)
 	fixture.launcher.allowRootTest = false
