@@ -113,7 +113,7 @@ type remoteDistributedReport struct {
 
 func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	opencodeBinary := requiredAbsoluteFile(t, "OPENCODE_E2E_BIN")
-	providerPath := requiredAbsoluteFile(t, "OPENCODE_PROVIDER_E2E_PATH")
+	providerPath := requiredAbsoluteDirectory(t, "OPENCODE_PROVIDER_E2E_PATH")
 	edgeBinary := requiredAbsoluteFile(t, "MCP_EDGE_E2E_BIN")
 	driverBinary := requiredAbsoluteFile(t, "MODEL_TURN_DRIVER_E2E_BIN")
 	integrityPath := filepath.Join(repoRoot(t), "test", "opencode-e2e", "package-lock.json")
@@ -466,6 +466,19 @@ func remoteExecutedToolResults(payload map[string]any) map[string]string {
 		}
 	}
 	return results
+}
+
+func requiredAbsoluteDirectory(t *testing.T, env string) string {
+	t.Helper()
+	value := os.Getenv(env)
+	if !filepath.IsAbs(value) {
+		t.Fatalf("%s must be an absolute path", env)
+	}
+	info, err := os.Stat(value)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("%s is not a directory: %v", env, err)
+	}
+	return value
 }
 
 func directoryBytes(t *testing.T, root string) int64 {

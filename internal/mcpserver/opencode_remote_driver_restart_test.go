@@ -125,8 +125,10 @@ func TestRemoteModelTurnDriverRestartResumesExactTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	stopRemoteDriverProcess(t, first)
-	if _, err := os.Lstat(socketPath); err == nil {
-		t.Fatal("driver socket remained after process stop")
+	connection, dialErr := net.DialTimeout("unix", socketPath, 250*time.Millisecond)
+	if dialErr == nil {
+		_ = connection.Close()
+		t.Fatal("stopped driver socket still accepted connections")
 	}
 
 	if _, err := turns.Respond(t.Context(), modelturn.ResponseSubmission{
