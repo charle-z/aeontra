@@ -1,0 +1,49 @@
+name: Step 7 OpenCode Validation
+
+on:
+  push:
+    branches:
+      - p11-1-step7-validation-2
+
+permissions:
+  contents: read
+
+jobs:
+  opencode-e2e:
+    name: OpenCode v1.18.1 isolated vertical slice
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify executable runner
+        run: |
+          test -x test/opencode-e2e/run.sh
+          test "$(git ls-files -s test/opencode-e2e/run.sh | awk '{print $1}')" = "100755"
+
+      - name: Run isolated OpenCode vertical slice
+        run: |
+          set +e
+          ./test/opencode-e2e/run.sh
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s artifacts/opencode-e2e-report.json || {
+              echo "E2E returned success but artifacts/opencode-e2e-report.json is missing or empty"
+              exit 1
+            }
+          fi
+          exit "$status"
+
+      - name: Print benchmark and evidence
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
+        run: cat artifacts/opencode-e2e-report.json
+
+      - name: Upload benchmark evidence
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-e2e-report
+          path: artifacts/opencode-e2e-report.json
+          if-no-files-found: ignore
