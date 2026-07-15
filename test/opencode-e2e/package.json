@@ -1,0 +1,9 @@
+{
+  "name": "mcp-devbox-opencode-e2e-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned OpenCode runtime used only by the isolated external-model vertical slice.",
+  "dependencies": {
+    "opencode-ai": "1.18.1"
+  }
+}
