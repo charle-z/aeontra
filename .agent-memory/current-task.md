@@ -1,5 +1,7 @@
 # Current task
 
+P8.1 Console 2.0 is deployed from merge `d343264bffdc0ae1bc045a9d723e913be977090c`. P9 Brain is deployed underneath the current P11 production baseline. This branch changes neither production closure.
+
 P11.1 post-merge production verification completed on 2026-07-15.
 
 - PR #12 merged from head `00857da8f26f8130f2eab6115ebeb2b56e5ea8ce`.
@@ -9,16 +11,9 @@ P11.1 post-merge production verification completed on 2026-07-15.
 
 P11.2 branch: `p11-2-remote-opencode-relay`, based exactly on merged `origin/main` commit `01fde5067752ab1c43424d2d54f9afd914617ba5`.
 
-Step 1 implemented and locally green:
+Completed:
 
-- authoritative SQLite runtime rows bind opaque `runtime_id`, `device_id` and `workspace_id`;
-- additive migration preserves P11.1 local runtimes and legacy `status` while adding distributed `state`;
-- states cover requested, awaiting_edge, starting, awaiting_model, executing_tools, completed, failed, cancelled, disconnected and expired;
-- controller is explicit and remains pull-rendezvous for local P11.1 runtimes;
-- remote goals are stored only in immutable bounded bodies addressed by opaque refs and SHA-256 digests;
-- metadata contains only a content-free goal digest summary, not prompts, paths, commands, arguments, IPs or secrets;
-- device-bound leasing, heartbeat, expiry, result refs, active sequence/turn and idempotency are enforced;
-- wrong-device reads, digest mismatch and idempotency conflicts fail closed;
-- legacy-schema migration and all repository tests pass.
+- Step 1 commit `97f9956`: authoritative model runtimes now bind opaque Edge device/workspace IDs, distributed states, immutable goal refs/digests, heartbeat, expiry, idempotency, active turn metadata and optional result refs while preserving legacy local runtimes.
+- Step 2 implementation is locally green: private local SQLite workspace registry, opaque generated workspace IDs, add/list/remove CLI commands, absolute Linux paths, owner validation, symlink rejection, no Windows mounts and revalidation before each resolution. No workspace-management tool is exposed over MCP.
 
-Next: commit Step 1, then implement the private local Edge workspace registry and human-only `mcp-edge workspace add|list|remove` commands. Do not merge, deploy, tag, pair a real device, install on Parrot or modify Coolify.
+Next: commit Step 2, then expose the signed device-bound model runtime and model-turn Edge relay endpoints. Do not merge, deploy, tag, pair a real device, install on Parrot or modify Coolify.
