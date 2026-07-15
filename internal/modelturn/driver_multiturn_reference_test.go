@@ -35,6 +35,14 @@ func TestDriverFourTurnsSwitchesFromInlineToReferenceAcrossStoreConnections(t *t
 	handler := driver.Handler()
 
 	for sequence := uint64(1); sequence <= 4; sequence++ {
+		statusRequest := httptest.NewRequest(http.MethodGet, "/v1/runtimes/"+runtime.RuntimeID, nil)
+		statusRequest.SetPathValue("runtimeID", runtime.RuntimeID)
+		statusResponse := httptest.NewRecorder()
+		handler.ServeHTTP(statusResponse, statusRequest)
+		if statusResponse.Code != http.StatusOK {
+			metrics := callDriverRaw(t, handler, http.MethodGet, "/v1/metrics", nil, nil, http.StatusOK)
+			t.Fatalf("sequence=%d status=%d body=%s metrics=%v", sequence, statusResponse.Code, statusResponse.Body.String(), metrics)
+		}
 		payload := []byte(`{"model_id":"external","prompt":[{"content":"turn-` + string(rune('0'+sequence)) + `","role":"user"}],"protocol_version":"mcp-devbox.model-turn.v1"}`)
 		if sequence == 4 {
 			payload = []byte(`{"model_id":"external","prompt":[{"content":"` + strings.Repeat("x", int(MaxInlineRequestBytes)+4096) + `","role":"user"}],"protocol_version":"mcp-devbox.model-turn.v1"}`)

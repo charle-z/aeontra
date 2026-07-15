@@ -293,8 +293,9 @@ func (d *Driver) writeStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrTurnQuotaExceeded):
 		d.writeError(w, http.StatusInsufficientStorage, "quota_exceeded", err)
 	default:
-		d.lastInternalErrorCode.Store(driverInternalErrorCode(err))
-		d.writeError(w, http.StatusInternalServerError, "internal_error", errors.New("model turn driver operation failed"))
+		internalCode := driverInternalErrorCode(err)
+		d.lastInternalErrorCode.Store(internalCode)
+		d.writeError(w, http.StatusInternalServerError, "internal_"+internalCode, errors.New("model turn driver operation failed: "+internalCode))
 	}
 }
 
@@ -319,6 +320,10 @@ func driverInternalErrorCode(err error) string {
 		return "runtime_persist"
 	case "model runtime activation failed":
 		return "runtime_activate"
+	case "model runtime read failed":
+		return "runtime_read"
+	case "model runtime turn read failed":
+		return "runtime_turn_read"
 	case "model turn sequence read failed":
 		return "sequence_read"
 	case "model request body read failed", "model body unavailable":

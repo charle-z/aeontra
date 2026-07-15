@@ -1,7 +1,9 @@
 package modelturn
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -19,6 +21,8 @@ func TestDriverInternalErrorCodeIsClosedAndRedacted(t *testing.T) {
 		{errors.New("model request body persistence failed"), "request_persist"},
 		{errors.New("model turn commit failed"), "commit"},
 		{errors.New("model runtime activation failed"), "runtime_activate"},
+		{errors.New("model runtime read failed"), "runtime_read"},
+		{errors.New("model runtime turn read failed"), "runtime_turn_read"},
 		{errors.New("model turn sequence read failed"), "sequence_read"},
 		{errors.New("model request body read failed"), "request_read"},
 		{errors.New("model request reference binding check failed"), "reference_binding_read"},
@@ -35,5 +39,25 @@ func TestDriverInternalErrorCodeIsClosedAndRedacted(t *testing.T) {
 		if strings.Contains(got, "/home/") || strings.Contains(got, "private") {
 			t.Fatalf("driver error code leaked details: %q", got)
 		}
+	}
+}
+
+func TestDriverInternalErrorResponseContainsOnlySafeCode(t *testing.T) {
+	driver := &Driver{}
+	driver.lastInternalErrorCode.Store("")
+	recorder := httptest.NewRecorder()
+	driver.writeStoreError(recorder, errors.New("model runtime read failed"))
+	if recorder.Code != 500 {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response driverError
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != "internal_runtime_read" || response.Error != "model turn driver operation failed: runtime_read" {
+		t.Fatalf("response=%+v", response)
+	}
+	if got := driver.lastInternalErrorCode.Load().(string); got != "runtime_read" {
+		t.Fatalf("last code=%q", got)
 	}
 }
