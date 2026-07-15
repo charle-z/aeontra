@@ -61,6 +61,23 @@ func TestP81ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 		}
 	}
 
+	production := read("baselines/2026-07-14-p8_1-production.md")
+	for _, required := range []string{
+		"P8.1 production closure",
+		"d343264bffdc0ae1bc045a9d723e913be977090c",
+		"ody7vjcabb3r24b25ym34of9",
+		"daf728",
+		"p8.1",
+		"tool_count=67",
+		"sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed",
+		"not_paired",
+		"healthy",
+	} {
+		if !strings.Contains(strings.ToLower(production), strings.ToLower(required)) {
+			t.Errorf("P8.1 production closure does not contain %q", required)
+		}
+	}
+
 	for name, path := range map[string]string{
 		"design":             "console-2.0/design-neo-bios.md",
 		"mockup":             "console-2.0/mockup.html",
@@ -73,14 +90,14 @@ func TestP81ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 	}
 
 	roadmap := read("product-roadmap.md")
-	if !strings.Contains(roadmap, "| Console 2.0 / P8.1 | Complete / merge-ready |") {
-		t.Error("roadmap does not mark P8.1 complete / merge-ready")
+	if !strings.Contains(roadmap, "| Console 2.0 / P8.1 | Deployed |") {
+		t.Error("roadmap does not mark P8.1 deployed")
 	}
 
 	capsule := read("context-capsule.md")
 	for _, required := range []string{
-		"P8.1 Console 2.0 is complete / merge-ready",
-		"console-2.0",
+		"P8.1 Console 2.0 is deployed",
+		"d343264bffdc0ae1bc045a9d723e913be977090c",
 		"query-string credentials return 401",
 		"/state/tasks",
 		"2026-07-14-p8_1.md",
@@ -113,14 +130,14 @@ func TestP81ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 		"handoff":      "../.agent-memory/handoffs/latest.md",
 	} {
 		content := read(path)
-		if !strings.Contains(strings.ToLower(content), "p8.1") || !strings.Contains(strings.ToLower(content), "merge-ready") {
-			t.Errorf("%s does not record P8.1 merge-ready state", name)
+		if !strings.Contains(strings.ToLower(content), "p8.1") || !strings.Contains(strings.ToLower(content), "deployed") {
+			t.Errorf("%s does not record P8.1 deployed state", name)
 		}
 	}
 
 	documentationMap := read("documentation-map.md")
-	if !strings.Contains(documentationMap, "P8.1 release-candidate evidence") || !strings.Contains(documentationMap, "2026-07-14-p8_1.md") {
-		t.Error("documentation map does not identify P8.1 release-candidate evidence")
+	if !strings.Contains(documentationMap, "P8.1 production closure") || !strings.Contains(documentationMap, "2026-07-14-p8_1-production.md") {
+		t.Error("documentation map does not identify P8.1 production closure")
 	}
 
 	for _, path := range []string{

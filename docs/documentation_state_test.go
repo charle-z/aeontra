@@ -97,7 +97,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"Brain memory",
 		"Deployed",
 		"Console 2.0 / P8.1",
-		"Complete / merge-ready",
+		"Deployed",
 		"Universal execution profiles",
 		"Planned",
 		"Edge agents",
@@ -109,11 +109,10 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"P8.1 Console 2.0 is complete / merge-ready",
-		"console-2.0",
-		"4fbe1dda02351c632e67c0f10a5c5b314df745e2",
-		"/state/tasks",
-		"no resident service",
+		"P8.1 is closed",
+		"d343264bffdc0ae1bc045a9d723e913be977090c",
+		"67 tools",
+		"not_paired",
 		"p8.1",
 	} {
 		if !strings.Contains(handoff, required) {

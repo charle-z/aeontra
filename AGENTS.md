@@ -9,9 +9,8 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P8.1 Console 2.0 complete / merge-ready** on branch
-  `console-2.0`, based exactly on deployed/tagged P9 merge
-  `4fbe1dda02351c632e67c0f10a5c5b314df745e2`. The candidate preserves the
+- Current phase: **P8.1 Console 2.0 deployed and tagged** on `main` at
+  `d343264bffdc0ae1bc045a9d723e913be977090c`. The release preserves the
   67-tool catalog and P9 hash while adding a React/TypeScript/Vite Neo-BIOS console,
   server-side console OAuth with PKCE/state/single-use codes, strict opaque cookies,
   permanent HTTP 401 for query-string credentials, header-only bearer recovery,
@@ -19,8 +18,9 @@ Operating rules for any AI agent working in this repo. Read this first, then
   allowlisted System/Agents/Tasks/Brain/Graph/Observability/Security/Event data.
   Brain graph IDs are opaque and Edge remains `Not paired`. No free terminal,
   autonomous agent, Edge Core, Parrot workcell, HTB integration, new application,
-  resident service, queue or database server is part of P8.1. The exact branch must
-  still pass remote gates, merge, deploy, smoke and receive annotated tag `p8.1`.
+  resident service, queue or database server is part of P8.1. PR #10, remote gates,
+  deployment, production smoke and annotated tag `p8.1` are closed and recorded in
+  `docs/baselines/2026-07-14-p8_1-production.md`.
   The project has stdio and HTTP/OAuth transports, policy core, 67 annotated MCP
   tools, action plans, audit, persistent notes, Brain and adversarial tests.
   The cheap-model worker plan is

@@ -94,9 +94,9 @@ func TestP9ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 		"handoff":      "../.agent-memory/handoffs/latest.md",
 	} {
 		content := read(path)
-		if !strings.Contains(strings.ToLower(content), "p9") ||
-			!strings.Contains(content, "4fbe1dda02351c632e67c0f10a5c5b314df745e2") {
-			t.Errorf("%s does not record the deployed P9 base", name)
+		if !strings.Contains(strings.ToLower(content), "p8.1") ||
+			!strings.Contains(content, "d343264bffdc0ae1bc045a9d723e913be977090c") {
+			t.Errorf("%s does not record the deployed successor to P9", name)
 		}
 	}
 

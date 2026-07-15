@@ -28,7 +28,9 @@ restore, update, rollback, and troubleshooting are governed by
 P8.1 release-candidate evidence is `docs/baselines/2026-07-14-p8_1.md` plus
 `docs/p8_1_closure_test.go`. It records the React Neo-BIOS UI, console OAuth migration,
 query-key removal, durable task journal, SSE and exact safe data schemas while
-production remains the tagged P9 baseline until merge and deploy.
+production remains the tagged P9 baseline until merge and deploy. P8.1 production closure
+is recorded separately in `docs/baselines/2026-07-14-p8_1-production.md`;
+the historical release-candidate baseline is not rewritten.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |

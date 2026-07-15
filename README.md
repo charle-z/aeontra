@@ -103,7 +103,8 @@ protocol change is introduced. See `docs/console.md` and
 local Git, disposable SQLite FTS5, `/brain`, 67 tools, `cmd/mcp-catalog-smoke` and `cmd/brain-smoke` are verified in production. The deterministic catalog hash is
 `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
 
-**P8.1 Console 2.0 is complete / merge-ready on `console-2.0`:** the existing
+**P8.1 Console 2.0 is deployed and tagged `p8.1` at
+`d343264bffdc0ae1bc045a9d723e913be977090c`:** the existing
 Go application now embeds a React/TypeScript/Vite Neo-BIOS operations firmware. It
 shows only exact allowlisted real data, durable content-free task state and SSE; Brain
 uses opaque graph IDs and Edge honestly remains Not paired. Console OAuth completes
@@ -111,8 +112,9 @@ server-side with PKCE/state/single-use codes and an opaque
 `Secure; HttpOnly; SameSite=Strict` cookie. Query-string credentials always return
 401, while an Authorization bearer remains recovery-only. No new MCP tool, listener,
 application, resident service, free shell, autonomous agent or workcell is introduced.
-Release-candidate evidence is in `docs/baselines/2026-07-14-p8_1.md`; remote
-gates, merge, deploy, production smoke and annotated tag `p8.1` remain mandatory.
+Release-candidate evidence remains in `docs/baselines/2026-07-14-p8_1.md`; completed
+remote gates, merge, deployment and production smokes are recorded separately in
+`docs/baselines/2026-07-14-p8_1-production.md`.
 
 Optional local Brain startup:
 
