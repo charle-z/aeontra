@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - p11-1-step7-final-ci
   pull_request:
 
 permissions:
