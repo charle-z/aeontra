@@ -24,9 +24,10 @@ jobs:
 
       - name: Run isolated OpenCode vertical slice
         run: |
+          mkdir -p artifacts
           set +e
-          ./test/opencode-e2e/run.sh
-          status=$?
+          ./test/opencode-e2e/run.sh 2>&1 | tee artifacts/opencode-e2e.log
+          status=${PIPESTATUS[0]}
           set -e
           if [ "$status" -eq 0 ]; then
             test -s artifacts/opencode-e2e-report.json || {
@@ -35,6 +36,14 @@ jobs:
             }
           fi
           exit "$status"
+
+      - name: Upload E2E execution log
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e.log') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-e2e-log
+          path: artifacts/opencode-e2e.log
+          if-no-files-found: ignore
 
       - name: Print benchmark and evidence
         if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
