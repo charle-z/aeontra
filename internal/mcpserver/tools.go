@@ -52,6 +52,7 @@ func (s *Server) register() {
 	catalog.RegisterRuntime(s.addCatalogTool, func() (any, error) {
 		return s.RuntimeInfo()
 	})
+	s.addClientCapabilitiesTool()
 
 	catalog.RegisterRepositoryReads(s.addCatalogTool, s.svc)
 

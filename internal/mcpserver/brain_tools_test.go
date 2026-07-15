@@ -40,26 +40,26 @@ var brainToolOrder = []string{"brain_search", "brain_read", "brain_write", "brai
 
 func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 71 {
-		t.Fatalf("tool order length=%d want=71", len(server.order))
+	if len(server.order) != 72 {
+		t.Fatalf("tool order length=%d want=72", len(server.order))
 	}
-	if server.order[2] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:4])
+	if server.order[3] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:5])
 	}
-	if !reflect.DeepEqual(server.order[7:10], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[7:10])
+	if !reflect.DeepEqual(server.order[8:11], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[8:11])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
-		if name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") {
+		if name != "mcp_client_capabilities" && name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") {
 			historical = append(historical, name)
 		}
 	}
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[66:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[66:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[67:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[67:], brainToolOrder)
 	}
 
 	snapshot, err := server.CatalogInfo()
@@ -68,7 +68,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	legacy := make([]CatalogTool, 0, 62)
 	for _, tool := range snapshot.Tools {
-		if !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && tool.Name != "workspace_checkpoint" {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && tool.Name != "workspace_checkpoint" {
 			legacy = append(legacy, tool)
 		}
 	}
@@ -82,9 +82,25 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if len(legacy) != 62 || legacyHash != p8Hash {
 		t.Fatalf("legacy catalog changed: count=%d hash=%s", len(legacy), legacyHash)
 	}
+	previous := make([]CatalogTool, 0, 71)
+	for _, tool := range snapshot.Tools {
+		if tool.Name != "mcp_client_capabilities" {
+			previous = append(previous, tool)
+		}
+	}
+	previousEncoded, err := json.Marshal(previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousSum := sha256.Sum256(previousEncoded)
+	previousHash := "sha256:" + hex.EncodeToString(previousSum[:])
 	const resultStoreHash = "sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac"
-	if snapshot.ToolCount != 71 || snapshot.Hash != resultStoreHash {
-		t.Fatalf("result-store catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
+	if len(previous) != 71 || previousHash != resultStoreHash {
+		t.Fatalf("historical P11 catalog changed: count=%d hash=%s", len(previous), previousHash)
+	}
+	const step1Hash = "sha256:6f4a9275e4869e4a8a1846ca88a079d71842cc6a6c206b023b36b3e90635c541"
+	if snapshot.ToolCount != 72 || snapshot.Hash != step1Hash {
+		t.Fatalf("Step 1 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
 

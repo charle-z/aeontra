@@ -374,7 +374,7 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 
 	// JSON-RPC batch (array) support.
 	if trimmed[0] == '[' {
-		responses := s.handleBatchObserved([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()))
+		responses := s.handleBatchObservedSession([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()), sessionID)
 		if len(responses) == 0 {
 			s.payload.record(inputBytes, 0)
 			w.WriteHeader(http.StatusAccepted)
@@ -396,7 +396,7 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 		return
 	}
 
-	resp := s.handleObserved([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()))
+	resp := s.handleObservedSession([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()), sessionID)
 	if resp == nil {
 		// Notification: nothing to return.
 		s.payload.record(inputBytes, 0)
@@ -437,6 +437,10 @@ func (s *Server) handleBatch(raw []byte) [][]byte {
 // handleBatchObserved processes each element of a JSON-RPC batch, dropping notification
 // replies and sharing one server-generated request id across the transport operation.
 func (s *Server) handleBatchObserved(raw []byte, transport observability.Transport, requestID string) [][]byte {
+	return s.handleBatchObservedSession(raw, transport, requestID, string(transport))
+}
+
+func (s *Server) handleBatchObservedSession(raw []byte, transport observability.Transport, requestID, sessionKey string) [][]byte {
 	started := time.Now()
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	token, err := decoder.Token()
@@ -458,7 +462,7 @@ func (s *Server) handleBatchObserved(raw []byte, transport observability.Transpo
 			s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
 			return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
 		}
-		if response := s.handleObserved(message, transport, requestID); response != nil {
+		if response := s.handleObservedSession(message, transport, requestID, sessionKey); response != nil {
 			out = append(out, response)
 		}
 	}
