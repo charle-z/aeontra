@@ -1,0 +1,79 @@
+name: Step 7 OpenCode Validation
+
+on:
+  push:
+    branches:
+      - p11-1-step7-validation-8
+
+permissions:
+  contents: read
+
+jobs:
+  opencode-e2e:
+    name: OpenCode v1.18.1 isolated vertical slice
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify executable runner
+        run: |
+          test -x test/opencode-e2e/run.sh
+          test "$(git ls-files -s test/opencode-e2e/run.sh | awk '{print $1}')" = "100755"
+
+      - name: Run isolated OpenCode vertical slice
+        run: |
+          mkdir -p artifacts
+          set +e
+          ./test/opencode-e2e/run.sh 2>&1 | tee artifacts/opencode-e2e.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s artifacts/opencode-e2e-report.json || {
+              echo "E2E returned success but artifacts/opencode-e2e-report.json is missing or empty"
+              exit 1
+            }
+          fi
+          exit "$status"
+
+      - name: Annotate primary E2E failure
+        if: ${{ failure() && hashFiles('artifacts/opencode-e2e.log') != '' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          log = Path("artifacts/opencode-e2e.log").read_text(errors="replace")
+          lines = log.splitlines()
+          signals = [
+              line for line in lines
+              if re.search(r"(?:FAIL|Error|error:|panic|fatal|permission denied|not found|exit status|docker:)", line, re.I)
+          ]
+          summary_lines = signals[-20:] + ["--- final log lines ---"] + lines[-60:]
+          summary = "\n".join(summary_lines)
+          if len(summary) > 3500:
+              summary = summary[-3500:]
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=test/opencode-e2e/run.sh,line=1,title=OpenCode E2E primary failure::{escaped}")
+          PY
+
+      - name: Upload E2E execution log
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e.log') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-e2e-log
+          path: artifacts/opencode-e2e.log
+          if-no-files-found: ignore
+
+      - name: Print benchmark and evidence
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
+        run: cat artifacts/opencode-e2e-report.json
+
+      - name: Upload benchmark evidence
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-e2e-report
+          path: artifacts/opencode-e2e-report.json
+          if-no-files-found: ignore
