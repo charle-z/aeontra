@@ -27,28 +27,28 @@ type StoreStats struct {
 }
 
 type DriverMetrics struct {
-	ProtocolVersion   string     `json:"protocol_version"`
-	StageCalls        uint64     `json:"stage_calls"`
-	CreateCalls       uint64     `json:"create_calls"`
-	WaitCalls         uint64     `json:"wait_calls"`
-	CancelCalls       uint64     `json:"cancel_calls"`
-	StatusCalls       uint64     `json:"status_calls"`
-	BytesReceived     uint64     `json:"bytes_received"`
-	BytesSent         uint64     `json:"bytes_sent"`
-	Store             StoreStats `json:"store"`
-	LastInternalError string     `json:"last_internal_error,omitempty"`
+	ProtocolVersion       string     `json:"protocol_version"`
+	StageCalls            uint64     `json:"stage_calls"`
+	CreateCalls           uint64     `json:"create_calls"`
+	WaitCalls             uint64     `json:"wait_calls"`
+	CancelCalls           uint64     `json:"cancel_calls"`
+	StatusCalls           uint64     `json:"status_calls"`
+	BytesReceived         uint64     `json:"bytes_received"`
+	BytesSent             uint64     `json:"bytes_sent"`
+	Store                 StoreStats `json:"store"`
+	LastInternalErrorCode string     `json:"last_internal_error_code,omitempty"`
 }
 
 type Driver struct {
-	transport         ModelTurnTransport
-	stageCalls        atomic.Uint64
-	createCalls       atomic.Uint64
-	waitCalls         atomic.Uint64
-	cancelCalls       atomic.Uint64
-	statusCalls       atomic.Uint64
-	bytesReceived     atomic.Uint64
-	bytesSent         atomic.Uint64
-	lastInternalError atomic.Value
+	transport             ModelTurnTransport
+	stageCalls            atomic.Uint64
+	createCalls           atomic.Uint64
+	waitCalls             atomic.Uint64
+	cancelCalls           atomic.Uint64
+	statusCalls           atomic.Uint64
+	bytesReceived         atomic.Uint64
+	bytesSent             atomic.Uint64
+	lastInternalErrorCode atomic.Value
 }
 
 type driverReferenceTransport interface {
@@ -89,7 +89,7 @@ func NewDriverTransport(transport ModelTurnTransport) (*Driver, error) {
 		return nil, ErrNilRendezvous
 	}
 	driver := &Driver{transport: transport}
-	driver.lastInternalError.Store("")
+	driver.lastInternalErrorCode.Store("")
 	return driver, nil
 }
 
@@ -224,16 +224,16 @@ func (d *Driver) metrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	d.writeJSON(w, http.StatusOK, DriverMetrics{
-		ProtocolVersion:   DriverProtocolVersion,
-		StageCalls:        d.stageCalls.Load(),
-		CreateCalls:       d.createCalls.Load(),
-		WaitCalls:         d.waitCalls.Load(),
-		CancelCalls:       d.cancelCalls.Load(),
-		StatusCalls:       d.statusCalls.Load(),
-		BytesReceived:     d.bytesReceived.Load(),
-		BytesSent:         d.bytesSent.Load(),
-		Store:             stats,
-		LastInternalError: d.lastInternalError.Load().(string),
+		ProtocolVersion:       DriverProtocolVersion,
+		StageCalls:            d.stageCalls.Load(),
+		CreateCalls:           d.createCalls.Load(),
+		WaitCalls:             d.waitCalls.Load(),
+		CancelCalls:           d.cancelCalls.Load(),
+		StatusCalls:           d.statusCalls.Load(),
+		BytesReceived:         d.bytesReceived.Load(),
+		BytesSent:             d.bytesSent.Load(),
+		Store:                 stats,
+		LastInternalErrorCode: d.lastInternalErrorCode.Load().(string),
 	})
 }
 
@@ -293,8 +293,58 @@ func (d *Driver) writeStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrTurnQuotaExceeded):
 		d.writeError(w, http.StatusInsufficientStorage, "quota_exceeded", err)
 	default:
-		d.lastInternalError.Store(err.Error())
+		d.lastInternalErrorCode.Store(driverInternalErrorCode(err))
 		d.writeError(w, http.StatusInternalServerError, "internal_error", errors.New("model turn driver operation failed"))
+	}
+}
+
+func driverInternalErrorCode(err error) string {
+	if err == nil {
+		return "none"
+	}
+	switch err.Error() {
+	case "model body transaction failed", "model turn transaction failed":
+		return "transaction_begin"
+	case "model body cleanup failed", "model turn cleanup failed", "model turn expiry failed", "model runtime expiry failed", "runtime body cleanup failed":
+		return "cleanup"
+	case "model turn quota check failed", "model body quota check failed":
+		return "quota_read"
+	case "model turn quota eviction failed":
+		return "quota_eviction"
+	case "model request body persistence failed", "model request persistence failed":
+		return "request_persist"
+	case "model request body commit failed", "model turn commit failed":
+		return "commit"
+	case "model runtime persistence failed":
+		return "runtime_persist"
+	case "model runtime activation failed":
+		return "runtime_activate"
+	case "model turn sequence read failed":
+		return "sequence_read"
+	case "model request body read failed", "model body unavailable":
+		return "request_read"
+	case "model request reference binding check failed":
+		return "reference_binding_read"
+	case "model turn persistence failed":
+		return "turn_persist"
+	case "model turn activation failed":
+		return "turn_activate"
+	case "model runtime turn binding failed":
+		return "runtime_bind"
+	case "model turn read failed":
+		return "turn_read"
+	case "model response persistence failed":
+		return "response_persist"
+	case "model response commit failed":
+		return "response_commit"
+	case "model response read failed":
+		return "response_read"
+	case "model response consume failed":
+		return "response_consume"
+	case "model runtime statistics failed", "model turn statistics failed", "model body statistics failed":
+		return "statistics"
+	default:
+		return "unknown"
 	}
 }
 

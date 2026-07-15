@@ -283,8 +283,8 @@ func runOpenCodeSlice(t *testing.T, binary, provider, repo string, restart bool)
 	if controlErr != nil {
 		cancel()
 		<-processDone
-		if metrics, err := readDriverMetrics(socketPath); err == nil && metrics.LastInternalError != "" {
-			controlErr = fmt.Errorf("%w; driver_last_internal_error=%s", controlErr, metrics.LastInternalError)
+		if metrics, err := readDriverMetrics(socketPath); err == nil && metrics.LastInternalErrorCode != "" {
+			controlErr = fmt.Errorf("%w; driver_last_internal_error_code=%s stage=%d create=%d wait=%d status=%d", controlErr, metrics.LastInternalErrorCode, metrics.StageCalls, metrics.CreateCalls, metrics.WaitCalls, metrics.StatusCalls)
 		}
 		t.Fatalf("controller failed: %v\nstdout:\n%s\nstderr:\n%s", controlErr, stdout.String(), stderr.String())
 	}
