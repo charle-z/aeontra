@@ -17,11 +17,14 @@ type ToolDefinition struct {
 }
 
 type ModelRequest struct {
-	RuntimeID    string           `json:"runtime_id"`
-	Sequence     uint64           `json:"sequence"`
-	Payload      json.RawMessage  `json:"payload"`
-	OfferedTools []ToolDefinition `json:"offered_tools,omitempty"`
-	TTL          time.Duration    `json:"-"`
+	RuntimeID        string           `json:"runtime_id"`
+	Sequence         uint64           `json:"sequence"`
+	Payload          json.RawMessage  `json:"payload"`
+	CanonicalPayload bool             `json:"-"`
+	RequestRef       string           `json:"request_ref,omitempty"`
+	RequestDigest    string           `json:"request_digest,omitempty"`
+	OfferedTools     []ToolDefinition `json:"offered_tools,omitempty"`
+	TTL              time.Duration    `json:"-"`
 }
 
 type Turn struct {
