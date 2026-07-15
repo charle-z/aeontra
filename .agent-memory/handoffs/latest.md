@@ -26,11 +26,13 @@ persistent nonce replay rejection, revocation, an isolated `/edge/v1/pair` route
 and local pairing/revocation commands. Step 6 adds the signed leased-task transport:
 structured bounded objectives, per-device idempotency, reconnect-safe leases,
 heartbeat, cancellation, terminal replay protection, and local admin commands. It
-still executes no work.
+still executes no work. Step 7 adds the separately installed outbound `mcp-edge`
+client, Bubblewrap-only development validation, persistent pre-execution journal,
+heartbeat cancellation, local kill switch, WSL systemd unit and human setup guide.
 
 ## Next safe step
 
-Close Step 6 verification and commit it. Then implement the single outbound-only
-`development` WSL workcell with its local policy and idempotency journal. Do not
-expose a remote shell, pair a real device, install WSL automatically, or begin
-Parrot/HTB authority.
+Close Step 7 gates and commit it. The next action is human: review/publish/deploy the
+candidate, create a dedicated Ubuntu WSL distro, install Bubblewrap and the reviewed
+binary, then perform the first one-time pairing. Do not pair from this task, expose
+a remote shell, install WSL automatically, or begin Parrot/HTB authority.

@@ -82,9 +82,9 @@ The VPS stores only bounded, structured tasks for the single `development`
 workcell. It never sends shell text or an argv array. A task contains:
 
 - an operator-chosen idempotency key;
-- a short objective and at most eight acceptance criteria;
+- a `validate` objective kind, short summary, and at most eight acceptance criteria;
 - a workcell-local workspace name, never an absolute path;
-- `none` or `registry` network policy;
+- `none` or reserved `registry` network policy;
 - duration (30–3600 seconds) and result-size (1 KiB–1 MiB) limits.
 
 Objective and acceptance text that matches the central secret scanner is rejected.
@@ -102,9 +102,10 @@ POST /edge/v1/tasks/<task_id>/complete
 A lease lasts 15 seconds to 10 minutes. Repeating a lease request with the same
 device and holder returns the same unexpired lease. Another holder cannot receive
 that task concurrently. Once expired, the same task and idempotency key may be
-redelivered with a new lease id and incremented attempt. The WSL agent must journal
-that idempotency key locally and replay a previously completed result instead of
-executing twice; Step 7 implements that side of the contract.
+redelivered with a new lease id and incremented attempt. The WSL agent journals
+that idempotency key locally before execution and replays a previously completed
+result instead of executing twice. If it finds a `started` entry after a crash, it
+fails closed for manual reconciliation rather than rerun.
 
 Heartbeat extends only the exact active lease and reports `cancel_requested`.
 Completion requires the exact current lease. Repeating the identical completion is
@@ -138,10 +139,31 @@ database mode `0600`. The SQLite store uses full synchronization, a single
 connection, and a bounded 8192-page maximum. Symlink roots or ancestors are
 rejected.
 
-## Not yet available
+## WSL development workcell
 
-The task transport authorizes only retrieval of structured task descriptions; no
-executor exists yet. The dedicated non-root WSL client, local workspace jail,
-idempotency journal, kill switch, command policy, and bounded result staging are
-Step 7. Do not pair a real WSL device until that implementation and its adversarial
-tests are complete.
+`cmd/mcp-edge` is the separately installed outbound client. Pairing reads the code
+only from stdin, generates the device key locally, and persists private state with
+`0700`/`0600` permissions. The runner refuses root, non-Linux systems, `/`, `/mnt`,
+symlinked workspaces, overlapping private/workspace roots, missing Bubblewrap, and
+unsupported network policy.
+
+The local validation planner recognizes project markers rather than accepting a
+remote command: Go, locked pnpm/npm, Python, and Rust. Repository scripts execute
+only inside Bubblewrap with `--unshare-all`, a single writable `/workspace`,
+read-only runtime paths, ephemeral `/tmp`, no home, no Edge identity, no Windows
+mount, and no Docker socket. Output is bounded and redacted before its compact
+summary is returned.
+
+The local SQLite journal records `started` synchronously before execution and
+`completed` before delivery. Lost completion delivery is replayed without another
+execution. A crash after start fails closed instead of guessing. Heartbeat observes
+server cancellation; `/var/lib/mcp-devbox-edge/STOP` is the independent local kill
+switch. See `docs/install-edge-wsl.md` for the human-only installation and pairing
+procedure.
+
+## Deliberately deferred
+
+The initial workcell validates existing source; it is not a general coding-agent
+or remote shell. Registry-only egress, local OpenCode/provider adapters, mutation
+authority, Parrot, Burp, HTB, and security-engagement profiles require separate
+reviewed policy layers. They are not implied by pairing this device.

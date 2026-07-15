@@ -139,10 +139,10 @@ func TestTaskSpecAndLeaseInputsAreBounded(t *testing.T) {
 	store, _, device := openTaskTestStore(t)
 	tests := []TaskSpec{
 		{},
-		{IdempotencyKey: "short", Workcell: "development", Objective: Objective{Summary: "x"}, Restrictions: validRestrictions()},
-		{IdempotencyKey: "valid-key-0001", Workcell: "security", Objective: Objective{Summary: "x"}, Restrictions: validRestrictions()},
-		{IdempotencyKey: "valid-key-0002", Workcell: "development", Objective: Objective{Summary: string(make([]byte, 2049))}, Restrictions: validRestrictions()},
-		{IdempotencyKey: "valid-key-0003", Workcell: "development", Objective: Objective{Summary: "Authorization: Bearer secret-token-value"}, Restrictions: validRestrictions()},
+		{IdempotencyKey: "short", Workcell: "development", Objective: Objective{Kind: ObjectiveValidate, Summary: "x"}, Restrictions: validRestrictions()},
+		{IdempotencyKey: "valid-key-0001", Workcell: "security", Objective: Objective{Kind: ObjectiveValidate, Summary: "x"}, Restrictions: validRestrictions()},
+		{IdempotencyKey: "valid-key-0002", Workcell: "development", Objective: Objective{Kind: ObjectiveValidate, Summary: string(make([]byte, 2049))}, Restrictions: validRestrictions()},
+		{IdempotencyKey: "valid-key-0003", Workcell: "development", Objective: Objective{Kind: ObjectiveValidate, Summary: "Authorization: Bearer secret-token-value"}, Restrictions: validRestrictions()},
 	}
 	for index, spec := range tests {
 		if _, _, err := store.CreateTask(device.ID, spec); err == nil {
@@ -179,6 +179,7 @@ func validTaskSpec(key string) TaskSpec {
 		IdempotencyKey: key,
 		Workcell:       "development",
 		Objective: Objective{
+			Kind:       ObjectiveValidate,
 			Summary:    "validate the checked-out project",
 			Acceptance: []string{"checks pass", "no files outside workspace change"},
 		},

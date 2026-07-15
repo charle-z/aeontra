@@ -13,8 +13,13 @@ JSONL segments under `/state` without recording content or changing authority. P
 Step 4 adds the bounded redacted result store and three local read-only tools,
 advancing the current catalog to 71 tools with hash
 `sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
-The next goal is the minimum outbound-only Edge
-foundation; every human authority boundary remains unchanged.
+P11 Steps 5-7 implement the candidate outbound-only Edge foundation: one-use
+pairing and per-device Ed25519 identity, signed leased/idempotent tasks, and a
+separately installed WSL `development` workcell with a persistent local journal,
+Bubblewrap isolation, heartbeat cancellation and a kill switch. It accepts only
+structured validation objectives; no remote shell, argv, sudo, Docker socket,
+Windows mount, pairing, publication or deployment is implied. Every human authority
+boundary remains unchanged.
 
 P0 architecture foundations are deployed. The deterministic catalog, centralized
 build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`
@@ -428,10 +433,10 @@ The admin channel is loopback-only and must stay that way.
    validate/commit, PR-check and deployment-observation workflows.
 2. Add only the compact, read-only or fixed-profile orchestration primitives proven
    necessary by those measurements; preserve existing tools and policy paths.
-3. Build the outbound-only WSL `development` workcell against the implemented Edge
-   identity and leased-task protocol. Enforce its local root, command, network,
-   duration, output and idempotency boundaries before pairing a real device. Do not
-   expose a remote shell or install WSL components automatically.
+3. Review and publish the implemented outbound-only WSL `development` workcell,
+   deploy the matching VPS Edge protocol, then follow `docs/install-edge-wsl.md` for
+   the first human-controlled installation and pairing. Do not pair automatically,
+   expose a remote shell, or weaken Bubblewrap/identity boundaries.
 4. Keep Parrot, HTB, autonomous-agent and privileged-workcell authority out of scope
    until the Edge foundation is independently bounded and reviewed.
 

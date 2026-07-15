@@ -30,7 +30,7 @@ func TestConsoleDataProviderReportsRealSafeAggregates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	snapshot, err := server.consoleDataProvider(testToken, provider)(context.Background())
+	snapshot, err := server.consoleDataProvider(testToken, provider, nil)(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +52,21 @@ func TestConsoleDataProviderReportsRealSafeAggregates(t *testing.T) {
 	}
 	if snapshot.Edge.State != "not_paired" || snapshot.Brain.Available || snapshot.Brain.Nodes == nil || snapshot.Brain.Edges == nil {
 		t.Fatalf("edge=%+v brain=%+v", snapshot.Edge, snapshot.Brain)
+	}
+}
+
+func TestConsoleDataProviderReportsPairedOnlyFromRealEdgeState(t *testing.T) {
+	server, _, _ := newObservedServer(t)
+	snapshot, err := server.consoleDataProvider("", nil, func() string { return "paired" })(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Edge.State != "paired" {
+		t.Fatalf("edge=%+v", snapshot.Edge)
+	}
+	invalid, err := server.consoleDataProvider("", nil, func() string { return "fabricated" })(context.Background())
+	if err != nil || invalid.Edge.State != "not_paired" {
+		t.Fatalf("edge=%+v err=%v", invalid.Edge, err)
 	}
 }
 
@@ -99,7 +114,7 @@ A private body.
 	service.WithBrainStore(store)
 	server := New(service)
 
-	snapshot, err := server.consoleDataProvider("", nil)(context.Background())
+	snapshot, err := server.consoleDataProvider("", nil, nil)(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -93,6 +93,16 @@ func serveTransport(runtime *appRuntime, transport transportConfig) (serveErr er
 	return runtime.Server.ServeHTTPWithOptions(ctx, transport.Addr, transport.Token, transport.OAuth, mcpserver.HTTPOptions{
 		ConsoleSecureCookies: transport.ConsoleSecureCookies,
 		EdgeHandler:          edge.NewHTTPHandler(runtime.Edge),
+		EdgeState: func() string {
+			count, err := runtime.Edge.ActiveCount()
+			if err != nil {
+				return "unavailable"
+			}
+			if count > 0 {
+				return "paired"
+			}
+			return "not_paired"
+		},
 	})
 }
 

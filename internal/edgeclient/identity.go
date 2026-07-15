@@ -1,0 +1,256 @@
+package edgeclient
+
+import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/edge"
+)
+
+const (
+	identityFile   = "identity.json"
+	privateKeyFile = "device.key"
+	clientTimeout  = 30 * time.Second
+)
+
+type Identity struct {
+	SchemaVersion int    `json:"schema_version"`
+	ServerURL     string `json:"server_url"`
+	DeviceID      string `json:"device_id"`
+	Name          string `json:"name"`
+}
+
+type PairOptions struct {
+	ServerURL  string
+	Code       string
+	Name       string
+	StateRoot  string
+	HTTPClient *http.Client
+}
+
+func Pair(ctx context.Context, opts PairOptions) (Identity, error) {
+	serverURL, err := validateServerURL(opts.ServerURL)
+	if err != nil {
+		return Identity{}, err
+	}
+	if err := preparePrivateRoot(opts.StateRoot); err != nil {
+		return Identity{}, err
+	}
+	for _, name := range []string{identityFile, privateKeyFile} {
+		if _, err := os.Lstat(filepath.Join(opts.StateRoot, name)); err == nil {
+			return Identity{}, errors.New("edge device is already paired")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return Identity{}, errors.New("edge state unavailable")
+		}
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return Identity{}, errors.New("device key generation failed")
+	}
+	body, _ := json.Marshal(map[string]string{
+		"code":       strings.TrimSpace(opts.Code),
+		"name":       strings.TrimSpace(opts.Name),
+		"public_key": edge.EncodePublicKey(publicKey),
+	})
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, serverURL+edge.PairPath, bytes.NewReader(body))
+	if err != nil {
+		return Identity{}, errors.New("pairing request failed")
+	}
+	request.Header.Set("Content-Type", "application/json")
+	client := opts.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: clientTimeout}
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return Identity{}, errors.New("pairing endpoint unavailable")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
+		return Identity{}, fmt.Errorf("pairing rejected with HTTP %d", response.StatusCode)
+	}
+	var device edge.Device
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 4<<10))
+	decoder.DisallowUnknownFields()
+	if err := decodeSingleJSON(decoder, &device); err != nil || !deviceIDPattern.MatchString(device.ID) || !deviceNamePattern.MatchString(device.Name) || device.State != edge.StateActive {
+		return Identity{}, errors.New("invalid pairing response")
+	}
+	identity := Identity{SchemaVersion: 1, ServerURL: serverURL, DeviceID: device.ID, Name: device.Name}
+	if err := persistIdentity(opts.StateRoot, identity, privateKey); err != nil {
+		return Identity{}, err
+	}
+	return identity, nil
+}
+
+func LoadIdentity(root string) (Identity, ed25519.PrivateKey, error) {
+	if err := validatePrivateRoot(root); err != nil {
+		return Identity{}, nil, err
+	}
+	identityPath := filepath.Join(root, identityFile)
+	keyPath := filepath.Join(root, privateKeyFile)
+	if err := requirePrivateRegularFile(identityPath); err != nil {
+		return Identity{}, nil, err
+	}
+	if err := requirePrivateRegularFile(keyPath); err != nil {
+		return Identity{}, nil, err
+	}
+	identityBytes, err := os.ReadFile(identityPath)
+	if err != nil || len(identityBytes) > 4<<10 {
+		return Identity{}, nil, errors.New("edge identity unavailable")
+	}
+	var identity Identity
+	decoder := json.NewDecoder(bytes.NewReader(identityBytes))
+	decoder.DisallowUnknownFields()
+	if err := decodeSingleJSON(decoder, &identity); err != nil || identity.SchemaVersion != 1 {
+		return Identity{}, nil, errors.New("edge identity is invalid")
+	}
+	if _, err := validateServerURL(identity.ServerURL); err != nil || !deviceIDPattern.MatchString(identity.DeviceID) || !deviceNamePattern.MatchString(identity.Name) {
+		return Identity{}, nil, errors.New("edge identity is invalid")
+	}
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil || len(keyBytes) > 256 {
+		return Identity{}, nil, errors.New("device key unavailable")
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(string(keyBytes)))
+	if err != nil || len(decoded) != ed25519.PrivateKeySize {
+		return Identity{}, nil, errors.New("device key is invalid")
+	}
+	return identity, ed25519.PrivateKey(decoded), nil
+}
+
+func persistIdentity(root string, identity Identity, privateKey ed25519.PrivateKey) error {
+	identityBytes, _ := json.Marshal(identity)
+	identityBytes = append(identityBytes, '\n')
+	if err := writePrivateAtomic(filepath.Join(root, identityFile), identityBytes); err != nil {
+		return errors.New("identity persistence failed")
+	}
+	keyBytes := []byte(base64.RawURLEncoding.EncodeToString(privateKey) + "\n")
+	if err := writePrivateAtomic(filepath.Join(root, privateKeyFile), keyBytes); err != nil {
+		_ = os.Remove(filepath.Join(root, identityFile))
+		return errors.New("device key persistence failed")
+	}
+	return nil
+}
+
+func validateServerURL(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return "", errors.New("edge server must be an HTTPS origin")
+	}
+	return strings.TrimSuffix(parsed.String(), "/"), nil
+}
+
+func preparePrivateRoot(root string) error {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if !filepath.IsAbs(root) {
+		return errors.New("edge state root must be absolute")
+	}
+	if err := rejectSymlinkPath(root); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return errors.New("edge state root unavailable")
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		return errors.New("edge state permissions failed")
+	}
+	return validatePrivateRoot(root)
+}
+
+func validatePrivateRoot(root string) error {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if !filepath.IsAbs(root) {
+		return errors.New("edge state root must be absolute")
+	}
+	if err := rejectSymlinkPath(root); err != nil {
+		return err
+	}
+	info, err := os.Lstat(root)
+	if err != nil || !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("edge state root is unsafe")
+	}
+	return nil
+}
+
+func rejectSymlinkPath(path string) error {
+	current := filepath.Clean(path)
+	for {
+		info, err := os.Lstat(current)
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("edge path contains a symlink")
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return errors.New("edge path unavailable")
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return nil
+		}
+		current = parent
+	}
+}
+
+func requirePrivateRegularFile(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("edge private file is unsafe")
+	}
+	return nil
+}
+
+func writePrivateAtomic(path string, content []byte) error {
+	if info, err := os.Lstat(path); err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
+		return errors.New("unsafe destination")
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".edge-private-*")
+	if err != nil {
+		return err
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryName, path)
+}
+
+func decodeSingleJSON(decoder *json.Decoder, output any) error {
+	if err := decoder.Decode(output); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errors.New("trailing JSON value")
+	}
+	return nil
+}
+
+var deviceIDPattern = regexp.MustCompile(`^ed_[a-f0-9]{32}$`)
+var deviceNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)

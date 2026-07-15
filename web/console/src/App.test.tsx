@@ -54,6 +54,8 @@ describe("Neo-BIOS operations firmware", () => {
   it("renders real runtime and VPS data across all specified tabs", async () => {
     render(<App />);
     expect(screen.getByText("MCP DEVBOX OPERATIONS FIRMWARE")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Project" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Edge device" })).toBeInTheDocument();
     for (const tab of ["System", "Agents", "Tasks", "Brain", "Graph", "Edge", "Observability", "Security", "Events"]) {
       expect(screen.getByRole("tab", { name: tab })).toBeInTheDocument();
     }

@@ -7,4 +7,5 @@ import "net/http"
 type HTTPOptions struct {
 	ConsoleSecureCookies bool
 	EdgeHandler          http.Handler
+	EdgeState            func() string
 }

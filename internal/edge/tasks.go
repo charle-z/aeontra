@@ -22,6 +22,7 @@ var ErrNoTaskAvailable = errors.New("no edge task available")
 type TaskState string
 type Outcome string
 type NetworkPolicy string
+type ObjectiveKind string
 
 const (
 	TaskQueued    TaskState = "queued"
@@ -36,11 +37,14 @@ const (
 
 	NetworkNone     NetworkPolicy = "none"
 	NetworkRegistry NetworkPolicy = "registry"
+
+	ObjectiveValidate ObjectiveKind = "validate"
 )
 
 type Objective struct {
-	Summary    string   `json:"summary"`
-	Acceptance []string `json:"acceptance"`
+	Kind       ObjectiveKind `json:"kind"`
+	Summary    string        `json:"summary"`
+	Acceptance []string      `json:"acceptance"`
 }
 
 type Restrictions struct {
@@ -260,7 +264,7 @@ func (s *Store) TaskStatus(taskID string) (Task, error) {
 }
 
 func validateTaskSpec(spec TaskSpec) error {
-	if !idempotencyPattern.MatchString(spec.IdempotencyKey) || spec.Workcell != "development" || len(spec.Objective.Summary) == 0 || len(spec.Objective.Summary) > 2048 || len(spec.Objective.Acceptance) > 8 {
+	if !idempotencyPattern.MatchString(spec.IdempotencyKey) || spec.Workcell != "development" || spec.Objective.Kind != ObjectiveValidate || len(spec.Objective.Summary) == 0 || len(spec.Objective.Summary) > 2048 || len(spec.Objective.Acceptance) > 8 {
 		return errors.New("invalid task specification")
 	}
 	if redacted, changed := policy.Redact(spec.Objective.Summary); changed || redacted != spec.Objective.Summary {

@@ -1,0 +1,193 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+)
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		usage(stderr)
+		return 2
+	}
+	var err error
+	switch args[0] {
+	case "pair":
+		err = pair(args[1:], stdin, stdout, stderr)
+	case "run":
+		err = runWorkcell(args[1:], stderr)
+	case "help", "--help", "-h":
+		usage(stdout)
+		return 0
+	default:
+		fmt.Fprintln(stderr, "unknown command: "+args[0])
+		usage(stderr)
+		return 2
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, "mcp-edge: "+err.Error())
+		return 1
+	}
+	return 0
+}
+
+func pair(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("pair", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	server := fs.String("server", "", "HTTPS mcp-devbox origin")
+	state := fs.String("state", defaultStateRoot(), "private Edge state root")
+	name := fs.String("name", "wsl-development", "device name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	code, err := readPairingCode(stdin)
+	if err != nil {
+		return err
+	}
+	identity, err := edgeclient.Pair(context.Background(), edgeclient.PairOptions{ServerURL: *server, Code: code, Name: *name, StateRoot: *state})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, "paired "+identity.DeviceID)
+	return nil
+}
+
+func runWorkcell(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	state := fs.String("state", defaultStateRoot(), "private Edge state root")
+	root := fs.String("root", "", "dedicated Linux workspace root")
+	poll := fs.Duration("poll", 5*time.Second, "empty queue polling interval")
+	leaseTTL := fs.Duration("lease", time.Minute, "task lease duration")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *poll <= 0 || *leaseTTL < 15*time.Second || *leaseTTL > 10*time.Minute {
+		return errors.New("poll must be positive and lease must be between 15s and 10m")
+	}
+	if err := ensureWorkcellUser(); err != nil {
+		return err
+	}
+	validatedRoot, err := edgeclient.ValidateWorkcellRoot(*root)
+	if err != nil {
+		return err
+	}
+	if pathsOverlap(validatedRoot, *state) {
+		return errors.New("workcell and private state roots must not overlap")
+	}
+	if _, err := exec.LookPath("bwrap"); err != nil {
+		return errors.New("bubblewrap is required for the development workcell")
+	}
+	transport, err := edgeclient.NewTransport(*state, nil)
+	if err != nil {
+		return err
+	}
+	journal, err := edgeclient.OpenJournal(*state)
+	if err != nil {
+		return err
+	}
+	defer journal.Close()
+	identity, _, err := edgeclient.LoadIdentity(*state)
+	if err != nil {
+		return err
+	}
+	opaqueDeviceID := strings.TrimPrefix(identity.DeviceID, "ed_")
+	if len(opaqueDeviceID) < 16 {
+		return errors.New("paired device identity is invalid")
+	}
+	holder := "agent-" + opaqueDeviceID[:16]
+	heartbeatInterval := *leaseTTL / 3
+	if heartbeatInterval > 5*time.Second {
+		heartbeatInterval = 5 * time.Second
+	}
+	runner := edgeclient.Runner{
+		Transport:         transport,
+		Journal:           journal,
+		Executor:          &edgeclient.Workcell{Root: validatedRoot},
+		Holder:            holder,
+		LeaseTTL:          *leaseTTL,
+		HeartbeatInterval: heartbeatInterval,
+		StopPath:          filepath.Join(*state, "STOP"),
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	for {
+		worked, err := runner.RunOnce(ctx)
+		if errors.Is(err, edgeclient.ErrKillSwitch) || errors.Is(ctx.Err(), context.Canceled) {
+			return nil
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, "mcp-edge: task cycle failed safely")
+		}
+		delay := *poll
+		if worked {
+			delay = 250 * time.Millisecond
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(delay):
+		}
+	}
+}
+
+func readPairingCode(input io.Reader) (string, error) {
+	reader := bufio.NewReader(io.LimitReader(input, 256))
+	value, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", errors.New("pairing code unavailable")
+	}
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, "ep_") || len(value) > 128 {
+		return "", errors.New("valid pairing code required on stdin")
+	}
+	return value, nil
+}
+
+func defaultStateRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "mcp-devbox-edge")
+}
+
+func pathsOverlap(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	return contains(left, right) || contains(right, left)
+}
+
+func contains(root, candidate string) bool {
+	relative, err := filepath.Rel(root, candidate)
+	return err == nil && (relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))))
+}
+
+func usage(output io.Writer) {
+	fmt.Fprint(output, `mcp-edge — outbound-only mcp-devbox development workcell
+
+Usage:
+  mcp-edge pair --server https://mcp.example.com [--state <ABS_PATH>] [--name wsl-development]
+  mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 1m]
+
+The pairing code is read from stdin and is never accepted as a command-line flag.
+Create the local STOP file to activate the kill switch.
+`)
+}

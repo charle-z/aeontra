@@ -120,6 +120,7 @@ func edgeTaskCreate(args []string, stdout, stderr io.Writer) error {
 		IdempotencyKey: strings.TrimSpace(*idempotency),
 		Workcell:       "development",
 		Objective: edge.Objective{
+			Kind:       edge.ObjectiveValidate,
 			Summary:    strings.TrimSpace(*objective),
 			Acceptance: acceptance,
 		},
