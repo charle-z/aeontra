@@ -204,6 +204,11 @@ func (r *modelRelay) handleRuntimeAction(w http.ResponseWriter, request *http.Re
 	}
 	switch action {
 	case "heartbeat":
+		switch runtime.State {
+		case modelturn.RuntimeStateCompleted, modelturn.RuntimeStateFailed, modelturn.RuntimeStateCancelled, modelturn.RuntimeStateExpired:
+			writeJSON(w, http.StatusOK, runtime)
+			return
+		}
 		updated, err := r.turns.HeartbeatRuntime(request.Context(), runtime.RuntimeID, device.ID)
 		if err != nil {
 			http.Error(w, "runtime heartbeat rejected", http.StatusConflict)
