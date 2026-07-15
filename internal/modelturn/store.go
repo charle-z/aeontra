@@ -169,6 +169,10 @@ func OpenStore(cfg StoreConfig) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := store.ensureRuntimeSchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = db.Close()
 		return nil, errors.New("model turn database permissions could not be secured")
@@ -285,10 +289,10 @@ func (s *Store) CreateTurn(ctx context.Context, request ModelRequest) (Turn, err
 	if err := s.cleanupLocked(ctx, tx, now); err != nil {
 		return Turn{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO model_runtimes(runtime_id,status,created_at,updated_at) VALUES(?,'running',?,?)`, request.RuntimeID, now.UnixNano(), now.UnixNano()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO model_runtimes(runtime_id,status,controller,state,expires_at,created_at,updated_at) VALUES(?,'running','pull_rendezvous','awaiting_model',?,?,?)`, request.RuntimeID, now.Add(MaxTurnTTL).UnixNano(), now.UnixNano(), now.UnixNano()); err != nil {
 		return Turn{}, errors.New("model runtime persistence failed")
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET status='running',updated_at=? WHERE runtime_id=? AND status IN ('ready','running')`, now.UnixNano(), request.RuntimeID)
+	result, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET status='running',updated_at=? WHERE runtime_id=? AND state NOT IN ('completed','failed','cancelled','expired')`, now.UnixNano(), request.RuntimeID)
 	if err != nil {
 		return Turn{}, errors.New("model runtime activation failed")
 	}
@@ -318,6 +322,9 @@ func (s *Store) CreateTurn(ctx context.Context, request ModelRequest) (Turn, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE model_turns SET status='awaiting_model' WHERE turn_id=? AND status='created'`, turnID); err != nil {
 		return Turn{}, errors.New("model turn activation failed")
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET state='awaiting_model',status='running',last_sequence=?,active_turn_id=?,updated_at=? WHERE runtime_id=? AND state NOT IN ('completed','failed','cancelled','expired')`, request.Sequence, turnID, now.UnixNano(), request.RuntimeID); err != nil {
+		return Turn{}, errors.New("model runtime turn binding failed")
 	}
 	if err := tx.Commit(); err != nil {
 		return Turn{}, errors.New("model turn commit failed")
@@ -605,8 +612,14 @@ func (s *Store) cleanupLocked(ctx context.Context, tx *sql.Tx, now time.Time) er
 	if _, err := tx.ExecContext(ctx, `UPDATE model_turns SET status='expired' WHERE expires_at<=? AND status IN ('created','awaiting_model','disconnected')`, now.UnixNano()); err != nil {
 		return errors.New("model turn expiry failed")
 	}
+	if _, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET state='expired',status='failed',updated_at=? WHERE expires_at>0 AND expires_at<=? AND state NOT IN ('completed','failed','cancelled','expired')`, now.UnixNano(), now.UnixNano()); err != nil {
+		return errors.New("model runtime expiry failed")
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM turn_bodies WHERE expires_at<=?`, now.UnixNano()); err != nil {
 		return errors.New("model body cleanup failed")
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?`, now.UnixNano()); err != nil {
+		return errors.New("runtime body cleanup failed")
 	}
 	return nil
 }
