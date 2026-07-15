@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/modelturn"
 )
 
 const (
@@ -36,11 +38,14 @@ type pairRequest struct {
 
 // NewHTTPHandler exposes only the unauthenticated, one-time pairing exchange.
 // Device-authenticated routes are added explicitly with RequireDevice.
-func NewHTTPHandler(store *Store) http.Handler {
+func NewHTTPHandler(store *Store, modelTurns ...*modelturn.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(PairPath, store.handlePair)
 	mux.Handle("/edge/v1/tasks/lease", store.RequireDevice(http.HandlerFunc(store.handleLease)))
 	mux.Handle("/edge/v1/tasks/", store.RequireDevice(http.HandlerFunc(store.handleTaskAction)))
+	if len(modelTurns) > 0 && modelTurns[0] != nil {
+		registerModelRelayRoutes(mux, store, modelTurns[0])
+	}
 	return mux
 }
 
@@ -93,8 +98,12 @@ func decodePairRequest(w http.ResponseWriter, r *http.Request) (pairRequest, err
 // RequireDevice authenticates a bounded HTTP request using the paired device's
 // Ed25519 key and rejects reused nonces before invoking the next handler.
 func (s *Store) RequireDevice(next http.Handler) http.Handler {
+	return s.requireDevice(next, maxSignedBody)
+}
+
+func (s *Store) requireDevice(next http.Handler, maxBody int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, maxSignedBody)
+		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "edge authentication failed", http.StatusUnauthorized)

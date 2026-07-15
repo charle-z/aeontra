@@ -217,6 +217,7 @@ func (s *Store) startRuntimeLocked(ctx context.Context, request BoundRuntimeRequ
 		runtimeID, request.DeviceID, request.WorkspaceID, controller, state, request.GoalSummary, request.GoalRef, request.GoalDigest, expires.UnixNano(), request.IdempotencyKeyDigest, now.UnixNano(), now.UnixNano()); err != nil {
 		return Runtime{}, errors.New("model runtime persistence failed")
 	}
+	s.signal()
 	return Runtime{RuntimeID: runtimeID, DeviceID: request.DeviceID, WorkspaceID: request.WorkspaceID, Controller: controller, State: state, Status: RuntimeReady, GoalSummary: request.GoalSummary, CreatedAt: now, ExpiresAt: expires, UpdatedAt: now, goalRef: request.GoalRef, goalDigest: request.GoalDigest, idempotencyKeyDigest: request.IdempotencyKeyDigest}, nil
 }
 

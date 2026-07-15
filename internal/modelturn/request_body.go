@@ -100,10 +100,10 @@ func (s *Store) CreateTurnFromReference(ctx context.Context, request ModelReques
 	if err := s.cleanupLocked(ctx, tx, now); err != nil {
 		return Turn{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO model_runtimes(runtime_id,status,created_at,updated_at) VALUES(?,'running',?,?)`, request.RuntimeID, now.UnixNano(), now.UnixNano()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO model_runtimes(runtime_id,status,controller,state,expires_at,created_at,updated_at) VALUES(?,'running','pull_rendezvous','awaiting_model',?,?,?)`, request.RuntimeID, now.Add(MaxTurnTTL).UnixNano(), now.UnixNano(), now.UnixNano()); err != nil {
 		return Turn{}, errors.New("model runtime persistence failed")
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET status='running',updated_at=? WHERE runtime_id=? AND status IN ('ready','running')`, now.UnixNano(), request.RuntimeID)
+	result, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET status='running',updated_at=? WHERE runtime_id=? AND state NOT IN ('completed','failed','cancelled','expired')`, now.UnixNano(), request.RuntimeID)
 	if err != nil {
 		return Turn{}, errors.New("model runtime activation failed")
 	}
@@ -153,6 +153,9 @@ func (s *Store) CreateTurnFromReference(ctx context.Context, request ModelReques
 	if _, err := tx.ExecContext(ctx, `UPDATE model_turns SET status='awaiting_model' WHERE turn_id=? AND status='created'`, turnID); err != nil {
 		return Turn{}, errors.New("model turn activation failed")
 	}
+	if _, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET state='awaiting_model',status='running',last_sequence=?,active_turn_id=?,updated_at=? WHERE runtime_id=? AND state NOT IN ('completed','failed','cancelled','expired')`, request.Sequence, turnID, now.UnixNano(), request.RuntimeID); err != nil {
+		return Turn{}, errors.New("model runtime turn binding failed")
+	}
 	if err := tx.Commit(); err != nil {
 		return Turn{}, errors.New("model turn commit failed")
 	}
@@ -162,6 +165,7 @@ func (s *Store) CreateTurnFromReference(ctx context.Context, request ModelReques
 		ID:             TurnID(turnID),
 		Sequence:       request.Sequence,
 		RequestDigest:  request.RequestDigest,
+		RequestRef:     request.RequestRef,
 		OfferedToolIDs: offered,
 		CreatedAt:      now,
 		ExpiresAt:      expiresAt,

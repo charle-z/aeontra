@@ -92,7 +92,7 @@ func serveTransport(runtime *appRuntime, transport transportConfig) (serveErr er
 	defer stop()
 	return runtime.Server.ServeHTTPWithOptions(ctx, transport.Addr, transport.Token, transport.OAuth, mcpserver.HTTPOptions{
 		ConsoleSecureCookies: transport.ConsoleSecureCookies,
-		EdgeHandler:          edge.NewHTTPHandler(runtime.Edge),
+		EdgeHandler:          edge.NewHTTPHandler(runtime.Edge, runtime.ModelTurns),
 		EdgeState: func() string {
 			count, err := runtime.Edge.ActiveCount()
 			if err != nil {

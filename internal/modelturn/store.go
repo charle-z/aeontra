@@ -330,7 +330,7 @@ func (s *Store) CreateTurn(ctx context.Context, request ModelRequest) (Turn, err
 		return Turn{}, errors.New("model turn commit failed")
 	}
 	s.signal()
-	return Turn{RuntimeID: request.RuntimeID, ID: TurnID(turnID), Sequence: request.Sequence, RequestDigest: digest, OfferedToolIDs: offered, CreatedAt: now, ExpiresAt: expires}, nil
+	return Turn{RuntimeID: request.RuntimeID, ID: TurnID(turnID), Sequence: request.Sequence, RequestDigest: digest, RequestRef: requestRef, OfferedToolIDs: offered, CreatedAt: now, ExpiresAt: expires}, nil
 }
 
 func (s *Store) Next(ctx context.Context, runtimeID string) (Offer, error) {
