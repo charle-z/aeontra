@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
+	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 	"github.com/charle-z/mcp-devbox/internal/tools"
@@ -25,14 +26,15 @@ const largeResultThresholdBytes = 32 << 10
 
 // Server dispatches MCP requests to the tool service.
 type Server struct {
-	svc      *tools.Service
-	name     string
-	table    map[string]toolEntry
-	order    []string
-	observer *observability.Logger
-	journal  *taskjournal.Journal
-	payload  payloadCounters
-	clients  *clientCapabilityStore
+	svc        *tools.Service
+	name       string
+	table      map[string]toolEntry
+	order      []string
+	observer   *observability.Logger
+	journal    *taskjournal.Journal
+	payload    payloadCounters
+	clients    *clientCapabilityStore
+	modelTurns *modelturn.Store
 }
 
 type toolEntry struct {
@@ -283,7 +285,10 @@ func (s *Server) callToolObservedSession(req rpcRequest, transport observability
 			IsError: true,
 		}), params.Name, observability.OutcomeError, observability.ErrorTool
 	}
-	text, stageErr := s.compactLargeToolResult(params.Name, text, false)
+	var stageErr error
+	if params.Name != "model_turn_next" {
+		text, stageErr = s.compactLargeToolResult(params.Name, text, false)
+	}
 	if stageErr != nil {
 		return resultResponse(req.ID, toolResult{
 			Content: []contentBlock{{Type: "text", Text: "large tool result could not be persisted"}},

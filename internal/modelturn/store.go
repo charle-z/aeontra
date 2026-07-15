@@ -170,6 +170,13 @@ func (s *Store) initialize() error {
 			created_at INTEGER NOT NULL,
 			expires_at INTEGER NOT NULL
 		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS model_runtimes (
+			runtime_id TEXT PRIMARY KEY,
+			status TEXT NOT NULL CHECK(status IN ('ready','running','completed','cancelled','failed')),
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS model_runtimes_status ON model_runtimes(status,updated_at)`,
 		`CREATE INDEX IF NOT EXISTS turn_bodies_expiry ON turn_bodies(expires_at)`,
 		`CREATE TABLE IF NOT EXISTS model_turns (
 			turn_id TEXT PRIMARY KEY,
@@ -240,6 +247,17 @@ func (s *Store) CreateTurn(ctx context.Context, request ModelRequest) (Turn, err
 	defer tx.Rollback()
 	if err := s.cleanupLocked(ctx, tx, now); err != nil {
 		return Turn{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO model_runtimes(runtime_id,status,created_at,updated_at) VALUES(?,'running',?,?)`, request.RuntimeID, now.UnixNano(), now.UnixNano()); err != nil {
+		return Turn{}, errors.New("model runtime persistence failed")
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET status='running',updated_at=? WHERE runtime_id=? AND status IN ('ready','running')`, now.UnixNano(), request.RuntimeID)
+	if err != nil {
+		return Turn{}, errors.New("model runtime activation failed")
+	}
+	rows, _ := result.RowsAffected()
+	if rows != 1 {
+		return Turn{}, ErrTurnConflict
 	}
 	var maxSequence sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `SELECT MAX(sequence) FROM model_turns WHERE runtime_id=?`, request.RuntimeID).Scan(&maxSequence); err != nil {

@@ -40,26 +40,26 @@ var brainToolOrder = []string{"brain_search", "brain_read", "brain_write", "brai
 
 func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 72 {
-		t.Fatalf("tool order length=%d want=72", len(server.order))
+	if len(server.order) != 77 {
+		t.Fatalf("tool order length=%d want=77", len(server.order))
 	}
-	if server.order[3] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:5])
+	if server.order[8] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:10])
 	}
-	if !reflect.DeepEqual(server.order[8:11], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[8:11])
+	if !reflect.DeepEqual(server.order[13:16], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[13:16])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
-		if name != "mcp_client_capabilities" && name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") {
+		if name != "mcp_client_capabilities" && !strings.HasPrefix(name, "model_") && name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") {
 			historical = append(historical, name)
 		}
 	}
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[67:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[67:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[72:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[72:], brainToolOrder)
 	}
 
 	snapshot, err := server.CatalogInfo()
@@ -68,7 +68,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	legacy := make([]CatalogTool, 0, 62)
 	for _, tool := range snapshot.Tools {
-		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && tool.Name != "workspace_checkpoint" {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && tool.Name != "workspace_checkpoint" {
 			legacy = append(legacy, tool)
 		}
 	}
@@ -84,7 +84,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	previous := make([]CatalogTool, 0, 71)
 	for _, tool := range snapshot.Tools {
-		if tool.Name != "mcp_client_capabilities" {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") {
 			previous = append(previous, tool)
 		}
 	}
@@ -98,9 +98,26 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if len(previous) != 71 || previousHash != resultStoreHash {
 		t.Fatalf("historical P11 catalog changed: count=%d hash=%s", len(previous), previousHash)
 	}
+	step1 := make([]CatalogTool, 0, 72)
+	for _, tool := range snapshot.Tools {
+		if !strings.HasPrefix(tool.Name, "model_") {
+			step1 = append(step1, tool)
+		}
+	}
+	step1Encoded, err := json.Marshal(step1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	step1Sum := sha256.Sum256(step1Encoded)
+	step1ComputedHash := "sha256:" + hex.EncodeToString(step1Sum[:])
+
 	const step1Hash = "sha256:6f4a9275e4869e4a8a1846ca88a079d71842cc6a6c206b023b36b3e90635c541"
-	if snapshot.ToolCount != 72 || snapshot.Hash != step1Hash {
-		t.Fatalf("Step 1 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
+	if len(step1) != 72 || step1ComputedHash != step1Hash {
+		t.Fatalf("Step 1 catalog identity changed: count=%d hash=%s", len(step1), step1ComputedHash)
+	}
+	const step4Hash = "sha256:0eadec7d14295a554998ee127f872e10f1c1e4c3f56477b3631d2dbe286dcf03"
+	if snapshot.ToolCount != 77 || snapshot.Hash != step4Hash {
+		t.Fatalf("Step 4 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
 

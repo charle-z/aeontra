@@ -14,6 +14,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
+	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/resultstore"
@@ -34,6 +35,7 @@ type appRuntime struct {
 	StateRoot   string
 	Telemetry   *telemetry.Store
 	Results     *resultstore.Store
+	ModelTurns  *modelturn.Store
 	Edge        *edge.Store
 }
 
@@ -41,7 +43,7 @@ func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr, telemetryErr, resultErr, edgeErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, resultErr, modelTurnErr, edgeErr error
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -57,10 +59,13 @@ func (r *appRuntime) Close() error {
 	if r.Results != nil {
 		resultErr = r.Results.Close()
 	}
+	if r.ModelTurns != nil {
+		modelTurnErr = r.ModelTurns.Close()
+	}
 	if r.Edge != nil {
 		edgeErr = r.Edge.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || resultErr != nil || edgeErr != nil {
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
@@ -124,8 +129,18 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		return nil, fmt.Errorf("opening result store: %w", err)
 	}
 	service = service.WithResultStore(results)
+	modelTurns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: filepath.Join(stateRoot, "model-turns")})
+	if err != nil {
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening model turn store: %w", err)
+	}
 	edgeStore, err := edge.Open(edge.Config{Root: filepath.Join(stateRoot, "edge")})
 	if err != nil {
+		_ = modelTurns.Close()
 		_ = results.Close()
 		_ = service.BrainCapability.Close()
 		_ = metrics.Close()
@@ -138,13 +153,14 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Logger:      logger,
 		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal),
+		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithModelTurnStore(modelTurns),
 		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,
 		StateRoot:   stateRoot,
 		Telemetry:   metrics,
 		Results:     results,
+		ModelTurns:  modelTurns,
 		Edge:        edgeStore,
 	}, nil
 }
