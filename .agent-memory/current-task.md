@@ -1,41 +1,34 @@
 # Current task
 
-P8.1 Console 2.0 is deployed and tagged. PR #10 final head
-`e96bbc81a2c524c3c7ee9b3eb4bd3945b61198e7` merged as
-`d343264bffdc0ae1bc045a9d723e913be977090c`; deployment
-`ody7vjcabb3r24b25ym34of9` finished healthy in the existing Coolify application.
-The annotated tag `p8.1` points exactly to the merge commit.
+P8.1 Console 2.0 remains deployed and tagged from merge `d343264bffdc0ae1bc045a9d723e913be977090c`. P11 production is deployed on top of that historical base; this branch changes neither production closure.
 
-Production catalog, Brain and console smokes passed with 67 tools and catalog hash
-`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
-Query-string credentials return 401, bearer recovery remains header-only, the console
-cookie is strict and opaque, durable tasks and SSE are operational, and Edge reports
-`not_paired` without claiming an implementation.
+P11.1 OpenCode external-model bridge is complete locally on branch `p11-1-opencode-model-bridge`, based on deployed P11 production commit `62d433e91373c0882e33be0fd88de4bf7d4f0503`.
 
-P11 Step 2 closed the measured `workspace_checkpoint` read-only primitive. Its exact
-18-field JSON schema is bounded to 4096 bytes and performs only jailed fixed-argv Git
-reads plus a 240-rune redacted current-task summary. The reproducible fixture measured
-2 to 1 MCP calls, 2052 to 406 response bytes, 260 to 0 repeated bytes and approximately
-18.6 ms to 16.7 ms.
+Implementation commits:
 
-Step 3 persists exact content-free hourly/daily metrics in embedded SQLite, prunes at
-startup and opportunistically, caps the DB at a 128 MiB page target, and rotates four
-16 MiB observability plus four 32 MiB audit segments. The previous audit is never
-deleted automatically.
+- `80736ef` — safe MCP client capability probe;
+- `2b151f3` — external model-turn transport abstraction;
+- `840873e` — durable SQLite rendezvous;
+- `2b5341f` — bounded MCP model-runtime controls;
+- `91e1f18` — OpenCode 1.18.1 research and exact pinning;
+- `fe0c2eb` — Unix-socket external model driver and LanguageModelV3 provider;
+- `0887a88` — real OpenCode vertical slice, restart/resume, long-poll optimization and benchmark evidence.
 
-Step 4 persists only redacted large tool output under `/state/results`, replaces it
-with compact seven-field metadata, and exposes bounded `result_read`, `result_find`,
-and `result_stage` reads. Successes expire after 24 hours, failures after 7 days; the
-logical content quota is 256 MiB and reads cap at 16 KiB. Current catalog: 71 tools,
-hash `sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
+Verified E2E:
 
-Steps 5-7 now implement the outbound-only Edge identity, signed leased-task protocol,
-and separately installed Bubblewrap WSL development workcell. The implementation
-head is `3a441e6`; pairing, merge, deployment and WSL installation have not occurred.
+- GitHub run `29430972855`, job `87405554810`, temporary head `42db163f20c65fdf8fe4358dfed5788c0f3111c8`: success;
+- OpenCode 1.18.1 loaded `file://integrations/opencode/provider`;
+- four external model turns;
+- real `read`, `grep`, `edit` and `bash` tool executions;
+- repository edit and `go test ./...` completed successfully;
+- restart preserved exact turn ID, sequence, request digest and request reference;
+- container had no default route and no non-loopback AF_INET/AF_INET6 connections;
+- no API keys, Codex, fallback provider or local model.
 
-Current task: close the P11 release candidate on `codex/p11-edge-core`, publish only
-that branch, open a PR against `main`, and require every gate on the exact final SHA.
-All required local closure gates passed on 2026-07-15, including the no-cache
-production image build. Remote PR gates remain pending.
-Do not merge, deploy, tag, create a pairing code, install WSL, add a terminal, or
-expand workcell authority.
+The model-turn controller now uses bounded long polling instead of 20 ms polling. Benchmark A remained 4 MCP calls / 1,039 bytes. Benchmark B fell from 1,100 calls to 9 calls, with 4 model turns, 4 OpenCode tool executions and zero retries. Restart/resume also used 9 calls and exactly one expected retry. The report is `artifacts/opencode-e2e-report.json`, SHA-256 `822b3adf9eafb84ce74f0fd957c142a4079fc76e42594f6d17c4633cde6eca3b`.
+
+Candidate catalog: 77 tools, hash `sha256:3f4e1812bd72a0508eba108d97dfd353ea9abc4c883cded262abd768f1f94518`.
+
+`sampling_supported` is still intentionally undetermined because production has not deployed the capability probe. Pull rendezvous remains the only active transport; no fallback model exists.
+
+Next: commit this release-candidate memory, publish only `p11-1-opencode-model-bridge`, open a PR against `main`, and require all gates on the exact final SHA. Do not merge, deploy, tag, pair Edge, install OpenCode on Parrot, or modify Coolify.
