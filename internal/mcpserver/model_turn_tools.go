@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/modelturn"
 )
@@ -47,13 +48,15 @@ func (s *Server) addModelTurnTools() {
 		Annotations: readHints,
 	}, s.handleModelRuntimeStatus)
 
-	s.addDirectTool(toolDef{
+	s.addSessionTool(toolDef{
 		Name:        "model_turn_next",
-		Description: "Poll one runtime for its next awaiting external-model turn.",
+		Description: "Wait up to 180 seconds for one runtime's next external-model turn without busy polling.",
 		InputSchema: closedObject(map[string]any{
-			"runtime_id": stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
+			"runtime_id":     stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
+			"after_sequence": map[string]any{"type": "integer", "minimum": 0},
+			"wait_seconds":   map[string]any{"type": "integer", "minimum": 0, "maximum": 180},
 		}, []string{"runtime_id"}),
-		Version:     "1",
+		Version:     "2",
 		Annotations: readHints,
 	}, s.handleModelTurnNext)
 
@@ -78,6 +81,11 @@ func (s *Server) addModelTurnTools() {
 
 func (s *Server) addDirectTool(def toolDef, handler func(json.RawMessage) (string, error)) {
 	s.table[def.Name] = toolEntry{def: def, handler: handler}
+	s.order = append(s.order, def.Name)
+}
+
+func (s *Server) addSessionTool(def toolDef, handler func(json.RawMessage, string) (string, error)) {
+	s.table[def.Name] = toolEntry{def: def, sessionHandler: handler}
 	s.order = append(s.order, def.Name)
 }
 
@@ -125,6 +133,12 @@ func modelTurnRespondSchema() map[string]any {
 
 type runtimeIDParams struct {
 	RuntimeID string `json:"runtime_id"`
+}
+
+type modelTurnNextParams struct {
+	RuntimeID     string `json:"runtime_id"`
+	AfterSequence uint64 `json:"after_sequence,omitempty"`
+	WaitSeconds   int    `json:"wait_seconds,omitempty"`
 }
 
 type modelToolCall struct {
@@ -178,22 +192,84 @@ func (s *Server) handleModelRuntimeStatus(arguments json.RawMessage) (string, er
 	return marshalToolValue(runtime, err)
 }
 
-func (s *Server) handleModelTurnNext(arguments json.RawMessage) (string, error) {
+func (s *Server) handleModelTurnNext(arguments json.RawMessage, sessionKey string) (string, error) {
 	if s.modelTurns == nil {
 		return "", errModelTurnStoreUnavailable
 	}
-	var params runtimeIDParams
+	var params modelTurnNextParams
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
 	}
-	offer, pending, err := s.modelTurns.Poll(context.Background(), params.RuntimeID)
+	if params.WaitSeconds < 0 || params.WaitSeconds > 180 {
+		return "", modelturn.ErrInvalidRequest
+	}
+	if params.WaitSeconds == 0 {
+		offer, pending, runtime, err := s.modelTurns.PollAfter(context.Background(), params.RuntimeID, params.AfterSequence)
+		return marshalModelTurnNext(params.RuntimeID, offer, pending, runtime, err)
+	}
+	if !s.beginModelWait(sessionKey, params.RuntimeID) {
+		return "", modelturn.ErrTurnConflict
+	}
+	defer s.endModelWait(sessionKey, params.RuntimeID)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(params.WaitSeconds)*time.Second)
+	defer cancel()
+	offer, pending, runtime, err := s.modelTurns.WaitNextAfter(ctx, params.RuntimeID, params.AfterSequence)
+	if errors.Is(err, context.DeadlineExceeded) {
+		if runtime.RuntimeID == "" {
+			if refreshed, refreshErr := s.modelTurns.Runtime(context.Background(), params.RuntimeID); refreshErr == nil {
+				runtime = refreshed
+			}
+		}
+		return marshalToolValue(map[string]any{
+			"runtime_id":    params.RuntimeID,
+			"pending":       false,
+			"status":        "no_change",
+			"last_sequence": runtime.LastSequence,
+		}, nil)
+	}
+	return marshalModelTurnNext(params.RuntimeID, offer, pending, runtime, err)
+}
+
+func marshalModelTurnNext(runtimeID string, offer modelturn.Offer, pending bool, runtime modelturn.Runtime, err error) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !pending {
-		return marshalToolValue(map[string]any{"runtime_id": params.RuntimeID, "pending": false}, nil)
+	if pending {
+		return marshalToolValue(map[string]any{"pending": true, "status": "turn", "turn": offer}, nil)
 	}
-	return marshalToolValue(map[string]any{"pending": true, "turn": offer}, nil)
+	status := "no_change"
+	if runtime.Status == modelturn.RuntimeCompleted || runtime.Status == modelturn.RuntimeCancelled || runtime.Status == modelturn.RuntimeFailed {
+		status = string(runtime.Status)
+	} else {
+		switch runtime.ActiveTurnStatus {
+		case modelturn.StatusDisconnected, modelturn.StatusCancelled, modelturn.StatusExpired, modelturn.StatusFailed:
+			status = string(runtime.ActiveTurnStatus)
+		}
+	}
+	return marshalToolValue(map[string]any{
+		"runtime_id":    runtimeID,
+		"pending":       false,
+		"status":        status,
+		"last_sequence": runtime.LastSequence,
+	}, nil)
+}
+
+func (s *Server) beginModelWait(sessionKey, runtimeID string) bool {
+	key := sessionKey + "\x00" + runtimeID
+	s.modelWaitMu.Lock()
+	defer s.modelWaitMu.Unlock()
+	if _, exists := s.modelWaits[key]; exists {
+		return false
+	}
+	s.modelWaits[key] = struct{}{}
+	return true
+}
+
+func (s *Server) endModelWait(sessionKey, runtimeID string) {
+	key := sessionKey + "\x00" + runtimeID
+	s.modelWaitMu.Lock()
+	delete(s.modelWaits, key)
+	s.modelWaitMu.Unlock()
 }
 
 func (s *Server) handleModelTurnRespond(arguments json.RawMessage) (string, error) {

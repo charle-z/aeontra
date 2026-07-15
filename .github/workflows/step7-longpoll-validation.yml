@@ -1,0 +1,50 @@
+name: Step 7 OpenCode Long-Poll Validation
+
+on:
+  push:
+    branches:
+      - p11-1-step7-longpoll-validation
+
+permissions:
+  contents: read
+
+jobs:
+  opencode-e2e:
+    name: OpenCode v1.18.1 isolated long-poll vertical slice
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run isolated OpenCode vertical slice
+        id: opencode_e2e
+        shell: bash
+        run: |
+          rm -f artifacts/opencode-e2e-report.json
+          set +e
+          ./test/opencode-e2e/run.sh
+          exit_code=$?
+          echo "exit_code=${exit_code}" >> "${GITHUB_OUTPUT}"
+          exit 0
+
+      - name: Require report after successful E2E
+        if: ${{ steps.opencode_e2e.outputs.exit_code == '0' }}
+        run: test -s artifacts/opencode-e2e-report.json
+
+      - name: Print benchmark and evidence
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
+        run: cat artifacts/opencode-e2e-report.json
+
+      - name: Upload benchmark evidence
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: opencode-e2e-report
+          path: artifacts/opencode-e2e-report.json
+          if-no-files-found: error
+
+      - name: Preserve E2E exit code
+        if: always()
+        shell: bash
+        run: exit "${{ steps.opencode_e2e.outputs.exit_code }}"

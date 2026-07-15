@@ -115,7 +115,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if len(step1) != 72 || step1ComputedHash != step1Hash {
 		t.Fatalf("Step 1 catalog identity changed: count=%d hash=%s", len(step1), step1ComputedHash)
 	}
-	const step4Hash = "sha256:0eadec7d14295a554998ee127f872e10f1c1e4c3f56477b3631d2dbe286dcf03"
+	const step4Hash = "sha256:3f4e1812bd72a0508eba108d97dfd353ea9abc4c883cded262abd768f1f94518"
 	if snapshot.ToolCount != 77 || snapshot.Hash != step4Hash {
 		t.Fatalf("Step 4 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
