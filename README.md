@@ -57,13 +57,18 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **OAuth-first authentication with header-only bearer recovery**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the server now exposes 67 deliberately annotated
+**Secure builder evolution:** the current P11 candidate exposes 68 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
 private validation profiles, bounded Coolify logs, and disabled-by-default
 privileged profiles. Consequential operations use
 cryptographically named, expiring, single-use plans and revalidate state before
 execution. See [docs/tools.md](docs/tools.md).
+
+The added `workspace_checkpoint` read-only primitive reconstructs branch, commit,
+upstream, tree counts, diff statistics and a bounded redacted task summary in one
+schema-only response. It does not fetch, modify Git, read source bodies or call an
+external service.
 
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused

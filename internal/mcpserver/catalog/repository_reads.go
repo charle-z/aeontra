@@ -6,6 +6,7 @@ import "encoding/json"
 // context, listing, file reading, and code search tools.
 type RepositoryReadService interface {
 	BuildContextPackIn(repo string) (string, error)
+	WorkspaceCheckpointIn(repo string) (string, error)
 	ListDir(path string) (string, error)
 	ReadFileWithAccess(path, accessRequestID string, raw bool) (string, error)
 	ReadManyFiles(paths []string) (string, error)
@@ -28,6 +29,22 @@ func RegisterRepositoryReads(register Register, service RepositoryReadService) {
 			}
 			_ = json.Unmarshal(arguments, &params)
 			return service.BuildContextPackIn(params.Repo)
+		},
+	})
+
+	register(Tool{
+		Name:        "workspace_checkpoint",
+		Description: "Return one compact, read-only repository checkpoint with exact Git counts, fixed diff statistics, safe commit identities, and a bounded redacted current-task summary. No fetch, file bodies, absolute paths, or external calls.",
+		InputSchema: object(map[string]any{
+			"repo": strProp("optional repo directory, absolute or relative to the workspace root"),
+		}),
+		Version: "1",
+		Handler: func(arguments json.RawMessage) (string, error) {
+			var params struct {
+				Repo string `json:"repo"`
+			}
+			_ = json.Unmarshal(arguments, &params)
+			return service.WorkspaceCheckpointIn(params.Repo)
 		},
 	})
 

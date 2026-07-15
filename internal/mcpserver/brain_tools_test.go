@@ -38,16 +38,20 @@ var p8ToolOrder = []string{
 
 var brainToolOrder = []string{"brain_search", "brain_read", "brain_write", "brain_index", "brain_context"}
 
-func TestBrainToolsAppendToUnchangedP8Catalog(t *testing.T) {
+func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 67 {
-		t.Fatalf("tool order length=%d want=67", len(server.order))
+	if len(server.order) != 68 {
+		t.Fatalf("tool order length=%d want=68", len(server.order))
 	}
-	if !reflect.DeepEqual(server.order[:62], p8ToolOrder) {
-		t.Fatalf("P8 tool prefix changed\ngot=%v\nwant=%v", server.order[:62], p8ToolOrder)
+	if server.order[2] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:4])
 	}
-	if !reflect.DeepEqual(server.order[62:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[62:], brainToolOrder)
+	historical := append(append([]string{}, server.order[:2]...), server.order[3:63]...)
+	if !reflect.DeepEqual(historical, p8ToolOrder) {
+		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
+	}
+	if !reflect.DeepEqual(server.order[63:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[63:], brainToolOrder)
 	}
 
 	snapshot, err := server.CatalogInfo()
@@ -56,7 +60,7 @@ func TestBrainToolsAppendToUnchangedP8Catalog(t *testing.T) {
 	}
 	legacy := make([]CatalogTool, 0, 62)
 	for _, tool := range snapshot.Tools {
-		if !strings.HasPrefix(tool.Name, "brain_") {
+		if !strings.HasPrefix(tool.Name, "brain_") && tool.Name != "workspace_checkpoint" {
 			legacy = append(legacy, tool)
 		}
 	}
@@ -70,9 +74,9 @@ func TestBrainToolsAppendToUnchangedP8Catalog(t *testing.T) {
 	if len(legacy) != 62 || legacyHash != p8Hash {
 		t.Fatalf("legacy catalog changed: count=%d hash=%s", len(legacy), legacyHash)
 	}
-	const p9Hash = "sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed"
-	if snapshot.ToolCount != 67 || snapshot.Hash != p9Hash {
-		t.Fatalf("P9 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
+	const checkpointHash = "sha256:86ab04ccb609b191aa2c471688100ed5c10a5641a81effba9a8c617fd3ba9c33"
+	if snapshot.ToolCount != 68 || snapshot.Hash != checkpointHash {
+		t.Fatalf("checkpoint catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
 

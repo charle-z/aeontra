@@ -203,7 +203,7 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 			"catalogHash": runtimeInfo.CatalogHash,
 		},
 		"instructions": "Secure-by-default repository builder; use one focused tool call per message. " +
-			"Session preflight: repo_list, build_context_pack with repo, then repo_status. Work loop: plan, act, observe, " +
+			"Session preflight: repo_list, then workspace_checkpoint with repo; use repo_status for detailed follow-up and build_context_pack only when file context is needed. Work loop: plan, act, observe, " +
 			"run_tests when code changed, revise on failure, and record durable state in memory. Sync only with repo_fetch, " +
 			"repo_fast_forward_preview, repo_fast_forward; clone only with git_clone. Edit with apply_patch/create_file; " +
 			"git_commit does not push. When explicitly requested use source_repo_create_preview/source_repo_create, " +

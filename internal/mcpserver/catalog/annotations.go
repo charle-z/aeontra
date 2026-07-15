@@ -13,7 +13,7 @@ func RegisterAnnotations(register func(map[string]any, ...string)) {
 	externalDestructive := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
 
 	register(localRead,
-		"system_runtime_info", "build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files",
+		"system_runtime_info", "build_context_pack", "workspace_checkpoint", "list_dir", "repo_list", "read_file", "read_many_files",
 		"search_code", "git_status", "repo_status", "git_diff", "repo_diff", "repo_fast_forward_preview", "repo_remote_preview", "privileged_task_preview", "project_validation_preview", "memory_read", "notes_list", "notes_read", "notes_write_preview", "sandbox_status",
 		"brain_search", "brain_read", "brain_context")
 	register(externalRead,

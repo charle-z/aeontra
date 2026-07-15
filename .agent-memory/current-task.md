@@ -12,7 +12,12 @@ Query-string credentials return 401, bearer recovery remains header-only, the co
 cookie is strict and opaque, durable tasks and SSE are operational, and Edge reports
 `not_paired` without claiming an implementation.
 
-Current step: synchronize the repository source of truth with that completed closure.
-Next implementation step: establish measured, compact orchestration primitives needed
-before the minimum outbound-only Edge identity and leased-task foundation. Do not add
-a free terminal, pair a device, install WSL automatically, or expand workcell authority.
+Current step: close P11 Step 2, the measured `workspace_checkpoint` read-only
+primitive. Its exact 18-field JSON schema is bounded to 4096 bytes and performs only
+jailed fixed-argv Git reads plus a 240-rune redacted current-task summary. The
+reproducible fixture measured 2 to 1 MCP calls, 2052 to 406 response bytes, 260 to 0
+repeated bytes and approximately 18.6 ms to 16.7 ms.
+
+Next implementation step: persistent bounded telemetry and operational log rotation.
+Do not add a free terminal, pair a device, install WSL automatically, or expand
+workcell authority.

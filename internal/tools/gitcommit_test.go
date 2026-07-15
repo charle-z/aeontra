@@ -8,7 +8,7 @@ import (
 )
 
 // configIdentity sets a local git identity so commits work in the test repo.
-func configIdentity(t *testing.T, root string) {
+func configIdentity(t testing.TB, root string) {
 	t.Helper()
 	gitCmd(t, root, "config", "user.email", "t@t")
 	gitCmd(t, root, "config", "user.name", "t")

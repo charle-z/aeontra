@@ -4,11 +4,13 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. Current goal: begin the
-next phase from the verified P8.1 baseline by reducing agent call saturation before
-introducing the minimum outbound-only Edge foundation. Preserve the 67-tool contract
-and every human authority boundary until a separately tested change intentionally
-extends it.
+P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11 Step 2 now adds
+`workspace_checkpoint`, a closed local read-only tool that intentionally advances the
+candidate catalog to 68 tools with hash
+`sha256:86ab04ccb609b191aa2c471688100ed5c10a5641a81effba9a8c617fd3ba9c33`.
+It reduces agent call saturation without fetch, external calls, file bodies or Git
+mutation. The next goal is persistent bounded telemetry/logs before the minimum
+outbound-only Edge foundation; every human authority boundary remains unchanged.
 
 P0 architecture foundations are deployed. The deterministic catalog, centralized
 build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`

@@ -15,7 +15,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/policy"
 )
 
-func newTestService(t *testing.T, mode config.Mode) (*Service, string) {
+func newTestService(t testing.TB, mode config.Mode) (*Service, string) {
 	t.Helper()
 	root := t.TempDir()
 	cfg, err := config.New(config.Config{
@@ -36,7 +36,7 @@ func newTestService(t *testing.T, mode config.Mode) (*Service, string) {
 	return svc, resolvedRoot
 }
 
-func write(t *testing.T, root, rel, content string) string {
+func write(t testing.TB, root, rel, content string) string {
 	t.Helper()
 	p := filepath.Join(root, rel)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

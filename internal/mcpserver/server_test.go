@@ -87,6 +87,7 @@ func TestInitializeInstructionsDescribeAgentLoop(t *testing.T) {
 		"preflight",
 		"repo_list",
 		"repo_status",
+		"workspace_checkpoint",
 		"repo",
 		"build_context_pack",
 		"apply_patch",
@@ -136,7 +137,7 @@ func TestToolsList(t *testing.T) {
 	resp := call(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	b, _ := json.Marshal(resp.Result)
 	for _, name := range []string{
-		"build_context_pack", "list_dir", "read_file", "read_many_files", "search_code",
+		"build_context_pack", "workspace_checkpoint", "list_dir", "read_file", "read_many_files", "search_code",
 		"apply_patch", "create_file", "run_command", "git_status", "git_diff",
 		"git_clone", "git_push", "github_create_repo", "github_repo_info",
 		"run_tests", "git_commit", "memory_read", "memory_write",
