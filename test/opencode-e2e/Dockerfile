@@ -35,6 +35,7 @@ ENV OPENCODE_E2E=1 \
     OPENCODE_E2E_BIN=/opt/opencode/node_modules/.bin/opencode \
     MCP_EDGE_E2E_BIN=/usr/local/bin/mcp-edge \
     MODEL_TURN_DRIVER_E2E_BIN=/usr/local/bin/model-turn-driver \
+    OPENCODE_PROVIDER_E2E_PATH=/workspace/integrations/opencode/provider \
     HOME=/home/edge \
     GOCACHE=/tmp/go-build \
     GOPATH=/tmp/go

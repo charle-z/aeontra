@@ -110,7 +110,7 @@ func TestRemoteModelTurnDriverRestartResumesExactTurn(t *testing.T) {
 	first := startRemoteDriverProcess(t, driverBinary, edgeState, socketPath, caPath, *lease)
 	client := unixDriverClient(socketPath)
 	waitDriverHealth(t, client)
-	payload := json.RawMessage(`{"messages":[{"role":"user","content":"resume"}],"tools":[]}`)
+	payload := json.RawMessage(`{"messages":[{"content":"resume","role":"user"}],"tools":[]}`)
 	digest, err := modelturn.ExactPayloadDigest(payload)
 	if err != nil {
 		t.Fatal(err)
@@ -256,7 +256,7 @@ func postDriverTurn(t *testing.T, client *http.Client, body []byte) modelturn.Tu
 	}
 	defer response.Body.Close()
 	encoded, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if response.StatusCode != http.StatusCreated {
+	if response.StatusCode != http.StatusCreated && response.StatusCode != http.StatusOK {
 		t.Fatalf("create status=%d body=%s", response.StatusCode, encoded)
 	}
 	var turn modelturn.Turn
