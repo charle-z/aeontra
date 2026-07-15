@@ -27,26 +27,28 @@ type StoreStats struct {
 }
 
 type DriverMetrics struct {
-	ProtocolVersion string     `json:"protocol_version"`
-	StageCalls      uint64     `json:"stage_calls"`
-	CreateCalls     uint64     `json:"create_calls"`
-	WaitCalls       uint64     `json:"wait_calls"`
-	CancelCalls     uint64     `json:"cancel_calls"`
-	StatusCalls     uint64     `json:"status_calls"`
-	BytesReceived   uint64     `json:"bytes_received"`
-	BytesSent       uint64     `json:"bytes_sent"`
-	Store           StoreStats `json:"store"`
+	ProtocolVersion   string     `json:"protocol_version"`
+	StageCalls        uint64     `json:"stage_calls"`
+	CreateCalls       uint64     `json:"create_calls"`
+	WaitCalls         uint64     `json:"wait_calls"`
+	CancelCalls       uint64     `json:"cancel_calls"`
+	StatusCalls       uint64     `json:"status_calls"`
+	BytesReceived     uint64     `json:"bytes_received"`
+	BytesSent         uint64     `json:"bytes_sent"`
+	Store             StoreStats `json:"store"`
+	LastInternalError string     `json:"last_internal_error,omitempty"`
 }
 
 type Driver struct {
-	store         *Store
-	stageCalls    atomic.Uint64
-	createCalls   atomic.Uint64
-	waitCalls     atomic.Uint64
-	cancelCalls   atomic.Uint64
-	statusCalls   atomic.Uint64
-	bytesReceived atomic.Uint64
-	bytesSent     atomic.Uint64
+	store             *Store
+	stageCalls        atomic.Uint64
+	createCalls       atomic.Uint64
+	waitCalls         atomic.Uint64
+	cancelCalls       atomic.Uint64
+	statusCalls       atomic.Uint64
+	bytesReceived     atomic.Uint64
+	bytesSent         atomic.Uint64
+	lastInternalError atomic.Value
 }
 
 type driverCreateRequest struct {
@@ -68,7 +70,9 @@ func NewDriver(store *Store) (*Driver, error) {
 	if store == nil {
 		return nil, ErrNilRendezvous
 	}
-	return &Driver{store: store}, nil
+	driver := &Driver{store: store}
+	driver.lastInternalError.Store("")
+	return driver, nil
 }
 
 func (d *Driver) Handler() http.Handler {
@@ -189,15 +193,16 @@ func (d *Driver) metrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.writeJSON(w, http.StatusOK, DriverMetrics{
-		ProtocolVersion: DriverProtocolVersion,
-		StageCalls:      d.stageCalls.Load(),
-		CreateCalls:     d.createCalls.Load(),
-		WaitCalls:       d.waitCalls.Load(),
-		CancelCalls:     d.cancelCalls.Load(),
-		StatusCalls:     d.statusCalls.Load(),
-		BytesReceived:   d.bytesReceived.Load(),
-		BytesSent:       d.bytesSent.Load(),
-		Store:           stats,
+		ProtocolVersion:   DriverProtocolVersion,
+		StageCalls:        d.stageCalls.Load(),
+		CreateCalls:       d.createCalls.Load(),
+		WaitCalls:         d.waitCalls.Load(),
+		CancelCalls:       d.cancelCalls.Load(),
+		StatusCalls:       d.statusCalls.Load(),
+		BytesReceived:     d.bytesReceived.Load(),
+		BytesSent:         d.bytesSent.Load(),
+		Store:             stats,
+		LastInternalError: d.lastInternalError.Load().(string),
 	})
 }
 
@@ -257,6 +262,7 @@ func (d *Driver) writeStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrTurnQuotaExceeded):
 		d.writeError(w, http.StatusInsufficientStorage, "quota_exceeded", err)
 	default:
+		d.lastInternalError.Store(err.Error())
 		d.writeError(w, http.StatusInternalServerError, "internal_error", errors.New("model turn driver operation failed"))
 	}
 }

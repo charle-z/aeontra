@@ -62,6 +62,7 @@ func ServeDriver(ctx context.Context, socketPath string, store *Store, ready io.
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
+		_ = server.Close()
 		return ctx.Err()
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {

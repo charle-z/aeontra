@@ -79,6 +79,7 @@ func (s *Store) transitionRuntime(ctx context.Context, runtimeID string, target 
 	if rows != 1 {
 		return ErrTurnConflict
 	}
+	s.signal()
 	return nil
 }
 
@@ -148,4 +149,71 @@ func (s *Store) Poll(ctx context.Context, runtimeID string) (Offer, bool, error)
 		return Offer{}, false, nil
 	}
 	return offer, err == nil, err
+}
+
+func (s *Store) PollAfter(ctx context.Context, runtimeID string, afterSequence uint64) (Offer, bool, Runtime, error) {
+	if !safeIdentifier.MatchString(runtimeID) {
+		return Offer{}, false, Runtime{}, ErrInvalidRequest
+	}
+	offer, err := s.nextOnce(ctx, runtimeID)
+	if err == nil && offer.Sequence > afterSequence {
+		runtime, runtimeErr := s.Runtime(ctx, runtimeID)
+		return offer, true, runtime, runtimeErr
+	}
+	if err != nil && !errors.Is(err, ErrTurnNotFound) {
+		return Offer{}, false, Runtime{}, err
+	}
+	runtime, err := s.Runtime(ctx, runtimeID)
+	if err != nil {
+		return Offer{}, false, Runtime{}, err
+	}
+	return Offer{}, false, runtime, nil
+}
+
+func (s *Store) WaitNextAfter(ctx context.Context, runtimeID string, afterSequence uint64) (Offer, bool, Runtime, error) {
+	if !safeIdentifier.MatchString(runtimeID) {
+		return Offer{}, false, Runtime{}, ErrInvalidRequest
+	}
+	var lastRuntime Runtime
+	for {
+		if err := ctx.Err(); err != nil {
+			return Offer{}, false, lastRuntime, err
+		}
+		wake := s.waitChannel()
+		offer, pending, runtime, err := s.PollAfter(ctx, runtimeID, afterSequence)
+		if runtime.RuntimeID != "" {
+			lastRuntime = runtime
+		}
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return Offer{}, false, runtime, ctxErr
+			}
+			return Offer{}, false, runtime, err
+		}
+		if pending || runtimeStopsWait(runtime, afterSequence) {
+			return offer, pending, runtime, nil
+		}
+		select {
+		case <-ctx.Done():
+			return Offer{}, false, runtime, ctx.Err()
+		case <-wake:
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+func runtimeStopsWait(runtime Runtime, afterSequence uint64) bool {
+	switch runtime.Status {
+	case RuntimeCompleted, RuntimeCancelled, RuntimeFailed:
+		return true
+	}
+	if runtime.LastSequence > afterSequence {
+		return false
+	}
+	switch runtime.ActiveTurnStatus {
+	case StatusDisconnected, StatusCancelled, StatusExpired, StatusFailed:
+		return true
+	default:
+		return false
+	}
 }

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
@@ -26,15 +27,17 @@ const largeResultThresholdBytes = 32 << 10
 
 // Server dispatches MCP requests to the tool service.
 type Server struct {
-	svc        *tools.Service
-	name       string
-	table      map[string]toolEntry
-	order      []string
-	observer   *observability.Logger
-	journal    *taskjournal.Journal
-	payload    payloadCounters
-	clients    *clientCapabilityStore
-	modelTurns *modelturn.Store
+	svc         *tools.Service
+	name        string
+	table       map[string]toolEntry
+	order       []string
+	observer    *observability.Logger
+	journal     *taskjournal.Journal
+	payload     payloadCounters
+	clients     *clientCapabilityStore
+	modelTurns  *modelturn.Store
+	modelWaitMu sync.Mutex
+	modelWaits  map[string]struct{}
 }
 
 type toolEntry struct {
@@ -63,11 +66,12 @@ func New(svc *tools.Service) *Server {
 // NewWithObserver builds a Server with a content-free structured event sink.
 func NewWithObserver(svc *tools.Service, observer *observability.Logger) *Server {
 	s := &Server{
-		svc:      svc,
-		name:     "mcp-devbox",
-		table:    map[string]toolEntry{},
-		observer: observer,
-		clients:  newClientCapabilityStore(),
+		svc:        svc,
+		name:       "mcp-devbox",
+		table:      map[string]toolEntry{},
+		observer:   observer,
+		clients:    newClientCapabilityStore(),
+		modelWaits: map[string]struct{}{},
 	}
 	s.register()
 	return s

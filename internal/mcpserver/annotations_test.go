@@ -64,7 +64,7 @@ func TestToolsListWireSurfaceIsComplete(t *testing.T) {
 		}
 		seen[def.Name] = true
 		entry, ok := s.table[def.Name]
-		if !ok || entry.handler == nil {
+		if !ok || (entry.handler == nil && entry.sessionHandler == nil) {
 			t.Errorf("%s has no handler", def.Name)
 		}
 		if strings.TrimSpace(def.Description) == "" {

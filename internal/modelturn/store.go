@@ -111,7 +111,19 @@ type Store struct {
 	quotaBytes int64
 	defaultTTL time.Duration
 	now        func() time.Time
-	wake       chan struct{}
+	wake       *wakeHub
+}
+
+type wakeHub struct {
+	mu sync.Mutex
+	ch chan struct{}
+}
+
+var wakeHubs sync.Map
+
+func wakeHubFor(root string) *wakeHub {
+	value, _ := wakeHubs.LoadOrStore(root, &wakeHub{ch: make(chan struct{})})
+	return value.(*wakeHub)
 }
 
 func OpenStore(cfg StoreConfig) (*Store, error) {
@@ -149,7 +161,7 @@ func OpenStore(cfg StoreConfig) (*Store, error) {
 		return nil, errors.New("model turn database is unavailable")
 	}
 	db.SetMaxOpenConns(1)
-	store := &Store{db: db, root: root, quotaBytes: quota, defaultTTL: defaultTTL, now: cfg.Now, wake: make(chan struct{}, 1)}
+	store := &Store{db: db, root: root, quotaBytes: quota, defaultTTL: defaultTTL, now: cfg.Now, wake: wakeHubFor(root)}
 	if store.now == nil {
 		store.now = time.Now
 	}
@@ -319,6 +331,7 @@ func (s *Store) Next(ctx context.Context, runtimeID string) (Offer, error) {
 		return Offer{}, ErrInvalidRequest
 	}
 	for {
+		wake := s.waitChannel()
 		offer, err := s.nextOnce(ctx, runtimeID)
 		if err == nil || !errors.Is(err, ErrTurnNotFound) {
 			return offer, err
@@ -326,8 +339,8 @@ func (s *Store) Next(ctx context.Context, runtimeID string) (Offer, error) {
 		select {
 		case <-ctx.Done():
 			return Offer{}, ctx.Err()
-		case <-s.wake:
-		case <-time.After(100 * time.Millisecond):
+		case <-wake:
+		case <-time.After(time.Second):
 		}
 	}
 }
@@ -437,6 +450,7 @@ func (s *Store) Respond(ctx context.Context, submission ResponseSubmission) (Rec
 
 func (s *Store) WaitResponse(ctx context.Context, turnID TurnID) (ModelResponse, error) {
 	for {
+		wake := s.waitChannel()
 		response, ready, err := s.consumeOnce(ctx, turnID)
 		if err != nil || ready {
 			return response, err
@@ -444,8 +458,8 @@ func (s *Store) WaitResponse(ctx context.Context, turnID TurnID) (ModelResponse,
 		select {
 		case <-ctx.Done():
 			return ModelResponse{}, ctx.Err()
-		case <-s.wake:
-		case <-time.After(100 * time.Millisecond):
+		case <-wake:
+		case <-time.After(time.Second):
 		}
 	}
 }
@@ -765,10 +779,16 @@ func rejectTurnSymlinkAncestors(path string) error {
 }
 
 func (s *Store) signal() {
-	select {
-	case s.wake <- struct{}{}:
-	default:
-	}
+	s.wake.mu.Lock()
+	close(s.wake.ch)
+	s.wake.ch = make(chan struct{})
+	s.wake.mu.Unlock()
+}
+
+func (s *Store) waitChannel() <-chan struct{} {
+	s.wake.mu.Lock()
+	defer s.wake.mu.Unlock()
+	return s.wake.ch
 }
 
 func (s *Store) Close() error {
