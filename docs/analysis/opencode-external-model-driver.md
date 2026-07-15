@@ -67,6 +67,13 @@ Each offered function tool receives a stable request-local ID derived from its e
 name and schema. Provider tools and multimodal URL/file payloads are rejected in the
 initial slice rather than silently transformed or sent elsewhere.
 
+Canonical requests up to 64 KiB are carried inline. Larger requests, up to the hard
+4 MiB limit, are staged once in the durable body store and the turn carries only an
+opaque `request_ref` plus the same SHA-256 digest. The reference is single-use, its
+content and expiry are protected by an immutable SQLite trigger, and turn creation
+recomputes the digest from the stored bytes before binding the reference. The driver
+does not wrap large canonical JSON inside another `payload_json` string.
+
 Tool results already executed by OpenCode arrive in subsequent prompt messages as
 `tool-result` parts, including call ID, tool name and typed output. They are preserved
 inside the canonical request so the external model can continue the agent loop.
@@ -86,9 +93,10 @@ For `doGenerate`, text becomes `LanguageModelV3Text`; tool calls become
 For `doStream`, the provider emits:
 
 1. `stream-start`;
-2. optional `text-start`, one `text-delta`, and `text-end`;
-3. one `tool-call` part per validated call;
-4. `finish` with v3 usage and finish reason.
+2. `response-metadata`;
+3. optional `text-start`, one `text-delta`, and `text-end`;
+4. one `tool-call` part per validated call;
+5. `finish` with v3 usage and finish reason.
 
 The external finish reasons map as follows:
 
@@ -101,7 +109,10 @@ The external finish reasons map as follows:
 | `error` | `error` |
 
 Unknown reasons are rejected before persistence. Token usage is optional; absent
-values remain `undefined` rather than being fabricated.
+values remain `undefined` rather than being fabricated. When an external controller
+does supply counts, provider metadata labels them `external-reported-unverified`;
+when it does not, the metadata says `unknown`. Neither form is presented as verified
+billing or accounting evidence.
 
 ## Tool execution and loop compatibility
 
@@ -140,9 +151,15 @@ fallback to another model, API or local inference runtime.
 
 The provider contains no API key field, does not read provider credential environment
 variables, and does not call OpenAI, Anthropic, OpenRouter, Codex or any model API. Its
-only transport is the local model-turn driver configured for loopback. Tests install a
-network-denying dispatcher and fail on every non-loopback request. The OpenCode model
-ID is a local routing label, not a real model name.
+only transport is HTTP carried over a private Unix domain socket. The driver rejects
+TCP listeners entirely, creates the socket with mode `0600`, requires its owner to be
+the effective Edge user, and places it below a private `0700` state directory. No
+credential is supplied through MCP parameters, environment output, logs or the VPS
+configuration. A process running as another local UID cannot connect to the socket.
+The OpenCode model ID is a local routing label, not a real model name.
+
+Tests and source-policy assertions reject model API origins, browser automation,
+provider credential names, `fetch`, TCP model clients and automatic fallback.
 
 ## Compatibility decision
 

@@ -27,6 +27,8 @@ const (
 	MaxTurnTTL            = time.Hour
 	DefaultTurnQuotaBytes = int64(64 << 20)
 	MaxTurnQuotaBytes     = int64(256 << 20)
+	MaxInlineRequestBytes = int64(64 << 10)
+	MaxRequestBodyBytes   = int64(4 << 20)
 	turnDatabaseFilename  = "model-turns.db"
 )
 
@@ -44,14 +46,16 @@ const (
 )
 
 var (
-	ErrInvalidRequest    = errors.New("model turn request is invalid")
-	ErrSequenceMismatch  = errors.New("model turn sequence compare-and-swap failed")
-	ErrTurnNotFound      = errors.New("model turn not found")
-	ErrTurnConflict      = errors.New("model turn state conflict")
-	ErrResponseReplay    = errors.New("model turn response replay rejected")
-	ErrLateResponse      = errors.New("late model turn response rejected")
-	ErrToolNotOffered    = errors.New("model response referenced a tool that was not offered")
-	ErrTurnQuotaExceeded = errors.New("model turn result-store quota exceeded")
+	ErrInvalidRequest     = errors.New("model turn request is invalid")
+	ErrSequenceMismatch   = errors.New("model turn sequence compare-and-swap failed")
+	ErrTurnNotFound       = errors.New("model turn not found")
+	ErrTurnConflict       = errors.New("model turn state conflict")
+	ErrResponseReplay     = errors.New("model turn response replay rejected")
+	ErrLateResponse       = errors.New("late model turn response rejected")
+	ErrToolNotOffered     = errors.New("model response referenced a tool that was not offered")
+	ErrTurnQuotaExceeded  = errors.New("model turn result-store quota exceeded")
+	ErrBodyTooLarge       = errors.New("model turn body exceeds the configured limit")
+	ErrRequestRefConflict = errors.New("model request reference is invalid, expired, changed, or already bound")
 )
 
 var safeIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -82,6 +86,13 @@ type Offer struct {
 	Record
 	RequestPayload json.RawMessage `json:"request_payload"`
 	OfferedToolIDs []string        `json:"offered_tool_ids"`
+}
+
+type RequestBodyReference struct {
+	RequestRef    string    `json:"request_ref"`
+	RequestDigest string    `json:"request_digest"`
+	ContentBytes  int64     `json:"content_bytes"`
+	ExpiresAt     time.Time `json:"expires_at"`
 }
 
 type ResponseSubmission struct {
@@ -197,6 +208,11 @@ func (s *Store) initialize() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS model_turns_runtime_status ON model_turns(runtime_id,status,sequence)`,
 		`CREATE INDEX IF NOT EXISTS model_turns_expiry ON model_turns(expires_at)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS model_turns_request_ref_unique ON model_turns(request_ref)`,
+		`CREATE TRIGGER IF NOT EXISTS turn_bodies_immutable BEFORE UPDATE OF kind,content,content_bytes,created_at,expires_at ON turn_bodies
+		BEGIN
+			SELECT RAISE(ABORT, 'turn body is immutable');
+		END`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil {
@@ -210,9 +226,18 @@ func (s *Store) CreateTurn(ctx context.Context, request ModelRequest) (Turn, err
 	if !safeIdentifier.MatchString(request.RuntimeID) || request.Sequence == 0 {
 		return Turn{}, ErrInvalidRequest
 	}
-	payload, err := canonicalJSON(request.Payload)
+	var payload []byte
+	var err error
+	if request.CanonicalPayload {
+		payload, err = exactJSON(request.Payload)
+	} else {
+		payload, err = canonicalJSON(request.Payload)
+	}
 	if err != nil {
 		return Turn{}, ErrInvalidRequest
+	}
+	if int64(len(payload)) > MaxInlineRequestBytes {
+		return Turn{}, ErrBodyTooLarge
 	}
 	offered, err := normalizeOfferedTools(request.OfferedTools)
 	if err != nil {
@@ -655,7 +680,6 @@ func toolSubset(used, offered []string) bool {
 	for _, id := range offered {
 		allowed[id] = struct{}{}
 	}
-	seen := make(map[string]struct{}, len(used))
 	for _, id := range used {
 		if !safeIdentifier.MatchString(id) {
 			return false
@@ -663,10 +687,6 @@ func toolSubset(used, offered []string) bool {
 		if _, ok := allowed[id]; !ok {
 			return false
 		}
-		if _, duplicate := seen[id]; duplicate {
-			return false
-		}
-		seen[id] = struct{}{}
 	}
 	return true
 }
@@ -681,7 +701,7 @@ func canonicalJSON(raw json.RawMessage) ([]byte, error) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return nil, errors.New("trailing JSON")
 	}
-	return json.Marshal(value)
+	return marshalCanonical(value)
 }
 
 func digestBytes(payload []byte) string {
