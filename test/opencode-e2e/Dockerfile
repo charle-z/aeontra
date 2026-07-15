@@ -43,4 +43,4 @@ ENV OPENCODE_E2E=1 \
 USER edge:edge
 
 ENTRYPOINT ["/usr/local/bin/mcp-devbox-opencode-e2e"]
-CMD ["-test.run=TestRemote", "-test.count=1", "-test.v"]
+CMD ["-test.run=TestOpenCodeExternalModelVerticalSlice|TestRemote", "-test.count=1", "-test.v"]
