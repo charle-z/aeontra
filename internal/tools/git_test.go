@@ -11,7 +11,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/config"
 )
 
-func gitCmd(t *testing.T, dir string, args ...string) string {
+func gitCmd(t testing.TB, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
@@ -25,7 +25,7 @@ func gitCmd(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-func initRepo(t *testing.T, mode config.Mode) (*Service, string) {
+func initRepo(t testing.TB, mode config.Mode) (*Service, string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")

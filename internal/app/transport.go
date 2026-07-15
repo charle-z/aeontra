@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
+	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/observability"
@@ -91,6 +92,17 @@ func serveTransport(runtime *appRuntime, transport transportConfig) (serveErr er
 	defer stop()
 	return runtime.Server.ServeHTTPWithOptions(ctx, transport.Addr, transport.Token, transport.OAuth, mcpserver.HTTPOptions{
 		ConsoleSecureCookies: transport.ConsoleSecureCookies,
+		EdgeHandler:          edge.NewHTTPHandler(runtime.Edge),
+		EdgeState: func() string {
+			count, err := runtime.Edge.ActiveCount()
+			if err != nil {
+				return "unavailable"
+			}
+			if count > 0 {
+				return "paired"
+			}
+			return "not_paired"
+		},
 	})
 }
 

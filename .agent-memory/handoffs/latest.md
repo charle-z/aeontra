@@ -1,24 +1,39 @@
 # Latest handoff — MCP Devbox
 
-Date: 2026-07-14
-Branch: `console-2.0`
-Base: deployed P9 merge `4fbe1dda02351c632e67c0f10a5c5b314df745e2`
-Pull request: `https://github.com/charle-z/mcp-devbox/pull/10`
+Date: 2026-07-15
+Branch: `codex/p11-edge-core`
+Base: deployed and tagged P8.1 merge `d343264bffdc0ae1bc045a9d723e913be977090c`
 
 ## Current phase
 
-P8.1 Console 2.0 is complete / merge-ready. Corrected implementation head
-`90d3e38018d7cc8cd1df1bd71c1050805626ed4e` passed Verify, Race, Staticcheck,
-Govulncheck, CodeQL, Dependency Review, Docker build, SPDX SBOM and the unchanged zero
-High/Critical Grype gate. Step 6 fixed pnpm setup ordering, Staticcheck SA1012 without
-suppression, and vulnerable frontend dependencies by upgrading to Vite 7.3.5 and
-Vitest 4.1.0. Durable tasks remain under `/state/tasks`. The catalog remains 67 tools with the P9 hash and the no resident service
-invariant.
+P8.1 is closed. PR #10, all required remote gates, existing-application deployment,
+catalog/Brain/console production smokes and annotated tag `p8.1` are complete. The
+deployed public catalog remains 67 tools with hash
+`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
+The console reports Edge as `not_paired`; no Edge runtime is claimed.
+Historical candidate evidence remains immutable; production closure is recorded in
+`docs/baselines/2026-07-14-p8_1-production.md`.
+
+P11 Steps 2-4 are committed locally. They add the compact workspace checkpoint,
+bounded telemetry/operational logs, and a redacted bounded result store. The local
+catalog is 71 tools with hash
+`sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
+No candidate-only change has been deployed.
+
+Step 5 implements Edge device identity and one-time pairing under `/state/edge`:
+Ed25519 per-device credentials, ten-minute one-use pairing codes, signed requests,
+persistent nonce replay rejection, revocation, an isolated `/edge/v1/pair` route,
+and local pairing/revocation commands. Step 6 adds the signed leased-task transport:
+structured bounded objectives, per-device idempotency, reconnect-safe leases,
+heartbeat, cancellation, terminal replay protection, and local admin commands. It
+still executes no work. Step 7 adds the separately installed outbound `mcp-edge`
+client, Bubblewrap-only development validation, persistent pre-execution journal,
+heartbeat cancellation, local kill switch, WSL systemd unit and human setup guide.
 
 ## Next safe step
 
-Commit and publish the release-evidence docs, then require the same exact-head
-CI and security gates again, merge without force, deploy only through the existing
-application, verify production OAuth/cookie/query-401/recovery/task/SSE/data/catalog/
-Brain behavior, then create annotated tag `p8.1`. Do not start Edge, Parrot,
-HTB, web terminal or durable-agent work.
+Publish only `codex/p11-edge-core`, open the P11 PR and require every remote gate on
+the exact final SHA. Do not merge, deploy, tag, pair, install WSL, expose a remote
+shell, or begin Parrot/HTB authority. After a human merge and exact deployment, the
+next owner action is the dedicated WSL/Bubblewrap procedure in
+`docs/install-edge-wsl.md`.

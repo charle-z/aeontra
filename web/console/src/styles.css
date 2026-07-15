@@ -31,10 +31,8 @@ body,
 }
 
 body {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 1rem;
+  min-height: 100dvh;
+  padding: 0;
   background: #1a1a1a;
   font-size: 14px;
   line-height: 1.35;
@@ -58,14 +56,14 @@ button:focus-visible,
 }
 
 .firmware-shell {
-  width: min(1080px, 100%);
-  min-height: min(720px, calc(100vh - 2rem));
+  width: 100vw;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border: 2px solid var(--vga-gray);
   background: var(--vga-blue);
-  box-shadow: 10px 10px 0 var(--vga-black);
+  box-shadow: none;
 }
 
 .firmware-header {
@@ -76,6 +74,26 @@ button:focus-visible,
   background: var(--vga-gray);
   color: var(--vga-black);
   font-weight: 700;
+}
+
+.runtime-selectors {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.runtime-selectors label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.runtime-selectors select {
+  max-width: 26ch;
+  border: 1px solid var(--vga-black);
+  background: var(--vga-white);
+  color: var(--vga-black);
 }
 
 .tabs {
@@ -336,13 +354,30 @@ button:focus-visible,
 
 @media (max-width: 720px) {
   body {
-    padding: 0.3rem;
     font-size: 13px;
   }
 
   .firmware-shell {
-    min-height: calc(100vh - 0.6rem);
-    box-shadow: 5px 5px 0 var(--vga-black);
+    min-height: 100dvh;
+  }
+
+  .firmware-header,
+  .runtime-selectors {
+    flex-wrap: wrap;
+  }
+
+  .runtime-selectors {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .runtime-selectors label {
+    flex: 1;
+  }
+
+  .runtime-selectors select {
+    min-width: 0;
+    width: 100%;
   }
 
   .item-help {

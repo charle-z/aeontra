@@ -93,12 +93,15 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 		Authorize:     authorized,
 		OAuthProvider: oauthProvider,
 		TaskJournal:   s.journal,
-		DataProvider:  s.consoleDataProvider(token, oauthProvider),
+		DataProvider:  s.consoleDataProvider(token, oauthProvider, opts.EdgeState),
 	})
 	if err != nil {
 		panic(fmt.Sprintf("invalid console configuration: %v", err))
 	}
 	consoleHandler.Register(mux)
+	if opts.EdgeHandler != nil {
+		mux.Handle("/edge/v1/", opts.EdgeHandler)
+	}
 
 	// Unauthenticated liveness probe. It reports the running version + git commit so a
 	// deploy can be confirmed to have shipped the latest code (no sensitive information).
@@ -216,17 +219,19 @@ func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
 			errorClass = observability.ErrorTransport
 		}
 		if s.observer != nil {
+			duration := time.Since(started).Milliseconds()
 			_ = s.observer.Emit(observability.Event{
-				Level:      level,
-				Component:  observability.ComponentHTTP,
-				Name:       observability.EventHTTPRequest,
-				RequestID:  requestID,
-				Transport:  observability.TransportHTTP,
-				Route:      normalizedRoute(r.URL.Path),
-				Outcome:    outcome,
-				StatusCode: status,
-				DurationMS: time.Since(started).Milliseconds(),
-				ErrorClass: errorClass,
+				Level:          level,
+				Component:      observability.ComponentHTTP,
+				Name:           observability.EventHTTPRequest,
+				RequestID:      requestID,
+				Transport:      observability.TransportHTTP,
+				Route:          normalizedRoute(r.URL.Path),
+				Outcome:        outcome,
+				StatusCode:     status,
+				DurationMS:     duration,
+				HTTPDurationMS: duration,
+				ErrorClass:     errorClass,
 			})
 		}
 	})

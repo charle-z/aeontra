@@ -46,7 +46,8 @@ RUN apk add --no-cache ca-certificates git nodejs npm \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
-	&& mkdir -p /repos /brain /state/tasks \
+	&& mkdir -p /repos /brain /state/tasks /state/results /state/edge \
+	&& chmod 0700 /state/results /state/edge \
 	&& chown -R mcpdevbox:mcpdevbox /repos /brain /state \
 	# Defense in depth: strip setuid/setgid bits so no binary can be used to
 	# escalate privileges (the app runs non-root and needs no setuid tools).
@@ -55,6 +56,8 @@ RUN apk add --no-cache ca-certificates git nodejs npm \
 # Writable Go caches for the non-root user (go test/build need these), plus a
 # default git identity so git_commit works without a home dir (override in Coolify).
 ENV MCP_DEVBOX_TASK_ROOT=/state/tasks \
+	MCP_DEVBOX_STATE_ROOT=/state \
+	MCP_DEVBOX_OBSERVABILITY=file \
 	GOCACHE=/tmp/go-build \
 	GOPATH=/tmp/go \
 	GIT_AUTHOR_NAME=mcp-devbox \

@@ -23,6 +23,11 @@ import (
 const testToken = "s3cr3t-bearer-token-value"
 
 func newHTTPServer(t *testing.T, mode config.Mode) (http.Handler, string) {
+	server, resolved := newHTTPServerObject(t, mode)
+	return server.HTTPHandler(testToken, nil), resolved
+}
+
+func newHTTPServerObject(t *testing.T, mode config.Mode) (*Server, string) {
 	t.Helper()
 	root := t.TempDir()
 	cfg, err := config.New(config.Config{
@@ -39,7 +44,7 @@ func newHTTPServer(t *testing.T, mode config.Mode) (http.Handler, string) {
 	}
 	resolved := pol.Roots()[0]
 	svc := tools.NewService(pol, audit.New(&bytes.Buffer{}), resolved)
-	return New(svc).HTTPHandler(testToken, nil), resolved
+	return New(svc), resolved
 }
 
 // newHTTPServerWithOAuth builds a handler with the OAuth provider enabled (and no static
@@ -254,6 +259,26 @@ func TestHTTP_HealthzNoAuth(t *testing.T) {
 	rr := do(t, h, "GET", "/healthz", "", "")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("/healthz: got %d, want 200", rr.Code)
+	}
+}
+
+func TestHTTPEdgeRoutesAreMountedWithoutChangingMCPAuthentication(t *testing.T) {
+	edgeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/edge/v1/pair" {
+			t.Fatalf("path=%q", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusCreated)
+	})
+	// Build the same test server with the additive Edge option.
+	base, _ := newHTTPServerObject(t, config.ModeReadOnly)
+	handler := base.HTTPHandlerWithOptions(testToken, nil, HTTPOptions{EdgeHandler: edgeHandler})
+	response := do(t, handler, http.MethodPost, "/edge/v1/pair", "", `{}`)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("edge status=%d", response.Code)
+	}
+	unauthorized := do(t, handler, http.MethodPost, DefaultMCPPath, "", `{}`)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("mcp status=%d", unauthorized.Code)
 	}
 }
 

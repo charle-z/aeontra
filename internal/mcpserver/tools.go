@@ -55,6 +55,8 @@ func (s *Server) register() {
 
 	catalog.RegisterRepositoryReads(s.addCatalogTool, s.svc)
 
+	catalog.RegisterResults(s.addCatalogTool, s.svc)
+
 	catalog.RegisterRepositoryWrites(s.addCatalogTool, s.svc)
 
 	catalog.RegisterExecution(s.addCatalogTool, s.svc)

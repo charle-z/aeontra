@@ -38,16 +38,28 @@ var p8ToolOrder = []string{
 
 var brainToolOrder = []string{"brain_search", "brain_read", "brain_write", "brain_index", "brain_context"}
 
-func TestBrainToolsAppendToUnchangedP8Catalog(t *testing.T) {
+func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 67 {
-		t.Fatalf("tool order length=%d want=67", len(server.order))
+	if len(server.order) != 71 {
+		t.Fatalf("tool order length=%d want=71", len(server.order))
 	}
-	if !reflect.DeepEqual(server.order[:62], p8ToolOrder) {
-		t.Fatalf("P8 tool prefix changed\ngot=%v\nwant=%v", server.order[:62], p8ToolOrder)
+	if server.order[2] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:4])
 	}
-	if !reflect.DeepEqual(server.order[62:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[62:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[7:10], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[7:10])
+	}
+	historical := make([]string, 0, len(p8ToolOrder))
+	for _, name := range server.order {
+		if name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") {
+			historical = append(historical, name)
+		}
+	}
+	if !reflect.DeepEqual(historical, p8ToolOrder) {
+		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
+	}
+	if !reflect.DeepEqual(server.order[66:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[66:], brainToolOrder)
 	}
 
 	snapshot, err := server.CatalogInfo()
@@ -56,7 +68,7 @@ func TestBrainToolsAppendToUnchangedP8Catalog(t *testing.T) {
 	}
 	legacy := make([]CatalogTool, 0, 62)
 	for _, tool := range snapshot.Tools {
-		if !strings.HasPrefix(tool.Name, "brain_") {
+		if !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && tool.Name != "workspace_checkpoint" {
 			legacy = append(legacy, tool)
 		}
 	}
@@ -70,9 +82,9 @@ func TestBrainToolsAppendToUnchangedP8Catalog(t *testing.T) {
 	if len(legacy) != 62 || legacyHash != p8Hash {
 		t.Fatalf("legacy catalog changed: count=%d hash=%s", len(legacy), legacyHash)
 	}
-	const p9Hash = "sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed"
-	if snapshot.ToolCount != 67 || snapshot.Hash != p9Hash {
-		t.Fatalf("P9 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
+	const resultStoreHash = "sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac"
+	if snapshot.ToolCount != 71 || snapshot.Hash != resultStoreHash {
+		t.Fatalf("result-store catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
 

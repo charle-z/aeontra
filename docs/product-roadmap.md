@@ -1,8 +1,8 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
-## Status snapshot — 2026-07-14
+## Status snapshot — 2026-07-15
 
 This table distinguishes implemented state from roadmap intent. Detailed acceptance
 criteria below remain future requirements until their status changes with evidence.
@@ -16,10 +16,11 @@ criteria below remain future requirements until their status changes with eviden
 | P7 structured observability | Deployed | `main` and production serve `d1309ed08db0170e5165f78bf406e94cfa56cc11`; green Race/Staticcheck/CodeQL/container gates and real content-free JSONL logs are recorded in the P7 baseline. |
 | Console/showcase | Deployed | P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8`; the original authenticated console remains historical evidence. |
 | Brain memory | Deployed | P9 merge `4fbe1dda02351c632e67c0f10a5c5b314df745e2` is deployed and tagged `p9`; persistent `/brain`, 67 tools, catalog and Brain smokes are verified. |
-| Console 2.0 / P8.1 | Complete / merge-ready | Branch `console-2.0` is based exactly on deployed P9. React Neo-BIOS UI, console OAuth, query-key removal, durable `/state/tasks`, SSE and safe real-data contracts pass local gates; PR and production evidence remain pending. |
+| Console 2.0 / P8.1 | Deployed | `main` at `d343264bffdc0ae1bc045a9d723e913be977090c` is deployed healthy and tagged `p8.1`; React Neo-BIOS UI, console OAuth, strict query-key rejection, durable `/state/tasks`, SSE and exact safe-data contracts passed production smoke. |
+| P11 bounded state and development Edge | Release candidate | `codex/p11-edge-core` implements compact checkpointing, bounded persistence and the outbound-only WSL development Edge. Remote PR gates, merge, deployment, WSL installation and pairing remain pending. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
 | Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |
-| Edge agents | Planned; PC/WSL validation pending | Setup must be outbound-only, easy to configure, revocable, and locally bounded. |
+| Edge agents | Development Edge implemented; WSL validation pending | Setup is outbound-only, revocable and locally bounded; broader PC/Parrot/security workcells remain planned. |
 | Multi-model orchestrator | Planned | Must remain provider-neutral and subordinate to policy. |
 | Authorized security workspaces | Planned | Requires administrator-owned active engagement scope. |
 

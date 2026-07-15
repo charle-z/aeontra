@@ -15,7 +15,7 @@ import (
 func clearRuntimeEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		tokenEnv, publicURLEnv, oauthPassphraseEnv, brainRootEnv,
+		tokenEnv, publicURLEnv, oauthPassphraseEnv, brainRootEnv, stateRootEnv,
 		oauthClientStorePathEnv, oauthRefreshStorePathEnv,
 		observabilityModeEnv, observabilityPathEnv, observabilityMaxBytesEnv,
 		sandboxImageEnv,
@@ -140,6 +140,52 @@ func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 	}
 	if status := runtime.Service.SandboxStatus(); !strings.Contains(status, "backend: none") {
 		t.Fatalf("sandbox status = %q", status)
+	}
+}
+
+func TestBuildRuntimeUsesBoundedPersistentStateLayout(t *testing.T) {
+	clearRuntimeEnv(t)
+	repo := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	cfg, err := config.New(config.Config{Roots: []string{repo}, Mode: config.ModeReadOnly, AllowedCommands: []string{"git"}, SandboxBackend: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := buildRuntime(serveOptions{Config: cfg, StateRoot: state, Observability: observability.Config{Mode: observability.ModeFile, MaxBytes: observability.MinMaxBytes}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{"telemetry/metrics.db", "logs/observability.jsonl", "logs/audit.jsonl", "results/results.db"} {
+		if _, err := os.Stat(filepath.Join(state, filepath.FromSlash(relative))); err != nil {
+			t.Fatalf("missing %s: %v", relative, err)
+		}
+	}
+}
+
+func TestBuildRuntimePersistsMetricsWhenJSONLIsOff(t *testing.T) {
+	clearRuntimeEnv(t)
+	repo := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	cfg, err := config.New(config.Config{Roots: []string{repo}, Mode: config.ModeReadOnly, AllowedCommands: []string{"git"}, SandboxBackend: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := buildRuntime(serveOptions{Config: cfg, StateRoot: state, Observability: observability.Config{Mode: observability.ModeOff, MaxBytes: observability.DefaultMaxBytes}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Observer.Emit(observability.Event{Name: observability.EventHTTPRequest, Transport: observability.TransportHTTP, Route: observability.RouteHealth, Outcome: observability.OutcomeSuccess, StatusCode: 200, HTTPDurationMS: 2}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := runtime.Telemetry.Snapshot("hourly")
+	if err != nil || snapshot.RequestCount != 1 || snapshot.HTTPDurationMS != 2 {
+		t.Fatalf("snapshot=%+v err=%v", snapshot, err)
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -1,0 +1,37 @@
+[Unit]
+Description=MCP Devbox outbound development Edge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mcpedge
+Group=mcpedge
+ExecStart=/usr/local/bin/mcp-edge run --state /var/lib/mcp-devbox-edge --root /srv/mcp-devbox-workspaces --poll 5s --lease 1m
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=false
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/mcp-devbox-edge /srv/mcp-devbox-workspaces
+
+[Install]
+WantedBy=multi-user.target

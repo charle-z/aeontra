@@ -96,7 +96,7 @@ func TestP9BrainIsDefinedAndReleaseReady(t *testing.T) {
 	for _, content := range []string{capsule, readme, agents, currentTask, handoff} {
 		for _, required := range []string{
 			"P8.1",
-			"4fbe1dda02351c632e67c0f10a5c5b314df745e2",
+			"d343264bffdc0ae1bc045a9d723e913be977090c",
 		} {
 			if !strings.Contains(strings.ToLower(content), strings.ToLower(required)) {
 				t.Errorf("current-state document does not contain %q", required)

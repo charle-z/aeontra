@@ -6,11 +6,16 @@ package audit
 import (
 	"encoding/json"
 	"io"
-	"os"
 	"sync"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/policy"
+)
+
+const (
+	DefaultMaxBytes = int64(32 << 20)
+	DefaultSegments = 4
 )
 
 // Decision is the policy outcome recorded for a tool call.
@@ -49,7 +54,12 @@ func New(w io.Writer) *Logger {
 
 // Open opens (creating if needed) an append-only audit file at path.
 func Open(path string) (*Logger, error) {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	return OpenWithLimit(path, DefaultMaxBytes, DefaultSegments)
+}
+
+// OpenWithLimit is the bounded form used by tests and controlled runtime wiring.
+func OpenWithLimit(path string, maxBytes int64, segments int) (*Logger, error) {
+	f, err := observability.OpenRotatingWriter(path, maxBytes, segments)
 	if err != nil {
 		return nil, err
 	}

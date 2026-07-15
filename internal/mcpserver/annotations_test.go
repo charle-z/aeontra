@@ -131,7 +131,7 @@ func TestToolAnnotationClassifications(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"build_context_pack", "list_dir", "repo_list", "read_file", "read_many_files", "search_code", "git_status", "repo_status", "git_diff", "repo_diff", "memory_read", "sandbox_status"} {
+	for _, name := range []string{"build_context_pack", "workspace_checkpoint", "list_dir", "repo_list", "read_file", "read_many_files", "search_code", "git_status", "repo_status", "git_diff", "repo_diff", "memory_read", "sandbox_status"} {
 		assertHints(name, true, false, true, false)
 	}
 	for _, name := range []string{"github_repo_info", "source_repo_info", "coolify_list_apps", "platform_apps_list", "coolify_app_status", "platform_app_status", "coolify_app_logs", "platform_app_logs", "coolify_deployment_status", "platform_deployment_status", "platform_validation_runner_create_preview"} {

@@ -13,7 +13,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/oauth"
 )
 
-func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Provider) console.DataProvider {
+func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Provider, edgeState func() string) console.DataProvider {
 	return func(ctx context.Context) (console.DataSnapshot, error) {
 		payload := s.payload.snapshot()
 		snapshot := console.DataSnapshot{
@@ -37,6 +37,12 @@ func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Pr
 			Edge:          console.EdgeData{State: "not_paired"},
 			Brain:         console.BrainData{Nodes: []console.BrainNode{}, Edges: []console.BrainEdge{}},
 			Observability: console.ObservabilityData{Routes: []console.ObservabilityRoute{}},
+		}
+		if edgeState != nil {
+			switch state := edgeState(); state {
+			case "paired", "not_paired", "unavailable":
+				snapshot.Edge.State = state
+			}
 		}
 
 		if s.observer != nil {

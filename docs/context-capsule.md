@@ -4,7 +4,22 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-P9 Brain is deployed, healthy and tagged `p9`. Current goal: close P8.1 Console 2.0 from branch `console-2.0` through remote gates, merge, the existing Coolify deployment, production smoke and annotated tag `p8.1`, while preserving the 67-tool contract and human authority boundaries.
+P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11 Step 2 adds
+`workspace_checkpoint`, a closed local read-only tool that intentionally advances the
+candidate catalog without changing historical contracts.
+It reduces agent call saturation without fetch, external calls, file bodies or Git
+mutation. P11 Step 3 adds bounded hourly/daily SQLite telemetry and fixed operational
+JSONL segments under `/state` without recording content or changing authority. P11
+Step 4 adds the bounded redacted result store and three local read-only tools,
+advancing the current catalog to 71 tools with hash
+`sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
+P11 Steps 5-7 implement the candidate outbound-only Edge foundation: one-use
+pairing and per-device Ed25519 identity, signed leased/idempotent tasks, and a
+separately installed WSL `development` workcell with a persistent local journal,
+Bubblewrap isolation, heartbeat cancellation and a kill switch. It accepts only
+structured validation objectives; no remote shell, argv, sudo, Docker socket,
+Windows mount, pairing, publication or deployment is implied. Every human authority
+boundary remains unchanged.
 
 P0 architecture foundations are deployed. The deterministic catalog, centralized
 build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`
@@ -85,8 +100,9 @@ Coolify application is healthy with persistent `/brain`, 67 tools and catalog ha
 `cmd/mcp-catalog-smoke` and `cmd/brain-smoke` passed against production.
 The no resident service invariant remains intact.
 
-P8.1 Console 2.0 is complete / merge-ready on branch `console-2.0`, based
-exactly on deployed P9. React/TypeScript/Vite compiles the Neo-BIOS interface into
+P8.1 Console 2.0 is deployed on `main` at merge commit
+`d343264bffdc0ae1bc045a9d723e913be977090c` and tagged `p8.1`.
+React/TypeScript/Vite compiles the Neo-BIOS interface into
 same-origin assets embedded by Go. The console OAuth flow uses digest-only state,
 PKCE S256, one-use codes and a strict opaque cookie; query-string credentials return
 401 while header bearer remains recovery-only. Durable content-free task state lives
@@ -94,9 +110,9 @@ under `/state/tasks` and is streamed through SSE with polling fallback. Exact
 allowlisted endpoints expose real container resources, declared `bytes / 4 (estimate)`
 payload accounting, aggregate observability, Brain aggregates and an opaque bounded
 graph. Edge is `Not paired`; no Edge Core, workcell, terminal or autonomous agent
-is claimed. Release-candidate evidence is in
-`docs/baselines/2026-07-14-p8_1.md`. Remote PR gates, merge, deployment and
-production smoke remain pending.
+is claimed. Release-candidate evidence remains in
+`docs/baselines/2026-07-14-p8_1.md`; completed remote gates, merge, deployment and
+production smoke are recorded in `docs/baselines/2026-07-14-p8_1-production.md`.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -413,11 +429,16 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Publish `console-2.0` and open the P8.1 pull request.
-2. Require fresh frontend, Verify, Race, Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker/SBOM and zero-High/Critical Grype gates on the exact head.
-3. Correct failures only on the branch; merge without force after all required gates pass.
-4. Deploy the exact merge commit through the existing Coolify application, tolerate only the bounded expected reconnect during container replacement, and verify OAuth console login, strict cookie, query-key 401, bearer recovery, `/state/tasks`, SSE, safe data schemas, 67 tools, P9 catalog hash and both existing smokes.
-5. Publish annotated tag `p8.1` only after production closure. Do not advance to Edge, Parrot, HTB, autonomous agents or a web terminal.
+1. Measure the repeated-call and output-volume cost of the standard inspect/patch/
+   validate/commit, PR-check and deployment-observation workflows.
+2. Add only the compact, read-only or fixed-profile orchestration primitives proven
+   necessary by those measurements; preserve existing tools and policy paths.
+3. Review and publish the implemented outbound-only WSL `development` workcell,
+   deploy the matching VPS Edge protocol, then follow `docs/install-edge-wsl.md` for
+   the first human-controlled installation and pairing. Do not pair automatically,
+   expose a remote shell, or weaken Bubblewrap/identity boundaries.
+4. Keep Parrot, HTB, autonomous-agent and privileged-workcell authority out of scope
+   until the Edge foundation is independently bounded and reviewed.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -433,17 +454,11 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-14. P9 production merge
-`4fbe1dda02351c632e67c0f10a5c5b314df745e2` is deployed, healthy and tagged
-`p9`; production reports 67 tools and the P9 catalog hash, with catalog and Brain
-smokes green.
-
-P8.1 release candidate branch `console-2.0` contains implementation commits
-`c4240672c9abfbb352b7a6b8ea39d7ae0e519d22`,
-`1f97c1f7c077752a435bdecd484229f0381dc306`,
-`548da51448cf3bf0f9a5d77b4f6d94d2b0cc3b79` and
-`fb66b175cee23b0211f307fe50bf5ae73a6bbd74`. Frontend check/test/build,
-atomic Go tests, package coverage, vet, build and diff checks are green. Query-string
-credentials return 401, OAuth console state/PKCE/code/cookie tests are green and
-`/state/tasks` contracts are covered. PR, remote gates, merge, deployment and
-`p8.1` tag are pending.
+Date: 2026-07-14. P8.1 production merge
+`d343264bffdc0ae1bc045a9d723e913be977090c` is deployed healthy through existing
+Coolify application `jqf7qz5ensoqtvl1tb197gcv` and tagged `p8.1`. Production reports
+67 tools and catalog hash
+`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
+catalog, Brain and console smokes are green. Query-string credentials return 401,
+header bearer recovery remains valid, the console cookie is strict and opaque,
+`/state/tasks` and SSE are operational, and Edge honestly reports `not_paired`.

@@ -12,10 +12,13 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/resultstore"
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
+	"github.com/charle-z/mcp-devbox/internal/telemetry"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
@@ -28,13 +31,17 @@ type appRuntime struct {
 	Journal     *taskjournal.Journal
 	PrimaryRoot string
 	AuditPath   string
+	StateRoot   string
+	Telemetry   *telemetry.Store
+	Results     *resultstore.Store
+	Edge        *edge.Store
 }
 
 func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, resultErr, edgeErr error
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -44,7 +51,16 @@ func (r *appRuntime) Close() error {
 	if r.Observer != nil {
 		observabilityErr = r.Observer.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil {
+	if r.Telemetry != nil {
+		telemetryErr = r.Telemetry.Close()
+	}
+	if r.Results != nil {
+		resultErr = r.Results.Close()
+	}
+	if r.Edge != nil {
+		edgeErr = r.Edge.Close()
+	}
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || resultErr != nil || edgeErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
@@ -56,18 +72,19 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		return nil, err
 	}
 	primary := pol.Roots()[0]
+	stateRoot := opts.StateRoot
+	if stateRoot == "" {
+		stateRoot = filepath.Join(primary, ".agent-memory", "state")
+	}
 	auditPath := opts.AuditPath
 	if auditPath == "" {
-		auditPath = filepath.Join(primary, ".agent-memory", "audit.log")
-	}
-	if err := os.MkdirAll(filepath.Dir(auditPath), 0o755); err != nil {
-		return nil, fmt.Errorf("creating audit dir: %w", err)
+		auditPath = filepath.Join(stateRoot, "logs", "audit.jsonl")
 	}
 	logger, err := audit.Open(auditPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening audit log: %w", err)
 	}
-	observabilityConfig, err := resolveObservabilityConfig(opts.Observability, primary)
+	observabilityConfig, err := resolveObservabilityConfig(opts.Observability, stateRoot)
 	if err != nil {
 		_ = logger.Close()
 		return nil, err
@@ -77,17 +94,44 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, fmt.Errorf("opening observability sink: %w", err)
 	}
+	metrics, err := telemetry.Open(telemetry.Config{Path: filepath.Join(stateRoot, "telemetry", "metrics.db")})
+	if err != nil {
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening telemetry store: %w", err)
+	}
+	observer.WithSink(metrics)
 	journal, err := buildTaskJournal(opts.TaskRoot)
 	if err != nil {
+		_ = metrics.Close()
 		_ = observer.Close()
 		_ = logger.Close()
 		return nil, err
 	}
 	service, err := buildToolService(opts.Config, pol, logger, primary, opts.BrainRoot)
 	if err != nil {
+		_ = metrics.Close()
 		_ = observer.Close()
 		_ = logger.Close()
 		return nil, err
+	}
+	results, err := resultstore.Open(resultstore.Config{Root: filepath.Join(stateRoot, "results")})
+	if err != nil {
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening result store: %w", err)
+	}
+	service = service.WithResultStore(results)
+	edgeStore, err := edge.Open(edge.Config{Root: filepath.Join(stateRoot, "edge")})
+	if err != nil {
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening edge identity store: %w", err)
 	}
 	return &appRuntime{
 		Policy:      pol,
@@ -98,6 +142,10 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,
+		StateRoot:   stateRoot,
+		Telemetry:   metrics,
+		Results:     results,
+		Edge:        edgeStore,
 	}, nil
 }
 

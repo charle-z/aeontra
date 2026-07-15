@@ -57,13 +57,38 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **OAuth-first authentication with header-only bearer recovery**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the server now exposes 67 deliberately annotated
+**Secure builder evolution:** the current P11 candidate exposes 71 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
 private validation profiles, bounded Coolify logs, and disabled-by-default
 privileged profiles. Consequential operations use
 cryptographically named, expiring, single-use plans and revalidate state before
 execution. See [docs/tools.md](docs/tools.md).
+
+The added `workspace_checkpoint` read-only primitive reconstructs branch, commit,
+upstream, tree counts, diff statistics and a bounded redacted task summary in one
+schema-only response. It does not fetch, modify Git, read source bodies or call an
+external service.
+
+The P11 candidate also persists content-free hourly/daily telemetry in embedded
+SQLite and bounds operational JSONL: four 16 MiB observability segments and four
+32 MiB audit segments under the existing `/state` volume. It stores no prompts,
+parameters, results, private paths, identities, credentials or model reasoning.
+
+Large tool output is redacted before persistence and replaced on the MCP boundary by
+seven compact metadata fields plus an opaque `result_ref`. The bounded result store
+uses `/state/results/results.db`, 24-hour success / 7-day failure TTLs, a 256 MiB
+logical quota, exact search, and 16 KiB reads. It exposes no arbitrary paths,
+embeddings, prompts, credentials, or model reasoning.
+
+**P11 Edge candidate:** the VPS control plane can pair an independently installed
+WSL device with a one-use, short-lived code and a per-device Ed25519 key. Structured
+`validate` tasks use bounded leases, heartbeats, cancellation, replay protection and
+a persistent idempotency journal. The outbound-only `mcp-edge` client chooses local
+validation stages from repository markers and runs them in Bubblewrap without
+network, Windows mounts, a host home, private Edge state, or a Docker socket. The
+VPS cannot send shell text or argv. Installation and pairing remain explicit human
+steps; see [docs/install-edge-wsl.md](docs/install-edge-wsl.md).
 
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused
@@ -103,7 +128,8 @@ protocol change is introduced. See `docs/console.md` and
 local Git, disposable SQLite FTS5, `/brain`, 67 tools, `cmd/mcp-catalog-smoke` and `cmd/brain-smoke` are verified in production. The deterministic catalog hash is
 `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
 
-**P8.1 Console 2.0 is complete / merge-ready on `console-2.0`:** the existing
+**P8.1 Console 2.0 is deployed and tagged `p8.1` at
+`d343264bffdc0ae1bc045a9d723e913be977090c`:** the existing
 Go application now embeds a React/TypeScript/Vite Neo-BIOS operations firmware. It
 shows only exact allowlisted real data, durable content-free task state and SSE; Brain
 uses opaque graph IDs and Edge honestly remains Not paired. Console OAuth completes
@@ -111,8 +137,9 @@ server-side with PKCE/state/single-use codes and an opaque
 `Secure; HttpOnly; SameSite=Strict` cookie. Query-string credentials always return
 401, while an Authorization bearer remains recovery-only. No new MCP tool, listener,
 application, resident service, free shell, autonomous agent or workcell is introduced.
-Release-candidate evidence is in `docs/baselines/2026-07-14-p8_1.md`; remote
-gates, merge, deploy, production smoke and annotated tag `p8.1` remain mandatory.
+Release-candidate evidence remains in `docs/baselines/2026-07-14-p8_1.md`; completed
+remote gates, merge, deployment and production smokes are recorded separately in
+`docs/baselines/2026-07-14-p8_1-production.md`.
 
 Optional local Brain startup:
 

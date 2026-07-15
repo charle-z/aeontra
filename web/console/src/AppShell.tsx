@@ -165,6 +165,8 @@ export default function AppShell() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [attract, setAttract] = useState(false);
   const [events, setEvents] = useState<EventEntry[]>([]);
+  const [projectSelection, setProjectSelection] = useState("configured");
+  const [edgeSelection, setEdgeSelection] = useState("current");
   const reducedMotion = useMemo(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches, []);
 
   const log = useCallback((level: EventEntry["level"], message: string) => setEvents((current) => [{ at: nowLabel(), level, message }, ...current].slice(0, 60)), []);
@@ -244,7 +246,10 @@ export default function AppShell() {
       case "Tasks": return <TasksTab tasks={tasks} />;
       case "Brain": return <BrainTab data={data} />;
       case "Graph": return <div className="graph-panel"><Section title="Brain Link Graph" /><GraphView brain={data?.brain ?? null} /></div>;
-      case "Edge": return <Panel><Section title="Edge Devices" /><Row label="Pairing" value={data?.edge.state === "not_paired" ? "Not paired" : data?.edge.state ?? "Unavailable"} tone="dim" help="P11 has not paired a device. No host or workcell identity is fabricated." /><Row label="Workcell" value="Unavailable — P12" tone="dim" help="Parrot Workcell is outside P8.1." /></Panel>;
+      case "Edge": {
+        const paired = data?.edge.state === "paired";
+        return <Panel><Section title="Edge Devices" /><Row label="Pairing" value={paired ? "Paired" : data?.edge.state === "not_paired" ? "Not paired" : "Unavailable"} tone={paired ? "ok" : "dim"} help="Derived from the real active-device count; no device identity is fabricated." /><Row label="Workcell" value={paired ? "Development transport configured" : "Unavailable until pairing"} tone={paired ? "normal" : "dim"} help="The outbound workcell remains offline unless its separately installed WSL service is running." /></Panel>;
+      }
       case "Observability": return <ObservabilityTab data={data} />;
       case "Security": return <SecurityTab data={data} status={status} />;
       case "Events": return <div className="events-panel"><Section title="Safe Console Events" />{events.length ? events.map((entry, index) => <p key={entry.at + "-" + index}><time>{entry.at}</time> <strong>{entry.level}</strong> {entry.message}</p>) : <p>No browser event recorded.</p>}</div>;
@@ -253,7 +258,7 @@ export default function AppShell() {
 
   return (
     <main className="firmware-shell">
-      <header className="firmware-header"><span>MCP DEVBOX OPERATIONS FIRMWARE</span><span>Rev {status?.commit ? status.commit.slice(0, 8) : "unknown"}</span></header>
+      <header className="firmware-header"><span>MCP DEVBOX OPERATIONS FIRMWARE</span><div className="runtime-selectors"><label>Project<select aria-label="Project" value={projectSelection} onChange={(event) => setProjectSelection(event.target.value)}><option value="configured">Configured project jail</option></select></label><label>Edge<select aria-label="Edge device" value={edgeSelection} onChange={(event) => setEdgeSelection(event.target.value)}><option value="current">{data?.edge.state === "paired" ? "Paired development Edge" : "No paired Edge"}</option></select></label></div><span>Rev {status?.commit ? status.commit.slice(0, 8) : "unknown"}</span></header>
       <nav className="tabs" role="tablist" aria-label="Console screens">{tabs.map((tab) => <button key={tab} type="button" role="tab" aria-selected={active === tab} onClick={() => { setActive(tab); setAttract(false); }}>{tab}</button>)}</nav>
       <section className="screen" aria-live="polite">{content}</section>
       <footer className="keybar"><span><b>F1</b> Help</span><span><b>↑↓</b> Item</span><span><b>←→</b> Screen</span><span><b>F5</b> Refresh</span><span><b>F8</b> Attract</span><span><b>F9</b> Cancel</span><span><b>F10</b> Approve</span><form method="post" action="/console/logout"><button type="submit">ESC Sign out</button></form></footer>

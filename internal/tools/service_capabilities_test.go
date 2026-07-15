@@ -22,7 +22,7 @@ func TestNewServiceBuildsCapabilityServicesOverOneSharedCore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger, err := audit.Open(root + "/audit.log")
+	logger, err := audit.Open(root + "/private/audit.log")
 	if err != nil {
 		t.Fatal(err)
 	}

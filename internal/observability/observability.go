@@ -23,6 +23,7 @@ import (
 const (
 	SchemaVersion   = 1
 	DefaultMaxBytes = int64(16 << 20)
+	DefaultSegments = 4
 	MinMaxBytes     = int64(1 << 20)
 	MaxMaxBytes     = int64(1 << 30)
 )
@@ -156,24 +157,31 @@ func ValidateConfig(cfg Config) (Config, error) {
 // Event is intentionally closed: there is no message, body, params, error, path,
 // target, or arbitrary attributes map.
 type Event struct {
-	SchemaVersion int        `json:"schema_version"`
-	Time          string     `json:"time"`
-	Level         Level      `json:"level"`
-	Component     Component  `json:"component"`
-	Name          EventName  `json:"event"`
-	RequestID     string     `json:"request_id,omitempty"`
-	Transport     Transport  `json:"transport,omitempty"`
-	Route         Route      `json:"route,omitempty"`
-	Method        Method     `json:"method,omitempty"`
-	Tool          string     `json:"tool,omitempty"`
-	Outcome       Outcome    `json:"outcome,omitempty"`
-	StatusCode    int        `json:"status_code,omitempty"`
-	DurationMS    int64      `json:"duration_ms,omitempty"`
-	ErrorClass    ErrorClass `json:"error_class,omitempty"`
-	Commit        string     `json:"commit,omitempty"`
-	ToolCount     int        `json:"tool_count,omitempty"`
-	CatalogHash   string     `json:"catalog_hash,omitempty"`
-	RootCount     int        `json:"root_count,omitempty"`
+	SchemaVersion  int        `json:"schema_version"`
+	Time           string     `json:"time"`
+	Level          Level      `json:"level"`
+	Component      Component  `json:"component"`
+	Name           EventName  `json:"event"`
+	RequestID      string     `json:"request_id,omitempty"`
+	Transport      Transport  `json:"transport,omitempty"`
+	Route          Route      `json:"route,omitempty"`
+	Method         Method     `json:"method,omitempty"`
+	Tool           string     `json:"tool,omitempty"`
+	ProjectID      string     `json:"project_id,omitempty"`
+	TaskID         string     `json:"task_id,omitempty"`
+	Outcome        Outcome    `json:"outcome,omitempty"`
+	StatusCode     int        `json:"status_code,omitempty"`
+	DurationMS     int64      `json:"duration_ms,omitempty"`
+	InputBytes     int64      `json:"input_bytes,omitempty"`
+	OutputBytes    int64      `json:"output_bytes,omitempty"`
+	HTTPDurationMS int64      `json:"http_duration_ms,omitempty"`
+	ToolDurationMS int64      `json:"tool_duration_ms,omitempty"`
+	ExternalWaitMS int64      `json:"external_wait_ms,omitempty"`
+	ErrorClass     ErrorClass `json:"error_class,omitempty"`
+	Commit         string     `json:"commit,omitempty"`
+	ToolCount      int        `json:"tool_count,omitempty"`
+	CatalogHash    string     `json:"catalog_hash,omitempty"`
+	RootCount      int        `json:"root_count,omitempty"`
 }
 
 type Logger struct {
@@ -185,6 +193,23 @@ type Logger struct {
 	failures     atomic.Uint64
 	summaryMu    sync.Mutex
 	routeSummary map[Route]*routeAccumulator
+	sinks        []Sink
+}
+
+// Sink receives only normalized closed-schema events.
+type Sink interface {
+	Observe(Event) error
+}
+
+// WithSink adds a content-free aggregate sink before serving begins.
+func (l *Logger) WithSink(sink Sink) *Logger {
+	if l == nil || sink == nil {
+		return l
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.sinks = append(l.sinks, sink)
+	return l
 }
 
 func Open(cfg Config, stderr io.Writer) (*Logger, error) {
@@ -206,7 +231,7 @@ func Open(cfg Config, stderr io.Writer) (*Logger, error) {
 		if cfg.Path == "" {
 			return nil, errors.New("observability file path is required for file mode")
 		}
-		file, err := openRotatingFile(cfg.Path, cfg.MaxBytes)
+		file, err := OpenRotatingWriter(cfg.Path, cfg.MaxBytes, DefaultSegments)
 		if err != nil {
 			return nil, err
 		}
@@ -220,7 +245,7 @@ func Open(cfg Config, stderr io.Writer) (*Logger, error) {
 }
 
 func (l *Logger) Emit(event Event) error {
-	if l == nil || l.off {
+	if l == nil {
 		return nil
 	}
 	event = normalizeEvent(event)
@@ -238,6 +263,12 @@ func (l *Logger) Emit(event Event) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var joined error
+	for _, sink := range l.sinks {
+		if err := sink.Observe(event); err != nil {
+			l.failures.Add(1)
+			joined = errors.Join(joined, err)
+		}
+	}
 	for _, writer := range l.writers {
 		if _, err := writer.Write(encoded); err != nil {
 			l.failures.Add(1)
@@ -303,6 +334,8 @@ func normalizeEvent(event Event) Event {
 	}
 	event.RequestID = safeRequestID(event.RequestID)
 	event.Tool = safeTool(event.Tool)
+	event.ProjectID = safeDimensionID(event.ProjectID)
+	event.TaskID = safeDimensionID(event.TaskID)
 	event.Commit = safeCommit(event.Commit)
 	event.CatalogHash = safeCatalogHash(event.CatalogHash)
 	if event.StatusCode < 0 || event.StatusCode > 999 {
@@ -310,6 +343,21 @@ func normalizeEvent(event Event) Event {
 	}
 	if event.DurationMS < 0 {
 		event.DurationMS = 0
+	}
+	if event.InputBytes < 0 {
+		event.InputBytes = 0
+	}
+	if event.OutputBytes < 0 {
+		event.OutputBytes = 0
+	}
+	if event.HTTPDurationMS < 0 {
+		event.HTTPDurationMS = 0
+	}
+	if event.ToolDurationMS < 0 {
+		event.ToolDurationMS = 0
+	}
+	if event.ExternalWaitMS < 0 {
+		event.ExternalWaitMS = 0
 	}
 	if event.ToolCount < 0 {
 		event.ToolCount = 0
@@ -385,6 +433,17 @@ func safeTool(value string) string {
 	return value
 }
 
+func safeDimensionID(value string) string {
+	if value == "" {
+		return ""
+	}
+	value = strings.TrimSpace(value)
+	if changedByRedaction(value) || !toolPattern.MatchString(strings.ToLower(value)) {
+		return "redacted"
+	}
+	return value
+}
+
 func safeCommit(value string) string {
 	if value == "" {
 		return ""
@@ -423,13 +482,20 @@ func NewRequestID() string {
 }
 
 type rotatingFile struct {
+	mu       sync.Mutex
 	path     string
 	maxBytes int64
+	segments int
 	file     *os.File
 	size     int64
 }
 
-func openRotatingFile(path string, maxBytes int64) (*rotatingFile, error) {
+// OpenRotatingWriter opens a private append-only file with a fixed total segment
+// count. The active file is one segment; numbered suffixes are oldest-first backups.
+func OpenRotatingWriter(path string, maxBytes int64, segments int) (io.WriteCloser, error) {
+	if maxBytes <= 0 || segments < 1 || segments > 64 {
+		return nil, errors.New("invalid rotating writer bounds")
+	}
 	directory := filepath.Dir(path)
 	if err := ensurePrivateDirectory(directory); err != nil {
 		return nil, err
@@ -438,7 +504,7 @@ func openRotatingFile(path string, maxBytes int64) (*rotatingFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &rotatingFile{path: path, maxBytes: maxBytes, file: file, size: size}, nil
+	return &rotatingFile{path: path, maxBytes: maxBytes, segments: segments, file: file, size: size}, nil
 }
 
 func ensurePrivateDirectory(directory string) error {
@@ -525,6 +591,8 @@ func openPrivateAppend(path string) (*os.File, int64, error) {
 }
 
 func (writer *rotatingFile) Write(data []byte) (int, error) {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
 	if writer.size > 0 && writer.size+int64(len(data)) > writer.maxBytes {
 		if err := writer.rotate(); err != nil {
 			return 0, err
@@ -539,15 +607,33 @@ func (writer *rotatingFile) rotate() error {
 	if err := writer.file.Close(); err != nil {
 		return err
 	}
-	backup := writer.path + ".1"
-	if err := os.Remove(backup); err != nil && !errors.Is(err, os.ErrNotExist) {
+	oldest := fmt.Sprintf("%s.%d", writer.path, writer.segments-1)
+	if writer.segments > 1 {
+		if err := os.Remove(oldest); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	for index := writer.segments - 2; index >= 1; index-- {
+		from := fmt.Sprintf("%s.%d", writer.path, index)
+		to := fmt.Sprintf("%s.%d", writer.path, index+1)
+		if err := os.Remove(to); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err := os.Rename(from, to); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	if writer.segments == 1 {
+		if err := os.Remove(writer.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	} else if err := os.Rename(writer.path, writer.path+".1"); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err := os.Rename(writer.path, backup); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err := os.Chmod(backup, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	if writer.segments > 1 {
+		if err := os.Chmod(writer.path+".1", 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	file, size, err := openPrivateAppend(writer.path)
 	if err != nil {
@@ -562,5 +648,7 @@ func (writer *rotatingFile) Close() error {
 	if writer == nil || writer.file == nil {
 		return nil
 	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
 	return writer.file.Close()
 }
