@@ -13,9 +13,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
+	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 	"github.com/charle-z/mcp-devbox/internal/tools"
@@ -25,18 +27,23 @@ const largeResultThresholdBytes = 32 << 10
 
 // Server dispatches MCP requests to the tool service.
 type Server struct {
-	svc      *tools.Service
-	name     string
-	table    map[string]toolEntry
-	order    []string
-	observer *observability.Logger
-	journal  *taskjournal.Journal
-	payload  payloadCounters
+	svc         *tools.Service
+	name        string
+	table       map[string]toolEntry
+	order       []string
+	observer    *observability.Logger
+	journal     *taskjournal.Journal
+	payload     payloadCounters
+	clients     *clientCapabilityStore
+	modelTurns  *modelturn.Store
+	modelWaitMu sync.Mutex
+	modelWaits  map[string]struct{}
 }
 
 type toolEntry struct {
-	def     toolDef
-	handler func(args json.RawMessage) (string, error)
+	def            toolDef
+	handler        func(args json.RawMessage) (string, error)
+	sessionHandler func(args json.RawMessage, sessionKey string) (string, error)
 }
 
 type toolDef struct {
@@ -58,7 +65,14 @@ func New(svc *tools.Service) *Server {
 
 // NewWithObserver builds a Server with a content-free structured event sink.
 func NewWithObserver(svc *tools.Service, observer *observability.Logger) *Server {
-	s := &Server{svc: svc, name: "mcp-devbox", table: map[string]toolEntry{}, observer: observer}
+	s := &Server{
+		svc:        svc,
+		name:       "mcp-devbox",
+		table:      map[string]toolEntry{},
+		observer:   observer,
+		clients:    newClientCapabilityStore(),
+		modelWaits: map[string]struct{}{},
+	}
 	s.register()
 	return s
 }
@@ -78,7 +92,7 @@ func (s *Server) Serve(in io.Reader, out io.Writer) error {
 		if line == "" {
 			continue
 		}
-		resp := s.handleObserved([]byte(line), observability.TransportStdio, observability.NewRequestID())
+		resp := s.handleObservedSession([]byte(line), observability.TransportStdio, observability.NewRequestID(), stdioSessionKey)
 		if resp != nil {
 			if _, err := w.Write(append(resp, '\n')); err != nil {
 				return err
@@ -115,6 +129,10 @@ func (s *Server) emitRPCFailure(transport observability.Transport, requestID str
 }
 
 func (s *Server) handleObserved(raw []byte, transport observability.Transport, requestID string) (response []byte) {
+	return s.handleObservedSession(raw, transport, requestID, string(transport))
+}
+
+func (s *Server) handleObservedSession(raw []byte, transport observability.Transport, requestID, sessionKey string) (response []byte) {
 	started := time.Now()
 	event := observability.Event{
 		Level:     observability.LevelInfo,
@@ -152,7 +170,7 @@ func (s *Server) handleObserved(raw []byte, transport observability.Transport, r
 	switch req.Method {
 	case "initialize":
 		event.Method = observability.MethodInitialize
-		return mustMarshal(resultResponse(req.ID, s.initializeResult(req.Params)))
+		return mustMarshal(resultResponse(req.ID, s.initializeResult(req.Params, sessionKey)))
 	case "notifications/initialized":
 		event.Method = observability.MethodNotification
 		event.Outcome = observability.OutcomeAccepted
@@ -169,7 +187,7 @@ func (s *Server) handleObserved(raw []byte, transport observability.Transport, r
 		return mustMarshal(resultResponse(req.ID, map[string]any{"tools": s.listTools()}))
 	case "tools/call":
 		event.Method = observability.MethodToolsCall
-		result, tool, outcome, errorClass := s.callToolObserved(req, transport)
+		result, tool, outcome, errorClass := s.callToolObservedSession(req, transport, sessionKey)
 		event.Tool = tool
 		event.Outcome = outcome
 		event.ErrorClass = errorClass
@@ -186,17 +204,13 @@ func (s *Server) handleObserved(raw []byte, transport observability.Transport, r
 	}
 }
 
-func (s *Server) initializeResult(params json.RawMessage) map[string]any {
+func (s *Server) initializeResult(params json.RawMessage, sessionKey string) map[string]any {
 	// Echo the client's requested protocol version when present (improves client
 	// compatibility); otherwise advertise our default.
 	version := buildinfo.ProtocolVersion
-	if len(params) > 0 {
-		var p struct {
-			ProtocolVersion string `json:"protocolVersion"`
-		}
-		if json.Unmarshal(params, &p) == nil && p.ProtocolVersion != "" {
-			version = p.ProtocolVersion
-		}
+	observed := s.clients.Record(sessionKey, params, time.Now().UTC())
+	if observed.ProtocolVersion != "" {
+		version = observed.ProtocolVersion
 	}
 	runtimeInfo := s.mustRuntimeInfo()
 	return map[string]any{
@@ -232,6 +246,10 @@ func (s *Server) listTools() []toolDef {
 }
 
 func (s *Server) callToolObserved(req rpcRequest, transport observability.Transport) (rpcResponse, string, observability.Outcome, observability.ErrorClass) {
+	return s.callToolObservedSession(req, transport, string(transport))
+}
+
+func (s *Server) callToolObservedSession(req rpcRequest, transport observability.Transport, sessionKey string) (rpcResponse, string, observability.Outcome, observability.ErrorClass) {
 	var params struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
@@ -244,7 +262,13 @@ func (s *Server) callToolObserved(req rpcRequest, transport observability.Transp
 		return errorResponse(req.ID, -32602, "unknown tool: "+params.Name), "unknown", observability.OutcomeError, observability.ErrorUnknownTool
 	}
 	taskID, stopHeartbeat := s.startTaskJournal(params.Name, transport)
-	text, err := entry.handler(params.Arguments)
+	var text string
+	var err error
+	if entry.sessionHandler != nil {
+		text, err = entry.sessionHandler(params.Arguments, sessionKey)
+	} else {
+		text, err = entry.handler(params.Arguments)
+	}
 	stopHeartbeat()
 	s.finishTaskJournal(taskID, params.Name, err)
 	if err != nil {
@@ -265,7 +289,10 @@ func (s *Server) callToolObserved(req rpcRequest, transport observability.Transp
 			IsError: true,
 		}), params.Name, observability.OutcomeError, observability.ErrorTool
 	}
-	text, stageErr := s.compactLargeToolResult(params.Name, text, false)
+	var stageErr error
+	if params.Name != "model_turn_next" {
+		text, stageErr = s.compactLargeToolResult(params.Name, text, false)
+	}
 	if stageErr != nil {
 		return resultResponse(req.ID, toolResult{
 			Content: []contentBlock{{Type: "text", Text: "large tool result could not be persisted"}},

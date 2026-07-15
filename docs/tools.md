@@ -22,6 +22,12 @@ do not replace server-side enforcement.
 | Tool | R/D/I/O | Effect |
 |---|---:|---|
 | `system_runtime_info` | 1/0/1/0 | Return safe live build and deterministic catalog identity. |
+| `mcp_client_capabilities` | 1/0/1/0 | Return only the current session's allowlisted client name/version, protocol and explicitly announced sampling/roots/elicitation flags. |
+| `model_runtime_start` | 0/0/0/0 | Create one durable external-model runtime; it does not start or select a model provider. |
+| `model_runtime_status` | 1/0/1/0 | Return compact runtime and latest-turn status without body content. |
+| `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
+| `model_turn_respond` | 0/0/0/0 | Submit one bounded text/tool-call response after runtime, sequence, digest and offered-tool validation. |
+| `model_runtime_cancel` | 0/1/0/0 | Cancel a runtime and all active unconsumed turns. |
 | `build_context_pack` | 1/0/1/0 | Read a compact jailed repo context pack. |
 | `workspace_checkpoint` | 1/0/1/0 | Return a bounded schema-only Git/task checkpoint without fetch, file bodies, absolute paths, or external calls. |
 | `list_dir` | 1/0/1/0 | Compatibility name for `repo_list`. |

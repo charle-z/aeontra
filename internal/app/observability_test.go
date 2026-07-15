@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseServeOptionsObservabilityDefaultsToStderr(t *testing.T) {
+	clearRuntimeEnv(t)
 	opts, err := parseServeOptions([]string{"--root", t.TempDir()}, io.Discard)
 	if err != nil {
 		t.Fatal(err)

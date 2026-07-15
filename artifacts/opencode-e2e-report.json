@@ -1,0 +1,83 @@
+{
+  "opencode_version": "1.18.1",
+  "benchmark_a": {
+    "mode": "A: granular MCP",
+    "elapsed": 7963787834,
+    "mcp_calls": 4,
+    "bytes": 1039,
+    "model_turns": 0,
+    "opencode_tool_executions": 0,
+    "external_wait": 0,
+    "inter_turn_gap": 0,
+    "retries": 0,
+    "result_store_bytes": 0
+  },
+  "benchmark_b": {
+    "mode": "B: OpenCode + PullRendezvousTransport",
+    "elapsed": 18808605142,
+    "mcp_calls": 9,
+    "bytes": 146879,
+    "model_turns": 4,
+    "opencode_tool_executions": 4,
+    "external_wait": 11606525,
+    "inter_turn_gap": 15598601654,
+    "retries": 0,
+    "result_store_bytes": 129702,
+    "tool_names": [
+      "read",
+      "grep",
+      "edit",
+      "bash"
+    ],
+    "tool_results_verified": true,
+    "repository_modified": true,
+    "tests_passed": true,
+    "final_response_verified": true
+  },
+  "restart_resume": {
+    "mode": "B: OpenCode + PullRendezvousTransport",
+    "elapsed": 23467783268,
+    "mcp_calls": 9,
+    "bytes": 146900,
+    "model_turns": 4,
+    "opencode_tool_executions": 4,
+    "external_wait": 11908230,
+    "inter_turn_gap": 15174791885,
+    "retries": 1,
+    "result_store_bytes": 129729,
+    "tool_names": [
+      "read",
+      "grep",
+      "edit",
+      "bash"
+    ],
+    "tool_results_verified": true,
+    "repository_modified": true,
+    "tests_passed": true,
+    "final_response_verified": true,
+    "restart_observed_disconnected": true,
+    "restart_resumed_awaiting": true,
+    "restart_turn_id": "mt_cc93a2af44f25c94c156dd9c2303d351",
+    "restart_sequence": 1,
+    "restart_digest": "sha256:4c2fe2b1be48b1e9a1b1d87a9e758ac3060773a5d0e12b26d8d5549fe7d103c1",
+    "restart_request_ref": "mb_bbe7cbdafeb5983763e443d0dee0a663"
+  },
+  "network": {
+    "container_network": "none",
+    "dns": "127.0.0.1",
+    "default_route_present": false,
+    "strace_captured": true,
+    "non_loopback_connects": 0,
+    "external_provider_markers": []
+  },
+  "security": {
+    "provider_package": "file://integrations/opencode/provider",
+    "provider_loaded": true,
+    "clean_environment": true,
+    "auth_content_empty": true,
+    "provider_api_keys_present": false,
+    "codex_used": false,
+    "external_model_fallback": false,
+    "local_model_used": false
+  }
+}

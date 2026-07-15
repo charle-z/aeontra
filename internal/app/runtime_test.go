@@ -158,7 +158,7 @@ func TestBuildRuntimeUsesBoundedPersistentStateLayout(t *testing.T) {
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
 	}
-	for _, relative := range []string{"telemetry/metrics.db", "logs/observability.jsonl", "logs/audit.jsonl", "results/results.db"} {
+	for _, relative := range []string{"telemetry/metrics.db", "logs/observability.jsonl", "logs/audit.jsonl", "results/results.db", "model-turns/model-turns.db"} {
 		if _, err := os.Stat(filepath.Join(state, filepath.FromSlash(relative))); err != nil {
 			t.Fatalf("missing %s: %v", relative, err)
 		}
