@@ -41,7 +41,8 @@ func TestConsoleSnapshotReturnsOpaqueRealGraph(t *testing.T) {
 
 func TestConsoleSnapshotRequiresContextAndOpenIndex(t *testing.T) {
 	store, _ := openIndexedStore(t)
-	if _, err := store.ConsoleSnapshot(nil); err == nil {
+	var missingContext context.Context
+	if _, err := store.ConsoleSnapshot(missingContext); err == nil {
 		t.Fatal("nil context accepted")
 	}
 	if err := store.Close(); err != nil {

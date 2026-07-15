@@ -24,17 +24,18 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Enable pinned pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.13.1 --activate
 
       - name: Install console dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -79,17 +80,18 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Enable pinned pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.13.1 --activate
 
       - name: Install console dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
