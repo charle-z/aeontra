@@ -756,10 +756,62 @@ func (b *boundedSink) Write(payload []byte) (int, error) {
 	return len(payload), nil
 }
 
+func structuredOpenCodeErrorSignal(content []byte) string {
+	lines := bytes.Split(content, []byte{'\n'})
+	for index := len(lines) - 1; index >= 0; index-- {
+		var event struct {
+			Type  string `json:"type"`
+			Error struct {
+				Name string                     `json:"name"`
+				Data map[string]json.RawMessage `json:"data"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(lines[index], &event) != nil || event.Type != "error" {
+			continue
+		}
+		switch strings.ToLower(event.Error.Name) {
+		case "providerautherror":
+			return "provider_auth"
+		case "messageoutputlengtherror":
+			return "output_length"
+		case "unknownerror":
+			for _, field := range []string{"name", "code", "status", "statusCode"} {
+				raw, ok := event.Error.Data[field]
+				if !ok {
+					continue
+				}
+				var value string
+				if json.Unmarshal(raw, &value) == nil {
+					value = strings.ToLower(value)
+					switch {
+					case strings.Contains(value, "typeerror"):
+						return "unknown_type"
+					case strings.Contains(value, "api"):
+						return "unknown_api"
+					case strings.Contains(value, "timeout"):
+						return "unknown_timeout"
+					case strings.Contains(value, "connection") || strings.Contains(value, "socket"):
+						return "unknown_connection"
+					}
+				}
+			}
+			return "unknown_error"
+		default:
+			if event.Error.Name != "" {
+				return "named_error"
+			}
+		}
+	}
+	return ""
+}
+
 func (b *boundedSink) FailureSignal() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	text := strings.ToLower(string(b.tail))
+	if signal := structuredOpenCodeErrorSignal(b.tail); signal != "" {
+		return signal
+	}
 	checks := []struct {
 		code    string
 		phrases []string
