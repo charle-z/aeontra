@@ -1,0 +1,154 @@
+name: Step 7 OpenCode Validation
+
+on:
+  push:
+    branches:
+      - p11-1-step7-validation-9
+
+permissions:
+  contents: read
+
+jobs:
+  opencode-e2e:
+    name: OpenCode v1.18.1 isolated vertical slice
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify executable runner
+        run: |
+          test -x test/opencode-e2e/run.sh
+          test "$(git ls-files -s test/opencode-e2e/run.sh | awk '{print $1}')" = "100755"
+
+      - name: Run isolated OpenCode vertical slice
+        run: |
+          mkdir -p artifacts
+          set +e
+          ./test/opencode-e2e/run.sh 2>&1 | tee artifacts/opencode-e2e.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s artifacts/opencode-e2e-report.json || {
+              echo "E2E returned success but artifacts/opencode-e2e-report.json is missing or empty"
+              exit 1
+            }
+          fi
+          exit "$status"
+
+      - name: Validate benchmark report
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          path = Path("artifacts/opencode-e2e-report.json")
+          assert path.is_file() and path.stat().st_size > 0, "report is missing or empty"
+          data = json.loads(path.read_text())
+          assert data["opencode_version"] == "1.18.1"
+
+          baseline = data["benchmark_a"]
+          assert baseline["mode"] == "A: granular MCP"
+          assert baseline["mcp_calls"] == 4
+          assert baseline["bytes"] > 0
+
+          expected_tools = {"read", "grep", "edit", "bash"}
+          for key in ("benchmark_b", "restart_resume"):
+              item = data[key]
+              assert item["mode"] == "B: OpenCode + PullRendezvousTransport"
+              assert item["model_turns"] == 4
+              assert item["opencode_tool_executions"] == 4
+              assert set(item["tool_names"]) == expected_tools
+              assert item["tool_results_verified"] is True
+              assert item["repository_modified"] is True
+              assert item["tests_passed"] is True
+              assert item["final_response_verified"] is True
+              assert item["mcp_calls"] > 0
+              assert item["bytes"] > 0
+              assert item["result_store_bytes"] > 0
+              assert item["external_wait"] >= 0
+              assert item["inter_turn_gap"] >= 0
+
+          restart = data["restart_resume"]
+          assert restart["retries"] >= 1
+          assert restart["restart_observed_disconnected"] is True
+          assert restart["restart_resumed_awaiting"] is True
+          assert restart["restart_turn_id"].startswith("mt_")
+          assert restart["restart_sequence"] == 1
+          assert restart["restart_digest"].startswith("sha256:")
+          assert restart["restart_request_ref"].startswith("mb_")
+
+          network = data["network"]
+          assert network["container_network"] == "none"
+          assert network["dns"] == "127.0.0.1"
+          assert network["default_route_present"] is False
+          assert network["strace_captured"] is True
+          assert network["non_loopback_connects"] == 0
+          assert network["external_provider_markers"] == []
+
+          security = data["security"]
+          assert security["provider_package"] == "file://integrations/opencode/provider"
+          assert security["provider_loaded"] is True
+          assert security["clean_environment"] is True
+          assert security["auth_content_empty"] is True
+          assert security["provider_api_keys_present"] is False
+          assert security["codex_used"] is False
+          assert security["external_model_fallback"] is False
+          assert security["local_model_used"] is False
+
+          summary = {
+              "opencode_version": data["opencode_version"],
+              "benchmark_a": baseline,
+              "benchmark_b": data["benchmark_b"],
+              "restart_resume": restart,
+              "network": network,
+              "security": security,
+          }
+          compact = json.dumps(summary, separators=(",", ":"))
+          if len(compact) > 3500:
+              compact = compact[:3500]
+          compact = compact.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::notice file=artifacts/opencode-e2e-report.json,line=1,title=OpenCode E2E verified::{compact}")
+          PY
+
+      - name: Annotate primary E2E failure
+        if: ${{ failure() && hashFiles('artifacts/opencode-e2e.log') != '' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          log = Path("artifacts/opencode-e2e.log").read_text(errors="replace")
+          lines = log.splitlines()
+          signals = [
+              line for line in lines
+              if re.search(r"(?:FAIL|Error|error:|panic|fatal|permission denied|not found|exit status|docker:)", line, re.I)
+          ]
+          summary_lines = signals[-20:] + ["--- final log lines ---"] + lines[-60:]
+          summary = "\n".join(summary_lines)
+          if len(summary) > 3500:
+              summary = summary[-3500:]
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=test/opencode-e2e/run.sh,line=1,title=OpenCode E2E primary failure::{escaped}")
+          PY
+
+      - name: Upload E2E execution log
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e.log') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-e2e-log
+          path: artifacts/opencode-e2e.log
+          if-no-files-found: ignore
+
+      - name: Print benchmark and evidence
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
+        run: cat artifacts/opencode-e2e-report.json
+
+      - name: Upload benchmark evidence
+        if: ${{ always() && hashFiles('artifacts/opencode-e2e-report.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-e2e-report
+          path: artifacts/opencode-e2e-report.json
+          if-no-files-found: ignore
