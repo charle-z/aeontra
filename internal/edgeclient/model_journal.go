@@ -93,6 +93,20 @@ func openModelJournal(stateRoot string) (*modelJournal, error) {
 			updated_at INTEGER NOT NULL,
 			PRIMARY KEY(runtime_id,sequence)
 		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS remote_model_leases (
+			runtime_id TEXT PRIMARY KEY,
+			device_id TEXT NOT NULL,
+			workspace_id TEXT NOT NULL,
+			controller TEXT NOT NULL,
+			state TEXT NOT NULL,
+			goal_digest TEXT NOT NULL,
+			timeout_seconds INTEGER NOT NULL,
+			provider_profile TEXT NOT NULL,
+			lease_id TEXT NOT NULL UNIQUE,
+			created_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE TRIGGER IF NOT EXISTS remote_model_leases_immutable BEFORE UPDATE ON remote_model_leases
+		BEGIN SELECT RAISE(ABORT, 'remote model lease is immutable'); END`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS remote_model_turn_id ON remote_model_turns(turn_id) WHERE turn_id<>''`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS remote_model_wait_id ON remote_model_turns(wait_id) WHERE wait_id<>''`,
 		`CREATE TRIGGER IF NOT EXISTS staged_model_bodies_immutable BEFORE UPDATE OF local_ref,request_digest,content,content_bytes,created_at,expires_at ON staged_model_bodies
@@ -108,6 +122,42 @@ func openModelJournal(stateRoot string) (*modelJournal, error) {
 		return nil, errors.New("model relay journal permissions failed")
 	}
 	return journal, nil
+}
+
+func (j *modelJournal) recordLease(ctx context.Context, leaseID string, lease ModelRuntimeLease) error {
+	if j == nil || j.db == nil || !remoteLeaseIDPattern.MatchString(leaseID) {
+		return modelturn.ErrInvalidRequest
+	}
+	result, err := j.db.ExecContext(ctx, `INSERT OR IGNORE INTO remote_model_leases(runtime_id,device_id,workspace_id,controller,state,goal_digest,timeout_seconds,provider_profile,lease_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		lease.RuntimeID, lease.DeviceID, lease.WorkspaceID, lease.Controller, lease.State, lease.GoalDigest, lease.TimeoutSeconds, lease.ProviderProfile, leaseID, j.now().UTC().UnixNano())
+	if err != nil {
+		return errors.New("model runtime lease receipt failed")
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 1 {
+		return nil
+	}
+	return j.validateLease(ctx, lease)
+}
+
+func (j *modelJournal) validateLease(ctx context.Context, lease ModelRuntimeLease) error {
+	if j == nil || j.db == nil {
+		return modelturn.ErrInvalidRequest
+	}
+	var deviceID, workspaceID, controller, state, goalDigest, providerProfile string
+	var timeoutSeconds int
+	if err := j.db.QueryRowContext(ctx, `SELECT device_id,workspace_id,controller,state,goal_digest,timeout_seconds,provider_profile FROM remote_model_leases WHERE runtime_id=?`, lease.RuntimeID).Scan(
+		&deviceID, &workspaceID, &controller, &state, &goalDigest, &timeoutSeconds, &providerProfile,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("model runtime lease receipt not found")
+		}
+		return errors.New("model runtime lease receipt unavailable")
+	}
+	if deviceID != lease.DeviceID || workspaceID != lease.WorkspaceID || controller != string(lease.Controller) || state != string(lease.State) || goalDigest != lease.GoalDigest || timeoutSeconds != lease.TimeoutSeconds || providerProfile != lease.ProviderProfile {
+		return errors.New("model runtime lease receipt mismatch")
+	}
+	return nil
 }
 
 func (j *modelJournal) stageBody(ctx context.Context, payload json.RawMessage, digest string, ttl time.Duration) (modelturn.RequestBodyReference, error) {

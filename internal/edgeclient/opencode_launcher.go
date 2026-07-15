@@ -53,6 +53,7 @@ type OpenCodeLauncherConfig struct {
 	StateRoot     string
 	SocketRoot    string
 	OpenCodePath  string
+	DriverPath    string
 	ProviderPath  string
 	IntegrityPath string
 	StopPath      string
@@ -103,9 +104,12 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 	}
 	config.SocketRoot = filepath.Clean(strings.TrimSpace(config.SocketRoot))
 	config.OpenCodePath = filepath.Clean(strings.TrimSpace(config.OpenCodePath))
+	if strings.TrimSpace(config.DriverPath) != "" {
+		config.DriverPath = filepath.Clean(strings.TrimSpace(config.DriverPath))
+	}
 	config.ProviderPath = filepath.Clean(strings.TrimSpace(config.ProviderPath))
 	config.IntegrityPath = filepath.Clean(strings.TrimSpace(config.IntegrityPath))
-	if !filepath.IsAbs(config.StateRoot) || !filepath.IsAbs(config.SocketRoot) || !filepath.IsAbs(config.OpenCodePath) || !filepath.IsAbs(config.ProviderPath) || !filepath.IsAbs(config.IntegrityPath) {
+	if !filepath.IsAbs(config.StateRoot) || !filepath.IsAbs(config.SocketRoot) || !filepath.IsAbs(config.OpenCodePath) || (config.DriverPath != "" && !filepath.IsAbs(config.DriverPath)) || !filepath.IsAbs(config.ProviderPath) || !filepath.IsAbs(config.IntegrityPath) {
 		return nil, errors.New("OpenCode launcher paths must be absolute local paths")
 	}
 	if !pathInside(config.StateRoot, config.SocketRoot) {
@@ -238,8 +242,12 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	socketPath := filepath.Join(runtimeDir, openCodeDriverSocketName)
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second)
 	defer cancel()
-	driverDone := make(chan error, 1)
-	go func() { driverDone <- modelturn.ServeDriverTransport(runCtx, socketPath, remote, nil) }()
+	driverDone, err := l.startDriver(runCtx, socketPath, lease, remote)
+	if err != nil {
+		failLocal(OpenCodeLocalFailed, -1, false)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, err
+	}
 	driverExited, err := waitForPrivateDriverSocketOrExit(runCtx, socketPath, l.effectiveUID(), driverDone)
 	if err != nil {
 		cancel()
@@ -354,6 +362,49 @@ func (l *OpenCodeLauncher) monitorRuntime(ctx context.Context, cancel context.Ca
 	}
 }
 
+func (l *OpenCodeLauncher) startDriver(ctx context.Context, socketPath string, lease ModelRuntimeLease, remote OpenCodeRemoteTransport) (<-chan error, error) {
+	done := make(chan error, 1)
+	if l.config.DriverPath == "" {
+		go func() { done <- modelturn.ServeDriverTransport(ctx, socketPath, remote, nil) }()
+		return done, nil
+	}
+	payload, err := json.Marshal(lease)
+	if err != nil {
+		return nil, errors.New("OpenCode remote driver lease encoding failed")
+	}
+	cmd := exec.CommandContext(ctx, l.config.DriverPath, "--remote", "--state-root", l.config.StateRoot, "--socket", socketPath)
+	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Env = []string{
+		"PATH=" + l.config.ToolPath,
+		"HOME=" + l.config.StateRoot,
+		"USER=mcpedge",
+		"LANG=C.UTF-8",
+		"LC_ALL=C.UTF-8",
+	}
+	if caPath := localTLSCAPath(); caPath != "" {
+		cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+caPath)
+	}
+	cmd.Stdout = newBoundedSink(64 << 10)
+	cmd.Stderr = newBoundedSink(64 << 10)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return os.ErrProcessDone
+		}
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	cmd.WaitDelay = 5 * time.Second
+	if err := cmd.Start(); err != nil {
+		return nil, errors.New("OpenCode remote driver process could not start")
+	}
+	go func() { done <- cmd.Wait() }()
+	return done, nil
+}
+
 func (l *OpenCodeLauncher) processSpec(runtimeDir, workspace, socketPath string, lease ModelRuntimeLease, stdout, stderr io.Writer) (openCodeProcessSpec, error) {
 	config, err := json.Marshal(map[string]any{
 		"provider": map[string]any{
@@ -414,6 +465,12 @@ func (l *OpenCodeLauncher) verifyLocalInstallation(ctx context.Context) error {
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
 		return errors.New("pinned OpenCode executable is unsafe")
+	}
+	if l.config.DriverPath != "" {
+		info, err := os.Lstat(l.config.DriverPath)
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
+			return errors.New("model-turn driver executable is unsafe")
+		}
 	}
 	if err := verifyOpenCodeLock(l.config.IntegrityPath); err != nil {
 		return err
@@ -525,6 +582,19 @@ func runOpenCodeProcess(ctx context.Context, spec openCodeProcessSpec) openCodeP
 		return openCodeProcessResult{ExitCode: exitErr.ExitCode(), Err: err}
 	}
 	return openCodeProcessResult{ExitCode: -1, Err: err}
+}
+
+func localTLSCAPath() string {
+	value := strings.TrimSpace(os.Getenv("SSL_CERT_FILE"))
+	if value == "" || !filepath.IsAbs(value) {
+		return ""
+	}
+	path := filepath.Clean(value)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
+		return ""
+	}
+	return path
 }
 
 func waitForPrivateDriverSocketOrExit(ctx context.Context, path string, uid int, driverDone <-chan error) (bool, error) {

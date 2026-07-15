@@ -99,6 +99,18 @@ func (t *Transport) LeaseModelRuntime(ctx context.Context, wait time.Duration) (
 				if err := validateModelRuntimeLease(t.identity, lease); err != nil {
 					return nil, err
 				}
+				journal, err := openModelJournal(t.stateRoot)
+				if err != nil {
+					return nil, err
+				}
+				recordErr := journal.recordLease(ctx, leaseID, lease)
+				closeErr := journal.close()
+				if recordErr != nil {
+					return nil, recordErr
+				}
+				if closeErr != nil {
+					return nil, errors.New("model runtime lease receipt close failed")
+				}
 				return &lease, nil
 			case http.StatusNoContent:
 				return nil, nil
@@ -128,16 +140,20 @@ func NewRemoteEdgeTransport(opts RemoteEdgeTransportOptions) (*RemoteEdgeTranspo
 	if err := validateModelRuntimeLease(signed.identity, opts.Lease); err != nil {
 		return nil, err
 	}
+	journal, err := openModelJournal(opts.StateRoot)
+	if err != nil {
+		return nil, err
+	}
+	if err := journal.validateLease(context.Background(), opts.Lease); err != nil {
+		_ = journal.close()
+		return nil, err
+	}
 	wait := opts.LongPoll
 	if wait == 0 {
 		wait = remoteModelDefaultWait
 	}
 	if wait < time.Second || wait > remoteModelMaxWait {
 		return nil, errors.New("remote model wait is invalid")
-	}
-	journal, err := openModelJournal(opts.StateRoot)
-	if err != nil {
-		return nil, err
 	}
 	now := time.Now().UTC()
 	runtime := modelturn.Runtime{

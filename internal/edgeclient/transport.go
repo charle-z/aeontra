@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -20,10 +21,11 @@ import (
 const maxEdgeResponse = 1 << 20
 
 type Transport struct {
-	identity Identity
-	key      ed25519.PrivateKey
-	client   *http.Client
-	now      func() time.Time
+	identity  Identity
+	stateRoot string
+	key       ed25519.PrivateKey
+	client    *http.Client
+	now       func() time.Time
 }
 
 func NewTransport(stateRoot string, client *http.Client) (*Transport, error) {
@@ -38,7 +40,7 @@ func NewTransport(stateRoot string, client *http.Client) (*Transport, error) {
 	clone.CheckRedirect = func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
-	return &Transport{identity: identity, key: key, client: &clone, now: time.Now}, nil
+	return &Transport{identity: identity, stateRoot: filepath.Clean(stateRoot), key: key, client: &clone, now: time.Now}, nil
 }
 
 func (t *Transport) Lease(ctx context.Context, holder string, ttl time.Duration) (*edge.Lease, error) {

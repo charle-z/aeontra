@@ -8,7 +8,7 @@ output=${OPENCODE_E2E_OUTPUT:-"$repo_root/artifacts"}
 mkdir -p "$output"
 chmod 0777 "$output"
 
-docker build --pull --file "$repo_root/test/opencode-e2e/Dockerfile" --tag "$image" "$repo_root"
+docker build --no-cache --pull --file "$repo_root/test/opencode-e2e/Dockerfile" --tag "$image" "$repo_root"
 
 docker run --rm \
   --network none \
