@@ -46,15 +46,16 @@ RUN apk add --no-cache ca-certificates git nodejs npm \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
-	&& mkdir -p /repos /brain \
-	&& chown -R mcpdevbox:mcpdevbox /repos /brain \
+	&& mkdir -p /repos /brain /state/tasks \
+	&& chown -R mcpdevbox:mcpdevbox /repos /brain /state \
 	# Defense in depth: strip setuid/setgid bits so no binary can be used to
 	# escalate privileges (the app runs non-root and needs no setuid tools).
 	&& find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
 
 # Writable Go caches for the non-root user (go test/build need these), plus a
 # default git identity so git_commit works without a home dir (override in Coolify).
-ENV GOCACHE=/tmp/go-build \
+ENV MCP_DEVBOX_TASK_ROOT=/state/tasks \
+	GOCACHE=/tmp/go-build \
 	GOPATH=/tmp/go \
 	GIT_AUTHOR_NAME=mcp-devbox \
 	GIT_AUTHOR_EMAIL=mcp-devbox@localhost \
@@ -65,7 +66,7 @@ COPY --from=build /out/mcp-devbox /usr/local/bin/mcp-devbox
 
 USER 10001:10001
 WORKDIR /repos
-VOLUME ["/repos", "/brain"]
+VOLUME ["/repos", "/brain", "/state"]
 EXPOSE 8765
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=12 \

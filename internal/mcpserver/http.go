@@ -92,6 +92,8 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 		},
 		Authorize:     authorized,
 		OAuthProvider: oauthProvider,
+		TaskJournal:   s.journal,
+		DataProvider:  s.consoleDataProvider(token, oauthProvider),
 	})
 	if err != nil {
 		panic(fmt.Sprintf("invalid console configuration: %v", err))
@@ -355,6 +357,7 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	inputBytes := len(body)
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" {
 		http.Error(w, "empty body", http.StatusBadRequest)
@@ -368,31 +371,37 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 	if trimmed[0] == '[' {
 		responses := s.handleBatchObserved([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()))
 		if len(responses) == 0 {
+			s.payload.record(inputBytes, 0)
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("["))
+		var output bytes.Buffer
+		output.WriteByte('[')
 		for i, resp := range responses {
 			if i > 0 {
-				w.Write([]byte(","))
+				output.WriteByte(',')
 			}
-			w.Write(resp)
+			output.Write(resp)
 		}
-		w.Write([]byte("]"))
+		output.WriteByte(']')
+		s.payload.record(inputBytes, output.Len())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(output.Bytes())
 		return
 	}
 
 	resp := s.handleObserved([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()))
 	if resp == nil {
 		// Notification: nothing to return.
+		s.payload.record(inputBytes, 0)
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
+	s.payload.record(inputBytes, len(resp))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+	_, _ = w.Write(resp)
 }
 
 func containsInitialize(raw []byte) bool {

@@ -15,6 +15,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
@@ -24,6 +25,7 @@ type appRuntime struct {
 	Observer    *observability.Logger
 	Service     *tools.Service
 	Server      *mcpserver.Server
+	Journal     *taskjournal.Journal
 	PrimaryRoot string
 	AuditPath   string
 }
@@ -75,6 +77,12 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, fmt.Errorf("opening observability sink: %w", err)
 	}
+	journal, err := buildTaskJournal(opts.TaskRoot)
+	if err != nil {
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, err
+	}
 	service, err := buildToolService(opts.Config, pol, logger, primary, opts.BrainRoot)
 	if err != nil {
 		_ = observer.Close()
@@ -86,10 +94,22 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Logger:      logger,
 		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.NewWithObserver(service, observer),
+		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal),
+		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,
 	}, nil
+}
+
+func buildTaskJournal(root string) (*taskjournal.Journal, error) {
+	if strings.TrimSpace(root) == "" {
+		return nil, nil
+	}
+	journal, err := taskjournal.Open(root)
+	if err != nil {
+		return nil, fmt.Errorf("initializing task journal: %w", err)
+	}
+	return journal, nil
 }
 
 func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logger, primary, brainRoot string) (*tools.Service, error) {

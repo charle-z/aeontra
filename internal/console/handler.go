@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/oauth"
+	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 )
 
 const (
@@ -58,6 +59,8 @@ type Config struct {
 	Runtime       Status
 	Authorize     func(*http.Request) bool
 	OAuthProvider *oauth.Provider
+	TaskJournal   *taskjournal.Journal
+	DataProvider  DataProvider
 	SecureCookies bool
 	Session       SessionConfig
 }
@@ -71,6 +74,8 @@ type Handler struct {
 	sessions      *SessionStore
 	oauthClient   *oauth.ConsoleClient
 	oauthFlows    *oauthFlowStore
+	taskJournal   *taskjournal.Journal
+	dataProvider  DataProvider
 	indexHTML     []byte
 	css           []byte
 	js            []byte
@@ -110,6 +115,8 @@ func New(cfg Config) (*Handler, error) {
 		sessions:      sessions,
 		oauthClient:   oauthClient,
 		oauthFlows:    newOAuthFlowStore(),
+		taskJournal:   cfg.TaskJournal,
+		dataProvider:  cfg.DataProvider,
 		indexHTML:     indexHTML,
 		css:           css,
 		js:            js,
@@ -124,6 +131,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc(loginPath, h.handleLogin)
 	mux.HandleFunc(logoutPath, h.handleLogout)
 	mux.HandleFunc(statusPath, h.handleStatus)
+	mux.HandleFunc(tasksPath, h.handleTasks)
+	mux.HandleFunc(taskEventsPath, h.handleTaskEvents)
+	mux.HandleFunc(dataPath, h.handleData)
 	if h.oauthClient != nil {
 		mux.HandleFunc(oauthStartPath, h.handleOAuthStart)
 		mux.HandleFunc(oauthCallbackPath, h.handleOAuthCallback)
