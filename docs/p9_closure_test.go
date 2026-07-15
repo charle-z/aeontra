@@ -71,16 +71,17 @@ func TestP9ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 	}
 
 	roadmap := read("product-roadmap.md")
-	if !strings.Contains(roadmap, "| Brain memory | Merge-ready |") {
-		t.Error("roadmap does not mark Brain memory merge-ready")
+	if !strings.Contains(roadmap, "| Brain memory | Deployed |") {
+		t.Error("roadmap does not mark Brain memory deployed")
 	}
 
 	capsule := read("context-capsule.md")
 	for _, required := range []string{
-		"P9 Brain is merge-ready",
-		"96f7ca15183271772aecbf2d0ac2cceb88e20e5d",
-		"production remains P8/62",
-		"2026-07-14-p9.md",
+		"P9 Brain is deployed",
+		"4fbe1dda02351c632e67c0f10a5c5b314df745e2",
+		"tagged",
+		"p9",
+		"67 tools",
 	} {
 		if !strings.Contains(strings.ToLower(capsule), strings.ToLower(required)) {
 			t.Errorf("capsule does not contain %q", required)
@@ -94,8 +95,8 @@ func TestP9ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 	} {
 		content := read(path)
 		if !strings.Contains(strings.ToLower(content), "p9") ||
-			!strings.Contains(strings.ToLower(content), "merge-ready") {
-			t.Errorf("%s does not record the P9 merge-ready state", name)
+			!strings.Contains(content, "4fbe1dda02351c632e67c0f10a5c5b314df745e2") {
+			t.Errorf("%s does not record the deployed P9 base", name)
 		}
 	}
 

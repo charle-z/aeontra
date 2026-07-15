@@ -48,7 +48,7 @@ func TestP9RuntimeOperationsAreDocumentedAndPackaged(t *testing.T) {
 		"COPY go.mod go.sum ./",
 		"mkdir -p /repos /brain",
 		"chown -R mcpdevbox:mcpdevbox /repos /brain",
-		`VOLUME ["/repos", "/brain"]`,
+		`VOLUME ["/repos", "/brain", "/state"]`,
 	} {
 		if !strings.Contains(dockerfile, required) {
 			t.Errorf("Dockerfile does not contain %q", required)

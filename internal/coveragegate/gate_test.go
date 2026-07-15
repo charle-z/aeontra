@@ -35,7 +35,7 @@ example.com/project/internal/oauth/b.go:3.1,4.1 1 0
 func TestEvaluateAcceptsOfficialZeroStatementRecords(t *testing.T) {
 	profile := `mode: atomic
 example.com/project/internal/policy/a.go:1.1,2.1 8 1
-example.com/project/internal/policy/a.go:2.1,2.2 0 0
+example.com/project/internal/policy/a.go:2.1,2.2 0 19
 example.com/project/internal/policy/b.go:3.1,4.1 2 0
 `
 	results, err := Evaluate(strings.NewReader(profile), []Threshold{{
@@ -90,13 +90,12 @@ example.com/project/internal/oauth/a.go:1.1,2.1 10 1
 
 func TestEvaluateRejectsMalformedProfile(t *testing.T) {
 	for name, profile := range map[string]string{
-		"missing mode":             "example.com/project/internal/policy/a.go:1.1,2.1 1 1\n",
-		"bad record":               "mode: atomic\nnot-a-record\n",
-		"bad statements":           "mode: atomic\nexample.com/project/a.go:1.1,2.1 nope 1\n",
-		"negative count":           "mode: atomic\nexample.com/project/a.go:1.1,2.1 1 -1\n",
-		"executed zero statements": "mode: atomic\nexample.com/project/a.go:1.1,2.1 0 1\n",
-		"negative statements":      "mode: atomic\nexample.com/project/a.go:1.1,2.1 -1 0\n",
-		"missing filename":         "mode: atomic\n:1.1,2.1 1 1\n",
+		"missing mode":        "example.com/project/internal/policy/a.go:1.1,2.1 1 1\n",
+		"bad record":          "mode: atomic\nnot-a-record\n",
+		"bad statements":      "mode: atomic\nexample.com/project/a.go:1.1,2.1 nope 1\n",
+		"negative count":      "mode: atomic\nexample.com/project/a.go:1.1,2.1 1 -1\n",
+		"negative statements": "mode: atomic\nexample.com/project/a.go:1.1,2.1 -1 0\n",
+		"missing filename":    "mode: atomic\n:1.1,2.1 1 1\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Evaluate(strings.NewReader(profile), nil); !errors.Is(err, ErrInvalidCoverProfile) {
@@ -116,6 +115,7 @@ func TestDefaultThresholdsCoverSecurityCriticalPackages(t *testing.T) {
 		"github.com/charle-z/mcp-devbox/internal/observability":     70,
 		"github.com/charle-z/mcp-devbox/internal/console":           80,
 		"github.com/charle-z/mcp-devbox/internal/brain":             80,
+		"github.com/charle-z/mcp-devbox/internal/taskjournal":       80,
 		"github.com/charle-z/mcp-devbox/internal/tools":             70,
 		"github.com/charle-z/mcp-devbox/internal/app":               65,
 		"github.com/charle-z/mcp-devbox/internal/grantadmin":        55,

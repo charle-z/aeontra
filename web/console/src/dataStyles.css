@@ -1,0 +1,132 @@
+.table-panel {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  padding: 0.3rem 1rem 0.8rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  padding: 0.18rem 1ch;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: var(--vga-cyan);
+}
+
+td {
+  color: var(--vga-white);
+}
+
+td[data-tone="ok"] { color: var(--vga-green); }
+td[data-tone="warn"] { color: var(--vga-red); }
+td[data-tone="dim"] { color: var(--vga-gray); }
+
+.state-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  padding: 0.6rem 1rem;
+}
+
+.state-flow span {
+  border: 1px solid var(--vga-gray-low);
+  padding: 0 0.7ch;
+  color: var(--vga-gray);
+}
+
+.empty-note,
+.panel-note,
+.graph-note {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  color: var(--vga-gray);
+}
+
+.graph-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 0.4rem 1rem 1rem;
+  border: 1px solid var(--vga-cyan);
+  background: var(--vga-blue-dark);
+  overflow: hidden;
+}
+
+.brain-graph {
+  display: block;
+  width: 100%;
+  height: min(55vh, 440px);
+  min-height: 320px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.brain-graph:active { cursor: grabbing; }
+.brain-graph line { stroke: #2c66c8; stroke-width: 1; stroke-dasharray: 4 4; }
+.graph-node circle { fill: var(--vga-white); stroke: var(--vga-blue-dark); stroke-width: 2; }
+.graph-node[data-trust="curated"] circle { fill: var(--vga-yellow); }
+.graph-node text { fill: var(--vga-white); font-size: 11px; pointer-events: none; }
+
+.graph-controls {
+  position: absolute;
+  z-index: 2;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.graph-controls button {
+  width: 2.6ch;
+  border: 1px solid var(--vga-white);
+  background: var(--vga-gray);
+  color: var(--vga-black);
+  box-shadow: 2px 2px 0 var(--vga-black);
+  cursor: pointer;
+}
+
+.graph-tooltip {
+  position: absolute;
+  left: 0.6rem;
+  bottom: 2.2rem;
+  display: grid;
+  gap: 0.1rem;
+  border: 1px solid var(--vga-white);
+  padding: 0.35rem 0.55rem;
+  background: var(--vga-gray);
+  color: var(--vga-black);
+  box-shadow: 4px 4px 0 var(--vga-black);
+  pointer-events: none;
+}
+
+.graph-empty {
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  gap: 0.4rem;
+  text-align: center;
+}
+
+.graph-empty p,
+.graph-empty small { margin: 0; }
+.graph-empty p { color: var(--vga-yellow); }
+.graph-empty small { color: var(--vga-gray); }
+
+@media (max-width: 720px) {
+  th,
+  td { padding-inline: 0.6ch; }
+  .brain-graph { min-height: 280px; }
+}

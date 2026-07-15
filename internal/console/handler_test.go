@@ -135,7 +135,7 @@ func TestAuthenticatedConsoleAndAssetsRequireSession(t *testing.T) {
 	if page.Code != http.StatusOK {
 		t.Fatalf("page status=%d", page.Code)
 	}
-	for _, required := range []string{"app.css", "app.js", "Security boundary", "Delivery pipeline"} {
+	for _, required := range []string{"app.css", "app.js", `id="root"`, "Operations Firmware"} {
 		if !strings.Contains(page.Body.String(), required) {
 			t.Fatalf("page missing %q", required)
 		}

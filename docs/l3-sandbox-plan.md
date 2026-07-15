@@ -157,7 +157,7 @@ Keep the PC unexposed; front it with the VPS you already trust:
 2. **Reverse SSH tunnel to the VPS** (reuses the existing domain + Traefik TLS):
    `ssh -R 8766:127.0.0.1:8765 user@vps`, and route a hostname
    (e.g. `pc.<domain>`) to that port. No inbound ports opened on the home network.
-3. ChatGPT points at `https://pc.<domain>/mcp?key=...` (or OAuth later). Same bearer
+3. ChatGPT points at the clean `https://pc.<domain>/mcp` endpoint with OAuth. Same bearer
    auth + policy + the PC's local Docker sandbox contains execution.
 4. Result: the VPS provides the secure public front + TLS; the PC provides compute
    and local repos; commands are sandboxed locally; nothing on the PC is exposed

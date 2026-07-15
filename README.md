@@ -54,10 +54,10 @@ commands, patch-first writes, approval gating, and an audit log. Tests (incl.
 adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 
 **v0.2 adds remote connectivity:** an HTTP transport (streamable-HTTP subset) with
-**mandatory bearer auth**, designed to be exposed to ChatGPT web through a
+**OAuth-first authentication with header-only bearer recovery**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the server now exposes 62 deliberately annotated
+**Secure builder evolution:** the server now exposes 67 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
 private validation profiles, bounded Coolify logs, and disabled-by-default
@@ -98,23 +98,21 @@ resident service, Coolify application, credential, listener, npm bundle, CDN, or
 protocol change is introduced. See `docs/console.md` and
 `docs/baselines/2026-07-13-p8.md`.
 
-**P9 Brain is complete / merge-ready on `p9-brain` from P8 closure
-`2e3429c9d6342e8e091cadf65293c5c85b1b3259`:** reviewed implementation head
-`96f7ca15183271772aecbf2d0ac2cceb88e20e5d` provides server-anchored cross-repository
-memory with strict Markdown/frontmatter truth, owner-only curated notes, agent working
-notes, local Git history and a pure-Go SQLite FTS5 disposable cache. Step 7 wires the
-optional `MCP_DEVBOX_BRAIN_ROOT` runtime contract. Unset keeps all 67 tools registered
-but uniformly disabled; setting a dedicated absolute root such as `/brain` initializes
-private layout, local Git, FTS5 and a strict startup reindex, while overlap, remotes,
-unsafe permissions and malformed truth fail startup. The Docker image now reserves a
-dedicated `/brain` volume, and `cmd/brain-smoke` validates production without printing
-credentials or note content. The local catalog remains 67 tools with hash
+**P9 Brain is deployed and tagged `p9` at
+`4fbe1dda02351c632e67c0f10a5c5b314df745e2`:** persistent Markdown truth,
+local Git, disposable SQLite FTS5, `/brain`, 67 tools, `cmd/mcp-catalog-smoke` and `cmd/brain-smoke` are verified in production. The deterministic catalog hash is
 `sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
-The resource invariant remains no resident service. PR #4 head
-`96f7ca15183271772aecbf2d0ac2cceb88e20e5d` passed every required remote gate and
-the release-candidate evidence is recorded in `docs/baselines/2026-07-14-p9.md`.
-Production and the deployed console remain P8/62 until merge, persistent `/brain`
-configuration, deployment and smoke.
+
+**P8.1 Console 2.0 is complete / merge-ready on `console-2.0`:** the existing
+Go application now embeds a React/TypeScript/Vite Neo-BIOS operations firmware. It
+shows only exact allowlisted real data, durable content-free task state and SSE; Brain
+uses opaque graph IDs and Edge honestly remains Not paired. Console OAuth completes
+server-side with PKCE/state/single-use codes and an opaque
+`Secure; HttpOnly; SameSite=Strict` cookie. Query-string credentials always return
+401, while an Authorization bearer remains recovery-only. No new MCP tool, listener,
+application, resident service, free shell, autonomous agent or workcell is introduced.
+Release-candidate evidence is in `docs/baselines/2026-07-14-p8_1.md`; remote
+gates, merge, deploy, production smoke and annotated tag `p8.1` remain mandatory.
 
 Optional local Brain startup:
 

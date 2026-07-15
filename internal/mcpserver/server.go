@@ -17,6 +17,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/observability"
+	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
@@ -27,6 +28,8 @@ type Server struct {
 	table    map[string]toolEntry
 	order    []string
 	observer *observability.Logger
+	journal  *taskjournal.Journal
+	payload  payloadCounters
 }
 
 type toolEntry struct {
@@ -158,7 +161,7 @@ func (s *Server) handleObserved(raw []byte, transport observability.Transport, r
 		return mustMarshal(resultResponse(req.ID, map[string]any{"tools": s.listTools()}))
 	case "tools/call":
 		event.Method = observability.MethodToolsCall
-		result, tool, outcome, errorClass := s.callToolObserved(req)
+		result, tool, outcome, errorClass := s.callToolObserved(req, transport)
 		event.Tool = tool
 		event.Outcome = outcome
 		event.ErrorClass = errorClass
@@ -220,7 +223,7 @@ func (s *Server) listTools() []toolDef {
 	return defs
 }
 
-func (s *Server) callToolObserved(req rpcRequest) (rpcResponse, string, observability.Outcome, observability.ErrorClass) {
+func (s *Server) callToolObserved(req rpcRequest, transport observability.Transport) (rpcResponse, string, observability.Outcome, observability.ErrorClass) {
 	var params struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
@@ -232,7 +235,10 @@ func (s *Server) callToolObserved(req rpcRequest) (rpcResponse, string, observab
 	if !ok {
 		return errorResponse(req.ID, -32602, "unknown tool: "+params.Name), "unknown", observability.OutcomeError, observability.ErrorUnknownTool
 	}
+	taskID, stopHeartbeat := s.startTaskJournal(params.Name, transport)
 	text, err := entry.handler(params.Arguments)
+	stopHeartbeat()
+	s.finishTaskJournal(taskID, params.Name, err)
 	if err != nil {
 		// Tool/policy errors are reported as tool results with isError=true so the
 		// agent can read the (already-redacted) reason, per MCP convention. Preserve

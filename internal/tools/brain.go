@@ -167,6 +167,22 @@ func (c *BrainCapability) BrainIndex(ctx context.Context, action string) (status
 	}
 }
 
+// BrainConsoleSnapshot returns aggregate cache state and an opaque bounded graph.
+// It never exposes note metadata, slugs, titles, provenance, or bodies.
+func (c *BrainCapability) BrainConsoleSnapshot(ctx context.Context) (snapshot brainpkg.ConsoleSnapshot, err error) {
+	span := c.log.Start("brain_console_snapshot")
+	defer func() { finishBrainSpan(span, "aggregate graph", err) }()
+	store, release, err := c.acquire()
+	if err != nil {
+		return brainpkg.ConsoleSnapshot{}, err
+	}
+	defer release()
+	if ctx == nil {
+		return brainpkg.ConsoleSnapshot{}, errors.New("brain: context is required")
+	}
+	return store.ConsoleSnapshot(ctx)
+}
+
 // BrainContext returns the bounded one-line-per-note digest, never note bodies.
 func (c *BrainCapability) BrainContext(ctx context.Context, limit int) (digest string, err error) {
 	span := c.log.Start("brain_context")

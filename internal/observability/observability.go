@@ -177,12 +177,14 @@ type Event struct {
 }
 
 type Logger struct {
-	mu       sync.Mutex
-	writers  []io.Writer
-	closers  []io.Closer
-	now      func() time.Time
-	off      bool
-	failures atomic.Uint64
+	mu           sync.Mutex
+	writers      []io.Writer
+	closers      []io.Closer
+	now          func() time.Time
+	off          bool
+	failures     atomic.Uint64
+	summaryMu    sync.Mutex
+	routeSummary map[Route]*routeAccumulator
 }
 
 func Open(cfg Config, stderr io.Writer) (*Logger, error) {
@@ -222,6 +224,7 @@ func (l *Logger) Emit(event Event) error {
 		return nil
 	}
 	event = normalizeEvent(event)
+	l.observeSummary(event)
 	// Time and schema version are always server-owned so callers cannot smuggle
 	// free-form data through nominal metadata fields.
 	event.Time = l.now().UTC().Format(time.RFC3339Nano)

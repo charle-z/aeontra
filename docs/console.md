@@ -1,168 +1,133 @@
-# Authenticated dark console
+# Console 2.0 authentication, data and browser boundary
 
-P8 adds a private, presentation-only console to the existing MCP Devbox HTTP
-application. It creates no new Coolify application, listener, database, frontend
-build, package manager, CDN, or credential.
+P8.1 evolves the embedded P8 console into the Neo-BIOS operations firmware inside the
+existing MCP Devbox Go HTTP application. React, TypeScript and Vite compile to fixed
+same-origin assets embedded by Go. Production adds no Node server, listener, database server, queue, free terminal, Edge device or agent, and there is no new Coolify application.
 
-## URL
+## URL and visual contract
 
 ```text
 https://<your-mcp-host>/console
 ```
 
-The console is registered only when the HTTP transport runs. Stdio operation is
-unchanged.
+The design source is `docs/console-2.0/design-neo-bios.md`; the HTML mockup is a
+visual reference only. Production uses one blue VGA BIOS theme (`#0000A8`), the
+16-color VGA palette, monospaced text, square geometry, tabbed firmware screens,
+Item Specific Help, function-key hints, keyboard/mouse/touch navigation and
+`prefers-reduced-motion`.
 
 ## Authentication
 
-### Static-token deployment
+### OAuth console login
 
-Open `/console`, enter the existing `MCP_DEVBOX_TOKEN`, and submit the form over HTTPS.
-The token is sent in the request body—not the URL—and is compared in constant time. It
-is never placed in the session cookie, response, JSONL observability, or browser
-storage.
+`GET /console/auth/start` creates bounded one-use state and PKCE S256 material,
+stores only the SHA-256 state digest and redirects to the existing
+`/oauth/authorize` page. The owner passphrase is accepted only there. The
+server-side `/console/auth/callback` validates exact state, verifier, client,
+callback, scope, audience and authorization code, consumes the code once, creates an
+opaque session and redirects to the clean `/console` URL. Access tokens never
+reach JavaScript.
 
-A successful login creates an opaque random session cookie:
+The cookie is `Secure`, `HttpOnly`, `SameSite=Strict`, scoped to
+`/console` and represented server-side only by a SHA-256 digest. Browser storage
+is not used. Sessions have an eight-hour expiry, are capped at 128 sessions, and are revoked on logout or process restart.
 
-- `HttpOnly`;
-- `SameSite=Strict`;
-- path `/console`;
-- `Secure` for the configured HTTPS public URL and all non-loopback hosts;
-- eight-hour expiry;
-- in-memory only.
+### Recovery bearer
 
-The server stores only a SHA-256 digest of the cookie value. At most 128 sessions are
-retained; expired sessions are pruned and the oldest expiry is evicted at the cap.
-Logout, expiry, or process restart revokes access.
+`MCP_DEVBOX_TOKEN` is optional when OAuth is configured. It remains available
+only as an `Authorization: Bearer` recovery header and through the HTTPS console
+form body. Query-string authentication was permanently removed: every
+`?key=<value>` returns HTTP 401, including the correct token.
 
-### OAuth-only deployment
+Persist `MCP_DEVBOX_OAUTH_CLIENT_STORE` and
+`MCP_DEVBOX_OAUTH_REFRESH_STORE` under `/state` so ChatGPT OAuth survives
+a container replacement.
 
-The public login page does not render a static-token form when `MCP_DEVBOX_TOKEN` is
-absent. A request already carrying a valid OAuth or bearer access token can bootstrap
-an opaque console session. P8 does not modify the OAuth protocol, token format,
-provider routes, clients, grants, or persistence.
-
-Legacy `?key=` authentication is still recognized by the existing transport, but the
-console immediately redirects to the clean `/console` path after creating a session.
-Use the form login instead so the secret never enters URL history or proxy access logs.
-
-## Displayed data
-
-The authenticated status endpoint returns exactly:
-
-```json
-{
-  "status": "ok",
-  "version": "0.2.0",
-  "protocol_version": "2024-11-05",
-  "commit": "<git sha>",
-  "tool_count": 62,
-  "catalog_hash": "sha256:...",
-  "authenticated": true,
-  "surface": "presentation-only"
-}
-```
-
-The page also contains static architecture, delivery-pipeline, security-boundary,
-capability-state, and limitation text.
-
-It does **not** display or accept repository names, branches, paths, source, prompts,
-params, results, targets, logs, audit entries, observability history, tokens,
-identities, IP addresses, GitHub/Coolify inventories, plans, approvals, deployments,
-or tool execution.
-
-## Routes
+## Safe routes
 
 | Route | Method | Authentication | Purpose |
 |---|---|---|---|
-| `/console` | GET | Login page or session/direct auth | Render the console shell. |
-| `/console/login` | POST | Existing static token in form body | Create an opaque session. |
-| `/console/logout` | POST | Current cookie, if present | Revoke and clear the session. |
-| `/console/status` | GET | Session or existing direct auth | Return the fixed safe status schema. |
-| `/console/assets/app.css` | GET | Session or existing direct auth | Embedded dark stylesheet. |
-| `/console/assets/app.js` | GET | Session or existing direct auth | Same-origin status refresh. |
+| `/console` | GET | Login or opaque session/direct auth | Render shell/bootstrap. |
+| `/console/auth/start` | GET | None | Start console OAuth state/PKCE flow. |
+| `/console/auth/callback` | GET | Exact state and one-use code | Create session and redirect cleanly. |
+| `/console/login` | POST | Recovery token in body | Create recovery session. |
+| `/console/logout` | POST | Current session | Revoke and clear session. |
+| `/console/status` | GET | Session or direct auth | Exact runtime identity schema. |
+| `/console/data` | GET | Session or direct auth | Exact safe aggregate data schema. |
+| `/console/tasks` | GET | Session or direct auth | Durable content-free task snapshot. |
+| `/console/events` | GET | Session or direct auth | Server-Sent Events for task state. |
+| `/console/assets/app.css` | GET | Session or direct auth | Embedded Neo-BIOS CSS. |
+| `/console/assets/app.js` | GET | Session or direct auth | Embedded React bundle. |
 
-Unsupported methods return `405`; login bodies are limited to 4 KiB; malformed or
-oversized bodies fail closed.
+Unsupported methods return 405. Login bodies are limited to 4 KiB. Dynamic responses
+are no-store and use hardened cross-origin and frame headers.
+
+## Displayed real data
+
+The UI never invents devices or metrics. It renders only exact allowlisted fields:
+
+- System: runtime identity plus container CPU, RAM, disk and load; unavailable probes
+  are labeled unavailable.
+- Agents: authenticated console state, latest generic controller activity and MCP
+  payload bytes with declared `bytes / 4 (estimate)` token approximation.
+- Tasks: bounded durable state under `MCP_DEVBOX_TASK_ROOT` (`/state/tasks`
+in the image), heartbeat and controller. Only public operation names and fixed
+summaries are stored.
+- Brain: readiness, schema, aggregate counts and timestamp; no note content.
+- Graph: real bounded Brain links with opaque ordinal IDs, trust and degree. No slug,
+  title, body, author or provenance.
+- Observability: aggregate normalized route requests, 4xx, 5xx and P95 only; no raw
+  log event or request content.
+- Security: OAuth/bearer/query/cookie/free-shell posture.
+- Events: safe browser refresh and task transition notices only.
+- Edge: exactly `Not paired` until P11.
+
+Task states are exactly requested, planned, awaiting_approval, executing, observing,
+validating, completed, failed, cancelled and disconnected. If a controller heartbeat
+expires, the presentation becomes disconnected. The console never claims autonomous
+work and never exposes private model reasoning.
 
 ## Browser security
 
-Console responses set restrictive headers including:
+The authenticated page loads only same-origin embedded assets. The `Content-Security-Policy` includes same-origin
+script and connect sources for REST and SSE. No WebSockets are used. There are no
+remote fonts, analytics, third-party scripts, inline scripts, inline handlers,
+`dangerouslySetInnerHTML`, `innerHTML`, eval, service workers,
+`localStorage`, `sessionStorage`, IndexedDB or JavaScript-readable cookies.
 
-```text
-Content-Security-Policy
-X-Content-Type-Options: nosniff
-X-Frame-Options: DENY
-Referrer-Policy: no-referrer
-Permissions-Policy: ...=()
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Resource-Policy: same-origin
-Origin-Agent-Cluster: ?1
-Cache-Control: no-store
-```
+## Installation and update
 
-The authenticated page loads only embedded same-origin CSS and JavaScript. There are
-no remote fonts, analytics, third-party scripts, inline scripts, service workers,
-WebSockets, `localStorage`, `sessionStorage`, IndexedDB, or JavaScript-readable cookies.
-
-## Installation
-
-No additional install step is required. Build and deploy the normal MCP Devbox image.
-The existing HTTP authentication requirement remains mandatory.
-
-Recommended production settings remain:
+Build and deploy the normal image. Recommended production configuration:
 
 ```text
 MCP_DEVBOX_PUBLIC_URL=https://<your-mcp-host>
-MCP_DEVBOX_TOKEN=<long-random-secret>
+MCP_DEVBOX_OAUTH_PASSPHRASE=<configured-owner-passphrase>
+MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json
+MCP_DEVBOX_OAUTH_REFRESH_STORE=/state/oauth-refresh.json
+MCP_DEVBOX_TASK_ROOT=/state/tasks
+MCP_DEVBOX_TOKEN=<optional-recovery-value>
 ```
 
-OAuth variables may remain enabled. P8 adds no environment variable.
+The Docker image reserves `/state` and creates private `/state/tasks` for
+UID/GID 10001. Reuse the existing persistent `/state` storage; do not create a
+new application.
 
-## Updating
+Update only through a tested `main` commit and the existing Coolify app. During
+container replacement an existing MCP connection may disconnect briefly; wait for
+health and reconnect without creating a duplicate deployment. Then verify exact
+commit, OAuth login, strict cookie, query-key 401, recovery bearer, data/task/SSE
+schemas, 67 tools, P9 catalog hash and both catalog/Brain smokes.
 
-1. Publish a tested commit to `main`.
-2. Let the existing Coolify application rebuild and restart.
-3. Confirm `/healthz`, exact `/version` commit, 62 tools, and catalog hash.
-4. Open `/console`, authenticate, and confirm the same commit/tool count/hash.
-5. Inspect content-free JSONL events for normalized `route=console` requests only.
+## Rollback and Troubleshooting
 
-Console sessions intentionally disappear during restart. Sign in again after a deploy.
+Rollback by deploying the previous known-good `p9` commit/tag. Keep
+`/state` and `/brain` intact; old binaries ignore `/state/tasks`.
+Task records are closed content-free JSON and require no database migration.
 
-## Rollback
-
-Deploy the prior known-good commit. The console has no database, migration, volume, or
-persistent session state to undo. Removing the console package/routes does not alter
-MCP tools, OAuth, audit, observability, or repository state.
-
-## Troubleshooting
-
-### Login succeeds but the browser returns to the login page
-
-- Confirm the public console URL is HTTPS.
-- Confirm the cookie is present, `HttpOnly`, `SameSite=Strict`, and path `/console`.
-- A deployment/restart invalidates all sessions by design.
-- Do not disable `Secure` on a public hostname to work around proxy configuration.
-
-### The login form is absent
-
-The process is OAuth-only because no static MCP token is configured. Use an
-authenticated OAuth/bearer client or configure the existing static token. P8 adds no
-separate console password.
-
-### Assets or `/console/status` return 401
-
-The session is missing, expired, revoked, or from a previous process. Reload
-`/console` and authenticate again. Assets and status are intentionally not public.
-
-### Status shows an unexpected commit or catalog
-
-Treat it as a deployment identity problem. Compare `/version`, `system_runtime_info`,
-Coolify application status, and the expected Git commit before deploying again. Do not
-create a deployment loop.
-
-### Need repository, audit, logs, plans, or tool controls
-
-The console is deliberately unable to provide them. Use the authorized MCP workflows
-or private operator evidence path. Do not expand the console into a shadow control
-plane.
+If OAuth login returns to the login page, verify HTTPS, callback/public URL and the
+strict cookie, then retry because process restart invalidates console sessions. If SSE
+disconnects, polling `/console/tasks` remains the durable fallback. If data is
+unavailable, inspect runtime health and mounts; do not fabricate fallback values. If
+commit/catalog differ, stop and resolve deployment identity before retrying. Repository
+content, raw logs, prompts, params, results, paths, tokens, identities and tool control
+remain intentionally outside the console.

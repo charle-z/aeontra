@@ -1,0 +1,500 @@
+<title>MCP Devbox — Operations Firmware</title>
+<style>
+  :root{
+    --blue:#0000A8; --gray:#A8A8A8; --gray-hi:#D8D8D8; --gray-lo:#545454;
+    --white:#F8F8F8; --yellow:#FCFC54; --cyan:#54FCFC; --cyan-lo:#00A8A8;
+    --red-hi:#FC5454; --green:#54FC54; --amber:#FCA854; --black:#000;
+    --mono:"Cascadia Mono","IBM Plex Mono",Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;border-radius:0!important}
+  html{background:#1a1a1a}
+  body{min-height:100vh;display:grid;place-items:center;padding:1rem;
+    font-family:var(--mono);font-size:14px;line-height:1.35}
+  .setup{width:min(1020px,100%);background:var(--blue);color:var(--white);
+    border:2px solid var(--gray);box-shadow:10px 10px 0 var(--black);
+    display:flex;flex-direction:column;min-height:660px}
+  .bar{background:var(--gray);color:var(--black);padding:.18rem .8rem;
+    display:flex;justify-content:space-between;gap:1rem;font-weight:700;align-items:center}
+  .bar .proj{all:unset;cursor:pointer;font:inherit;font-weight:700;background:var(--blue);
+    color:var(--white);padding:0 1ch}
+  .bar .proj:focus-visible{outline:2px dotted var(--black);outline-offset:1px}
+  .bar .rev{font-weight:400}
+  .tabs{display:flex;background:var(--gray);border-bottom:2px solid var(--gray);flex-wrap:wrap}
+  .tabs button{all:unset;cursor:pointer;font:inherit;padding:.18rem .9rem;color:var(--black)}
+  .tabs button:hover{background:var(--gray-hi)}
+  .tabs button:focus-visible{outline:2px dotted var(--black);outline-offset:-2px}
+  .tabs button[aria-selected="true"]{background:var(--blue);color:var(--white);font-weight:700}
+  .body{flex:1;display:flex;min-height:0}
+  .list{flex:1;padding:.7rem 0;overflow-y:auto}
+  .sect{color:var(--cyan);padding:.35rem 1rem .1rem;font-weight:700}
+  .row{display:flex;justify-content:space-between;gap:2ch;padding:.06rem 1rem;cursor:default}
+  .row .k{color:var(--white);white-space:nowrap}
+  .row .v{color:var(--yellow);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+  .row .v.ok{color:var(--green)} .row .v.warn{color:var(--red-hi)} .row .v.dim{color:var(--gray)} .row .v.amb{color:var(--amber)}
+  .row.sel{background:var(--cyan)} .row.sel .k,.row.sel .v{color:var(--black)}
+  .help{width:30ch;flex:none;background:var(--gray);color:var(--black);
+    border-left:2px solid var(--white);padding:.5rem .8rem;display:flex;flex-direction:column;gap:.5rem}
+  .help h2{font-size:inherit;text-align:center;border-bottom:1px solid var(--gray-lo);padding-bottom:.3rem;font-weight:700}
+  .help p{font-size:13px;min-height:8em}
+  .help .hint{margin-top:auto;color:var(--gray-lo);font-size:12px;min-height:0}
+  .loglines{padding:.7rem 1rem;overflow-y:auto;flex:1}
+  .loglines p{white-space:pre-wrap}
+  .loglines time{color:var(--cyan)}
+  .loglines .w{color:var(--yellow)} .loglines .e{color:var(--red-hi)} .loglines .okc{color:var(--green)}
+  table{border-collapse:collapse;margin:.3rem 1rem;font-variant-numeric:tabular-nums;width:calc(100% - 2rem)}
+  th,td{padding:.08rem 1.2ch;text-align:left;white-space:nowrap}
+  th{color:var(--cyan);font-weight:700}
+  td{color:var(--white)} td.y{color:var(--yellow)} td.g{color:var(--green)} td.w{color:var(--red-hi)} td.d{color:var(--gray)}
+  td.r,th.r{text-align:right}
+  .tablewrap{overflow-x:auto}
+  .meter{display:inline-flex;gap:1px;vertical-align:-2px}
+  .meter i{width:8px;height:12px;background:#000060}
+  .meter i.on{background:var(--cyan)} .meter i.hot{background:var(--red-hi)}
+  /* timeline de estados durables */
+  .flow{display:flex;flex-wrap:wrap;gap:.15rem;padding:.4rem 1rem}
+  .flow span{padding:0 1ch;border:1px solid var(--gray-lo);color:var(--gray)}
+  .flow span.done{border-color:var(--green);color:var(--green)}
+  .flow span.now{background:var(--yellow);color:var(--black);border-color:var(--yellow);font-weight:700}
+  .flow span.arr{border:0;color:var(--gray-lo)}
+  .keys{background:var(--gray);color:var(--black);padding:.2rem .8rem;
+    display:flex;flex-wrap:wrap;gap:.15rem 1.4ch;border-top:2px solid var(--white)}
+  .keys b{font-weight:700}
+  dialog{border:2px solid var(--white);background:var(--gray);color:var(--black);
+    box-shadow:8px 8px 0 var(--black);padding:0;max-width:56ch;font:inherit}
+  dialog::backdrop{background:transparent}
+  dialog .dt{background:var(--blue);color:var(--white);text-align:center;padding:.1rem .6rem;font-weight:700}
+  dialog .db{padding:.8rem 1rem;display:grid;gap:.7rem}
+  dialog button{all:unset;cursor:pointer;font:inherit;justify-self:center;background:var(--gray-hi);
+    padding:.05rem 2.2ch;border:1px solid var(--black);box-shadow:3px 3px 0 var(--black);font-weight:700}
+  dialog button:focus-visible{outline:2px dotted var(--black);outline-offset:2px}
+  .blink{animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .tw{visibility:hidden}
+  .note{color:var(--gray);padding:.2rem 1rem;font-size:13px}
+  /* grafo */
+  .graphwrap{position:relative;flex:1;min-height:0}
+  #graph{display:block;width:100%;height:100%;background:#000050;cursor:grab;touch-action:none}
+  #graph.drag{cursor:grabbing}
+  #gtip{position:absolute;max-width:34ch;background:var(--gray);color:var(--black);
+    border:1px solid var(--white);box-shadow:4px 4px 0 var(--black);padding:.3rem .5rem;
+    font-size:12px;pointer-events:none;display:none;z-index:5}
+  #gtip b{color:#000060}
+  .gctl{position:absolute;right:.6rem;top:.6rem;display:flex;gap:.3rem;z-index:5}
+  .gctl button{all:unset;cursor:pointer;background:var(--gray);color:var(--black);border:1px solid var(--white);
+    box-shadow:2px 2px 0 var(--black);width:2.4ch;text-align:center;font-weight:700}
+  .gctl button:focus-visible{outline:2px dotted var(--white)}
+  @media (prefers-reduced-motion:reduce){.blink{animation:none}}
+  @media (max-width:720px){.help{display:none}body{padding:.3rem;font-size:13px}
+    .setup{box-shadow:5px 5px 0 var(--black)}}
+  .tabdeck{display:none;flex:1;min-height:0}
+  .tabdeck.active{display:flex}
+</style>
+
+<div class="setup" id="setup">
+  <div class="bar">
+    <span>MCP DEVBOX OPERATIONS FIRMWARE — <button class="proj" id="proj" title="Cambiar proyecto (P)">[ mcp-devbox &#9662; ]</button></span>
+    <span class="rev" id="rev">Rev 2e3429c &middot; BIOS Date 07/13/26</span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true"  data-tab="system">System</button>
+    <button role="tab" aria-selected="false" data-tab="agents">Agents</button>
+    <button role="tab" aria-selected="false" data-tab="tasks">Tasks</button>
+    <button role="tab" aria-selected="false" data-tab="brain">Brain</button>
+    <button role="tab" aria-selected="false" data-tab="graph">Graph</button>
+    <button role="tab" aria-selected="false" data-tab="edge">Edge</button>
+    <button role="tab" aria-selected="false" data-tab="observability">Observ.</button>
+    <button role="tab" aria-selected="false" data-tab="security">Security</button>
+    <button role="tab" aria-selected="false" data-tab="events">Events</button>
+  </div>
+
+  <!-- SYSTEM -->
+  <div class="tabdeck active body" id="tab-system">
+    <div class="list" data-nav>
+      <p class="sect">Runtime Identity</p>
+      <div class="row" data-help="Estado agregado del servidor MCP, leído del schema fijo de /console/status."><span class="k">Status</span><span class="v ok">[Healthy]</span></div>
+      <div class="row" data-help="Versión y commit exactos en producción, confirmables contra /healthz."><span class="k">Version / Commit</span><span class="v">v0.9.0 / 2e3429c</span></div>
+      <div class="row" data-help="Tools públicas del catálogo declarativo. El hash detecta deriva del contrato."><span class="k">Tool Catalog</span><span class="v">62 tools &middot; sha256:9f3a..c1d7</span></div>
+      <p class="sect">Active Operation — live</p>
+      <div class="row" data-help="Tarea en curso del journal durable (/state/tasks), no del chat. Si el mensaje de ChatGPT desaparece, aquí sigue viéndose el estado real."><span class="k">Task</span><span class="v">P9-STEP-04 &middot; Brain coverage gate</span></div>
+      <div class="row" data-help="El gate retiene el merge: 79.6% frente a 80.0%. No es error: es el gate trabajando."><span class="k">Coverage Gate</span><span class="v warn">[Hold] 79.6 / 80.0</span></div>
+      <div class="row" data-help="Latido del controlador. Si deja de latir, la consola muestra idle/disconnected, no finge que sigue."><span class="k">Heartbeat</span><span class="v">2s ago &middot; chatgpt-direct</span></div>
+      <p class="sect">Resources — VPS (4 GB / 2 vCPU / 80 GB)</p>
+      <div class="row" data-help="RAM usada/total. En una VPS de 4GB es la métrica que manda. Fuente futura: endpoint seguro con lecturas de cgroups."><span class="k">RAM</span><span class="v"><span class="meter" data-meter="29,32,3"></span> 2.9 / 3.8 GB</span></div>
+      <div class="row" data-help="Espacio en disco. Los volúmenes de repos y el pnpm-store son los que crecen."><span class="k">Disk</span><span class="v"><span class="meter" data-meter="17,40,0"></span> 34 / 80 GB</span></div>
+      <div class="row" data-help="Carga media sobre 2 vCPU."><span class="k">Load avg</span><span class="v">0.41 &middot; 0.55 &middot; 0.38</span></div>
+      <p class="sect">Delivery Stages</p>
+      <div class="row" data-help="P6/P7/P8 selladas con baseline fechado."><span class="k">P6..P8</span><span class="v ok">[Sealed]</span></div>
+      <div class="row" data-help="P9 Brain en curso: memoria cross-repo con FTS5."><span class="k">P9 Brain</span><span class="v warn">[Active]</span></div>
+      <div class="row" data-help="P8.1 Console 2.0: rediseño Neo-BIOS, OAuth-only, task journal. Rama separada."><span class="k">P8.1 Console 2.0</span><span class="v amb">[Design]</span></div>
+      <div class="row" data-help="P10 Layer 2/3, P11 Edge Core, P12 Parrot Workcell, P13 HTB. En cola."><span class="k">P10..P13</span><span class="v dim">[Queued]</span></div>
+    </div>
+    <aside class="help"><h2>Item Specific Help</h2><p data-helptext></p><p class="hint">↑↓ ítem &middot; ←→ pantalla &middot; F1 ayuda &middot; F8 attract</p></aside>
+  </div>
+
+  <!-- AGENTS -->
+  <div class="tabdeck body" id="tab-agents" style="flex-direction:column">
+    <p class="sect" style="padding:.7rem 1rem .1rem">Session Ledger — multi-agente</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>AGENT</th><th>AUTH</th><th>SCOPE / REPO</th><th>OPERATION</th><th>STATE</th></tr></thead>
+      <tbody>
+        <tr><td>ChatGPT Direct</td><td>oauth</td><td>mcp-devbox</td><td>P9-STEP-04 coverage</td><td class="y">[Running]</td></tr>
+        <tr><td>Claude Code</td><td>oauth</td><td>mcp-devbox-console</td><td>pnpm-validate</td><td class="g">[Idle]</td></tr>
+        <tr><td>opencode</td><td>bearer</td><td>portfolio</td><td>&mdash;</td><td class="d">[Offline]</td></tr>
+      </tbody>
+    </table></div>
+    <p class="sect" style="padding:.5rem 1rem .1rem">Payload I/O — estimado 24 h</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>AGENT</th><th class="r">REQS</th><th class="r">IN ~TOK</th><th class="r">OUT ~TOK</th><th class="r">BYTES</th></tr></thead>
+      <tbody>
+        <tr><td>ChatGPT Direct</td><td class="r y">412</td><td class="r">168 400</td><td class="r">92 100</td><td class="r">1.2 MB</td></tr>
+        <tr><td>Claude Code</td><td class="r y">86</td><td class="r">31 200</td><td class="r">18 800</td><td class="r">240 KB</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">~TOK = bytes de payload MCP / 4 (estimación). El servidor NUNCA ve los tokens reales del modelo:
+eso queda entre el cliente y su proveedor. Esto mide lo que el proyecto le cuesta al contexto, no tu factura.</p>
+    <p class="sect" style="padding:.3rem 1rem .1rem">Concurrency Rules — un chat por tarea sin pisarse</p>
+    <div class="list" data-nav style="flex:none;padding:.1rem 0 .7rem">
+      <div class="row" data-help="Dos agentes no escriben el mismo repo a la vez: lock de escritura por repositorio con TTL. Lecturas siempre libres."><span class="k">Per-repo write lock</span><span class="v amb">[Design P11]</span></div>
+      <div class="row" data-help="Cada sesión declara su ámbito al abrir. Es lo que permite que un chat trabaje una cosa y otro chat otra."><span class="k">Scoped sessions</span><span class="v amb">[Design P11]</span></div>
+      <div class="row" data-help="Los planes TTL de un solo uso YA existen: la pieza que hace seguro el multi-agente para acciones consecuentes."><span class="k">Single-use plans</span><span class="v ok">[Enforced today]</span></div>
+    </div>
+  </div>
+
+  <!-- TASKS -->
+  <div class="tabdeck body" id="tab-tasks" style="flex-direction:column">
+    <p class="sect" style="padding:.7rem 1rem .1rem">Task Journal — estados durables (SSE, sin residentes)</p>
+    <div class="flow" aria-label="Ciclo de vida de la tarea">
+      <span class="done">requested</span><span class="arr">&rarr;</span>
+      <span class="done">planned</span><span class="arr">&rarr;</span>
+      <span class="done">approved</span><span class="arr">&rarr;</span>
+      <span class="done">executing</span><span class="arr">&rarr;</span>
+      <span class="now">validating</span><span class="arr">&rarr;</span>
+      <span>completed</span>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>TASK ID</th><th>CONTROLLER</th><th>OPERATION</th><th>STATE</th><th class="r">HEARTBEAT</th></tr></thead>
+      <tbody>
+        <tr><td>p9-step-04</td><td>chatgpt-direct</td><td>coverage_gate</td><td class="y">validating</td><td class="r">2s</td></tr>
+        <tr><td>p9-step-03</td><td>chatgpt-direct</td><td>brain_index build</td><td class="g">completed</td><td class="r d">&mdash;</td></tr>
+        <tr><td>console-smoke</td><td>ci-runner</td><td>prod smoke p8</td><td class="g">completed</td><td class="r d">&mdash;</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">Esto resuelve tu problema con los cortes: si el chat desaparece, ves la última operación registrada;
+si el conector cae, ves transport_disconnected; si nadie llama tools, dice idle — nunca inventa autonomía.
+La consola muestra ACCIONES externalizadas y su estado verificable, no el razonamiento privado del modelo.</p>
+  </div>
+
+  <!-- BRAIN -->
+  <div class="tabdeck body" id="tab-brain">
+    <div class="list" data-nav>
+      <p class="sect">Memory Map</p>
+      <div class="row" data-help="Markdown con frontmatter como fuente de verdad; el índice es un caché desechable."><span class="k">Store</span><span class="v">markdown + frontmatter (git)</span></div>
+      <div class="row" data-help="SQLite FTS5 con driver Go puro. Cero servicios residentes."><span class="k">Index</span><span class="v">SQLite FTS5 &middot; BM25</span></div>
+      <div class="row" data-help="Consumo en reposo. La métrica que manda en una VPS de 4GB."><span class="k">Resident Cost</span><span class="v ok">0 MB idle</span></div>
+      <div class="row" data-help="Nivel curado: solo el propietario escribe; los agentes leen."><span class="k">curated/</span><span class="v">41 notes &middot; owner-only</span></div>
+      <div class="row" data-help="Nivel de trabajo: agentes escriben con procedencia y fecha de revisión."><span class="k">working/</span><span class="v">117 notes &middot; provenance req.</span></div>
+      <div class="row" data-help="Grafo emergente de enlaces [[slug]]. Explóralo con zoom en la pestaña Graph."><span class="k">Link Graph</span><span class="v">238 edges &middot; 12 orphans</span></div>
+      <p class="sect">Anti-Drift Invariants</p>
+      <div class="row" data-help="Escritura de agente en curated/ rechazada por policy, con test adversarial."><span class="k">Agent write curated/</span><span class="v ok">[Denied]</span></div>
+      <div class="row" data-help="Digest de sesión acotado: nunca se vuelca el brain completo al contexto."><span class="k">Context Digest Cap</span><span class="v">4 KB</span></div>
+      <div class="row" data-help="Notas de agente con revisión vencida: confirmar o expiran."><span class="k">Review Overdue</span><span class="v warn">3 notes</span></div>
+    </div>
+    <aside class="help"><h2>Item Specific Help</h2><p data-helptext></p><p class="hint">&rarr; Graph: rueda = zoom, arrastrar = mover, hover = resumen</p></aside>
+  </div>
+
+  <!-- GRAPH -->
+  <div class="tabdeck body" id="tab-graph" style="flex-direction:column">
+    <p class="sect" style="padding:.6rem 1rem .1rem">Brain Link Graph — rueda: zoom &middot; arrastrar: mover &middot; hover: resumen</p>
+    <div class="graphwrap">
+      <canvas id="graph" width="960" height="360"></canvas>
+      <div class="gctl">
+        <button id="gzin" title="Acercar">+</button>
+        <button id="gzout" title="Alejar">&minus;</button>
+        <button id="greset" title="Reiniciar vista">&#8635;</button>
+      </div>
+      <div id="gtip"></div>
+    </div>
+    <p class="note" style="text-align:center">&#9679; amarillo = curated (propietario) &middot; &#9679; blanco = working (agentes) &middot; &#9679; gris = huérfana &middot;
+tamaño = nº de enlaces. Acércate para ver títulos; el resumen sale al pasar por encima.</p>
+  </div>
+
+  <!-- EDGE -->
+  <div class="tabdeck body" id="tab-edge" style="flex-direction:column">
+    <p class="sect" style="padding:.7rem 1rem .1rem">Edge Devices — conexión saliente, sin puertos públicos en tu PC</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>DEVICE</th><th>HOST</th><th>WORKCELL</th><th>VPN</th><th>STATE</th></tr></thead>
+      <tbody>
+        <tr><td>charles-parrot</td><td>windows</td><td>wsl-parrot</td><td class="d">&mdash;</td><td class="d">[Not paired]</td></tr>
+      </tbody>
+    </table></div>
+    <div class="body" style="flex:1;min-height:0">
+      <div class="list" data-nav>
+        <p class="sect">Design (P11–P13, aún no conectado)</p>
+        <div class="row" data-help="Binario Go compilado para Windows + componente en Parrot WSL. No necesitas Go instalado: se distribuye compilado."><span class="k">Installer</span><span class="v amb">[Planned]</span></div>
+        <div class="row" data-help="Usuario dedicado mcpedge SIN root. Usa herramientas ya instaladas y paquetes de usuario (pipx/uv/venv)."><span class="k">User</span><span class="v amb">mcpedge &middot; non-root</span></div>
+        <div class="row" data-help="Helper privilegiado de perfil cerrado: install-approved-package, start-approved-vpn... NUNCA sudo bash -c arbitrario."><span class="k">Root helper</span><span class="v amb">closed profile</span></div>
+        <div class="row" data-help="Roots por alias: htb-machines -> /mnt/c/htb-machines, scratch -> workcells. La VPS jamás envía rutas arbitrarias."><span class="k">Roots (alias)</span><span class="v">htb-machines &middot; scratch</span></div>
+        <div class="row" data-help="Engagement HTB: IP exacta, interfaz VPN verificada, rutas permitidas, expiración automática. Fuera de alcance = bloqueado."><span class="k">HTB Engagement</span><span class="v amb">scope-bound</span></div>
+        <div class="row" data-help="Workcell con TTL, presupuesto de disco, límite de procesos, cancelación y emergency stop local. Persistencia acotada, sin bazookear el PC."><span class="k">Workcell limits</span><span class="v">TTL &middot; budget &middot; e-stop</span></div>
+      </div>
+      <aside class="help"><h2>Item Specific Help</h2><p data-helptext></p><p class="hint">El trabajo HTB ocurre en tu PC/WSL, no en la VPS. La VPS enruta la tarea y audita.</p></aside>
+    </div>
+  </div>
+
+  <!-- OBSERVABILITY -->
+  <div class="tabdeck body" id="tab-observability" style="flex-direction:column">
+    <p class="sect" style="padding:.7rem 1rem .1rem">Structured Events by Route Class (P7) — últimas 24 h</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>ROUTE CLASS</th><th class="r">REQUESTS</th><th class="r">4XX</th><th class="r">5XX</th><th class="r">P95 MS</th></tr></thead>
+      <tbody>
+        <tr><td>mcp</td><td class="r y">1 284</td><td class="r">7</td><td class="r">0</td><td class="r">211</td></tr>
+        <tr><td>console</td><td class="r y">96</td><td class="r">3</td><td class="r">0</td><td class="r">12</td></tr>
+        <tr><td>oauth</td><td class="r y">41</td><td class="r">2</td><td class="r">0</td><td class="r">38</td></tr>
+        <tr><td>health</td><td class="r y">8 640</td><td class="r">0</td><td class="r">0</td><td class="r">2</td></tr>
+        <tr><td>unknown</td><td class="r y">57</td><td class="r">57</td><td class="r">0</td><td class="r">4</td></tr>
+      </tbody>
+    </table></div>
+    <div class="loglines" style="flex:1">
+      <p>&middot; Solo clases de ruta y contadores: sin cuerpos, cabeceras, tokens ni IPs (contrato P7).</p>
+      <p>&middot; <span class="w">unknown</span> con 4xx constante suele ser escaneo de bots contra el proxy.</p>
+      <p>&middot; Exponer esto de verdad exige un endpoint seguro nuevo (decisión de spec, no de UI).</p>
+    </div>
+  </div>
+
+  <!-- SECURITY -->
+  <div class="tabdeck body" id="tab-security" style="flex-direction:column">
+    <div class="body" style="flex:1;min-height:0">
+      <div class="list" data-nav>
+        <p class="sect">Enforced Invariants</p>
+        <div class="row" data-help="Jail de rutas que cubre también comandos. Probado con tests adversariales y fuzzing."><span class="k">Path Jail</span><span class="v ok">[Enforced]</span></div>
+        <div class="row" data-help="No existe terminal libre: allowlist cerrada de comandos."><span class="k">Free Shell</span><span class="v ok">[Absent]</span></div>
+        <div class="row" data-help="Deny de secretos por ruta y contenido, con redacción de salida."><span class="k">Secret Deny</span><span class="v ok">[Path+Content]</span></div>
+        <div class="row" data-help="Acciones consecuentes con planes TTL de un solo uso y revalidación."><span class="k">Consequential Ops</span><span class="v">TTL &middot; single-use</span></div>
+        <p class="sect">Authentication — objetivo OAuth-only</p>
+        <div class="row" data-help="OAuth con PKCE, passphrase solo en /oauth/authorize, códigos de un solo uso. Vía principal para ChatGPT y clientes."><span class="k">OAuth (PKCE)</span><span class="v ok">[Primary]</span></div>
+        <div class="row" data-help="Bearer estático conservado para login de consola y recuperación técnica. La consola lo cambia por cookie opaca HttpOnly."><span class="k">Bearer token</span><span class="v amb">[Kept, header only]</span></div>
+        <div class="row" data-help="El método ?key= en la URL es el sobrante peligroso: el secreto acaba en historial, logs y capturas. Se elimina con test que fuerza 401, sin romper OAuth ni los smoke existentes."><span class="k">?key= query auth</span><span class="v warn">[Remove — P8.1]</span></div>
+        <p class="sect">CI/CD Gates — main 2e3429c</p>
+        <div class="row" data-help="fmt, tests con cobertura atómica, coverage-gate por paquete, vet, build, actionlint."><span class="k">Verify / Race</span><span class="v ok">[Pass]</span></div>
+        <div class="row" data-help="Staticcheck, Govulncheck, CodeQL y revisión de dependencias en PRs."><span class="k">Static / Vuln / CodeQL</span><span class="v ok">[Pass]</span></div>
+        <div class="row" data-help="Imagen Docker con SBOM y Grype. El gate bloquea el merge con cualquier High/Critical."><span class="k">SBOM / Grype</span><span class="v ok">[0 High/Crit]</span></div>
+        <p class="sect">Known Gaps (honest)</p>
+        <div class="row" data-help="Aislamiento de OS y egress universales pendientes: fase P10. SECURITY.md lo declara, no lo finge."><span class="k">Layer 2/3 Sandbox</span><span class="v warn">[Pending P10]</span></div>
+      </div>
+      <aside class="help"><h2>Item Specific Help</h2><p data-helptext></p><p class="hint">verde = probado con tests&#10;rojo = admitido / pendiente</p></aside>
+    </div>
+    <p class="sect" style="padding:.2rem 1rem .1rem">Vulnerability Ledger</p>
+    <div class="tablewrap"><table style="margin-bottom:.6rem">
+      <thead><tr><th>FINDING</th><th>SOURCE</th><th>ACTION</th><th>STATE</th></tr></thead>
+      <tbody>
+        <tr><td>vulnerable bootstrap npm</td><td>Dependency graph</td><td>removed (Step 91)</td><td class="g">[Closed]</td></tr>
+        <tr><td>CI security findings P6</td><td>CodeQL</td><td>remediated (Step 91)</td><td class="g">[Closed]</td></tr>
+        <tr><td>open High/Critical</td><td>Grype gate</td><td>merge blocked if any</td><td class="g">0 open</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- EVENTS -->
+  <div class="tabdeck body" id="tab-events" style="flex-direction:column">
+    <div class="loglines" data-logbox>
+      <p><time>22:51:39</time> INFO  deploy sealed p8 -&gt; production commit 2e3429c <span class="okc">[OK]</span></p>
+      <p><time>22:51:41</time> INFO  console-smoke: login, cookie secure, schema exact <span class="okc">[PASS]</span></p>
+      <p><time>23:04:02</time> INFO  branch p9-brain created from main</p>
+      <p><time>23:19:47</time> INFO  brain index built: 158 notes, 89 ms</p>
+      <p><time>23:26:12</time> <span class="w">WARN</span>  coverage-gate brain 79.6% &lt; 80.0% — merge on hold</p>
+      <p><time>23:26:12</time> INFO  operator action available: F10 approve retry</p>
+      <p id="lastline">&gt;<span class="blink">_</span></p>
+    </div>
+  </div>
+
+  <div class="keys">
+    <span><b>F1</b> Help</span><span><b>&uarr;&darr;</b> Item</span><span><b>&larr;&rarr;</b> Screen</span>
+    <span><b>F5</b> Refresh</span><span><b>F8</b> Attract</span><span><b>F9</b> Cancel</span><span><b>F10</b> Approve</span><span><b>ESC</b> Close</span>
+    <span style="margin-left:auto" id="stamp">refreshed 00:00:00</span>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <div class="dt" id="dlg-title">Help</div>
+  <div class="db"><div id="dlg-body">…</div><button id="dlg-ok" autofocus>[ Ok ]</button></div>
+</dialog>
+
+<script>
+(function(){
+  var tabs=[].slice.call(document.querySelectorAll('.tabs [role=tab]'));
+  var dlg=document.getElementById('dlg');
+  var reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var typeTimer=null,revealTimers=[],attract=null;
+
+  document.querySelectorAll('[data-meter]').forEach(function(m){
+    var p=m.dataset.meter.split(','),on=+p[0],total=+p[1],hot=+p[2];
+    for(var i=0;i<total;i++){var b=document.createElement('i');
+      if(i<on-hot)b.className='on';else if(i<on)b.className='hot';m.appendChild(b);}
+  });
+
+  /* proyecto */
+  var projects=[['mcp-devbox','Rev 2e3429c'],['mcp-devbox-console','Rev a71c0b4'],['portfolio','Rev 3d9188e']];
+  var pi=0,projBtn=document.getElementById('proj'),rev=document.getElementById('rev');
+  projBtn.addEventListener('click',function(){
+    pi=(pi+1)%projects.length;
+    projBtn.innerHTML='[ '+projects[pi][0]+' &#9662; ]';
+    rev.textContent=projects[pi][1]+' · BIOS Date 07/13/26';
+  });
+
+  function paintDeck(deck){
+    revealTimers.forEach(clearTimeout);revealTimers=[];
+    if(reduced)return;
+    var els=[].slice.call(deck.querySelectorAll('.sect,.row,tr,.loglines p,.note,.flow>span,.graphwrap'));
+    els.forEach(function(el){el.classList.add('tw');});
+    els.forEach(function(el,i){revealTimers.push(setTimeout(function(){el.classList.remove('tw');},i*14));});
+  }
+  function typeHelp(scope,text){
+    var p=scope.querySelector('.help [data-helptext]');if(!p)return;
+    if(typeTimer)clearInterval(typeTimer);
+    if(reduced){p.textContent=text;return;}
+    p.textContent='';var i=0;
+    typeTimer=setInterval(function(){p.textContent=text.slice(0,++i);if(i>=text.length)clearInterval(typeTimer);},7);
+  }
+  function activate(i){
+    i=(i+tabs.length)%tabs.length;
+    tabs.forEach(function(b,j){
+      b.setAttribute('aria-selected',j===i?'true':'false');
+      document.getElementById('tab-'+b.dataset.tab).classList.toggle('active',j===i);
+    });
+    var active=document.querySelector('.tabdeck.active');
+    paintDeck(active);
+    var nav=active.querySelector('[data-nav]');if(nav)select(nav,0);
+    if(tabs[i].dataset.tab==='graph')resizeGraph();
+  }
+  function current(){return tabs.findIndex(function(b){return b.getAttribute('aria-selected')==='true';});}
+  tabs.forEach(function(b,i){b.addEventListener('click',function(){stopAttract();activate(i);});});
+
+  function select(deck,i){
+    var rows=[].slice.call(deck.querySelectorAll('.row'));if(!rows.length)return;
+    i=Math.max(0,Math.min(rows.length-1,i));
+    rows.forEach(function(r){r.classList.remove('sel');});
+    rows[i].classList.add('sel');rows[i].scrollIntoView({block:'nearest'});
+    var scope=deck.closest('.body')||deck.parentElement;
+    typeHelp(scope,rows[i].dataset.help||'');
+  }
+  document.querySelectorAll('[data-nav]').forEach(function(deck){
+    deck.querySelectorAll('.row').forEach(function(r,i){r.addEventListener('click',function(){select(deck,i);});});
+  });
+  select(document.querySelector('#tab-system [data-nav]'),0);
+
+  /* ---------- grafo interactivo ---------- */
+  var cv=document.getElementById('graph'),ctx=cv.getContext('2d'),tip=document.getElementById('gtip');
+  var view={s:1,x:0,y:0},drag=null,DPR=Math.min(devicePixelRatio||1,2);
+  var NODES=[
+    {x:.50,y:.20,l:'mcp-devbox',t:'c',s:'Raíz del proyecto: servidor MCP secure-by-default, 62 tools.'},
+    {x:.27,y:.36,l:'security-model',t:'c',s:'Modelo de autoridad estrecha: jail, deny de secretos, sin shell libre.'},
+    {x:.72,y:.34,l:'coolify-deploy',t:'c',s:'Despliegue en VPS bajo Coolify, blue-green del validation runner.'},
+    {x:.14,y:.58,l:'policy-jail',t:'c',s:'Jail de rutas que cubre también la ejecución de comandos.'},
+    {x:.40,y:.54,l:'validation-runner',t:'c',s:'Runner que valida builds pnpm/astro en contenedor aislado.'},
+    {x:.63,y:.57,l:'blue-green-plan',t:'w',s:'Plan de migración del runner manual a app administrada por Coolify.'},
+    {x:.85,y:.52,l:'vps-limits',t:'w',s:'4GB RAM / 2 vCPU / 80GB: la RAM residente es el recurso escaso.'},
+    {x:.26,y:.78,l:'pnpm-offline-fix',t:'w',s:'Fix de instalación pnpm offline (corepack no descarga en validate).'},
+    {x:.50,y:.80,l:'p9-brain-spec',t:'w',s:'Spec del brain: markdown + FTS5, dos niveles de confianza, anti-deriva.'},
+    {x:.72,y:.78,l:'edge-workcells',t:'w',s:'Workcells salientes en WSL/Parrot para trabajar en tu PC con jail.'},
+    {x:.90,y:.82,l:'cubethon',t:'w',s:'Hackathon Cubethon: contexto de entrega y posicionamiento.'},
+    {x:.08,y:.24,l:'oauth-notes',t:'o',s:'Notas OAuth sueltas: pendiente enlazar con security-model.'}
+  ];
+  var EDGES=[[0,1],[0,2],[0,4],[1,3],[1,4],[2,5],[2,6],[4,5],[4,7],[0,8],[8,9],[9,10],[5,6],[8,4]];
+  var deg=NODES.map(function(){return 0;});EDGES.forEach(function(e){deg[e[0]]++;deg[e[1]]++;});
+
+  function resizeGraph(){
+    var w=cv.clientWidth||960,h=cv.clientHeight||360;
+    cv.width=w*DPR;cv.height=h*DPR;drawGraph();
+  }
+  function world(n){return {x:n.x*cv.width/DPR,y:n.y*cv.height/DPR};}
+  function toScreen(p){return {x:p.x*view.s+view.x,y:p.y*view.s+view.y};}
+  function drawGraph(){
+    var W=cv.width/DPR,H=cv.height/DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.clearRect(0,0,W,H);ctx.fillStyle='#000050';ctx.fillRect(0,0,W,H);
+    ctx.save();ctx.translate(view.x,view.y);ctx.scale(view.s,view.s);
+    ctx.strokeStyle='#2c66c8';ctx.lineWidth=1/view.s;ctx.setLineDash([4/view.s,4/view.s]);
+    EDGES.forEach(function(e){var a=world(NODES[e[0]]),b=world(NODES[e[1]]);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();});
+    ctx.setLineDash([]);
+    var showLabels=view.s>1.25;
+    NODES.forEach(function(n,i){var p=world(n),r=6+deg[i]*1.6;
+      ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);
+      ctx.fillStyle=n.t==='c'?'#FCFC54':(n.t==='o'?'#545454':'#F8F8F8');ctx.fill();
+      ctx.lineWidth=2/view.s;ctx.strokeStyle='#000050';ctx.stroke();
+      if(showLabels){ctx.fillStyle='#F8F8F8';ctx.font=(12/view.s)+'px '+getComputedStyle(document.body).fontFamily;
+        ctx.textAlign='center';ctx.fillText(n.l,p.x,p.y+r+12/view.s);}
+    });
+    ctx.restore();
+  }
+  function hit(mx,my){
+    for(var i=NODES.length-1;i>=0;i--){var p=toScreen(world(NODES[i])),r=(6+deg[i]*1.6)*view.s+4;
+      if((mx-p.x)*(mx-p.x)+(my-p.y)*(my-p.y)<=r*r)return i;}
+    return -1;
+  }
+  cv.addEventListener('wheel',function(e){e.preventDefault();
+    var rect=cv.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    var f=e.deltaY<0?1.15:1/1.15,ns=Math.max(.5,Math.min(4,view.s*f));f=ns/view.s;
+    view.x=mx-(mx-view.x)*f;view.y=my-(my-view.y)*f;view.s=ns;drawGraph();
+  },{passive:false});
+  cv.addEventListener('pointerdown',function(e){drag={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y};cv.classList.add('drag');cv.setPointerCapture(e.pointerId);});
+  cv.addEventListener('pointermove',function(e){
+    var rect=cv.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    if(drag){view.x=drag.vx+(e.clientX-drag.x);view.y=drag.vy+(e.clientY-drag.y);drawGraph();tip.style.display='none';return;}
+    var i=hit(mx,my);
+    if(i>=0){var n=NODES[i];tip.innerHTML='<b>'+n.l+'</b> · '+(n.t==='c'?'curated':(n.t==='o'?'orphan':'working'))+'<br>'+n.s;
+      tip.style.display='block';
+      var tx=Math.min(mx+14,cv.clientWidth-tip.offsetWidth-6),ty=Math.min(my+14,cv.clientHeight-tip.offsetHeight-6);
+      tip.style.left=tx+'px';tip.style.top=ty+'px';cv.style.cursor='pointer';}
+    else{tip.style.display='none';cv.style.cursor=drag?'grabbing':'grab';}
+  });
+  function endDrag(e){drag=null;cv.classList.remove('drag');}
+  cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointerleave',function(){tip.style.display='none';endDrag();});
+  document.getElementById('gzin').addEventListener('click',function(){view.s=Math.min(4,view.s*1.25);drawGraph();});
+  document.getElementById('gzout').addEventListener('click',function(){view.s=Math.max(.5,view.s/1.25);drawGraph();});
+  document.getElementById('greset').addEventListener('click',function(){view={s:1,x:0,y:0};drawGraph();});
+  addEventListener('resize',function(){if(document.getElementById('tab-graph').classList.contains('active'))resizeGraph();});
+
+  function showDlg(title,body){document.getElementById('dlg-title').textContent=title;
+    document.getElementById('dlg-body').innerHTML=body;dlg.showModal();}
+  document.getElementById('dlg-ok').addEventListener('click',function(){dlg.close();});
+  function refresh(){var d=new Date(),p=function(n){return String(n).padStart(2,'0');};
+    document.getElementById('stamp').textContent='refreshed '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+    var box=document.querySelector('[data-logbox]');
+    if(box){var line=document.createElement('p');
+      line.innerHTML='<time>'+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+'</time> INFO  status poll: healthy, 62 tools, gate still holding';
+      box.insertBefore(line,document.getElementById('lastline'));}}
+
+  function stopAttract(){if(attract){clearInterval(attract);attract=null;}}
+  function toggleAttract(){
+    if(attract){stopAttract();return;}
+    if(reduced){showDlg('Attract','El modo demo automático está desactivado porque tu sistema pide movimiento reducido.');return;}
+    attract=setInterval(function(){activate(current()+1);},2600);
+  }
+
+  addEventListener('keydown',function(e){
+    if(dlg.open){if(e.key==='Escape'||e.key==='Enter'){e.preventDefault();dlg.close();}return;}
+    if(e.key!=='F8')stopAttract();
+    var deck=document.querySelector('.tabdeck.active [data-nav]');
+    switch(e.key){
+      case 'ArrowLeft':e.preventDefault();activate(current()-1);break;
+      case 'ArrowRight':e.preventDefault();activate(current()+1);break;
+      case 'ArrowUp':case 'ArrowDown':
+        if(deck){e.preventDefault();var rows=[].slice.call(deck.querySelectorAll('.row'));
+          var i=rows.indexOf(deck.querySelector('.row.sel'));select(deck,e.key==='ArrowUp'?i-1:i+1);}break;
+      case 'p':case 'P':projBtn.click();break;
+      case 'F1':e.preventDefault();
+        showDlg('Help','Firmware de operaciones de MCP Devbox.<br><br>&larr;&rarr; pantalla &middot; &uarr;&darr; ítem con ayuda contextual &middot; P proyecto &middot; F5 sondea estado &middot; F8 modo demo &middot; F9/F10 operan sobre la tarea &middot; ESC cierra.<br><br>Datos dinámicos: schema público de /console/status. Nada privado entra a esta superficie.');break;
+      case 'F5':e.preventDefault();refresh();break;
+      case 'F8':e.preventDefault();toggleAttract();break;
+      case 'F9':e.preventDefault();
+        showDlg('Cancel Operation','La operación pertenece al agente controlador.<br><br>Cancelar exige un plan TTL de un solo uso aprobado — esta superficie es de observación y control, no ejecuta acciones consecuentes por sí misma.');break;
+      case 'F10':e.preventDefault();
+        showDlg('Approve','No hay plan consecuente pendiente de este operador.<br><br>Las aprobaciones viven en el flujo de planes TTL del MCP; la consola las muestra y las dispara, no las inventa.');break;
+    }
+  });
+
+  paintDeck(document.querySelector('.tabdeck.active'));
+})();
+</script>

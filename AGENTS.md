@@ -9,24 +9,20 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P9 Brain Step 7 complete / Step 8 verification next** on branch
-  `p9-brain`, based on P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259`.
-  The local 67-tool candidate is runtime-wired through optional
-  `MCP_DEVBOX_BRAIN_ROOT`. Unset is uniformly disabled; configured startup requires a
-  dedicated absolute root disjoint from repository roots, initializes private local
-  Git and FTS5, performs a strict reindex, and fails closed on unsafe/malformed state.
-  The image reserves `/brain`, operational backup/restore/rollback is documented, and
-  `cmd/brain-smoke` verifies only safe counts/state without printing note content. The
-  hard resource invariant is no resident service. Production and the console remain
-  P8/62 until remote gates and release verification; UI/auth changes remain forbidden
-  in this branch.
-  P9 is now merge-ready at reviewed implementation head
-  `96f7ca15183271772aecbf2d0ac2cceb88e20e5d`; exact-SHA CI and Security Evidence
-  passed. Production remains P8/62 until PR #4 merge, persistent `/brain` setup,
-  deployment and smoke. The annotated `p9` tag is the final release gate.
-  Asset Broker, universal profiles, and Edge Agent remain separate later milestones;
-  Edge Agent is last. The project has stdio and HTTP/OAuth transports, policy core,
-  67 annotated MCP tools in the P9 candidate, action plans, audit, persistent notes, and adversarial tests.
+- Current phase: **P8.1 Console 2.0 complete / merge-ready** on branch
+  `console-2.0`, based exactly on deployed/tagged P9 merge
+  `4fbe1dda02351c632e67c0f10a5c5b314df745e2`. The candidate preserves the
+  67-tool catalog and P9 hash while adding a React/TypeScript/Vite Neo-BIOS console,
+  server-side console OAuth with PKCE/state/single-use codes, strict opaque cookies,
+  permanent HTTP 401 for query-string credentials, header-only bearer recovery,
+  bounded durable task records under `/state/tasks`, Server-Sent Events and exact
+  allowlisted System/Agents/Tasks/Brain/Graph/Observability/Security/Event data.
+  Brain graph IDs are opaque and Edge remains `Not paired`. No free terminal,
+  autonomous agent, Edge Core, Parrot workcell, HTB integration, new application,
+  resident service, queue or database server is part of P8.1. The exact branch must
+  still pass remote gates, merge, deploy, smoke and receive annotated tag `p8.1`.
+  The project has stdio and HTTP/OAuth transports, policy core, 67 annotated MCP
+  tools, action plans, audit, persistent notes, Brain and adversarial tests.
   The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see
   `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into

@@ -1,112 +1,15 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>MCP Devbox Console</title>
-  <link rel="stylesheet" href="/console/assets/app.css">
-  <script src="/console/assets/app.js" defer></script>
-</head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/console" aria-label="MCP Devbox Console home">
-      <span class="brand-mark" aria-hidden="true">M</span>
-      <span><strong>MCP Devbox</strong><small>Authenticated console</small></span>
-    </a>
-    <form method="post" action="/console/logout">
-      <button class="button secondary" type="submit">Sign out</button>
-    </form>
-  </header>
-
-  <main>
-    <section class="hero" aria-labelledby="hero-title">
-      <div>
-        <p class="eyebrow">Private presentation surface</p>
-        <h1 id="hero-title">Guardrails you can see.</h1>
-        <p class="lede">Live public runtime identity, delivery stages, and security boundaries—without repository data, prompts, targets, credentials, or tool controls.</p>
-      </div>
-      <div class="health" role="status" aria-live="polite">
-        <span class="health-dot" aria-hidden="true"></span>
-        <span id="health-label">Checking runtime…</span>
-      </div>
-    </section>
-
-    <section class="grid status-grid" aria-labelledby="runtime-title">
-      <div class="section-heading">
-        <p class="eyebrow">Live identity</p>
-        <h2 id="runtime-title">Runtime status</h2>
-      </div>
-      <article class="card"><span>Version</span><strong id="version">—</strong></article>
-      <article class="card"><span>Commit</span><strong id="commit">—</strong></article>
-      <article class="card"><span>Protocol</span><strong id="protocol">—</strong></article>
-      <article class="card"><span>Public tools</span><strong id="tool-count">—</strong></article>
-      <article class="card wide"><span>Catalog identity</span><code id="catalog-hash">—</code></article>
-      <article class="card"><span>Authority</span><strong>Presentation only</strong></article>
-    </section>
-
-    <section class="panel" aria-labelledby="pipeline-title">
-      <div class="section-heading">
-        <p class="eyebrow">Delivery pipeline</p>
-        <h2 id="pipeline-title">Controlled work, explicit transitions</h2>
-      </div>
-      <ol class="pipeline">
-        <li><span>01</span><strong>Inspect</strong><small>Read bounded context</small></li>
-        <li><span>02</span><strong>Plan</strong><small>Bind consequential actions</small></li>
-        <li><span>03</span><strong>Patch</strong><small>Validate before apply</small></li>
-        <li><span>04</span><strong>Verify</strong><small>Tests and security gates</small></li>
-        <li><span>05</span><strong>Publish</strong><small>Clean fast-forward only</small></li>
-        <li><span>06</span><strong>Observe</strong><small>Content-free evidence</small></li>
-      </ol>
-    </section>
-
-    <section class="grid two-column">
-      <article class="panel" aria-labelledby="boundary-title">
-        <div class="section-heading">
-          <p class="eyebrow">Security boundary</p>
-          <h2 id="boundary-title">What this console cannot do</h2>
-        </div>
-        <ul class="boundary-list">
-          <li>Execute MCP tools or arbitrary JSON-RPC</li>
-          <li>Approve plans, grants, deployments, or policy changes</li>
-          <li>List repositories, paths, source, prompts, or targets</li>
-          <li>Read audit logs, observability history, credentials, or identities</li>
-        </ul>
-      </article>
-
-      <article class="panel" aria-labelledby="posture-title">
-        <div class="section-heading">
-          <p class="eyebrow">Implemented posture</p>
-          <h2 id="posture-title">Defense in layers</h2>
-        </div>
-        <dl class="posture-list">
-          <div><dt>Filesystem</dt><dd>Root jail and secret denial</dd></div>
-          <div><dt>Execution</dt><dd>Allowlist only, no free shell</dd></div>
-          <div><dt>Changes</dt><dd>Patch-first and state-bound plans</dd></div>
-          <div><dt>Evidence</dt><dd>Audit plus content-free JSONL</dd></div>
-        </dl>
-      </article>
-    </section>
-
-    <section class="panel" aria-labelledby="matrix-title">
-      <div class="section-heading">
-        <p class="eyebrow">Capability matrix</p>
-        <h2 id="matrix-title">Honest product state</h2>
-      </div>
-      <div class="matrix" role="table" aria-label="Capability status">
-        <div role="row"><strong role="cell">Secure MCP control plane</strong><span class="tag live" role="cell">Deployed</span></div>
-        <div role="row"><strong role="cell">CI and DevSecOps gates</strong><span class="tag live" role="cell">Deployed</span></div>
-        <div role="row"><strong role="cell">Structured observability</strong><span class="tag live" role="cell">Deployed</span></div>
-        <div role="row"><strong role="cell">Asset Broker</strong><span class="tag planned" role="cell">Next milestone</span></div>
-        <div role="row"><strong role="cell">Universal profiles</strong><span class="tag planned" role="cell">Planned</span></div>
-        <div role="row"><strong role="cell">Edge Agent</strong><span class="tag planned" role="cell">Last milestone</span></div>
-      </div>
-    </section>
-  </main>
-
-  <footer>
-    <span>MCP Devbox Console</span>
-    <span id="last-updated">Status not loaded</span>
-  </footer>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0000A8" />
+    <title>MCP Devbox — Operations Firmware</title>
+    <script type="module" crossorigin src="/console/assets/app.js"></script>
+    <link rel="stylesheet" crossorigin href="/console/assets/app.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

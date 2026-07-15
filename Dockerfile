@@ -1,3 +1,13 @@
+FROM node:22-alpine3.22 AS console-build
+
+WORKDIR /src
+RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/console/package.json web/console/package.json
+RUN pnpm install --frozen-lockfile --ignore-scripts
+COPY web/console web/console
+RUN pnpm console:check && pnpm console:test && pnpm console:build
+
 FROM golang:1.26.5-alpine3.24 AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
@@ -12,6 +22,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
+COPY --from=console-build /src/internal/console/assets ./internal/console/assets
 
 RUN CGO_ENABLED=0 go build -trimpath \
 	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=${GIT_SHA} -X github.com/charle-z/mcp-devbox/internal/buildinfo.BuiltAt=${BUILD_TIME}" \
@@ -35,15 +46,16 @@ RUN apk add --no-cache ca-certificates git nodejs npm \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
-	&& mkdir -p /repos /brain \
-	&& chown -R mcpdevbox:mcpdevbox /repos /brain \
+	&& mkdir -p /repos /brain /state/tasks \
+	&& chown -R mcpdevbox:mcpdevbox /repos /brain /state \
 	# Defense in depth: strip setuid/setgid bits so no binary can be used to
 	# escalate privileges (the app runs non-root and needs no setuid tools).
 	&& find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
 
 # Writable Go caches for the non-root user (go test/build need these), plus a
 # default git identity so git_commit works without a home dir (override in Coolify).
-ENV GOCACHE=/tmp/go-build \
+ENV MCP_DEVBOX_TASK_ROOT=/state/tasks \
+	GOCACHE=/tmp/go-build \
 	GOPATH=/tmp/go \
 	GIT_AUTHOR_NAME=mcp-devbox \
 	GIT_AUTHOR_EMAIL=mcp-devbox@localhost \
@@ -54,7 +66,7 @@ COPY --from=build /out/mcp-devbox /usr/local/bin/mcp-devbox
 
 USER 10001:10001
 WORKDIR /repos
-VOLUME ["/repos", "/brain"]
+VOLUME ["/repos", "/brain", "/state"]
 EXPOSE 8765
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=12 \

@@ -35,8 +35,9 @@ const DefaultMCPPath = "/mcp"
 // streamable-HTTP subset (single endpoint, JSON-RPC over POST). Authentication is
 // MANDATORY: every /mcp request must present a valid credential, else 401.
 //
-// Two auth modes coexist during the transition. A static bearer/`?key=` token (legacy)
-// is accepted when token != "". When oauthProvider != nil, its discovery + flow
+// Two auth modes coexist during the transition. A static Authorization bearer
+// is accepted when token != "". Query-string credentials are always rejected.
+// When oauthProvider != nil, its discovery + flow
 // endpoints are mounted and a valid OAuth access token is accepted; a 401 then carries a
 // WWW-Authenticate header pointing at the Protected Resource Metadata so clients such as
 // ChatGPT can bootstrap the OAuth flow. The same Server.handle path (and therefore the
@@ -89,7 +90,10 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 			ToolCount:       runtimeInfo.ToolCount,
 			CatalogHash:     runtimeInfo.CatalogHash,
 		},
-		Authorize: authorized,
+		Authorize:     authorized,
+		OAuthProvider: oauthProvider,
+		TaskJournal:   s.journal,
+		DataProvider:  s.consoleDataProvider(token, oauthProvider),
 	})
 	if err != nil {
 		panic(fmt.Sprintf("invalid console configuration: %v", err))
@@ -256,29 +260,20 @@ func normalizedRoute(path string) observability.Route {
 	}
 }
 
-// authOK authorizes a request by matching the configured token against either the
-// "Authorization: Bearer <token>" header (preferred; used by curl, MCP Inspector,
-// Claude/Cursor) OR a "?key=<token>" query parameter. The query form exists because
-// ChatGPT's connector UI cannot send a custom header — the secret then rides in the
-// URL (weaker: may appear in logs; use read-only + a long token, or front with
-// Cloudflare Access OAuth). An empty configured token is "deny all" (fail closed).
+// authOK authorizes only an Authorization: Bearer header. Credentials in
+// query parameters are intentionally ignored so secrets cannot enter URL history,
+// proxy logs, screenshots or referrers. An empty configured token denies all.
 func authOK(r *http.Request, token string) bool {
 	if token == "" {
 		return false
 	}
 	const prefix = "Bearer "
-	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, prefix) {
-		got := strings.TrimSpace(h[len(prefix):])
-		if subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
-			return true
-		}
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, prefix) {
+		return false
 	}
-	if k := r.URL.Query().Get("key"); k != "" {
-		if subtle.ConstantTimeCompare([]byte(k), []byte(token)) == 1 {
-			return true
-		}
-	}
-	return false
+	provided := strings.TrimSpace(header[len(prefix):])
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1
 }
 
 func newHTTPSessionID() string {
@@ -362,6 +357,7 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	inputBytes := len(body)
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" {
 		http.Error(w, "empty body", http.StatusBadRequest)
@@ -375,31 +371,37 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 	if trimmed[0] == '[' {
 		responses := s.handleBatchObserved([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()))
 		if len(responses) == 0 {
+			s.payload.record(inputBytes, 0)
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("["))
+		var output bytes.Buffer
+		output.WriteByte('[')
 		for i, resp := range responses {
 			if i > 0 {
-				w.Write([]byte(","))
+				output.WriteByte(',')
 			}
-			w.Write(resp)
+			output.Write(resp)
 		}
-		w.Write([]byte("]"))
+		output.WriteByte(']')
+		s.payload.record(inputBytes, output.Len())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(output.Bytes())
 		return
 	}
 
 	resp := s.handleObserved([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()))
 	if resp == nil {
 		// Notification: nothing to return.
+		s.payload.record(inputBytes, 0)
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
+	s.payload.record(inputBytes, len(resp))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+	_, _ = w.Write(resp)
 }
 
 func containsInitialize(raw []byte) bool {

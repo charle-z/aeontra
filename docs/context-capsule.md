@@ -4,10 +4,7 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-L1 + remote connectivity are done and running in production: ChatGPT web connects to
-the Coolify/VPS deployment over HTTPS and can operate on repos cloned in the VPS
-volume. Current goal: evolve mcp-devbox into a GPT-driven agent tool box that can
-safely do work, while a human keeps control of risky operations.
+P9 Brain is deployed, healthy and tagged `p9`. Current goal: close P8.1 Console 2.0 from branch `console-2.0` through remote gates, merge, the existing Coolify deployment, production smoke and annotated tag `p8.1`, while preserving the 67-tool contract and human authority boundaries.
 
 P0 architecture foundations are deployed. The deterministic catalog, centralized
 build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`
@@ -81,23 +78,25 @@ or OAuth protocol change. Closure evidence is in
 `docs/baselines/2026-07-13-p8.md`. Formal closure commit
 `2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8` and deployed.
 
-P9 Brain is active on branch `p9-brain`, based exactly on P8 closure
-`2e3429c9d6342e8e091cadf65293c5c85b1b3259`. Step 7 completes runtime and
-operational wiring for the local 67-tool candidate with hash
-`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
-`MCP_DEVBOX_BRAIN_ROOT` is optional: unset keeps all five tools registered but
-uniformly disabled; configured requires an absolute root disjoint from repository
-roots, initializes private directories/local Git/FTS5, reindexes strict Markdown truth
-before serving, and fails startup on overlap, remotes, symlinks, permissions, duplicate
-slugs, malformed notes or cache errors. The Docker image reserves a dedicated
-`/brain` volume and copies `go.sum` for reproducible pure-Go SQLite builds.
-`cmd/brain-smoke` verifies exact commit/catalog, index readiness/schema, note count and
-context byte count without printing bearer credentials, queries, slugs, paths or note
-content. `docs/runbooks/brain-operations.md` covers setup, curation, backup, restore,
-update, rollback and troubleshooting. App coverage is 71.3% and brain-smoke coverage
-is 76.6%. The invariant remains no resident service. Production remains P8/62 and the
-deployed console remains unchanged; BIOS-inspired UI, live durable state and OAuth-
-only migration belong to a separate post-P9 branch.
+P9 Brain is deployed on `main` at merge commit
+`4fbe1dda02351c632e67c0f10a5c5b314df745e2` and tagged `p9`. The existing
+Coolify application is healthy with persistent `/brain`, 67 tools and catalog hash
+`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
+`cmd/mcp-catalog-smoke` and `cmd/brain-smoke` passed against production.
+The no resident service invariant remains intact.
+
+P8.1 Console 2.0 is complete / merge-ready on branch `console-2.0`, based
+exactly on deployed P9. React/TypeScript/Vite compiles the Neo-BIOS interface into
+same-origin assets embedded by Go. The console OAuth flow uses digest-only state,
+PKCE S256, one-use codes and a strict opaque cookie; query-string credentials return
+401 while header bearer remains recovery-only. Durable content-free task state lives
+under `/state/tasks` and is streamed through SSE with polling fallback. Exact
+allowlisted endpoints expose real container resources, declared `bytes / 4 (estimate)`
+payload accounting, aggregate observability, Brain aggregates and an opaque bounded
+graph. Edge is `Not paired`; no Edge Core, workcell, terminal or autonomous agent
+is claimed. Release-candidate evidence is in
+`docs/baselines/2026-07-14-p8_1.md`. Remote PR gates, merge, deployment and
+production smoke remain pending.
 
 Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
 from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
@@ -145,7 +144,7 @@ Production:
 - Host: `https://mcp-devbox-charlez.duckdns.org`
 - MCP endpoint: `/mcp`
 - Preferred ChatGPT auth: OAuth with DCR, public client, scope `mcp`.
-- Legacy fallback: `/mcp?key=<MCP_DEVBOX_TOKEN>`.
+- Recovery fallback: `Authorization: Bearer <MCP_DEVBOX_TOKEN>` header only. Query-string credentials return 401.
 - Runtime root: `/repos`
 - Default mode: `read-only`; global-builder production should use `ask`
 - Repos live in the persistent `/repos` volume.
@@ -153,7 +152,7 @@ Production:
 Transport:
 
 - stdio for local clients.
-- HTTP `POST /mcp` JSON-RPC, bearer or `?key=` token required.
+- HTTP `POST /mcp` JSON-RPC requires OAuth or an `Authorization: Bearer` recovery header.
 - `/healthz` for liveness and `/version` for safe build/catalog identity.
 - Dynamic HTTP responses disable caching and include live commit/catalog headers.
 - Authenticated `GET /mcp` returns a minimal SSE stream; unauthenticated `GET /mcp`
@@ -167,8 +166,8 @@ Transport:
   `MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only DCR public client registrations.
   `MCP_DEVBOX_OAUTH_REFRESH_STORE` optionally persists rotating refresh tokens with
   mode 0600 so ChatGPT can survive redeploys without repeating owner login. Access
-  tokens and authorization codes remain in-memory only. Static bearer/`?key=` remains
-  available as fallback.
+  access tokens and authorization codes remain in-memory only. Static bearer remains
+  available as a header-only recovery fallback; query-string credentials are rejected.
   See `docs/oauth.md`.
 
 Ephemeral grants:
@@ -371,6 +370,7 @@ $env:GOCACHE = "$env:TEMP\mcp-devbox-go-cache"
 Container/Coolify env:
 
 - `MCP_DEVBOX_TOKEN`
+- `MCP_DEVBOX_BRAIN_ROOT` (production: `/brain`)
 - `MCP_DEVBOX_ROOT`
 - `MCP_DEVBOX_MODE`
 - `MCP_DEVBOX_TEST_CMD`
@@ -380,6 +380,7 @@ Container/Coolify env:
 - `MCP_DEVBOX_OAUTH_CLIENT_STORE` (recommended: `/state/oauth-clients.json` on a
   persistent `/state` volume outside `/repos`)
 - `MCP_DEVBOX_OAUTH_REFRESH_STORE` (recommended: `/state/oauth-refresh.json`)
+- `MCP_DEVBOX_TASK_ROOT` (production image default: `/state/tasks`; bounded durable task journal)
 - `GITHUB_TOKEN` (optional, for GitHub tools)
 - `GITHUB_OWNER`
 - `GITHUB_OWNER_TYPE` (`user` or `org`)
@@ -412,14 +413,11 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Start P9 Brain on a fresh `p9-brain` branch with `specs/006-brain/` and ADR 0003.
-2. Keep Markdown files as truth under `MCP_DEVBOX_BRAIN_ROOT`; SQLite FTS5 is only a
-   disposable pure-Go cache. Add no resident service, database server, embeddings,
-   queue, or model to the resource-constrained VPS.
-3. Enforce owner-only `curated/`, agent-writable `working/` with provenance/review dates,
-   hard bounds, secret denial, path-safe slugs, backlinks, and demand-driven retrieval.
-4. Close P9 through a PR, remote gates, baseline, production verification, and tag
-   before drafting the P10 Layer 2/3 spec. Edge Agent remains last.
+1. Publish `console-2.0` and open the P8.1 pull request.
+2. Require fresh frontend, Verify, Race, Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker/SBOM and zero-High/Critical Grype gates on the exact head.
+3. Correct failures only on the branch; merge without force after all required gates pass.
+4. Deploy the exact merge commit through the existing Coolify application, tolerate only the bounded expected reconnect during container replacement, and verify OAuth console login, strict cookie, query-key 401, bearer recovery, `/state/tasks`, SSE, safe data schemas, 67 tools, P9 catalog hash and both existing smokes.
+5. Publish annotated tag `p8.1` only after production closure. Do not advance to Edge, Parrot, HTB, autonomous agents or a web terminal.
 
 Publication now exists only through the planned `repo_publish_preview` /
 `repo_publish` flow; `git_push` is the identical compatibility handler.
@@ -430,23 +428,22 @@ Publication now exists only through the planned `repo_publish_preview` /
   agent-first tooling.
 - ChatGPT remote access exposes a security tool to the internet path; token/auth,
   reverse-proxy gates, and policy all matter.
-- `?key=` is practical for ChatGPT but can leak through URL logs/history; rotate if
-  exposed and prefer an extra front gate such as Cloudflare Access or Traefik auth.
+- Query-string authentication was removed in P8.1. OAuth is the supported ChatGPT path; static bearer is header-only recovery.
 - L3 is the genuinely hard layer. Wrap proven tech; do not invent a sandbox.
 
 ## Last Verified
 
-Date: 2026-07-13. P8 merge commit
-`605a56d48a495f3c8a2ce62471223187ef2f5685` is deployed and healthy. Production
-reports 62 tools and deterministic catalog hash
-`sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
-PR CI runs `29290411676`/`29290411679` and post-merge runs
-`29290609147`/`29290609178` are green. Authenticated console smoke passed, and
-content-free logs show the expected 303/200 `route=console` events.
+Date: 2026-07-14. P9 production merge
+`4fbe1dda02351c632e67c0f10a5c5b314df745e2` is deployed, healthy and tagged
+`p9`; production reports 67 tools and the P9 catalog hash, with catalog and Brain
+smokes green.
 
-P9 Brain is merge-ready at reviewed implementation head
-`96f7ca15183271772aecbf2d0ac2cceb88e20e5d`. Exact-SHA CI run `29306099092` and
-Security Evidence run `29306099088` passed every required gate. Release-candidate
-evidence is in `docs/baselines/2026-07-14-p9.md`. Production remains P8/62 until PR
-#4 is merged, the dedicated `/brain` volume and environment are configured, and the
-merged commit is deployed and smoked.
+P8.1 release candidate branch `console-2.0` contains implementation commits
+`c4240672c9abfbb352b7a6b8ea39d7ae0e519d22`,
+`1f97c1f7c077752a435bdecd484229f0381dc306`,
+`548da51448cf3bf0f9a5d77b4f6d94d2b0cc3b79` and
+`fb66b175cee23b0211f307fe50bf5ae73a6bbd74`. Frontend check/test/build,
+atomic Go tests, package coverage, vet, build and diff checks are green. Query-string
+credentials return 401, OAuth console state/PKCE/code/cookie tests are green and
+`/state/tasks` contracts are covered. PR, remote gates, merge, deployment and
+`p8.1` tag are pending.

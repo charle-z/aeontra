@@ -68,8 +68,8 @@ serve flags:
 Transports:
   stdio (default)  JSON-RPC on stdin/stdout (local clients: Cursor, Claude Desktop).
   http (--http)    JSON-RPC over POST /mcp; AUTH REQUIRED. Pass the token as
-                   "Authorization: Bearer <t>" OR "/mcp?key=<t>" (ChatGPT can't send a
-                   header → use ?key= + "Sin autenticación"). See docs/connect-remote.md.
+                   OAuth is preferred for remote clients. Recovery clients may use
+                   "Authorization: Bearer <t>". Query-string credentials are rejected.
 
 Structured content-free observability defaults to JSONL on stderr; bearer tokens,
 request bodies, params, paths, targets, identities, and raw errors are never emitted.
