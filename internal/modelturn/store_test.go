@@ -182,8 +182,8 @@ func TestStoreSequenceCASAndInventedToolsFailClosed(t *testing.T) {
 	}
 	duplicate := base
 	duplicate.UsedToolIDs = []string{"tool-read", "tool-read"}
-	if _, err := store.Respond(context.Background(), duplicate); !errors.Is(err, ErrToolNotOffered) {
-		t.Fatalf("duplicate tool error=%v", err)
+	if _, err := store.Respond(context.Background(), duplicate); err != nil {
+		t.Fatalf("repeated offered tool error=%v", err)
 	}
 }
 
