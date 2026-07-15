@@ -2,9 +2,11 @@ package tools
 
 import (
 	"context"
+	"sync"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/resultstore"
 )
 
 // serviceCore centralizes the security and execution dependencies that every
@@ -54,6 +56,20 @@ type ExecutionCapability struct {
 	testCmd    []string
 	validation ValidationRunner
 	privileged PrivilegedConfig
+}
+
+// ResultCapability owns access to bounded persisted tool output. The result store
+// is state infrastructure, never a repository root or arbitrary filesystem view.
+type ResultCapability struct {
+	*serviceCore
+	mu    sync.RWMutex
+	store *resultstore.Store
+}
+
+func (c *ResultCapability) configureStore(store *resultstore.Store) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.store = store
 }
 
 func (c *serviceCore) configureActionPlanStore(store *ActionPlanStore) {

@@ -29,6 +29,9 @@ do not replace server-side enforcement.
 | `read_file` | 1/0/1/0 | Read one file with secret-path grants and redaction. |
 | `read_many_files` | 1/0/1/0 | Read several independently policy-checked files. |
 | `search_code` | 1/0/1/0 | Search jailed source with redacted results. |
+| `result_read` | 1/0/1/0 | Read a redacted persisted result by opaque ref in fragments capped at 16 KiB. |
+| `result_find` | 1/0/1/0 | Find unexpired redacted results by exact bounded substring; metadata only. |
+| `result_stage` | 1/0/1/0 | Read one indexed result stage by opaque ref in fragments capped at 16 KiB. |
 | `apply_patch` | 0/1/0/0 | Validate and apply a diff that may replace or delete content. |
 | `create_file` | 0/0/0/0 | Create a new file through the patch pipeline; no overwrite. |
 | `run_command` | 0/1/0/1 | Run one allowlisted argv without a shell; may reach network. |

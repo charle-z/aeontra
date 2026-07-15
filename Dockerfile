@@ -46,7 +46,8 @@ RUN apk add --no-cache ca-certificates git nodejs npm \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
-	&& mkdir -p /repos /brain /state/tasks \
+	&& mkdir -p /repos /brain /state/tasks /state/results \
+	&& chmod 0700 /state/results \
 	&& chown -R mcpdevbox:mcpdevbox /repos /brain /state \
 	# Defense in depth: strip setuid/setgid bits so no binary can be used to
 	# escalate privileges (the app runs non-root and needs no setuid tools).

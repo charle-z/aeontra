@@ -57,7 +57,7 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **OAuth-first authentication with header-only bearer recovery**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the current P11 candidate exposes 68 deliberately annotated
+**Secure builder evolution:** the current P11 candidate exposes 71 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
 private validation profiles, bounded Coolify logs, and disabled-by-default
@@ -74,6 +74,12 @@ The P11 candidate also persists content-free hourly/daily telemetry in embedded
 SQLite and bounds operational JSONL: four 16 MiB observability segments and four
 32 MiB audit segments under the existing `/state` volume. It stores no prompts,
 parameters, results, private paths, identities, credentials or model reasoning.
+
+Large tool output is redacted before persistence and replaced on the MCP boundary by
+seven compact metadata fields plus an opaque `result_ref`. The bounded result store
+uses `/state/results/results.db`, 24-hour success / 7-day failure TTLs, a 256 MiB
+logical quota, exact search, and 16 KiB reads. It exposes no arbitrary paths,
+embeddings, prompts, credentials, or model reasoning.
 
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused

@@ -21,6 +21,8 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
+const largeResultThresholdBytes = 32 << 10
+
 // Server dispatches MCP requests to the tool service.
 type Server struct {
 	svc      *tools.Service
@@ -254,14 +256,39 @@ func (s *Server) callToolObserved(req rpcRequest, transport observability.Transp
 		if text != "" {
 			message = text + "\n\nError: " + err.Error()
 		}
+		message, stageErr := s.compactLargeToolResult(params.Name, message, true)
+		if stageErr != nil {
+			message = "large tool result could not be persisted"
+		}
 		return resultResponse(req.ID, toolResult{
 			Content: []contentBlock{{Type: "text", Text: message}},
+			IsError: true,
+		}), params.Name, observability.OutcomeError, observability.ErrorTool
+	}
+	text, stageErr := s.compactLargeToolResult(params.Name, text, false)
+	if stageErr != nil {
+		return resultResponse(req.ID, toolResult{
+			Content: []contentBlock{{Type: "text", Text: "large tool result could not be persisted"}},
 			IsError: true,
 		}), params.Name, observability.OutcomeError, observability.ErrorTool
 	}
 	return resultResponse(req.ID, toolResult{
 		Content: []contentBlock{{Type: "text", Text: text}},
 	}), params.Name, observability.OutcomeSuccess, observability.ErrorNone
+}
+
+func (s *Server) compactLargeToolResult(tool, text string, failed bool) (string, error) {
+	if len([]byte(text)) <= largeResultThresholdBytes {
+		return text, nil
+	}
+	metadata, configured, err := s.svc.StageToolResult(tool, text, failed)
+	if err != nil {
+		return "", err
+	}
+	if !configured {
+		return text, nil
+	}
+	return metadata, nil
 }
 
 func mustMarshal(v any) []byte {

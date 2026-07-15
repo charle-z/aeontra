@@ -15,6 +15,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/resultstore"
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 	"github.com/charle-z/mcp-devbox/internal/telemetry"
 	"github.com/charle-z/mcp-devbox/internal/tools"
@@ -31,13 +32,14 @@ type appRuntime struct {
 	AuditPath   string
 	StateRoot   string
 	Telemetry   *telemetry.Store
+	Results     *resultstore.Store
 }
 
 func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr, telemetryErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, resultErr error
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -50,7 +52,10 @@ func (r *appRuntime) Close() error {
 	if r.Telemetry != nil {
 		telemetryErr = r.Telemetry.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil {
+	if r.Results != nil {
+		resultErr = r.Results.Close()
+	}
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || resultErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
@@ -105,6 +110,15 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, err
 	}
+	results, err := resultstore.Open(resultstore.Config{Root: filepath.Join(stateRoot, "results")})
+	if err != nil {
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening result store: %w", err)
+	}
+	service = service.WithResultStore(results)
 	return &appRuntime{
 		Policy:      pol,
 		Logger:      logger,
@@ -116,6 +130,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		AuditPath:   auditPath,
 		StateRoot:   stateRoot,
 		Telemetry:   metrics,
+		Results:     results,
 	}, nil
 }
 

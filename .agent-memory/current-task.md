@@ -12,17 +12,23 @@ Query-string credentials return 401, bearer recovery remains header-only, the co
 cookie is strict and opaque, durable tasks and SSE are operational, and Edge reports
 `not_paired` without claiming an implementation.
 
-Current step: close P11 Step 2, the measured `workspace_checkpoint` read-only
-primitive. Its exact 18-field JSON schema is bounded to 4096 bytes and performs only
-jailed fixed-argv Git reads plus a 240-rune redacted current-task summary. The
-reproducible fixture measured 2 to 1 MCP calls, 2052 to 406 response bytes, 260 to 0
-repeated bytes and approximately 18.6 ms to 16.7 ms.
+P11 Step 2 closed the measured `workspace_checkpoint` read-only primitive. Its exact
+18-field JSON schema is bounded to 4096 bytes and performs only jailed fixed-argv Git
+reads plus a 240-rune redacted current-task summary. The reproducible fixture measured
+2 to 1 MCP calls, 2052 to 406 response bytes, 260 to 0 repeated bytes and approximately
+18.6 ms to 16.7 ms.
 
 Step 3 persists exact content-free hourly/daily metrics in embedded SQLite, prunes at
 startup and opportunistically, caps the DB at a 128 MiB page target, and rotates four
 16 MiB observability plus four 32 MiB audit segments. The previous audit is never
 deleted automatically.
 
-Next implementation step: bounded redacted result store under `/state/results`.
-Do not add a free terminal, pair a device, install WSL automatically, or expand
+Step 4 persists only redacted large tool output under `/state/results`, replaces it
+with compact seven-field metadata, and exposes bounded `result_read`, `result_find`,
+and `result_stage` reads. Successes expire after 24 hours, failures after 7 days; the
+logical content quota is 256 MiB and reads cap at 16 KiB. Current catalog: 71 tools,
+hash `sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
+
+Next implementation step: minimum outbound-only Edge identity and pairing foundation.
+Do not add a free terminal, pair a real device, install WSL automatically, or expand
 workcell authority.

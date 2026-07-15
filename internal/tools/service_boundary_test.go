@@ -31,6 +31,7 @@ func TestServiceFacadeContainsOnlyDelegatingConfigurationMethods(t *testing.T) {
 		"WithValidationRunner": true,
 		"WithPrivilegedConfig": true,
 		"WithBrainStore":       true,
+		"WithResultStore":      true,
 	}
 
 	for _, entry := range entries {

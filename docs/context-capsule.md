@@ -4,14 +4,16 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11 Step 2 now adds
+P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11 Step 2 adds
 `workspace_checkpoint`, a closed local read-only tool that intentionally advances the
-candidate catalog to 68 tools with hash
-`sha256:86ab04ccb609b191aa2c471688100ed5c10a5641a81effba9a8c617fd3ba9c33`.
+candidate catalog without changing historical contracts.
 It reduces agent call saturation without fetch, external calls, file bodies or Git
 mutation. P11 Step 3 adds bounded hourly/daily SQLite telemetry and fixed operational
-JSONL segments under `/state` without recording content or changing authority. The
-next goal is the bounded result store before the minimum outbound-only Edge
+JSONL segments under `/state` without recording content or changing authority. P11
+Step 4 adds the bounded redacted result store and three local read-only tools,
+advancing the current catalog to 71 tools with hash
+`sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
+The next goal is the minimum outbound-only Edge
 foundation; every human authority boundary remains unchanged.
 
 P0 architecture foundations are deployed. The deterministic catalog, centralized

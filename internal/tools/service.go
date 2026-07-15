@@ -10,6 +10,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
 	"github.com/charle-z/mcp-devbox/internal/policy"
+	"github.com/charle-z/mcp-devbox/internal/resultstore"
 )
 
 // maxReadBytes caps a single file read so a tool cannot be used to pull an
@@ -34,6 +35,7 @@ type Service struct {
 	*SourceCapability
 	*PlatformCapability
 	*ExecutionCapability
+	*ResultCapability
 	*BrainCapability
 }
 
@@ -68,8 +70,15 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 			sandbox:     disabledSandboxRunner{},
 			validation:  disabledValidationRunner{},
 		},
-		BrainCapability: &BrainCapability{serviceCore: core},
+		ResultCapability: &ResultCapability{serviceCore: core},
+		BrainCapability:  &BrainCapability{serviceCore: core},
 	}
+}
+
+// WithResultStore attaches the isolated bounded result store opened at startup.
+func (s *Service) WithResultStore(store *resultstore.Store) *Service {
+	s.ResultCapability.configureStore(store)
+	return s
 }
 
 // WithActionPlanStore overrides the in-memory plan store for deterministic tests.
