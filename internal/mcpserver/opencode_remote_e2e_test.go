@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -224,7 +225,13 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		}
 		decodeToolJSON(t, turnText, &envelope)
 		if !envelope.Pending || envelope.Status != "turn" {
-			t.Fatalf("model_turn_next sequence=%d returned %+v edge_stderr=%q", sequence, envelope, stderr.String())
+			var edgeProcessErr error
+			select {
+			case edgeProcessErr = <-processDone:
+			case <-time.After(5 * time.Second):
+				edgeProcessErr = errors.New("mcp-edge did not terminate after terminal runtime state")
+			}
+			t.Fatalf("model_turn_next sequence=%d returned %+v edge_process_error=%v edge_stderr=%q", sequence, envelope, edgeProcessErr, stderr.String())
 		}
 		offer := envelope.Turn
 		if sequence == 1 {
