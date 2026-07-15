@@ -1,0 +1,35 @@
+name: Step 7 OpenCode Validation
+
+on:
+  push:
+    branches:
+      - p11-1-step7-validation
+
+permissions:
+  contents: read
+
+jobs:
+  opencode-e2e:
+    name: OpenCode v1.18.1 isolated vertical slice
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run isolated OpenCode vertical slice
+        run: ./test/opencode-e2e/run.sh
+
+      - name: Print benchmark and evidence
+        if: always()
+        run: |
+          test -f artifacts/opencode-e2e-report.json
+          cat artifacts/opencode-e2e-report.json
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-e2e-report
+          path: artifacts/opencode-e2e-report.json
+          if-no-files-found: error
