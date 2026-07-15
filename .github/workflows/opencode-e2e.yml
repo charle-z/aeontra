@@ -37,6 +37,27 @@ jobs:
           fi
           exit "$status"
 
+      - name: Annotate primary E2E failure
+        if: ${{ failure() && hashFiles('artifacts/opencode-remote-e2e.log') != '' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          log = Path("artifacts/opencode-remote-e2e.log").read_text(errors="replace")
+          lines = log.splitlines()
+          signals = [
+              line for line in lines
+              if re.search(r"(?:FAIL|Error|error:|panic|fatal|permission denied|not found|exit status|docker:)", line, re.I)
+          ]
+          summary_lines = signals[-30:] + ["--- final log lines ---"] + lines[-80:]
+          summary = "\n".join(summary_lines)
+          if len(summary) > 3500:
+              summary = summary[-3500:]
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=test/opencode-e2e/run.sh,line=1,title=Distributed OpenCode E2E failure::{escaped}")
+          PY
+
       - name: Verify structured report
         run: |
           test -s artifacts/opencode-remote-e2e-report.json
@@ -83,10 +104,10 @@ jobs:
           retention-days: 14
 
       - name: Upload E2E report
-        if: always()
+        if: ${{ always() && hashFiles('artifacts/opencode-remote-e2e-report.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: opencode-remote-e2e-report
           path: artifacts/opencode-remote-e2e-report.json
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 30
