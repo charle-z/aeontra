@@ -70,6 +70,11 @@ upstream, tree counts, diff statistics and a bounded redacted task summary in on
 schema-only response. It does not fetch, modify Git, read source bodies or call an
 external service.
 
+The P11 candidate also persists content-free hourly/daily telemetry in embedded
+SQLite and bounds operational JSONL: four 16 MiB observability segments and four
+32 MiB audit segments under the existing `/state` volume. It stores no prompts,
+parameters, results, private paths, identities, credentials or model reasoning.
+
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused
 capability services over one shared policy, audit, root, runner, redaction, and

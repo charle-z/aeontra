@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -29,6 +30,56 @@ func TestLog_WritesJSONLine(t *testing.T) {
 	}
 	if e.Time == "" {
 		t.Error("time should be auto-populated")
+	}
+}
+
+func TestOpenUsesPrivatePermissionsAndFourBoundedSegments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "private", "audit.jsonl")
+	l, err := OpenWithLimit(path, 1024, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 200; i++ {
+		if err := l.Log(Entry{Tool: strings.Repeat("x", 80), Decision: Allow, Args: strings.Repeat("a", 80)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []string{path, path + ".1", path + ".2", path + ".3"} {
+		info, err := os.Stat(candidate)
+		if err != nil {
+			t.Fatalf("stat %s: %v", candidate, err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("%s mode = %o", candidate, info.Mode().Perm())
+		}
+	}
+	if info, err := os.Stat(filepath.Dir(path)); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("private audit dir: info=%v err=%v", info, err)
+	}
+}
+
+func TestOpenRejectsSymlinkWithoutChangingLegacyAudit(t *testing.T) {
+	directory := t.TempDir()
+	legacy := filepath.Join(directory, "legacy-audit.log")
+	if err := os.WriteFile(legacy, []byte("legacy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	private := filepath.Join(directory, "private")
+	if err := os.Mkdir(private, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(private, "audit.jsonl")
+	if err := os.Symlink(legacy, link); err == nil {
+		if _, err := Open(link); err == nil {
+			t.Fatal("symlink audit must be rejected")
+		}
+	}
+	data, err := os.ReadFile(legacy)
+	if err != nil || string(data) != "legacy\n" {
+		t.Fatalf("legacy audit changed: %q err=%v", data, err)
 	}
 }
 
@@ -66,7 +117,7 @@ func TestSpan_RecordsDecisionAndDuration(t *testing.T) {
 }
 
 func TestOpen_AppendsToFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "audit.log")
+	path := filepath.Join(t.TempDir(), "private", "audit.log")
 	l, err := Open(path)
 	if err != nil {
 		t.Fatal(err)

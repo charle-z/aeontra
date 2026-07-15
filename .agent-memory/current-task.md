@@ -18,6 +18,11 @@ jailed fixed-argv Git reads plus a 240-rune redacted current-task summary. The
 reproducible fixture measured 2 to 1 MCP calls, 2052 to 406 response bytes, 260 to 0
 repeated bytes and approximately 18.6 ms to 16.7 ms.
 
-Next implementation step: persistent bounded telemetry and operational log rotation.
+Step 3 persists exact content-free hourly/daily metrics in embedded SQLite, prunes at
+startup and opportunistically, caps the DB at a 128 MiB page target, and rotates four
+16 MiB observability plus four 32 MiB audit segments. The previous audit is never
+deleted automatically.
+
+Next implementation step: bounded redacted result store under `/state/results`.
 Do not add a free terminal, pair a device, install WSL automatically, or expand
 workcell authority.

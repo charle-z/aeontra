@@ -24,7 +24,7 @@ func TestRuntimeCloseClosesAttachedBrainCapability(t *testing.T) {
 	}
 	runtime, err := buildRuntime(serveOptions{
 		Config:    cfg,
-		AuditPath: filepath.Join(repoRoot, "audit.jsonl"),
+		AuditPath: filepath.Join(repoRoot, "private", "audit.jsonl"),
 	})
 	if err != nil {
 		t.Fatal(err)

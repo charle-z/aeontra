@@ -15,6 +15,7 @@ const tokenEnv = "MCP_DEVBOX_TOKEN"
 // can configure them without baking flags into the image. A flag, when set, wins.
 const brainRootEnv = "MCP_DEVBOX_BRAIN_ROOT"
 const taskRootEnv = "MCP_DEVBOX_TASK_ROOT"
+const stateRootEnv = "MCP_DEVBOX_STATE_ROOT"
 
 const (
 	testCmdEnv      = "MCP_DEVBOX_TEST_CMD"

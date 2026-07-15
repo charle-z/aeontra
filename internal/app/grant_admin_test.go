@@ -20,7 +20,7 @@ func TestStartLocalGrantAdminUsesLoopbackAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := buildRuntime(serveOptions{Config: cfg, AuditPath: filepath.Join(root, "audit.log")})
+	runtime, err := buildRuntime(serveOptions{Config: cfg, AuditPath: filepath.Join(root, "private", "audit.log")})
 	if err != nil {
 		t.Fatal(err)
 	}

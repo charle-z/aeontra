@@ -3,23 +3,27 @@
 P7 adds a private, content-free JSONL operational stream. It complements the richer
 append-only audit log; it does not replace it.
 
-## Default installation
+## Persistent installation
 
-No extra dependency, port, service, or mount is required. The default is:
+No extra service or port is required. The production image uses the existing private
+`/state` volume and defaults to:
 
 ```text
-MCP_DEVBOX_OBSERVABILITY=stderr
+MCP_DEVBOX_STATE_ROOT=/state
+MCP_DEVBOX_OBSERVABILITY=file
 MCP_DEVBOX_OBSERVABILITY_MAX_BYTES=16777216
 ```
 
-Container platforms should collect stderr with their existing log driver. Events are
-one JSON object per line and contain only the closed fields documented below.
+This creates `/state/logs/observability.jsonl`, `/state/logs/audit.jsonl`, and
+`/state/telemetry/metrics.db`. Events are one JSON object per line and contain only
+the closed fields documented below. `both` additionally mirrors observability to
+stderr; `off` disables JSONL emission but not the content-free aggregate store.
 
 ## Optional file mode
 
 ```text
 MCP_DEVBOX_OBSERVABILITY=file
-MCP_DEVBOX_OBSERVABILITY_PATH=/state/observability/observability.jsonl
+MCP_DEVBOX_OBSERVABILITY_PATH=/state/logs/observability.jsonl
 MCP_DEVBOX_OBSERVABILITY_MAX_BYTES=16777216
 ```
 
@@ -27,12 +31,30 @@ Use `both` to retain stderr and the file. File/both mode requires a writable pri
 mount. Recommended container mount:
 
 ```text
-/state/observability  -> private persistent volume owned by the MCP runtime uid
+/state  -> private persistent volume owned by the MCP runtime uid
 ```
 
 The daemon creates directories with `0700`, files with `0600`, rotates at the byte
-limit, and keeps one `.1` backup (`observability.jsonl.1`). The default fallback path when no
-path is supplied is `<primary-root>/.agent-memory/observability/observability.jsonl`. The dedicated subdirectory is created with `0700` permissions.
+limit, and keeps four total fixed segments (active plus `.1`, `.2`, `.3`). Audit uses
+the same secure writer with four 32 MiB segments. The fallback outside the production
+image is `<primary-root>/.agent-memory/state`. Symlink files/ancestors and broadly
+accessible target directories are rejected.
+
+## Persistent metrics
+
+Embedded SQLite stores only hourly and daily aggregates, with no listener. The DB has
+a 128 MiB maximum page target. Hourly buckets are retained for seven days and daily
+buckets for 90 days. Pruning runs at startup and every 256 observed events.
+
+Exact counters are `request_count`, `tool_call_count`, `input_bytes`, `output_bytes`,
+`http_duration_ms`, `tool_duration_ms`, measurable `external_wait_ms`, outcomes, 4xx
+and 5xx. Closed dimensions are global plus optional opaque `project_id` and `task_id`,
+transport, route, tool and outcome. Prompts, params, results, paths, IPs, credentials,
+cookies, Brain content and model reasoning have no schema column.
+
+`tokens_estimate = bytes / 4` is labeled
+`estimate_bytes_div_4_not_billing`. It is display-only, never provider billing or
+claimed as actual model tokens.
 
 ## Flags
 
@@ -63,9 +85,16 @@ Fields are omitted when not applicable:
   "route": "mcp|health|version|oauth|other",
   "method": "initialize|tools/list|tools/call|ping|notification|other",
   "tool": "known public MCP tool name",
+  "project_id": "optional safe opaque id",
+  "task_id": "optional safe opaque id",
   "outcome": "success|accepted|denied|error|cancelled",
   "status_code": 200,
   "duration_ms": 4,
+  "input_bytes": 120,
+  "output_bytes": 80,
+  "http_duration_ms": 4,
+  "tool_duration_ms": 3,
+  "external_wait_ms": 0,
   "error_class": "parse_error|invalid_params|unknown_method|unknown_tool|tool_error|transport_error|internal_error",
   "commit": "git sha",
   "tool_count": 62,
@@ -87,18 +116,21 @@ ignored.
 
 ## Updating
 
-1. Deploy the new MCP image with default stderr mode.
-2. Verify JSONL startup and request-completion events.
-3. Enable file/both only after a private writable mount exists.
-4. Confirm permissions and rotation with synthetic local traffic.
-5. Preserve the audit log independently.
+1. Preserve the prior audit file; the runtime never deletes or rewrites it.
+2. Ensure `/state` is writable by UID/GID 10001.
+3. Deploy with `MCP_DEVBOX_STATE_ROOT=/state` and verify all three new paths.
+4. Confirm `0700` directories, `0600` files and fixed rotation.
+5. Archive the old audit manually only if policy permits.
+
+If `--audit` still names a legacy file in a broadly accessible directory, remove the
+override or move it into a dedicated `0700` directory. Startup fails closed rather
+than weakening the new writer. The legacy file is not deleted.
 
 ## Rollback
 
-Set `MCP_DEVBOX_OBSERVABILITY=off` and redeploy to disable event emission without
-changing MCP tools or policy. To roll back the entire release, deploy the previous
-known-good commit; observability files are standalone JSONL and require no database
-migration.
+Deploy the previous known-good binary while retaining `/state`; old binaries ignore
+the new paths. The prior audit remains untouched. `MCP_DEVBOX_OBSERVABILITY=off`
+disables JSONL only; content-free metrics remain active in the new binary.
 
 ## Troubleshooting
 
@@ -108,7 +140,7 @@ migration.
   root solely to write logs.
 - **No events in stderr:** confirm the platform captures container stderr and mode is
   not `off` or `file`.
-- **Repeated `.1` replacement:** expected one-backup rotation at the configured limit.
+- **Segments `.1` through `.3`:** expected fixed four-segment rotation.
 - **Missing request correlation:** inspect the response `X-MCP-Request-ID`; the client
   cannot choose this value.
 - **Need request content:** use the private audit/evidence workflow where authorized;

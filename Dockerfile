@@ -55,6 +55,8 @@ RUN apk add --no-cache ca-certificates git nodejs npm \
 # Writable Go caches for the non-root user (go test/build need these), plus a
 # default git identity so git_commit works without a home dir (override in Coolify).
 ENV MCP_DEVBOX_TASK_ROOT=/state/tasks \
+	MCP_DEVBOX_STATE_ROOT=/state \
+	MCP_DEVBOX_OBSERVABILITY=file \
 	GOCACHE=/tmp/go-build \
 	GOPATH=/tmp/go \
 	GIT_AUTHOR_NAME=mcp-devbox \

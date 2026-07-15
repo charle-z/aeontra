@@ -9,8 +9,10 @@ P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11 Step 2 now adds
 candidate catalog to 68 tools with hash
 `sha256:86ab04ccb609b191aa2c471688100ed5c10a5641a81effba9a8c617fd3ba9c33`.
 It reduces agent call saturation without fetch, external calls, file bodies or Git
-mutation. The next goal is persistent bounded telemetry/logs before the minimum
-outbound-only Edge foundation; every human authority boundary remains unchanged.
+mutation. P11 Step 3 adds bounded hourly/daily SQLite telemetry and fixed operational
+JSONL segments under `/state` without recording content or changing authority. The
+next goal is the bounded result store before the minimum outbound-only Edge
+foundation; every human authority boundary remains unchanged.
 
 P0 architecture foundations are deployed. The deterministic catalog, centralized
 build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`

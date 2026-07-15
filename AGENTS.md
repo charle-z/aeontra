@@ -22,7 +22,8 @@ Operating rules for any AI agent working in this repo. Read this first, then
   resident service, queue or database server is part of P8.1. PR #10, remote gates,
   deployment, production smoke and annotated tag `p8.1` are closed and recorded in
   `docs/baselines/2026-07-14-p8_1-production.md`. Step 2 adds the closed read-only
-  `workspace_checkpoint` contract as tool 68; no Edge identity, device, task lease,
+  `workspace_checkpoint` contract as tool 68 plus bounded persistent telemetry/logs;
+  no Edge identity, device, task lease,
   workcell, pairing or authority expansion is claimed yet.
   The project has stdio and HTTP/OAuth transports, policy core, 67 annotated MCP
   tools, action plans, audit, persistent notes, Brain and adversarial tests.

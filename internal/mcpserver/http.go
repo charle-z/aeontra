@@ -216,17 +216,19 @@ func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
 			errorClass = observability.ErrorTransport
 		}
 		if s.observer != nil {
+			duration := time.Since(started).Milliseconds()
 			_ = s.observer.Emit(observability.Event{
-				Level:      level,
-				Component:  observability.ComponentHTTP,
-				Name:       observability.EventHTTPRequest,
-				RequestID:  requestID,
-				Transport:  observability.TransportHTTP,
-				Route:      normalizedRoute(r.URL.Path),
-				Outcome:    outcome,
-				StatusCode: status,
-				DurationMS: time.Since(started).Milliseconds(),
-				ErrorClass: errorClass,
+				Level:          level,
+				Component:      observability.ComponentHTTP,
+				Name:           observability.EventHTTPRequest,
+				RequestID:      requestID,
+				Transport:      observability.TransportHTTP,
+				Route:          normalizedRoute(r.URL.Path),
+				Outcome:        outcome,
+				StatusCode:     status,
+				DurationMS:     duration,
+				HTTPDurationMS: duration,
+				ErrorClass:     errorClass,
 			})
 		}
 	})

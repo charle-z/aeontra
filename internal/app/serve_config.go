@@ -32,6 +32,7 @@ type serveOptions struct {
 	HTTPToken     string
 	BrainRoot     string
 	TaskRoot      string
+	StateRoot     string
 	Observability observability.Config
 }
 
@@ -53,6 +54,17 @@ func resolveTaskRoot(raw string) (string, error) {
 	}
 	if strings.ContainsRune(raw, '\x00') || !filepath.IsAbs(raw) {
 		return "", fmt.Errorf("%s must be an absolute path", taskRootEnv)
+	}
+	return filepath.Clean(raw), nil
+}
+
+func resolveStateRoot(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if strings.ContainsRune(raw, '\x00') || !filepath.IsAbs(raw) {
+		return "", fmt.Errorf("%s must be an absolute path", stateRootEnv)
 	}
 	return filepath.Clean(raw), nil
 }
@@ -123,6 +135,10 @@ func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
 	if err != nil {
 		return serveOptions{}, err
 	}
+	stateRoot, err := resolveStateRoot(os.Getenv(stateRootEnv))
+	if err != nil {
+		return serveOptions{}, err
+	}
 	return serveOptions{
 		Config:        cfg,
 		AuditPath:     *auditPath,
@@ -130,6 +146,7 @@ func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
 		HTTPToken:     *httpToken,
 		BrainRoot:     brainRoot,
 		TaskRoot:      taskRoot,
+		StateRoot:     stateRoot,
 		Observability: observabilityConfig,
 	}, nil
 }

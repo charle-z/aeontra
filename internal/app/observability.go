@@ -27,13 +27,13 @@ func parseObservabilityConfig(modeFlag, pathFlag, maxBytesFlag string) (observab
 	return observability.ValidateConfig(cfg)
 }
 
-func resolveObservabilityConfig(cfg observability.Config, primaryRoot string) (observability.Config, error) {
+func resolveObservabilityConfig(cfg observability.Config, stateRoot string) (observability.Config, error) {
 	validated, err := observability.ValidateConfig(cfg)
 	if err != nil {
 		return observability.Config{}, err
 	}
 	if (validated.Mode == observability.ModeFile || validated.Mode == observability.ModeBoth) && validated.Path == "" {
-		validated.Path = filepath.Join(primaryRoot, ".agent-memory", "observability", "observability.jsonl")
+		validated.Path = filepath.Join(stateRoot, "logs", "observability.jsonl")
 	}
 	return observability.ValidateConfig(validated)
 }

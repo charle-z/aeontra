@@ -33,6 +33,8 @@ P9 Brain is optional at startup. To enable it, mount a dedicated persistent volu
 
 ```text
 MCP_DEVBOX_BRAIN_ROOT=/brain
+MCP_DEVBOX_STATE_ROOT=/state
+MCP_DEVBOX_OBSERVABILITY=file
 ```
 
 The Brain path must be absolute and disjoint from `/repos`. A configured but invalid
@@ -118,8 +120,9 @@ or pass a build argument `GIT_SHA=$(git rev-parse HEAD)` (baked into `internal/b
 /brain
 ```
 
-Use `/repos` for cloned repositories, `/state` for OAuth client/refresh state,
-and the dedicated `/brain` volume for Markdown truth and local Git history. The
+Use `/repos` for cloned repositories and `/state` for OAuth client/refresh state,
+bounded telemetry (`telemetry/metrics.db`) and four-segment operational logs under
+`logs/`. Use the dedicated `/brain` volume for Markdown truth and local Git history. The
 SQLite cache under `/brain/.cache` is disposable. The image prepares `/brain` for
 UID/GID `10001:10001`; host bind mounts must preserve that ownership and private
 `0700`/`0600` modes.

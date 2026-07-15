@@ -48,7 +48,7 @@ func TestBuildRuntimeDefaultFileObservabilityUsesPrivateSubdirectory(t *testing.
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
 	}
-	privateDir := filepath.Join(memoryDir, "observability")
+	privateDir := filepath.Join(memoryDir, "state", "logs")
 	filePath := filepath.Join(privateDir, "observability.jsonl")
 	dirInfo, err := os.Stat(privateDir)
 	if err != nil {

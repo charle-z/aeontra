@@ -81,7 +81,7 @@ func TestResolveObservabilityPathUsesPrivateAgentMemoryDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(root, ".agent-memory", "observability", "observability.jsonl")
+	want := filepath.Join(root, "logs", "observability.jsonl")
 	if cfg.Path != want {
 		t.Fatalf("path = %q, want %q", cfg.Path, want)
 	}

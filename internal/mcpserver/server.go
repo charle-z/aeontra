@@ -124,7 +124,13 @@ func (s *Server) handleObserved(raw []byte, transport observability.Transport, r
 		Outcome:   observability.OutcomeSuccess,
 	}
 	defer func() {
-		event.DurationMS = time.Since(started).Milliseconds()
+		duration := time.Since(started).Milliseconds()
+		event.DurationMS = duration
+		event.InputBytes = int64(len(raw))
+		event.OutputBytes = int64(len(response))
+		if event.Method == observability.MethodToolsCall {
+			event.ToolDurationMS = duration
+		}
 		if event.Outcome == observability.OutcomeError {
 			event.Level = observability.LevelError
 		}

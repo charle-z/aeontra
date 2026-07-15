@@ -55,6 +55,8 @@ func TestParseServeOptionsUsesExistingEnvironmentNames(t *testing.T) {
 	t.Setenv(allowCmdEnv, "git,node")
 	t.Setenv(testCmdEnv, "node test.js")
 	t.Setenv(sandboxEnv, "gvisor")
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	t.Setenv(stateRootEnv, stateRoot)
 
 	opts, err := parseServeOptions([]string{"--root", root}, io.Discard)
 	if err != nil {
@@ -68,6 +70,16 @@ func TestParseServeOptionsUsesExistingEnvironmentNames(t *testing.T) {
 	}
 	if opts.Config.SandboxBackend != "gvisor" {
 		t.Fatalf("sandbox = %q", opts.Config.SandboxBackend)
+	}
+	if opts.StateRoot != filepath.Clean(stateRoot) {
+		t.Fatalf("state root = %q", opts.StateRoot)
+	}
+}
+
+func TestParseServeOptionsRejectsRelativeStateRoot(t *testing.T) {
+	t.Setenv(stateRootEnv, "relative-state")
+	if _, err := parseServeOptions([]string{"--root", t.TempDir()}, io.Discard); err == nil || !strings.Contains(err.Error(), stateRootEnv) {
+		t.Fatalf("error = %v", err)
 	}
 }
 

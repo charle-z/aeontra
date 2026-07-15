@@ -110,22 +110,33 @@ func TestConcurrentEventsRemainLineSafe(t *testing.T) {
 	}
 }
 
-func TestFileModeUsesPrivatePermissionsAndRotatesOneBackup(t *testing.T) {
+func TestFileModeUsesPrivatePermissionsAndFourFixedSegments(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "private", "observability.jsonl")
 	logger, err := Open(Config{Mode: ModeFile, Path: path, MaxBytes: MinMaxBytes}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	large := strings.Repeat("a", 900)
-	for i := 0; i < 10000; i++ {
-		if err := logger.Emit(Event{Level: LevelInfo, Component: ComponentMCP, Name: EventRPCRequest, Outcome: OutcomeSuccess, RequestID: large}); err != nil {
-			t.Fatal(err)
-		}
+	rotating, ok := logger.writers[0].(*rotatingFile)
+	if !ok || rotating.segments != DefaultSegments {
+		t.Fatalf("file mode segments = %#v", logger.writers[0])
 	}
 	if err := logger.Close(); err != nil {
 		t.Fatal(err)
 	}
-	for _, candidate := range []string{path, path + ".1"} {
+	writer, err := OpenRotatingWriter(path, 1024, DefaultSegments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large := []byte(strings.Repeat("a", 900) + "\n")
+	for i := 0; i < 100; i++ {
+		if _, err := writer.Write(large); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []string{path, path + ".1", path + ".2", path + ".3"} {
 		info, err := os.Stat(candidate)
 		if err != nil {
 			t.Fatalf("stat %s: %v", candidate, err)
@@ -133,6 +144,9 @@ func TestFileModeUsesPrivatePermissionsAndRotatesOneBackup(t *testing.T) {
 		if info.Mode().Perm() != 0o600 {
 			t.Fatalf("%s mode = %o", candidate, info.Mode().Perm())
 		}
+	}
+	if _, err := os.Stat(path + ".4"); !os.IsNotExist(err) {
+		t.Fatalf("unexpected fifth segment: %v", err)
 	}
 	dirInfo, err := os.Stat(filepath.Dir(path))
 	if err != nil {
@@ -166,5 +180,32 @@ func TestDisabledLoggerIsNoop(t *testing.T) {
 	}
 	if err := logger.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type captureSink struct{ events []Event }
+
+func (s *captureSink) Observe(event Event) error {
+	s.events = append(s.events, event)
+	return nil
+}
+
+func TestSinkReceivesOnlyNormalizedClosedDimensions(t *testing.T) {
+	logger, err := Open(Config{Mode: ModeOff, MaxBytes: DefaultMaxBytes}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := &captureSink{}
+	logger.WithSink(sink)
+	secret := "gh" + "p_0123456789abcdefghijklmnopqrstuvwxyz"
+	if err := logger.Emit(Event{Transport: Transport(secret), Tool: secret, ProjectID: secret, TaskID: secret, Outcome: Outcome(secret), InputBytes: -1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.events) != 1 {
+		t.Fatalf("sink events = %d", len(sink.events))
+	}
+	got := sink.events[0]
+	if got.Transport != TransportOther || got.Tool != "redacted" || got.ProjectID != "redacted" || got.TaskID != "redacted" || got.Outcome != OutcomeOther || got.InputBytes != 0 {
+		t.Fatalf("unnormalized sink event: %+v", got)
 	}
 }

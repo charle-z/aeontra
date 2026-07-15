@@ -59,7 +59,7 @@ func TestP7StructuredObservabilityIsDefinedAndDeployed(t *testing.T) {
 		"MCP_DEVBOX_OBSERVABILITY_MAX_BYTES",
 		"0700",
 		"0600",
-		"one `.1` backup",
+		"four total fixed segments",
 		"X-MCP-Request-ID",
 		"Rollback",
 		"Troubleshooting",

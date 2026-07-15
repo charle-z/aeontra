@@ -82,6 +82,9 @@ func TestObservedToolCallOmitsParamsPathsResultsPromptsAndSecrets(t *testing.T) 
 	if last.Tool != "read_file" || last.Outcome != observability.OutcomeSuccess || last.RequestID == "" {
 		t.Fatalf("unexpected tool outcome: %+v", last)
 	}
+	if last.InputBytes != int64(len(request)) || last.OutputBytes != int64(len(response)) || last.ToolDurationMS != last.DurationMS {
+		t.Fatalf("tool metrics are not exact: %+v", last)
+	}
 }
 
 func TestObservedUnknownToolDoesNotPersistClientToolName(t *testing.T) {
@@ -124,6 +127,9 @@ func TestHTTPObservabilityUsesServerRequestIDAndNeverLogsQueryToken(t *testing.T
 	}
 	if last.RequestID != requestID {
 		t.Fatalf("event request id %q != response %q", last.RequestID, requestID)
+	}
+	if last.HTTPDurationMS != last.DurationMS {
+		t.Fatalf("HTTP duration mismatch: %+v", last)
 	}
 }
 

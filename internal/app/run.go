@@ -57,13 +57,13 @@ serve flags:
   --mode        access posture: read-only (default), ask, allow
   --allow-cmd   comma-separated command allowlist (default: git,go,ls,cat)
   --test-cmd    command for run_tests, e.g. "go test ./..."
-  --audit       audit log path (default: <root>/.agent-memory/audit.log)
+  --audit       audit log path (default: <state-root>/logs/audit.jsonl)
   --http        serve MCP over HTTP at ADDR (e.g. :8765). Omit for stdio (default).
                 A host-less ADDR binds to 127.0.0.1 (use a tunnel for remote access).
   --http-token  bearer token for the HTTP endpoint. Prefer the `+tokenEnv+` env var.
   --observability  structured events: off, stderr (default), file, or both
   --observability-path  absolute private JSONL path for file/both mode
-  --observability-max-bytes  one-backup rotation limit (default: 16777216)
+  --observability-max-bytes  per-segment limit; four segments (default: 16777216)
 
 Transports:
   stdio (default)  JSON-RPC on stdin/stdout (local clients: Cursor, Claude Desktop).
@@ -71,7 +71,8 @@ Transports:
                    OAuth is preferred for remote clients. Recovery clients may use
                    "Authorization: Bearer <t>". Query-string credentials are rejected.
 
-Structured content-free observability defaults to JSONL on stderr; bearer tokens,
+Structured observability defaults to stderr outside the image; the image persists
+bounded JSONL and SQLite aggregates under /state. Bearer tokens,
 request bodies, params, paths, targets, identities, and raw errors are never emitted.
 `)
 }
