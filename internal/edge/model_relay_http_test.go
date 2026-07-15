@@ -40,7 +40,7 @@ func TestSignedModelRelayLeaseTurnWaitAndCompletion(t *testing.T) {
 	}
 	handler := NewHTTPHandler(devices, turns)
 
-	lease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-lease-0001", modelRuntimeLeasePath, modelRuntimeLeaseRequest{WaitSeconds: 1})
+	lease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-lease-0001", modelRuntimeLeasePath, modelRuntimeLeaseRequest{LeaseID: "el_01010101010101010101010101010101", WaitSeconds: 1})
 	if lease.Code != http.StatusOK {
 		t.Fatalf("lease status=%d body=%s", lease.Code, lease.Body.String())
 	}
@@ -147,11 +147,11 @@ func TestSignedModelRelayRejectsDigestReplayAndTimeoutExpansion(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := NewHTTPHandler(devices, turns)
-	lease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-guard-lease", modelRuntimeLeasePath, modelRuntimeLeaseRequest{WaitSeconds: 181})
+	lease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-guard-lease", modelRuntimeLeasePath, modelRuntimeLeaseRequest{LeaseID: "el_02020202020202020202020202020202", WaitSeconds: 181})
 	if lease.Code != http.StatusBadRequest {
 		t.Fatalf("expanded lease status=%d", lease.Code)
 	}
-	validLease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-guard-lease-valid", modelRuntimeLeasePath, modelRuntimeLeaseRequest{WaitSeconds: 1})
+	validLease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-guard-lease-valid", modelRuntimeLeasePath, modelRuntimeLeaseRequest{LeaseID: "el_03030303030303030303030303030303", WaitSeconds: 1})
 	if validLease.Code != http.StatusOK {
 		t.Fatalf("valid lease status=%d body=%s", validLease.Code, validLease.Body.String())
 	}
@@ -170,7 +170,7 @@ func TestSignedModelRelayRejectsDigestReplayAndTimeoutExpansion(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("digest status=%d body=%s", response.Code, response.Body.String())
 	}
-	body, _ := json.Marshal(modelRuntimeLeaseRequest{WaitSeconds: 1})
+	body, _ := json.Marshal(modelRuntimeLeaseRequest{LeaseID: "el_04040404040404040404040404040404", WaitSeconds: 1})
 	first := performSignedRequest(t, handler, device.ID, privateKey, now, "relay-nonce-replay-0001", http.MethodPost, modelRuntimeLeasePath, body)
 	second := performSignedRequest(t, handler, device.ID, privateKey, now, "relay-nonce-replay-0001", http.MethodPost, modelRuntimeLeasePath, body)
 	if first.Code == http.StatusUnauthorized || second.Code != http.StatusUnauthorized {

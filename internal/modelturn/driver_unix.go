@@ -19,11 +19,15 @@ import (
 const DefaultDriverSocketName = "model-turn-driver.sock"
 
 func ServeDriver(ctx context.Context, socketPath string, store *Store, ready io.Writer) error {
+	return ServeDriverTransport(ctx, socketPath, store, ready)
+}
+
+func ServeDriverTransport(ctx context.Context, socketPath string, transport ModelTurnTransport, ready io.Writer) error {
 	validated, err := prepareDriverSocketPath(socketPath)
 	if err != nil {
 		return err
 	}
-	driver, err := NewDriver(store)
+	driver, err := NewDriverTransport(transport)
 	if err != nil {
 		return err
 	}

@@ -1,20 +1,33 @@
 # Current task
 
-P8.1 Console 2.0 is deployed from merge `d343264bffdc0ae1bc045a9d723e913be977090c`. P9 Brain is deployed underneath the current P11 production baseline. This branch changes neither production closure.
+P11.2 branch `p11-2-remote-opencode-relay`, based exactly on `origin/main` `01fde5067752ab1c43424d2d54f9afd914617ba5`. Do not merge, deploy, tag, pair a real Edge, install on Parrot, or change Coolify.
 
-P11.1 post-merge production verification completed on 2026-07-15.
+Committed:
 
-- PR #12 merged from head `00857da8f26f8130f2eab6115ebeb2b56e5ea8ce`.
-- Merge commit and fetched `origin/main`: `01fde5067752ab1c43424d2d54f9afd914617ba5`.
-- Existing Coolify application `jqf7qz5ensoqtvl1tb197gcv` remains `running:healthy`; production smokes report the merge commit, 77 tools and catalog hash `sha256:3f4e1812bd72a0508eba108d97dfd353ea9abc4c883cded262abd768f1f94518`.
-- No manual deployment was triggered. The loaded connector does not expose `mcp_client_capabilities`, so sampling remains undetermined; `PullRendezvousTransport` remains active and `MCPSamplingTransport` inactive.
+- Step 1 `97f9956ed40cfba1bb1f9e3e6c7c465daa96075b` — bind authoritative model runtimes to opaque Edge device/workspace identities.
+- Step 2 `efdd2693c2a23a3b58dd8f716eebbc06ef6186ac` — private local Edge workspace registry with revalidation.
+- Step 3 `bf4ed04a2e5a43b1daaa3db71ebcbd332b29d806` — signed device-bound runtime/turn relay endpoints.
 
-P11.2 branch: `p11-2-remote-opencode-relay`, based exactly on merged `origin/main` commit `01fde5067752ab1c43424d2d54f9afd914617ba5`.
+Step 4 is implemented and validated in the working tree, ready for the coherent commit `Step 4: add remote Edge model-turn transport`:
 
-Completed:
+- `NewDriver(*Store)` remains compatible and delegates to `NewDriverTransport(ModelTurnTransport)`.
+- `ServeDriverTransport` serves the same private Unix-socket driver over a generic transport.
+- `RemoteEdgeTransport` obtains its server URL only from the paired identity, rejects redirects, and reuses the existing Ed25519/timestamp/nonce/body-digest signing.
+- Persistent local SQLite journal mode is 0600, contains only lease/create/wait identities and bounded temporary large-body staging, and creates no authoritative model-turn/runtime tables.
+- `lease_id`, `create_id`, and `wait_id` survive lost HTTP responses and restart; create/wait/cancel and started/completed/failed lifecycle operations are idempotent.
+- `result_ref` is immutable after first assignment; changed terminal refs are rejected.
+- Large local staged bodies enforce TTL/quota and are deleted after the authoritative VPS body exists.
+- Added adversarial tests for lost lease, started/completed/failed/cancel responses and exact ID reuse.
+- Fixed a real timeout race so `WaitResponse` returns `ctx.Err()` when SQLite observes cancellation at the transaction boundary, preserving 204/reconnect semantics.
 
-- Step 1 `97f9956`: authoritative model runtimes bind opaque Edge device/workspace IDs, distributed states, immutable goal refs/digests, heartbeat, expiry, idempotency, active turn metadata and optional result refs while preserving legacy local runtimes.
-- Step 2 `efdd269`: private local SQLite workspace registry with generated opaque IDs and human-only `mcp-edge workspace add|list|remove`; paths are absolute Linux paths, owner-controlled, non-symlink and non-group/world-writable, and are revalidated before each resolution.
-- Step 3 implementation is locally green: existing Ed25519/timestamp/nonce/body-digest authentication now protects device-bound model runtime lease, heartbeat, started, failed, completed, turn create, wait and cancel endpoints. Long-poll is bounded to 180 seconds, one wait is active per device/runtime, no SQLite transaction remains open while waiting, wrong-device access is hidden, sequence/digest/request-ref identity is checked, large requests become opaque authoritative VPS refs, and minimal Edge receipts contain no prompts or responses. Tests demonstrate signed normal flow, create/wait idempotency, nonce replay rejection, digest rejection, wrong-device rejection, body refs, exact awaiting_model→disconnected→reconnect→awaiting_model identity preservation, one active wait and exactly-once consumption.
+Validated on this exact Step 4 tree:
 
-Next: commit Step 3, then implement `RemoteEdgeTransport` plus its local minimal idempotency journal and refactor the local model-turn driver to depend on `ModelTurnTransport` rather than a local authoritative Store. Do not merge, deploy, tag, pair a real device, install on Parrot or modify Coolify.
+- `go fmt ./...`
+- focused Edge/edgeclient/modelturn/app tests
+- timeout/reconnect test repeated 10 times
+- `go test ./... -count=1`
+- `go vet ./...`
+- `go build ./...`
+- `git diff --check`
+
+No `tmp_*.go` helper remains. Next action: commit Step 4, update memory with its SHA, then immediately implement Step 5 pinned OpenCode launcher.

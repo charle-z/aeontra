@@ -29,7 +29,8 @@ type modelRelay struct {
 }
 
 type modelRuntimeLeaseRequest struct {
-	WaitSeconds int `json:"wait_seconds"`
+	LeaseID     string `json:"lease_id"`
+	WaitSeconds int    `json:"wait_seconds"`
 }
 
 type modelRuntimeLeaseResponse struct {
@@ -76,6 +77,10 @@ func (r *modelRelay) handleLease(w http.ResponseWriter, request *http.Request) {
 	if !decodeStrictJSON(w, request, &input) {
 		return
 	}
+	if !modelLeaseIDPattern.MatchString(input.LeaseID) {
+		http.Error(w, "lease identity is invalid", http.StatusBadRequest)
+		return
+	}
 	if input.WaitSeconds == 0 {
 		input.WaitSeconds = 120
 	}
@@ -84,6 +89,15 @@ func (r *modelRelay) handleLease(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 	device := DeviceFromContext(request.Context())
+	if receipt, err := r.devices.modelRuntimeLeaseReceipt(device.ID, input.LeaseID); err == nil {
+		runtime, runtimeErr := r.turns.RuntimeForDevice(request.Context(), receipt.RuntimeID, device.ID)
+		if runtimeErr != nil || runtime.Controller != modelturn.ControllerRemoteEdge {
+			http.Error(w, "runtime lease receipt unavailable", http.StatusConflict)
+			return
+		}
+		r.writeLease(w, request, device, runtime)
+		return
+	}
 	ctx, cancel := context.WithTimeout(request.Context(), time.Duration(input.WaitSeconds)*time.Second)
 	defer cancel()
 	runtime, found, err := r.turns.WaitLeaseNextRuntime(ctx, device.ID)
@@ -95,6 +109,14 @@ func (r *modelRelay) handleLease(w http.ResponseWriter, request *http.Request) {
 		http.Error(w, "runtime lease rejected", http.StatusConflict)
 		return
 	}
+	if err := r.devices.recordModelRuntimeLease(device.ID, input.LeaseID, runtime.RuntimeID); err != nil {
+		http.Error(w, "runtime lease receipt rejected", http.StatusConflict)
+		return
+	}
+	r.writeLease(w, request, device, runtime)
+}
+
+func (r *modelRelay) writeLease(w http.ResponseWriter, request *http.Request, device Device, runtime modelturn.Runtime) {
 	goal, digest, err := r.turns.RuntimeGoal(request.Context(), runtime.RuntimeID, device.ID)
 	if err != nil || !utf8.Valid(goal) {
 		_ = r.turns.FailRuntime(context.Background(), runtime.RuntimeID)
@@ -160,6 +182,10 @@ func (r *modelRelay) handleRuntime(w http.ResponseWriter, request *http.Request)
 		if !decodeStrictJSON(w, request, &input) {
 			return
 		}
+		if record.Status == modelturn.StatusCancelled {
+			writeJSON(w, http.StatusOK, map[string]any{"runtime_id": runtime.RuntimeID, "turn_id": turnID, "status": modelturn.StatusCancelled})
+			return
+		}
 		if err := r.turns.Cancel(request.Context(), turnID); err != nil {
 			http.Error(w, "turn cancellation rejected", http.StatusConflict)
 			return
@@ -193,6 +219,14 @@ func (r *modelRelay) handleRuntimeAction(w http.ResponseWriter, request *http.Re
 		updated, _ := r.turns.HeartbeatRuntime(request.Context(), runtime.RuntimeID, device.ID)
 		writeJSON(w, http.StatusOK, updated)
 	case "failed":
+		if runtime.State == modelturn.RuntimeStateFailed {
+			if input.ResultRef != "" && input.ResultRef != runtime.ResultRef {
+				http.Error(w, "runtime result conflict", http.StatusConflict)
+				return
+			}
+			writeJSON(w, http.StatusOK, runtime)
+			return
+		}
 		if input.ResultRef != "" {
 			if err := r.turns.SetRuntimeResult(request.Context(), runtime.RuntimeID, device.ID, input.ResultRef); err != nil {
 				http.Error(w, "runtime result rejected", http.StatusConflict)
@@ -206,6 +240,14 @@ func (r *modelRelay) handleRuntimeAction(w http.ResponseWriter, request *http.Re
 		updated, _ := r.turns.RuntimeForDevice(request.Context(), runtime.RuntimeID, device.ID)
 		writeJSON(w, http.StatusOK, updated)
 	case "completed":
+		if runtime.State == modelturn.RuntimeStateCompleted {
+			if input.ResultRef != "" && input.ResultRef != runtime.ResultRef {
+				http.Error(w, "runtime result conflict", http.StatusConflict)
+				return
+			}
+			writeJSON(w, http.StatusOK, runtime)
+			return
+		}
 		if input.ResultRef != "" {
 			if err := r.turns.SetRuntimeResult(request.Context(), runtime.RuntimeID, device.ID, input.ResultRef); err != nil {
 				http.Error(w, "runtime result rejected", http.StatusConflict)

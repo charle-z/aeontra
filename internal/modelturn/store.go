@@ -459,7 +459,13 @@ func (s *Store) WaitResponse(ctx context.Context, turnID TurnID) (ModelResponse,
 	for {
 		wake := s.waitChannel()
 		response, ready, err := s.consumeOnce(ctx, turnID)
-		if err != nil || ready {
+		if err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return ModelResponse{}, contextErr
+			}
+			return response, err
+		}
+		if ready {
 			return response, err
 		}
 		select {

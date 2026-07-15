@@ -44,7 +44,12 @@ func (d *Driver) stageRequestBody(w http.ResponseWriter, r *http.Request) {
 		d.writeError(w, http.StatusConflict, "digest_mismatch", ErrSequenceMismatch)
 		return
 	}
-	reference, err := d.store.StageRequestBody(r.Context(), body, true, ttl)
+	referenced, ok := d.transport.(driverReferenceTransport)
+	if !ok {
+		d.writeError(w, http.StatusConflict, "reference_unsupported", ErrRequestRefConflict)
+		return
+	}
+	reference, err := referenced.StageRequestBody(r.Context(), body, true, ttl)
 	if err != nil {
 		d.writeStoreError(w, err)
 		return

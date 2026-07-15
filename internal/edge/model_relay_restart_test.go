@@ -121,7 +121,7 @@ func createAndLeaseRelayRuntime(t *testing.T, devices *Store, turns *modelturn.S
 		t.Fatal(err)
 	}
 	handler := NewHTTPHandler(devices, turns)
-	lease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-lease-"+suffix, modelRuntimeLeasePath, modelRuntimeLeaseRequest{WaitSeconds: 1})
+	lease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-lease-"+suffix, modelRuntimeLeasePath, modelRuntimeLeaseRequest{LeaseID: "el_05050505050505050505050505050505", WaitSeconds: 1})
 	if lease.Code != http.StatusOK {
 		t.Fatalf("lease status=%d body=%s", lease.Code, lease.Body.String())
 	}

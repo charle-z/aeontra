@@ -40,7 +40,7 @@ type DriverMetrics struct {
 }
 
 type Driver struct {
-	store             *Store
+	transport         ModelTurnTransport
 	stageCalls        atomic.Uint64
 	createCalls       atomic.Uint64
 	waitCalls         atomic.Uint64
@@ -49,6 +49,20 @@ type Driver struct {
 	bytesReceived     atomic.Uint64
 	bytesSent         atomic.Uint64
 	lastInternalError atomic.Value
+}
+
+type driverReferenceTransport interface {
+	ModelTurnTransport
+	StageRequestBody(context.Context, json.RawMessage, bool, time.Duration) (RequestBodyReference, error)
+	CreateTurnFromReference(context.Context, ModelRequest) (Turn, error)
+}
+
+type driverRuntimeReader interface {
+	Runtime(context.Context, string) (Runtime, error)
+}
+
+type driverStatsReader interface {
+	Stats(context.Context) (StoreStats, error)
 }
 
 type driverCreateRequest struct {
@@ -67,10 +81,14 @@ type driverError struct {
 }
 
 func NewDriver(store *Store) (*Driver, error) {
-	if store == nil {
+	return NewDriverTransport(store)
+}
+
+func NewDriverTransport(transport ModelTurnTransport) (*Driver, error) {
+	if transport == nil {
 		return nil, ErrNilRendezvous
 	}
-	driver := &Driver{store: store}
+	driver := &Driver{transport: transport}
 	driver.lastInternalError.Store("")
 	return driver, nil
 }
@@ -130,16 +148,21 @@ func (d *Driver) createTurn(w http.ResponseWriter, r *http.Request) {
 	}
 	var turn Turn
 	if hasReference {
-		turn, err = d.store.CreateTurnFromReference(r.Context(), modelRequest)
+		referenced, ok := d.transport.(driverReferenceTransport)
+		if !ok {
+			d.writeError(w, http.StatusConflict, "reference_unsupported", ErrRequestRefConflict)
+			return
+		}
+		turn, err = referenced.CreateTurnFromReference(r.Context(), modelRequest)
 	} else {
-		turn, err = d.store.CreateTurn(r.Context(), modelRequest)
+		turn, err = d.transport.CreateTurn(r.Context(), modelRequest)
 	}
 	if err != nil {
 		d.writeStoreError(w, err)
 		return
 	}
 	if turn.RequestDigest != request.RequestDigest {
-		_ = d.store.Fail(context.Background(), turn.ID)
+		_ = d.transport.Cancel(context.Background(), turn.ID)
 		d.writeError(w, http.StatusConflict, "digest_mismatch", ErrSequenceMismatch)
 		return
 	}
@@ -153,10 +176,9 @@ func (d *Driver) waitResponse(w http.ResponseWriter, r *http.Request) {
 		d.writeError(w, http.StatusBadRequest, "invalid_turn_id", ErrInvalidRequest)
 		return
 	}
-	response, err := d.store.WaitResponse(r.Context(), turnID)
+	response, err := d.transport.WaitResponse(r.Context(), turnID)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			_ = d.store.MarkDisconnected(context.Background(), turnID)
 			return
 		}
 		d.writeStoreError(w, err)
@@ -168,7 +190,7 @@ func (d *Driver) waitResponse(w http.ResponseWriter, r *http.Request) {
 func (d *Driver) cancelTurn(w http.ResponseWriter, r *http.Request) {
 	d.cancelCalls.Add(1)
 	turnID := TurnID(r.PathValue("turnID"))
-	if err := d.store.Cancel(r.Context(), turnID); err != nil {
+	if err := d.transport.Cancel(r.Context(), turnID); err != nil {
 		d.writeStoreError(w, err)
 		return
 	}
@@ -178,7 +200,12 @@ func (d *Driver) cancelTurn(w http.ResponseWriter, r *http.Request) {
 func (d *Driver) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 	d.statusCalls.Add(1)
 	runtimeID := r.PathValue("runtimeID")
-	runtime, err := d.store.Runtime(r.Context(), runtimeID)
+	reader, ok := d.transport.(driverRuntimeReader)
+	if !ok {
+		d.writeError(w, http.StatusNotFound, "not_found", ErrTurnNotFound)
+		return
+	}
+	runtime, err := reader.Runtime(r.Context(), runtimeID)
 	if err != nil {
 		d.writeStoreError(w, err)
 		return
@@ -187,10 +214,14 @@ func (d *Driver) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Driver) metrics(w http.ResponseWriter, r *http.Request) {
-	stats, err := d.store.Stats(r.Context())
-	if err != nil {
-		d.writeStoreError(w, err)
-		return
+	var stats StoreStats
+	if reader, ok := d.transport.(driverStatsReader); ok {
+		var err error
+		stats, err = reader.Stats(r.Context())
+		if err != nil {
+			d.writeStoreError(w, err)
+			return
+		}
 	}
 	d.writeJSON(w, http.StatusOK, DriverMetrics{
 		ProtocolVersion:   DriverProtocolVersion,

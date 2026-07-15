@@ -327,7 +327,7 @@ func (s *Store) SetRuntimeResult(ctx context.Context, runtimeID, deviceID, resul
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result, err := s.db.ExecContext(ctx, `UPDATE model_runtimes SET result_ref=?,updated_at=? WHERE runtime_id=? AND device_id=?`, resultRef, s.now().UTC().UnixNano(), runtimeID, deviceID)
+	result, err := s.db.ExecContext(ctx, `UPDATE model_runtimes SET result_ref=?,updated_at=? WHERE runtime_id=? AND device_id=? AND (result_ref='' OR result_ref=?)`, resultRef, s.now().UTC().UnixNano(), runtimeID, deviceID, resultRef)
 	if err != nil {
 		return errors.New("model runtime result update failed")
 	}

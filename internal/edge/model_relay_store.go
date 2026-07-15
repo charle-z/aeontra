@@ -10,9 +10,17 @@ import (
 )
 
 var (
+	modelLeaseIDPattern  = regexp.MustCompile(`^el_[a-f0-9]{32}$`)
 	modelCreateIDPattern = regexp.MustCompile(`^ec_[a-f0-9]{32}$`)
 	modelWaitIDPattern   = regexp.MustCompile(`^ew_[a-f0-9]{32}$`)
 )
+
+type modelRuntimeLeaseReceipt struct {
+	DeviceID  string
+	LeaseID   string
+	RuntimeID string
+	CreatedAt time.Time
+}
 
 type modelTurnCreateReceipt struct {
 	DeviceID      string
@@ -35,6 +43,15 @@ type modelTurnWaitReceipt struct {
 
 func (s *Store) ensureModelRelaySchema() error {
 	for _, statement := range []string{
+		`CREATE TABLE IF NOT EXISTS edge_model_runtime_leases (
+			device_id TEXT NOT NULL,
+			lease_id TEXT NOT NULL,
+			runtime_id TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			PRIMARY KEY(device_id,lease_id),
+			UNIQUE(runtime_id),
+			FOREIGN KEY(device_id) REFERENCES devices(device_id)
+		) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS edge_model_turn_creates (
 			device_id TEXT NOT NULL,
 			runtime_id TEXT NOT NULL,
@@ -59,6 +76,7 @@ func (s *Store) ensureModelRelaySchema() error {
 			UNIQUE(turn_id),
 			FOREIGN KEY(device_id) REFERENCES devices(device_id)
 		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS edge_model_runtime_leases_device ON edge_model_runtime_leases(device_id,created_at)`,
 		`CREATE INDEX IF NOT EXISTS edge_model_turn_creates_runtime ON edge_model_turn_creates(device_id,runtime_id,sequence)`,
 		`CREATE INDEX IF NOT EXISTS edge_model_turn_waits_runtime ON edge_model_turn_waits(device_id,runtime_id,turn_id)`,
 	} {
@@ -67,6 +85,34 @@ func (s *Store) ensureModelRelaySchema() error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) modelRuntimeLeaseReceipt(deviceID, leaseID string) (modelRuntimeLeaseReceipt, error) {
+	if !idPattern.MatchString(deviceID) || !modelLeaseIDPattern.MatchString(leaseID) {
+		return modelRuntimeLeaseReceipt{}, errors.New("model runtime lease identity is invalid")
+	}
+	var receipt modelRuntimeLeaseReceipt
+	var createdAt int64
+	if err := s.db.QueryRow(`SELECT device_id,lease_id,runtime_id,created_at FROM edge_model_runtime_leases WHERE device_id=? AND lease_id=?`, deviceID, leaseID).Scan(&receipt.DeviceID, &receipt.LeaseID, &receipt.RuntimeID, &createdAt); err != nil {
+		return modelRuntimeLeaseReceipt{}, err
+	}
+	receipt.CreatedAt = time.Unix(0, createdAt).UTC()
+	return receipt, nil
+}
+
+func (s *Store) recordModelRuntimeLease(deviceID, leaseID, runtimeID string) error {
+	if !idPattern.MatchString(deviceID) || !modelLeaseIDPattern.MatchString(leaseID) || runtimeID == "" {
+		return errors.New("model runtime lease receipt is invalid")
+	}
+	_, err := s.db.Exec(`INSERT INTO edge_model_runtime_leases(device_id,lease_id,runtime_id,created_at) VALUES(?,?,?,?)`, deviceID, leaseID, runtimeID, s.now().UTC().UnixNano())
+	if err == nil {
+		return nil
+	}
+	receipt, readErr := s.modelRuntimeLeaseReceipt(deviceID, leaseID)
+	if readErr == nil && receipt.RuntimeID == runtimeID {
+		return nil
+	}
+	return errors.New("model runtime lease receipt conflict")
 }
 
 func (s *Store) modelCreateReceipt(deviceID, createID string) (modelTurnCreateReceipt, error) {
