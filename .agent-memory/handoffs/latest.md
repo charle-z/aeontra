@@ -1,6 +1,6 @@
 # Latest handoff — MCP Devbox
 
-Date: 2026-07-14
+Date: 2026-07-15
 Branch: `codex/p11-edge-core`
 Base: deployed and tagged P8.1 merge `d343264bffdc0ae1bc045a9d723e913be977090c`
 
@@ -32,7 +32,8 @@ heartbeat cancellation, local kill switch, WSL systemd unit and human setup guid
 
 ## Next safe step
 
-Close Step 7 gates and commit it. The next action is human: review/publish/deploy the
-candidate, create a dedicated Ubuntu WSL distro, install Bubblewrap and the reviewed
-binary, then perform the first one-time pairing. Do not pair from this task, expose
-a remote shell, install WSL automatically, or begin Parrot/HTB authority.
+Publish only `codex/p11-edge-core`, open the P11 PR and require every remote gate on
+the exact final SHA. Do not merge, deploy, tag, pair, install WSL, expose a remote
+shell, or begin Parrot/HTB authority. After a human merge and exact deployment, the
+next owner action is the dedicated WSL/Bubblewrap procedure in
+`docs/install-edge-wsl.md`.

@@ -29,6 +29,13 @@ and `result_stage` reads. Successes expire after 24 hours, failures after 7 days
 logical content quota is 256 MiB and reads cap at 16 KiB. Current catalog: 71 tools,
 hash `sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
 
-Next implementation step: minimum outbound-only Edge identity and pairing foundation.
-Do not add a free terminal, pair a real device, install WSL automatically, or expand
-workcell authority.
+Steps 5-7 now implement the outbound-only Edge identity, signed leased-task protocol,
+and separately installed Bubblewrap WSL development workcell. The implementation
+head is `3a441e6`; pairing, merge, deployment and WSL installation have not occurred.
+
+Current task: close the P11 release candidate on `codex/p11-edge-core`, publish only
+that branch, open a PR against `main`, and require every gate on the exact final SHA.
+All required local closure gates passed on 2026-07-15, including the no-cache
+production image build. Remote PR gates remain pending.
+Do not merge, deploy, tag, create a pairing code, install WSL, add a terminal, or
+expand workcell authority.
