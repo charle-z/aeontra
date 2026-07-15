@@ -11,11 +11,51 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
+
+func openCodeFailureCode(err error) string {
+	if err == nil {
+		return "none"
+	}
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "cancelled"
+	case errors.Is(err, edgeclient.ErrKillSwitch):
+		return "kill_switch"
+	case errors.Is(err, edgeclient.ErrOpenCodeInterrupted):
+		return "restart_interrupted"
+	case errors.Is(err, edgeclient.ErrOpenCodeTerminal):
+		return "terminal_replay"
+	}
+	message := strings.ToLower(err.Error())
+	for _, item := range []struct{ contains, code string }{
+		{"integrity", "installation_integrity"},
+		{"version", "installation_version"},
+		{"pinned opencode executable", "installation_opencode"},
+		{"external driver", "installation_provider"},
+		{"driver executable", "installation_driver"},
+		{"workspace", "workspace"},
+		{"socket", "socket"},
+		{"journal", "journal"},
+		{"lease", "lease"},
+		{"model-turn driver terminated", "driver_exit"},
+		{"opencode terminated", "opencode_exit"},
+		{"edge endpoint", "relay_unavailable"},
+		{"device was rejected", "relay_rejected"},
+	} {
+		if strings.Contains(message, item.contains) {
+			return item.code
+		}
+	}
+	return "internal"
+}
 
 func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	fs := flag.NewFlagSet("opencode", flag.ContinueOnError)
@@ -74,7 +114,7 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 			return nil
 		}
 		if runErr != nil {
-			fmt.Fprintf(stderr, "mcp-edge: OpenCode runtime failed safely runtime=%s state=%s\n", result.RuntimeID, result.State)
+			fmt.Fprintf(stderr, "mcp-edge: OpenCode runtime failed safely runtime=%s state=%s failure=%s\n", result.RuntimeID, result.State, openCodeFailureCode(runErr))
 		}
 		if *once {
 			return runErr

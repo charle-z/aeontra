@@ -224,7 +224,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		}
 		decodeToolJSON(t, turnText, &envelope)
 		if !envelope.Pending || envelope.Status != "turn" {
-			t.Fatalf("model_turn_next sequence=%d returned %+v", sequence, envelope)
+			t.Fatalf("model_turn_next sequence=%d returned %+v edge_stderr=%q", sequence, envelope, stderr.String())
 		}
 		offer := envelope.Turn
 		if sequence == 1 {
