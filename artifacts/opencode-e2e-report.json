@@ -1,0 +1,83 @@
+{
+  "opencode_version": "1.18.1",
+  "benchmark_a": {
+    "mode": "A: granular MCP",
+    "elapsed": 10150127117,
+    "mcp_calls": 4,
+    "bytes": 1039,
+    "model_turns": 0,
+    "opencode_tool_executions": 0,
+    "external_wait": 0,
+    "inter_turn_gap": 0,
+    "retries": 0,
+    "result_store_bytes": 0
+  },
+  "benchmark_b": {
+    "mode": "B: OpenCode + PullRendezvousTransport",
+    "elapsed": 24614668594,
+    "mcp_calls": 1100,
+    "bytes": 471790,
+    "model_turns": 4,
+    "opencode_tool_executions": 4,
+    "external_wait": 50788241,
+    "inter_turn_gap": 20432252213,
+    "retries": 0,
+    "result_store_bytes": 129702,
+    "tool_names": [
+      "read",
+      "grep",
+      "edit",
+      "bash"
+    ],
+    "tool_results_verified": true,
+    "repository_modified": true,
+    "tests_passed": true,
+    "final_response_verified": true
+  },
+  "restart_resume": {
+    "mode": "B: OpenCode + PullRendezvousTransport",
+    "elapsed": 29616053797,
+    "mcp_calls": 1101,
+    "bytes": 472118,
+    "model_turns": 4,
+    "opencode_tool_executions": 4,
+    "external_wait": 42509549,
+    "inter_turn_gap": 20271382423,
+    "retries": 1,
+    "result_store_bytes": 129729,
+    "tool_names": [
+      "read",
+      "grep",
+      "edit",
+      "bash"
+    ],
+    "tool_results_verified": true,
+    "repository_modified": true,
+    "tests_passed": true,
+    "final_response_verified": true,
+    "restart_observed_disconnected": true,
+    "restart_resumed_awaiting": true,
+    "restart_turn_id": "mt_c2a8b0b3de2f8fbaa658a6c8744bb597",
+    "restart_sequence": 1,
+    "restart_digest": "sha256:c507b8c10ed19d45ae3e15bcf1a50cce23411176b42e5a876c2b72e19ac7eb3c",
+    "restart_request_ref": "mb_8e4395b4838ed69d04274ba9d398053f"
+  },
+  "network": {
+    "container_network": "none",
+    "dns": "127.0.0.1",
+    "default_route_present": false,
+    "strace_captured": true,
+    "non_loopback_connects": 0,
+    "external_provider_markers": []
+  },
+  "security": {
+    "provider_package": "file://integrations/opencode/provider",
+    "provider_loaded": true,
+    "clean_environment": true,
+    "auth_content_empty": true,
+    "provider_api_keys_present": false,
+    "codex_used": false,
+    "external_model_fallback": false,
+    "local_model_used": false
+  }
+}
