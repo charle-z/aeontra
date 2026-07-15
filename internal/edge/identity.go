@@ -102,6 +102,8 @@ func Open(cfg Config) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS pairings(code_hash BLOB PRIMARY KEY, expires_at INTEGER NOT NULL, consumed_at INTEGER) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS devices(device_id TEXT PRIMARY KEY, name TEXT NOT NULL, public_key BLOB NOT NULL UNIQUE, state TEXT NOT NULL, paired_at INTEGER NOT NULL, revoked_at INTEGER) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS nonces(device_id TEXT NOT NULL, nonce_hash BLOB NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(device_id,nonce_hash)) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS edge_tasks(task_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, workcell TEXT NOT NULL, objective_json BLOB NOT NULL, restrictions_json BLOB NOT NULL, state TEXT NOT NULL, lease_id TEXT, lease_holder TEXT, lease_until INTEGER, cancel_requested INTEGER NOT NULL DEFAULT 0, attempt_count INTEGER NOT NULL DEFAULT 0, outcome TEXT, result_summary TEXT, result_ref TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(device_id,idempotency_key), FOREIGN KEY(device_id) REFERENCES devices(device_id))`,
+		`CREATE INDEX IF NOT EXISTS edge_tasks_queue ON edge_tasks(device_id,workcell,state,created_at)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			_ = db.Close()
@@ -245,6 +247,28 @@ func (s *Store) ActiveCount() (int, error) {
 	var count int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM devices WHERE state=?`, StateActive).Scan(&count)
 	return count, err
+}
+
+func (s *Store) ActiveDevices() ([]Device, error) {
+	rows, err := s.db.Query(`SELECT device_id,name,state,paired_at FROM devices WHERE state=? ORDER BY paired_at,device_id`, StateActive)
+	if err != nil {
+		return nil, errors.New("device list unavailable")
+	}
+	defer rows.Close()
+	devices := make([]Device, 0)
+	for rows.Next() {
+		var device Device
+		var pairedAt int64
+		if err := rows.Scan(&device.ID, &device.Name, &device.State, &pairedAt); err != nil {
+			return nil, errors.New("device list unavailable")
+		}
+		device.PairedAt = time.Unix(pairedAt, 0).UTC()
+		devices = append(devices, device)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.New("device list unavailable")
+	}
+	return devices, nil
 }
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {

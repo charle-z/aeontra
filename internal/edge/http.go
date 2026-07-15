@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
 const (
@@ -37,6 +39,8 @@ type pairRequest struct {
 func NewHTTPHandler(store *Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(PairPath, store.handlePair)
+	mux.Handle("/edge/v1/tasks/lease", store.RequireDevice(http.HandlerFunc(store.handleLease)))
+	mux.Handle("/edge/v1/tasks/", store.RequireDevice(http.HandlerFunc(store.handleTaskAction)))
 	return mux
 }
 
@@ -128,4 +132,111 @@ func DeviceFromContext(ctx context.Context) Device {
 
 func encodeSignature(signature []byte) string {
 	return base64.RawURLEncoding.EncodeToString(signature)
+}
+
+type leaseRequest struct {
+	Workcell     string `json:"workcell"`
+	Holder       string `json:"holder"`
+	LeaseSeconds int    `json:"lease_seconds"`
+}
+
+type heartbeatRequest struct {
+	LeaseID      string `json:"lease_id"`
+	LeaseSeconds int    `json:"lease_seconds"`
+}
+
+type completionRequest struct {
+	LeaseID   string  `json:"lease_id"`
+	Outcome   Outcome `json:"outcome"`
+	Summary   string  `json:"summary"`
+	ResultRef string  `json:"result_ref,omitempty"`
+}
+
+func (s *Store) handleLease(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	var request leaseRequest
+	if !decodeStrictJSON(w, r, &request) {
+		return
+	}
+	device := DeviceFromContext(r.Context())
+	lease, err := s.LeaseNext(device.ID, request.Workcell, request.Holder, time.Duration(request.LeaseSeconds)*time.Second)
+	if errors.Is(err, ErrNoTaskAvailable) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err != nil {
+		http.Error(w, "lease request rejected", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, lease)
+}
+
+func (s *Store) handleTaskAction(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	remainder := strings.TrimPrefix(r.URL.Path, "/edge/v1/tasks/")
+	parts := strings.Split(remainder, "/")
+	if len(parts) != 2 || !taskIDPattern.MatchString(parts[0]) {
+		http.NotFound(w, r)
+		return
+	}
+	device := DeviceFromContext(r.Context())
+	switch parts[1] {
+	case "heartbeat":
+		var request heartbeatRequest
+		if !decodeStrictJSON(w, r, &request) {
+			return
+		}
+		status, err := s.Heartbeat(device.ID, parts[0], request.LeaseID, time.Duration(request.LeaseSeconds)*time.Second)
+		if err != nil {
+			http.Error(w, "active lease not found", http.StatusConflict)
+			return
+		}
+		writeJSON(w, http.StatusOK, status)
+	case "complete":
+		var request completionRequest
+		if !decodeStrictJSON(w, r, &request) {
+			return
+		}
+		task, err := s.Complete(device.ID, parts[0], request.LeaseID, TaskResult{Outcome: request.Outcome, Summary: request.Summary, ResultRef: request.ResultRef})
+		if err != nil {
+			http.Error(w, "task completion rejected", http.StatusConflict)
+			return
+		}
+		writeJSON(w, http.StatusOK, task)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func requirePOST(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodPost {
+		return true
+	}
+	w.Header().Set("Allow", http.MethodPost)
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	return false
+}
+
+func decodeStrictJSON(w http.ResponseWriter, r *http.Request, destination any) bool {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }

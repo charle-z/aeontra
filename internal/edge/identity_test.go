@@ -89,6 +89,34 @@ func TestSignedAuthenticationRejectsReplaySkewWrongKeyAndRevocation(t *testing.T
 	}
 }
 
+func TestSignedNonceReplayRemainsRejectedAfterServerRestart(t *testing.T) {
+	now := time.Date(2026, 7, 14, 20, 0, 0, 0, time.UTC)
+	root := filepath.Join(t.TempDir(), "edge")
+	store, err := Open(Config{Root: root, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "wsl-development", publicKey)
+	request := SignedRequest{DeviceID: device.ID, Timestamp: now.Unix(), Nonce: "nonce-persisted-0000001", Method: "POST", Path: "/edge/v1/tasks/lease", Body: []byte(`{}`)}
+	request.Signature = ed25519.Sign(privateKey, request.Canonical())
+	if _, err := store.Authenticate(request); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(Config{Root: root, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if _, err := reopened.Authenticate(request); err == nil {
+		t.Fatal("persisted nonce replay accepted after restart")
+	}
+}
+
 func TestIdentityStoreRejectsUnsafeInputs(t *testing.T) {
 	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge")})
 	if err != nil {

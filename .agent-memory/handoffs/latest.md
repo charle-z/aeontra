@@ -23,11 +23,14 @@ No candidate-only change has been deployed.
 Step 5 implements Edge device identity and one-time pairing under `/state/edge`:
 Ed25519 per-device credentials, ten-minute one-use pairing codes, signed requests,
 persistent nonce replay rejection, revocation, an isolated `/edge/v1/pair` route,
-and local pairing/revocation commands. It does not yet authorize or execute work.
+and local pairing/revocation commands. Step 6 adds the signed leased-task transport:
+structured bounded objectives, per-device idempotency, reconnect-safe leases,
+heartbeat, cancellation, terminal replay protection, and local admin commands. It
+still executes no work.
 
 ## Next safe step
 
-Close Step 5 verification and commit it. Then implement the leased, idempotent Edge
-task protocol with heartbeat, cancellation, expiry and reconnect tests before the
-single outbound-only `development` WSL workcell. Do not expose a remote shell, pair
-a real device, install WSL automatically, or begin Parrot/HTB authority.
+Close Step 6 verification and commit it. Then implement the single outbound-only
+`development` WSL workcell with its local policy and idempotency journal. Do not
+expose a remote shell, pair a real device, install WSL automatically, or begin
+Parrot/HTB authority.

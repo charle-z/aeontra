@@ -118,6 +118,71 @@ func TestSignedHTTPAuthenticationUsesExactRequestBodyAndRejectsReplay(t *testing
 	}
 }
 
+func TestHTTPTaskLeaseHeartbeatAndCompletionUseSignedDeviceProtocol(t *testing.T) {
+	now := time.Date(2026, 7, 14, 20, 0, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "wsl-development", publicKey)
+	task, _, err := store.CreateTask(device.ID, validTaskSpec("http-task-0001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHTTPHandler(store)
+
+	leaseBody := []byte(`{"workcell":"development","holder":"agent-session-0001","lease_seconds":60}`)
+	leaseResponse := performSignedRequest(t, handler, device.ID, privateKey, now, "nonce-http-lease-0001", http.MethodPost, "/edge/v1/tasks/lease", leaseBody)
+	if leaseResponse.Code != http.StatusOK {
+		t.Fatalf("lease status=%d body=%s", leaseResponse.Code, leaseResponse.Body.String())
+	}
+	var lease Lease
+	if err := json.Unmarshal(leaseResponse.Body.Bytes(), &lease); err != nil {
+		t.Fatal(err)
+	}
+	if lease.Task.ID != task.ID {
+		t.Fatalf("lease=%+v", lease)
+	}
+
+	heartbeatBody, _ := json.Marshal(heartbeatRequest{LeaseID: lease.LeaseID, LeaseSeconds: 60})
+	heartbeat := performSignedRequest(t, handler, device.ID, privateKey, now, "nonce-http-heartbeat-0001", http.MethodPost, "/edge/v1/tasks/"+task.ID+"/heartbeat", heartbeatBody)
+	if heartbeat.Code != http.StatusOK {
+		t.Fatalf("heartbeat status=%d body=%s", heartbeat.Code, heartbeat.Body.String())
+	}
+
+	completeBody, _ := json.Marshal(completionRequest{LeaseID: lease.LeaseID, Outcome: OutcomeSucceeded, Summary: "validated"})
+	complete := performSignedRequest(t, handler, device.ID, privateKey, now, "nonce-http-complete-0001", http.MethodPost, "/edge/v1/tasks/"+task.ID+"/complete", completeBody)
+	if complete.Code != http.StatusOK {
+		t.Fatalf("complete status=%d body=%s", complete.Code, complete.Body.String())
+	}
+
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodPost, "/edge/v1/tasks/lease", strings.NewReader(`{}`)))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status=%d", unauthorized.Code)
+	}
+}
+
+func TestHTTPLeaseReturnsNoContentWhenQueueIsEmpty(t *testing.T) {
+	now := time.Date(2026, 7, 14, 20, 0, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "wsl-development", publicKey)
+	body := []byte(`{"workcell":"development","holder":"agent-session-0001","lease_seconds":60}`)
+	response := performSignedRequest(t, NewHTTPHandler(store), device.ID, privateKey, now, "nonce-http-empty-0001", http.MethodPost, "/edge/v1/tasks/lease", body)
+	if response.Code != http.StatusNoContent || response.Body.Len() != 0 {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+}
+
 func openHTTPTestStore(t *testing.T) *Store {
 	t.Helper()
 	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge")})
@@ -135,4 +200,13 @@ func signedHTTPRequest(request SignedRequest) *http.Request {
 	httpRequest.Header.Set(HeaderNonce, request.Nonce)
 	httpRequest.Header.Set(HeaderSignature, encodeSignature(request.Signature))
 	return httpRequest
+}
+
+func performSignedRequest(t *testing.T, handler http.Handler, deviceID string, privateKey ed25519.PrivateKey, now time.Time, nonce, method, path string, body []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	signed := SignedRequest{DeviceID: deviceID, Timestamp: now.Unix(), Nonce: nonce, Method: method, Path: path, Body: body}
+	signed.Signature = ed25519.Sign(privateKey, signed.Canonical())
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedHTTPRequest(signed))
+	return response
 }

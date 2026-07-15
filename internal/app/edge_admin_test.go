@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +33,37 @@ func TestEdgeAdminCreatesOneTimePairingAndRevokesDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = store.Close()
+
+	stdout.Reset()
+	if code := run([]string{"edge", "devices", "--state-root", stateRoot}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), device.ID) {
+		t.Fatalf("devices code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	createArgs := []string{
+		"edge", "task-create", "--state-root", stateRoot,
+		"--device", device.ID,
+		"--idempotency", "admin-task-0001",
+		"--workspace", "portfolio-charlez",
+		"--objective", "validate the project",
+		"--accept", "checks pass",
+	}
+	if code := run(createArgs, &stdout, &stderr); code != 0 {
+		t.Fatalf("task create code=%d stderr=%s", code, stderr.String())
+	}
+	var task edge.Task
+	if err := json.Unmarshal(stdout.Bytes(), &task); err != nil || task.ID == "" {
+		t.Fatalf("task=%+v err=%v", task, err)
+	}
+	stdout.Reset()
+	if code := run([]string{"edge", "task-status", "--state-root", stateRoot, "--task", task.ID}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), task.ID) {
+		t.Fatalf("task status code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	if code := run([]string{"edge", "task-cancel", "--state-root", stateRoot, "--task", task.ID}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), task.ID) {
+		t.Fatalf("task cancel code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
 
 	stdout.Reset()
 	stderr.Reset()

@@ -428,10 +428,10 @@ The admin channel is loopback-only and must stay that way.
    validate/commit, PR-check and deployment-observation workflows.
 2. Add only the compact, read-only or fixed-profile orchestration primitives proven
    necessary by those measurements; preserve existing tools and policy paths.
-3. Extend the implemented Edge identity/pairing foundation with leased, idempotent
-   tasks, heartbeat, cancellation and reconnect replay tests. Pairing alone grants no
-   work authority. Do not expose a remote shell, pair a real device, or install WSL
-   components automatically.
+3. Build the outbound-only WSL `development` workcell against the implemented Edge
+   identity and leased-task protocol. Enforce its local root, command, network,
+   duration, output and idempotency boundaries before pairing a real device. Do not
+   expose a remote shell or install WSL components automatically.
 4. Keep Parrot, HTB, autonomous-agent and privileged-workcell authority out of scope
    until the Edge foundation is independently bounded and reviewed.
 
