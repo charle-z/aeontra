@@ -220,7 +220,11 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	processIsolationVerified := false
 	distinctProcessCount := int64(0)
 	largeRequestReferenced := false
+	waitCodes := []string{"", "remote_wait_one", "remote_wait_two", "remote_wait_three", "remote_wait_four"}
+	offerCodes := []string{"", "remote_offer_one", "remote_offer_two", "remote_offer_three", "remote_offer_four"}
+	respondCodes := []string{"", "remote_respond_one", "remote_respond_two", "remote_respond_three", "remote_respond_four"}
 	for sequence := uint64(1); sequence <= 4; sequence++ {
+		t.Logf("slice_code=%s", waitCodes[sequence])
 		turnText := mcpTool(t, server, meter, "model_turn_next", map[string]any{
 			"runtime_id": runtime.RuntimeID, "after_sequence": sequence - 1, "wait_seconds": 60,
 		})
@@ -240,6 +244,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			t.Fatalf("model_turn_next sequence=%d status=%s edge_failure=%s", sequence, envelope.Status, safeRemoteEdgeFailureCode(edgeProcessErr, stderr.String()))
 		}
 		offer := envelope.Turn
+		t.Logf("slice_code=%s", offerCodes[sequence])
 		if sequence == 1 {
 			distinctProcessCount = int64(assertRemoteProcessIsolation(t, os.Getpid(), cmd.Process.Pid, driverBinary, opencodeBinary))
 			processIsolationVerified = true
@@ -277,6 +282,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			"expected_sequence": offer.Sequence, "request_digest": offer.RequestDigest, "response": response,
 		})
 		lastResponded = time.Now()
+		t.Logf("slice_code=%s", respondCodes[sequence])
 	}
 
 	select {
