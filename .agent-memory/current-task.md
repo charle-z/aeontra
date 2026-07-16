@@ -2,29 +2,43 @@
 
 Date: 2026-07-16
 Branch: `p11-2-remote-opencode-relay`
-Current published validation SHA: `d1bc48d79a3edc1ec43d5bbaa717ed87834d8848`
-Current published validation tree: `bdd9791e6c77254988ca80853e7a107e6ebe5d6d`
-Step 7 commit: `ef2cb7eee4ecb67e5526fc1d055a482edd92877e`
-Step 7 tree: `f13fbcdb28ead77a4a17530a452f88249f9d6135`
+Published HEAD before validation commit: `597f668859a5d45263d301fdcecfc0335ecde2b3`
+Upstream: `origin/p11-2-remote-opencode-relay`
 Base `origin/main`: `01fde5067752ab1c43424d2d54f9afd914617ba5`
 Draft PR: `https://github.com/charle-z/mcp-devbox/pull/13`
 
-Historical deployed baseline retained for release synchronization: P8.1 Console 2.0 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`. P9 Brain is deployed. P11.2 does not modify those releases.
+## Preserved deployed baselines
 
-Authoritative CI findings:
-1. SHA `b2f8d3b11c2bcbc08433f8ac9679aa1fe61ed6f5`, E2E run `29527418921`: Bubblewrap failed immediately with permission category because Ubuntu 24.04 AppArmor blocked unprivileged user namespaces. Correction: ephemeral Docker container uses `apparmor=unconfined`; all other restrictions remain.
-2. SHA `d1bc48d79a3edc1ec43d5bbaa717ed87834d8848`, E2E run `29527857924`, job `87720651987`: Bubblewrap advanced past user-namespace creation but exited with `process_exit` before writing the isolation report. The remaining likely boundary is mount propagation (`Failed to make / slave`) because the container drops every capability, including `CAP_SYS_ADMIN` from the bounding set.
+- P8.1 Console 2.0 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`.
+- P9 Brain is deployed; P11.2 does not alter either deployed release.
 
-Second correction prepared:
-- grant only `SYS_ADMIN` to the ephemeral E2E container after `--cap-drop ALL`;
-- retain non-root `edge`, `no-new-privileges`, AppArmor/seccomp override only for namespace syscalls, read-only root, network none, no Docker socket, no host PID/IPC, no devices and no privileged mode;
-- add redacted `slice_code` classification for user-namespace, UID-map, mount-propagation, mount, exec and missing-path failures so future CI diagnostics do not expose paths or command data.
+## Pre-CI validation checkpoint
 
-Local correction gates green:
-- tagged `TestBubblewrapFailureCode`;
-- `go test -p 1 ./... -count=1`;
-- `git diff --check`.
+The tree now separates three explicit modes:
 
-The remote branch temporarily contains validation commits because force-push is blocked by the public MCP policy. Once Step 8 E2E is green, rebuild one canonical `Step 8: isolate OpenCode runtime with Bubblewrap` commit from the validated tree with parent `ef2cb7eee4ecb67e5526fc1d055a482edd92877e`, update the branch to it and remove all CI diagnostic history before Step 9.
+1. `relay_container_e2e`: unprivileged Docker relay/OpenCode/provider validation;
+2. `bubblewrap_host_e2e`: incremental preflight and isolation directly on Ubuntu 22.04;
+3. `combined_opencode_sandbox_e2e`: server, Edge, driver and OpenCode under host Bubblewrap with distinct PIDs.
 
-Next action: delete `.agent-scratch/`, commit and publish the minimal SYS_ADMIN plus safe diagnostic correction, then inspect the new E2E report. Do not start Step 9 until Bubblewrap, OpenCode/provider and all four distributed scenarios pass.
+Implemented:
+- closed, redacted Bubblewrap stage classification;
+- host preflight for user namespace, UID/GID maps, mounts, binds, Unix socket, unshare-all, blocked network/DNS and helper execution;
+- host isolation report with runner/tree/versions, read-only and visibility invariants, modes and startup samples;
+- fail-closed launcher code and negative test;
+- Docker test-only execution path behind the `opencode_e2e` build tag; production binaries never compile it;
+- removal of `SYS_ADMIN`, AppArmor unconfined and seccomp unconfined from Docker;
+- checkout/setup-go/setup-node/upload-artifact v6 pinned by verified full SHA;
+- Actions Node remains 24; OpenCode remains 1.18.1.
+
+Local gates green before publishing:
+- standard and tagged full tests;
+- vet;
+- build;
+- diff check;
+- Actionlint v1.7.12.
+
+Next action: commit and publish the validation tree, then observe GitHub Actions acutely. Do not wait indefinitely; checkpoint after the run completes or after a bounded observation window.
+
+## Boundaries
+
+No merge, deployment, pairing, real Parrot installation, tag, Coolify change, frontend, Goal Runtime, Build Workcell, HTB/THM/VPN or broad historical CodeQL remediation.

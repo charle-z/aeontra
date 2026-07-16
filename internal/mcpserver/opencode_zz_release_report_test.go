@@ -13,6 +13,9 @@ import (
 )
 
 func TestZZP112ReleaseCandidateReport(t *testing.T) {
+	if os.Getenv("OPENCODE_E2E") != "1" {
+		t.Skip("P11.2 release report generation is explicit")
+	}
 	root := repoRoot(t)
 	direct := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-e2e-report.json"))
 	remote := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-remote-e2e-report.json"))

@@ -19,44 +19,64 @@ import (
 )
 
 type bubblewrapIsolationReport struct {
-	SchemaVersion                 int      `json:"schema_version"`
-	BubblewrapVersion             string   `json:"bubblewrap_version"`
-	OpenCodeVersion               string   `json:"opencode_version"`
-	ProviderPackage               string   `json:"provider_package"`
-	MountTargets                  []string `json:"mount_targets"`
-	NetworkNamespaceUnshared      bool     `json:"network_namespace_unshared"`
-	ExternalConnectBlocked        bool     `json:"external_connect_blocked"`
-	ExternalDNSBlocked            bool     `json:"external_dns_blocked"`
-	WorkspaceWritable             bool     `json:"workspace_writable"`
-	RuntimeWritable               bool     `json:"runtime_writable"`
-	ProviderReadOnly              bool     `json:"provider_read_only"`
-	EdgeStateVisible              bool     `json:"edge_state_visible"`
-	HostHomeVisible               bool     `json:"host_home_visible"`
-	DockerSocketVisible           bool     `json:"docker_socket_visible"`
-	WSLWindowsMountsVisible       bool     `json:"wsl_windows_mounts_visible"`
-	UnixSocketReachable           bool     `json:"unix_socket_reachable"`
-	UserNamespaceActive           bool     `json:"user_namespace_active"`
-	RuntimeMode                   string   `json:"runtime_mode"`
-	SocketMode                    string   `json:"socket_mode"`
-	BubblewrapStartupMedianNanos  int64    `json:"bubblewrap_startup_median_nanos"`
-	BubblewrapStartupSamplesNanos []int64  `json:"bubblewrap_startup_samples_nanos"`
+	SchemaVersion                 int             `json:"schema_version"`
+	Mode                          string          `json:"mode"`
+	BubblewrapVersion             string          `json:"bubblewrap_version"`
+	Runner                        string          `json:"runner"`
+	GitTree                       string          `json:"git_tree"`
+	OpenCodeVersion               string          `json:"opencode_version"`
+	ProviderPackage               string          `json:"provider_package"`
+	ProviderVersion               string          `json:"provider_version"`
+	MountTargets                  []string        `json:"mount_targets"`
+	PreflightStages               map[string]bool `json:"preflight_stages"`
+	NetworkNamespaceUnshared      bool            `json:"network_namespace_unshared"`
+	ExternalConnectBlocked        bool            `json:"external_connect_blocked"`
+	ExternalDNSBlocked            bool            `json:"external_dns_blocked"`
+	WorkspaceWritable             bool            `json:"workspace_writable"`
+	RuntimeWritable               bool            `json:"runtime_writable"`
+	ProviderReadOnly              bool            `json:"provider_read_only"`
+	OpenCodeBinaryReadOnly        bool            `json:"opencode_binary_read_only"`
+	EdgeStateVisible              bool            `json:"edge_state_visible"`
+	HostHomeVisible               bool            `json:"host_home_visible"`
+	RootVisible                   bool            `json:"root_visible"`
+	SSHKeysVisible                bool            `json:"ssh_keys_visible"`
+	BrowserProfilesVisible        bool            `json:"browser_profiles_visible"`
+	VPNVisible                    bool            `json:"vpn_visible"`
+	DockerSocketVisible           bool            `json:"docker_socket_visible"`
+	WSLWindowsMountsVisible       bool            `json:"wsl_windows_mounts_visible"`
+	UnixSocketReachable           bool            `json:"unix_socket_reachable"`
+	TCPListenerFound              bool            `json:"tcp_listener_found"`
+	UserNamespaceActive           bool            `json:"user_namespace_active"`
+	RuntimeMode                   string          `json:"runtime_mode"`
+	SocketMode                    string          `json:"socket_mode"`
+	BubblewrapStartupMedianNanos  int64           `json:"bubblewrap_startup_median_nanos"`
+	BubblewrapStartupSamplesNanos []int64         `json:"bubblewrap_startup_samples_nanos"`
 }
 
 type bubblewrapHelperReport struct {
 	WorkspaceWritable       bool `json:"workspace_writable"`
 	RuntimeWritable         bool `json:"runtime_writable"`
 	ProviderReadOnly        bool `json:"provider_read_only"`
+	OpenCodeBinaryReadOnly  bool `json:"opencode_binary_read_only"`
 	EdgeStateVisible        bool `json:"edge_state_visible"`
 	HostHomeVisible         bool `json:"host_home_visible"`
+	RootVisible             bool `json:"root_visible"`
+	SSHKeysVisible          bool `json:"ssh_keys_visible"`
+	BrowserProfilesVisible  bool `json:"browser_profiles_visible"`
+	VPNVisible              bool `json:"vpn_visible"`
 	DockerSocketVisible     bool `json:"docker_socket_visible"`
 	WSLWindowsMountsVisible bool `json:"wsl_windows_mounts_visible"`
 	ExternalConnectBlocked  bool `json:"external_connect_blocked"`
 	ExternalDNSBlocked      bool `json:"external_dns_blocked"`
 	UnixSocketReachable     bool `json:"unix_socket_reachable"`
+	TCPListenerFound        bool `json:"tcp_listener_found"`
 	UserNamespaceActive     bool `json:"user_namespace_active"`
 }
 
 func TestBubblewrapRealIsolationSmoke(t *testing.T) {
+	if os.Getenv("OPENCODE_BWRAP_HOST_E2E") != "1" {
+		t.Skip("host Bubblewrap isolation is explicit")
+	}
 	bubblewrapPath, err := exec.LookPath("bwrap")
 	if err != nil {
 		t.Fatal("Bubblewrap is required by the tagged OpenCode E2E")
@@ -177,8 +197,10 @@ func TestBubblewrapRealIsolationSmoke(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	started := time.Now()
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("slice_code=%s", bubblewrapFailureCode(stderr.String()))
+		diagnostic := classifyBubblewrapFailure(bubblewrapStageHelperExec, err, stderr.String(), time.Since(started))
+		t.Fatalf("slice_code=%s stage=%d exit_code=%d timed_out=%t duration_nanos=%d", diagnostic.Code, diagnostic.Stage, diagnostic.ExitCode, diagnostic.TimedOut, diagnostic.DurationNanos)
 	}
 	select {
 	case socketErr := <-socketDone:
@@ -196,22 +218,29 @@ func TestBubblewrapRealIsolationSmoke(t *testing.T) {
 	if err := json.Unmarshal(reportBytes, &helperReport); err != nil {
 		t.Fatalf("invalid Bubblewrap smoke report: %v", err)
 	}
-	if !helperReport.WorkspaceWritable || !helperReport.RuntimeWritable || !helperReport.ProviderReadOnly || helperReport.EdgeStateVisible || helperReport.HostHomeVisible || helperReport.DockerSocketVisible || helperReport.WSLWindowsMountsVisible || !helperReport.ExternalConnectBlocked || !helperReport.ExternalDNSBlocked || !helperReport.UnixSocketReachable || !helperReport.UserNamespaceActive {
+	if !helperReport.WorkspaceWritable || !helperReport.RuntimeWritable || !helperReport.ProviderReadOnly || !helperReport.OpenCodeBinaryReadOnly || helperReport.EdgeStateVisible || helperReport.HostHomeVisible || helperReport.RootVisible || helperReport.SSHKeysVisible || helperReport.BrowserProfilesVisible || helperReport.VPNVisible || helperReport.DockerSocketVisible || helperReport.WSLWindowsMountsVisible || !helperReport.ExternalConnectBlocked || !helperReport.ExternalDNSBlocked || !helperReport.UnixSocketReachable || helperReport.TCPListenerFound || !helperReport.UserNamespaceActive {
 		t.Fatalf("Bubblewrap isolation invariants failed: %+v", helperReport)
 	}
 
+	preflight := readBubblewrapPreflightReport(t)
 	startupSamples := measureBubblewrapStartup(t, bubblewrapPath, args, separator, workspace, hostHome)
 	sortedSamples := append([]int64(nil), startupSamples...)
 	sort.Slice(sortedSamples, func(left, right int) bool { return sortedSamples[left] < sortedSamples[right] })
 	report := bubblewrapIsolationReport{
-		SchemaVersion: 1, BubblewrapVersion: bubblewrapVersion, OpenCodeVersion: PinnedOpenCodeVersion,
-		ProviderPackage: OpenCodeExternalDriverPackage, MountTargets: sandboxMountTargets(sandbox),
+		SchemaVersion: 1, Mode: "bubblewrap_host_e2e", BubblewrapVersion: bubblewrapVersion, OpenCodeVersion: PinnedOpenCodeVersion,
+		Runner: safeRunnerName(os.Getenv("P11_2_RUNNER")), GitTree: safeGitIdentity(os.Getenv("P11_2_GIT_TREE")),
+		ProviderPackage: OpenCodeExternalDriverPackage, ProviderVersion: "0.1.0", MountTargets: sandboxMountTargets(sandbox),
+		PreflightStages:          preflight.Stages,
 		NetworkNamespaceUnshared: sandbox.UnshareAll,
 		ExternalConnectBlocked:   helperReport.ExternalConnectBlocked, ExternalDNSBlocked: helperReport.ExternalDNSBlocked,
 		WorkspaceWritable: helperReport.WorkspaceWritable, RuntimeWritable: helperReport.RuntimeWritable,
-		ProviderReadOnly: helperReport.ProviderReadOnly, EdgeStateVisible: helperReport.EdgeStateVisible,
-		HostHomeVisible: helperReport.HostHomeVisible, DockerSocketVisible: helperReport.DockerSocketVisible,
+		ProviderReadOnly: helperReport.ProviderReadOnly, OpenCodeBinaryReadOnly: helperReport.OpenCodeBinaryReadOnly,
+		EdgeStateVisible: helperReport.EdgeStateVisible, HostHomeVisible: helperReport.HostHomeVisible,
+		RootVisible: helperReport.RootVisible, SSHKeysVisible: helperReport.SSHKeysVisible,
+		BrowserProfilesVisible: helperReport.BrowserProfilesVisible, VPNVisible: helperReport.VPNVisible,
+		DockerSocketVisible:     helperReport.DockerSocketVisible,
 		WSLWindowsMountsVisible: helperReport.WSLWindowsMountsVisible, UnixSocketReachable: helperReport.UnixSocketReachable,
+		TCPListenerFound:    helperReport.TCPListenerFound,
 		UserNamespaceActive: helperReport.UserNamespaceActive, RuntimeMode: "0700", SocketMode: "0600",
 		BubblewrapStartupMedianNanos: sortedSamples[len(sortedSamples)/2], BubblewrapStartupSamplesNanos: startupSamples,
 	}
@@ -283,41 +312,6 @@ func boundedDiagnostic(value string) string {
 	return value
 }
 
-func bubblewrapFailureCode(stderr string) string {
-	lowered := strings.ToLower(stderr)
-	switch {
-	case strings.Contains(lowered, "failed to make / slave"):
-		return "bubblewrap_mount_propagation_denied"
-	case strings.Contains(lowered, "no permissions to create new namespace"):
-		return "bubblewrap_user_namespace_denied"
-	case strings.Contains(lowered, "setting up uid map"):
-		return "bubblewrap_uid_map_denied"
-	case strings.Contains(lowered, "execvp"):
-		return "bubblewrap_exec_failed"
-	case strings.Contains(lowered, "no such file"):
-		return "bubblewrap_path_missing"
-	case strings.Contains(lowered, "operation not permitted"), strings.Contains(lowered, "permission denied"):
-		return "bubblewrap_permission_denied"
-	case strings.Contains(lowered, "mount"):
-		return "bubblewrap_mount_failed"
-	default:
-		return "bubblewrap_process_exit"
-	}
-}
-
-func TestBubblewrapFailureCode(t *testing.T) {
-	cases := map[string]string{
-		"bwrap: Failed to make / slave: Permission denied": "bubblewrap_mount_propagation_denied",
-		"bwrap: No permissions to create new namespace":    "bubblewrap_user_namespace_denied",
-		"bwrap: execvp /mcp-opencode: No such file":        "bubblewrap_exec_failed",
-	}
-	for input, expected := range cases {
-		if actual := bubblewrapFailureCode(input); actual != expected {
-			t.Fatalf("failure code mismatch: got %q want %q", actual, expected)
-		}
-	}
-}
-
 func TestBubblewrapSandboxHelper(t *testing.T) {
 	if os.Getenv("MCP_DEVBOX_BWRAP_SMOKE") != "1" {
 		t.Skip("Bubblewrap helper runs only inside the isolation smoke")
@@ -343,13 +337,19 @@ func TestBubblewrapSandboxHelper(t *testing.T) {
 		WorkspaceWritable:       canCreateBubblewrapFile("/workspace/.bubblewrap-write-test"),
 		RuntimeWritable:         canCreateBubblewrapFile("/runtime/.bubblewrap-write-test"),
 		ProviderReadOnly:        !canCreateBubblewrapFile("/mcp-provider/.bubblewrap-write-test"),
+		OpenCodeBinaryReadOnly:  bubblewrapFileReadOnly(openCodeSandboxExecutable),
 		EdgeStateVisible:        bubblewrapPathExists(os.Getenv("MCP_DEVBOX_STATE_SENTINEL")),
 		HostHomeVisible:         bubblewrapPathExists(os.Getenv("MCP_DEVBOX_HOME_SENTINEL")),
+		RootVisible:             bubblewrapPathExists("/root"),
+		SSHKeysVisible:          bubblewrapPathExists("/root/.ssh") || bubblewrapPathExists("/home/mcpedge/.ssh"),
+		BrowserProfilesVisible:  bubblewrapPathExists("/root/.config/google-chrome") || bubblewrapPathExists("/home/mcpedge/.config/chromium") || bubblewrapPathExists("/mnt/c/Users"),
+		VPNVisible:              bubblewrapPathExists("/etc/openvpn") || bubblewrapPathExists("/run/openvpn") || bubblewrapPathExists("/var/run/openvpn"),
 		DockerSocketVisible:     bubblewrapPathExists("/run/docker.sock") || bubblewrapPathExists("/var/run/docker.sock"),
 		WSLWindowsMountsVisible: bubblewrapPathExists("/mnt/c") || bubblewrapPathExists("/mnt/d"),
 		ExternalConnectBlocked:  connectErr != nil,
 		ExternalDNSBlocked:      dnsErr != nil,
 		UnixSocketReachable:     socketOK,
+		TCPListenerFound:        bubblewrapTCPListenerFound(),
 		UserNamespaceActive:     uidErr == nil && len(strings.TrimSpace(string(uidMap))) > 0 && bubblewrapPathExists("/proc/self/ns/user"),
 	}
 	encoded, err := json.Marshal(report)

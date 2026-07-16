@@ -1,11 +1,21 @@
 # P11.2 execution plan
 
-1. [done] Reconstruct Git and preserve Step 7 exactly.
-2. [done] Audit and replace the incomplete Bubblewrap implementation with a complete fail-closed sandbox spec.
-3. [done] Add adversarial unit coverage, exact provider/command validation, closed ToolPath policy and real tagged isolation smoke/report.
-4. [done locally] Extend the no-network distributed Docker E2E with Debian Bubblewrap, pinned native OpenCode 1.18.1, four role PIDs, isolation report and release-report assertions.
-5. [active] Remove temporary scratch, commit the single Step 8 candidate, push it and use GitHub Actions as the authoritative real Bubblewrap/Docker/race validation environment. Amend and force-push any correction so the final branch has no diagnostic history.
-6. [pending] After Step 8 CI is green, create `docs/install-opencode-edge-parrot.md` and the dated P11.2 baseline with verified A/B/C benchmark values from the actual reports.
-7. [pending] Run the complete final local/remote gate matrix on one exact tree, record `git write-tree`, update verified Brain conclusions, publish only `p11-2-remote-opencode-relay`, open PR against `main`, and stop when the final SHA is fully green.
+1. [done] Reconstruct Git, CI and the exact nested-Docker Bubblewrap failure; write the initial checkpoint.
+2. [done] Implement closed, redacted Bubblewrap failure stages and unit tests for every required code.
+3. [done] Add a fast incremental host preflight covering namespaces, mappings, mounts, binds, socket, network isolation and helper execution.
+4. [done] Split P11.2 into an unprivileged Docker relay job and an authoritative Ubuntu 22.04 host Bubblewrap/combined OpenCode job.
+5. [done] Remove nested Docker `SYS_ADMIN`, `apparmor=unconfined` and `seccomp=unconfined`; preserve explicit fail-closed negative coverage.
+6. [active] Publish the validation tree and obtain green remote evidence for relay container, Bubblewrap host isolation and combined OpenCode sandbox.
+7. [pending] Generate and extract final evidence from the green reports; add Parrot WSL documentation and the dated P11.2 baseline/benchmark.
+8. [pending] Run the complete final local and remote gate matrix on one exact tree, record `git write-tree`, publish the closure commit, update PR #13 and mark it ready only after all mandatory checks complete green.
 
-Hard boundaries: no merge, deployment, pairing, real Parrot installation, Coolify changes, historical CodeQL closure, durable console sessions/telemetry, Goal Runtime, HTB/THM/VPN or general rootless build workcell.
+Local pre-CI checkpoint:
+- `go test -p 1 ./... -count=1` passed;
+- `go test -tags=opencode_e2e -p 1 ./... -count=1` passed;
+- `go vet ./...` passed;
+- `go build ./...` passed;
+- `git diff --check` passed;
+- Actionlint v1.7.12 passed;
+- no temporary helper or compiled artifact remains.
+
+Hard boundaries: no merge, deployment, pairing, real Parrot installation, tag, Coolify changes, frontend, Goal Runtime, Build Workcell, HTB/THM/VPN or broad historical CodeQL cleanup.

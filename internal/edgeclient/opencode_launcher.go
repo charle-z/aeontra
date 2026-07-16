@@ -312,6 +312,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		return result, err
 	}
 	processDone := make(chan openCodeProcessResult, 1)
+	processStarted := time.Now()
 	go func() { processDone <- l.runProcess(runCtx, spec) }()
 	heartbeatDone := make(chan modelturn.Runtime, 1)
 	heartbeatErr := make(chan error, 1)
@@ -348,6 +349,10 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	if processResult.Err != nil || processResult.ExitCode != 0 {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
+		if stderr.ContainsFold("bwrap:") {
+			diagnostic := classifyBubblewrapFailure(bubblewrapStageHelperExec, processResult.Err, stderr.TailString(), time.Since(processStarted))
+			return result, fmt.Errorf("OpenCode sandbox failed (%s)", diagnostic.Code)
+		}
 		signal := stderr.FailureSignal()
 		if signal == "unknown" {
 			signal = stdout.FailureSignal()
@@ -980,14 +985,17 @@ func waitForPrivateDriverSocket(ctx context.Context, path string, uid int) error
 	for {
 		info, err := os.Lstat(path)
 		if err == nil {
-			if info.Mode()&os.ModeSocket == 0 || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByUID(info, uid) {
+			if info.Mode()&os.ModeSocket == 0 || info.Mode()&os.ModeSymlink != 0 || !ownedByUID(info, uid) {
 				return errors.New("OpenCode model-turn socket is not private")
 			}
 			parent, parentErr := os.Lstat(filepath.Dir(path))
 			if parentErr != nil || !parent.IsDir() || parent.Mode().Perm() != 0o700 || !ownedByUID(parent, uid) {
 				return errors.New("OpenCode model-turn socket directory is not private")
 			}
-			return nil
+			if info.Mode().Perm() == 0o600 {
+				return nil
+			}
+			err = os.ErrNotExist
 		}
 		if !errors.Is(err, os.ErrNotExist) {
 			return errors.New("OpenCode model-turn socket is unavailable")
@@ -1327,6 +1335,18 @@ func (b *boundedSink) FailureSignal() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return SafeOpenCodeFailureSignal(b.tail)
+}
+
+func (b *boundedSink) TailString() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(append([]byte(nil), b.tail...))
+}
+
+func (b *boundedSink) ContainsFold(marker string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return strings.Contains(strings.ToLower(string(b.tail)), strings.ToLower(marker))
 }
 
 func (b *boundedSink) Truncated() bool {

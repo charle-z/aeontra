@@ -31,6 +31,9 @@ type remoteDriverProcess struct {
 }
 
 func TestRemoteModelTurnDriverRestartResumesExactTurn(t *testing.T) {
+	if os.Getenv("OPENCODE_E2E") != "1" {
+		t.Skip("remote driver restart E2E is explicit")
+	}
 	driverBinary := requiredAbsoluteFile(t, "MODEL_TURN_DRIVER_E2E_BIN")
 	authoritativeRoot := filepath.Join(t.TempDir(), "authoritative")
 	devices, err := edge.Open(edge.Config{Root: filepath.Join(authoritativeRoot, "edge")})

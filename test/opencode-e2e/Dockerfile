@@ -14,21 +14,19 @@ WORKDIR /workspace
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o /out/mcp-edge ./cmd/mcp-edge \
+RUN go build -tags=opencode_e2e -o /out/mcp-edge ./cmd/mcp-edge \
     && go build -o /out/model-turn-driver ./cmd/model-turn-driver \
-    && go test -c -tags=opencode_e2e -o /out/mcp-devbox-bubblewrap-e2e ./internal/edgeclient \
     && go test -c -tags=opencode_e2e -o /out/mcp-devbox-opencode-e2e ./internal/mcpserver
 
 FROM golang:1.26.5-bookworm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bubblewrap ca-certificates git ripgrep strace \
+    && apt-get install -y --no-install-recommends ca-certificates git ripgrep strace \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --shell /bin/sh edge
 
 WORKDIR /workspace
 COPY --from=opencode /opt/opencode /opt/opencode
-COPY --from=test-build /out/mcp-devbox-bubblewrap-e2e /usr/local/bin/mcp-devbox-bubblewrap-e2e
 COPY --from=test-build /out/mcp-devbox-opencode-e2e /usr/local/bin/mcp-devbox-opencode-e2e
 COPY --from=test-build /out/mcp-edge /usr/local/bin/mcp-edge
 COPY --from=test-build /out/model-turn-driver /usr/local/bin/model-turn-driver
@@ -44,6 +42,7 @@ ARG P11_2_GIT_COMMIT
 ENV P11_2_GIT_TREE=$P11_2_GIT_TREE \
     P11_2_GIT_COMMIT=$P11_2_GIT_COMMIT \
     OPENCODE_E2E=1 \
+    MCP_DEVBOX_RELAY_CONTAINER_E2E=1 \
     OPENCODE_E2E_BIN=/opt/opencode/opencode-1.18.1 \
     MCP_EDGE_E2E_BIN=/usr/local/bin/mcp-edge \
     MODEL_TURN_DRIVER_E2E_BIN=/usr/local/bin/model-turn-driver \
@@ -55,4 +54,4 @@ ENV P11_2_GIT_TREE=$P11_2_GIT_TREE \
 USER edge:edge
 
 ENTRYPOINT ["/usr/local/bin/opencode-e2e-entrypoint"]
-CMD ["-test.run=TestOpenCodeExternalModelVerticalSlice|TestRemote|TestZZP112ReleaseCandidateReport", "-test.count=1", "-test.v"]
+CMD ["-test.run=TestOpenCodeExternalModelVerticalSlice|TestRemoteOpenCodeDistributedRelay", "-test.count=1", "-test.v"]

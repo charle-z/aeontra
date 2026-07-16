@@ -36,6 +36,25 @@ func openCodeFailureCode(err error) string {
 		return "terminal_replay"
 	}
 	message := strings.ToLower(err.Error())
+	for _, code := range []string{
+		"bubblewrap_user_namespace_denied",
+		"bubblewrap_uid_map_denied",
+		"bubblewrap_gid_map_denied",
+		"bubblewrap_mount_propagation_denied",
+		"bubblewrap_bind_mount_denied",
+		"bubblewrap_proc_mount_denied",
+		"bubblewrap_dev_mount_denied",
+		"bubblewrap_tmpfs_mount_denied",
+		"bubblewrap_exec_denied",
+		"bubblewrap_path_missing",
+		"bubblewrap_permission_denied",
+		"bubblewrap_process_exit",
+		"bubblewrap_timeout",
+	} {
+		if strings.Contains(message, code) {
+			return code
+		}
+	}
 	for _, item := range []struct{ contains, code string }{
 		{"integrity", "installation_integrity"},
 		{"version", "installation_version"},
@@ -157,6 +176,9 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 		Heartbeat: *heartbeat, Workspaces: registry, Journal: journal,
 	})
 	if err != nil {
+		return err
+	}
+	if err := configureOpenCodeRelayE2E(launcher); err != nil {
 		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

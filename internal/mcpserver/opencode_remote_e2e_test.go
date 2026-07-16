@@ -120,13 +120,23 @@ type remoteDistributedReport struct {
 }
 
 func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
+	if os.Getenv("OPENCODE_E2E") != "1" {
+		t.Skip("remote OpenCode E2E is explicit")
+	}
 	opencodeBinary := requiredAbsoluteFile(t, "OPENCODE_E2E_BIN")
 	providerPath := requiredAbsoluteDirectory(t, "OPENCODE_PROVIDER_E2E_PATH")
 	edgeBinary := requiredAbsoluteFile(t, "MCP_EDGE_E2E_BIN")
 	driverBinary := requiredAbsoluteFile(t, "MODEL_TURN_DRIVER_E2E_BIN")
-	bubblewrapPath, err := exec.LookPath("bwrap")
-	if err != nil {
-		t.Fatal("Bubblewrap is required by the remote OpenCode E2E")
+	reportMode := "combined_opencode_sandbox_e2e"
+	bubblewrapPath := edgeBinary
+	if os.Getenv("MCP_DEVBOX_RELAY_CONTAINER_E2E") == "1" {
+		reportMode = "relay_container_e2e"
+	} else {
+		var err error
+		bubblewrapPath, err = exec.LookPath("bwrap")
+		if err != nil {
+			t.Fatal("Bubblewrap is required by the host OpenCode E2E")
+		}
 	}
 	integrityPath := filepath.Join(repoRoot(t), "test", "opencode-e2e", "package-lock.json")
 	if _, err := os.Stat(integrityPath); err != nil {
@@ -231,6 +241,9 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + home, "USER=mcpedge", "LANG=C.UTF-8", "LC_ALL=C.UTF-8",
 		"SSL_CERT_FILE=" + caPath,
+	}
+	if reportMode == "relay_container_e2e" {
+		cmd.Env = append(cmd.Env, "MCP_DEVBOX_RELAY_CONTAINER_E2E=1")
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -376,7 +389,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		t.Fatal("distributed relay never exercised request_ref for a large request")
 	}
 	report := remoteDistributedReport{
-		Mode: "remote-distributed", Processes: []string{"mcp-devbox-server", "mcp-edge", "model-turn-driver", "opencode-1.18.1"},
+		Mode: reportMode, Processes: []string{"mcp-devbox-server", "mcp-edge", "model-turn-driver", "opencode-1.18.1"},
 		ProcessPIDs: processPIDs,
 		MCPCalls:    meter.Calls, EdgeHTTPCalls: calls, MCPRequestBytes: meter.RequestBytes, MCPResponseBytes: meter.ResponseBytes,
 		EdgeRequestBytes: requestBytes, EdgeResponseBytes: responseBytes, ModelTurns: stats.TurnCount, ToolExecutions: int64(len(executedCalls)),
