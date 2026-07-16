@@ -44,3 +44,17 @@ No `tmp_*.go` helper remains. Next action: commit Step 6, record its exact SHA, 
 - Docker E2E run 29461855085 isolated the shared failure code response_consume.
 - Current fix under validation makes the response-consumption CAS the first transaction statement, preventing SQLITE_BUSY_SNAPSHOT during concurrent cleanup.
 - Target branch remains untouched at 201d4c7052f034fef8483d8d2af6aff76d6fe207.
+
+
+## P11.2 driver-restart checkpoint — 2026-07-15
+
+- Branch: `p11-2-step7-validation`.
+- Functional HEAD: `6f315ef938ffdb3f79b9e05fc56746cb7bab9c85`.
+- Validated tree: `093330a19dbfa00ee57450476c2167b0f8b5de13`.
+- Target branch remains untouched at `201d4c7052f034fef8483d8d2af6aff76d6fe207`.
+- Fixed driver restart during `WaitResponse`: cancellation now uses `http.ErrAbortHandler`, preventing a synthetic HTTP 200 with an empty body.
+- Real Node provider + Unix driver + SQLite integration proves one create, bounded retries of only the same response wait, stable runtime/turn/sequence/digest/request_ref, one authoritative turn and one consumption.
+- Green: driver cancellation 20x; provider restart 20x; provider suite; focused modelturn/edgeclient/mcpserver; `go test -p 1 ./... -count=1`; `go vet ./...`; `go build ./...`; `git diff --check`.
+- CI: this HEAD has not yet been published or run through Docker E2E.
+- Current blocker: none locally; next evidence is the Docker direct and distributed slices on the exact published SHA.
+- Next exact commands: commit this checkpoint, push `p11-2-step7-validation`, then wait for `E2E distributed OpenCode` on the resulting SHA.
