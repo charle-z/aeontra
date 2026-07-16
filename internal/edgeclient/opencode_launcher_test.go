@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +28,7 @@ type openCodeLauncherFixture struct {
 	workspace  string
 	provider   string
 	executable string
+	bubblewrap string
 	lock       string
 	registry   *WorkspaceRegistry
 	journal    *OpenCodeRuntimeJournal
@@ -92,16 +95,30 @@ func newOpenCodeLauncherFixture(t *testing.T) *openCodeLauncherFixture {
 	}
 	executable := filepath.Join(t.TempDir(), "opencode")
 	writeOpenCodeVersionScript(t, executable, PinnedOpenCodeVersion, "")
+	bubblewrap := filepath.Join(t.TempDir(), "bwrap")
+	if err := os.WriteFile(bubblewrap, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	socketRoot := filepath.Join(state, openCodeRuntimeDirName)
 	launcher, err := NewOpenCodeLauncher(OpenCodeLauncherConfig{
-		StateRoot: state, SocketRoot: socketRoot, OpenCodePath: executable, ProviderPath: provider, IntegrityPath: lockPath,
+		StateRoot: state, SocketRoot: socketRoot, OpenCodePath: executable, ProviderPath: provider, BubblewrapPath: bubblewrap, IntegrityPath: lockPath,
 		OutputLimit: 4096, Heartbeat: time.Second, Workspaces: registry, Journal: journal,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	launcher.allowRootTest = true
+	launcher.verifySandbox = func(ctx context.Context, _ openCodeProcessSpec) error {
+		output, err := exec.CommandContext(ctx, executable, "--version").Output()
+		if err != nil {
+			return errors.New("bubblewrap could not create the required OpenCode sandbox")
+		}
+		if strings.TrimSpace(string(output)) != PinnedOpenCodeVersion {
+			return errors.New("OpenCode version does not match the pinned release")
+		}
+		return nil
+	}
 	goal := "Fix the bounded fixture and run its tests."
 	sum := sha256.Sum256([]byte(goal))
 	lease := ModelRuntimeLease{
@@ -115,7 +132,7 @@ func newOpenCodeLauncherFixture(t *testing.T) *openCodeLauncherFixture {
 	}}
 	launcher.remoteFactory = func(ModelRuntimeLease) (OpenCodeRemoteTransport, error) { return remote, nil }
 	return &openCodeLauncherFixture{
-		state: state, workspace: workspace, provider: provider, executable: executable, lock: lockPath,
+		state: state, workspace: workspace, provider: provider, executable: executable, bubblewrap: bubblewrap, lock: lockPath,
 		registry: registry, journal: journal, launcher: launcher, lease: lease, remote: remote,
 	}
 }
@@ -194,18 +211,82 @@ func TestOpenCodeLauncherUsesOnlyFixedLocalConfiguration(t *testing.T) {
 	if err != nil || result.State != OpenCodeLocalCompleted || result.OutputTruncated {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	wantArgs := []string{"run", "--auto", "--model", openCodeModelID, "--format", "json", "--dir", fixture.workspace, fixture.lease.Goal}
-	if strings.Join(captured.Args, "\x00") != strings.Join(wantArgs, "\x00") || captured.Dir != fixture.workspace || captured.Executable != fixture.executable {
+	if captured.Dir != fixture.workspace || captured.Executable != fixture.bubblewrap {
 		t.Fatalf("process spec=%+v", captured)
 	}
-	joinedEnv := strings.Join(captured.Env, "\n")
-	for _, forbidden := range []string{"OPENAI", "ANTHROPIC", "OPENROUTER", "GLM", "CODEX", "API_KEY", "HTTP_PROXY", "HTTPS_PROXY"} {
-		if strings.Contains(strings.ToUpper(joinedEnv), forbidden) {
-			t.Fatalf("forbidden environment marker %q in %s", forbidden, joinedEnv)
+	reparsed, err := parseOpenCodeSandboxArgs(captured.Args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(reparsed, captured.Sandbox) {
+		t.Fatalf("parsed sandbox differs from executed sandbox: parsed=%+v captured=%+v", reparsed, captured.Sandbox)
+	}
+	runtimeDir := openCodeRuntimeDir(fixture.launcher.config.SocketRoot, fixture.lease.RuntimeID)
+	resolvedOpenCode, err := filepath.EvalSymlinks(fixture.executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedMounts := make([]openCodeSandboxMount, 0)
+	for _, systemPath := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates"} {
+		if info, statErr := os.Stat(systemPath); statErr == nil && info.IsDir() {
+			expectedMounts = append(expectedMounts, openCodeSandboxMount{Source: systemPath, Target: systemPath, Kind: "bind"})
 		}
 	}
-	if !strings.Contains(joinedEnv, "OPENCODE_AUTH_CONTENT={}") || !strings.Contains(joinedEnv, "OPENCODE_DISABLE_MODELS_FETCH=1") {
-		t.Fatalf("required clean environment missing: %s", joinedEnv)
+	expectedMounts = append(expectedMounts,
+		openCodeSandboxMount{Target: "/proc", Writable: true, Kind: "proc"},
+		openCodeSandboxMount{Target: "/dev", Writable: true, Kind: "dev"},
+		openCodeSandboxMount{Target: "/tmp", Writable: true, Kind: "tmpfs"},
+		openCodeSandboxMount{Source: resolvedOpenCode, Target: openCodeSandboxExecutable, Kind: "bind"},
+		openCodeSandboxMount{Source: fixture.provider, Target: openCodeSandboxProvider, Kind: "bind"},
+		openCodeSandboxMount{Source: runtimeDir, Target: openCodeSandboxRuntime, Writable: true, Kind: "bind"},
+		openCodeSandboxMount{Source: fixture.workspace, Target: openCodeSandboxWorkspace, Writable: true, Kind: "bind"},
+	)
+	expectedEnv := map[string]string{
+		"PATH": openCodeDefaultToolPath, "HOME": openCodeSandboxHome, "USER": "mcpedge",
+		"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TERM": "dumb", "SHELL": "/bin/sh",
+		"XDG_CONFIG_HOME":                 openCodeSandboxHome + "/.config",
+		"XDG_DATA_HOME":                   openCodeSandboxHome + "/.local/share",
+		"XDG_STATE_HOME":                  openCodeSandboxHome + "/.local/state",
+		"XDG_CACHE_HOME":                  openCodeSandboxHome + "/.cache",
+		"OPENCODE_TEST_HOME":              openCodeSandboxHome,
+		"OPENCODE_CONFIG_CONTENT":         captured.Sandbox.Environment["OPENCODE_CONFIG_CONTENT"],
+		"OPENCODE_AUTH_CONTENT":           "{}",
+		"OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_PURE": "1",
+		"OPENCODE_DISABLE_AUTOUPDATE": "1", "OPENCODE_DISABLE_AUTOCOMPACT": "1",
+		"OPENCODE_DISABLE_MODELS_FETCH": "1", "OPENCODE_DISABLE_LSP_DOWNLOAD": "1",
+		"OPENCODE_DISABLE_DEFAULT_PLUGINS": "1", "OPENCODE_DISABLE_EXTERNAL_SKILLS": "1",
+		"OPENCODE_DISABLE_SHARE": "1",
+	}
+	expected := openCodeSandboxSpec{
+		UnshareAll: true, ClearEnv: true, NewSession: true, DieWithParent: true,
+		Mounts: expectedMounts, Environment: expectedEnv, WorkingDirectory: openCodeSandboxWorkspace,
+		Command: []string{openCodeSandboxExecutable, "run", "--auto", "--model", openCodeModelID, "--format", "json", "--dir", openCodeSandboxWorkspace, fixture.lease.Goal},
+	}
+	if !reflect.DeepEqual(captured.Sandbox, expected) {
+		t.Fatalf("effective sandbox spec mismatch:\\nactual=%+v\\nexpected=%+v", captured.Sandbox, expected)
+	}
+	var config map[string]any
+	if err := json.Unmarshal([]byte(captured.Sandbox.Environment["OPENCODE_CONFIG_CONTENT"]), &config); err != nil {
+		t.Fatal(err)
+	}
+	permission, _ := config["permission"].(map[string]any)
+	if !reflect.DeepEqual(permission, map[string]any{"*": "allow", "external_directory": "deny", "webfetch": "deny", "websearch": "deny"}) {
+		t.Fatalf("unsafe OpenCode permissions: %#v", permission)
+	}
+	outerEnv := []string{
+		"PATH=" + openCodeDefaultToolPath,
+		"HOME=" + filepath.Join(runtimeDir, "home"),
+		"USER=mcpedge", "LANG=C.UTF-8", "LC_ALL=C.UTF-8", "TERM=dumb", "SHELL=/bin/sh",
+	}
+	if !reflect.DeepEqual(captured.Env, outerEnv) {
+		t.Fatalf("unexpected Bubblewrap parent environment: %q", captured.Env)
+	}
+	for _, mount := range captured.Sandbox.Mounts {
+		for _, forbidden := range []string{fixture.state, "/root", "/mnt/c", "/mnt/d", "/run/docker.sock", "/var/run/docker.sock"} {
+			if mount.Source == forbidden || mount.Target == forbidden {
+				t.Fatalf("sandbox exposed forbidden mount %q: %+v", forbidden, mount)
+			}
+		}
 	}
 	fixture.remote.mu.Lock()
 	defer fixture.remote.mu.Unlock()
@@ -325,6 +406,16 @@ func TestOpenCodeLauncherRejectsLocalInstallationDrift(t *testing.T) {
 		}
 	})
 
+	t.Run("bubblewrap writable", func(t *testing.T) {
+		fixture := newOpenCodeLauncherFixture(t)
+		if err := os.Chmod(fixture.bubblewrap, 0o777); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fixture.launcher.RunLease(context.Background(), fixture.lease); err == nil || !strings.Contains(err.Error(), "bubblewrap") {
+			t.Fatalf("unsafe Bubblewrap err=%v", err)
+		}
+	})
+
 	t.Run("provider absent", func(t *testing.T) {
 		fixture := newOpenCodeLauncherFixture(t)
 		if err := os.RemoveAll(fixture.provider); err != nil {
@@ -343,6 +434,256 @@ func TestOpenCodeLauncherRejectsLocalInstallationDrift(t *testing.T) {
 		if _, err := fixture.launcher.RunLease(context.Background(), fixture.lease); err == nil || !strings.Contains(err.Error(), "integrity") {
 			t.Fatalf("changed integrity err=%v", err)
 		}
+	})
+}
+
+func TestOpenCodeLauncherRejectsUnsafeBubblewrapAndSandboxLayouts(t *testing.T) {
+	t.Run("bubblewrap absent", func(t *testing.T) {
+		fixture := newOpenCodeLauncherFixture(t)
+		if err := os.Remove(fixture.bubblewrap); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fixture.launcher.RunLease(context.Background(), fixture.lease); err == nil || !strings.Contains(err.Error(), "bubblewrap") {
+			t.Fatalf("missing Bubblewrap err=%v", err)
+		}
+	})
+
+	t.Run("bubblewrap relative", func(t *testing.T) {
+		fixture := newOpenCodeLauncherFixture(t)
+		config := fixture.launcher.config
+		config.BubblewrapPath = "bwrap"
+		if _, err := NewOpenCodeLauncher(config); err == nil || !strings.Contains(err.Error(), "absolute") {
+			t.Fatalf("relative Bubblewrap err=%v", err)
+		}
+	})
+
+	t.Run("bubblewrap symlink", func(t *testing.T) {
+		fixture := newOpenCodeLauncherFixture(t)
+		target := fixture.bubblewrap + "-real"
+		if err := os.Rename(fixture.bubblewrap, target); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, fixture.bubblewrap); err != nil {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+		if _, err := fixture.launcher.RunLease(context.Background(), fixture.lease); err == nil || !strings.Contains(err.Error(), "bubblewrap") {
+			t.Fatalf("symlink Bubblewrap err=%v", err)
+		}
+	})
+
+	for name, mode := range map[string]os.FileMode{
+		"bubblewrap not executable": 0o644,
+		"bubblewrap group writable": 0o775,
+		"bubblewrap other writable": 0o757,
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newOpenCodeLauncherFixture(t)
+			if err := os.Chmod(fixture.bubblewrap, mode); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := fixture.launcher.RunLease(context.Background(), fixture.lease); err == nil || !strings.Contains(err.Error(), "bubblewrap") {
+				t.Fatalf("unsafe Bubblewrap mode=%#o err=%v", mode, err)
+			}
+		})
+	}
+
+	t.Run("OpenCode executable unresolvable", func(t *testing.T) {
+		fixture := newOpenCodeLauncherFixture(t)
+		if err := os.Remove(fixture.executable); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fixture.launcher.RunLease(context.Background(), fixture.lease); err == nil || !strings.Contains(err.Error(), "OpenCode") {
+			t.Fatalf("missing OpenCode err=%v", err)
+		}
+	})
+
+	t.Run("workspace and runtime overlap", func(t *testing.T) {
+		root := t.TempDir()
+		_, err := openCodeBubblewrapArgs("/bin/true", filepath.Join(root, "provider"), root, filepath.Join(root, "workspace"), ModelRuntimeLease{}, "{}", openCodeDefaultToolPath)
+		if err == nil || !strings.Contains(err.Error(), "overlap") {
+			t.Fatalf("workspace/runtime overlap err=%v", err)
+		}
+	})
+
+	t.Run("provider inside runtime", func(t *testing.T) {
+		root := t.TempDir()
+		_, err := openCodeBubblewrapArgs("/bin/true", filepath.Join(root, "provider"), root, t.TempDir(), ModelRuntimeLease{}, "{}", openCodeDefaultToolPath)
+		if err == nil || !strings.Contains(err.Error(), "overlap") {
+			t.Fatalf("provider/runtime overlap err=%v", err)
+		}
+	})
+
+	t.Run("runtime inside provider", func(t *testing.T) {
+		provider := t.TempDir()
+		_, err := openCodeBubblewrapArgs("/bin/true", provider, filepath.Join(provider, "runtime"), t.TempDir(), ModelRuntimeLease{}, "{}", openCodeDefaultToolPath)
+		if err == nil || !strings.Contains(err.Error(), "overlap") {
+			t.Fatalf("runtime/provider overlap err=%v", err)
+		}
+	})
+
+	t.Run("provider and workspace overlap", func(t *testing.T) {
+		workspace := t.TempDir()
+		_, err := openCodeBubblewrapArgs("/bin/true", filepath.Join(workspace, "provider"), t.TempDir(), workspace, ModelRuntimeLease{}, "{}", openCodeDefaultToolPath)
+		if err == nil || !strings.Contains(err.Error(), "overlap") {
+			t.Fatalf("provider/workspace overlap err=%v", err)
+		}
+	})
+
+	t.Run("socket escapes runtime", func(t *testing.T) {
+		fixture := newOpenCodeLauncherFixture(t)
+		runtimeDir := filepath.Join(fixture.state, "r", "manual")
+		if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fixture.launcher.processSpec(runtimeDir, fixture.workspace, filepath.Join(fixture.state, "escaped.sock"), fixture.lease, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "escaped") {
+			t.Fatalf("escaped socket err=%v", err)
+		}
+	})
+
+	t.Run("arbitrary tool path", func(t *testing.T) {
+		fixture := newOpenCodeLauncherFixture(t)
+		config := fixture.launcher.config
+		config.ToolPath = "/tmp/unmanaged-tools"
+		if _, err := NewOpenCodeLauncher(config); err == nil || !strings.Contains(err.Error(), "allowlist") {
+			t.Fatalf("arbitrary tool path err=%v", err)
+		}
+	})
+
+	t.Run("relative tool path", func(t *testing.T) {
+		fixture := newOpenCodeLauncherFixture(t)
+		config := fixture.launcher.config
+		config.ToolPath = "bin:/usr/bin"
+		if _, err := NewOpenCodeLauncher(config); err == nil || !strings.Contains(err.Error(), "absolute") {
+			t.Fatalf("relative tool path err=%v", err)
+		}
+	})
+}
+
+func TestOpenCodeLauncherFailsClosedWhenBubblewrapCannotCreateNamespaces(t *testing.T) {
+	fixture := newOpenCodeLauncherFixture(t)
+	fixture.launcher.verifySandbox = func(context.Context, openCodeProcessSpec) error {
+		return errors.New("bubblewrap could not create the required OpenCode sandbox")
+	}
+	directOpenCodeRan := false
+	fixture.launcher.runProcess = func(context.Context, openCodeProcessSpec) openCodeProcessResult {
+		directOpenCodeRan = true
+		return openCodeProcessResult{ExitCode: 0}
+	}
+	result, err := fixture.launcher.RunLease(context.Background(), fixture.lease)
+	if err == nil || !strings.Contains(err.Error(), "bubblewrap") || result.State != OpenCodeLocalFailed {
+		t.Fatalf("fail-closed result=%+v err=%v", result, err)
+	}
+	if directOpenCodeRan {
+		t.Fatal("OpenCode ran after Bubblewrap verification failed")
+	}
+}
+
+func TestOpenCodeSandboxSpecRejectsPrivateStateAndUnexpectedWritableMounts(t *testing.T) {
+	fixture := newOpenCodeLauncherFixture(t)
+	runtimeDir := filepath.Join(fixture.state, "r", "manual")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := fixture.launcher.processSpec(runtimeDir, fixture.workspace, filepath.Join(runtimeDir, openCodeDriverSocketName), fixture.lease, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedOpenCode, err := filepath.EvalSymlinks(fixture.executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mount := range spec.Sandbox.Mounts {
+		if mount.Source == fixture.state {
+			t.Fatalf("private Edge state exposed: %+v", mount)
+		}
+		if mount.Target == openCodeSandboxProvider && mount.Writable {
+			t.Fatalf("provider is writable: %+v", mount)
+		}
+	}
+	if !spec.Sandbox.UnshareAll || !spec.Sandbox.ClearEnv {
+		t.Fatalf("network/environment isolation missing: %+v", spec.Sandbox)
+	}
+	bad := spec.Sandbox
+	bad.Mounts = append(append([]openCodeSandboxMount(nil), bad.Mounts...), openCodeSandboxMount{Source: fixture.state, Target: "/edge-state", Kind: "bind"})
+	if err := validateOpenCodeSandboxSpec(bad, fixture.state, runtimeDir, fixture.workspace, fixture.provider, resolvedOpenCode, openCodeDefaultToolPath, fixture.lease); err == nil {
+		t.Fatal("private Edge state mount accepted")
+	}
+	bad = spec.Sandbox
+	bad.Mounts = append(append([]openCodeSandboxMount(nil), bad.Mounts...), openCodeSandboxMount{Source: t.TempDir(), Target: "/extra", Writable: true, Kind: "bind"})
+	if err := validateOpenCodeSandboxSpec(bad, fixture.state, runtimeDir, fixture.workspace, fixture.provider, resolvedOpenCode, openCodeDefaultToolPath, fixture.lease); err == nil {
+		t.Fatal("unexpected writable mount accepted")
+	}
+	bad = spec.Sandbox
+	bad.Command = append(append([]string(nil), bad.Command...), "--help")
+	if err := validateOpenCodeSandboxSpec(bad, fixture.state, runtimeDir, fixture.workspace, fixture.provider, resolvedOpenCode, openCodeDefaultToolPath, fixture.lease); err == nil {
+		t.Fatal("mutated OpenCode command accepted")
+	}
+}
+
+func TestValidateOpenCodeSandboxConfigRejectsDrift(t *testing.T) {
+	fixture := newOpenCodeLauncherFixture(t)
+	runtimeDir := filepath.Join(fixture.state, "r", "config")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := fixture.launcher.processSpec(runtimeDir, fixture.workspace, filepath.Join(runtimeDir, openCodeDriverSocketName), fixture.lease, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := spec.Sandbox.Environment["OPENCODE_CONFIG_CONTENT"]
+	if err := validateOpenCodeSandboxConfig(valid, fixture.lease); err != nil {
+		t.Fatal(err)
+	}
+	mutate := func(t *testing.T, update func(map[string]any)) {
+		t.Helper()
+		var config map[string]any
+		if err := json.Unmarshal([]byte(valid), &config); err != nil {
+			t.Fatal(err)
+		}
+		update(config)
+		encoded, err := json.Marshal(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validateOpenCodeSandboxConfig(string(encoded), fixture.lease); err == nil {
+			t.Fatal("unsafe OpenCode configuration was accepted")
+		}
+	}
+	t.Run("unexpected top-level field", func(t *testing.T) {
+		mutate(t, func(config map[string]any) { config["plugin"] = []any{"remote"} })
+	})
+	t.Run("websearch allowed", func(t *testing.T) {
+		mutate(t, func(config map[string]any) {
+			config["permission"].(map[string]any)["websearch"] = "allow"
+		})
+	})
+	t.Run("runtime identity mismatch", func(t *testing.T) {
+		mutate(t, func(config map[string]any) {
+			config["provider"].(map[string]any)["bridge"].(map[string]any)["options"].(map[string]any)["runtimeID"] = "other-runtime"
+		})
+	})
+	t.Run("host socket", func(t *testing.T) {
+		mutate(t, func(config map[string]any) {
+			config["provider"].(map[string]any)["bridge"].(map[string]any)["options"].(map[string]any)["socketPath"] = filepath.Join(runtimeDir, openCodeDriverSocketName)
+		})
+	})
+	t.Run("host provider", func(t *testing.T) {
+		mutate(t, func(config map[string]any) {
+			config["provider"].(map[string]any)["bridge"].(map[string]any)["npm"] = "file://" + fixture.provider
+		})
+	})
+	t.Run("unexpected provider option", func(t *testing.T) {
+		mutate(t, func(config map[string]any) {
+			config["provider"].(map[string]any)["bridge"].(map[string]any)["options"].(map[string]any)["token"] = "forbidden"
+		})
+	})
+	t.Run("autoupdate enabled", func(t *testing.T) {
+		mutate(t, func(config map[string]any) { config["autoupdate"] = true })
+	})
+	t.Run("timeout mismatch", func(t *testing.T) {
+		mutate(t, func(config map[string]any) {
+			config["provider"].(map[string]any)["bridge"].(map[string]any)["options"].(map[string]any)["timeoutMs"] = float64(1)
+		})
 	})
 }
 

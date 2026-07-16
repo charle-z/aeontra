@@ -35,6 +35,7 @@ docker run --rm \
   --dns 127.0.0.1 \
   --read-only \
   --cap-drop ALL \
+  --security-opt seccomp=unconfined \
   --security-opt no-new-privileges \
   --pids-limit 512 \
   --memory 2g \
@@ -48,6 +49,7 @@ set -e
 for report in \
   opencode-e2e-report.json \
   opencode-remote-e2e-report.json \
+  opencode-bubblewrap-isolation-report.json \
   p11-2-release-candidate-report.json
 do
   if [ -s "$staging/$report" ]; then

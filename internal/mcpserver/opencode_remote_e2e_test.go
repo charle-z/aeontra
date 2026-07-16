@@ -86,6 +86,7 @@ func (m *remoteWireMeter) Snapshot() (int64, int64, int64, map[string]int64) {
 type remoteDistributedReport struct {
 	Mode                      string           `json:"mode"`
 	Processes                 []string         `json:"processes"`
+	ProcessPIDs               map[string]int   `json:"process_pids"`
 	MCPCalls                  int64            `json:"mcp_calls"`
 	EdgeHTTPCalls             int64            `json:"edge_http_calls"`
 	MCPRequestBytes           int64            `json:"mcp_request_bytes"`
@@ -123,6 +124,10 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	providerPath := requiredAbsoluteDirectory(t, "OPENCODE_PROVIDER_E2E_PATH")
 	edgeBinary := requiredAbsoluteFile(t, "MCP_EDGE_E2E_BIN")
 	driverBinary := requiredAbsoluteFile(t, "MODEL_TURN_DRIVER_E2E_BIN")
+	bubblewrapPath, err := exec.LookPath("bwrap")
+	if err != nil {
+		t.Fatal("Bubblewrap is required by the remote OpenCode E2E")
+	}
 	integrityPath := filepath.Join(repoRoot(t), "test", "opencode-e2e", "package-lock.json")
 	if _, err := os.Stat(integrityPath); err != nil {
 		t.Fatal(err)
@@ -202,6 +207,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		"opencode", "--once", "--state", edgeState,
 		"--opencode", opencodeBinary, "--driver", driverBinary,
 		"--provider", providerPath, "--integrity", integrityPath,
+		"--bubblewrap", bubblewrapPath,
 		"--wait", "30s", "--poll", "1s", "--heartbeat", "1s", "--output-limit", "1048576",
 	)
 	cmd.Dir = workspacePath
@@ -241,6 +247,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	executedCalls := make(map[string]string)
 	processIsolationVerified := false
 	distinctProcessCount := int64(0)
+	processPIDs := make(map[string]int)
 	largeRequestReferenced := false
 	for sequence := uint64(1); sequence <= 4; sequence++ {
 		turnText := mcpTool(t, server, meter, "model_turn_next", map[string]any{
@@ -263,7 +270,8 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		}
 		offer := envelope.Turn
 		if sequence == 1 {
-			distinctProcessCount = int64(assertRemoteProcessIsolation(t, os.Getpid(), cmd.Process.Pid, driverBinary, opencodeBinary))
+			processPIDs = assertRemoteProcessIsolation(t, os.Getpid(), cmd.Process.Pid, driverBinary, opencodeBinary)
+			distinctProcessCount = int64(len(processPIDs))
 			processIsolationVerified = true
 		}
 		if int64(len(offer.RequestPayload)) > modelturn.MaxInlineRequestBytes && strings.HasPrefix(offer.RequestRef, "mb_") {
@@ -290,7 +298,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		for callID, name := range remoteExecutedToolResults(payload) {
 			executedCalls[callID] = name
 		}
-		response, err := scriptedResponse(sequence, payload, workspacePath)
+		response, err := scriptedResponse(sequence, payload, "/workspace")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -369,7 +377,8 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	}
 	report := remoteDistributedReport{
 		Mode: "remote-distributed", Processes: []string{"mcp-devbox-server", "mcp-edge", "model-turn-driver", "opencode-1.18.1"},
-		MCPCalls: meter.Calls, EdgeHTTPCalls: calls, MCPRequestBytes: meter.RequestBytes, MCPResponseBytes: meter.ResponseBytes,
+		ProcessPIDs: processPIDs,
+		MCPCalls:    meter.Calls, EdgeHTTPCalls: calls, MCPRequestBytes: meter.RequestBytes, MCPResponseBytes: meter.ResponseBytes,
 		EdgeRequestBytes: requestBytes, EdgeResponseBytes: responseBytes, ModelTurns: stats.TurnCount, ToolExecutions: int64(len(executedCalls)),
 		ToolNames: []string{"read", "grep", "edit", "bash"},
 		Elapsed:   time.Since(startedAt), ExternalWait: meter.ExternalWait, InterTurnGap: meter.InterTurnGap, Retries: 0,
@@ -488,7 +497,7 @@ func forbiddenEdgeSQLiteTables(t *testing.T, root string) []string {
 	return result
 }
 
-func assertRemoteProcessIsolation(t *testing.T, serverPID, edgePID int, driverBinary, opencodeBinary string) int {
+func assertRemoteProcessIsolation(t *testing.T, serverPID, edgePID int, driverBinary, opencodeBinary string) map[string]int {
 	t.Helper()
 	if serverPID <= 0 || edgePID <= 0 || serverPID == edgePID {
 		t.Fatalf("server and Edge processes are not distinct: server=%d edge=%d", serverPID, edgePID)
@@ -502,12 +511,17 @@ func assertRemoteProcessIsolation(t *testing.T, serverPID, edgePID int, driverBi
 			if strings.Contains(command, driverBinary) || strings.Contains(command, filepath.Base(driverBinary)) {
 				driverPID = pid
 			}
-			if strings.Contains(command, opencodeBinary) || strings.Contains(command, "opencode-ai") || strings.Contains(command, "/opencode") {
+			if isRemoteOpenCodeProcess(command, opencodeBinary) {
 				opencodePID = pid
 			}
 		}
 		if driverPID > 0 && opencodePID > 0 && driverPID != opencodePID && driverPID != edgePID && opencodePID != edgePID && driverPID != serverPID && opencodePID != serverPID {
-			return 4
+			return map[string]int{
+				"mcp-devbox-server": serverPID,
+				"mcp-edge":          edgePID,
+				"model-turn-driver": driverPID,
+				"opencode-1.18.1":   opencodePID,
+			}
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
@@ -518,7 +532,7 @@ func assertRemoteProcessIsolation(t *testing.T, serverPID, edgePID int, driverBi
 		if strings.Contains(command, driverBinary) || strings.Contains(command, filepath.Base(driverBinary)) {
 			driverObserved = true
 		}
-		if strings.Contains(command, opencodeBinary) || strings.Contains(command, "opencode-ai") || strings.Contains(command, "/opencode") {
+		if isRemoteOpenCodeProcess(command, opencodeBinary) {
 			opencodeObserved = true
 		}
 	}
@@ -532,7 +546,15 @@ func assertRemoteProcessIsolation(t *testing.T, serverPID, edgePID int, driverBi
 	default:
 		t.Fatal("slice_code=remote_isolation_identity")
 	}
-	return 0
+	return nil
+}
+
+func isRemoteOpenCodeProcess(command, opencodeBinary string) bool {
+	fields := strings.Fields(command)
+	if len(fields) == 0 || filepath.Base(fields[0]) == "bwrap" {
+		return false
+	}
+	return strings.Contains(command, opencodeBinary) || strings.Contains(command, "opencode-ai") || strings.Contains(command, "/mcp-opencode")
 }
 
 func remoteProcessDescendants(root int) map[int]string {
@@ -575,6 +597,22 @@ func remoteProcessDescendantsAt(procRoot string, root int) map[int]string {
 		}
 	}
 	return results
+}
+
+func TestRemoteOpenCodeProcessDetectionExcludesBubblewrapParent(t *testing.T) {
+	opencodePath := "/opt/opencode/node_modules/opencode-ai/bin/opencode"
+	bubblewrapCommand := "/usr/bin/bwrap --unshare-all -- /mcp-opencode run --dir /workspace"
+	if isRemoteOpenCodeProcess(bubblewrapCommand, opencodePath) {
+		t.Fatal("Bubblewrap parent was mistaken for OpenCode")
+	}
+	for _, command := range []string{
+		opencodePath + " run --dir /workspace",
+		"/usr/bin/node /mcp-opencode run --dir /workspace",
+	} {
+		if !isRemoteOpenCodeProcess(command, opencodePath) {
+			t.Fatalf("OpenCode process was not detected: %q", command)
+		}
+	}
 }
 
 func TestRemoteProcessDescendantsReadsAllTaskThreads(t *testing.T) {

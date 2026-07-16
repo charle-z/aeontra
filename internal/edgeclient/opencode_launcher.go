@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -33,6 +34,14 @@ const (
 	openCodeDriverSocketName      = "d.sock"
 	openCodeDefaultOutputLimit    = int64(1 << 20)
 	openCodeMaxOutputLimit        = int64(4 << 20)
+	openCodeSandboxWorkspace      = "/workspace"
+	openCodeSandboxRuntime        = "/runtime"
+	openCodeSandboxHome           = "/runtime/home"
+	openCodeSandboxSocket         = "/runtime/d.sock"
+	openCodeSandboxProvider       = "/mcp-provider"
+	openCodeSandboxExecutable     = "/mcp-opencode"
+	openCodeDefaultToolPath       = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	openCodeManagedToolRoot       = "/srv/mcp-devbox-tools"
 )
 
 var (
@@ -50,19 +59,20 @@ type OpenCodeRemoteTransport interface {
 }
 
 type OpenCodeLauncherConfig struct {
-	StateRoot     string
-	SocketRoot    string
-	OpenCodePath  string
-	DriverPath    string
-	ProviderPath  string
-	IntegrityPath string
-	StopPath      string
-	ToolPath      string
-	OutputLimit   int64
-	Heartbeat     time.Duration
-	HTTPClient    *http.Client
-	Workspaces    *WorkspaceRegistry
-	Journal       *OpenCodeRuntimeJournal
+	StateRoot      string
+	SocketRoot     string
+	OpenCodePath   string
+	DriverPath     string
+	ProviderPath   string
+	BubblewrapPath string
+	IntegrityPath  string
+	StopPath       string
+	ToolPath       string
+	OutputLimit    int64
+	Heartbeat      time.Duration
+	HTTPClient     *http.Client
+	Workspaces     *WorkspaceRegistry
+	Journal        *OpenCodeRuntimeJournal
 }
 
 type OpenCodeLaunchResult struct {
@@ -77,6 +87,7 @@ type OpenCodeLauncher struct {
 	config           OpenCodeLauncherConfig
 	remoteFactory    func(ModelRuntimeLease) (OpenCodeRemoteTransport, error)
 	runProcess       func(context.Context, openCodeProcessSpec) openCodeProcessResult
+	verifySandbox    func(context.Context, openCodeProcessSpec) error
 	resolveWorkspace func(string) (string, error)
 	effectiveUID     func() int
 	now              func() time.Time
@@ -90,6 +101,25 @@ type openCodeProcessSpec struct {
 	Env        []string
 	Stdout     io.Writer
 	Stderr     io.Writer
+	Sandbox    openCodeSandboxSpec
+}
+
+type openCodeSandboxMount struct {
+	Source   string
+	Target   string
+	Writable bool
+	Kind     string
+}
+
+type openCodeSandboxSpec struct {
+	UnshareAll       bool
+	ClearEnv         bool
+	NewSession       bool
+	DieWithParent    bool
+	Mounts           []openCodeSandboxMount
+	Environment      map[string]string
+	WorkingDirectory string
+	Command          []string
 }
 
 type openCodeProcessResult struct {
@@ -108,8 +138,9 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 		config.DriverPath = filepath.Clean(strings.TrimSpace(config.DriverPath))
 	}
 	config.ProviderPath = filepath.Clean(strings.TrimSpace(config.ProviderPath))
+	config.BubblewrapPath = filepath.Clean(strings.TrimSpace(config.BubblewrapPath))
 	config.IntegrityPath = filepath.Clean(strings.TrimSpace(config.IntegrityPath))
-	if !filepath.IsAbs(config.StateRoot) || !filepath.IsAbs(config.SocketRoot) || !filepath.IsAbs(config.OpenCodePath) || (config.DriverPath != "" && !filepath.IsAbs(config.DriverPath)) || !filepath.IsAbs(config.ProviderPath) || !filepath.IsAbs(config.IntegrityPath) {
+	if !filepath.IsAbs(config.StateRoot) || !filepath.IsAbs(config.SocketRoot) || !filepath.IsAbs(config.OpenCodePath) || (config.DriverPath != "" && !filepath.IsAbs(config.DriverPath)) || !filepath.IsAbs(config.ProviderPath) || !filepath.IsAbs(config.BubblewrapPath) || !filepath.IsAbs(config.IntegrityPath) {
 		return nil, errors.New("OpenCode launcher paths must be absolute local paths")
 	}
 	if !pathInside(config.StateRoot, config.SocketRoot) {
@@ -126,7 +157,10 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 		return nil, errors.New("OpenCode kill-switch path must be absolute")
 	}
 	if config.ToolPath == "" {
-		config.ToolPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+		config.ToolPath = openCodeDefaultToolPath
+	}
+	if err := validateOpenCodeToolPath(config.ToolPath); err != nil {
+		return nil, err
 	}
 	if config.OutputLimit == 0 {
 		config.OutputLimit = openCodeDefaultOutputLimit
@@ -144,6 +178,7 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 		return nil, errors.New("OpenCode launcher requires local workspace and runtime journals")
 	}
 	launcher := &OpenCodeLauncher{config: config, effectiveUID: os.Geteuid, now: time.Now, runProcess: runOpenCodeProcess}
+	launcher.verifySandbox = launcher.verifyOpenCodeSandbox
 	launcher.resolveWorkspace = config.Workspaces.Resolve
 	launcher.remoteFactory = func(lease ModelRuntimeLease) (OpenCodeRemoteTransport, error) {
 		return NewRemoteEdgeTransport(RemoteEdgeTransportOptions{StateRoot: config.StateRoot, Lease: lease, HTTPClient: config.HTTPClient})
@@ -216,7 +251,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
-	if err := l.verifyLocalInstallation(ctx); err != nil {
+	if err := l.verifyLocalInstallation(ctx, workspace, lease); err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
@@ -426,16 +461,28 @@ func waitExternalDriver(ctx context.Context, cmd *exec.Cmd) error {
 }
 
 func (l *OpenCodeLauncher) processSpec(runtimeDir, workspace, socketPath string, lease ModelRuntimeLease, stdout, stderr io.Writer) (openCodeProcessSpec, error) {
+	if filepath.Clean(socketPath) != filepath.Join(filepath.Clean(runtimeDir), openCodeDriverSocketName) {
+		return openCodeProcessSpec{}, errors.New("OpenCode driver socket escaped the private runtime")
+	}
+	resolvedOpenCode, err := filepath.EvalSymlinks(l.config.OpenCodePath)
+	if err != nil || !filepath.IsAbs(resolvedOpenCode) {
+		return openCodeProcessSpec{}, errors.New("OpenCode executable could not be resolved")
+	}
 	config, err := json.Marshal(map[string]any{
 		"provider": map[string]any{
 			"bridge": map[string]any{
-				"npm":     "file://" + l.config.ProviderPath,
+				"npm":     "file://" + openCodeSandboxProvider,
 				"name":    "MCP Devbox External Driver",
-				"options": map[string]any{"socketPath": socketPath, "runtimeID": lease.RuntimeID, "ttlMs": int64(lease.TimeoutSeconds) * 1000, "timeoutMs": int64(lease.TimeoutSeconds) * 1000},
+				"options": map[string]any{"socketPath": openCodeSandboxSocket, "runtimeID": lease.RuntimeID, "ttlMs": int64(lease.TimeoutSeconds) * 1000, "timeoutMs": int64(lease.TimeoutSeconds) * 1000},
 				"models":  map[string]any{"external-model": map[string]any{"name": "External Model Turn"}},
 			},
 		},
-		"permission": map[string]any{"*": "allow"},
+		"permission": map[string]any{
+			"*":                  "allow",
+			"external_directory": "deny",
+			"webfetch":           "deny",
+			"websearch":          "deny",
+		},
 		"agent":      map[string]any{"title": map[string]any{"disable": true}},
 		"autoupdate": false,
 	})
@@ -456,28 +503,286 @@ func (l *OpenCodeLauncher) processSpec(runtimeDir, workspace, socketPath string,
 		"LC_ALL=C.UTF-8",
 		"TERM=dumb",
 		"SHELL=/bin/sh",
-		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
-		"XDG_DATA_HOME=" + filepath.Join(home, ".local", "share"),
-		"XDG_STATE_HOME=" + filepath.Join(home, ".local", "state"),
-		"XDG_CACHE_HOME=" + filepath.Join(home, ".cache"),
-		"OPENCODE_TEST_HOME=" + home,
-		"OPENCODE_CONFIG_CONTENT=" + string(config),
-		"OPENCODE_AUTH_CONTENT={}",
-		"OPENCODE_DISABLE_PROJECT_CONFIG=1",
-		"OPENCODE_PURE=1",
-		"OPENCODE_DISABLE_AUTOUPDATE=1",
-		"OPENCODE_DISABLE_AUTOCOMPACT=1",
-		"OPENCODE_DISABLE_MODELS_FETCH=1",
-		"OPENCODE_DISABLE_LSP_DOWNLOAD=1",
-		"OPENCODE_DISABLE_DEFAULT_PLUGINS=1",
-		"OPENCODE_DISABLE_EXTERNAL_SKILLS=1",
-		"OPENCODE_DISABLE_SHARE=1",
 	}
-	args := []string{"run", "--auto", "--model", openCodeModelID, "--format", "json", "--dir", workspace, lease.Goal}
-	return openCodeProcessSpec{Executable: l.config.OpenCodePath, Args: args, Dir: workspace, Env: env, Stdout: stdout, Stderr: stderr}, nil
+	args, err := openCodeBubblewrapArgs(resolvedOpenCode, l.config.ProviderPath, runtimeDir, workspace, lease, string(config), l.config.ToolPath)
+	if err != nil {
+		return openCodeProcessSpec{}, err
+	}
+	sandbox, err := parseOpenCodeSandboxArgs(args)
+	if err != nil {
+		return openCodeProcessSpec{}, err
+	}
+	if err := validateOpenCodeSandboxSpec(sandbox, l.config.StateRoot, runtimeDir, workspace, l.config.ProviderPath, resolvedOpenCode, l.config.ToolPath, lease); err != nil {
+		return openCodeProcessSpec{}, err
+	}
+	return openCodeProcessSpec{Executable: l.config.BubblewrapPath, Args: args, Dir: workspace, Env: env, Stdout: stdout, Stderr: stderr, Sandbox: sandbox}, nil
 }
 
-func (l *OpenCodeLauncher) verifyLocalInstallation(ctx context.Context) error {
+func openCodeBubblewrapArgs(openCodePath, providerPath, runtimeDir, workspace string, lease ModelRuntimeLease, configJSON, toolPath string) ([]string, error) {
+	for _, path := range []string{openCodePath, providerPath, runtimeDir, workspace} {
+		if !filepath.IsAbs(path) {
+			return nil, errors.New("OpenCode sandbox path is not absolute")
+		}
+	}
+	mountSources := []string{runtimeDir, workspace, providerPath, openCodePath}
+	for _, toolDir := range filepath.SplitList(toolPath) {
+		if pathInside(openCodeManagedToolRoot, toolDir) {
+			mountSources = append(mountSources, toolDir)
+		}
+	}
+	for left := 0; left < len(mountSources); left++ {
+		for right := left + 1; right < len(mountSources); right++ {
+			if pathInside(mountSources[left], mountSources[right]) || pathInside(mountSources[right], mountSources[left]) {
+				return nil, errors.New("OpenCode sandbox mounts overlap")
+			}
+		}
+	}
+	args := []string{"--die-with-parent", "--new-session", "--unshare-all", "--clearenv"}
+	for _, systemPath := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates"} {
+		if info, err := os.Stat(systemPath); err == nil && info.IsDir() {
+			args = append(args, "--ro-bind", systemPath, systemPath)
+		}
+	}
+	for _, toolDir := range filepath.SplitList(toolPath) {
+		if pathInside(openCodeManagedToolRoot, toolDir) {
+			args = append(args, "--ro-bind", toolDir, toolDir)
+		}
+	}
+	args = append(args,
+		"--proc", "/proc",
+		"--dev", "/dev",
+		"--tmpfs", "/tmp",
+		"--ro-bind", openCodePath, openCodeSandboxExecutable,
+		"--ro-bind", providerPath, openCodeSandboxProvider,
+		"--bind", runtimeDir, openCodeSandboxRuntime,
+		"--bind", workspace, openCodeSandboxWorkspace,
+		"--chdir", openCodeSandboxWorkspace,
+		"--setenv", "PATH", toolPath,
+		"--setenv", "HOME", openCodeSandboxHome,
+		"--setenv", "USER", "mcpedge",
+		"--setenv", "LANG", "C.UTF-8",
+		"--setenv", "LC_ALL", "C.UTF-8",
+		"--setenv", "TERM", "dumb",
+		"--setenv", "SHELL", "/bin/sh",
+		"--setenv", "XDG_CONFIG_HOME", openCodeSandboxHome+"/.config",
+		"--setenv", "XDG_DATA_HOME", openCodeSandboxHome+"/.local/share",
+		"--setenv", "XDG_STATE_HOME", openCodeSandboxHome+"/.local/state",
+		"--setenv", "XDG_CACHE_HOME", openCodeSandboxHome+"/.cache",
+		"--setenv", "OPENCODE_TEST_HOME", openCodeSandboxHome,
+		"--setenv", "OPENCODE_CONFIG_CONTENT", configJSON,
+		"--setenv", "OPENCODE_AUTH_CONTENT", "{}",
+		"--setenv", "OPENCODE_DISABLE_PROJECT_CONFIG", "1",
+		"--setenv", "OPENCODE_PURE", "1",
+		"--setenv", "OPENCODE_DISABLE_AUTOUPDATE", "1",
+		"--setenv", "OPENCODE_DISABLE_AUTOCOMPACT", "1",
+		"--setenv", "OPENCODE_DISABLE_MODELS_FETCH", "1",
+		"--setenv", "OPENCODE_DISABLE_LSP_DOWNLOAD", "1",
+		"--setenv", "OPENCODE_DISABLE_DEFAULT_PLUGINS", "1",
+		"--setenv", "OPENCODE_DISABLE_EXTERNAL_SKILLS", "1",
+		"--setenv", "OPENCODE_DISABLE_SHARE", "1",
+		"--",
+		openCodeSandboxExecutable,
+		"run", "--auto", "--model", openCodeModelID, "--format", "json", "--dir", openCodeSandboxWorkspace, lease.Goal,
+	)
+	return args, nil
+}
+
+func parseOpenCodeSandboxArgs(args []string) (openCodeSandboxSpec, error) {
+	spec := openCodeSandboxSpec{Environment: make(map[string]string)}
+	for index := 0; index < len(args); {
+		switch args[index] {
+		case "--die-with-parent":
+			spec.DieWithParent = true
+			index++
+		case "--new-session":
+			spec.NewSession = true
+			index++
+		case "--unshare-all":
+			spec.UnshareAll = true
+			index++
+		case "--clearenv":
+			spec.ClearEnv = true
+			index++
+		case "--ro-bind", "--bind":
+			if index+2 >= len(args) {
+				return openCodeSandboxSpec{}, errors.New("OpenCode sandbox mount is incomplete")
+			}
+			spec.Mounts = append(spec.Mounts, openCodeSandboxMount{
+				Source: args[index+1], Target: args[index+2],
+				Writable: args[index] == "--bind", Kind: "bind",
+			})
+			index += 3
+		case "--proc", "--dev", "--tmpfs":
+			if index+1 >= len(args) {
+				return openCodeSandboxSpec{}, errors.New("OpenCode sandbox virtual mount is incomplete")
+			}
+			spec.Mounts = append(spec.Mounts, openCodeSandboxMount{
+				Target: args[index+1], Writable: true, Kind: strings.TrimPrefix(args[index], "--"),
+			})
+			index += 2
+		case "--chdir":
+			if index+1 >= len(args) {
+				return openCodeSandboxSpec{}, errors.New("OpenCode sandbox working directory is missing")
+			}
+			spec.WorkingDirectory = args[index+1]
+			index += 2
+		case "--setenv":
+			if index+2 >= len(args) {
+				return openCodeSandboxSpec{}, errors.New("OpenCode sandbox environment is incomplete")
+			}
+			if _, duplicate := spec.Environment[args[index+1]]; duplicate {
+				return openCodeSandboxSpec{}, errors.New("OpenCode sandbox environment contains duplicate keys")
+			}
+			spec.Environment[args[index+1]] = args[index+2]
+			index += 3
+		case "--":
+			spec.Command = append([]string(nil), args[index+1:]...)
+			index = len(args)
+		default:
+			return openCodeSandboxSpec{}, errors.New("OpenCode sandbox contains an unsupported Bubblewrap argument")
+		}
+	}
+	return spec, nil
+}
+
+func validateOpenCodeSandboxSpec(spec openCodeSandboxSpec, stateRoot, runtimeDir, workspace, providerPath, openCodePath, toolPath string, lease ModelRuntimeLease) error {
+	if !spec.DieWithParent || !spec.NewSession || !spec.UnshareAll || !spec.ClearEnv {
+		return errors.New("OpenCode sandbox isolation flags are incomplete")
+	}
+	expectedCommand := []string{openCodeSandboxExecutable, "run", "--auto", "--model", openCodeModelID, "--format", "json", "--dir", openCodeSandboxWorkspace, lease.Goal}
+	if spec.WorkingDirectory != openCodeSandboxWorkspace || !slices.Equal(spec.Command, expectedCommand) {
+		return errors.New("OpenCode sandbox command is invalid")
+	}
+	requiredEnv := map[string]string{
+		"PATH": toolPath, "HOME": openCodeSandboxHome, "USER": "mcpedge",
+		"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TERM": "dumb", "SHELL": "/bin/sh",
+		"XDG_CONFIG_HOME":                  openCodeSandboxHome + "/.config",
+		"XDG_DATA_HOME":                    openCodeSandboxHome + "/.local/share",
+		"XDG_STATE_HOME":                   openCodeSandboxHome + "/.local/state",
+		"XDG_CACHE_HOME":                   openCodeSandboxHome + "/.cache",
+		"OPENCODE_TEST_HOME":               openCodeSandboxHome,
+		"OPENCODE_AUTH_CONTENT":            "{}",
+		"OPENCODE_DISABLE_PROJECT_CONFIG":  "1",
+		"OPENCODE_PURE":                    "1",
+		"OPENCODE_DISABLE_AUTOUPDATE":      "1",
+		"OPENCODE_DISABLE_AUTOCOMPACT":     "1",
+		"OPENCODE_DISABLE_MODELS_FETCH":    "1",
+		"OPENCODE_DISABLE_LSP_DOWNLOAD":    "1",
+		"OPENCODE_DISABLE_DEFAULT_PLUGINS": "1",
+		"OPENCODE_DISABLE_EXTERNAL_SKILLS": "1",
+		"OPENCODE_DISABLE_SHARE":           "1",
+	}
+	for key, value := range requiredEnv {
+		if spec.Environment[key] != value {
+			return errors.New("OpenCode sandbox clean environment is incomplete")
+		}
+	}
+	if len(spec.Environment) != len(requiredEnv)+1 {
+		return errors.New("OpenCode sandbox environment contains unexpected values")
+	}
+	if err := validateOpenCodeSandboxConfig(spec.Environment["OPENCODE_CONFIG_CONTENT"], lease); err != nil {
+		return err
+	}
+	mounts := make(map[string]openCodeSandboxMount)
+	for _, mount := range spec.Mounts {
+		if mount.Target == "" {
+			return errors.New("OpenCode sandbox mount target is empty")
+		}
+		if _, duplicate := mounts[mount.Target]; duplicate {
+			return errors.New("OpenCode sandbox mount target is duplicated")
+		}
+		mounts[mount.Target] = mount
+		for _, forbidden := range []string{"/var/run/docker.sock", "/run/docker.sock", "/mnt/c", "/mnt/d", "/root"} {
+			if mount.Target == forbidden || mount.Source == forbidden || pathInside(forbidden, mount.Target) || pathInside(forbidden, mount.Source) {
+				return errors.New("OpenCode sandbox exposes a forbidden host path")
+			}
+		}
+	}
+	requiredMounts := map[string]openCodeSandboxMount{
+		openCodeSandboxWorkspace:  {Source: workspace, Target: openCodeSandboxWorkspace, Writable: true, Kind: "bind"},
+		openCodeSandboxRuntime:    {Source: runtimeDir, Target: openCodeSandboxRuntime, Writable: true, Kind: "bind"},
+		openCodeSandboxProvider:   {Source: providerPath, Target: openCodeSandboxProvider, Writable: false, Kind: "bind"},
+		openCodeSandboxExecutable: {Source: openCodePath, Target: openCodeSandboxExecutable, Writable: false, Kind: "bind"},
+		"/proc":                   {Target: "/proc", Writable: true, Kind: "proc"},
+		"/dev":                    {Target: "/dev", Writable: true, Kind: "dev"},
+		"/tmp":                    {Target: "/tmp", Writable: true, Kind: "tmpfs"},
+	}
+	for target, expected := range requiredMounts {
+		if mounts[target] != expected {
+			return errors.New("OpenCode sandbox required mount is missing or has wrong permissions")
+		}
+	}
+	for _, mount := range spec.Mounts {
+		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && mount.Source != runtimeDir) {
+			return errors.New("OpenCode sandbox exposes private Edge state")
+		}
+		if mount.Target != openCodeSandboxWorkspace && mount.Target != openCodeSandboxRuntime && mount.Writable && mount.Kind == "bind" {
+			return errors.New("OpenCode sandbox exposes an unexpected writable bind mount")
+		}
+	}
+	return nil
+}
+
+func validateOpenCodeSandboxConfig(configJSON string, lease ModelRuntimeLease) error {
+	var root map[string]any
+	if err := json.Unmarshal([]byte(configJSON), &root); err != nil || !hasExactJSONKeys(root, "provider", "permission", "agent", "autoupdate") {
+		return errors.New("OpenCode sandbox configuration is invalid")
+	}
+	provider, ok := root["provider"].(map[string]any)
+	if !ok || !hasExactJSONKeys(provider, "bridge") {
+		return errors.New("OpenCode sandbox provider configuration is unsafe")
+	}
+	bridge, ok := provider["bridge"].(map[string]any)
+	if !ok || !hasExactJSONKeys(bridge, "npm", "name", "options", "models") || bridge["npm"] != "file:///mcp-provider" || bridge["name"] != "MCP Devbox External Driver" {
+		return errors.New("OpenCode sandbox provider configuration is unsafe")
+	}
+	options, ok := bridge["options"].(map[string]any)
+	if !ok || !hasExactJSONKeys(options, "socketPath", "runtimeID", "ttlMs", "timeoutMs") || options["socketPath"] != openCodeSandboxSocket {
+		return errors.New("OpenCode sandbox provider options are unsafe")
+	}
+	runtimeID, runtimeOK := options["runtimeID"].(string)
+	ttl, ttlOK := options["ttlMs"].(float64)
+	timeout, timeoutOK := options["timeoutMs"].(float64)
+	if !runtimeOK || runtimeID != lease.RuntimeID || !ttlOK || !timeoutOK || ttl != float64(lease.TimeoutSeconds)*1000 || timeout != ttl {
+		return errors.New("OpenCode sandbox provider options are invalid")
+	}
+	models, ok := bridge["models"].(map[string]any)
+	if !ok || !hasExactJSONKeys(models, "external-model") {
+		return errors.New("OpenCode sandbox model configuration is unsafe")
+	}
+	model, ok := models["external-model"].(map[string]any)
+	if !ok || !hasExactJSONKeys(model, "name") || model["name"] != "External Model Turn" {
+		return errors.New("OpenCode sandbox model configuration is unsafe")
+	}
+	permission, ok := root["permission"].(map[string]any)
+	if !ok || !hasExactJSONKeys(permission, "*", "external_directory", "webfetch", "websearch") ||
+		permission["*"] != "allow" || permission["external_directory"] != "deny" || permission["webfetch"] != "deny" || permission["websearch"] != "deny" {
+		return errors.New("OpenCode sandbox permissions are unsafe")
+	}
+	agent, ok := root["agent"].(map[string]any)
+	if !ok || !hasExactJSONKeys(agent, "title") {
+		return errors.New("OpenCode sandbox agent configuration is unsafe")
+	}
+	title, ok := agent["title"].(map[string]any)
+	if !ok || !hasExactJSONKeys(title, "disable") || title["disable"] != true || root["autoupdate"] != false {
+		return errors.New("OpenCode sandbox agent configuration is unsafe")
+	}
+	return nil
+}
+
+func hasExactJSONKeys(value map[string]any, expected ...string) bool {
+	if len(value) != len(expected) {
+		return false
+	}
+	for _, key := range expected {
+		if _, ok := value[key]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func (l *OpenCodeLauncher) verifyLocalInstallation(ctx context.Context, workspace string, lease ModelRuntimeLease) error {
 	resolved, err := filepath.EvalSymlinks(l.config.OpenCodePath)
 	if err != nil {
 		return errors.New("pinned OpenCode executable is unavailable")
@@ -492,20 +797,56 @@ func (l *OpenCodeLauncher) verifyLocalInstallation(ctx context.Context) error {
 			return errors.New("model-turn driver executable is unsafe")
 		}
 	}
+	bubblewrapInfo, err := os.Lstat(l.config.BubblewrapPath)
+	if err != nil || !bubblewrapInfo.Mode().IsRegular() || bubblewrapInfo.Mode()&os.ModeSymlink != 0 || bubblewrapInfo.Mode().Perm()&0o111 == 0 || bubblewrapInfo.Mode().Perm()&0o022 != 0 {
+		return errors.New("bubblewrap executable is unsafe")
+	}
 	if err := verifyOpenCodeLock(l.config.IntegrityPath); err != nil {
 		return err
 	}
 	if err := verifyProviderPackage(l.config.ProviderPath); err != nil {
 		return err
 	}
-	versionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	verifyRuntime, err := os.MkdirTemp(l.config.SocketRoot, "verify-")
+	if err != nil {
+		return errors.New("bubblewrap verification runtime could not be created")
+	}
+	defer removePrivateRuntimeDir(verifyRuntime, l.config.SocketRoot)
+	if err := os.Chmod(verifyRuntime, 0o700); err != nil {
+		return errors.New("bubblewrap verification runtime is unsafe")
+	}
+	spec, err := l.processSpec(verifyRuntime, workspace, filepath.Join(verifyRuntime, openCodeDriverSocketName), lease, io.Discard, io.Discard)
+	if err != nil {
+		return err
+	}
+	if l.verifySandbox == nil {
+		return errors.New("bubblewrap verification is unavailable")
+	}
+	return l.verifySandbox(ctx, spec)
+}
+
+func (l *OpenCodeLauncher) verifyOpenCodeSandbox(ctx context.Context, spec openCodeProcessSpec) error {
+	separator := -1
+	for index, arg := range spec.Args {
+		if arg == "--" {
+			separator = index
+			break
+		}
+	}
+	if separator < 0 {
+		return errors.New("bubblewrap command separator is missing")
+	}
+	versionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	output := newBoundedCapture(4096)
-	cmd := exec.CommandContext(versionCtx, l.config.OpenCodePath, "--version")
-	cmd.Env = []string{"PATH=" + l.config.ToolPath, "HOME=" + l.config.StateRoot, "OPENCODE_DISABLE_AUTOUPDATE=1", "OPENCODE_DISABLE_MODELS_FETCH=1"}
-	cmd.Stdout = output
-	cmd.Stderr = io.Discard
-	if err := cmd.Run(); err != nil || output.Truncated() || strings.TrimSpace(output.String()) != PinnedOpenCodeVersion {
+	spec.Args = append(append([]string(nil), spec.Args[:separator+1]...), openCodeSandboxExecutable, "--version")
+	spec.Stdout = output
+	spec.Stderr = io.Discard
+	result := runOpenCodeProcess(versionCtx, spec)
+	if result.Err != nil || result.ExitCode != 0 {
+		return errors.New("bubblewrap could not create the required OpenCode sandbox")
+	}
+	if output.Truncated() || strings.TrimSpace(output.String()) != PinnedOpenCodeVersion {
 		return errors.New("OpenCode version does not match the pinned release")
 	}
 	return nil
@@ -662,6 +1003,42 @@ func waitForPrivateDriverSocket(ctx context.Context, path string, uid int) error
 func ownedByUID(info os.FileInfo, uid int) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	return ok && int(stat.Uid) == uid
+}
+
+func validateOpenCodeToolPath(value string) error {
+	allowedSystem := map[string]struct{}{
+		"/usr/local/sbin": {}, "/usr/local/bin": {}, "/usr/sbin": {},
+		"/usr/bin": {}, "/sbin": {}, "/bin": {},
+	}
+	seen := make(map[string]struct{})
+	parts := filepath.SplitList(value)
+	if len(parts) == 0 {
+		return errors.New("OpenCode tool path is empty")
+	}
+	for _, part := range parts {
+		clean := filepath.Clean(strings.TrimSpace(part))
+		if clean == "." || !filepath.IsAbs(clean) {
+			return errors.New("OpenCode tool path must contain only absolute local directories")
+		}
+		if _, duplicate := seen[clean]; duplicate {
+			return errors.New("OpenCode tool path contains duplicate directories")
+		}
+		seen[clean] = struct{}{}
+		if _, ok := allowedSystem[clean]; ok {
+			continue
+		}
+		if !pathInside(openCodeManagedToolRoot, clean) {
+			return errors.New("OpenCode tool path is outside the local managed allowlist")
+		}
+		if err := rejectSymlinkPath(clean); err != nil {
+			return errors.New("OpenCode managed tool path is unsafe")
+		}
+		info, err := os.Lstat(clean)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
+			return errors.New("OpenCode managed tool path is unavailable or writable")
+		}
+	}
+	return nil
 }
 
 func pathInside(root, candidate string) bool {

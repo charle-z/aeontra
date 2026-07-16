@@ -43,6 +43,7 @@ jobs:
           set -e
           if [ "$status" -eq 0 ]; then
             test -s artifacts/opencode-remote-e2e-report.json
+            test -s artifacts/opencode-bubblewrap-isolation-report.json
             test -s artifacts/p11-2-release-candidate-report.json
           fi
           exit "$status"
@@ -85,6 +86,9 @@ jobs:
           assert report["tool_names"] == ["read", "grep", "edit", "bash"]
           assert report["process_isolation_verified"] is True
           assert report["distinct_process_count"] == 4
+          assert set(report["process_pids"]) == set(report["processes"])
+          assert all(pid > 0 for pid in report["process_pids"].values())
+          assert len(set(report["process_pids"].values())) == 4
           assert report["authoritative_sqlite_shared"] is False
           assert report["retries"] == 0
           assert report["duplicate_turns"] == 0
@@ -98,6 +102,36 @@ jobs:
           assert report["edge_authoritative_tables_present"] is False
           assert report["large_request_referenced"] is True
           print(json.dumps(report, separators=(",", ":"), sort_keys=True))
+          PY
+
+      - name: Verify Bubblewrap isolation report
+        run: |
+          test -s artifacts/opencode-bubblewrap-isolation-report.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("artifacts/opencode-bubblewrap-isolation-report.json").read_text())
+          assert report["schema_version"] == 1
+          assert report["bubblewrap_version"]
+          assert report["opencode_version"] == "1.18.1"
+          assert report["provider_package"] == "@mcp-devbox/opencode-external-driver"
+          assert report["network_namespace_unshared"] is True
+          assert report["external_connect_blocked"] is True
+          assert report["external_dns_blocked"] is True
+          assert report["workspace_writable"] is True
+          assert report["runtime_writable"] is True
+          assert report["provider_read_only"] is True
+          assert report["edge_state_visible"] is False
+          assert report["host_home_visible"] is False
+          assert report["docker_socket_visible"] is False
+          assert report["wsl_windows_mounts_visible"] is False
+          assert report["unix_socket_reachable"] is True
+          assert report["user_namespace_active"] is True
+          assert report["runtime_mode"] == "0700"
+          assert report["socket_mode"] == "0600"
+          assert report["bubblewrap_startup_median_nanos"] > 0
+          assert len(report["bubblewrap_startup_samples_nanos"]) == 5
           PY
 
       - name: Upload E2E log
@@ -122,6 +156,10 @@ jobs:
           assert len(report["git"]["tree"]) == 40
           assert len(report["git"]["commit"]) == 40
           assert report["versions"]["opencode"] == "1.18.1"
+          assert report["versions"]["bubblewrap"]
+          assert report["bubblewrap_isolation"]["edge_state_visible"] is False
+          assert report["bubblewrap_isolation"]["host_home_visible"] is False
+          assert report["bubblewrap_isolation"]["external_connect_blocked"] is True
           assert report["benchmark_a_local_rendezvous"]["model_turns"] == 4
           assert report["benchmark_b_remote_relay"]["model_turns"] == 4
           assert report["benchmark_c_restart_resume"]["model_turns"] == 4
@@ -137,6 +175,7 @@ jobs:
           path: |
             artifacts/opencode-remote-e2e-report.json
             artifacts/opencode-e2e-report.json
+            artifacts/opencode-bubblewrap-isolation-report.json
             artifacts/p11-2-release-candidate-report.json
           if-no-files-found: ignore
           retention-days: 30

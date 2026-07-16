@@ -16,6 +16,7 @@ func TestZZP112ReleaseCandidateReport(t *testing.T) {
 	root := repoRoot(t)
 	direct := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-e2e-report.json"))
 	remote := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-remote-e2e-report.json"))
+	isolation := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-bubblewrap-isolation-report.json"))
 
 	for _, key := range []string{"runtime_id", "workspace_id", "authoritative_store", "edge_state"} {
 		delete(remote, key)
@@ -36,6 +37,7 @@ func TestZZP112ReleaseCandidateReport(t *testing.T) {
 		"versions": map[string]any{
 			"go":              runtime.Version(),
 			"opencode":        direct["opencode_version"],
+			"bubblewrap":      isolation["bubblewrap_version"],
 			"relay_protocol":  "mcp-devbox.model-turn.v1",
 			"driver_protocol": modelTurnDriverProtocolVersionForReport(),
 		},
@@ -48,6 +50,7 @@ func TestZZP112ReleaseCandidateReport(t *testing.T) {
 		"benchmark_c_restart_resume":   direct["restart_resume"],
 		"network":                      direct["network"],
 		"security":                     direct["security"],
+		"bubblewrap_isolation":         isolation,
 		"security_matrix": map[string]any{
 			"artifact": "p11-2-restart-resume-matrix.json",
 			"passed":   true,
