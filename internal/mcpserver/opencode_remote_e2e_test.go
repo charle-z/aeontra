@@ -35,14 +35,33 @@ type remoteWireMeter struct {
 	requestBytes  int64
 	responseBytes int64
 	paths         map[string]int64
+	createStatus  int
+	createCode    string
 }
 
 type remoteCountingWriter struct {
 	http.ResponseWriter
-	meter *remoteWireMeter
+	meter  *remoteWireMeter
+	path   string
+	status int
+	body   bytes.Buffer
 }
 
-func (w remoteCountingWriter) Write(payload []byte) (int, error) {
+func (w *remoteCountingWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *remoteCountingWriter) Write(payload []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	if w.body.Len() < 512 {
+		limit := min(len(payload), 512-w.body.Len())
+		_, _ = w.body.Write(payload[:limit])
+	}
 	written, err := w.ResponseWriter.Write(payload)
 	w.meter.mu.Lock()
 	w.meter.responseBytes += int64(written)
@@ -59,7 +78,14 @@ func (m *remoteWireMeter) Handler(next http.Handler) http.Handler {
 			m.requestBytes += request.ContentLength
 		}
 		m.mu.Unlock()
-		next.ServeHTTP(remoteCountingWriter{ResponseWriter: writer, meter: m}, request)
+		counting := &remoteCountingWriter{ResponseWriter: writer, meter: m, path: request.URL.Path}
+		next.ServeHTTP(counting, request)
+		if strings.HasSuffix(request.URL.Path, "/turns") {
+			m.mu.Lock()
+			m.createStatus = counting.status
+			m.createCode = safeTurnCreateResponseCode(counting.status, counting.body.String())
+			m.mu.Unlock()
+		}
 	})
 }
 
@@ -70,6 +96,8 @@ func (m *remoteWireMeter) Reset() {
 	m.requestBytes = 0
 	m.responseBytes = 0
 	m.paths = make(map[string]int64)
+	m.createStatus = 0
+	m.createCode = ""
 }
 
 func (m *remoteWireMeter) Snapshot() (int64, int64, int64, map[string]int64) {
@@ -80,6 +108,39 @@ func (m *remoteWireMeter) Snapshot() (int64, int64, int64, map[string]int64) {
 		paths[path] = count
 	}
 	return m.calls, m.requestBytes, m.responseBytes, paths
+}
+
+func (m *remoteWireMeter) CreateDiagnostic() (int, string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.createStatus, m.createCode
+}
+
+func safeTurnCreateResponseCode(status int, body string) string {
+	switch {
+	case strings.Contains(body, "runtime is not ready for model turns"):
+		return "turn_create_runtime_state"
+	case strings.Contains(body, "turn request is invalid"):
+		return "turn_create_request_shape"
+	case strings.Contains(body, "turn digest is invalid"):
+		return "turn_create_request_digest"
+	case strings.Contains(body, "turn create conflict"), strings.Contains(body, "turn sequence conflict"), strings.Contains(body, "turn create receipt unavailable"), strings.Contains(body, "turn create receipt conflict"):
+		return "turn_create_conflict"
+	case strings.Contains(body, "turn request body rejected"):
+		return "turn_create_authoritative_stage"
+	case strings.Contains(body, "turn creation rejected"):
+		return "turn_create_store_rejected"
+	case strings.Contains(body, "turn create receipt rejected"):
+		return "turn_create_receipt_rejected"
+	case status == http.StatusRequestEntityTooLarge:
+		return "turn_create_body_limit"
+	case status == http.StatusBadRequest:
+		return "turn_create_bad_request"
+	case status == http.StatusConflict:
+		return "turn_create_conflict"
+	default:
+		return "turn_create_http_other"
+	}
 }
 
 type remoteDistributedReport struct {
@@ -438,6 +499,10 @@ func classifyRemoteTurnCreateFailure(t *testing.T, wire *remoteWireMeter, turns 
 		return "turn_create_diagnostic"
 	}
 	if stats.TurnCount == 0 {
+		_, code := wire.CreateDiagnostic()
+		if code != "" {
+			return code
+		}
 		return "turn_create_authoritative_rejected"
 	}
 	db, err := sql.Open("sqlite", filepath.Join(edgeState, "model-relay.db"))
@@ -646,4 +711,4 @@ func directoryBytes(t *testing.T, root string) int64 {
 	return total
 }
 
-var _ io.Writer = remoteCountingWriter{}
+var _ io.Writer = (*remoteCountingWriter)(nil)
