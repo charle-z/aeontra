@@ -6,6 +6,7 @@ import { createMCPDevboxModelBridge, __test } from "./index.js";
 const runtimeID = "mr_11111111111111111111111111111111";
 const turnID = "mt_22222222222222222222222222222222";
 const requestRef = "mb_33333333333333333333333333333333";
+const localRequestRef = "lr_44444444444444444444444444444444";
 
 function modelOptions(text = "inspect the repository") {
   return {
@@ -27,7 +28,7 @@ function fakeDriver(responseFactory, options = {}) {
     }
     if (request.method === "POST" && request.path === "/v1/request-bodies") {
       const bytes = Buffer.byteLength(request.rawBody);
-      return { request_ref: requestRef, request_digest: request.headers["X-MCP-Request-Digest"], content_bytes: bytes, expires_at: new Date(Date.now() + 60_000).toISOString() };
+      return { request_ref: options.requestRef ?? requestRef, request_digest: request.headers["X-MCP-Request-Digest"], content_bytes: bytes, expires_at: new Date(Date.now() + 60_000).toISOString() };
     }
     if (request.method === "POST" && request.path === "/v1/turns") {
       created = request.jsonBody;
@@ -101,6 +102,16 @@ test("large request uses immutable request_ref contract instead of payload_json"
   assert.equal(driver.created.request_ref, requestRef);
   assert.equal(driver.created.payload, undefined);
   assert.equal(JSON.stringify(driver.created).includes("payload_json"), false);
+});
+
+test("large request accepts only authoritative or private local request_ref prefixes", async () => {
+  const local = fakeDriver(() => ({ text: "local accepted", tool_calls: [], finish_reason: "stop" }), { requestRef: localRequestRef });
+  await createModel(local).doGenerate(modelOptions("x".repeat(__test.INLINE_REQUEST_BYTES + 4096)));
+  assert.equal(local.created.request_ref, localRequestRef);
+
+  const invalid = fakeDriver(() => ({ text: "unreachable", tool_calls: [], finish_reason: "stop" }), { requestRef: "xx_55555555555555555555555555555555" });
+  await assert.rejects(() => createModel(invalid).doGenerate(modelOptions("x".repeat(__test.INLINE_REQUEST_BYTES + 4096))), /request reference is invalid/);
+  assert.equal(invalid.calls.some((call) => call.path === "/v1/turns"), false);
 });
 
 test("same offered tool may be called more than once with distinct call_id", async () => {

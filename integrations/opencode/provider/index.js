@@ -11,7 +11,7 @@ const MAX_TOOL_CALLS = 64;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const RUNTIME_PATTERN = /^mr_[a-f0-9]{32}$/;
 const TURN_PATTERN = /^mt_[a-f0-9]{32}$/;
-const REF_PATTERN = /^mb_[a-f0-9]{32}$/;
+const REF_PATTERN = /^(?:mb|lr)_[a-f0-9]{32}$/;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const RETRYABLE_SOCKET_CODES = new Set(["ENOENT", "ECONNREFUSED", "ECONNRESET", "EPIPE"]);
 
