@@ -75,11 +75,8 @@ func translateRelayContainerSpec(spec openCodeProcessSpec) (openCodeProcessSpec,
 	for key, value := range spec.Sandbox.Environment {
 		translatedValue := translate(value)
 		if key == "OPENCODE_CONFIG_CONTENT" {
-			for _, mount := range mounts {
-				translatedValue = strings.ReplaceAll(translatedValue, mount.Target, mount.Source)
-			}
 			var configErr error
-			translatedValue, configErr = relayContainerConfig(translatedValue)
+			translatedValue, configErr = relayContainerConfig(translatedValue, translate)
 			if configErr != nil {
 				return openCodeProcessSpec{}, configErr
 			}
@@ -97,11 +94,33 @@ func translateRelayContainerSpec(spec openCodeProcessSpec) (openCodeProcessSpec,
 	}, nil
 }
 
-func relayContainerConfig(value string) (string, error) {
+func relayContainerConfig(value string, translate func(string) string) (string, error) {
 	var config map[string]any
 	if err := json.Unmarshal([]byte(value), &config); err != nil {
 		return "", errors.New("relay container OpenCode configuration is invalid")
 	}
+	provider, ok := config["provider"].(map[string]any)
+	if !ok {
+		return "", errors.New("relay container OpenCode provider configuration is invalid")
+	}
+	bridge, ok := provider["bridge"].(map[string]any)
+	if !ok {
+		return "", errors.New("relay container OpenCode bridge configuration is invalid")
+	}
+	npm, ok := bridge["npm"].(string)
+	if !ok || !strings.HasPrefix(npm, "file://") {
+		return "", errors.New("relay container OpenCode provider location is invalid")
+	}
+	bridge["npm"] = "file://" + translate(strings.TrimPrefix(npm, "file://"))
+	options, ok := bridge["options"].(map[string]any)
+	if !ok {
+		return "", errors.New("relay container OpenCode provider options are invalid")
+	}
+	socketPath, ok := options["socketPath"].(string)
+	if !ok {
+		return "", errors.New("relay container OpenCode socket location is invalid")
+	}
+	options["socketPath"] = translate(socketPath)
 	permission, ok := config["permission"].(map[string]any)
 	if !ok {
 		return "", errors.New("relay container OpenCode permissions are invalid")

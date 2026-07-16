@@ -2,8 +2,8 @@
 
 Date: 2026-07-16
 Branch: `p11-2-remote-opencode-relay`
-Published validation SHA: `8051064a55d94a5d4e2bb8daa4d1c8248dc82e35`
-Published validation tree: `91530f66205ec30a9540cb54b9a1b160d0201714`
+Published validation SHA: `06340da7d7f0c5e21d9f3218306c49f94b5b760f`
+Published validation tree: `20638a3ac204a02a3f44536ad64478ee4194a377`
 Upstream: `origin/p11-2-remote-opencode-relay`
 Base `origin/main`: `01fde5067752ab1c43424d2d54f9afd914617ba5`
 Draft PR: `https://github.com/charle-z/mcp-devbox/pull/13`
@@ -13,35 +13,34 @@ Draft PR: `https://github.com/charle-z/mcp-devbox/pull/13`
 - P8.1 Console 2.0 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`.
 - P9 Brain is deployed; P11.2 does not alter either deployed release.
 
-## First remote validation result
+## Second remote validation result
 
-Run `29535155313` proved the host architecture on Ubuntu 22.04:
+E2E run `29536609450` failed only in the unprivileged Docker relay. The host Bubblewrap job was correctly skipped because it depends on relay evidence. The safe failure remained `opencode_provider`.
 
-- Bubblewrap incremental preflight passed;
-- Bubblewrap real isolation passed;
-- combined remote relay under host Bubblewrap completed four turns/tools, distinct server/Edge/driver/OpenCode PIDs, request_ref, repository modification, tests and zero duplicates.
+The exact root cause is now demonstrated: the test-only adapter translated provider JSON by sequential global replacement. It converted `/mcp-provider` to `/workspace/integrations/opencode/provider`, then translated the newly inserted `/workspace` prefix again to the temporary runtime workspace. OpenCode therefore received a nonexistent provider path. This was a harness-only path translation defect, not a Bubblewrap or product failure.
 
-The host job failed only because it also invoked the network-none local benchmark on a host with a default route. The Docker job completed the local benchmarks but its test-only relay adapter failed before the first turn with `opencode_provider`.
+## Pending third validation tree
 
-## Pending second validation tree
+The working tree now:
 
-Corrections now in the working tree:
+- parses `OPENCODE_CONFIG_CONTENT` structurally;
+- translates the provider npm path and driver socket path exactly once;
+- preserves `webfetch` and `websearch` deny;
+- keeps `external_directory` allow only in the test-tagged Docker adapter;
+- adds a regression that detects the exact double-translation failure;
+- adds `docs/install-opencode-edge-parrot.md` with Parrot WSL2, systemd, dedicated user, Bubblewrap preflight, pinned OpenCode/provider integrity, registry, pairing, service, heartbeat, modes, cancellation, kill switch, revocation, update, rollback and uninstall.
 
-- Docker relay and host combined reports use different filenames and explicit modes;
-- all direct, relay, combined and isolation reports carry `git_tree`;
-- host job depends on Docker, downloads fresh relay evidence from the same workflow and rejects tree mismatches;
-- host combined step no longer invokes the Docker-only no-default-route benchmark;
-- release candidate references relay, combined and isolation reports separately;
-- Docker test-only adapter opens only `external_directory` after translating the virtual provider mount to a host path; production and host Bubblewrap remain deny, while Docker remains network-none/read-only with webfetch/websearch denied.
+Production and host Bubblewrap code are unchanged by this correction.
 
-Local gates green after the correction:
+Local gates green before the next commit:
 
 - `go test -p 1 ./... -count=1`;
 - `go test -tags=opencode_e2e -p 1 ./... -count=1`;
+- regression repeated ten times;
 - Actionlint v1.7.12;
 - `git diff --check`.
 
-Next action: commit and publish this bounded CI correction, observe the new E2E run, then use only green report metrics for Parrot documentation and the P11.2 baseline.
+Next action: commit and publish the structured translation correction plus Parrot guide, observe the new E2E run, and extract metrics only from green artifacts.
 
 ## Boundaries
 

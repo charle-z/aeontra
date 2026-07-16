@@ -5,11 +5,11 @@
 3. [done] Add incremental host preflight.
 4. [done] Split unprivileged Docker relay from authoritative host Bubblewrap/combined E2E.
 5. [done] Remove nested Docker capability/AppArmor/seccomp bypasses and retain fail-closed coverage.
-6. [active] Publish the bounded correction after run `29535155313`: separate relay/combined artifacts, enforce identical report trees, remove the Docker-only benchmark from host, and adapt only the test-tagged translated provider boundary.
-7. [pending] Obtain green relay container, host Bubblewrap and combined sandbox reports; extract metrics from those artifacts.
-8. [pending] Add `docs/install-opencode-edge-parrot.md` and the dated P11.2 baseline/benchmark from green evidence.
-9. [pending] Run final local/remote gates on one exact tree, publish `Step 8: isolate OpenCode runtime with Bubblewrap`, update PR #13 and mark ready only after every mandatory check is completed and green.
+6. [done] Prove host Bubblewrap preflight, isolation and combined OpenCode relay on Ubuntu 22.04.
+7. [active] Publish the structured JSON path-translation fix for the Docker-only adapter and validate all three report modes on one tree.
+8. [pending] Extract green A/B/C and Bubblewrap startup metrics; create the dated P11.2 baseline.
+9. [pending] Run the complete final local/remote gate matrix, publish `Step 8: isolate OpenCode runtime with Bubblewrap`, update PR #13 and mark it ready only after every mandatory check is completed and green.
 
-Current corrected tree passes standard/tagged full tests, Actionlint and diff check. Do not wait indefinitely on CI; inspect exact jobs and checkpoint demonstrated failures.
+The current pending tree includes the Parrot WSL2 installation guide and passes standard/tagged full tests, the focused regression, Actionlint and diff check.
 
 Hard boundaries: no merge, deployment, pairing, real Parrot installation, tag, Coolify changes, frontend, Goal Runtime, Build Workcell, HTB/THM/VPN or broad historical CodeQL cleanup.
