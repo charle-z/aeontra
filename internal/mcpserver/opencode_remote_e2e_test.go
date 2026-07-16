@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"encoding/pem"
@@ -120,6 +121,23 @@ type remoteDistributedReport struct {
 	LargeRequestReferenced    bool             `json:"large_request_referenced"`
 }
 
+func remoteFixtureDigest(t *testing.T, workspace string) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(workspace, "calc", "calc.go"))
+	if err != nil {
+		t.Fatal("remote fixture digest failed")
+	}
+	digest := sha256.Sum256(body)
+	return fmt.Sprintf("sha256:%x", digest[:])
+}
+
+func remoteToolWorkspace(reportMode, fixtureWorkspace string) string {
+	if reportMode == "relay_container_e2e" {
+		return fixtureWorkspace
+	}
+	return "/workspace"
+}
+
 func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if os.Getenv("OPENCODE_E2E") != "1" {
 		t.Skip("remote OpenCode E2E is explicit")
@@ -177,6 +195,8 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspacePath := createCalcRepo(t, "remote-distributed")
+	beforeDigest := remoteFixtureDigest(t, workspacePath)
+	modelWorkspace := remoteToolWorkspace(reportMode, workspacePath)
 	registry, err := edgeclient.OpenWorkspaceRegistry(edgeState)
 	if err != nil {
 		t.Fatal(err)
@@ -309,10 +329,22 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		if sequence > 1 && !containsToolResult(payload, fmt.Sprintf("turn-%d", sequence-1)) {
 			t.Fatalf("turn %d omitted prior tool result", sequence)
 		}
-		for callID, name := range remoteExecutedToolResults(payload) {
-			executedCalls[callID] = name
+		toolResults := remoteExecutedToolResults(payload)
+		callIDs := make([]string, 0, len(toolResults))
+		for callID := range toolResults {
+			if _, duplicate := executedCalls[callID]; !duplicate {
+				callIDs = append(callIDs, callID)
+			}
 		}
-		response, err := scriptedResponse(sequence, payload, "/workspace")
+		sort.Strings(callIDs)
+		for _, callID := range callIDs {
+			result := toolResults[callID]
+			if result.State != "completed" {
+				t.Fatalf("slice_code=remote_tool_%s_%s", safeE2EToolName(result.Name), safeE2EStatus(result.State))
+			}
+			executedCalls[callID] = result.Name
+		}
+		response, err := scriptedResponse(sequence, payload, modelWorkspace)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -332,12 +364,16 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		_ = cmd.Process.Kill()
 		t.Fatalf("mcp-edge timeout: edge_failure=%s", safeRemoteEdgeFailureCode(ctx.Err(), stderr.String()))
 	}
-
 	statusText := mcpTool(t, server, meter, "model_runtime_status", map[string]any{"runtime_id": runtime.RuntimeID})
 	var completed runtimePublicView
 	decodeToolJSON(t, statusText, &completed)
 	if completed.State != modelturn.RuntimeStateCompleted {
 		t.Fatalf("runtime did not complete: state=%s edge_failure=%s", completed.State, safeRemoteEdgeFailureCode(nil, stderr.String()))
+	}
+	afterDigest := remoteFixtureDigest(t, workspacePath)
+	repositoryModified := afterDigest != beforeDigest
+	if !repositoryModified {
+		t.Fatal("slice_code=remote_repository_not_modified")
 	}
 	assertCalcFixedAndTested(t, workspacePath, "remote")
 	stats, err := turns.Stats(t.Context())
@@ -399,7 +435,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		Elapsed:   time.Since(startedAt), ExternalWait: meter.ExternalWait, InterTurnGap: meter.InterTurnGap, Retries: 0,
 		VPSResultStoreBytes: directoryBytes(t, authoritativeRoot), EdgeJournalBytes: directoryBytes(t, edgeState), EdgePaths: paths,
 		AuthoritativeStore: filepath.Base(authoritativeRoot), EdgeState: filepath.Base(edgeState), WorkspaceID: workspace.ID,
-		RuntimeID: runtime.RuntimeID, Completed: true, RepositoryModified: true, TestsPassed: true,
+		RuntimeID: runtime.RuntimeID, Completed: true, RepositoryModified: repositoryModified, TestsPassed: true,
 		DuplicateTurns: int64(stats.TurnCount) - int64(len(turnIDs)), DuplicateConsumptions: stats.ConsumedCount - 4,
 		ProcessIsolationVerified: processIsolationVerified, DistinctProcessCount: distinctProcessCount, AuthoritativeSQLiteShared: false,
 		EdgeAuthoritativeTables: false, LargeRequestReferenced: largeRequestReferenced,
@@ -427,6 +463,30 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("REMOTE_DISTRIBUTED_REPORT=%s", encoded)
+}
+
+func TestRemoteToolWorkspaceMatchesExecutionMode(t *testing.T) {
+	fixture := "/opaque-fixture"
+	if got := remoteToolWorkspace("relay_container_e2e", fixture); got != fixture {
+		t.Fatalf("relay container workspace=%q", got)
+	}
+	if got := remoteToolWorkspace("combined_opencode_sandbox_e2e", fixture); got != "/workspace" {
+		t.Fatalf("host sandbox workspace=%q", got)
+	}
+}
+
+func TestRemoteExecutedToolResultsClassifiesCanonicalState(t *testing.T) {
+	payload := map[string]any{"prompt": []any{map[string]any{"content": []any{
+		map[string]any{"type": "tool-result", "tool_call_id": "turn-2", "tool_name": "edit", "output": map[string]any{"type": "text", "value": "redacted"}},
+		map[string]any{"type": "tool-result", "tool_call_id": "turn-3", "tool_name": "bash", "output": map[string]any{"type": "error-text", "value": "redacted"}},
+	}}}}
+	results := remoteExecutedToolResults(payload)
+	if results["turn-2"] != (remoteToolResult{Name: "edit", State: "completed"}) {
+		t.Fatalf("edit result=%+v", results["turn-2"])
+	}
+	if results["turn-3"] != (remoteToolResult{Name: "bash", State: "error"}) {
+		t.Fatalf("bash result=%+v", results["turn-3"])
+	}
 }
 
 var remoteEdgeFailurePattern = regexp.MustCompile(`failure=([a-z_]+)`)
@@ -694,8 +754,13 @@ func namedFileExists(t *testing.T, root, name string) bool {
 	return found
 }
 
-func remoteExecutedToolResults(payload map[string]any) map[string]string {
-	results := make(map[string]string)
+type remoteToolResult struct {
+	Name  string
+	State string
+}
+
+func remoteExecutedToolResults(payload map[string]any) map[string]remoteToolResult {
+	results := make(map[string]remoteToolResult)
 	prompt, _ := payload["prompt"].([]any)
 	for _, rawMessage := range prompt {
 		message, _ := rawMessage.(map[string]any)
@@ -725,9 +790,24 @@ func remoteExecutedToolResults(payload map[string]any) map[string]string {
 					name = "bash"
 				}
 			}
-			if callID != "" && name != "" {
-				results[callID] = name
+			if callID == "" || name == "" {
+				continue
 			}
+			state := "completed"
+			output, ok := part["output"].(map[string]any)
+			if !ok {
+				state = "invalid"
+			} else {
+				switch fmt.Sprint(output["type"]) {
+				case "error-text", "error-json":
+					state = "error"
+				case "text", "json", "content":
+					state = "completed"
+				default:
+					state = "invalid"
+				}
+			}
+			results[callID] = remoteToolResult{Name: name, State: state}
 		}
 	}
 	return results

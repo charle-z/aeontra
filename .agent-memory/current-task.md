@@ -2,45 +2,31 @@
 
 Date: 2026-07-16
 Branch: `p11-2-remote-opencode-relay`
-Published validation SHA: `06340da7d7f0c5e21d9f3218306c49f94b5b760f`
-Published validation tree: `20638a3ac204a02a3f44536ad64478ee4194a377`
+Published SHA: `54785285c6fe6659d9bec15cf22486905e061cf1`
+Published tree: `491c6f8fd652c3bdb0c666e4b4e08c23b51b0aad`
 Upstream: `origin/p11-2-remote-opencode-relay`
-Base `origin/main`: `01fde5067752ab1c43424d2d54f9afd914617ba5`
-Draft PR: `https://github.com/charle-z/mcp-devbox/pull/13`
+Base: `01fde5067752ab1c43424d2d54f9afd914617ba5`
+PR: `https://github.com/charle-z/mcp-devbox/pull/13` (draft)
 
-## Preserved deployed baselines
+## Historical deployed state
 
-- P8.1 Console 2.0 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`.
-- P9 Brain is deployed; P11.2 does not alter either deployed release.
+P9 Brain was deployed before its successor. P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`. This historical production state remains unchanged by P11.2.
 
-## Second remote validation result
+## Reconstructed state
 
-E2E run `29536609450` failed only in the unprivileged Docker relay. The host Bubblewrap job was correctly skipped because it depends on relay evidence. The safe failure remained `opencode_provider`.
+Git matches the confirmed state. CI and Security Evidence for SHA `54785285c6fe6659d9bec15cf22486905e061cf1` are green. E2E run `29537366806` failed only because `TestRemoteOpenCodeDistributedRelay` reported `remote_repository_not_modified`; direct normal and direct restart passed. Bubblewrap host isolation was skipped only because the host job depends on the failed distributed job.
 
-The exact root cause is now demonstrated: the test-only adapter translated provider JSON by sequential global replacement. It converted `/mcp-provider` to `/workspace/integrations/opencode/provider`, then translated the newly inserted `/workspace` prefix again to the temporary runtime workspace. OpenCode therefore received a nonexistent provider path. This was a harness-only path translation defect, not a Bubblewrap or product failure.
+## Diagnosed defect and validation
 
-## Pending third validation tree
+The defect was isolated to the Docker-only relay adapter. OpenCode's `--dir` was translated to the real fixture, while later model tool arguments still used the virtual `/workspace`. The test now supplies the actual fixture path only in `relay_container_e2e`; the real Bubblewrap host path remains `/workspace`.
 
-The working tree now:
+The real OpenCode 1.18.1 remote integration passed ten consecutive runs after temporary allowlisted diagnostics proved that the edit changed the target digest and bash tested the same fixture. The final version contains no temporary diagnostics. It permanently asserts canonical completed tool-result states, a changed target digest, semantic source modification, green tests, completed runtime and zero duplicates.
 
-- parses `OPENCODE_CONFIG_CONTENT` structurally;
-- translates the provider npm path and driver socket path exactly once;
-- preserves `webfetch` and `websearch` deny;
-- keeps `external_directory` allow only in the test-tagged Docker adapter;
-- adds a regression that detects the exact double-translation failure;
-- adds `docs/install-opencode-edge-parrot.md` with Parrot WSL2, systemd, dedicated user, Bubblewrap preflight, pinned OpenCode/provider integrity, registry, pairing, service, heartbeat, modes, cancellation, kill switch, revocation, update, rollback and uninstall.
+## Immediate objective
 
-Production and host Bubblewrap code are unchanged by this correction.
+Complete local gates, checkpoint memory, commit and publish the focused fix, then require a new exact-SHA distributed E2E followed by Bubblewrap host isolation and the combined sandbox E2E.
 
-Local gates green before the next commit:
-
-- `go test -p 1 ./... -count=1`;
-- `go test -tags=opencode_e2e -p 1 ./... -count=1`;
-- regression repeated ten times;
-- Actionlint v1.7.12;
-- `git diff --check`.
-
-Next action: commit and publish the structured translation correction plus Parrot guide, observe the new E2E run, and extract metrics only from green artifacts.
+Do not modify Bubblewrap, capabilities or the host runner without a new demonstrated regression.
 
 ## Boundaries
 
