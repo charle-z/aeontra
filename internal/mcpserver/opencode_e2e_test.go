@@ -111,10 +111,15 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 	baseline := runGranularBaseline(t, baselineRepo)
 
 	normalRepo := createCalcRepo(t, "opencode-normal")
+	t.Log("slice_code=normal_run_begin")
 	normal := runOpenCodeSlice(t, binary, provider, normalRepo, false)
+	t.Log("slice_code=normal_run_complete")
 	assertCalcFixedAndTested(t, normalRepo, "normal")
+	t.Log("slice_code=normal_fixture_complete")
 	assertOpenCodeEvents(t, normal.stdout, []string{"read", "grep", "edit", "bash"}, "normal")
-	assertNoExternalTraffic(t, normal.trace, normal.stdout, normal.stderr)
+	t.Log("slice_code=normal_events_complete")
+	assertNoExternalTraffic(t, normal.trace, normal.stdout, normal.stderr, "normal")
+	t.Log("slice_code=normal_network_complete")
 	normal.result.RepositoryModified = true
 	normal.result.TestsPassed = true
 	normal.result.FinalResponseVerified = true
@@ -123,10 +128,15 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 	}
 
 	restartRepo := createCalcRepo(t, "opencode-restart")
+	t.Log("slice_code=restart_run_begin")
 	restarted := runOpenCodeSlice(t, binary, provider, restartRepo, true)
+	t.Log("slice_code=restart_run_complete")
 	assertCalcFixedAndTested(t, restartRepo, "restart")
+	t.Log("slice_code=restart_fixture_complete")
 	assertOpenCodeEvents(t, restarted.stdout, []string{"read", "grep", "edit", "bash"}, "restart")
-	assertNoExternalTraffic(t, restarted.trace, restarted.stdout, restarted.stderr)
+	t.Log("slice_code=restart_events_complete")
+	assertNoExternalTraffic(t, restarted.trace, restarted.stdout, restarted.stderr, "restart")
+	t.Log("slice_code=restart_network_complete")
 	restarted.result.RepositoryModified = true
 	restarted.result.TestsPassed = true
 	restarted.result.FinalResponseVerified = true
@@ -818,14 +828,14 @@ func safeE2EStatus(value string) string {
 	}
 }
 
-func assertNoExternalTraffic(t *testing.T, trace, stdout, stderr string) {
+func assertNoExternalTraffic(t *testing.T, trace, stdout, stderr, phase string) {
 	t.Helper()
 	if strings.TrimSpace(trace) == "" {
-		t.Fatal("strace network capture is empty")
+		t.Fatalf("slice_code=%s_network_trace_empty", phase)
 	}
 	for _, forbidden := range []string{"api.openai.com", "api.anthropic.com", "openrouter.ai", "generativelanguage.googleapis.com", "api.groq.com", "api.cerebras.ai"} {
 		if strings.Contains(strings.ToLower(trace+stdout+stderr), forbidden) {
-			t.Fatalf("external provider marker %q found", forbidden)
+			t.Fatalf("slice_code=%s_network_provider_marker", phase)
 		}
 	}
 	external := regexp.MustCompile(`connect\([^\n]*(AF_INET6?|sin_family=AF_INET6?)[^\n]*`)
@@ -833,7 +843,7 @@ func assertNoExternalTraffic(t *testing.T, trace, stdout, stderr string) {
 		if strings.Contains(line, "127.0.0.1") || strings.Contains(line, "::1") {
 			continue
 		}
-		t.Fatalf("non-loopback network attempt: %s", line)
+		t.Fatalf("slice_code=%s_network_non_loopback", phase)
 	}
 }
 

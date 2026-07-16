@@ -802,7 +802,10 @@ func safeProviderMessageSignal(message string) string {
 		{"driver_connect", []string{"econnrefused", "connection refused", "connect: no such file", "socket not found", "socket hang up"}},
 		{"config", []string{"invalid config", "configuration is invalid", "failed to parse config"}},
 		{"model", []string{"model not found", "unknown model", "invalid model"}},
-		{"not_found", []string{"enoent", "no such file or directory", "not found"}},
+		{"not_found", []string{"enoent", "no such file or directory", "not found", "does not exist", "missing file", "missing directory"}},
+		{"unknown_type", []string{"cannot read properties", "is not a function", "undefined is not", "null is not", "typeerror"}},
+		{"unknown_connection", []string{"connection reset", "connection closed", "network error"}},
+		{"unknown_timeout", []string{"timed out", "timeout"}},
 		{"prompt_shape", []string{"prompt must be an array", "message content must be an array", "message must be an object"}},
 		{"prompt_role", []string{"unsupported message role", "unsupported message part"}},
 		{"tool_shape", []string{"provider tools are not supported", "duplicate tool name", "tool input schema", "tool choice"}},
@@ -814,6 +817,8 @@ func safeProviderMessageSignal(message string) string {
 		{"response_identity", []string{"model response identity mismatch", "staged request identity mismatch"}},
 		{"response_shape", []string{"model response", "model tool calls", "finish reason", "unoffered tool", "usage"}},
 		{"abort", []string{"model turn aborted", "model turn timed out"}},
+		{"provider", []string{"provider"}},
+		{"tool_shape", []string{"tool"}},
 		{"socket", []string{"enoent", "econnrefused", "econnreset", "epipe", "socket hang up"}},
 	}
 	for _, check := range checks {
