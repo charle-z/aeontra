@@ -36,6 +36,7 @@ docker run --rm \
   --read-only \
   --cap-drop ALL \
   --security-opt seccomp=unconfined \
+  --security-opt apparmor=unconfined \
   --security-opt no-new-privileges \
   --pids-limit 512 \
   --memory 2g \
