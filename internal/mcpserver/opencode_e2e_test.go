@@ -282,11 +282,12 @@ func runOpenCodeSlice(t *testing.T, binary, provider, repo string, restart bool)
 	var identities []modelturn.Record
 	controlErr := controlOpenCode(ctx, t, server, meter, runtime.RuntimeID, repo, restart, socketPath, storeRoot, store, &driverStore, &driverCancel, &driverDone, processDone, &processErr, &identities)
 	if controlErr != nil {
-		t.Fatal(finalizeOpenCodeControlFailure(cancel, processDone, controlErr, stdout.String(), stderr.String()))
+		failure := finalizeOpenCodeControlFailure(cancel, processDone, controlErr, stdout.String(), stderr.String())
+		t.Fatalf("OpenCode control failed: slice_code=%s", safeOpenCodeSliceFailureCode(restart, failure, stdout.String(), stderr.String()))
 	}
 	<-processDone
 	if processErr != nil {
-		t.Fatalf("OpenCode failed: driver_code=%s", safeOpenCodeFailureCode(processErr, stdout.String(), stderr.String()))
+		t.Fatalf("OpenCode failed: slice_code=%s", safeOpenCodeSliceFailureCode(restart, processErr, stdout.String(), stderr.String()))
 	}
 	stats, err := store.Stats(context.Background())
 	if err != nil {
@@ -345,6 +346,18 @@ func safeOpenCodeFailureCode(controlErr error, stdout, stderr string) string {
 		return "cancelled"
 	}
 	return "unknown"
+}
+
+func safeOpenCodeSliceFailureCode(restart bool, err error, stdout, stderr string) string {
+	phase := "normal"
+	if restart {
+		phase = "restart"
+	}
+	code := safeOpenCodeFailureCode(err, stdout, stderr)
+	if err != nil && strings.Contains(err.Error(), "process_shutdown_timeout") {
+		code = "process_shutdown_timeout"
+	}
+	return phase + "_" + code
 }
 
 func errorText(err error) string {

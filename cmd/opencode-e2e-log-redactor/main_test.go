@@ -13,6 +13,8 @@ func TestRedactRetainsOnlyBoundedSafeSignals(t *testing.T) {
 		`secret prompt body /home/private/repo`,
 		`--- FAIL: TestThing /home/private/repo "secret"`,
 		`permission denied: /private/path`,
+		`OpenCode failed: slice_code=restart_permission_open /private/path prompt payload`,
+		`mcp-edge failed: edge_failure=opencode_permission_connect /private/socket secret`,
 	}, "\n") + "\n"
 	var output bytes.Buffer
 	if err := redact(strings.NewReader(input), &output); err != nil {
@@ -23,6 +25,8 @@ func TestRedactRetainsOnlyBoundedSafeSignals(t *testing.T) {
 		"E2E safe_driver_code=response_cas",
 		"--- FAIL: TestThing <path> \"<redacted>\"",
 		"E2E category=permission",
+		"E2E safe_failure_code=restart_permission_open",
+		"E2E safe_failure_code=opencode_permission_connect",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("redacted output omitted %q: %q", required, text)

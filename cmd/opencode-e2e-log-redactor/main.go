@@ -16,11 +16,12 @@ const (
 )
 
 var (
-	testLinePattern  = regexp.MustCompile(`^(=== RUN|--- PASS:|--- FAIL:|PASS$|FAIL$|ok\s|\?\s)`)
-	safeCodePattern  = regexp.MustCompile(`(?:driver_code=|model turn driver operation failed: |internal_)([a-z_]+)`)
-	buildStepPattern = regexp.MustCompile(`^#([0-9]+)(?:\s+\[[^\]]+\])?`)
-	quotedPattern    = regexp.MustCompile(`"[^"\\]*(?:\\.[^"\\]*)*"`)
-	pathPattern      = regexp.MustCompile(`/(?:[^\s:]+/)+[^\s:]+`)
+	testLinePattern    = regexp.MustCompile(`^(=== RUN|--- PASS:|--- FAIL:|PASS$|FAIL$|ok\s|\?\s)`)
+	safeCodePattern    = regexp.MustCompile(`(?:driver_code=|model turn driver operation failed: |internal_)([a-z_]+)`)
+	safeFailurePattern = regexp.MustCompile(`(?:slice_code=|edge_failure=)([a-z_]+)`)
+	buildStepPattern   = regexp.MustCompile(`^#([0-9]+)(?:\s+\[[^\]]+\])?`)
+	quotedPattern      = regexp.MustCompile(`"[^"\\]*(?:\\.[^"\\]*)*"`)
+	pathPattern        = regexp.MustCompile(`/(?:[^\s:]+/)+[^\s:]+`)
 )
 
 func normalize(line string) string {
@@ -30,6 +31,9 @@ func normalize(line string) string {
 	}
 	if match := safeCodePattern.FindStringSubmatch(line); len(match) == 2 {
 		return "E2E safe_driver_code=" + match[1]
+	}
+	if match := safeFailurePattern.FindStringSubmatch(line); len(match) == 2 {
+		return "E2E safe_failure_code=" + match[1]
 	}
 	if testLinePattern.MatchString(line) {
 		line = quotedPattern.ReplaceAllString(line, `"<redacted>"`)

@@ -756,8 +756,43 @@ func (b *boundedSink) Write(payload []byte) (int, error) {
 	return len(payload), nil
 }
 
+func safePermissionSignal(message string) string {
+	text := strings.ToLower(message)
+	if !strings.Contains(text, "permission denied") && !strings.Contains(text, "eacces") && !strings.Contains(text, "eperm") && !strings.Contains(text, "operation not permitted") {
+		return ""
+	}
+	checks := []struct {
+		code    string
+		phrases []string
+	}{
+		{"permission_ptrace", []string{"ptrace"}},
+		{"permission_connect", []string{"connect", "socket"}},
+		{"permission_spawn", []string{"spawn", "execve", "executable"}},
+		{"permission_mkdir", []string{"mkdir", "create directory"}},
+		{"permission_open", []string{"open ", "open'", "open\""}},
+		{"permission_rename", []string{"rename"}},
+		{"permission_remove", []string{"unlink", "remove", "rmdir"}},
+		{"permission_chmod", []string{"chmod", "chown"}},
+		{"permission_read_dir", []string{"scandir", "readdir", "read directory"}},
+		{"permission_stat", []string{"lstat", "stat "}},
+		{"permission_write", []string{"write"}},
+		{"permission_read", []string{"read"}},
+	}
+	for _, check := range checks {
+		for _, phrase := range check.phrases {
+			if strings.Contains(text, phrase) {
+				return check.code
+			}
+		}
+	}
+	return "permission_other"
+}
+
 func safeProviderMessageSignal(message string) string {
 	text := strings.ToLower(message)
+	if signal := safePermissionSignal(text); signal != "" {
+		return signal
+	}
 	checks := []struct {
 		code    string
 		phrases []string
@@ -852,6 +887,9 @@ func SafeOpenCodeFailureSignal(content []byte) string {
 	if signal := structuredOpenCodeErrorSignal(content); signal != "" {
 		return signal
 	}
+	if signal := safePermissionSignal(text); signal != "" {
+		return signal
+	}
 	checks := []struct {
 		code    string
 		phrases []string
@@ -859,7 +897,6 @@ func SafeOpenCodeFailureSignal(content []byte) string {
 		{"cli", []string{"unknown argument", "unknown option", "invalid argument", "usage:"}},
 		{"provider_load", []string{"cannot find package", "module not found", "failed to resolve", "failed to load provider", "provider not found"}},
 		{"driver_connect", []string{"econnrefused", "connection refused", "connect: no such file", "socket not found"}},
-		{"permission", []string{"permission denied", "eacces"}},
 		{"config", []string{"invalid config", "configuration is invalid", "failed to parse config"}},
 		{"model", []string{"model not found", "unknown model", "invalid model"}},
 		{"provider", []string{"provider", "bridge/external-model"}},
