@@ -290,3 +290,83 @@ func TestDriverReadyOutputContainsNoSecrets(t *testing.T) {
 		t.Fatalf("ready output omitted owner uid: %q", output)
 	}
 }
+
+func TestDriverCancellationStopsActiveResponseWait(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(stateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenStore(StoreConfig{Root: filepath.Join(stateRoot, "model-turns")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	runtime, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := json.RawMessage(`{"prompt":[]}`)
+	turn, err := store.CreateTurn(context.Background(), ModelRequest{
+		RuntimeID: runtime.RuntimeID,
+		Sequence:  1,
+		Payload:   payload,
+		TTL:       time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	socketPath := filepath.Join(stateRoot, DefaultDriverSocketName)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ServeDriver(ctx, socketPath, store, io.Discard) }()
+	waitForSocket(t, socketPath)
+
+	client := unixHTTPClient(socketPath)
+	waitDone := make(chan error, 1)
+	go func() {
+		response, err := client.Get("http://unix/v1/turns/" + string(turn.ID) + "/response")
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		waitDone <- err
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		metrics := unixJSON(t, client, http.MethodGet, "/v1/metrics", nil, http.StatusOK)
+		if waitCalls, ok := metrics["wait_calls"].(float64); ok && waitCalls > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	started := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("serve error=%v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("driver did not stop with an active response wait")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("driver shutdown took %s", elapsed)
+	}
+	select {
+	case err := <-waitDone:
+		if err == nil {
+			t.Fatal("cancelled response wait returned a synthetic successful response")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("active response wait did not observe driver cancellation")
+	}
+	record, err := store.Get(context.Background(), turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != StatusDisconnected {
+		t.Fatalf("turn status=%s want=%s", record.Status, StatusDisconnected)
+	}
+}

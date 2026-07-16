@@ -214,6 +214,102 @@ func TestRemoteEdgeTransportCancelIsIdempotentAfterLostResponse(t *testing.T) {
 	}
 }
 
+func TestRemoteEdgeTransportRejectsAlteredLeaseBindings(t *testing.T) {
+	fixture := newRemoteModelFixture(t, nil)
+	cases := map[string]func(*ModelRuntimeLease){
+		"runtime":    func(lease *ModelRuntimeLease) { lease.RuntimeID = "mr_99999999999999999999999999999999" },
+		"device":     func(lease *ModelRuntimeLease) { lease.DeviceID = "ed_99999999999999999999999999999999" },
+		"workspace":  func(lease *ModelRuntimeLease) { lease.WorkspaceID = "ws_invalid" },
+		"controller": func(lease *ModelRuntimeLease) { lease.Controller = modelturn.ControllerMCPSampling },
+		"state":      func(lease *ModelRuntimeLease) { lease.State = modelturn.RuntimeStateAwaitingModel },
+		"provider":   func(lease *ModelRuntimeLease) { lease.ProviderProfile = "arbitrary-provider" },
+		"goal":       func(lease *ModelRuntimeLease) { lease.Goal = lease.Goal + " changed" },
+		"digest": func(lease *ModelRuntimeLease) {
+			lease.GoalDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+		},
+		"timeout": func(lease *ModelRuntimeLease) { lease.TimeoutSeconds = 0 },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			lease := fixture.lease
+			mutate(&lease)
+			remote, err := NewRemoteEdgeTransport(RemoteEdgeTransportOptions{
+				StateRoot: fixture.stateRoot, Lease: lease, HTTPClient: fixture.client, LongPoll: time.Second,
+			})
+			if err == nil {
+				_ = remote.Close()
+				t.Fatal("altered lease accepted")
+			}
+		})
+	}
+}
+
+func TestRemoteEdgeTransportRecoversTemporaryVPSOutageWithoutDuplicateActions(t *testing.T) {
+	fixture := newRemoteModelFixture(t, map[string]int{
+		"/started":   0,
+		"/turns":     0,
+		"/wait":      0,
+		"/completed": 0,
+	})
+	outage := &temporaryOutageRoundTripper{
+		base: fixture.client.Transport,
+		failures: map[string]int{
+			"/started":   1,
+			"/turns":     1,
+			"/wait":      1,
+			"/completed": 1,
+		},
+	}
+	fixture.client.Transport = outage
+	remote, err := NewRemoteEdgeTransport(RemoteEdgeTransportOptions{
+		StateRoot: fixture.stateRoot, Lease: fixture.lease, HTTPClient: fixture.client, LongPoll: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remote.Close()
+	if _, err := remote.Started(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	payload := json.RawMessage(`{"messages":[{"content":"temporary outage","role":"user"}],"tools":[]}`)
+	digest, err := modelturn.ExactPayloadDigest(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := remote.CreateTurn(t.Context(), modelturn.ModelRequest{
+		RuntimeID: fixture.lease.RuntimeID, Sequence: 1, Payload: payload, CanonicalPayload: true,
+		RequestDigest: digest, TTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.turns.Respond(t.Context(), modelturn.ResponseSubmission{
+		RuntimeID: fixture.lease.RuntimeID, TurnID: turn.ID, ExpectedSequence: 1,
+		RequestDigest: digest, Payload: json.RawMessage(`{"finish_reason":"stop","text":"recovered"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	response, err := remote.WaitResponse(t.Context(), turn.ID)
+	if err != nil || response.TurnID != turn.ID || response.RequestDigest != digest {
+		t.Fatalf("response=%+v err=%v", response, err)
+	}
+	if _, err := remote.Completed(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := fixture.turns.Stats(t.Context())
+	if err != nil || stats.RuntimeCount != 1 || stats.TurnCount != 1 || stats.ConsumedCount != 1 {
+		t.Fatalf("stats=%+v err=%v", stats, err)
+	}
+	for _, suffix := range []string{"/started", "/turns", "/wait", "/completed"} {
+		if outage.failuresRemaining(suffix) != 0 {
+			t.Fatalf("outage for %s was not exercised", suffix)
+		}
+		if fixture.dropper.callsEnding(suffix) != 1 {
+			t.Fatalf("authoritative calls for %s=%d want=1", suffix, fixture.dropper.callsEnding(suffix))
+		}
+	}
+}
+
 func TestRemoteEdgeTransportStagesLargeBodyWithoutLocalAuthority(t *testing.T) {
 	fixture := newRemoteModelFixture(t, nil)
 	remote, err := NewRemoteEdgeTransport(RemoteEdgeTransportOptions{StateRoot: fixture.stateRoot, Lease: fixture.lease, HTTPClient: fixture.client, LongPoll: time.Second})
@@ -271,6 +367,37 @@ func TestRemoteEdgeTransportStagesLargeBodyWithoutLocalAuthority(t *testing.T) {
 	}
 	if !pending || !bytes.Equal(offer.RequestPayload, payload) || offer.RequestRef != turn.RequestRef || offer.RequestDigest != digest {
 		t.Fatalf("authoritative offer=%+v", offer.Record)
+	}
+}
+
+func TestRemoteEdgeTransportPreservesCanonicalHTMLCharacters(t *testing.T) {
+	fixture := newRemoteModelFixture(t, nil)
+	remote, err := NewRemoteEdgeTransport(RemoteEdgeTransportOptions{StateRoot: fixture.stateRoot, Lease: fixture.lease, HTTPClient: fixture.client, LongPoll: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remote.Close()
+	if _, err := remote.Started(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	payload := json.RawMessage(`{"messages":[{"content":"compare <tag> & value > zero","role":"user"}],"tools":[]}`)
+	digest, err := modelturn.ExactPayloadDigest(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := remote.CreateTurn(t.Context(), modelturn.ModelRequest{
+		RuntimeID: fixture.lease.RuntimeID, Sequence: 1, Payload: payload, CanonicalPayload: true,
+		RequestDigest: digest, TTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, pending, err := fixture.turns.Poll(t.Context(), fixture.lease.RuntimeID)
+	if err != nil || !pending {
+		t.Fatalf("pending=%t err=%v", pending, err)
+	}
+	if turn.RequestDigest != digest || offer.RequestDigest != digest || !bytes.Equal(offer.RequestPayload, payload) {
+		t.Fatalf("turn_digest=%s offer_digest=%s payload_equal=%t", turn.RequestDigest, offer.RequestDigest, bytes.Equal(offer.RequestPayload, payload))
 	}
 }
 
@@ -447,6 +574,31 @@ func newRemoteModelFixture(t *testing.T, drops map[string]int) remoteModelFixtur
 		t.Fatalf("lease=%+v err=%v", lease, err)
 	}
 	return remoteModelFixture{devices: devices, turns: turns, stateRoot: stateRoot, lease: *lease, client: client, dropper: dropper}
+}
+
+type temporaryOutageRoundTripper struct {
+	base     http.RoundTripper
+	mu       sync.Mutex
+	failures map[string]int
+}
+
+func (t *temporaryOutageRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	t.mu.Lock()
+	for suffix, remaining := range t.failures {
+		if strings.HasSuffix(request.URL.Path, suffix) && remaining > 0 {
+			t.failures[suffix] = remaining - 1
+			t.mu.Unlock()
+			return nil, errors.New("temporary VPS unavailable")
+		}
+	}
+	t.mu.Unlock()
+	return t.base.RoundTrip(request)
+}
+
+func (t *temporaryOutageRoundTripper) failuresRemaining(suffix string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.failures[suffix]
 }
 
 type dropOnceRoundTripper struct {

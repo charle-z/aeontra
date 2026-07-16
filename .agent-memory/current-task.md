@@ -34,3 +34,53 @@ Step 6 gates passed on this exact tree:
 - `git diff --check`.
 
 No `tmp_*.go` helper remains. Next action: commit Step 6, record its exact SHA, then immediately implement Step 7 distributed OpenCode relay E2E and restart/resume validation without shared authoritative SQLite, filesystems, sockets, or memory.
+
+
+## P11.2 validation checkpoint — 2026-07-15
+
+- Validation branch functional commit: 1312344143e33caf4ba31772e31fde39d51343bd.
+- Published checkpoint branch HEAD before the response-consume fix: a9bd665b03f26aa5894377c9c540eeee4cbdafd6.
+- Last validated safe-diagnostic tree: bda3399624ee3851576a43c9e41898dfede358d6.
+- Docker E2E run 29461855085 isolated the shared failure code response_consume.
+- Current fix under validation makes the response-consumption CAS the first transaction statement, preventing SQLITE_BUSY_SNAPSHOT during concurrent cleanup.
+- Target branch remains untouched at 201d4c7052f034fef8483d8d2af6aff76d6fe207.
+
+
+## P11.2 driver-restart checkpoint — 2026-07-15
+
+- Branch: `p11-2-step7-validation`.
+- Functional HEAD: `6f315ef938ffdb3f79b9e05fc56746cb7bab9c85`.
+- Validated tree: `093330a19dbfa00ee57450476c2167b0f8b5de13`.
+- Target branch remains untouched at `201d4c7052f034fef8483d8d2af6aff76d6fe207`.
+- Fixed driver restart during `WaitResponse`: cancellation now uses `http.ErrAbortHandler`, preventing a synthetic HTTP 200 with an empty body.
+- Real Node provider + Unix driver + SQLite integration proves one create, bounded retries of only the same response wait, stable runtime/turn/sequence/digest/request_ref, one authoritative turn and one consumption.
+- Green: driver cancellation 20x; provider restart 20x; provider suite; focused modelturn/edgeclient/mcpserver; `go test -p 1 ./... -count=1`; `go vet ./...`; `go build ./...`; `git diff --check`.
+- CI: this HEAD has not yet been published or run through Docker E2E.
+- Current blocker: none locally; next evidence is the Docker direct and distributed slices on the exact published SHA.
+- Next exact commands: commit this checkpoint, push `p11-2-step7-validation`, then wait for `E2E distributed OpenCode` on the resulting SHA.
+
+
+## P11.2 Docker E2E checkpoint — 2026-07-15
+
+- Branch: `p11-2-step7-validation`.
+- Published HEAD: `7897befc92369f0cc65ee2ec787588b3b1e3f487`.
+- Exact tree: `687094f358efabc72af344b46f32c024bf87ad06`.
+- Working tree before checkpoint: clean.
+- Docker E2E run `29466504331`, check `87520668556`, failed on this exact SHA.
+- The previous `response_identity` restart failure is fixed locally and in CI; the new closed diagnostic is `unknown_error` inside `TestOpenCodeExternalModelVerticalSlice`.
+- The workflow preserved its bounds and cleanup; final exit was `124`, with no raw OpenCode output persisted.
+- Last green local gate: `go test -p 1 ./... -count=1`, followed by `go vet ./...`, `go build ./...`, and `git diff --check`.
+- Current blocker: classify the structured OpenCode `UnknownError` without exposing messages, then correct the underlying direct-slice cause.
+- Next exact command: `git show 0887a88 --stat`, then compare the passing P11.1 provider/E2E implementation with the current tree.
+
+## P11.2 deterministic remote provider checkpoint — 2026-07-16
+
+- Active branch remains `p11-2-step7-validation`; target branch remains untouched at `201d4c7052f034fef8483d8d2af6aff76d6fe207`.
+- Added `TestNodeProviderAgainstRemoteEdgeTransport` and `TestNodeProviderRetriesRemoteResponseAfterDriverRestart` with the real Node provider, real `model-turn-driver --remote`, real Unix socket, paired Ed25519 Edge identity, signed TLS `httptest`, separate authoritative store, and separate local journal.
+- Reproduced the Docker `opencode_unknown_error` locally as a closed pre-create staging failure: remote staging returned private `lr_` references while the provider accepted only authoritative `mb_` references.
+- Provider now accepts exactly the closed `mb_` or `lr_` reference prefixes; malformed prefixes still fail before create.
+- Restart synchronization waits for the signed remote long-poll to be active, stops the driver, waits for release, recreates the socket, and proves only the same response GET is retried.
+- Final remote integration command passed 20/20: `go test ./integrations/opencode/provider -run 'TestNodeProvider.*Remote' -count=20 -v`.
+- Focused Edge/modelturn/MCP tests passed after the final synchronization.
+- Final gates passed after this append: focused Edge/modelturn/MCP tests, `go test -p 1 ./... -count=1`, `go vet ./...`, `go build ./...`, tagged E2E compile-only, and `git diff --check`.
+- Do not run Docker until the exact committed SHA is published. No merge, deployment, real pairing, Parrot installation, tag, or Coolify changes.

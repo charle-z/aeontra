@@ -50,6 +50,9 @@ func ServeDriverTransport(ctx context.Context, socketPath string, transport Mode
 		Handler:           driver.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       30 * time.Second,
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
 	}
 	if ready != nil {
 		message, _ := json.Marshal(map[string]any{

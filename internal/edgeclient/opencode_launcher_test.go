@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -366,6 +367,26 @@ func TestOpenCodePrivateSocketRejectsUnsafeMode(t *testing.T) {
 	}
 }
 
+func TestWaitExternalDriverNormalizesIntentionalCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, "/bin/sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := waitExternalDriver(ctx, cmd); !errors.Is(err, context.Canceled) {
+		t.Fatalf("wait error=%v, want context canceled", err)
+	}
+
+	unexpected := exec.Command("/bin/false")
+	if err := unexpected.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitExternalDriver(context.Background(), unexpected); err == nil || errors.Is(err, context.Canceled) {
+		t.Fatalf("unexpected exit normalized incorrectly: %v", err)
+	}
+}
+
 func TestOpenCodeLauncherHandlesProcessFailureCancellationTimeoutAndOutput(t *testing.T) {
 	t.Run("unexpected termination", func(t *testing.T) {
 		fixture := newOpenCodeLauncherFixture(t)
@@ -477,6 +498,49 @@ func TestOpenCodeLauncherRestartAndTerminalReplayDoNotExecuteTwice(t *testing.T)
 			t.Fatalf("result=%+v calls=%d err=%v", result, calls, err)
 		}
 	})
+}
+
+func TestBoundedSinkFailureSignalDoesNotExposeRawOutput(t *testing.T) {
+	cases := []struct {
+		text string
+		want string
+	}{
+		{"error: unknown argument --bad /private/path", "cli"},
+		{"Cannot find package secret-provider from /private/path", "provider_load"},
+		{"connect: no such file or directory", "driver_connect"},
+		{"EACCES permission denied", "permission_other"},
+		{"EACCES permission denied, open '/private/path'", "permission_open"},
+		{"EPERM operation not permitted: ptrace /private/path", "permission_ptrace"},
+		{"EACCES permission denied, connect /private/socket", "permission_connect"},
+		{"EACCES permission denied, mkdir /private/path", "permission_mkdir"},
+		{"EACCES permission denied, spawn /private/tool", "permission_spawn"},
+		{"invalid config at /private/path", "config"},
+		{"unknown model bridge/external-model", "model"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"ENOENT: no such file or directory, open '/private/path'"}}}`, "not_found"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"Cannot find package secret-provider from /private/path"}}}`, "provider_load"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"invalid config at /private/path"}}}`, "config"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"runtime_status"}}}`, "runtime_status"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"request_stage"}}}`, "request_stage"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"turn_create"}}}`, "turn_create"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"response_wait"}}}`, "response_wait"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"response_identity"}}}`, "response_identity"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"TypeError: cannot read properties of undefined"}}}`, "unknown_type"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"provider operation failed at /private/path"}}}`, "provider"},
+		{`{"type":"error","message":"private"}`, "runtime_error"},
+		{"opaque output", "unknown"},
+	}
+	for _, test := range cases {
+		sink := newBoundedSink(4096)
+		if _, err := sink.Write([]byte(test.text)); err != nil {
+			t.Fatal(err)
+		}
+		if got := sink.FailureSignal(); got != test.want {
+			t.Fatalf("output=%q signal=%q want=%q", test.text, got, test.want)
+		}
+		if strings.Contains(sink.FailureSignal(), "/private/path") || strings.Contains(sink.FailureSignal(), "secret-provider") {
+			t.Fatalf("failure signal leaked raw output: %q", sink.FailureSignal())
+		}
+	}
 }
 
 func TestOpenCodeLauncherRefusesRootExecution(t *testing.T) {

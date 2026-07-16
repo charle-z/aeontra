@@ -53,6 +53,7 @@ type OpenCodeLauncherConfig struct {
 	StateRoot     string
 	SocketRoot    string
 	OpenCodePath  string
+	DriverPath    string
 	ProviderPath  string
 	IntegrityPath string
 	StopPath      string
@@ -103,9 +104,12 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 	}
 	config.SocketRoot = filepath.Clean(strings.TrimSpace(config.SocketRoot))
 	config.OpenCodePath = filepath.Clean(strings.TrimSpace(config.OpenCodePath))
+	if strings.TrimSpace(config.DriverPath) != "" {
+		config.DriverPath = filepath.Clean(strings.TrimSpace(config.DriverPath))
+	}
 	config.ProviderPath = filepath.Clean(strings.TrimSpace(config.ProviderPath))
 	config.IntegrityPath = filepath.Clean(strings.TrimSpace(config.IntegrityPath))
-	if !filepath.IsAbs(config.StateRoot) || !filepath.IsAbs(config.SocketRoot) || !filepath.IsAbs(config.OpenCodePath) || !filepath.IsAbs(config.ProviderPath) || !filepath.IsAbs(config.IntegrityPath) {
+	if !filepath.IsAbs(config.StateRoot) || !filepath.IsAbs(config.SocketRoot) || !filepath.IsAbs(config.OpenCodePath) || (config.DriverPath != "" && !filepath.IsAbs(config.DriverPath)) || !filepath.IsAbs(config.ProviderPath) || !filepath.IsAbs(config.IntegrityPath) {
 		return nil, errors.New("OpenCode launcher paths must be absolute local paths")
 	}
 	if !pathInside(config.StateRoot, config.SocketRoot) {
@@ -238,8 +242,12 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	socketPath := filepath.Join(runtimeDir, openCodeDriverSocketName)
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second)
 	defer cancel()
-	driverDone := make(chan error, 1)
-	go func() { driverDone <- modelturn.ServeDriverTransport(runCtx, socketPath, remote, nil) }()
+	driverDone, err := l.startDriver(runCtx, socketPath, lease, remote)
+	if err != nil {
+		failLocal(OpenCodeLocalFailed, -1, false)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, err
+	}
 	driverExited, err := waitForPrivateDriverSocketOrExit(runCtx, socketPath, l.effectiveUID(), driverDone)
 	if err != nil {
 		cancel()
@@ -305,7 +313,11 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	if processResult.Err != nil || processResult.ExitCode != 0 {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
-		return result, errors.New("OpenCode terminated unexpectedly")
+		signal := stderr.FailureSignal()
+		if signal == "unknown" {
+			signal = stdout.FailureSignal()
+		}
+		return result, fmt.Errorf("OpenCode terminated unexpectedly (%s)", signal)
 	}
 	if driverErr != nil && !errors.Is(driverErr, context.Canceled) {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
@@ -352,6 +364,65 @@ func (l *OpenCodeLauncher) monitorRuntime(ctx context.Context, cancel context.Ca
 			}
 		}
 	}
+}
+
+func (l *OpenCodeLauncher) startDriver(ctx context.Context, socketPath string, lease ModelRuntimeLease, remote OpenCodeRemoteTransport) (<-chan error, error) {
+	done := make(chan error, 1)
+	if l.config.DriverPath == "" {
+		go func() { done <- modelturn.ServeDriverTransport(ctx, socketPath, remote, nil) }()
+		return done, nil
+	}
+	payload, err := json.Marshal(lease)
+	if err != nil {
+		return nil, errors.New("OpenCode remote driver lease encoding failed")
+	}
+	cmd := exec.CommandContext(ctx, l.config.DriverPath, "--remote", "--state-root", l.config.StateRoot, "--socket", socketPath)
+	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Env = []string{
+		"PATH=" + l.config.ToolPath,
+		"HOME=" + l.config.StateRoot,
+		"USER=mcpedge",
+		"LANG=C.UTF-8",
+		"LC_ALL=C.UTF-8",
+	}
+	if caPath := localTLSCAPath(); caPath != "" {
+		cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+caPath)
+	}
+	cmd.Stdout = newBoundedSink(64 << 10)
+	cmd.Stderr = newBoundedSink(64 << 10)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return os.ErrProcessDone
+		}
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	cmd.WaitDelay = 5 * time.Second
+	if err := cmd.Start(); err != nil {
+		return nil, errors.New("OpenCode remote driver process could not start")
+	}
+	go func() { done <- waitExternalDriver(ctx, cmd) }()
+	return done, nil
+}
+
+func waitExternalDriver(ctx context.Context, cmd *exec.Cmd) error {
+	err := cmd.Wait()
+	if err == nil || ctx.Err() == nil {
+		return err
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return err
+	}
+	status, ok := exitErr.Sys().(syscall.WaitStatus)
+	if !ok || !status.Signaled() {
+		return err
+	}
+	return ctx.Err()
 }
 
 func (l *OpenCodeLauncher) processSpec(runtimeDir, workspace, socketPath string, lease ModelRuntimeLease, stdout, stderr io.Writer) (openCodeProcessSpec, error) {
@@ -414,6 +485,12 @@ func (l *OpenCodeLauncher) verifyLocalInstallation(ctx context.Context) error {
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
 		return errors.New("pinned OpenCode executable is unsafe")
+	}
+	if l.config.DriverPath != "" {
+		info, err := os.Lstat(l.config.DriverPath)
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
+			return errors.New("model-turn driver executable is unsafe")
+		}
 	}
 	if err := verifyOpenCodeLock(l.config.IntegrityPath); err != nil {
 		return err
@@ -525,6 +602,19 @@ func runOpenCodeProcess(ctx context.Context, spec openCodeProcessSpec) openCodeP
 		return openCodeProcessResult{ExitCode: exitErr.ExitCode(), Err: err}
 	}
 	return openCodeProcessResult{ExitCode: -1, Err: err}
+}
+
+func localTLSCAPath() string {
+	value := strings.TrimSpace(os.Getenv("SSL_CERT_FILE"))
+	if value == "" || !filepath.IsAbs(value) {
+		return ""
+	}
+	path := filepath.Clean(value)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
+		return ""
+	}
+	return path
 }
 
 func waitForPrivateDriverSocketOrExit(ctx context.Context, path string, uid int, driverDone <-chan error) (bool, error) {
@@ -649,6 +739,7 @@ type boundedSink struct {
 	limit     int64
 	written   int64
 	truncated bool
+	tail      []byte
 }
 
 func newBoundedSink(limit int64) *boundedSink {
@@ -669,7 +760,196 @@ func (b *boundedSink) Write(payload []byte) (int, error) {
 	if b.written >= b.limit && len(payload) > 0 {
 		b.truncated = true
 	}
+	const tailLimit = 8192
+	if len(payload) >= tailLimit {
+		b.tail = append(b.tail[:0], payload[len(payload)-tailLimit:]...)
+	} else {
+		b.tail = append(b.tail, payload...)
+		if len(b.tail) > tailLimit {
+			b.tail = append(b.tail[:0], b.tail[len(b.tail)-tailLimit:]...)
+		}
+	}
 	return len(payload), nil
+}
+
+func safePermissionSignal(message string) string {
+	text := strings.ToLower(message)
+	if !strings.Contains(text, "permission denied") && !strings.Contains(text, "eacces") && !strings.Contains(text, "eperm") && !strings.Contains(text, "operation not permitted") {
+		return ""
+	}
+	checks := []struct {
+		code    string
+		phrases []string
+	}{
+		{"permission_ptrace", []string{"ptrace"}},
+		{"permission_connect", []string{"connect", "socket"}},
+		{"permission_spawn", []string{"spawn", "execve", "executable"}},
+		{"permission_mkdir", []string{"mkdir", "create directory"}},
+		{"permission_open", []string{"open ", "open'", "open\""}},
+		{"permission_rename", []string{"rename"}},
+		{"permission_remove", []string{"unlink", "remove", "rmdir"}},
+		{"permission_chmod", []string{"chmod", "chown"}},
+		{"permission_read_dir", []string{"scandir", "readdir", "read directory"}},
+		{"permission_stat", []string{"lstat", "stat "}},
+		{"permission_write", []string{"write"}},
+		{"permission_read", []string{"read"}},
+	}
+	for _, check := range checks {
+		for _, phrase := range check.phrases {
+			if strings.Contains(text, phrase) {
+				return check.code
+			}
+		}
+	}
+	return "permission_other"
+}
+
+func safeProviderMessageSignal(message string) string {
+	text := strings.ToLower(message)
+	if signal := safePermissionSignal(text); signal != "" {
+		return signal
+	}
+	checks := []struct {
+		code    string
+		phrases []string
+	}{
+		{"cli", []string{"unknown argument", "unknown option", "invalid argument", "usage:"}},
+		{"provider_load", []string{"cannot find package", "module not found", "failed to resolve", "failed to load provider", "provider not found"}},
+		{"driver_connect", []string{"econnrefused", "connection refused", "connect: no such file", "socket not found", "socket hang up"}},
+		{"config", []string{"invalid config", "configuration is invalid", "failed to parse config"}},
+		{"model", []string{"model not found", "unknown model", "invalid model"}},
+		{"not_found", []string{"enoent", "no such file or directory", "not found", "does not exist", "missing file", "missing directory"}},
+		{"unknown_type", []string{"cannot read properties", "is not a function", "undefined is not", "null is not", "typeerror"}},
+		{"unknown_connection", []string{"connection reset", "connection closed", "network error"}},
+		{"unknown_timeout", []string{"timed out", "timeout"}},
+		{"prompt_shape", []string{"prompt must be an array", "message content must be an array", "message must be an object"}},
+		{"prompt_role", []string{"unsupported message role", "unsupported message part"}},
+		{"tool_shape", []string{"provider tools are not supported", "duplicate tool name", "tool input schema", "tool choice"}},
+		{"request_limit", []string{"canonical model request exceeds", "request exceeds the bridge limit"}},
+		{"runtime_status", []string{"runtime_status"}},
+		{"request_stage", []string{"request_stage"}},
+		{"turn_create", []string{"turn_create"}},
+		{"response_wait", []string{"response_wait"}},
+		{"response_identity", []string{"response_identity"}},
+		{"runtime_status", []string{"runtime status id mismatch", "runtime sequence is invalid", "runtime is terminal"}},
+		{"driver_invalid_request", []string{"model turn request is invalid", "invalid_request"}},
+		{"driver_status", []string{"model turn driver status", "model turn driver returned non-json"}},
+		{"turn_identity", []string{"created turn identity mismatch", "created turn offered-tool set mismatch"}},
+		{"response_identity", []string{"model response identity mismatch", "staged request identity mismatch"}},
+		{"response_shape", []string{"model response", "model tool calls", "finish reason", "unoffered tool", "usage"}},
+		{"abort", []string{"model turn aborted", "model turn timed out"}},
+		{"provider", []string{"provider"}},
+		{"tool_shape", []string{"tool"}},
+		{"socket", []string{"enoent", "econnrefused", "econnreset", "epipe", "socket hang up"}},
+	}
+	for _, check := range checks {
+		for _, phrase := range check.phrases {
+			if strings.Contains(text, phrase) {
+				return check.code
+			}
+		}
+	}
+	return ""
+}
+
+func structuredOpenCodeErrorSignal(content []byte) string {
+	lines := bytes.Split(content, []byte{'\n'})
+	for index := len(lines) - 1; index >= 0; index-- {
+		var event struct {
+			Type  string `json:"type"`
+			Error struct {
+				Name string                     `json:"name"`
+				Data map[string]json.RawMessage `json:"data"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(lines[index], &event) != nil || event.Type != "error" {
+			continue
+		}
+		switch strings.ToLower(event.Error.Name) {
+		case "providerautherror":
+			return "provider_auth"
+		case "messageoutputlengtherror":
+			return "output_length"
+		case "unknownerror":
+			if raw, ok := event.Error.Data["message"]; ok {
+				var message string
+				if json.Unmarshal(raw, &message) == nil {
+					if signal := safeProviderMessageSignal(message); signal != "" {
+						return signal
+					}
+				}
+			}
+			for _, field := range []string{"name", "code", "status", "statusCode"} {
+				raw, ok := event.Error.Data[field]
+				if !ok {
+					continue
+				}
+				var value string
+				if json.Unmarshal(raw, &value) == nil {
+					value = strings.ToLower(value)
+					switch {
+					case strings.Contains(value, "typeerror"):
+						return "unknown_type"
+					case strings.Contains(value, "api"):
+						return "unknown_api"
+					case strings.Contains(value, "timeout"):
+						return "unknown_timeout"
+					case strings.Contains(value, "connection") || strings.Contains(value, "socket"):
+						return "unknown_connection"
+					}
+				}
+			}
+			return "unknown_error"
+		default:
+			if event.Error.Name != "" {
+				return "named_error"
+			}
+		}
+	}
+	return ""
+}
+
+// SafeOpenCodeFailureSignal classifies bounded OpenCode output without
+// returning messages, paths, prompts, arguments, or response bodies.
+func SafeOpenCodeFailureSignal(content []byte) string {
+	if len(content) > 8192 {
+		content = content[len(content)-8192:]
+	}
+	text := strings.ToLower(string(content))
+	if signal := structuredOpenCodeErrorSignal(content); signal != "" {
+		return signal
+	}
+	if signal := safePermissionSignal(text); signal != "" {
+		return signal
+	}
+	checks := []struct {
+		code    string
+		phrases []string
+	}{
+		{"cli", []string{"unknown argument", "unknown option", "invalid argument", "usage:"}},
+		{"provider_load", []string{"cannot find package", "module not found", "failed to resolve", "failed to load provider", "provider not found"}},
+		{"driver_connect", []string{"econnrefused", "connection refused", "connect: no such file", "socket not found"}},
+		{"config", []string{"invalid config", "configuration is invalid", "failed to parse config"}},
+		{"model", []string{"model not found", "unknown model", "invalid model"}},
+		{"provider", []string{"provider", "bridge/external-model"}},
+	}
+	for _, check := range checks {
+		for _, phrase := range check.phrases {
+			if strings.Contains(text, phrase) {
+				return check.code
+			}
+		}
+	}
+	if strings.Contains(text, `"type":"error"`) || strings.Contains(text, "error:") {
+		return "runtime_error"
+	}
+	return "unknown"
+}
+
+func (b *boundedSink) FailureSignal() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return SafeOpenCodeFailureSignal(b.tail)
 }
 
 func (b *boundedSink) Truncated() bool {

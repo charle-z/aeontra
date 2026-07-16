@@ -1,0 +1,142 @@
+name: E2E distributed OpenCode
+
+on:
+  push:
+    branches:
+      - main
+      - 'p11-2-*'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: opencode-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  distributed-opencode:
+    name: E2E distributed OpenCode
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify executable runner
+        run: |
+          test -x test/opencode-e2e/run.sh
+          test "$(git ls-files -s test/opencode-e2e/run.sh | awk '{print $1}')" = "100755"
+          command -v timeout
+          go test ./cmd/opencode-e2e-log-redactor -count=1
+          go build -o /tmp/opencode-e2e-log-redactor ./cmd/opencode-e2e-log-redactor
+
+      - name: Run isolated remote relay
+        run: |
+          mkdir -p artifacts
+          set +e
+          ./test/opencode-e2e/run.sh 2>&1 \
+            | /tmp/opencode-e2e-log-redactor \
+            | tee artifacts/opencode-remote-e2e-redacted.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s artifacts/opencode-remote-e2e-report.json
+            test -s artifacts/p11-2-release-candidate-report.json
+          fi
+          exit "$status"
+
+      - name: Annotate primary E2E failure
+        if: ${{ failure() && hashFiles('artifacts/opencode-remote-e2e-redacted.log') != '' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          log = Path("artifacts/opencode-remote-e2e-redacted.log").read_text(errors="replace")
+          lines = log.splitlines()
+          summary = "\n".join(lines[-100:])
+          if len(summary) > 3500:
+              summary = summary[-3500:]
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=test/opencode-e2e/run.sh,line=1,title=Distributed OpenCode E2E failure::{escaped}")
+          PY
+
+      - name: Verify structured report
+        run: |
+          test -s artifacts/opencode-remote-e2e-report.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("artifacts/opencode-remote-e2e-report.json")
+          report = json.loads(path.read_text())
+          assert report["mode"] == "remote-distributed"
+          assert report["processes"] == [
+              "mcp-devbox-server",
+              "mcp-edge",
+              "model-turn-driver",
+              "opencode-1.18.1",
+          ]
+          assert report["mcp_calls"] == 10
+          assert report["mcp_calls"] < 20
+          assert report["model_turns"] == 4
+          assert report["tool_executions"] == 4
+          assert report["tool_names"] == ["read", "grep", "edit", "bash"]
+          assert report["process_isolation_verified"] is True
+          assert report["distinct_process_count"] == 4
+          assert report["authoritative_sqlite_shared"] is False
+          assert report["retries"] == 0
+          assert report["duplicate_turns"] == 0
+          assert report["duplicate_consumptions"] == 0
+          assert report["completed"] is True
+          assert report["repository_modified"] is True
+          assert report["tests_passed"] is True
+          assert report["vps_result_store_bytes"] > 0
+          assert report["edge_journal_bytes"] > 0
+          assert report["edge_http_calls"] >= 8
+          assert report["edge_authoritative_tables_present"] is False
+          assert report["large_request_referenced"] is True
+          print(json.dumps(report, separators=(",", ":"), sort_keys=True))
+          PY
+
+      - name: Upload E2E log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-remote-e2e-log
+          path: artifacts/opencode-remote-e2e-redacted.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Verify release candidate report
+        run: |
+          test -s artifacts/p11-2-release-candidate-report.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("artifacts/p11-2-release-candidate-report.json").read_text())
+          assert report["schema_version"] == 1
+          assert report["phase"] == "P11.2"
+          assert len(report["git"]["tree"]) == 40
+          assert len(report["git"]["commit"]) == 40
+          assert report["versions"]["opencode"] == "1.18.1"
+          assert report["benchmark_a_local_rendezvous"]["model_turns"] == 4
+          assert report["benchmark_b_remote_relay"]["model_turns"] == 4
+          assert report["benchmark_c_restart_resume"]["model_turns"] == 4
+          assert report["security_matrix"]["passed"] is True
+          print("P11.2 release candidate report verified")
+          PY
+
+      - name: Upload E2E report
+        if: ${{ always() && hashFiles('artifacts/opencode-remote-e2e-report.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-remote-e2e-report
+          path: |
+            artifacts/opencode-remote-e2e-report.json
+            artifacts/opencode-e2e-report.json
+            artifacts/p11-2-release-candidate-report.json
+          if-no-files-found: ignore
+          retention-days: 30
