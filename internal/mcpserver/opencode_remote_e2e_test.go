@@ -392,6 +392,7 @@ var allowedRemoteEdgeFailures = map[string]struct{}{
 	"opencode_provider_auth": {}, "opencode_output_length": {}, "opencode_unknown_type": {}, "opencode_unknown_api": {},
 	"opencode_unknown_timeout": {}, "opencode_unknown_connection": {}, "opencode_prompt_shape": {}, "opencode_prompt_role": {},
 	"opencode_tool_shape": {}, "opencode_request_limit": {}, "opencode_runtime_status": {}, "opencode_driver_invalid_request": {},
+	"opencode_request_stage": {}, "opencode_turn_create": {}, "opencode_response_wait": {},
 	"opencode_driver_status": {}, "opencode_turn_identity": {}, "opencode_response_identity": {}, "opencode_response_shape": {},
 	"opencode_abort": {}, "opencode_socket": {}, "opencode_unknown_error": {}, "opencode_named_error": {}, "opencode_runtime_error": {},
 	"opencode_exit": {}, "relay_unavailable": {}, "relay_rejected": {}, "internal": {}, "process_exit": {}, "process_shutdown_timeout": {},

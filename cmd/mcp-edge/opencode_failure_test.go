@@ -27,6 +27,9 @@ func TestOpenCodeFailureCodeIsStableAndRedacted(t *testing.T) {
 		{errors.New("OpenCode external driver manifest is invalid"), "installation_provider"},
 		{errors.New("model-turn driver executable is unsafe"), "installation_driver"},
 		{errors.New("OpenCode model-turn socket is not private"), "socket"},
+		{errors.New("OpenCode terminated unexpectedly (request_stage)"), "opencode_request_stage"},
+		{errors.New("OpenCode terminated unexpectedly (turn_create)"), "opencode_turn_create"},
+		{errors.New("OpenCode terminated unexpectedly (response_wait)"), "opencode_response_wait"},
 		{errors.New("OpenCode terminated unexpectedly"), "opencode_exit"},
 		{errors.New("unknown sensitive detail /private/path"), "internal"},
 	}
