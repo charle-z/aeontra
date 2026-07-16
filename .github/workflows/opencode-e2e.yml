@@ -43,6 +43,7 @@ jobs:
           set -e
           if [ "$status" -eq 0 ]; then
             test -s artifacts/opencode-remote-e2e-report.json
+            test -s artifacts/p11-2-release-candidate-report.json
           fi
           exit "$status"
 
@@ -94,6 +95,8 @@ jobs:
           assert report["vps_result_store_bytes"] > 0
           assert report["edge_journal_bytes"] > 0
           assert report["edge_http_calls"] >= 8
+          assert report["edge_authoritative_tables_present"] is False
+          assert report["large_request_referenced"] is True
           print(json.dumps(report, separators=(",", ":"), sort_keys=True))
           PY
 
@@ -106,11 +109,34 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Verify release candidate report
+        run: |
+          test -s artifacts/p11-2-release-candidate-report.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("artifacts/p11-2-release-candidate-report.json").read_text())
+          assert report["schema_version"] == 1
+          assert report["phase"] == "P11.2"
+          assert len(report["git"]["tree"]) == 40
+          assert len(report["git"]["commit"]) == 40
+          assert report["versions"]["opencode"] == "1.18.1"
+          assert report["benchmark_a_local_rendezvous"]["model_turns"] == 4
+          assert report["benchmark_b_remote_relay"]["model_turns"] == 4
+          assert report["benchmark_c_restart_resume"]["model_turns"] == 4
+          assert report["security_matrix"]["passed"] is True
+          print("P11.2 release candidate report verified")
+          PY
+
       - name: Upload E2E report
         if: ${{ always() && hashFiles('artifacts/opencode-remote-e2e-report.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: opencode-remote-e2e-report
-          path: artifacts/opencode-remote-e2e-report.json
+          path: |
+            artifacts/opencode-remote-e2e-report.json
+            artifacts/opencode-e2e-report.json
+            artifacts/p11-2-release-candidate-report.json
           if-no-files-found: ignore
           retention-days: 30

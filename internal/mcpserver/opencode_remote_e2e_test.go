@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -15,6 +16,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -110,6 +113,8 @@ type remoteDistributedReport struct {
 	ProcessIsolationVerified  bool             `json:"process_isolation_verified"`
 	DistinctProcessCount      int64            `json:"distinct_process_count"`
 	AuthoritativeSQLiteShared bool             `json:"authoritative_sqlite_shared"`
+	EdgeAuthoritativeTables   bool             `json:"edge_authoritative_tables_present"`
+	LargeRequestReferenced    bool             `json:"large_request_referenced"`
 }
 
 func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
@@ -214,6 +219,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	executedCalls := make(map[string]string)
 	processIsolationVerified := false
 	distinctProcessCount := int64(0)
+	largeRequestReferenced := false
 	for sequence := uint64(1); sequence <= 4; sequence++ {
 		turnText := mcpTool(t, server, meter, "model_turn_next", map[string]any{
 			"runtime_id": runtime.RuntimeID, "after_sequence": sequence - 1, "wait_seconds": 60,
@@ -231,12 +237,15 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				edgeProcessErr = errors.New("mcp-edge did not terminate after terminal runtime state")
 			}
-			t.Fatalf("model_turn_next sequence=%d returned %+v edge_process_error=%v edge_stderr=%q", sequence, envelope, edgeProcessErr, stderr.String())
+			t.Fatalf("model_turn_next sequence=%d status=%s edge_failure=%s", sequence, envelope.Status, safeRemoteEdgeFailureCode(edgeProcessErr, stderr.String()))
 		}
 		offer := envelope.Turn
 		if sequence == 1 {
 			distinctProcessCount = int64(assertRemoteProcessIsolation(t, os.Getpid(), cmd.Process.Pid, driverBinary, opencodeBinary))
 			processIsolationVerified = true
+		}
+		if int64(len(offer.RequestPayload)) > modelturn.MaxInlineRequestBytes && strings.HasPrefix(offer.RequestRef, "mb_") {
+			largeRequestReferenced = true
 		}
 		if offer.Sequence != sequence || offer.RuntimeID != runtime.RuntimeID {
 			t.Fatalf("turn identity mismatch: %+v", offer.Record)
@@ -273,18 +282,18 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	select {
 	case err := <-processDone:
 		if err != nil {
-			t.Fatalf("mcp-edge failed: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+			t.Fatalf("mcp-edge failed: edge_failure=%s", safeRemoteEdgeFailureCode(err, stderr.String()))
 		}
 	case <-ctx.Done():
 		_ = cmd.Process.Kill()
-		t.Fatalf("mcp-edge timeout: %v\nstdout=%s\nstderr=%s", ctx.Err(), stdout.String(), stderr.String())
+		t.Fatalf("mcp-edge timeout: edge_failure=%s", safeRemoteEdgeFailureCode(ctx.Err(), stderr.String()))
 	}
 
 	statusText := mcpTool(t, server, meter, "model_runtime_status", map[string]any{"runtime_id": runtime.RuntimeID})
 	var completed runtimePublicView
 	decodeToolJSON(t, statusText, &completed)
 	if completed.State != modelturn.RuntimeStateCompleted {
-		t.Fatalf("runtime did not complete: %+v stdout=%s stderr=%s", completed, stdout.String(), stderr.String())
+		t.Fatalf("runtime did not complete: state=%s edge_failure=%s", completed.State, safeRemoteEdgeFailureCode(nil, stderr.String()))
 	}
 	assertCalcFixedAndTested(t, workspacePath)
 	stats, err := turns.Stats(t.Context())
@@ -330,6 +339,12 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if namedFileExists(t, edgeState, "model-turns.db") {
 		t.Fatal("Edge state contains authoritative model-turn SQLite")
 	}
+	if tables := forbiddenEdgeSQLiteTables(t, edgeState); len(tables) != 0 {
+		t.Fatalf("Edge state contains authoritative tables: %v", tables)
+	}
+	if !largeRequestReferenced {
+		t.Fatal("distributed relay never exercised request_ref for a large request")
+	}
 	report := remoteDistributedReport{
 		Mode: "remote-distributed", Processes: []string{"mcp-devbox-server", "mcp-edge", "model-turn-driver", "opencode-1.18.1"},
 		MCPCalls: meter.Calls, EdgeHTTPCalls: calls, MCPRequestBytes: meter.RequestBytes, MCPResponseBytes: meter.ResponseBytes,
@@ -341,6 +356,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		RuntimeID: runtime.RuntimeID, Completed: true, RepositoryModified: true, TestsPassed: true,
 		DuplicateTurns: int64(stats.TurnCount) - int64(len(turnIDs)), DuplicateConsumptions: stats.ConsumedCount - 4,
 		ProcessIsolationVerified: processIsolationVerified, DistinctProcessCount: distinctProcessCount, AuthoritativeSQLiteShared: false,
+		EdgeAuthoritativeTables: false, LargeRequestReferenced: largeRequestReferenced,
 	}
 	if report.DuplicateTurns != 0 || report.DuplicateConsumptions != 0 {
 		t.Fatalf("duplicate execution evidence: %+v", report)
@@ -361,6 +377,89 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("REMOTE_DISTRIBUTED_REPORT=%s", encoded)
+}
+
+var remoteEdgeFailurePattern = regexp.MustCompile(`failure=([a-z_]+)`)
+
+var allowedRemoteEdgeFailures = map[string]struct{}{
+	"none": {}, "timeout": {}, "cancelled": {}, "kill_switch": {}, "restart_interrupted": {}, "terminal_replay": {},
+	"installation_integrity": {}, "installation_version": {}, "installation_opencode": {}, "installation_provider": {}, "installation_driver": {},
+	"workspace": {}, "socket": {}, "journal": {}, "lease": {}, "driver_exit": {}, "opencode_cli": {}, "opencode_provider_load": {},
+	"opencode_driver_connect": {}, "opencode_permission": {}, "opencode_config": {}, "opencode_model": {}, "opencode_provider": {},
+	"opencode_provider_auth": {}, "opencode_output_length": {}, "opencode_unknown_type": {}, "opencode_unknown_api": {},
+	"opencode_unknown_timeout": {}, "opencode_unknown_connection": {}, "opencode_prompt_shape": {}, "opencode_prompt_role": {},
+	"opencode_tool_shape": {}, "opencode_request_limit": {}, "opencode_runtime_status": {}, "opencode_driver_invalid_request": {},
+	"opencode_driver_status": {}, "opencode_turn_identity": {}, "opencode_response_identity": {}, "opencode_response_shape": {},
+	"opencode_abort": {}, "opencode_socket": {}, "opencode_unknown_error": {}, "opencode_named_error": {}, "opencode_runtime_error": {},
+	"opencode_exit": {}, "relay_unavailable": {}, "relay_rejected": {}, "internal": {}, "process_exit": {}, "process_shutdown_timeout": {},
+}
+
+func safeRemoteEdgeFailureCode(processErr error, stderr string) string {
+	if match := remoteEdgeFailurePattern.FindStringSubmatch(stderr); len(match) == 2 {
+		if _, ok := allowedRemoteEdgeFailures[match[1]]; ok {
+			return match[1]
+		}
+		return "internal"
+	}
+	if errors.Is(processErr, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	if errors.Is(processErr, context.Canceled) {
+		return "cancelled"
+	}
+	if processErr != nil {
+		return "process_exit"
+	}
+	return "internal"
+}
+
+func forbiddenEdgeSQLiteTables(t *testing.T, root string) []string {
+	t.Helper()
+	forbidden := map[string]struct{}{"model_turns": {}, "turn_bodies": {}, "model_runtimes": {}}
+	found := make(map[string]struct{})
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() || filepath.Ext(info.Name()) != ".db" {
+			return nil
+		}
+		db, err := sql.Open("sqlite", path)
+		if err != nil {
+			return err
+		}
+		rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table'`)
+		if err != nil {
+			_ = db.Close()
+			return err
+		}
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				_ = rows.Close()
+				_ = db.Close()
+				return err
+			}
+			if _, blocked := forbidden[name]; blocked {
+				found[name] = struct{}{}
+			}
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			_ = db.Close()
+			return err
+		}
+		_ = rows.Close()
+		return db.Close()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result := make([]string, 0, len(found))
+	for name := range found {
+		result = append(result, name)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func assertRemoteProcessIsolation(t *testing.T, serverPID, edgePID int, driverBinary, opencodeBinary string) int {

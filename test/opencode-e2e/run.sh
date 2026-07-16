@@ -5,6 +5,8 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 image=${OPENCODE_E2E_IMAGE:-mcp-devbox-opencode-e2e:local}
 output=${OPENCODE_E2E_OUTPUT:-"$repo_root/artifacts"}
 container="mcp-devbox-opencode-e2e-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}"
+git_tree=$(git -C "$repo_root" write-tree)
+git_commit=$(git -C "$repo_root" rev-parse HEAD)
 
 cleanup() {
   docker rm -f "$container" >/dev/null 2>&1 || true
@@ -18,6 +20,8 @@ chmod 0777 "$output"
 timeout --signal=TERM --kill-after=10s 12m \
   docker build --no-cache --pull \
     --file "$repo_root/test/opencode-e2e/Dockerfile" \
+    --build-arg "P11_2_GIT_TREE=$git_tree" \
+    --build-arg "P11_2_GIT_COMMIT=$git_commit" \
     --tag "$image" \
     "$repo_root"
 
