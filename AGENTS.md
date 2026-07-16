@@ -9,7 +9,7 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P11 orchestration/Edge foundation in progress** from the
+- Current phase: **P11.2 remote OpenCode relay release candidate** from the
   P8.1 Console 2.0 deployed and tagged on `main` at
   `d343264bffdc0ae1bc045a9d723e913be977090c`. The release preserves the
   67-tool catalog and P9 hash while adding a React/TypeScript/Vite Neo-BIOS console,
@@ -21,12 +21,13 @@ Operating rules for any AI agent working in this repo. Read this first, then
   autonomous agent, Edge Core, Parrot workcell, HTB integration, new application,
   resident service, queue or database server is part of P8.1. PR #10, remote gates,
   deployment, production smoke and annotated tag `p8.1` are closed and recorded in
-  `docs/baselines/2026-07-14-p8_1-production.md`. Step 2 adds the closed read-only
-  `workspace_checkpoint`, bounded persistent telemetry/logs, and the redacted result
-  store with 71 current tools;
-  no Edge identity, device, task lease,
-  workcell, pairing or authority expansion is claimed yet.
-  The project has stdio and HTTP/OAuth transports, policy core, 71 annotated MCP
+  `docs/baselines/2026-07-14-p8_1-production.md`. P11.2 adds signed Edge model
+  runtimes, the remote OpenCode model-turn relay, a private local driver socket,
+  mandatory Bubblewrap for OpenCode, restart/resume evidence and the human-only
+  Parrot WSL installation guide. The candidate has 78 tools and catalog hash
+  `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
+  It is not merged, deployed, paired or installed on Parrot.
+  The project has stdio and HTTP/OAuth transports, policy core, 78 annotated MCP
   tools, action plans, audit, persistent notes, Brain and adversarial tests.
   The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see

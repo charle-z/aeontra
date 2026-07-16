@@ -1,34 +1,55 @@
 # Current task
 
-P8.1 Console 2.0 remains deployed and tagged from merge `d343264bffdc0ae1bc045a9d723e913be977090c`. P11 production is deployed on top of that historical base; this branch changes neither production closure.
+Date: 2026-07-16
+Branch: `p11-2-remote-opencode-relay`
+Published validation SHA: `2bda26d4382feca7b9367a068dfbeff917e5538d`
+Validated implementation tree: `e8862ee9229ec8a98237251de6d3272e3f72ee1e`
+Base: `01fde5067752ab1c43424d2d54f9afd914617ba5`
+PR: `https://github.com/charle-z/mcp-devbox/pull/13` (draft)
 
-P11.1 OpenCode external-model bridge is complete locally on branch `p11-1-opencode-model-bridge`, based on deployed P11 production commit `62d433e91373c0882e33be0fd88de4bf7d4f0503`.
+## Historical deployed state
 
-Implementation commits:
+P9 Brain was deployed before its successor. P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`. P11.2 does not alter production.
 
-- `80736ef` — safe MCP client capability probe;
-- `2b151f3` — external model-turn transport abstraction;
-- `840873e` — durable SQLite rendezvous;
-- `2b5341f` — bounded MCP model-runtime controls;
-- `91e1f18` — OpenCode 1.18.1 research and exact pinning;
-- `fe0c2eb` — Unix-socket external model driver and LanguageModelV3 provider;
-- `0887a88` — real OpenCode vertical slice, restart/resume, long-poll optimization and benchmark evidence.
+## P11.2 validated implementation
 
-Verified E2E:
+The Docker-only relay workspace mismatch is fixed in `d3d57668504e1d38edfee7baf9f18379e37f205f`. The real OpenCode 1.18.1 remote integration passed ten consecutive local runs with four turns, read/grep/edit/bash, changed fixture digest, green tests, completed runtime, large request reference and zero duplicates.
 
-- GitHub run `29430972855`, job `87405554810`, temporary head `42db163f20c65fdf8fe4358dfed5788c0f3111c8`: success;
-- OpenCode 1.18.1 loaded `file://integrations/opencode/provider`;
-- four external model turns;
-- real `read`, `grep`, `edit` and `bash` tool executions;
-- repository edit and `go test ./...` completed successfully;
-- restart preserved exact turn ID, sequence, request digest and request reference;
-- container had no default route and no non-loopback AF_INET/AF_INET6 connections;
-- no API keys, Codex, fallback provider or local model.
+Exact-tree GitHub evidence is green:
 
-The model-turn controller now uses bounded long polling instead of 20 ms polling. Benchmark A remained 4 MCP calls / 1,039 bytes. Benchmark B fell from 1,100 calls to 9 calls, with 4 model turns, 4 OpenCode tool executions and zero retries. Restart/resume also used 9 calls and exactly one expected retry. The report is `artifacts/opencode-e2e-report.json`, SHA-256 `822b3adf9eafb84ce74f0fd957c142a4079fc76e42594f6d17c4633cde6eca3b`.
+- pull-request E2E `29540554711`: Distributed OpenCode E2E and Bubblewrap host isolation passed;
+- duplicate push E2E `29540553465`: both jobs passed;
+- CI `29540554731`: passed;
+- Security Evidence `29540554743`: passed.
 
-Candidate catalog: 77 tools, hash `sha256:3f4e1812bd72a0508eba108d97dfd353ea9abc4c883cded262abd768f1f94518`.
+All generated reports reference tree `e8862ee9229ec8a98237251de6d3272e3f72ee1e`. The current candidate catalog has 78 tools and hash `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
 
-`sampling_supported` is still intentionally undetermined because production has not deployed the capability probe. Pull rendezvous remains the only active transport; no fallback model exists.
+## Final candidate documentation and local gates
 
-Next: commit this release-candidate memory, publish only `p11-1-opencode-model-bridge`, open a PR against `main`, and require all gates on the exact final SHA. Do not merge, deploy, tag, pair Edge, install OpenCode on Parrot, or modify Coolify.
+The dated baseline `docs/baselines/2026-07-16-p11_2.md` records the green architecture, commits, catalog, pinned versions, A/B/C measurements, 6.617088 ms Bubblewrap startup median, reports, Parrot guide, residual risks and rollback. README, AGENTS, capsule, design, documentation map and roadmap now identify the 78-tool P11.2 release candidate while preserving historical 67/71-tool evidence.
+
+Final-tree local gates completed:
+
+- `go fmt ./...`;
+- `go test -p 1 ./... -count=1`;
+- atomic coverage plus package thresholds;
+- `go vet ./...`;
+- `go build ./...`;
+- Staticcheck `v0.7.0`;
+- Govulncheck `v1.6.0` with no vulnerabilities;
+- Actionlint `v1.7.12`;
+- 13 Node provider contract tests;
+- real provider/driver large-request and restart integrations, five repetitions each;
+- remote provider normal, restart and four-turn integrations, three repetitions each.
+
+The local race command could not start because this VPS has no `gcc`; this is an environment limitation, not a test failure. Race, no-cache Docker build, SBOM/container scan, CodeQL and Dependency Review remain mandatory on the exact final GitHub SHA.
+
+All temporary diagnostics, helpers, downloaded reports and scratch directories have been removed.
+
+## Immediate objective
+
+Create the canonical commit `Step 8: isolate OpenCode runtime with Bubblewrap`, record its exact SHA/tree, publish without force, update PR #13, and mark ready only after every mandatory final-SHA check is completed and green.
+
+## Boundaries
+
+No merge, deployment, pairing, real Parrot installation, tag, Coolify change, frontend, Goal Runtime, Build Workcell, HTB/THM/VPN or broad historical CodeQL remediation.

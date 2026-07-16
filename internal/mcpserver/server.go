@@ -36,6 +36,7 @@ type Server struct {
 	payload     payloadCounters
 	clients     *clientCapabilityStore
 	modelTurns  *modelturn.Store
+	edgeDevices edgeDeviceRegistry
 	modelWaitMu sync.Mutex
 	modelWaits  map[string]struct{}
 }

@@ -110,6 +110,10 @@ func Open(cfg Config) (*Store, error) {
 			return nil, errors.New("edge database initialization failed")
 		}
 	}
+	if err := store.ensureModelRelaySchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = db.Close()
 		return nil, errors.New("edge database permissions failed")

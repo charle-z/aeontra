@@ -1,5 +1,5 @@
 {
-  "name": "@mcp-devbox/opencode-model-bridge",
+  "name": "@mcp-devbox/opencode-external-driver",
   "version": "0.1.0",
   "private": true,
   "type": "module",

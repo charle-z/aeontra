@@ -32,6 +32,7 @@ type Turn struct {
 	ID             TurnID    `json:"turn_id"`
 	Sequence       uint64    `json:"sequence"`
 	RequestDigest  string    `json:"request_digest"`
+	RequestRef     string    `json:"request_ref"`
 	OfferedToolIDs []string  `json:"offered_tool_ids,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	ExpiresAt      time.Time `json:"expires_at"`

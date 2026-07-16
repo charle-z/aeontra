@@ -1,8 +1,8 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
-## Status snapshot — 2026-07-15
+## Status snapshot — 2026-07-16
 
 This table distinguishes implemented state from roadmap intent. Detailed acceptance
 criteria below remain future requirements until their status changes with evidence.
@@ -17,7 +17,8 @@ criteria below remain future requirements until their status changes with eviden
 | Console/showcase | Deployed | P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8`; the original authenticated console remains historical evidence. |
 | Brain memory | Deployed | P9 merge `4fbe1dda02351c632e67c0f10a5c5b314df745e2` is deployed and tagged `p9`; persistent `/brain`, 67 tools, catalog and Brain smokes are verified. |
 | Console 2.0 / P8.1 | Deployed | `main` at `d343264bffdc0ae1bc045a9d723e913be977090c` is deployed healthy and tagged `p8.1`; React Neo-BIOS UI, console OAuth, strict query-key rejection, durable `/state/tasks`, SSE and exact safe-data contracts passed production smoke. |
-| P11 bounded state and development Edge | Release candidate | `codex/p11-edge-core` implements compact checkpointing, bounded persistence and the outbound-only WSL development Edge. Remote PR gates, merge, deployment, WSL installation and pairing remain pending. |
+| P11 bounded state and development Edge | Release candidate | Historical 71-tool foundation recorded in `docs/baselines/2026-07-15-p11.md`; merge, deployment, WSL installation and pairing remain pending. |
+| P11.2 remote OpenCode relay | Release candidate | Exact tree `e8862ee9229ec8a98237251de6d3272e3f72ee1e` passed distributed relay and host Bubblewrap E2E with OpenCode 1.18.1, four tools, restart/resume, repository mutation and zero duplicates. PR #13 remains unmerged and unpaired. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
 | Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |
 | Edge agents | Development Edge implemented; WSL validation pending | Setup is outbound-only, revocable and locally bounded; broader PC/Parrot/security workcells remain planned. |

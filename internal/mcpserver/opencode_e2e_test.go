@@ -22,6 +22,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
@@ -110,10 +111,15 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 	baseline := runGranularBaseline(t, baselineRepo)
 
 	normalRepo := createCalcRepo(t, "opencode-normal")
+	t.Log("slice_code=normal_run_begin")
 	normal := runOpenCodeSlice(t, binary, provider, normalRepo, false)
-	assertCalcFixedAndTested(t, normalRepo)
-	assertOpenCodeEvents(t, normal.stdout, []string{"read", "grep", "edit", "bash"})
-	assertNoExternalTraffic(t, normal.trace, normal.stdout, normal.stderr)
+	t.Log("slice_code=normal_run_complete")
+	assertCalcFixedAndTested(t, normalRepo, "normal")
+	t.Log("slice_code=normal_fixture_complete")
+	assertOpenCodeEvents(t, normal.stdout, []string{"read", "grep", "edit", "bash"}, "normal")
+	t.Log("slice_code=normal_events_complete")
+	assertNoExternalTraffic(t, normal.trace, normal.stdout, normal.stderr, "normal")
+	t.Log("slice_code=normal_network_complete")
 	normal.result.RepositoryModified = true
 	normal.result.TestsPassed = true
 	normal.result.FinalResponseVerified = true
@@ -122,10 +128,15 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 	}
 
 	restartRepo := createCalcRepo(t, "opencode-restart")
+	t.Log("slice_code=restart_run_begin")
 	restarted := runOpenCodeSlice(t, binary, provider, restartRepo, true)
-	assertCalcFixedAndTested(t, restartRepo)
-	assertOpenCodeEvents(t, restarted.stdout, []string{"read", "grep", "edit", "bash"})
-	assertNoExternalTraffic(t, restarted.trace, restarted.stdout, restarted.stderr)
+	t.Log("slice_code=restart_run_complete")
+	assertCalcFixedAndTested(t, restartRepo, "restart")
+	t.Log("slice_code=restart_fixture_complete")
+	assertOpenCodeEvents(t, restarted.stdout, []string{"read", "grep", "edit", "bash"}, "restart")
+	t.Log("slice_code=restart_events_complete")
+	assertNoExternalTraffic(t, restarted.trace, restarted.stdout, restarted.stderr, "restart")
+	t.Log("slice_code=restart_network_complete")
 	restarted.result.RepositoryModified = true
 	restarted.result.TestsPassed = true
 	restarted.result.FinalResponseVerified = true
@@ -138,6 +149,7 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 
 	report := struct {
 		OpenCodeVersion string              `json:"opencode_version"`
+		GitTree         string              `json:"git_tree"`
 		Baseline        e2eResult           `json:"benchmark_a"`
 		OpenCode        e2eResult           `json:"benchmark_b"`
 		Restart         e2eResult           `json:"restart_resume"`
@@ -145,6 +157,7 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 		Security        e2eSecurityEvidence `json:"security"`
 	}{
 		OpenCodeVersion: commandOutput(t, binary, "--version"),
+		GitTree:         safeReportGitTree(os.Getenv("P11_2_GIT_TREE")),
 		Baseline:        baseline,
 		OpenCode:        normal.result,
 		Restart:         restarted.result,
@@ -281,16 +294,12 @@ func runOpenCodeSlice(t *testing.T, binary, provider, repo string, restart bool)
 	var identities []modelturn.Record
 	controlErr := controlOpenCode(ctx, t, server, meter, runtime.RuntimeID, repo, restart, socketPath, storeRoot, store, &driverStore, &driverCancel, &driverDone, processDone, &processErr, &identities)
 	if controlErr != nil {
-		cancel()
-		<-processDone
-		if metrics, err := readDriverMetrics(socketPath); err == nil && metrics.LastInternalError != "" {
-			controlErr = fmt.Errorf("%w; driver_last_internal_error=%s", controlErr, metrics.LastInternalError)
-		}
-		t.Fatalf("controller failed: %v\nstdout:\n%s\nstderr:\n%s", controlErr, stdout.String(), stderr.String())
+		failure := finalizeOpenCodeControlFailure(cancel, processDone, controlErr, stdout.String(), stderr.String())
+		t.Fatalf("OpenCode control failed: slice_code=%s", safeOpenCodeSliceFailureCode(restart, failure, stdout.String(), stderr.String()))
 	}
 	<-processDone
 	if processErr != nil {
-		t.Fatalf("OpenCode failed: %v\nstdout:\n%s\nstderr:\n%s", processErr, stdout.String(), stderr.String())
+		t.Fatalf("OpenCode failed: slice_code=%s", safeOpenCodeSliceFailureCode(restart, processErr, stdout.String(), stderr.String()))
 	}
 	stats, err := store.Stats(context.Background())
 	if err != nil {
@@ -324,6 +333,63 @@ func runOpenCodeSlice(t *testing.T, binary, provider, repo string, restart bool)
 		trace:        trace,
 		runtimeID:    runtime.RuntimeID,
 		turnIdentity: identities,
+	}
+}
+
+var safeDriverFailurePattern = regexp.MustCompile(`model turn driver operation failed: ([a-z_]+)`)
+
+func safeOpenCodeFailureCode(controlErr error, stdout, stderr string) string {
+	for _, source := range []string{errorText(controlErr), stdout, stderr} {
+		match := safeDriverFailurePattern.FindStringSubmatch(source)
+		if len(match) == 2 {
+			return modelturn.NormalizeDriverInternalErrorCode(match[1])
+		}
+	}
+	if signal := edgeclient.SafeOpenCodeFailureSignal([]byte(stderr)); signal != "unknown" {
+		return signal
+	}
+	if signal := edgeclient.SafeOpenCodeFailureSignal([]byte(stdout)); signal != "unknown" {
+		return signal
+	}
+	if errors.Is(controlErr, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	if errors.Is(controlErr, context.Canceled) {
+		return "cancelled"
+	}
+	return "unknown"
+}
+
+func safeOpenCodeSliceFailureCode(restart bool, err error, stdout, stderr string) string {
+	phase := "normal"
+	if restart {
+		phase = "restart"
+	}
+	code := safeOpenCodeFailureCode(err, stdout, stderr)
+	if err != nil && strings.Contains(err.Error(), "process_shutdown_timeout") {
+		code = "process_shutdown_timeout"
+	}
+	return phase + "_" + code
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func finalizeOpenCodeControlFailure(cancel context.CancelFunc, processDone <-chan struct{}, controlErr error, stdout, stderr string) error {
+	return finalizeOpenCodeControlFailureWithin(cancel, processDone, controlErr, stdout, stderr, 5*time.Second)
+}
+
+func finalizeOpenCodeControlFailureWithin(cancel context.CancelFunc, processDone <-chan struct{}, controlErr error, stdout, stderr string, shutdownTimeout time.Duration) error {
+	cancel()
+	select {
+	case <-processDone:
+		return fmt.Errorf("OpenCode control failed: driver_code=%s", safeOpenCodeFailureCode(controlErr, stdout, stderr))
+	case <-time.After(shutdownTimeout):
+		return errors.New("OpenCode control failed: process_shutdown_timeout")
 	}
 }
 
@@ -643,19 +709,23 @@ func createCalcRepo(t *testing.T, name string) string {
 	return root
 }
 
-func assertCalcFixedAndTested(t *testing.T, repo string) {
+func assertCalcFixedAndTested(t *testing.T, repo, phase string) {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join(repo, "calc", "calc.go"))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("slice_code=%s_fixture_read", phase)
 	}
 	if !strings.Contains(string(body), "return a + b") || strings.Contains(string(body), "return a - b") {
-		t.Fatalf("repository was not fixed: %s", body)
+		t.Fatalf("slice_code=%s_repository_not_modified", phase)
 	}
 	cmd := exec.Command("go", "test", "./...")
 	cmd.Dir = repo
 	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("fixture tests fail: %v\n%s", err, output)
+		code := edgeclient.SafeOpenCodeFailureSignal(output)
+		if code == "unknown" {
+			code = "tests_failed"
+		}
+		t.Fatalf("slice_code=%s_post_test_%s", phase, code)
 	}
 }
 
@@ -701,20 +771,26 @@ func countOpenCodeToolEvents(t *testing.T, output string) int {
 	return count
 }
 
-func assertOpenCodeEvents(t *testing.T, output string, want []string) {
+func assertOpenCodeEvents(t *testing.T, output string, want []string, phase string) {
 	t.Helper()
 	var got []string
 	finalText := false
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		var event map[string]any
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			t.Fatalf("invalid event: %v", err)
+			t.Fatalf("slice_code=%s_event_json", phase)
 		}
 		if event["type"] == "tool_use" {
 			part, _ := event["part"].(map[string]any)
 			state, _ := part["state"].(map[string]any)
 			if status := fmt.Sprint(state["status"]); status != "completed" {
-				t.Fatalf("OpenCode tool %s status=%s, want completed: %v", part["tool"], status, state)
+				tool := safeE2EToolName(fmt.Sprint(part["tool"]))
+				stateJSON, _ := json.Marshal(state)
+				code := edgeclient.SafeOpenCodeFailureSignal(stateJSON)
+				if code == "unknown" {
+					code = "status_" + safeE2EStatus(status)
+				}
+				t.Fatalf("slice_code=%s_tool_%s_%s", phase, tool, code)
 			}
 			got = append(got, fmt.Sprint(part["tool"]))
 		}
@@ -729,21 +805,39 @@ func assertOpenCodeEvents(t *testing.T, output string, want []string) {
 	sortedWant := append([]string(nil), want...)
 	sort.Strings(sortedWant)
 	if strings.Join(got, ",") != strings.Join(sortedWant, ",") {
-		t.Fatalf("OpenCode tools=%v want=%v output=%s", got, sortedWant, output)
+		t.Fatalf("slice_code=%s_tool_set", phase)
 	}
 	if !finalText {
-		t.Fatalf("OpenCode final response missing: %s", output)
+		t.Fatalf("slice_code=%s_final_response", phase)
 	}
 }
 
-func assertNoExternalTraffic(t *testing.T, trace, stdout, stderr string) {
+func safeE2EToolName(value string) string {
+	switch value {
+	case "read", "grep", "edit", "bash":
+		return value
+	default:
+		return "unknown"
+	}
+}
+
+func safeE2EStatus(value string) string {
+	switch value {
+	case "pending", "running", "error", "failed", "cancelled":
+		return value
+	default:
+		return "other"
+	}
+}
+
+func assertNoExternalTraffic(t *testing.T, trace, stdout, stderr, phase string) {
 	t.Helper()
 	if strings.TrimSpace(trace) == "" {
-		t.Fatal("strace network capture is empty")
+		t.Fatalf("slice_code=%s_network_trace_empty", phase)
 	}
 	for _, forbidden := range []string{"api.openai.com", "api.anthropic.com", "openrouter.ai", "generativelanguage.googleapis.com", "api.groq.com", "api.cerebras.ai"} {
 		if strings.Contains(strings.ToLower(trace+stdout+stderr), forbidden) {
-			t.Fatalf("external provider marker %q found", forbidden)
+			t.Fatalf("slice_code=%s_network_provider_marker", phase)
 		}
 	}
 	external := regexp.MustCompile(`connect\([^\n]*(AF_INET6?|sin_family=AF_INET6?)[^\n]*`)
@@ -751,7 +845,7 @@ func assertNoExternalTraffic(t *testing.T, trace, stdout, stderr string) {
 		if strings.Contains(line, "127.0.0.1") || strings.Contains(line, "::1") {
 			continue
 		}
-		t.Fatalf("non-loopback network attempt: %s", line)
+		t.Fatalf("slice_code=%s_network_non_loopback", phase)
 	}
 }
 

@@ -27,28 +27,46 @@ type StoreStats struct {
 }
 
 type DriverMetrics struct {
-	ProtocolVersion   string     `json:"protocol_version"`
-	StageCalls        uint64     `json:"stage_calls"`
-	CreateCalls       uint64     `json:"create_calls"`
-	WaitCalls         uint64     `json:"wait_calls"`
-	CancelCalls       uint64     `json:"cancel_calls"`
-	StatusCalls       uint64     `json:"status_calls"`
-	BytesReceived     uint64     `json:"bytes_received"`
-	BytesSent         uint64     `json:"bytes_sent"`
-	Store             StoreStats `json:"store"`
-	LastInternalError string     `json:"last_internal_error,omitempty"`
+	ProtocolVersion       string     `json:"protocol_version"`
+	StageCalls            uint64     `json:"stage_calls"`
+	CreateCalls           uint64     `json:"create_calls"`
+	WaitCalls             uint64     `json:"wait_calls"`
+	CancelCalls           uint64     `json:"cancel_calls"`
+	StatusCalls           uint64     `json:"status_calls"`
+	BytesReceived         uint64     `json:"bytes_received"`
+	BytesSent             uint64     `json:"bytes_sent"`
+	Store                 StoreStats `json:"store"`
+	LastInternalErrorCode string     `json:"last_internal_error_code,omitempty"`
 }
 
 type Driver struct {
-	store             *Store
-	stageCalls        atomic.Uint64
-	createCalls       atomic.Uint64
-	waitCalls         atomic.Uint64
-	cancelCalls       atomic.Uint64
-	statusCalls       atomic.Uint64
-	bytesReceived     atomic.Uint64
-	bytesSent         atomic.Uint64
-	lastInternalError atomic.Value
+	transport             ModelTurnTransport
+	stageCalls            atomic.Uint64
+	createCalls           atomic.Uint64
+	waitCalls             atomic.Uint64
+	cancelCalls           atomic.Uint64
+	statusCalls           atomic.Uint64
+	bytesReceived         atomic.Uint64
+	bytesSent             atomic.Uint64
+	lastInternalErrorCode atomic.Value
+}
+
+type driverReferenceTransport interface {
+	ModelTurnTransport
+	StageRequestBody(context.Context, json.RawMessage, bool, time.Duration) (RequestBodyReference, error)
+	CreateTurnFromReference(context.Context, ModelRequest) (Turn, error)
+}
+
+type driverRuntimeReader interface {
+	Runtime(context.Context, string) (Runtime, error)
+}
+
+type driverStatsReader interface {
+	Stats(context.Context) (StoreStats, error)
+}
+
+type driverDisconnectMarker interface {
+	MarkDisconnected(context.Context, TurnID) error
 }
 
 type driverCreateRequest struct {
@@ -67,11 +85,15 @@ type driverError struct {
 }
 
 func NewDriver(store *Store) (*Driver, error) {
-	if store == nil {
+	return NewDriverTransport(store)
+}
+
+func NewDriverTransport(transport ModelTurnTransport) (*Driver, error) {
+	if transport == nil {
 		return nil, ErrNilRendezvous
 	}
-	driver := &Driver{store: store}
-	driver.lastInternalError.Store("")
+	driver := &Driver{transport: transport}
+	driver.lastInternalErrorCode.Store("")
 	return driver, nil
 }
 
@@ -130,16 +152,21 @@ func (d *Driver) createTurn(w http.ResponseWriter, r *http.Request) {
 	}
 	var turn Turn
 	if hasReference {
-		turn, err = d.store.CreateTurnFromReference(r.Context(), modelRequest)
+		referenced, ok := d.transport.(driverReferenceTransport)
+		if !ok {
+			d.writeError(w, http.StatusConflict, "reference_unsupported", ErrRequestRefConflict)
+			return
+		}
+		turn, err = referenced.CreateTurnFromReference(r.Context(), modelRequest)
 	} else {
-		turn, err = d.store.CreateTurn(r.Context(), modelRequest)
+		turn, err = d.transport.CreateTurn(r.Context(), modelRequest)
 	}
 	if err != nil {
 		d.writeStoreError(w, err)
 		return
 	}
 	if turn.RequestDigest != request.RequestDigest {
-		_ = d.store.Fail(context.Background(), turn.ID)
+		_ = d.transport.Cancel(context.Background(), turn.ID)
 		d.writeError(w, http.StatusConflict, "digest_mismatch", ErrSequenceMismatch)
 		return
 	}
@@ -153,11 +180,13 @@ func (d *Driver) waitResponse(w http.ResponseWriter, r *http.Request) {
 		d.writeError(w, http.StatusBadRequest, "invalid_turn_id", ErrInvalidRequest)
 		return
 	}
-	response, err := d.store.WaitResponse(r.Context(), turnID)
+	response, err := d.transport.WaitResponse(r.Context(), turnID)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			_ = d.store.MarkDisconnected(context.Background(), turnID)
-			return
+			if marker, ok := d.transport.(driverDisconnectMarker); ok {
+				_ = marker.MarkDisconnected(context.Background(), turnID)
+			}
+			panic(http.ErrAbortHandler)
 		}
 		d.writeStoreError(w, err)
 		return
@@ -168,7 +197,7 @@ func (d *Driver) waitResponse(w http.ResponseWriter, r *http.Request) {
 func (d *Driver) cancelTurn(w http.ResponseWriter, r *http.Request) {
 	d.cancelCalls.Add(1)
 	turnID := TurnID(r.PathValue("turnID"))
-	if err := d.store.Cancel(r.Context(), turnID); err != nil {
+	if err := d.transport.Cancel(r.Context(), turnID); err != nil {
 		d.writeStoreError(w, err)
 		return
 	}
@@ -178,7 +207,12 @@ func (d *Driver) cancelTurn(w http.ResponseWriter, r *http.Request) {
 func (d *Driver) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 	d.statusCalls.Add(1)
 	runtimeID := r.PathValue("runtimeID")
-	runtime, err := d.store.Runtime(r.Context(), runtimeID)
+	reader, ok := d.transport.(driverRuntimeReader)
+	if !ok {
+		d.writeError(w, http.StatusNotFound, "not_found", ErrTurnNotFound)
+		return
+	}
+	runtime, err := reader.Runtime(r.Context(), runtimeID)
 	if err != nil {
 		d.writeStoreError(w, err)
 		return
@@ -187,22 +221,26 @@ func (d *Driver) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Driver) metrics(w http.ResponseWriter, r *http.Request) {
-	stats, err := d.store.Stats(r.Context())
-	if err != nil {
-		d.writeStoreError(w, err)
-		return
+	var stats StoreStats
+	if reader, ok := d.transport.(driverStatsReader); ok {
+		var err error
+		stats, err = reader.Stats(r.Context())
+		if err != nil {
+			d.writeStoreError(w, err)
+			return
+		}
 	}
 	d.writeJSON(w, http.StatusOK, DriverMetrics{
-		ProtocolVersion:   DriverProtocolVersion,
-		StageCalls:        d.stageCalls.Load(),
-		CreateCalls:       d.createCalls.Load(),
-		WaitCalls:         d.waitCalls.Load(),
-		CancelCalls:       d.cancelCalls.Load(),
-		StatusCalls:       d.statusCalls.Load(),
-		BytesReceived:     d.bytesReceived.Load(),
-		BytesSent:         d.bytesSent.Load(),
-		Store:             stats,
-		LastInternalError: d.lastInternalError.Load().(string),
+		ProtocolVersion:       DriverProtocolVersion,
+		StageCalls:            d.stageCalls.Load(),
+		CreateCalls:           d.createCalls.Load(),
+		WaitCalls:             d.waitCalls.Load(),
+		CancelCalls:           d.cancelCalls.Load(),
+		StatusCalls:           d.statusCalls.Load(),
+		BytesReceived:         d.bytesReceived.Load(),
+		BytesSent:             d.bytesSent.Load(),
+		Store:                 stats,
+		LastInternalErrorCode: d.lastInternalErrorCode.Load().(string),
 	})
 }
 
@@ -262,9 +300,136 @@ func (d *Driver) writeStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrTurnQuotaExceeded):
 		d.writeError(w, http.StatusInsufficientStorage, "quota_exceeded", err)
 	default:
-		d.lastInternalError.Store(err.Error())
-		d.writeError(w, http.StatusInternalServerError, "internal_error", errors.New("model turn driver operation failed"))
+		internalCode := driverInternalErrorCode(err)
+		d.lastInternalErrorCode.Store(internalCode)
+		d.writeError(w, http.StatusInternalServerError, "internal_"+internalCode, errors.New("model turn driver operation failed: "+internalCode))
 	}
+}
+
+func driverInternalErrorCode(err error) string {
+	if err == nil {
+		return "none"
+	}
+	switch err.Error() {
+	case "model body transaction failed", "model turn transaction failed":
+		return "transaction_begin"
+	case "model body cleanup failed", "model turn cleanup failed", "model turn expiry failed", "model runtime expiry failed", "runtime body cleanup failed":
+		return "cleanup"
+	case "model turn quota check failed", "model body quota check failed":
+		return "quota_read"
+	case "model turn quota eviction failed":
+		return "quota_eviction"
+	case "model request body persistence failed", "model request persistence failed":
+		return "request_persist"
+	case "model request body commit failed", "model turn commit failed":
+		return "commit"
+	case "model runtime persistence failed":
+		return "runtime_persist"
+	case "model runtime activation failed":
+		return "runtime_activate"
+	case "model runtime read failed":
+		return "runtime_read"
+	case "model runtime turn read failed":
+		return "runtime_turn_read"
+	case "model turn sequence read failed":
+		return "sequence_read"
+	case "model request body read failed", "model body unavailable":
+		return "request_read"
+	case "model request reference binding check failed":
+		return "reference_binding_read"
+	case "model turn persistence failed":
+		return "turn_persist"
+	case "model turn activation failed":
+		return "turn_activate"
+	case "model runtime turn binding failed":
+		return "runtime_bind"
+	case "model turn read failed":
+		return "turn_read"
+	case "model response transaction failed":
+		return "response_transaction"
+	case "model response persistence failed":
+		return "response_persist"
+	case "model response compare-and-swap failed":
+		return "response_cas"
+	case "model response commit failed":
+		return "response_commit"
+	case "model response read failed":
+		return "response_read"
+	case "model response body unavailable":
+		return "response_body"
+	case "model response consume failed":
+		return "response_consume"
+	case "model turn cancellation failed":
+		return "turn_cancel"
+	case "model turn failure transition failed":
+		return "turn_fail"
+	case "model turn disconnect failed":
+		return "turn_disconnect"
+	case "model runtime resume failed":
+		return "runtime_resume"
+	case "model runtime transition failed":
+		return "runtime_transition"
+	case "model runtime heartbeat failed":
+		return "runtime_heartbeat"
+	case "model runtime result update failed":
+		return "runtime_result"
+	case "model runtime cancellation failed", "model runtime turn cancellation failed", "model runtime cancellation commit failed":
+		return "runtime_cancel"
+	case "model body id generation failed", "model turn id generation failed", "model runtime id generation failed":
+		return "id_generation"
+	case "model runtime statistics failed", "model turn statistics failed", "model body statistics failed":
+		return "statistics"
+	default:
+		return "unknown"
+	}
+}
+
+var safeDriverInternalErrorCodes = map[string]struct{}{
+	"none":                   {},
+	"transaction_begin":      {},
+	"cleanup":                {},
+	"quota_read":             {},
+	"quota_eviction":         {},
+	"request_persist":        {},
+	"commit":                 {},
+	"runtime_persist":        {},
+	"runtime_activate":       {},
+	"runtime_read":           {},
+	"runtime_turn_read":      {},
+	"sequence_read":          {},
+	"request_read":           {},
+	"reference_binding_read": {},
+	"turn_persist":           {},
+	"turn_activate":          {},
+	"runtime_bind":           {},
+	"turn_read":              {},
+	"response_transaction":   {},
+	"response_persist":       {},
+	"response_cas":           {},
+	"response_commit":        {},
+	"response_read":          {},
+	"response_body":          {},
+	"response_consume":       {},
+	"turn_cancel":            {},
+	"turn_fail":              {},
+	"turn_disconnect":        {},
+	"runtime_resume":         {},
+	"runtime_transition":     {},
+	"runtime_heartbeat":      {},
+	"runtime_result":         {},
+	"runtime_cancel":         {},
+	"id_generation":          {},
+	"statistics":             {},
+	"unknown":                {},
+}
+
+// NormalizeDriverInternalErrorCode returns only a closed, payload-independent
+// diagnostic code. Unknown or attacker-controlled values collapse to unknown.
+func NormalizeDriverInternalErrorCode(code string) string {
+	if _, ok := safeDriverInternalErrorCodes[code]; ok {
+		return code
+	}
+	return "unknown"
 }
 
 func (d *Driver) writeError(w http.ResponseWriter, status int, code string, err error) {

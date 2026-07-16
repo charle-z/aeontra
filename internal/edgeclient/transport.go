@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -20,10 +21,11 @@ import (
 const maxEdgeResponse = 1 << 20
 
 type Transport struct {
-	identity Identity
-	key      ed25519.PrivateKey
-	client   *http.Client
-	now      func() time.Time
+	identity  Identity
+	stateRoot string
+	key       ed25519.PrivateKey
+	client    *http.Client
+	now       func() time.Time
 }
 
 func NewTransport(stateRoot string, client *http.Client) (*Transport, error) {
@@ -34,7 +36,11 @@ func NewTransport(stateRoot string, client *http.Client) (*Transport, error) {
 	if client == nil {
 		client = &http.Client{Timeout: clientTimeout}
 	}
-	return &Transport{identity: identity, key: key, client: client, now: time.Now}, nil
+	clone := *client
+	clone.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &Transport{identity: identity, stateRoot: filepath.Clean(stateRoot), key: key, client: &clone, now: time.Now}, nil
 }
 
 func (t *Transport) Lease(ctx context.Context, holder string, ttl time.Duration) (*edge.Lease, error) {
@@ -83,7 +89,14 @@ func (t *Transport) Complete(ctx context.Context, taskID, leaseID string, result
 }
 
 func (t *Transport) do(ctx context.Context, method, path string, input, output any) (int, error) {
-	body, err := json.Marshal(input)
+	return t.doLimited(ctx, method, path, input, output, maxEdgeResponse)
+}
+
+func (t *Transport) doLimited(ctx context.Context, method, path string, input, output any, maxResponse int64) (int, error) {
+	if maxResponse <= 0 || maxResponse > 8<<20 {
+		return 0, errors.New("edge response limit is invalid")
+	}
+	body, err := marshalEdgeRequest(input)
 	if err != nil {
 		return 0, errors.New("edge request encoding failed")
 	}
@@ -118,9 +131,9 @@ func (t *Transport) do(ctx context.Context, method, path string, input, output a
 	if response.StatusCode == http.StatusNoContent {
 		return response.StatusCode, nil
 	}
-	limited := io.LimitReader(response.Body, maxEdgeResponse+1)
+	limited := io.LimitReader(response.Body, maxResponse+1)
 	content, err := io.ReadAll(limited)
-	if err != nil || len(content) > maxEdgeResponse {
+	if err != nil || int64(len(content)) > maxResponse {
 		return response.StatusCode, errors.New("edge response is invalid")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -132,4 +145,18 @@ func (t *Transport) do(ctx context.Context, method, path string, input, output a
 		return response.StatusCode, errors.New("edge response is invalid")
 	}
 	return response.StatusCode, nil
+}
+
+func marshalEdgeRequest(input any) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(input); err != nil {
+		return nil, err
+	}
+	body := buffer.Bytes()
+	if len(body) > 0 && body[len(body)-1] == '\n' {
+		body = body[:len(body)-1]
+	}
+	return append([]byte(nil), body...), nil
 }

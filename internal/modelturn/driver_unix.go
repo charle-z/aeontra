@@ -19,11 +19,15 @@ import (
 const DefaultDriverSocketName = "model-turn-driver.sock"
 
 func ServeDriver(ctx context.Context, socketPath string, store *Store, ready io.Writer) error {
+	return ServeDriverTransport(ctx, socketPath, store, ready)
+}
+
+func ServeDriverTransport(ctx context.Context, socketPath string, transport ModelTurnTransport, ready io.Writer) error {
 	validated, err := prepareDriverSocketPath(socketPath)
 	if err != nil {
 		return err
 	}
-	driver, err := NewDriver(store)
+	driver, err := NewDriverTransport(transport)
 	if err != nil {
 		return err
 	}
@@ -46,6 +50,9 @@ func ServeDriver(ctx context.Context, socketPath string, store *Store, ready io.
 		Handler:           driver.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       30 * time.Second,
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
 	}
 	if ready != nil {
 		message, _ := json.Marshal(map[string]any{

@@ -11,7 +11,7 @@ const MAX_TOOL_CALLS = 64;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const RUNTIME_PATTERN = /^mr_[a-f0-9]{32}$/;
 const TURN_PATTERN = /^mt_[a-f0-9]{32}$/;
-const REF_PATTERN = /^mb_[a-f0-9]{32}$/;
+const REF_PATTERN = /^(?:mb|lr)_[a-f0-9]{32}$/;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const RETRYABLE_SOCKET_CODES = new Set(["ENOENT", "ECONNREFUSED", "ECONNRESET", "EPIPE"]);
 
@@ -129,18 +129,20 @@ class PullRendezvousLanguageModel {
   async #runTurn(options) {
     const externalSignal = options?.abortSignal;
     throwIfAborted(externalSignal);
-    const normalized = normalizeRequest(this.modelId, options);
-    const payloadJSON = canonicalJSON(normalized.payload);
-    const payloadBytes = Buffer.byteLength(payloadJSON, "utf8");
-    if (payloadBytes > MAX_REQUEST_BYTES) throw new Error("canonical model request exceeds the bridge limit");
-    const requestDigest = digest(payloadJSON);
     const controller = new AbortController();
     const deadline = Date.now() + this.timeoutMs;
     const timeout = setTimeout(() => controller.abort(timeoutError()), this.timeoutMs);
     const relayAbort = () => controller.abort(externalSignal?.reason ?? abortError());
     externalSignal?.addEventListener("abort", relayAbort, { once: true });
     let turn;
+    let stage = "request_stage";
     try {
+      const normalized = normalizeRequest(this.modelId, options);
+      const payloadJSON = canonicalJSON(normalized.payload);
+      const payloadBytes = Buffer.byteLength(payloadJSON, "utf8");
+      if (payloadBytes > MAX_REQUEST_BYTES) throw new Error("canonical model request exceeds the bridge limit");
+      const requestDigest = digest(payloadJSON);
+      stage = "runtime_status";
       const status = await this.requestImpl({ method: "GET", path: `/v1/runtimes/${this.runtimeID}`, signal: controller.signal });
       validateRuntimeStatus(status, this.runtimeID);
       const sequence = status.last_sequence + 1;
@@ -148,6 +150,7 @@ class PullRendezvousLanguageModel {
       if (payloadBytes <= INLINE_REQUEST_BYTES) {
         createPayload = JSON.parse(payloadJSON);
       } else {
+        stage = "request_stage";
         const staged = await this.requestImpl({
           method: "POST",
           path: "/v1/request-bodies",
@@ -172,14 +175,17 @@ class PullRendezvousLanguageModel {
       };
       if (createPayload !== undefined) createBody.payload = createPayload;
       else createBody.request_ref = normalized.requestRef;
+      stage = "turn_create";
       turn = await this.requestImpl({ method: "POST", path: "/v1/turns", signal: controller.signal, jsonBody: createBody });
       validateTurn(turn, this.runtimeID, sequence, requestDigest, normalized.toolsByID);
+      stage = "response_wait";
       const envelope = await waitForResponse({
         requestImpl: this.requestImpl,
         turn,
         signal: controller.signal,
         deadline,
       });
+      stage = "response_identity";
       validateResponseEnvelope(envelope, turn);
       const response = validateModelResponse(envelope.payload, normalized.toolsByID);
       return { turn, response, toolsByID: normalized.toolsByID, warnings: normalized.warnings };
@@ -188,7 +194,7 @@ class PullRendezvousLanguageModel {
         await cancelQuietly(this.requestImpl, turn.turn_id);
       }
       if (controller.signal.aborted) throw abortReason(controller.signal.reason);
-      throw error;
+      throw closedStageError(stage, error);
     } finally {
       clearTimeout(timeout);
       externalSignal?.removeEventListener("abort", relayAbort);
@@ -591,6 +597,16 @@ function timeoutError() {
 function abortReason(reason) {
   if (reason instanceof Error) return reason;
   return abortError();
+}
+
+function closedStageError(stage, cause) {
+  const allowed = ["runtime_status", "request_stage", "turn_create", "response_wait", "response_identity"];
+  const code = allowed.includes(stage) ? stage : "response_identity";
+  const error = new Error(code);
+  error.name = "MCPDevboxStageError";
+  error.mcpStage = code;
+  Object.defineProperty(error, "cause", { value: cause, enumerable: false });
+  return error;
 }
 
 export const __test = Object.freeze({

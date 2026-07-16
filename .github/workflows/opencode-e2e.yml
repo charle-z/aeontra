@@ -1,0 +1,383 @@
+name: E2E distributed OpenCode
+
+on:
+  push:
+    branches:
+      - main
+      - 'p11-2-*'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: opencode-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  distributed-opencode:
+    name: Distributed OpenCode E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify executable runner
+        run: |
+          test -x test/opencode-e2e/run.sh
+          test "$(git ls-files -s test/opencode-e2e/run.sh | awk '{print $1}')" = "100755"
+          command -v timeout
+          go test ./cmd/opencode-e2e-log-redactor -count=1
+          go build -trimpath -o /tmp/opencode-e2e-log-redactor ./cmd/opencode-e2e-log-redactor
+
+      - name: Run relay container E2E
+        run: |
+          mkdir -p artifacts
+          set +e
+          ./test/opencode-e2e/run.sh 2>&1 \
+            | /tmp/opencode-e2e-log-redactor \
+            | tee artifacts/opencode-relay-container-redacted.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s artifacts/opencode-e2e-report.json
+            test -s artifacts/opencode-relay-container-report.json
+          fi
+          exit "$status"
+
+      - name: Verify relay reports
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          direct = json.loads(Path("artifacts/opencode-e2e-report.json").read_text())
+          remote = json.loads(Path("artifacts/opencode-relay-container-report.json").read_text())
+          assert direct["opencode_version"] == "1.18.1"
+          assert len(direct["git_tree"]) == 40
+          assert remote["git_tree"] == direct["git_tree"]
+          for key in ("benchmark_b", "restart_resume"):
+              report = direct[key]
+              assert report["model_turns"] == 4
+              assert report["opencode_tool_executions"] == 4
+              assert report["tool_names"] == ["read", "grep", "edit", "bash"]
+              assert report["repository_modified"] is True
+              assert report["tests_passed"] is True
+              assert report["final_response_verified"] is True
+          assert direct["restart_resume"]["retries"] == 1
+          assert direct["restart_resume"]["restart_observed_disconnected"] is True
+          assert direct["restart_resume"]["restart_resumed_awaiting"] is True
+
+          assert remote["mode"] == "relay_container_e2e"
+          assert remote["processes"] == [
+              "mcp-devbox-server",
+              "mcp-edge",
+              "model-turn-driver",
+              "opencode-1.18.1",
+          ]
+          assert remote["mcp_calls"] == 10
+          assert remote["mcp_calls"] < 20
+          assert remote["model_turns"] == 4
+          assert remote["tool_executions"] == 4
+          assert remote["tool_names"] == ["read", "grep", "edit", "bash"]
+          assert remote["process_isolation_verified"] is True
+          assert remote["distinct_process_count"] == 4
+          assert set(remote["process_pids"]) == set(remote["processes"])
+          assert all(pid > 0 for pid in remote["process_pids"].values())
+          assert len(set(remote["process_pids"].values())) == 4
+          assert remote["authoritative_sqlite_shared"] is False
+          assert remote["retries"] == 0
+          assert remote["duplicate_turns"] == 0
+          assert remote["duplicate_consumptions"] == 0
+          assert remote["completed"] is True
+          assert remote["repository_modified"] is True
+          assert remote["tests_passed"] is True
+          assert remote["vps_result_store_bytes"] > 0
+          assert remote["edge_journal_bytes"] > 0
+          assert remote["edge_http_calls"] >= 8
+          assert remote["edge_authoritative_tables_present"] is False
+          assert remote["large_request_referenced"] is True
+          PY
+
+      - name: Annotate relay failure
+        if: ${{ failure() && hashFiles('artifacts/opencode-relay-container-redacted.log') != '' }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path("artifacts/opencode-relay-container-redacted.log").read_text(errors="replace").splitlines()
+          summary = "\n".join(lines[-100:])[-3500:]
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=test/opencode-e2e/run.sh,line=1,title=Distributed OpenCode E2E failure::{escaped}")
+          PY
+
+      - name: Upload relay evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: opencode-relay-container-e2e
+          path: |
+            artifacts/opencode-relay-container-redacted.log
+            artifacts/opencode-e2e-report.json
+            artifacts/opencode-relay-container-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  bubblewrap-host:
+    name: Bubblewrap host isolation
+    needs: distributed-opencode
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Prepare relay evidence directory
+        run: |
+          rm -f artifacts/opencode-e2e-report.json artifacts/opencode-relay-container-report.json
+
+      - name: Download relay evidence
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: opencode-relay-container-e2e
+          path: artifacts
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: test/opencode-e2e/package-lock.json
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap git ripgrep
+          bwrap --version
+          node --version
+          npm --version
+
+      - name: Prepare pinned OpenCode and host binaries
+        run: |
+          npm ci --prefix test/opencode-e2e --no-audit --no-fund
+          test "$(test/opencode-e2e/node_modules/.bin/opencode --version)" = "1.18.1"
+          test -x test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode
+
+          bin="$RUNNER_TEMP/p11-2-bin"
+          mkdir -p "$bin" artifacts
+          install -m 0755 test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode "$bin/opencode-1.18.1"
+          go build -trimpath -o "$bin/mcp-edge" ./cmd/mcp-edge
+          go build -trimpath -o "$bin/model-turn-driver" ./cmd/model-turn-driver
+          go test -c -tags=opencode_e2e -o "$bin/bubblewrap-host.test" ./internal/edgeclient
+          go test -c -tags=opencode_e2e -o "$bin/opencode-host.test" ./internal/mcpserver
+          go test ./cmd/opencode-e2e-log-redactor -count=1
+          go build -trimpath -o "$bin/opencode-e2e-log-redactor" ./cmd/opencode-e2e-log-redactor
+
+          {
+            echo "OPENCODE_E2E=1"
+            echo "OPENCODE_E2E_BIN=$bin/opencode-1.18.1"
+            echo "MCP_EDGE_E2E_BIN=$bin/mcp-edge"
+            echo "MODEL_TURN_DRIVER_E2E_BIN=$bin/model-turn-driver"
+            echo "BWRAP_E2E_BIN=$bin/bubblewrap-host.test"
+            echo "MCP_E2E_BIN=$bin/opencode-host.test"
+            echo "REDACTOR_BIN=$bin/opencode-e2e-log-redactor"
+            echo "OPENCODE_PROVIDER_E2E_PATH=$GITHUB_WORKSPACE/integrations/opencode/provider"
+            echo "P11_2_GIT_TREE=$(git write-tree)"
+            echo "P11_2_GIT_COMMIT=$(git rev-parse HEAD)"
+            echo "P11_2_RUNNER=ubuntu-22.04"
+          } >> "$GITHUB_ENV"
+
+      - name: Run Bubblewrap host preflight
+        run: |
+          set +e
+          OPENCODE_BWRAP_HOST_E2E=1 "$BWRAP_E2E_BIN" \
+            -test.run=TestBubblewrapHostPreflight -test.count=1 -test.v 2>&1 \
+            | "$REDACTOR_BIN" \
+            | tee artifacts/opencode-bubblewrap-preflight-redacted.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+
+      - name: Run Bubblewrap host isolation
+        run: |
+          set +e
+          OPENCODE_BWRAP_HOST_E2E=1 "$BWRAP_E2E_BIN" \
+            -test.run=TestBubblewrapRealIsolationSmoke -test.count=1 -test.v 2>&1 \
+            | "$REDACTOR_BIN" \
+            | tee artifacts/opencode-bubblewrap-isolation-redacted.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+
+      - name: Run combined OpenCode sandbox E2E
+        run: |
+          set +e
+          "$MCP_E2E_BIN" \
+            -test.run=TestRemoteOpenCodeDistributedRelay \
+            -test.count=1 -test.v 2>&1 \
+            | "$REDACTOR_BIN" \
+            | tee artifacts/opencode-combined-sandbox-redacted.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+
+      - name: Generate release candidate report
+        run: |
+          "$MCP_E2E_BIN" -test.run=TestZZP112ReleaseCandidateReport -test.count=1 -test.v
+
+      - name: Verify host evidence
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          preflight = json.loads(Path("artifacts/opencode-bubblewrap-preflight-report.json").read_text())
+          isolation = json.loads(Path("artifacts/opencode-bubblewrap-isolation-report.json").read_text())
+          direct = json.loads(Path("artifacts/opencode-e2e-report.json").read_text())
+          relay = json.loads(Path("artifacts/opencode-relay-container-report.json").read_text())
+          remote = json.loads(Path("artifacts/opencode-combined-sandbox-report.json").read_text())
+          release = json.loads(Path("artifacts/p11-2-release-candidate-report.json").read_text())
+
+          assert preflight["schema_version"] == 1
+          assert preflight["mode"] == "bubblewrap_host_e2e"
+          assert preflight["runner"] == "ubuntu-22.04"
+          assert len(preflight["git_tree"]) == 40
+          assert preflight["bubblewrap_version"]
+          assert len(preflight["stages"]) == 14
+          assert all(preflight["stages"].values())
+          assert preflight["duration_nanos"] > 0
+
+          assert isolation["schema_version"] == 1
+          assert isolation["mode"] == "bubblewrap_host_e2e"
+          assert isolation["runner"] == "ubuntu-22.04"
+          assert isolation["git_tree"] == preflight["git_tree"]
+          assert isolation["bubblewrap_version"] == preflight["bubblewrap_version"]
+          assert isolation["opencode_version"] == "1.18.1"
+          assert isolation["provider_package"] == "@mcp-devbox/opencode-external-driver"
+          assert isolation["provider_version"] == "0.1.0"
+          assert isolation["preflight_stages"] == preflight["stages"]
+          assert isolation["network_namespace_unshared"] is True
+          assert isolation["external_connect_blocked"] is True
+          assert isolation["external_dns_blocked"] is True
+          assert isolation["workspace_writable"] is True
+          assert isolation["runtime_writable"] is True
+          assert isolation["provider_read_only"] is True
+          assert isolation["opencode_binary_read_only"] is True
+          assert isolation["edge_state_visible"] is False
+          assert isolation["host_home_visible"] is False
+          assert isolation["root_visible"] is False
+          assert isolation["ssh_keys_visible"] is False
+          assert isolation["browser_profiles_visible"] is False
+          assert isolation["vpn_visible"] is False
+          assert isolation["docker_socket_visible"] is False
+          assert isolation["wsl_windows_mounts_visible"] is False
+          assert isolation["unix_socket_reachable"] is True
+          assert isolation["tcp_listener_found"] is False
+          assert isolation["user_namespace_active"] is True
+          assert isolation["runtime_mode"] == "0700"
+          assert isolation["socket_mode"] == "0600"
+          assert isolation["bubblewrap_startup_median_nanos"] > 0
+          assert len(isolation["bubblewrap_startup_samples_nanos"]) == 5
+
+          assert direct["opencode_version"] == "1.18.1"
+          assert direct["git_tree"] == preflight["git_tree"]
+          assert relay["git_tree"] == preflight["git_tree"]
+          assert remote["git_tree"] == preflight["git_tree"]
+          assert relay["mode"] == "relay_container_e2e"
+          assert relay["model_turns"] == 4
+          assert relay["tool_executions"] == 4
+          assert relay["duplicate_turns"] == 0
+          assert relay["duplicate_consumptions"] == 0
+          assert relay["completed"] is True
+          for key in ("benchmark_b", "restart_resume"):
+              report = direct[key]
+              assert report["model_turns"] == 4
+              assert report["opencode_tool_executions"] == 4
+              assert report["tool_names"] == ["read", "grep", "edit", "bash"]
+              assert report["repository_modified"] is True
+              assert report["tests_passed"] is True
+          assert direct["restart_resume"]["retries"] == 1
+          assert direct["restart_resume"]["restart_observed_disconnected"] is True
+          assert direct["restart_resume"]["restart_resumed_awaiting"] is True
+
+          assert remote["mode"] == "combined_opencode_sandbox_e2e"
+          assert remote["model_turns"] == 4
+          assert remote["tool_executions"] == 4
+          assert remote["tool_names"] == ["read", "grep", "edit", "bash"]
+          assert remote["process_isolation_verified"] is True
+          assert remote["distinct_process_count"] == 4
+          assert len(set(remote["process_pids"].values())) == 4
+          assert remote["duplicate_turns"] == 0
+          assert remote["duplicate_consumptions"] == 0
+          assert remote["large_request_referenced"] is True
+          assert remote["completed"] is True
+          assert remote["repository_modified"] is True
+          assert remote["tests_passed"] is True
+
+          assert release["schema_version"] == 1
+          assert release["phase"] == "P11.2"
+          assert release["git"]["tree"] == isolation["git_tree"]
+          assert len(release["git"]["commit"]) == 40
+          assert release["versions"]["opencode"] == "1.18.1"
+          assert release["versions"]["bubblewrap"] == isolation["bubblewrap_version"]
+          assert release["benchmark_a_local_rendezvous"]["model_turns"] == 4
+          assert release["distributed_relay_report"]["mode"] == "relay_container_e2e"
+          assert release["distributed_relay_report"]["model_turns"] == 4
+          assert release["benchmark_b_remote_relay"]["mode"] == "combined_opencode_sandbox_e2e"
+          assert release["combined_sandbox_report"]["mode"] == "combined_opencode_sandbox_e2e"
+          assert release["benchmark_b_remote_relay"]["model_turns"] == 4
+          assert release["benchmark_c_restart_resume"]["model_turns"] == 4
+          assert release["security_matrix"]["passed"] is True
+          PY
+
+      - name: Annotate host failure
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          candidates = [
+              Path("artifacts/opencode-combined-sandbox-redacted.log"),
+              Path("artifacts/opencode-bubblewrap-isolation-redacted.log"),
+              Path("artifacts/opencode-bubblewrap-preflight-redacted.log"),
+          ]
+          lines = []
+          for path in candidates:
+              if path.exists():
+                  lines.extend(path.read_text(errors="replace").splitlines()[-60:])
+          summary = "\n".join(lines)[-3500:]
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=.github/workflows/opencode-e2e.yml,line=1,title=Bubblewrap host isolation failure::{escaped}")
+          PY
+
+      - name: Upload host evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: opencode-bubblewrap-host-e2e
+          path: |
+            artifacts/opencode-bubblewrap-preflight-redacted.log
+            artifacts/opencode-bubblewrap-isolation-redacted.log
+            artifacts/opencode-combined-sandbox-redacted.log
+            artifacts/opencode-bubblewrap-preflight-report.json
+            artifacts/opencode-bubblewrap-isolation-report.json
+            artifacts/opencode-e2e-report.json
+            artifacts/opencode-relay-container-report.json
+            artifacts/opencode-combined-sandbox-report.json
+            artifacts/p11-2-release-candidate-report.json
+          if-no-files-found: warn
+          retention-days: 30

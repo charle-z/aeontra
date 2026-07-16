@@ -37,3 +37,14 @@ the exact final SHA. Do not merge, deploy, tag, pair, install WSL, expose a remo
 shell, or begin Parrot/HTB authority. After a human merge and exact deployment, the
 next owner action is the dedicated WSL/Bubblewrap procedure in
 `docs/install-edge-wsl.md`.
+
+
+## P11.2 validation checkpoint — 2026-07-15
+
+- Branch: `p11-2-step7-validation`.
+- Published HEAD: `7897befc92369f0cc65ee2ec787588b3b1e3f487`.
+- Exact tree: `687094f358efabc72af344b46f32c024bf87ad06`.
+- The provider/Unix-driver restart bug is fixed with `http.ErrAbortHandler`; local integration proves one create, exact response-wait retries, stable identity and one consumption.
+- Docker E2E run `29466504331`, check `87520668556`, failed later in `TestOpenCodeExternalModelVerticalSlice` with closed signal `unknown_error` and bounded exit `124`.
+- No raw OpenCode output was persisted. The next action is `git show 0887a88 --stat`, followed by a focused comparison of the known-green P11.1 provider/E2E implementation.
+- Do not switch to the target branch, consolidate, open a PR, merge, deploy, pair, install Parrot, tag or change Coolify until the temporary direct and remote Docker slices are green on one exact tree.

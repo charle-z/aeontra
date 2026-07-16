@@ -54,7 +54,7 @@ func TestP11CandidateEvidenceIsSynchronized(t *testing.T) {
 	if !strings.Contains(read("product-roadmap.md"), "| P11 bounded state and development Edge | Release candidate |") {
 		t.Error("roadmap does not identify the P11 release candidate")
 	}
-	if !strings.Contains(read("design.md"), "current 71-tool P11 candidate") {
+	if !strings.Contains(read("design.md"), "current 78-tool P11.2 candidate") {
 		t.Error("design does not identify the current P11 catalog")
 	}
 

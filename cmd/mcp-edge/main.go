@@ -33,6 +33,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = pair(args[1:], stdin, stdout, stderr)
 	case "run":
 		err = runWorkcell(args[1:], stderr)
+	case "opencode":
+		err = runOpenCodeRelay(args[1:], stderr)
+	case "workspace":
+		err = workspaceCommand(args[1:], stdout, stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -186,6 +190,10 @@ func usage(output io.Writer) {
 Usage:
   mcp-edge pair --server https://mcp.example.com [--state <ABS_PATH>] [--name wsl-development]
   mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 1m]
+  mcp-edge opencode --opencode <ABS_PATH> --provider <ABS_PATH> --integrity <ABS_PATH> [--bubblewrap <ABS_PATH>] [--state <ABS_PATH>]
+  mcp-edge workspace add --path <ABS_LINUX_PATH> [--state <ABS_PATH>]
+  mcp-edge workspace list [--state <ABS_PATH>]
+  mcp-edge workspace remove --id <OPAQUE_ID> [--state <ABS_PATH>]
 
 The pairing code is read from stdin and is never accepted as a command-line flag.
 Create the local STOP file to activate the kill switch.
