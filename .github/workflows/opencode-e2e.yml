@@ -19,7 +19,7 @@ jobs:
   distributed-opencode:
     name: E2E distributed OpenCode
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -28,12 +28,17 @@ jobs:
         run: |
           test -x test/opencode-e2e/run.sh
           test "$(git ls-files -s test/opencode-e2e/run.sh | awk '{print $1}')" = "100755"
+          command -v timeout
+          go test ./cmd/opencode-e2e-log-redactor -count=1
+          go build -o /tmp/opencode-e2e-log-redactor ./cmd/opencode-e2e-log-redactor
 
       - name: Run isolated remote relay
         run: |
           mkdir -p artifacts
           set +e
-          ./test/opencode-e2e/run.sh 2>&1 | tee artifacts/opencode-remote-e2e.log
+          ./test/opencode-e2e/run.sh 2>&1 \
+            | /tmp/opencode-e2e-log-redactor \
+            | tee artifacts/opencode-remote-e2e-redacted.log
           status=${PIPESTATUS[0]}
           set -e
           if [ "$status" -eq 0 ]; then
@@ -42,20 +47,14 @@ jobs:
           exit "$status"
 
       - name: Annotate primary E2E failure
-        if: ${{ failure() && hashFiles('artifacts/opencode-remote-e2e.log') != '' }}
+        if: ${{ failure() && hashFiles('artifacts/opencode-remote-e2e-redacted.log') != '' }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          log = Path("artifacts/opencode-remote-e2e.log").read_text(errors="replace")
+          log = Path("artifacts/opencode-remote-e2e-redacted.log").read_text(errors="replace")
           lines = log.splitlines()
-          signals = [
-              line for line in lines
-              if re.search(r"(?:FAIL|Error|error:|panic|fatal|permission denied|not found|exit status|docker:)", line, re.I)
-          ]
-          summary_lines = signals[-30:] + ["--- final log lines ---"] + lines[-80:]
-          summary = "\n".join(summary_lines)
+          summary = "\n".join(lines[-100:])
           if len(summary) > 3500:
               summary = summary[-3500:]
           escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
@@ -103,7 +102,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: opencode-remote-e2e-log
-          path: artifacts/opencode-remote-e2e.log
+          path: artifacts/opencode-remote-e2e-redacted.log
           if-no-files-found: warn
           retention-days: 14
 

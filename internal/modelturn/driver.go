@@ -338,19 +338,91 @@ func driverInternalErrorCode(err error) string {
 		return "runtime_bind"
 	case "model turn read failed":
 		return "turn_read"
+	case "model response transaction failed":
+		return "response_transaction"
 	case "model response persistence failed":
 		return "response_persist"
+	case "model response compare-and-swap failed":
+		return "response_cas"
 	case "model response commit failed":
 		return "response_commit"
 	case "model response read failed":
 		return "response_read"
+	case "model response body unavailable":
+		return "response_body"
 	case "model response consume failed":
 		return "response_consume"
+	case "model turn cancellation failed":
+		return "turn_cancel"
+	case "model turn failure transition failed":
+		return "turn_fail"
+	case "model turn disconnect failed":
+		return "turn_disconnect"
+	case "model runtime resume failed":
+		return "runtime_resume"
+	case "model runtime transition failed":
+		return "runtime_transition"
+	case "model runtime heartbeat failed":
+		return "runtime_heartbeat"
+	case "model runtime result update failed":
+		return "runtime_result"
+	case "model runtime cancellation failed", "model runtime turn cancellation failed", "model runtime cancellation commit failed":
+		return "runtime_cancel"
+	case "model body id generation failed", "model turn id generation failed", "model runtime id generation failed":
+		return "id_generation"
 	case "model runtime statistics failed", "model turn statistics failed", "model body statistics failed":
 		return "statistics"
 	default:
 		return "unknown"
 	}
+}
+
+var safeDriverInternalErrorCodes = map[string]struct{}{
+	"none":                   {},
+	"transaction_begin":      {},
+	"cleanup":                {},
+	"quota_read":             {},
+	"quota_eviction":         {},
+	"request_persist":        {},
+	"commit":                 {},
+	"runtime_persist":        {},
+	"runtime_activate":       {},
+	"runtime_read":           {},
+	"runtime_turn_read":      {},
+	"sequence_read":          {},
+	"request_read":           {},
+	"reference_binding_read": {},
+	"turn_persist":           {},
+	"turn_activate":          {},
+	"runtime_bind":           {},
+	"turn_read":              {},
+	"response_transaction":   {},
+	"response_persist":       {},
+	"response_cas":           {},
+	"response_commit":        {},
+	"response_read":          {},
+	"response_body":          {},
+	"response_consume":       {},
+	"turn_cancel":            {},
+	"turn_fail":              {},
+	"turn_disconnect":        {},
+	"runtime_resume":         {},
+	"runtime_transition":     {},
+	"runtime_heartbeat":      {},
+	"runtime_result":         {},
+	"runtime_cancel":         {},
+	"id_generation":          {},
+	"statistics":             {},
+	"unknown":                {},
+}
+
+// NormalizeDriverInternalErrorCode returns only a closed, payload-independent
+// diagnostic code. Unknown or attacker-controlled values collapse to unknown.
+func NormalizeDriverInternalErrorCode(code string) string {
+	if _, ok := safeDriverInternalErrorCodes[code]; ok {
+		return code
+	}
+	return "unknown"
 }
 
 func (d *Driver) writeError(w http.ResponseWriter, status int, code string, err error) {

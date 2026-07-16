@@ -281,16 +281,11 @@ func runOpenCodeSlice(t *testing.T, binary, provider, repo string, restart bool)
 	var identities []modelturn.Record
 	controlErr := controlOpenCode(ctx, t, server, meter, runtime.RuntimeID, repo, restart, socketPath, storeRoot, store, &driverStore, &driverCancel, &driverDone, processDone, &processErr, &identities)
 	if controlErr != nil {
-		cancel()
-		<-processDone
-		if metrics, err := readDriverMetrics(socketPath); err == nil && metrics.LastInternalErrorCode != "" {
-			controlErr = fmt.Errorf("%w; driver_last_internal_error_code=%s stage=%d create=%d wait=%d status=%d", controlErr, metrics.LastInternalErrorCode, metrics.StageCalls, metrics.CreateCalls, metrics.WaitCalls, metrics.StatusCalls)
-		}
-		t.Fatalf("controller failed: %v\nstdout:\n%s\nstderr:\n%s", controlErr, stdout.String(), stderr.String())
+		t.Fatal(finalizeOpenCodeControlFailure(cancel, processDone, controlErr, stdout.String(), stderr.String()))
 	}
 	<-processDone
 	if processErr != nil {
-		t.Fatalf("OpenCode failed: %v\nstdout:\n%s\nstderr:\n%s", processErr, stdout.String(), stderr.String())
+		t.Fatalf("OpenCode failed: driver_code=%s", safeOpenCodeFailureCode(processErr, stdout.String(), stderr.String()))
 	}
 	stats, err := store.Stats(context.Background())
 	if err != nil {
@@ -324,6 +319,45 @@ func runOpenCodeSlice(t *testing.T, binary, provider, repo string, restart bool)
 		trace:        trace,
 		runtimeID:    runtime.RuntimeID,
 		turnIdentity: identities,
+	}
+}
+
+var safeDriverFailurePattern = regexp.MustCompile(`model turn driver operation failed: ([a-z_]+)`)
+
+func safeOpenCodeFailureCode(controlErr error, stdout, stderr string) string {
+	for _, source := range []string{errorText(controlErr), stdout, stderr} {
+		match := safeDriverFailurePattern.FindStringSubmatch(source)
+		if len(match) == 2 {
+			return modelturn.NormalizeDriverInternalErrorCode(match[1])
+		}
+	}
+	if errors.Is(controlErr, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	if errors.Is(controlErr, context.Canceled) {
+		return "cancelled"
+	}
+	return "unknown"
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func finalizeOpenCodeControlFailure(cancel context.CancelFunc, processDone <-chan struct{}, controlErr error, stdout, stderr string) error {
+	return finalizeOpenCodeControlFailureWithin(cancel, processDone, controlErr, stdout, stderr, 5*time.Second)
+}
+
+func finalizeOpenCodeControlFailureWithin(cancel context.CancelFunc, processDone <-chan struct{}, controlErr error, stdout, stderr string, shutdownTimeout time.Duration) error {
+	cancel()
+	select {
+	case <-processDone:
+		return fmt.Errorf("OpenCode control failed: driver_code=%s", safeOpenCodeFailureCode(controlErr, stdout, stderr))
+	case <-time.After(shutdownTimeout):
+		return errors.New("OpenCode control failed: process_shutdown_timeout")
 	}
 }
 
