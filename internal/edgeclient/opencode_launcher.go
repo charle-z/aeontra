@@ -842,11 +842,14 @@ func structuredOpenCodeErrorSignal(content []byte) string {
 	return ""
 }
 
-func (b *boundedSink) FailureSignal() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	text := strings.ToLower(string(b.tail))
-	if signal := structuredOpenCodeErrorSignal(b.tail); signal != "" {
+// SafeOpenCodeFailureSignal classifies bounded OpenCode output without
+// returning messages, paths, prompts, arguments, or response bodies.
+func SafeOpenCodeFailureSignal(content []byte) string {
+	if len(content) > 8192 {
+		content = content[len(content)-8192:]
+	}
+	text := strings.ToLower(string(content))
+	if signal := structuredOpenCodeErrorSignal(content); signal != "" {
 		return signal
 	}
 	checks := []struct {
@@ -872,6 +875,12 @@ func (b *boundedSink) FailureSignal() string {
 		return "runtime_error"
 	}
 	return "unknown"
+}
+
+func (b *boundedSink) FailureSignal() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return SafeOpenCodeFailureSignal(b.tail)
 }
 
 func (b *boundedSink) Truncated() bool {

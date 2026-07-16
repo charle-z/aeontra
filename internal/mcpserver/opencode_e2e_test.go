@@ -22,6 +22,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/tools"
@@ -330,6 +331,12 @@ func safeOpenCodeFailureCode(controlErr error, stdout, stderr string) string {
 		if len(match) == 2 {
 			return modelturn.NormalizeDriverInternalErrorCode(match[1])
 		}
+	}
+	if signal := edgeclient.SafeOpenCodeFailureSignal([]byte(stderr)); signal != "unknown" {
+		return signal
+	}
+	if signal := edgeclient.SafeOpenCodeFailureSignal([]byte(stdout)); signal != "unknown" {
+		return signal
 	}
 	if errors.Is(controlErr, context.DeadlineExceeded) {
 		return "timeout"
