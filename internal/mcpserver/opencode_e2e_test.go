@@ -149,6 +149,7 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 
 	report := struct {
 		OpenCodeVersion string              `json:"opencode_version"`
+		GitTree         string              `json:"git_tree"`
 		Baseline        e2eResult           `json:"benchmark_a"`
 		OpenCode        e2eResult           `json:"benchmark_b"`
 		Restart         e2eResult           `json:"restart_resume"`
@@ -156,6 +157,7 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 		Security        e2eSecurityEvidence `json:"security"`
 	}{
 		OpenCodeVersion: commandOutput(t, binary, "--version"),
+		GitTree:         safeReportGitTree(os.Getenv("P11_2_GIT_TREE")),
 		Baseline:        baseline,
 		OpenCode:        normal.result,
 		Restart:         restarted.result,

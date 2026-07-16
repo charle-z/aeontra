@@ -49,7 +49,7 @@ jobs:
           set -e
           if [ "$status" -eq 0 ]; then
             test -s artifacts/opencode-e2e-report.json
-            test -s artifacts/opencode-remote-e2e-report.json
+            test -s artifacts/opencode-relay-container-report.json
           fi
           exit "$status"
 
@@ -60,8 +60,10 @@ jobs:
           from pathlib import Path
 
           direct = json.loads(Path("artifacts/opencode-e2e-report.json").read_text())
-          remote = json.loads(Path("artifacts/opencode-remote-e2e-report.json").read_text())
+          remote = json.loads(Path("artifacts/opencode-relay-container-report.json").read_text())
           assert direct["opencode_version"] == "1.18.1"
+          assert len(direct["git_tree"]) == 40
+          assert remote["git_tree"] == direct["git_tree"]
           for key in ("benchmark_b", "restart_resume"):
               report = direct[key]
               assert report["model_turns"] == 4
@@ -125,17 +127,28 @@ jobs:
           path: |
             artifacts/opencode-relay-container-redacted.log
             artifacts/opencode-e2e-report.json
-            artifacts/opencode-remote-e2e-report.json
+            artifacts/opencode-relay-container-report.json
           if-no-files-found: warn
           retention-days: 30
 
   bubblewrap-host:
     name: Bubblewrap host isolation
+    needs: distributed-opencode
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Prepare relay evidence directory
+        run: |
+          rm -f artifacts/opencode-e2e-report.json artifacts/opencode-relay-container-report.json
+
+      - name: Download relay evidence
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: opencode-relay-container-e2e
+          path: artifacts
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -214,7 +227,7 @@ jobs:
         run: |
           set +e
           "$MCP_E2E_BIN" \
-            '-test.run=TestOpenCodeExternalModelVerticalSlice|TestRemoteOpenCodeDistributedRelay' \
+            -test.run=TestRemoteOpenCodeDistributedRelay \
             -test.count=1 -test.v 2>&1 \
             | "$REDACTOR_BIN" \
             | tee artifacts/opencode-combined-sandbox-redacted.log
@@ -235,7 +248,8 @@ jobs:
           preflight = json.loads(Path("artifacts/opencode-bubblewrap-preflight-report.json").read_text())
           isolation = json.loads(Path("artifacts/opencode-bubblewrap-isolation-report.json").read_text())
           direct = json.loads(Path("artifacts/opencode-e2e-report.json").read_text())
-          remote = json.loads(Path("artifacts/opencode-remote-e2e-report.json").read_text())
+          relay = json.loads(Path("artifacts/opencode-relay-container-report.json").read_text())
+          remote = json.loads(Path("artifacts/opencode-combined-sandbox-report.json").read_text())
           release = json.loads(Path("artifacts/p11-2-release-candidate-report.json").read_text())
 
           assert preflight["schema_version"] == 1
@@ -280,6 +294,15 @@ jobs:
           assert len(isolation["bubblewrap_startup_samples_nanos"]) == 5
 
           assert direct["opencode_version"] == "1.18.1"
+          assert direct["git_tree"] == preflight["git_tree"]
+          assert relay["git_tree"] == preflight["git_tree"]
+          assert remote["git_tree"] == preflight["git_tree"]
+          assert relay["mode"] == "relay_container_e2e"
+          assert relay["model_turns"] == 4
+          assert relay["tool_executions"] == 4
+          assert relay["duplicate_turns"] == 0
+          assert relay["duplicate_consumptions"] == 0
+          assert relay["completed"] is True
           for key in ("benchmark_b", "restart_resume"):
               report = direct[key]
               assert report["model_turns"] == 4
@@ -312,7 +335,10 @@ jobs:
           assert release["versions"]["opencode"] == "1.18.1"
           assert release["versions"]["bubblewrap"] == isolation["bubblewrap_version"]
           assert release["benchmark_a_local_rendezvous"]["model_turns"] == 4
+          assert release["distributed_relay_report"]["mode"] == "relay_container_e2e"
+          assert release["distributed_relay_report"]["model_turns"] == 4
           assert release["benchmark_b_remote_relay"]["mode"] == "combined_opencode_sandbox_e2e"
+          assert release["combined_sandbox_report"]["mode"] == "combined_opencode_sandbox_e2e"
           assert release["benchmark_b_remote_relay"]["model_turns"] == 4
           assert release["benchmark_c_restart_resume"]["model_turns"] == 4
           assert release["security_matrix"]["passed"] is True
@@ -350,7 +376,8 @@ jobs:
             artifacts/opencode-bubblewrap-preflight-report.json
             artifacts/opencode-bubblewrap-isolation-report.json
             artifacts/opencode-e2e-report.json
-            artifacts/opencode-remote-e2e-report.json
+            artifacts/opencode-relay-container-report.json
+            artifacts/opencode-combined-sandbox-report.json
             artifacts/p11-2-release-candidate-report.json
           if-no-files-found: warn
           retention-days: 30

@@ -18,16 +18,23 @@ func TestZZP112ReleaseCandidateReport(t *testing.T) {
 	}
 	root := repoRoot(t)
 	direct := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-e2e-report.json"))
-	remote := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-remote-e2e-report.json"))
+	relay := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-relay-container-report.json"))
+	combined := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-combined-sandbox-report.json"))
 	isolation := readJSONArtifact(t, filepath.Join(root, "artifacts", "opencode-bubblewrap-isolation-report.json"))
 
 	for _, key := range []string{"runtime_id", "workspace_id", "authoritative_store", "edge_state"} {
-		delete(remote, key)
+		delete(relay, key)
+		delete(combined, key)
 	}
 	gitTree := os.Getenv("P11_2_GIT_TREE")
 	gitCommit := os.Getenv("P11_2_GIT_COMMIT")
 	if len(gitTree) != 40 || len(gitCommit) != 40 {
 		t.Fatalf("build did not pin Git identities: tree=%q commit=%q", gitTree, gitCommit)
+	}
+	for name, artifact := range map[string]map[string]any{"direct": direct, "relay": relay, "combined": combined, "isolation": isolation} {
+		if artifact["git_tree"] != gitTree {
+			t.Fatalf("%s report tree mismatch: got=%v want=%s", name, artifact["git_tree"], gitTree)
+		}
 	}
 
 	report := map[string]any{
@@ -49,7 +56,9 @@ func TestZZP112ReleaseCandidateReport(t *testing.T) {
 			"provider_sha256":      directorySHA256(t, filepath.Join(root, "integrations", "opencode", "provider")),
 		},
 		"benchmark_a_local_rendezvous": direct["benchmark_b"],
-		"benchmark_b_remote_relay":     remote,
+		"distributed_relay_report":     relay,
+		"benchmark_b_remote_relay":     combined,
+		"combined_sandbox_report":      combined,
 		"benchmark_c_restart_resume":   direct["restart_resume"],
 		"network":                      direct["network"],
 		"security":                     direct["security"],

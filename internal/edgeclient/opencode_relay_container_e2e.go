@@ -4,6 +4,7 @@ package edgeclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"path/filepath"
@@ -77,6 +78,11 @@ func translateRelayContainerSpec(spec openCodeProcessSpec) (openCodeProcessSpec,
 			for _, mount := range mounts {
 				translatedValue = strings.ReplaceAll(translatedValue, mount.Target, mount.Source)
 			}
+			var configErr error
+			translatedValue, configErr = relayContainerConfig(translatedValue)
+			if configErr != nil {
+				return openCodeProcessSpec{}, configErr
+			}
 		}
 		environment = append(environment, key+"="+translatedValue)
 	}
@@ -89,4 +95,24 @@ func translateRelayContainerSpec(spec openCodeProcessSpec) (openCodeProcessSpec,
 		Stdout:     spec.Stdout,
 		Stderr:     spec.Stderr,
 	}, nil
+}
+
+func relayContainerConfig(value string) (string, error) {
+	var config map[string]any
+	if err := json.Unmarshal([]byte(value), &config); err != nil {
+		return "", errors.New("relay container OpenCode configuration is invalid")
+	}
+	permission, ok := config["permission"].(map[string]any)
+	if !ok {
+		return "", errors.New("relay container OpenCode permissions are invalid")
+	}
+	// The host test keeps external_directory denied because the provider is
+	// mounted inside Bubblewrap. The container-only adapter maps that mount to
+	// a host path, while Docker itself remains read-only and network-none.
+	permission["external_directory"] = "allow"
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return "", errors.New("relay container OpenCode configuration failed")
+	}
+	return string(encoded), nil
 }

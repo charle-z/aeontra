@@ -47,7 +47,7 @@ set -e
 
 for report in \
   opencode-e2e-report.json \
-  opencode-remote-e2e-report.json
+  opencode-relay-container-report.json
 do
   if [ -s "$staging/$report" ]; then
     install -m 0644 "$staging/$report" "$output/$report"

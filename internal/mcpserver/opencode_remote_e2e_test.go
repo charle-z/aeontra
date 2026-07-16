@@ -85,6 +85,7 @@ func (m *remoteWireMeter) Snapshot() (int64, int64, int64, map[string]int64) {
 
 type remoteDistributedReport struct {
 	Mode                      string           `json:"mode"`
+	GitTree                   string           `json:"git_tree"`
 	Processes                 []string         `json:"processes"`
 	ProcessPIDs               map[string]int   `json:"process_pids"`
 	MCPCalls                  int64            `json:"mcp_calls"`
@@ -389,7 +390,8 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		t.Fatal("distributed relay never exercised request_ref for a large request")
 	}
 	report := remoteDistributedReport{
-		Mode: reportMode, Processes: []string{"mcp-devbox-server", "mcp-edge", "model-turn-driver", "opencode-1.18.1"},
+		Mode: reportMode, GitTree: safeReportGitTree(os.Getenv("P11_2_GIT_TREE")),
+		Processes:   []string{"mcp-devbox-server", "mcp-edge", "model-turn-driver", "opencode-1.18.1"},
 		ProcessPIDs: processPIDs,
 		MCPCalls:    meter.Calls, EdgeHTTPCalls: calls, MCPRequestBytes: meter.RequestBytes, MCPResponseBytes: meter.ResponseBytes,
 		EdgeRequestBytes: requestBytes, EdgeResponseBytes: responseBytes, ModelTurns: stats.TurnCount, ToolExecutions: int64(len(executedCalls)),
@@ -416,7 +418,11 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	artifact := filepath.Join(artifactDir, "opencode-remote-e2e-report.json")
+	reportName := "opencode-combined-sandbox-report.json"
+	if reportMode == "relay_container_e2e" {
+		reportName = "opencode-relay-container-report.json"
+	}
+	artifact := filepath.Join(artifactDir, reportName)
 	if err := os.WriteFile(artifact, append(encoded, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -424,6 +430,18 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 }
 
 var remoteEdgeFailurePattern = regexp.MustCompile(`failure=([a-z_]+)`)
+
+func safeReportGitTree(value string) string {
+	if len(value) != 40 {
+		return "unknown"
+	}
+	for _, character := range value {
+		if !strings.ContainsRune("0123456789abcdef", character) {
+			return "unknown"
+		}
+	}
+	return value
+}
 
 var allowedRemoteEdgeFailures = map[string]struct{}{
 	"none": {}, "timeout": {}, "cancelled": {}, "kill_switch": {}, "restart_interrupted": {}, "terminal_replay": {},
