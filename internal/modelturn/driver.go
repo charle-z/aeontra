@@ -179,7 +179,7 @@ func (d *Driver) waitResponse(w http.ResponseWriter, r *http.Request) {
 	response, err := d.transport.WaitResponse(r.Context(), turnID)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
+			panic(http.ErrAbortHandler)
 		}
 		d.writeStoreError(w, err)
 		return

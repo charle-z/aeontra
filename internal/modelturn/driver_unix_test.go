@@ -355,7 +355,10 @@ func TestDriverCancellationStopsActiveResponseWait(t *testing.T) {
 		t.Fatalf("driver shutdown took %s", elapsed)
 	}
 	select {
-	case <-waitDone:
+	case err := <-waitDone:
+		if err == nil {
+			t.Fatal("cancelled response wait returned a synthetic successful response")
+		}
 	case <-time.After(time.Second):
 		t.Fatal("active response wait did not observe driver cancellation")
 	}
