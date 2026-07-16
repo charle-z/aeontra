@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -196,6 +197,19 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		"--wait", "30s", "--poll", "1s", "--heartbeat", "1s", "--output-limit", "1048576",
 	)
 	cmd.Dir = workspacePath
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return os.ErrProcessDone
+		}
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	cmd.WaitDelay = 5 * time.Second
+	// Killing the remote process group is part of the test harness boundary: a failed assertion must not leave driver or OpenCode children holding pipes open.
 	home := filepath.Join(t.TempDir(), "edge-home")
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		t.Fatal(err)
@@ -495,7 +509,27 @@ func assertRemoteProcessIsolation(t *testing.T, serverPID, edgePID int, driverBi
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	t.Fatalf("four-process isolation not observed for Edge pid %d", edgePID)
+	descendants := remoteProcessDescendants(edgePID)
+	driverObserved := false
+	opencodeObserved := false
+	for _, command := range descendants {
+		if strings.Contains(command, driverBinary) || strings.Contains(command, filepath.Base(driverBinary)) {
+			driverObserved = true
+		}
+		if strings.Contains(command, opencodeBinary) || strings.Contains(command, "opencode-ai") || strings.Contains(command, "/opencode") {
+			opencodeObserved = true
+		}
+	}
+	switch {
+	case !driverObserved && !opencodeObserved:
+		t.Fatal("slice_code=remote_isolation_both_missing")
+	case !driverObserved:
+		t.Fatal("slice_code=remote_isolation_driver_missing")
+	case !opencodeObserved:
+		t.Fatal("slice_code=remote_isolation_opencode_missing")
+	default:
+		t.Fatal("slice_code=remote_isolation_identity")
+	}
 	return 0
 }
 
