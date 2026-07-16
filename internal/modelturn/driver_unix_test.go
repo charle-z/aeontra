@@ -362,4 +362,11 @@ func TestDriverCancellationStopsActiveResponseWait(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("active response wait did not observe driver cancellation")
 	}
+	record, err := store.Get(context.Background(), turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != StatusDisconnected {
+		t.Fatalf("turn status=%s want=%s", record.Status, StatusDisconnected)
+	}
 }

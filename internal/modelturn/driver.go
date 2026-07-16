@@ -65,6 +65,10 @@ type driverStatsReader interface {
 	Stats(context.Context) (StoreStats, error)
 }
 
+type driverDisconnectMarker interface {
+	MarkDisconnected(context.Context, TurnID) error
+}
+
 type driverCreateRequest struct {
 	RuntimeID     string           `json:"runtime_id"`
 	Sequence      uint64           `json:"sequence"`
@@ -179,6 +183,9 @@ func (d *Driver) waitResponse(w http.ResponseWriter, r *http.Request) {
 	response, err := d.transport.WaitResponse(r.Context(), turnID)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if marker, ok := d.transport.(driverDisconnectMarker); ok {
+				_ = marker.MarkDisconnected(context.Background(), turnID)
+			}
 			panic(http.ErrAbortHandler)
 		}
 		d.writeStoreError(w, err)
