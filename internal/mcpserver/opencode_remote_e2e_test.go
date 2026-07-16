@@ -177,7 +177,15 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	server, _, _ := e2eServer(t, authoritativeRoot, turns)
 	server.WithEdgeStore(devices)
 	meter := &e2eMeter{}
-	goal := "Inspect the bounded Go repository. Use read and grep, edit calc/calc.go so Add adds, run go test ./..., then report completion."
+	const goalPrefix = "Inspect the bounded Go repository. Use read and grep, edit calc/calc.go so Add adds, run go test ./..., then report completion. Bounded context padding: "
+	padding := int(modelturn.MaxGoalBodyBytes) - len(goalPrefix) - 1
+	if padding <= 0 {
+		t.Fatal("remote E2E goal prefix exceeds the allowed bound")
+	}
+	goal := goalPrefix + strings.Repeat("x", padding)
+	if len(goal) >= int(modelturn.MaxGoalBodyBytes) {
+		t.Fatal("remote E2E goal fixture exceeds the allowed bound")
+	}
 	startText := mcpTool(t, server, meter, "opencode_runtime_start", map[string]any{
 		"device_id": identity.DeviceID, "workspace_id": workspace.ID, "goal": goal,
 		"timeout_seconds": 180, "idempotency_key": "remote-distributed-opencode-e2e",

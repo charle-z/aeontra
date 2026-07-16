@@ -209,6 +209,171 @@ func TestNodeProviderRetriesRemoteResponseAfterDriverRestart(t *testing.T) {
 	}
 }
 
+func TestNodeProviderPreservesFourTurnRemoteToolConversation(t *testing.T) {
+	fixture := newRemoteProviderFixture(t, "multiturn")
+	driver := startRemoteProviderDriver(t, fixture)
+	defer stopRemoteProviderDriver(t, driver)
+	waitForProviderSocket(t, filepath.Join(fixture.edgeState, "provider.sock"))
+	command := startRemoteNodeProviderConversation(t, fixture)
+	priorCallPrefix := ""
+	for sequence := uint64(1); sequence <= 4; sequence++ {
+		offer := nextRemoteOffer(t, fixture.turns, fixture.runtime.RuntimeID)
+		if offer.Sequence != sequence || offer.RuntimeID != fixture.runtime.RuntimeID {
+			t.Fatal(stageTurnCreate)
+		}
+		if priorCallPrefix != "" && !bytes.Contains(offer.RequestPayload, []byte(priorCallPrefix)) {
+			t.Fatal(stageResponseConsume)
+		}
+		payload, used := remoteConversationResponse(t, sequence, offer.RequestPayload)
+		if _, err := fixture.turns.Respond(t.Context(), modelturn.ResponseSubmission{
+			RuntimeID: offer.RuntimeID, TurnID: offer.TurnID, ExpectedSequence: offer.Sequence,
+			RequestDigest: offer.RequestDigest, Payload: payload, UsedToolIDs: used,
+		}); err != nil {
+			t.Fatal(stageResponseWait)
+		}
+		switch sequence {
+		case 1:
+			priorCallPrefix = "turn-1"
+		case 2:
+			priorCallPrefix = "turn-2"
+		case 3:
+			priorCallPrefix = "turn-3"
+		}
+	}
+	result := waitRemoteNodeProvider(t, command)
+	if result.Status != "ok" || result.RuntimeCalls != 4 || result.StageCalls != 0 || result.CreateCalls != 4 || result.WaitCalls != 4 || result.UnexpectedCalls != 0 {
+		t.Fatal(closedResultStage(result.Status))
+	}
+	stats, err := fixture.turns.Stats(t.Context())
+	if err != nil || stats.RuntimeCount != 1 || stats.TurnCount != 4 || stats.ConsumedCount != 4 || stats.AwaitingCount != 0 || stats.RespondedCount != 0 {
+		t.Fatal(stageResponseConsume)
+	}
+	if !fixture.audit.ok() || fixture.audit.count(stageTurnCreate) != 4 || fixture.audit.count(stageResponseWait) != 4 {
+		t.Fatal(stageResponseIdentity)
+	}
+}
+
+func startRemoteNodeProviderConversation(t *testing.T, fixture remoteProviderFixture) *exec.Cmd {
+	t.Helper()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatal(stageSocketConnect)
+	}
+	scriptPath := filepath.Join(t.TempDir(), "provider-remote-multiturn.mjs")
+	if err := os.WriteFile(scriptPath, []byte(remoteProviderMultiTurnScript), 0o600); err != nil {
+		t.Fatal(stageTransportBuild)
+	}
+	providerPath := filepath.Join(providerRepoRoot, "integrations", "opencode", "provider", "index.js")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	command := exec.CommandContext(ctx, node, scriptPath, providerPath, filepath.Join(fixture.edgeState, "provider.sock"), fixture.runtime.RuntimeID)
+	command.Dir = filepath.Dir(providerPath)
+	command.Stdout = &bytes.Buffer{}
+	command.Stderr = ioDiscard{}
+	if err := command.Start(); err != nil {
+		t.Fatal(stageSocketConnect)
+	}
+	return command
+}
+
+func remoteConversationResponse(t *testing.T, sequence uint64, raw json.RawMessage) (json.RawMessage, []string) {
+	t.Helper()
+	var request struct {
+		Tools []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(raw, &request); err != nil {
+		t.Fatal(stageResponseIdentity)
+	}
+	ids := make(map[string]string, len(request.Tools))
+	for _, tool := range request.Tools {
+		ids[tool.Name] = tool.ID
+	}
+	call := func(callID, name string, arguments map[string]any) map[string]any {
+		id := ids[name]
+		if id == "" {
+			t.Fatal(stageResponseIdentity)
+		}
+		return map[string]any{"call_id": callID, "tool_id": id, "arguments": arguments}
+	}
+	response := map[string]any{"text": "", "usage": nil}
+	var used []string
+	switch sequence {
+	case 1:
+		calls := []any{
+			call("turn-1-read", "read", map[string]any{"filePath": "calc/calc.go"}),
+			call("turn-1-grep", "grep", map[string]any{"pattern": "return a - b", "path": "."}),
+		}
+		response["finish_reason"] = "tool_calls"
+		response["tool_calls"] = calls
+		used = []string{ids["read"], ids["grep"]}
+	case 2:
+		response["finish_reason"] = "tool_calls"
+		response["tool_calls"] = []any{call("turn-2", "edit", map[string]any{"filePath": "calc/calc.go", "oldString": "return a - b", "newString": "return a + b"})}
+		used = []string{ids["edit"]}
+	case 3:
+		response["finish_reason"] = "tool_calls"
+		response["tool_calls"] = []any{call("turn-3", "bash", map[string]any{"command": "go test ./..."})}
+		used = []string{ids["bash"]}
+	case 4:
+		response["text"] = "verified"
+		response["finish_reason"] = "stop"
+		response["tool_calls"] = []any{}
+	default:
+		t.Fatal(stageResponseIdentity)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(stageResponseIdentity)
+	}
+	return encoded, used
+}
+
+const remoteProviderMultiTurnScript = `
+import { pathToFileURL } from "node:url";
+const { createMCPDevboxModelBridge, __test } = await import(pathToFileURL(process.argv[2]).href);
+const socketPath = process.argv[3];
+const runtimeID = process.argv[4];
+const base = __test.createUnixRequester(socketPath);
+const counts = {runtime: 0, stage: 0, create: 0, wait: 0, unexpected: 0};
+const requestImpl = async (request) => {
+  if (request.method === "GET" && request.path === "/v1/runtimes/" + runtimeID) counts.runtime += 1;
+  else if (request.method === "POST" && request.path === "/v1/request-bodies") counts.stage += 1;
+  else if (request.method === "POST" && request.path === "/v1/turns") counts.create += 1;
+  else if (request.method === "GET" && request.path.endsWith("/response")) counts.wait += 1;
+  else counts.unexpected += 1;
+  return base(request);
+};
+const tools = [
+  {type:"function",name:"read",description:"read",inputSchema:{type:"object",properties:{filePath:{type:"string"}},required:["filePath"]}},
+  {type:"function",name:"grep",description:"grep",inputSchema:{type:"object",properties:{pattern:{type:"string"},path:{type:"string"}},required:["pattern","path"]}},
+  {type:"function",name:"edit",description:"edit",inputSchema:{type:"object",properties:{filePath:{type:"string"},oldString:{type:"string"},newString:{type:"string"}},required:["filePath","oldString","newString"]}},
+  {type:"function",name:"bash",description:"bash",inputSchema:{type:"object",properties:{command:{type:"string"}},required:["command"]}},
+];
+const model = createMCPDevboxModelBridge({socketPath,runtimeID,requestImpl,ttlMs:60000,timeoutMs:20000}).languageModel("external-model");
+const prompt = [{role:"user",content:[{type:"text",text:"fix and verify"}]}];
+let status = "ok";
+try {
+  for (let sequence = 1; sequence <= 4; sequence += 1) {
+    const result = await model.doGenerate({prompt,tools});
+    if (sequence === 4) {
+      if (result.finishReason.unified !== "stop" || !result.content.some((part) => part.type === "text" && part.text === "verified")) status = "response_identity";
+      break;
+    }
+    const calls = result.content.filter((part) => part.type === "tool-call");
+    const expected = sequence === 1 ? 2 : 1;
+    if (calls.length !== expected) { status = "response_identity"; break; }
+    prompt.push({role:"assistant",content:calls.map((call) => ({type:"tool-call",toolCallId:call.toolCallId,toolName:call.toolName,input:JSON.parse(call.input)}))});
+    prompt.push({role:"tool",content:calls.map((call) => ({type:"tool-result",toolCallId:call.toolCallId,toolName:call.toolName,output:{type:"text",value:"completed"}}))});
+  }
+} catch (error) {
+  status = error?.mcpStage ?? "response_identity";
+}
+process.stdout.write(JSON.stringify({status,runtime_calls:counts.runtime,stage_calls:counts.stage,create_calls:counts.create,wait_calls:counts.wait,unexpected_calls:counts.unexpected,same_wait_path:true}));
+`
+
 func newRemoteProviderFixture(t *testing.T, label string) remoteProviderFixture {
 	t.Helper()
 	authoritativeRoot := filepath.Join(t.TempDir(), "authoritative")
