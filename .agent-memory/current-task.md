@@ -58,3 +58,17 @@ No `tmp_*.go` helper remains. Next action: commit Step 6, record its exact SHA, 
 - CI: this HEAD has not yet been published or run through Docker E2E.
 - Current blocker: none locally; next evidence is the Docker direct and distributed slices on the exact published SHA.
 - Next exact commands: commit this checkpoint, push `p11-2-step7-validation`, then wait for `E2E distributed OpenCode` on the resulting SHA.
+
+
+## P11.2 Docker E2E checkpoint — 2026-07-15
+
+- Branch: `p11-2-step7-validation`.
+- Published HEAD: `7897befc92369f0cc65ee2ec787588b3b1e3f487`.
+- Exact tree: `687094f358efabc72af344b46f32c024bf87ad06`.
+- Working tree before checkpoint: clean.
+- Docker E2E run `29466504331`, check `87520668556`, failed on this exact SHA.
+- The previous `response_identity` restart failure is fixed locally and in CI; the new closed diagnostic is `unknown_error` inside `TestOpenCodeExternalModelVerticalSlice`.
+- The workflow preserved its bounds and cleanup; final exit was `124`, with no raw OpenCode output persisted.
+- Last green local gate: `go test -p 1 ./... -count=1`, followed by `go vet ./...`, `go build ./...`, and `git diff --check`.
+- Current blocker: classify the structured OpenCode `UnknownError` without exposing messages, then correct the underlying direct-slice cause.
+- Next exact command: `git show 0887a88 --stat`, then compare the passing P11.1 provider/E2E implementation with the current tree.
