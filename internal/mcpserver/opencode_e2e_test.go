@@ -112,8 +112,8 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 
 	normalRepo := createCalcRepo(t, "opencode-normal")
 	normal := runOpenCodeSlice(t, binary, provider, normalRepo, false)
-	assertCalcFixedAndTested(t, normalRepo)
-	assertOpenCodeEvents(t, normal.stdout, []string{"read", "grep", "edit", "bash"})
+	assertCalcFixedAndTested(t, normalRepo, "normal")
+	assertOpenCodeEvents(t, normal.stdout, []string{"read", "grep", "edit", "bash"}, "normal")
 	assertNoExternalTraffic(t, normal.trace, normal.stdout, normal.stderr)
 	normal.result.RepositoryModified = true
 	normal.result.TestsPassed = true
@@ -124,8 +124,8 @@ func TestOpenCodeExternalModelVerticalSlice(t *testing.T) {
 
 	restartRepo := createCalcRepo(t, "opencode-restart")
 	restarted := runOpenCodeSlice(t, binary, provider, restartRepo, true)
-	assertCalcFixedAndTested(t, restartRepo)
-	assertOpenCodeEvents(t, restarted.stdout, []string{"read", "grep", "edit", "bash"})
+	assertCalcFixedAndTested(t, restartRepo, "restart")
+	assertOpenCodeEvents(t, restarted.stdout, []string{"read", "grep", "edit", "bash"}, "restart")
 	assertNoExternalTraffic(t, restarted.trace, restarted.stdout, restarted.stderr)
 	restarted.result.RepositoryModified = true
 	restarted.result.TestsPassed = true
@@ -697,19 +697,23 @@ func createCalcRepo(t *testing.T, name string) string {
 	return root
 }
 
-func assertCalcFixedAndTested(t *testing.T, repo string) {
+func assertCalcFixedAndTested(t *testing.T, repo, phase string) {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join(repo, "calc", "calc.go"))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("slice_code=%s_fixture_read", phase)
 	}
 	if !strings.Contains(string(body), "return a + b") || strings.Contains(string(body), "return a - b") {
-		t.Fatalf("repository was not fixed: %s", body)
+		t.Fatalf("slice_code=%s_repository_not_modified", phase)
 	}
 	cmd := exec.Command("go", "test", "./...")
 	cmd.Dir = repo
 	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("fixture tests fail: %v\n%s", err, output)
+		code := edgeclient.SafeOpenCodeFailureSignal(output)
+		if code == "unknown" {
+			code = "tests_failed"
+		}
+		t.Fatalf("slice_code=%s_post_test_%s", phase, code)
 	}
 }
 
@@ -755,20 +759,26 @@ func countOpenCodeToolEvents(t *testing.T, output string) int {
 	return count
 }
 
-func assertOpenCodeEvents(t *testing.T, output string, want []string) {
+func assertOpenCodeEvents(t *testing.T, output string, want []string, phase string) {
 	t.Helper()
 	var got []string
 	finalText := false
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		var event map[string]any
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			t.Fatalf("invalid event: %v", err)
+			t.Fatalf("slice_code=%s_event_json", phase)
 		}
 		if event["type"] == "tool_use" {
 			part, _ := event["part"].(map[string]any)
 			state, _ := part["state"].(map[string]any)
 			if status := fmt.Sprint(state["status"]); status != "completed" {
-				t.Fatalf("OpenCode tool %s status=%s, want completed: %v", part["tool"], status, state)
+				tool := safeE2EToolName(fmt.Sprint(part["tool"]))
+				stateJSON, _ := json.Marshal(state)
+				code := edgeclient.SafeOpenCodeFailureSignal(stateJSON)
+				if code == "unknown" {
+					code = "status_" + safeE2EStatus(status)
+				}
+				t.Fatalf("slice_code=%s_tool_%s_%s", phase, tool, code)
 			}
 			got = append(got, fmt.Sprint(part["tool"]))
 		}
@@ -783,10 +793,28 @@ func assertOpenCodeEvents(t *testing.T, output string, want []string) {
 	sortedWant := append([]string(nil), want...)
 	sort.Strings(sortedWant)
 	if strings.Join(got, ",") != strings.Join(sortedWant, ",") {
-		t.Fatalf("OpenCode tools=%v want=%v output=%s", got, sortedWant, output)
+		t.Fatalf("slice_code=%s_tool_set", phase)
 	}
 	if !finalText {
-		t.Fatalf("OpenCode final response missing: %s", output)
+		t.Fatalf("slice_code=%s_final_response", phase)
+	}
+}
+
+func safeE2EToolName(value string) string {
+	switch value {
+	case "read", "grep", "edit", "bash":
+		return value
+	default:
+		return "unknown"
+	}
+}
+
+func safeE2EStatus(value string) string {
+	switch value {
+	case "pending", "running", "error", "failed", "cancelled":
+		return value
+	default:
+		return "other"
 	}
 }
 

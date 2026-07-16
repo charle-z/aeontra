@@ -797,6 +797,12 @@ func safeProviderMessageSignal(message string) string {
 		code    string
 		phrases []string
 	}{
+		{"cli", []string{"unknown argument", "unknown option", "invalid argument", "usage:"}},
+		{"provider_load", []string{"cannot find package", "module not found", "failed to resolve", "failed to load provider", "provider not found"}},
+		{"driver_connect", []string{"econnrefused", "connection refused", "connect: no such file", "socket not found", "socket hang up"}},
+		{"config", []string{"invalid config", "configuration is invalid", "failed to parse config"}},
+		{"model", []string{"model not found", "unknown model", "invalid model"}},
+		{"not_found", []string{"enoent", "no such file or directory", "not found"}},
 		{"prompt_shape", []string{"prompt must be an array", "message content must be an array", "message must be an object"}},
 		{"prompt_role", []string{"unsupported message role", "unsupported message part"}},
 		{"tool_shape", []string{"provider tools are not supported", "duplicate tool name", "tool input schema", "tool choice"}},

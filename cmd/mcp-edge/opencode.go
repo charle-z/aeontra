@@ -64,6 +64,7 @@ func openCodeFailureCode(err error) string {
 		{"opencode terminated unexpectedly (permission_other)", "opencode_permission_other"},
 		{"opencode terminated unexpectedly (config)", "opencode_config"},
 		{"opencode terminated unexpectedly (model)", "opencode_model"},
+		{"opencode terminated unexpectedly (not_found)", "opencode_not_found"},
 		{"opencode terminated unexpectedly (provider)", "opencode_provider"},
 		{"opencode terminated unexpectedly (provider_auth)", "opencode_provider_auth"},
 		{"opencode terminated unexpectedly (output_length)", "opencode_output_length"},

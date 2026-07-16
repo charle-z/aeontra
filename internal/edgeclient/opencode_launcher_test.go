@@ -495,6 +495,9 @@ func TestBoundedSinkFailureSignalDoesNotExposeRawOutput(t *testing.T) {
 		{"EACCES permission denied, spawn /private/tool", "permission_spawn"},
 		{"invalid config at /private/path", "config"},
 		{"unknown model bridge/external-model", "model"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"ENOENT: no such file or directory, open '/private/path'"}}}`, "not_found"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"Cannot find package secret-provider from /private/path"}}}`, "provider_load"},
+		{`{"type":"error","error":{"name":"UnknownError","data":{"message":"invalid config at /private/path"}}}`, "config"},
 		{`{"type":"error","message":"private"}`, "runtime_error"},
 		{"opaque output", "unknown"},
 	}

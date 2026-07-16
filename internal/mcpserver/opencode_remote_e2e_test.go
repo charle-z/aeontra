@@ -295,7 +295,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if completed.State != modelturn.RuntimeStateCompleted {
 		t.Fatalf("runtime did not complete: state=%s edge_failure=%s", completed.State, safeRemoteEdgeFailureCode(nil, stderr.String()))
 	}
-	assertCalcFixedAndTested(t, workspacePath)
+	assertCalcFixedAndTested(t, workspacePath, "remote")
 	stats, err := turns.Stats(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -388,7 +388,7 @@ var allowedRemoteEdgeFailures = map[string]struct{}{
 	"opencode_driver_connect": {}, "opencode_permission_ptrace": {}, "opencode_permission_connect": {}, "opencode_permission_spawn": {},
 	"opencode_permission_mkdir": {}, "opencode_permission_open": {}, "opencode_permission_rename": {}, "opencode_permission_remove": {},
 	"opencode_permission_chmod": {}, "opencode_permission_read_dir": {}, "opencode_permission_stat": {}, "opencode_permission_write": {},
-	"opencode_permission_read": {}, "opencode_permission_other": {}, "opencode_config": {}, "opencode_model": {}, "opencode_provider": {},
+	"opencode_permission_read": {}, "opencode_permission_other": {}, "opencode_config": {}, "opencode_model": {}, "opencode_not_found": {}, "opencode_provider": {},
 	"opencode_provider_auth": {}, "opencode_output_length": {}, "opencode_unknown_type": {}, "opencode_unknown_api": {},
 	"opencode_unknown_timeout": {}, "opencode_unknown_connection": {}, "opencode_prompt_shape": {}, "opencode_prompt_role": {},
 	"opencode_tool_shape": {}, "opencode_request_limit": {}, "opencode_runtime_status": {}, "opencode_driver_invalid_request": {},
