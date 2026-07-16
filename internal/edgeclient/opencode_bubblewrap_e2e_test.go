@@ -178,7 +178,7 @@ func TestBubblewrapRealIsolationSmoke(t *testing.T) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("real Bubblewrap smoke failed: %v, stderr=%s", err, boundedDiagnostic(stderr.String()))
+		t.Fatalf("slice_code=%s", bubblewrapFailureCode(stderr.String()))
 	}
 	select {
 	case socketErr := <-socketDone:
@@ -281,6 +281,41 @@ func boundedDiagnostic(value string) string {
 		return value[len(value)-512:]
 	}
 	return value
+}
+
+func bubblewrapFailureCode(stderr string) string {
+	lowered := strings.ToLower(stderr)
+	switch {
+	case strings.Contains(lowered, "failed to make / slave"):
+		return "bubblewrap_mount_propagation_denied"
+	case strings.Contains(lowered, "no permissions to create new namespace"):
+		return "bubblewrap_user_namespace_denied"
+	case strings.Contains(lowered, "setting up uid map"):
+		return "bubblewrap_uid_map_denied"
+	case strings.Contains(lowered, "execvp"):
+		return "bubblewrap_exec_failed"
+	case strings.Contains(lowered, "no such file"):
+		return "bubblewrap_path_missing"
+	case strings.Contains(lowered, "operation not permitted"), strings.Contains(lowered, "permission denied"):
+		return "bubblewrap_permission_denied"
+	case strings.Contains(lowered, "mount"):
+		return "bubblewrap_mount_failed"
+	default:
+		return "bubblewrap_process_exit"
+	}
+}
+
+func TestBubblewrapFailureCode(t *testing.T) {
+	cases := map[string]string{
+		"bwrap: Failed to make / slave: Permission denied": "bubblewrap_mount_propagation_denied",
+		"bwrap: No permissions to create new namespace":    "bubblewrap_user_namespace_denied",
+		"bwrap: execvp /mcp-opencode: No such file":        "bubblewrap_exec_failed",
+	}
+	for input, expected := range cases {
+		if actual := bubblewrapFailureCode(input); actual != expected {
+			t.Fatalf("failure code mismatch: got %q want %q", actual, expected)
+		}
+	}
 }
 
 func TestBubblewrapSandboxHelper(t *testing.T) {

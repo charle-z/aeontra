@@ -35,6 +35,7 @@ docker run --rm \
   --dns 127.0.0.1 \
   --read-only \
   --cap-drop ALL \
+  --cap-add SYS_ADMIN \
   --security-opt seccomp=unconfined \
   --security-opt apparmor=unconfined \
   --security-opt no-new-privileges \
