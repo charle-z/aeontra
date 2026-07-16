@@ -479,14 +479,7 @@ func (s *Store) WaitResponse(ctx context.Context, turnID TurnID) (ModelResponse,
 
 func (s *Store) consumeOnce(ctx context.Context, turnID TurnID) (ModelResponse, bool, error) {
 	now := s.now().UTC()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return ModelResponse{}, false, errors.New("model response transaction failed")
-	}
-	defer tx.Rollback()
-	row := tx.QueryRowContext(ctx, `SELECT turn_id,runtime_id,sequence,request_digest,request_ref,response_digest,response_ref,status,created_at,expires_at,responded_at,consumed_at,offered_tools_json FROM model_turns WHERE turn_id=?`, turnID)
+	row := s.db.QueryRowContext(ctx, `SELECT turn_id,runtime_id,sequence,request_digest,request_ref,response_digest,response_ref,status,created_at,expires_at,responded_at,consumed_at,offered_tools_json FROM model_turns WHERE turn_id=?`, turnID)
 	record, _, err := scanRecord(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ModelResponse{}, false, ErrTurnNotFound
@@ -500,10 +493,16 @@ func (s *Store) consumeOnce(ctx context.Context, turnID TurnID) (ModelResponse, 
 	case StatusCancelled, StatusExpired, StatusFailed:
 		return ModelResponse{}, false, ErrTurnConflict
 	case StatusResponded:
-		var payload []byte
-		if err := tx.QueryRowContext(ctx, `SELECT content FROM turn_bodies WHERE body_ref=? AND expires_at>?`, record.ResponseRef, now.UnixNano()).Scan(&payload); err != nil {
-			return ModelResponse{}, false, errors.New("model response body unavailable")
+		// Begin with the compare-and-swap write instead of upgrading a read
+		// snapshot. A concurrent Cleanup on another Store connection can then
+		// wait under busy_timeout rather than producing SQLITE_BUSY_SNAPSHOT.
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return ModelResponse{}, false, errors.New("model response transaction failed")
 		}
+		defer tx.Rollback()
 		result, err := tx.ExecContext(ctx, `UPDATE model_turns SET status='consumed',consumed_at=? WHERE turn_id=? AND status='responded'`, now.UnixNano(), turnID)
 		if err != nil {
 			return ModelResponse{}, false, errors.New("model response consume failed")
@@ -512,14 +511,22 @@ func (s *Store) consumeOnce(ctx context.Context, turnID TurnID) (ModelResponse, 
 		if rows != 1 {
 			return ModelResponse{}, false, ErrResponseReplay
 		}
+		var payload []byte
+		if err := tx.QueryRowContext(ctx, `SELECT content FROM turn_bodies WHERE body_ref=? AND expires_at>?`, record.ResponseRef, now.UnixNano()).Scan(&payload); err != nil {
+			return ModelResponse{}, false, errors.New("model response body unavailable")
+		}
 		if err := tx.Commit(); err != nil {
 			return ModelResponse{}, false, errors.New("model response commit failed")
 		}
 		return ModelResponse{RuntimeID: record.RuntimeID, TurnID: record.TurnID, Sequence: record.Sequence, RequestDigest: record.RequestDigest, Payload: payload}, true, nil
 	default:
 		if !now.Before(record.ExpiresAt) {
-			_, _ = tx.ExecContext(ctx, `UPDATE model_turns SET status='expired' WHERE turn_id=? AND status IN ('created','awaiting_model','disconnected')`, turnID)
-			_ = tx.Commit()
+			s.mu.Lock()
+			_, updateErr := s.db.ExecContext(ctx, `UPDATE model_turns SET status='expired' WHERE turn_id=? AND status IN ('created','awaiting_model','disconnected')`, turnID)
+			s.mu.Unlock()
+			if updateErr != nil {
+				return ModelResponse{}, false, errors.New("model turn expiry failed")
+			}
 			return ModelResponse{}, false, ErrLateResponse
 		}
 		return ModelResponse{}, false, nil
