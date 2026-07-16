@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -363,6 +364,26 @@ func TestOpenCodePrivateSocketRejectsUnsafeMode(t *testing.T) {
 	defer cancel()
 	if err := waitForPrivateDriverSocket(ctx, path, os.Geteuid()); err == nil {
 		t.Fatal("insecure socket accepted")
+	}
+}
+
+func TestWaitExternalDriverNormalizesIntentionalCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, "/bin/sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := waitExternalDriver(ctx, cmd); !errors.Is(err, context.Canceled) {
+		t.Fatalf("wait error=%v, want context canceled", err)
+	}
+
+	unexpected := exec.Command("/bin/false")
+	if err := unexpected.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitExternalDriver(context.Background(), unexpected); err == nil || errors.Is(err, context.Canceled) {
+		t.Fatalf("unexpected exit normalized incorrectly: %v", err)
 	}
 }
 

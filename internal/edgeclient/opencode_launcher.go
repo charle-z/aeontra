@@ -405,8 +405,24 @@ func (l *OpenCodeLauncher) startDriver(ctx context.Context, socketPath string, l
 	if err := cmd.Start(); err != nil {
 		return nil, errors.New("OpenCode remote driver process could not start")
 	}
-	go func() { done <- cmd.Wait() }()
+	go func() { done <- waitExternalDriver(ctx, cmd) }()
 	return done, nil
+}
+
+func waitExternalDriver(ctx context.Context, cmd *exec.Cmd) error {
+	err := cmd.Wait()
+	if err == nil || ctx.Err() == nil {
+		return err
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return err
+	}
+	status, ok := exitErr.Sys().(syscall.WaitStatus)
+	if !ok || !status.Signaled() {
+		return err
+	}
+	return ctx.Err()
 }
 
 func (l *OpenCodeLauncher) processSpec(runtimeDir, workspace, socketPath string, lease ModelRuntimeLease, stdout, stderr io.Writer) (openCodeProcessSpec, error) {
