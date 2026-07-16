@@ -237,7 +237,11 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				edgeProcessErr = errors.New("mcp-edge did not terminate after terminal runtime state")
 			}
-			t.Fatalf("model_turn_next sequence=%d status=%s edge_failure=%s", sequence, envelope.Status, safeRemoteEdgeFailureCode(edgeProcessErr, stderr.String()))
+			edgeFailure := safeRemoteEdgeFailureCode(edgeProcessErr, stderr.String())
+			if edgeFailure == "opencode_turn_create" {
+				t.Logf("slice_code=%s", classifyRemoteTurnCreateFailure(t, wire, turns, edgeState))
+			}
+			t.Fatalf("model_turn_next sequence=%d status=%s edge_failure=%s", sequence, envelope.Status, edgeFailure)
 		}
 		offer := envelope.Turn
 		if sequence == 1 {
@@ -415,6 +419,40 @@ func safeRemoteEdgeFailureCode(processErr error, stderr string) string {
 		return "process_exit"
 	}
 	return "internal"
+}
+
+func classifyRemoteTurnCreateFailure(t *testing.T, wire *remoteWireMeter, turns *modelturn.Store, edgeState string) string {
+	t.Helper()
+	_, _, _, paths := wire.Snapshot()
+	createCalls := int64(0)
+	for path, count := range paths {
+		if strings.HasSuffix(path, "/turns") {
+			createCalls += count
+		}
+	}
+	if createCalls == 0 {
+		return "turn_create_not_sent"
+	}
+	stats, err := turns.Stats(context.Background())
+	if err != nil {
+		return "turn_create_diagnostic"
+	}
+	if stats.TurnCount == 0 {
+		return "turn_create_authoritative_rejected"
+	}
+	db, err := sql.Open("sqlite", filepath.Join(edgeState, "model-relay.db"))
+	if err != nil {
+		return "turn_create_diagnostic"
+	}
+	defer db.Close()
+	var rows, bound int64
+	if err := db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(CASE WHEN turn_id<>'' THEN 1 ELSE 0 END),0) FROM remote_model_turns`).Scan(&rows, &bound); err != nil {
+		return "turn_create_diagnostic"
+	}
+	if rows == 0 || bound == 0 {
+		return "turn_create_remote_identity"
+	}
+	return "turn_create_provider_identity"
 }
 
 func forbiddenEdgeSQLiteTables(t *testing.T, root string) []string {
