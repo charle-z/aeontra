@@ -370,6 +370,37 @@ func TestRemoteEdgeTransportStagesLargeBodyWithoutLocalAuthority(t *testing.T) {
 	}
 }
 
+func TestRemoteEdgeTransportPreservesCanonicalHTMLCharacters(t *testing.T) {
+	fixture := newRemoteModelFixture(t, nil)
+	remote, err := NewRemoteEdgeTransport(RemoteEdgeTransportOptions{StateRoot: fixture.stateRoot, Lease: fixture.lease, HTTPClient: fixture.client, LongPoll: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remote.Close()
+	if _, err := remote.Started(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	payload := json.RawMessage(`{"messages":[{"content":"compare <tag> & value > zero","role":"user"}],"tools":[]}`)
+	digest, err := modelturn.ExactPayloadDigest(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := remote.CreateTurn(t.Context(), modelturn.ModelRequest{
+		RuntimeID: fixture.lease.RuntimeID, Sequence: 1, Payload: payload, CanonicalPayload: true,
+		RequestDigest: digest, TTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, pending, err := fixture.turns.Poll(t.Context(), fixture.lease.RuntimeID)
+	if err != nil || !pending {
+		t.Fatalf("pending=%t err=%v", pending, err)
+	}
+	if turn.RequestDigest != digest || offer.RequestDigest != digest || !bytes.Equal(offer.RequestPayload, payload) {
+		t.Fatalf("turn_digest=%s offer_digest=%s payload_equal=%t", turn.RequestDigest, offer.RequestDigest, bytes.Equal(offer.RequestPayload, payload))
+	}
+}
+
 func TestRemoteEdgeTransportJournalSurvivesLocalRestart(t *testing.T) {
 	fixture := newRemoteModelFixture(t, nil)
 	remote, err := NewRemoteEdgeTransport(RemoteEdgeTransportOptions{StateRoot: fixture.stateRoot, Lease: fixture.lease, HTTPClient: fixture.client, LongPoll: time.Second})

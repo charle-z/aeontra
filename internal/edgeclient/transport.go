@@ -96,7 +96,7 @@ func (t *Transport) doLimited(ctx context.Context, method, path string, input, o
 	if maxResponse <= 0 || maxResponse > 8<<20 {
 		return 0, errors.New("edge response limit is invalid")
 	}
-	body, err := json.Marshal(input)
+	body, err := marshalEdgeRequest(input)
 	if err != nil {
 		return 0, errors.New("edge request encoding failed")
 	}
@@ -145,4 +145,18 @@ func (t *Transport) doLimited(ctx context.Context, method, path string, input, o
 		return response.StatusCode, errors.New("edge response is invalid")
 	}
 	return response.StatusCode, nil
+}
+
+func marshalEdgeRequest(input any) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(input); err != nil {
+		return nil, err
+	}
+	body := buffer.Bytes()
+	if len(body) > 0 && body[len(body)-1] == '\n' {
+		body = body[:len(body)-1]
+	}
+	return append([]byte(nil), body...), nil
 }
