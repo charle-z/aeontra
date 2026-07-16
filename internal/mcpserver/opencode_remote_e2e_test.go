@@ -234,11 +234,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	processIsolationVerified := false
 	distinctProcessCount := int64(0)
 	largeRequestReferenced := false
-	waitCodes := []string{"", "remote_wait_one", "remote_wait_two", "remote_wait_three", "remote_wait_four"}
-	offerCodes := []string{"", "remote_offer_one", "remote_offer_two", "remote_offer_three", "remote_offer_four"}
-	respondCodes := []string{"", "remote_respond_one", "remote_respond_two", "remote_respond_three", "remote_respond_four"}
 	for sequence := uint64(1); sequence <= 4; sequence++ {
-		t.Logf("slice_code=%s", waitCodes[sequence])
 		turnText := mcpTool(t, server, meter, "model_turn_next", map[string]any{
 			"runtime_id": runtime.RuntimeID, "after_sequence": sequence - 1, "wait_seconds": 60,
 		})
@@ -258,7 +254,6 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			t.Fatalf("model_turn_next sequence=%d status=%s edge_failure=%s", sequence, envelope.Status, safeRemoteEdgeFailureCode(edgeProcessErr, stderr.String()))
 		}
 		offer := envelope.Turn
-		t.Logf("slice_code=%s", offerCodes[sequence])
 		if sequence == 1 {
 			distinctProcessCount = int64(assertRemoteProcessIsolation(t, os.Getpid(), cmd.Process.Pid, driverBinary, opencodeBinary))
 			processIsolationVerified = true
@@ -296,7 +291,6 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			"expected_sequence": offer.Sequence, "request_digest": offer.RequestDigest, "response": response,
 		})
 		lastResponded = time.Now()
-		t.Logf("slice_code=%s", respondCodes[sequence])
 	}
 
 	select {
@@ -534,32 +528,76 @@ func assertRemoteProcessIsolation(t *testing.T, serverPID, edgePID int, driverBi
 }
 
 func remoteProcessDescendants(root int) map[int]string {
+	return remoteProcessDescendantsAt("/proc", root)
+}
+
+func remoteProcessDescendantsAt(procRoot string, root int) map[int]string {
 	results := make(map[int]string)
 	queue := []int{root}
 	seen := map[int]struct{}{root: {}}
 	for len(queue) > 0 {
 		pid := queue[0]
 		queue = queue[1:]
-		childrenPath := filepath.Join("/proc", strconv.Itoa(pid), "task", strconv.Itoa(pid), "children")
-		childrenBody, err := os.ReadFile(childrenPath)
+		taskRoot := filepath.Join(procRoot, strconv.Itoa(pid), "task")
+		tasks, err := os.ReadDir(taskRoot)
 		if err != nil {
 			continue
 		}
-		for _, field := range strings.Fields(string(childrenBody)) {
-			child, err := strconv.Atoi(field)
+		for _, task := range tasks {
+			if !task.IsDir() {
+				continue
+			}
+			childrenBody, err := os.ReadFile(filepath.Join(taskRoot, task.Name(), "children"))
 			if err != nil {
 				continue
 			}
-			if _, duplicate := seen[child]; duplicate {
-				continue
+			for _, field := range strings.Fields(string(childrenBody)) {
+				child, err := strconv.Atoi(field)
+				if err != nil {
+					continue
+				}
+				if _, duplicate := seen[child]; duplicate {
+					continue
+				}
+				seen[child] = struct{}{}
+				cmdline, _ := os.ReadFile(filepath.Join(procRoot, field, "cmdline"))
+				results[child] = strings.ReplaceAll(string(cmdline), "\x00", " ")
+				queue = append(queue, child)
 			}
-			seen[child] = struct{}{}
-			cmdline, _ := os.ReadFile(filepath.Join("/proc", field, "cmdline"))
-			results[child] = strings.ReplaceAll(string(cmdline), "\x00", " ")
-			queue = append(queue, child)
 		}
 	}
 	return results
+}
+
+func TestRemoteProcessDescendantsReadsAllTaskThreads(t *testing.T) {
+	procRoot := t.TempDir()
+	for _, path := range []string{
+		filepath.Join(procRoot, "100", "task", "100"),
+		filepath.Join(procRoot, "100", "task", "101"),
+		filepath.Join(procRoot, "200", "task", "200"),
+		filepath.Join(procRoot, "300", "task", "300"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := map[string]string{
+		filepath.Join(procRoot, "100", "task", "100", "children"): "",
+		filepath.Join(procRoot, "100", "task", "101", "children"): "200\n",
+		filepath.Join(procRoot, "200", "task", "200", "children"): "300\n",
+		filepath.Join(procRoot, "300", "task", "300", "children"): "",
+		filepath.Join(procRoot, "200", "cmdline"):                 "model-turn-driver\x00--remote\x00",
+		filepath.Join(procRoot, "300", "cmdline"):                 "opencode\x00run\x00",
+	}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	descendants := remoteProcessDescendantsAt(procRoot, 100)
+	if descendants[200] != "model-turn-driver --remote " || descendants[300] != "opencode run " || len(descendants) != 2 {
+		t.Fatalf("descendants=%v", descendants)
+	}
 }
 
 func namedFileExists(t *testing.T, root, name string) bool {
