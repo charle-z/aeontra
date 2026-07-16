@@ -4,22 +4,27 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11 Step 2 adds
-`workspace_checkpoint`, a closed local read-only tool that intentionally advances the
-candidate catalog without changing historical contracts.
-It reduces agent call saturation without fetch, external calls, file bodies or Git
-mutation. P11 Step 3 adds bounded hourly/daily SQLite telemetry and fixed operational
-JSONL segments under `/state` without recording content or changing authority. P11
-Step 4 adds the bounded redacted result store and three local read-only tools,
-advancing the current catalog to 71 tools with hash
-`sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac`.
-P11 Steps 5-7 implement the candidate outbound-only Edge foundation: one-use
-pairing and per-device Ed25519 identity, signed leased/idempotent tasks, and a
-separately installed WSL `development` workcell with a persistent local journal,
-Bubblewrap isolation, heartbeat cancellation and a kill switch. It accepts only
-structured validation objectives; no remote shell, argv, sudo, Docker socket,
-Windows mount, pairing, publication or deployment is implied. Every human authority
-boundary remains unchanged.
+P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11.2 is a release
+candidate on `p11-2-remote-opencode-relay`; it is not merged or deployed. The
+candidate catalog contains 78 tools with hash
+`sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
+
+P11.2 adds the signed Remote OpenCode Model-Turn Relay over Edge. The VPS stores
+the authoritative runtime and model-turn state; `mcp-edge` and
+`model-turn-driver` remain separate host processes; OpenCode 1.18.1 is mandatory
+inside Bubblewrap with no fallback. Docker validates the distributed relay without
+elevated capabilities, while Ubuntu 22.04 validates the real host sandbox. Exact
+tree `e8862ee9229ec8a98237251de6d3272e3f72ee1e` passed pull-request and push E2E:
+four turns, `read`, `grep`, `edit`, `bash`, large `request_ref`, repository
+modification, green tests, restart/resume, runtime completion and zero duplicates.
+Bubblewrap blocks network and DNS and hides host home, `/root`, WSL mounts, Docker,
+SSH, browser and VPN state; runtime/socket modes are `0700`/`0600`.
+
+Installation and pairing remain explicit human steps. No remote shell, arbitrary
+argv, sudo, Docker socket, Windows mount, deployment, tag, Parrot installation,
+pairing or Coolify change is implied. See
+`docs/baselines/2026-07-16-p11_2.md` and
+`docs/install-opencode-edge-parrot.md`.
 
 P0 architecture foundations are deployed. The deterministic catalog, centralized
 build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`

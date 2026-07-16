@@ -57,7 +57,7 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **OAuth-first authentication with header-only bearer recovery**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the current P11 candidate exposes 71 deliberately annotated
+**Secure builder evolution:** the current P11.2 candidate exposes 78 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
 private validation profiles, bounded Coolify logs, and disabled-by-default
@@ -81,14 +81,15 @@ uses `/state/results/results.db`, 24-hour success / 7-day failure TTLs, a 256 Mi
 logical quota, exact search, and 16 KiB reads. It exposes no arbitrary paths,
 embeddings, prompts, credentials, or model reasoning.
 
-**P11 Edge candidate:** the VPS control plane can pair an independently installed
-WSL device with a one-use, short-lived code and a per-device Ed25519 key. Structured
-`validate` tasks use bounded leases, heartbeats, cancellation, replay protection and
-a persistent idempotency journal. The outbound-only `mcp-edge` client chooses local
-validation stages from repository markers and runs them in Bubblewrap without
-network, Windows mounts, a host home, private Edge state, or a Docker socket. The
-VPS cannot send shell text or argv. Installation and pairing remain explicit human
-steps; see [docs/install-edge-wsl.md](docs/install-edge-wsl.md).
+**P11.2 Edge/OpenCode candidate:** the VPS control plane can pair an independently
+installed WSL device with a one-use, short-lived code and a per-device Ed25519 key.
+The signed model-turn relay keeps the server, `mcp-edge`,
+`model-turn-driver`, and OpenCode 1.18.1 as distinct processes. Only OpenCode enters
+mandatory Bubblewrap; there is no direct-execution fallback. Docker proves the
+relay without elevated capabilities, and an Ubuntu 22.04 host job proves network,
+DNS, mount and private-path isolation. Installation and pairing remain explicit
+human steps; see [the P11.2 baseline](docs/baselines/2026-07-16-p11_2.md) and the
+[Parrot WSL guide](docs/install-opencode-edge-parrot.md).
 
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused

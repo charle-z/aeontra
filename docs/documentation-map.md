@@ -34,7 +34,9 @@ the historical release-candidate baseline is not rewritten.
 P11 release-candidate evidence is `docs/baselines/2026-07-15-p11.md` plus
 `docs/p11_candidate_test.go`; the focused review is
 `docs/security-reports/2026-07-15-p11-edge-review.md`. These documents preserve the
-historical 67-tool P8.1/P9 evidence while recording the candidate 71-tool contract.
+historical 67-tool P8.1/P9 and 71-tool P11 evidence. P11.2 relay/isolation evidence
+is `docs/baselines/2026-07-16-p11_2.md` plus `docs/p11_2_closure_test.go`;
+the current release-candidate contract has 78 tools.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |

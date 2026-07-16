@@ -86,7 +86,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"## Status snapshot — 2026-07-15",
+		"## Status snapshot — 2026-07-16",
 		"P0-P5 architecture, hardening, and deeper testing",
 		"Deployed",
 		"P5 deeper testing",
@@ -102,6 +102,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"Planned",
 		"Edge agents",
 		"Development Edge implemented; WSL validation pending",
+		"P11.2 remote OpenCode relay",
 	} {
 		if !strings.Contains(roadmap, required) {
 			t.Errorf("product roadmap does not contain %q", required)
