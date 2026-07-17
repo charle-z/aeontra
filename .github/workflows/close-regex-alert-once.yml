@@ -1,10 +1,10 @@
 name: Close regex false positive once
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  push:
     branches:
-      - main
+      - ops/close-regex-alert
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,9 +12,7 @@ permissions:
 jobs:
   discover-alerts:
     name: Regex alert discovery
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'ops/close-regex-alert'
+    if: github.ref == 'refs/heads/ops/close-regex-alert'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -55,9 +53,7 @@ jobs:
   dismiss-alerts:
     name: Regex alert dismissal
     needs: discover-alerts
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'ops/close-regex-alert'
+    if: github.ref == 'refs/heads/ops/close-regex-alert'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -87,9 +83,7 @@ jobs:
   verify-alerts:
     name: Regex alert verification
     needs: [discover-alerts, dismiss-alerts]
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'ops/close-regex-alert'
+    if: github.ref == 'refs/heads/ops/close-regex-alert'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
