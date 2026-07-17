@@ -98,7 +98,7 @@ func TestRunRejectsUnknownStatusFieldsAndWeakHeaders(t *testing.T) {
 		switch r.URL.Path {
 		case "/console/login":
 			setSmokeHeaders(w)
-			http.SetCookie(w, &http.Cookie{Name: "mcpdevbox_console", Value: "opaque-session", Path: "/console", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			http.SetCookie(w, &http.Cookie{Name: "mcpdevbox_console", Value: "opaque-session", Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 			w.Header().Set("Location", "/console")
 			w.WriteHeader(http.StatusSeeOther)
 		case "/console/status":
@@ -121,7 +121,7 @@ func TestRunRejectsUnknownStatusFieldsAndWeakHeaders(t *testing.T) {
 	weak := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/console/login" {
 			w.Header().Set("Location", "/console")
-			http.SetCookie(w, &http.Cookie{Name: "mcpdevbox_console", Value: "opaque", Path: "/console", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			http.SetCookie(w, &http.Cookie{Name: "mcpdevbox_console", Value: "opaque", Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 			w.WriteHeader(http.StatusSeeOther)
 			return
 		}

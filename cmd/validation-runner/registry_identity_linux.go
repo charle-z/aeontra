@@ -28,7 +28,7 @@ func identityFromStat(stat *unix.Stat_t) fileIdentity {
 	return fileIdentity{device: uint64(stat.Dev), inode: stat.Ino, mode: stat.Mode}
 }
 
-func verifyRepositoryDescriptors(root, repoID string, expectedRoot, expectedRepo fileIdentity) error {
+func verifyRepositoryDescriptors(root, repoID string, expectedRoot, expectedRepo, expectedManifest fileIdentity) error {
 	rootFD, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 	if err != nil {
 		return errors.New("repository registry root cannot be opened safely")
@@ -53,7 +53,7 @@ func verifyRepositoryDescriptors(root, repoID string, expectedRoot, expectedRepo
 	}
 	defer unix.Close(manifestFD)
 	var manifestStat unix.Stat_t
-	if err := unix.Fstat(manifestFD, &manifestStat); err != nil || manifestStat.Mode&unix.S_IFMT != unix.S_IFREG || manifestStat.Mode&0o022 != 0 {
+	if err := unix.Fstat(manifestFD, &manifestStat); err != nil || manifestStat.Mode&unix.S_IFMT != unix.S_IFREG || manifestStat.Mode&0o022 != 0 || identityFromStat(&manifestStat) != expectedManifest {
 		return errors.New("registered repository manifest identity is unsafe")
 	}
 	return nil

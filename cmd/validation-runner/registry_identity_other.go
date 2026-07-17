@@ -21,7 +21,7 @@ func identityFromFileInfo(info os.FileInfo) (fileIdentity, error) {
 	return fileIdentity{name: info.Name(), size: info.Size(), mode: info.Mode(), modTime: info.ModTime().UnixNano()}, nil
 }
 
-func verifyRepositoryDescriptors(root, repoID string, expectedRoot, expectedRepo fileIdentity) error {
+func verifyRepositoryDescriptors(root, repoID string, expectedRoot, expectedRepo, expectedManifest fileIdentity) error {
 	rootFile, err := os.Open(root)
 	if err != nil {
 		return errors.New("repository registry root cannot be opened safely")
@@ -47,6 +47,19 @@ func verifyRepositoryDescriptors(root, repoID string, expectedRoot, expectedRepo
 	repoIdentity, err := identityFromFileInfo(repoInfo)
 	if err != nil || repoIdentity != expectedRepo {
 		return errors.New("registered repository identity changed")
+	}
+	manifestFile, err := os.Open(root + string(os.PathSeparator) + repoID + string(os.PathSeparator) + "package.json")
+	if err != nil {
+		return errors.New("registered repository manifest cannot be opened safely")
+	}
+	defer manifestFile.Close()
+	manifestInfo, err := manifestFile.Stat()
+	if err != nil {
+		return errors.New("registered repository manifest identity is unavailable")
+	}
+	manifestIdentity, err := identityFromFileInfo(manifestInfo)
+	if err != nil || manifestIdentity != expectedManifest || !manifestInfo.Mode().IsRegular() || manifestInfo.Mode().Perm()&0o022 != 0 {
+		return errors.New("registered repository manifest identity changed")
 	}
 	return nil
 }

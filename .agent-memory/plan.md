@@ -1,13 +1,18 @@
-# P11.2 execution plan
+# Security findings closure plan
 
-1. [done] Diagnose and correct the Docker-only remote workspace mismatch.
-2. [done] Prove the real OpenCode 1.18.1 remote integration ten consecutive times and remove temporary diagnostics.
-3. [done] Publish validation SHA `2bda26d4382feca7b9367a068dfbeff917e5538d`.
-4. [done] Require exact-tree distributed relay, Bubblewrap host isolation, combined sandbox, CI and Security Evidence; all passed for tree `e8862ee9229ec8a98237251de6d3272e3f72ee1e`.
-5. [done] Extract green report metrics and synchronize the dated P11.2 baseline, current 78-tool catalog evidence, documentation map, roadmap, capsule, README and AGENTS.
-6. [done] Remove all scratch artifacts and run final local formatting, serial suite, coverage thresholds, vet, build, Staticcheck, Govulncheck, Actionlint, Node provider tests and provider/driver normal/restart/remote integrations.
-7. [active] Run final documentation/diff checks, create canonical commit `Step 8: isolate OpenCode runtime with Bubblewrap`, and record its exact SHA/tree.
-8. [pending] Publish the canonical final SHA and update PR #13 architecture, runner rationale, direct/remote restart evidence, isolation, benchmark, risks and Parrot guide.
-9. [pending] Mark PR #13 ready only after Verify, Race detector, Staticcheck, Govulncheck, CodeQL, Dependency review, Container SBOM and vulnerabilities, Distributed OpenCode E2E and Bubblewrap host isolation are all completed and green on the final SHA.
+Date: 2026-07-16
+Branch: security-findings-closure
+Base: b9ee5ea9fd18a72d9687784eeb5cbfd8603427b5
 
-The local race command is blocked only because the VPS lacks `gcc`; final-SHA GitHub Race remains mandatory. No merge, deployment, pairing, real Parrot installation, tag, Coolify changes, frontend, Goal Runtime, Build Workcell, HTB/THM/VPN or broad historical CodeQL cleanup.
+1. [done] Reconstruct main and create the dedicated branch.
+2. [done] Recover historical CodeQL evidence; record the code-scanning API HTTP 403 limitation without guessing alert numbers.
+3. [done] Bind validation-runner mounts to an immutable server-owned registry and stable filesystem identities.
+4. [done] Enforce one production cookie policy with Secure, HttpOnly, SameSite Strict and Path slash for creation and deletion.
+5. [done] Prove the GitHub-token regex is a text search, add adversarial/performance tests and a rule-specific in-source CodeQL suppression.
+6. [done] Create the dated security report and preserve the 78-tool catalog identity.
+7. [done] Run formatting, full serial tests, coverage thresholds, vet, build, Staticcheck, Govulncheck, Actionlint and focused security tests.
+8. [blocked locally] Race requires gcc and no-cache Docker builds require Docker; both are unavailable on this VPS and remain mandatory remote gates.
+9. [active] Commit the closure tree, publish security-findings-closure and open a PR against current main.
+10. [pending] Require Verify, Race detector, Staticcheck, Govulncheck, CodeQL, Dependency review and Container SBOM/vulnerabilities green on the exact final SHA, then inspect original alert development status as far as GitHub permissions allow.
+
+No merge, deployment, tag, production, Coolify, Parrot, P11.2, frontend, protocol, catalog, Brain, Build Workcell or Goal Runtime changes are permitted.

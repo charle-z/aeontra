@@ -136,11 +136,8 @@ func login(client *http.Client, endpoint *url.URL, token string) error {
 		return fmt.Errorf("console login returned %d cookies, want 1", len(cookies))
 	}
 	cookie := cookies[0]
-	if cookie.Value == "" || cookie.Value == token || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/console" {
+	if cookie.Value == "" || cookie.Value == token || !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/" {
 		return fmt.Errorf("console login returned an unsafe session cookie")
-	}
-	if endpoint.Scheme == "https" && !cookie.Secure {
-		return fmt.Errorf("console login cookie is not Secure over HTTPS")
 	}
 	return nil
 }

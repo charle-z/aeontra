@@ -13,12 +13,13 @@ import (
 const repositoryModeReadWrite = "read-write"
 
 type repositoryEntry struct {
-	repoID        string
-	canonicalPath string
-	hostPath      string
-	identity      fileIdentity
-	mode          string
-	discoveredAt  time.Time
+	repoID           string
+	canonicalPath    string
+	hostPath         string
+	identity         fileIdentity
+	manifestIdentity fileIdentity
+	mode             string
+	discoveredAt     time.Time
 }
 
 type repositoryRegistry struct {
@@ -99,16 +100,21 @@ func (r *repositoryRegistry) register(repoID string, discoveredAt time.Time) err
 	if err != nil || !packageInfo.Mode().IsRegular() || packageInfo.Mode()&os.ModeSymlink != 0 || writableByOthers(packageInfo.Mode()) {
 		return errors.New("repository package manifest is unavailable or unsafe")
 	}
-	if err := verifyRepositoryDescriptors(r.root, repoID, r.rootIdentity, identity); err != nil {
+	manifestIdentity, err := identityFromFileInfo(packageInfo)
+	if err != nil {
+		return errors.New("repository package manifest identity is unavailable")
+	}
+	if err := verifyRepositoryDescriptors(r.root, repoID, r.rootIdentity, identity, manifestIdentity); err != nil {
 		return err
 	}
 	r.entries[repoID] = repositoryEntry{
-		repoID:        repoID,
-		canonicalPath: candidate,
-		hostPath:      filepath.Join(r.hostRoot, repoID),
-		identity:      identity,
-		mode:          repositoryModeReadWrite,
-		discoveredAt:  discoveredAt.UTC(),
+		repoID:           repoID,
+		canonicalPath:    candidate,
+		hostPath:         filepath.Join(r.hostRoot, repoID),
+		identity:         identity,
+		manifestIdentity: manifestIdentity,
+		mode:             repositoryModeReadWrite,
+		discoveredAt:     discoveredAt.UTC(),
 	}
 	return nil
 }
@@ -155,7 +161,11 @@ func (r *repositoryRegistry) revalidate(entry repositoryEntry) error {
 	if err != nil || !packageInfo.Mode().IsRegular() || packageInfo.Mode()&os.ModeSymlink != 0 || writableByOthers(packageInfo.Mode()) {
 		return errors.New("registered repository manifest changed")
 	}
-	if err := verifyRepositoryDescriptors(r.root, entry.repoID, r.rootIdentity, entry.identity); err != nil {
+	manifestIdentity, err := identityFromFileInfo(packageInfo)
+	if err != nil || manifestIdentity != entry.manifestIdentity {
+		return errors.New("registered repository manifest changed")
+	}
+	if err := verifyRepositoryDescriptors(r.root, entry.repoID, r.rootIdentity, entry.identity, entry.manifestIdentity); err != nil {
 		return err
 	}
 	return nil
