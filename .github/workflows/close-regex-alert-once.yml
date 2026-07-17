@@ -81,7 +81,6 @@ jobs:
                   state: 'dismissed',
                   dismissed_reason: 'false positive',
                   dismissed_comment: comment,
-                  create_request: true,
                   headers: {
                     'X-GitHub-Api-Version': '2026-03-10',
                   },
