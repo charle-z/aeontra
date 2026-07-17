@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,6 +12,8 @@ import (
 )
 
 const githubEvidenceMaxPages = 100
+
+var errGitHubRequiredChecksUnavailable = errors.New("GitHub required status checks unavailable")
 
 type githubActionsRun struct {
 	ID         int64  `json:"id"`
@@ -307,6 +310,11 @@ func (c *GitHubClient) githubActionsJobs(ctx context.Context, repo string, runID
 
 func (c *GitHubClient) requireGitHubEvidence(ctx context.Context, repo, base string, present map[string]struct{}, summary *githubCheckSummary) error {
 	required, err := c.githubRequiredStatusChecks(ctx, repo, base)
+	if errors.Is(err, errGitHubRequiredChecksUnavailable) {
+		summary.EvidenceComplete = false
+		summary.Lines = append(summary.Lines, "required_checks: unavailable")
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -331,6 +339,9 @@ func (c *GitHubClient) githubRequiredStatusChecks(ctx context.Context, repo, bas
 	}
 	if status == http.StatusNotFound {
 		return nil, nil
+	}
+	if status == http.StatusForbidden {
+		return nil, errGitHubRequiredChecksUnavailable
 	}
 	if status < 200 || status >= 300 {
 		return nil, fmt.Errorf("GitHub required status checks -> HTTP %d", status)
