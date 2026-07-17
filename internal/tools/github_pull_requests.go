@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,8 +51,9 @@ type githubCheckRunsResponse struct {
 	} `json:"check_runs"`
 }
 type githubCombinedStatusResponse struct {
-	State    string `json:"state"`
-	Statuses []struct {
+	State      string `json:"state"`
+	TotalCount int    `json:"total_count"`
+	Statuses   []struct {
 		Context   string `json:"context"`
 		State     string `json:"state"`
 		TargetURL string `json:"target_url"`
@@ -65,8 +65,16 @@ type githubMergeResponse struct {
 	Message string `json:"message"`
 }
 type githubCheckSummary struct {
-	Total, Pending, Failed, Passed int
-	Lines                          []string
+	Source           string
+	RunsTotal        int
+	JobsTotal        int
+	Passed           int
+	Pending          int
+	Failed           int
+	CommitStatuses   int
+	AllChecksGreen   bool
+	EvidenceComplete bool
+	Lines            []string
 }
 
 func (c *GitHubClient) branchSHA(ctx context.Context, repo, branch string) (string, error) {
@@ -150,66 +158,11 @@ func terminalSuccess(conclusion string) bool {
 }
 
 func (c *GitHubClient) checkSummary(ctx context.Context, repo, sha string) (githubCheckSummary, error) {
-	checksPath := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/commits/" + url.PathEscape(sha) + "/check-runs?per_page=100"
-	status, body, err := c.doJSONLimit(ctx, http.MethodGet, checksPath, nil, githubCheckRunsResponseLimit)
-	if err != nil {
-		return githubCheckSummary{}, err
-	}
-	if status < 200 || status >= 300 {
-		return githubCheckSummary{}, fmt.Errorf("GitHub check runs -> HTTP %d", status)
-	}
-	var checks githubCheckRunsResponse
-	if err := json.Unmarshal([]byte(body), &checks); err != nil {
-		return githubCheckSummary{}, fmt.Errorf("decoding GitHub check runs: %w", err)
-	}
-	if checks.TotalCount != len(checks.CheckRuns) {
-		return githubCheckSummary{}, fmt.Errorf("GitHub check run response was incomplete: expected %d, received %d", checks.TotalCount, len(checks.CheckRuns))
-	}
-	statusPath := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/commits/" + url.PathEscape(sha) + "/status"
-	statusCode, statusBody, err := c.doJSON(ctx, http.MethodGet, statusPath, nil)
-	if err != nil {
-		return githubCheckSummary{}, err
-	}
-	if statusCode < 200 || statusCode >= 300 {
-		return githubCheckSummary{}, fmt.Errorf("GitHub commit status -> HTTP %d", statusCode)
-	}
-	var combined githubCombinedStatusResponse
-	if err := json.Unmarshal([]byte(statusBody), &combined); err != nil {
-		return githubCheckSummary{}, fmt.Errorf("decoding GitHub commit status: %w", err)
-	}
-	summary := githubCheckSummary{}
-	for _, check := range checks.CheckRuns {
-		summary.Total++
-		line := fmt.Sprintf("check: %s | status=%s | conclusion=%s", check.Name, check.Status, check.Conclusion)
-		if check.HTMLURL != "" {
-			line += " | url=" + check.HTMLURL
-		}
-		summary.Lines = append(summary.Lines, line)
-		if check.Status != "completed" {
-			summary.Pending++
-		} else if terminalSuccess(check.Conclusion) {
-			summary.Passed++
-		} else {
-			summary.Failed++
-		}
-	}
-	for _, item := range combined.Statuses {
-		summary.Total++
-		line := fmt.Sprintf("status: %s | state=%s", item.Context, item.State)
-		if item.TargetURL != "" {
-			line += " | url=" + item.TargetURL
-		}
-		summary.Lines = append(summary.Lines, line)
-		if item.State == "success" {
-			summary.Passed++
-		} else if item.State == "pending" {
-			summary.Pending++
-		} else {
-			summary.Failed++
-		}
-	}
-	sort.Strings(summary.Lines)
-	return summary, nil
+	return c.checkSummaryForBase(ctx, repo, sha, "")
+}
+
+func (c *GitHubClient) checkSummaryForBase(ctx context.Context, repo, sha, base string) (githubCheckSummary, error) {
+	return c.collectGitHubEvidence(ctx, repo, sha, base)
 }
 
 func (c *GitHubClient) mergePullRequest(ctx context.Context, repo string, number int, sha, title string) (githubMergeResponse, error) {
@@ -353,13 +306,12 @@ func (s *SourceCapability) SourcePullRequestStatus(repo string, number int) (str
 	if err != nil {
 		return "", err
 	}
-	summary, err := s.github.checkSummary(context.Background(), repo, pull.Head.SHA)
+	summary, err := s.github.checkSummaryForBase(context.Background(), repo, pull.Head.SHA, pull.Base.Ref)
 	if err != nil {
 		return "", err
 	}
-	allGreen := summary.Total > 0 && summary.Pending == 0 && summary.Failed == 0
 	var b strings.Builder
-	fmt.Fprintf(&b, "pull_request: %d\nurl: %s\nstate: %s\nmerged: %t\nhead: %s\nhead_sha: %s\nbase: %s\nmergeable: %s\nchecks_total: %d\nchecks_passed: %d\nchecks_pending: %d\nchecks_failed: %d\nall_checks_green: %t\n", pull.Number, pull.HTMLURL, pull.State, pull.Merged, pull.Head.Ref, pull.Head.SHA, pull.Base.Ref, nullableBool(pull.Mergeable), summary.Total, summary.Passed, summary.Pending, summary.Failed, allGreen)
+	fmt.Fprintf(&b, "pull_request: %d\nurl: %s\nstate: %s\nmerged: %t\nhead: %s\nhead_sha: %s\nbase: %s\nmergeable: %s\nsource: %s\nruns_total: %d\njobs_total: %d\npassed: %d\npending: %d\nfailed: %d\ncommit_statuses: %d\nall_checks_green: %t\nevidence_complete: %t\n", pull.Number, pull.HTMLURL, pull.State, pull.Merged, pull.Head.Ref, pull.Head.SHA, pull.Base.Ref, nullableBool(pull.Mergeable), summary.Source, summary.RunsTotal, summary.JobsTotal, summary.Passed, summary.Pending, summary.Failed, summary.CommitStatuses, summary.AllChecksGreen, summary.EvidenceComplete)
 	for _, line := range summary.Lines {
 		b.WriteString(line + "\n")
 	}
@@ -388,11 +340,11 @@ func (s *SourceCapability) SourcePullRequestMergePreview(repo string, number int
 	if pull.State != "open" || pull.Merged || pull.Mergeable == nil || !*pull.Mergeable {
 		return "", fmt.Errorf("pull request is not currently open and mergeable")
 	}
-	summary, err := s.github.checkSummary(context.Background(), repo, pull.Head.SHA)
+	summary, err := s.github.checkSummaryForBase(context.Background(), repo, pull.Head.SHA, pull.Base.Ref)
 	if err != nil {
 		return "", err
 	}
-	if summary.Total == 0 || summary.Pending != 0 || summary.Failed != 0 {
+	if !summary.EvidenceComplete || !summary.AllChecksGreen {
 		return "", fmt.Errorf("pull request checks are not completely green")
 	}
 	plan, err := s.plans.Create("source-pr-merge", map[string]string{"repo": repo, "number": strconv.Itoa(number), "head_sha": pull.Head.SHA, "base": pull.Base.Ref})
@@ -400,7 +352,7 @@ func (s *SourceCapability) SourcePullRequestMergePreview(repo string, number int
 		return "", err
 	}
 	sp.Finish(audit.Allow, "preview "+repo+" #"+strconv.Itoa(number), nil, nil)
-	return fmt.Sprintf("repository: %s/%s\npull_request: %d\nhead_sha: %s\nbase: %s\nchecks_total: %d\neffect: merge using a merge commit only\nplan_id: %s\nexpiry: %s\n", s.github.owner, repo, number, pull.Head.SHA, pull.Base.Ref, summary.Total, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
+	return fmt.Sprintf("repository: %s/%s\npull_request: %d\nhead_sha: %s\nbase: %s\nsource: %s\nruns_total: %d\njobs_total: %d\nevidence_complete: %t\neffect: merge using a merge commit only\nplan_id: %s\nexpiry: %s\n", s.github.owner, repo, number, pull.Head.SHA, pull.Base.Ref, summary.Source, summary.RunsTotal, summary.JobsTotal, summary.EvidenceComplete, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
 func (s *SourceCapability) SourcePullRequestMerge(planID string, approve bool) (string, error) {
@@ -428,8 +380,8 @@ func (s *SourceCapability) SourcePullRequestMerge(planID string, approve bool) (
 	if pull.State != "open" || pull.Merged || pull.Head.SHA != plan.Args["head_sha"] || pull.Mergeable == nil || !*pull.Mergeable {
 		return "", fmt.Errorf("pull request state changed after merge preview")
 	}
-	summary, err := s.github.checkSummary(context.Background(), plan.Args["repo"], pull.Head.SHA)
-	if err != nil || summary.Total == 0 || summary.Pending != 0 || summary.Failed != 0 {
+	summary, err := s.github.checkSummaryForBase(context.Background(), plan.Args["repo"], pull.Head.SHA, pull.Base.Ref)
+	if err != nil || !summary.EvidenceComplete || !summary.AllChecksGreen {
 		return "", fmt.Errorf("pull request checks changed after merge preview")
 	}
 	result, err := s.github.mergePullRequest(context.Background(), plan.Args["repo"], number, pull.Head.SHA, fmt.Sprintf("Merge pull request #%d from %s", number, pull.Head.Ref))

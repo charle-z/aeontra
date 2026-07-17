@@ -21,6 +21,8 @@ const (
 	githubPullResponseLimit         int64 = 512 << 10
 	githubPullListResponseLimit     int64 = 1 << 20
 	githubCheckRunsResponseLimit    int64 = 1 << 20
+	githubActionsResponseLimit      int64 = 1 << 20
+	githubCommitStatusResponseLimit int64 = 1 << 20
 )
 
 // GitHubClient is a narrow, token-backed GitHub API client for global-builder
