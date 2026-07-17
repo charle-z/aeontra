@@ -3,15 +3,17 @@
 Branch: `console-durable-live-state`, based on `origin/main` merge `399d7ac`.
 
 Completed commits:
-- `c284dcd` — Step 1: private SQLite Operation Journal, idempotent legacy migration, bounded retention, cursor pagination, versioned SSE replay and explicit degraded storage state.
-- `e4c674e` — Step 2: transactional lifetime telemetry, exact durable windows, current-process labeling, and separate controller/runtime state.
+- `c284dcd` — Step 1: durable SQLite Operation Journal and recoverable SSE.
+- `e4c674e` — Step 2: durable telemetry windows/lifetime and controller/runtime state.
+- `22a9daf` — Step 3: durable digest-only console browser sessions.
 
-Step 3 validated and ready to commit:
-- production console sessions persist at `/state/console/sessions.db`;
-- only SHA-256 digests plus created/expiry/revocation/version metadata are stored;
-- OAuth and Bearer-created browser sessions survive handler restart;
-- logout revocation and expiration survive restart;
-- max sessions, concurrency, private permissions, symlink rejection, corruption fail-closed and a small SQLite budget are tested;
-- the first deployment still requires a one-time login because historical in-memory sessions cannot be migrated.
+Step 4 validated and ready to commit:
+- `/console` and `/oauth/authorize` use one embedded `/auth/assets/firmware.css` asset;
+- VGA/Neo-BIOS visual language, square borders, no gradients or external resources;
+- exact auth CSP: `default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`;
+- no inline style, script or event handlers remain in either auth page;
+- forms operate without JavaScript, with labels, focus-visible, mobile layout and reduced-motion support;
+- OAuth shows safe client/scope/resource labels and visible ready/denied/locked states while hidden values are server-revalidated;
+- scope is allowlisted to `mcp`.
 
-No merge or deployment. Catalog remains required at 78 tools with hash `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
+No merge or deployment. Catalog must remain 78 tools and the required hash unchanged.
