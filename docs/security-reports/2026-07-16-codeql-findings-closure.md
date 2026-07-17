@@ -173,3 +173,26 @@ Because this task does not merge the pull request, default-branch alert records 
 remain open until the corrected tree reaches `main`. The PR CodeQL result must show no
 new instance for the two path findings or two cookie findings, and the regex result
 must be suppressed only by the documented local false-positive annotation.
+
+
+## Operational closure of the historical regex alert
+
+On 2026-07-17, PR #17 used a branch-scoped one-time GitHub Actions workflow to
+query only open CodeQL records matching all of these properties:
+
+- rule `go/regex/missing-regexp-anchor`;
+- path `internal/policy/scan.go`;
+- default-branch ref `refs/heads/main`.
+
+The workflow dismissed the exact matching record set as `false positive` with
+the bounded comment `Intentional embedded-token detector; covered by dedicated tests.`
+It then read every affected record back and verified the rule, path, dismissed state,
+reason and comment. A final open-alert query confirmed that no exact matching record
+remained open. The successful discovery, update and verification jobs ran under
+GitHub Actions run `29602402419` on commit
+`e5dc4e6054e8dc3bbae8c5fdbce62f75d9fac5bb`.
+
+The one-time workflow was removed before merge so production does not retain an
+alert-mutating automation. The detector expression and its tests were not weakened or
+changed. This operational result supersedes the earlier pre-closure note that the
+historical dashboard record could remain open.
