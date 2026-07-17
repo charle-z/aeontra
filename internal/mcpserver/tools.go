@@ -87,6 +87,8 @@ func (s *Server) register() {
 
 	catalog.RegisterSourceRepoInfo(s.addCatalogTool, s.svc)
 
+	catalog.RegisterSourcePullRequests(s.addCatalogTool, s.svc)
+
 	catalog.RegisterGitRemoteManagement(s.addCatalogTool, s.svc)
 
 	catalog.RegisterValidation(s.addCatalogTool, s.svc)
