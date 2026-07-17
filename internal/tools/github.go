@@ -15,8 +15,12 @@ import (
 )
 
 const (
-	githubDefaultResponseLimit   int64 = 16 << 10
-	githubCheckRunsResponseLimit int64 = 1 << 20
+	githubDefaultResponseLimit      int64 = 16 << 10
+	githubRefAndMergeResponseLimit  int64 = 64 << 10
+	githubRepoMetadataResponseLimit int64 = 256 << 10
+	githubPullResponseLimit         int64 = 512 << 10
+	githubPullListResponseLimit     int64 = 1 << 20
+	githubCheckRunsResponseLimit    int64 = 1 << 20
 )
 
 // GitHubClient is a narrow, token-backed GitHub API client for global-builder
@@ -85,12 +89,12 @@ func (c *GitHubClient) createRepo(ctx context.Context, name, description, visibi
 	if err != nil {
 		return 0, "", err
 	}
-	return c.doJSON(ctx, http.MethodPost, path, body)
+	return c.doJSONLimit(ctx, http.MethodPost, path, body, githubRepoMetadataResponseLimit)
 }
 
 func (c *GitHubClient) repoInfo(ctx context.Context, name string) (int, string, error) {
 	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(name)
-	return c.doJSON(ctx, http.MethodGet, path, nil)
+	return c.doJSONLimit(ctx, http.MethodGet, path, nil, githubRepoMetadataResponseLimit)
 }
 
 func (c *GitHubClient) doJSON(ctx context.Context, method, path string, body []byte) (int, string, error) {
