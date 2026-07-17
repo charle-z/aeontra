@@ -64,6 +64,13 @@ do not replace server-side enforcement.
 | `source_repo_create_preview` | 1/0/1/1 | Confirm absence and plan private-by-default creation. |
 | `github_create_repo` | 0/0/0/1 | Compatibility name for planned `source_repo_create`. |
 | `source_repo_create` | 0/0/0/1 | Revalidate and create the planned owner-bound repository. |
+| `source_pull_request_create_preview` | 1/0/1/1 | Bind head/base SHAs and plan one non-draft pull request. |
+| `source_pull_request_create` | 0/0/0/1 | Revalidate branch SHAs and create the planned pull request. |
+| `source_pull_request_status` | 1/0/1/1 | Read PR state and every check/status context for the exact head SHA. |
+| `source_pull_request_merge_preview` | 1/0/1/1 | Require mergeable state and completely green checks, then plan a merge commit. |
+| `source_pull_request_merge` | 0/1/0/1 | Revalidate head, mergeability and checks, then merge with `merge_method=merge`. |
+| `source_default_branch_update_preview` | 1/0/1/1 | Bind the existing target branch SHA and plan a default-branch update. |
+| `source_default_branch_update` | 0/1/0/1 | Revalidate the target SHA and update the owner-bound repository default branch. |
 | `repo_remote_preview` | 1/0/1/0 | Plan an owner-restricted credential-free remote add/update. |
 | `repo_remote_set` | 0/1/0/0 | Revalidate and add or replace the planned named remote. |
 | `repo_publish_preview` | 1/0/1/1 | Inspect the exact remote branch and plan one safe push. |

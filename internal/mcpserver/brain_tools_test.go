@@ -40,8 +40,8 @@ var brainToolOrder = []string{"brain_search", "brain_read", "brain_write", "brai
 
 func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 78 {
-		t.Fatalf("tool order length=%d want=78", len(server.order))
+	if len(server.order) != 85 {
+		t.Fatalf("tool order length=%d want=85", len(server.order))
 	}
 	if server.order[9] != "workspace_checkpoint" {
 		t.Fatalf("workspace checkpoint position=%v", server.order[:11])
@@ -51,15 +51,15 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
-		if name != "mcp_client_capabilities" && !strings.HasPrefix(name, "model_") && !strings.HasPrefix(name, "opencode_") && name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") {
+		if name != "mcp_client_capabilities" && !strings.HasPrefix(name, "model_") && !strings.HasPrefix(name, "opencode_") && name != "workspace_checkpoint" && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") && !strings.HasPrefix(name, "source_pull_request_") && !strings.HasPrefix(name, "source_default_branch_") {
 			historical = append(historical, name)
 		}
 	}
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[73:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[73:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[80:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[80:], brainToolOrder)
 	}
 
 	snapshot, err := server.CatalogInfo()
@@ -68,7 +68,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	legacy := make([]CatalogTool, 0, 62)
 	for _, tool := range snapshot.Tools {
-		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && tool.Name != "workspace_checkpoint" {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") && tool.Name != "workspace_checkpoint" {
 			legacy = append(legacy, tool)
 		}
 	}
@@ -84,7 +84,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	previous := make([]CatalogTool, 0, 71)
 	for _, tool := range snapshot.Tools {
-		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") {
 			previous = append(previous, tool)
 		}
 	}
@@ -100,7 +100,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	step1 := make([]CatalogTool, 0, 72)
 	for _, tool := range snapshot.Tools {
-		if !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") {
+		if !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") {
 			step1 = append(step1, tool)
 		}
 	}
@@ -117,6 +117,9 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	step4 := make([]CatalogTool, 0, 77)
 	for _, tool := range snapshot.Tools {
+		if strings.HasPrefix(tool.Name, "source_pull_request_") || strings.HasPrefix(tool.Name, "source_default_branch_") {
+			continue
+		}
 		if tool.Name == "opencode_runtime_start" {
 			continue
 		}
@@ -138,8 +141,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("historical Step 4 catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	const step6Hash = "sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed"
-	if snapshot.ToolCount != 78 || snapshot.Hash != step6Hash {
+	if snapshot.ToolCount != 85 || snapshot.Hash != "sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

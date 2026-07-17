@@ -14,6 +14,15 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/audit"
 )
 
+const (
+	githubDefaultResponseLimit      int64 = 16 << 10
+	githubRefAndMergeResponseLimit  int64 = 64 << 10
+	githubRepoMetadataResponseLimit int64 = 256 << 10
+	githubPullResponseLimit         int64 = 512 << 10
+	githubPullListResponseLimit     int64 = 1 << 20
+	githubCheckRunsResponseLimit    int64 = 1 << 20
+)
+
 // GitHubClient is a narrow, token-backed GitHub API client for global-builder
 // repo creation and lookup. The token is sent only as an Authorization header.
 type GitHubClient struct {
@@ -80,15 +89,19 @@ func (c *GitHubClient) createRepo(ctx context.Context, name, description, visibi
 	if err != nil {
 		return 0, "", err
 	}
-	return c.doJSON(ctx, http.MethodPost, path, body)
+	return c.doJSONLimit(ctx, http.MethodPost, path, body, githubRepoMetadataResponseLimit)
 }
 
 func (c *GitHubClient) repoInfo(ctx context.Context, name string) (int, string, error) {
 	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(name)
-	return c.doJSON(ctx, http.MethodGet, path, nil)
+	return c.doJSONLimit(ctx, http.MethodGet, path, nil, githubRepoMetadataResponseLimit)
 }
 
 func (c *GitHubClient) doJSON(ctx context.Context, method, path string, body []byte) (int, string, error) {
+	return c.doJSONLimit(ctx, method, path, body, githubDefaultResponseLimit)
+}
+
+func (c *GitHubClient) doJSONLimit(ctx context.Context, method, path string, body []byte, limit int64) (int, string, error) {
 	var r io.Reader
 	if body != nil {
 		r = bytes.NewReader(body)
@@ -108,7 +121,16 @@ func (c *GitHubClient) doJSON(ctx context.Context, method, path string, body []b
 		return 0, "", err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 16384))
+	if limit < 1 {
+		return resp.StatusCode, "", fmt.Errorf("invalid GitHub response limit")
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return resp.StatusCode, "", fmt.Errorf("reading GitHub response: %w", err)
+	}
+	if int64(len(data)) > limit {
+		return resp.StatusCode, "", fmt.Errorf("GitHub response exceeded %d-byte limit", limit)
+	}
 	return resp.StatusCode, strings.TrimSpace(string(data)), nil
 }
 
