@@ -76,6 +76,7 @@ jobs:
                 state: 'dismissed',
                 dismissed_reason: 'false positive',
                 dismissed_comment: comment,
+                create_request: true,
               });
             }
             core.notice(`Dismissed ${numbers.length} exact alert record(s) as false positive.`);
