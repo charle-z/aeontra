@@ -1,8 +1,6 @@
-# Console 2.0 authentication, data and browser boundary
+# Console durable live state, authentication and browser boundary
 
-P8.1 evolves the embedded P8 console into the Neo-BIOS operations firmware inside the
-existing MCP Devbox Go HTTP application. React, TypeScript and Vite compile to fixed
-same-origin assets embedded by Go. Production adds no Node server, listener, database server, queue, free terminal, Edge device or agent, and there is no new Coolify application.
+The console is an authenticated, presentation-only surface embedded in the existing Go HTTP application. React, TypeScript and Vite compile to fixed same-origin assets embedded by Go. Production adds no Node server, database server, queue, terminal, browser automation or second control plane.
 
 ## URL and visual contract
 
@@ -10,94 +8,86 @@ same-origin assets embedded by Go. Production adds no Node server, listener, dat
 https://<your-mcp-host>/console
 ```
 
-The design source is `docs/console-2.0/design-neo-bios.md`; the HTML mockup is a
-visual reference only. Production uses one blue VGA BIOS theme (`#0000A8`), the
-16-color VGA palette, monospaced text, square geometry, tabbed firmware screens,
-Item Specific Help, function-key hints, keyboard/mouse/touch navigation and
-`prefers-reduced-motion`.
+The authenticated console and `/oauth/authorize` use the same Neo-BIOS/VGA firmware stylesheet. The surface uses monospaced text, square geometry, tabbed screens, keyboard/mouse/touch navigation, accessible help/tooltips and `prefers-reduced-motion`. There are no gradients, external fonts, remote scripts or inline script/style blocks.
 
-## Authentication
+## Authentication and durable sessions
 
-### OAuth console login
+OAuth remains the normal path. `GET /console/auth/start` creates bounded one-use state and PKCE S256 material, then redirects to `/oauth/authorize`. The owner passphrase is submitted only to that server endpoint. `/console/auth/callback` validates and consumes the authorization flow, creates an opaque browser session and redirects to the clean `/console` URL. Access tokens never reach JavaScript.
 
-`GET /console/auth/start` creates bounded one-use state and PKCE S256 material,
-stores only the SHA-256 state digest and redirects to the existing
-`/oauth/authorize` page. The owner passphrase is accepted only there. The
-server-side `/console/auth/callback` validates exact state, verifier, client,
-callback, scope, audience and authorization code, consumes the code once, creates an
-opaque session and redirects to the clean `/console` URL. Access tokens never
-reach JavaScript.
+Recovery bearer authentication remains separate from OAuth and is accepted only through the `Authorization` header or the HTTPS form body. Query-string credentials remain rejected.
 
-The cookie is `Secure`, `HttpOnly`, `SameSite=Strict`, scoped to
-`/console` and represented server-side only by a SHA-256 digest. Browser storage
-is not used. Sessions have an eight-hour expiry, are capped at 128 sessions, and are revoked on logout or process restart.
-
-### Recovery bearer
-
-`MCP_DEVBOX_TOKEN` is optional when OAuth is configured. It remains available
-only as an `Authorization: Bearer` recovery header and through the HTTPS console
-form body. Query-string authentication was permanently removed: every
-`?key=<value>` returns HTTP 401, including the correct token.
-
-Persist `MCP_DEVBOX_OAUTH_CLIENT_STORE` and
-`MCP_DEVBOX_OAUTH_REFRESH_STORE` under `/state` so ChatGPT OAuth survives
-a container replacement.
+Browser sessions persist in `/state/console/sessions.db`. The database stores only SHA-256 digests, creation/expiry timestamps, revocation state and version. The raw cookie and bearer token are never persisted. Session files are private, SQLite corruption or unsafe permissions fail closed, logout revocation survives restart, and OAuth/recovery sessions remain valid across a process replacement until expiry or revocation. A deployment from the old memory-only implementation requires one final login because there is no safe material to migrate.
 
 ## Safe routes
 
 | Route | Method | Authentication | Purpose |
 |---|---|---|---|
-| `/console` | GET | Login or opaque session/direct auth | Render shell/bootstrap. |
+| `/console` | GET | Login or opaque session/direct auth | Render the firmware shell. |
+| `/auth/assets/firmware.css` | GET | None | Shared static authentication firmware CSS. |
 | `/console/auth/start` | GET | None | Start console OAuth state/PKCE flow. |
-| `/console/auth/callback` | GET | Exact state and one-use code | Create session and redirect cleanly. |
-| `/console/login` | POST | Recovery token in body | Create recovery session. |
-| `/console/logout` | POST | Current session | Revoke and clear session. |
+| `/console/auth/callback` | GET | Exact state and one-use code | Create durable session and redirect cleanly. |
+| `/console/login` | POST | Recovery token in body | Create durable recovery session. |
+| `/console/logout` | POST | Current session | Durably revoke and clear session. |
 | `/console/status` | GET | Session or direct auth | Exact runtime identity schema. |
-| `/console/data` | GET | Session or direct auth | Exact safe aggregate data schema. |
-| `/console/tasks` | GET | Session or direct auth | Durable content-free task snapshot. |
-| `/console/events` | GET | Session or direct auth | Server-Sent Events for task state. |
-| `/console/assets/app.css` | GET | Session or direct auth | Embedded Neo-BIOS CSS. |
+| `/console/data` | GET | Session or direct auth | Exact safe aggregate schema version 3. |
+| `/console/tasks` | GET | Session or direct auth | Durable task page with `limit` and opaque `cursor`. |
+| `/console/event-log` | GET | Session or direct auth | Persistent event page with exact filters and cursor. |
+| `/console/events` | GET | Session or direct auth | Recoverable SSE stream. |
+| `/console/assets/app.css` | GET | Session or direct auth | Embedded console CSS. |
 | `/console/assets/app.js` | GET | Session or direct auth | Embedded React bundle. |
 
-Unsupported methods return 405. Login bodies are limited to 4 KiB. Dynamic responses
-are no-store and use hardened cross-origin and frame headers.
+Unknown query keys, duplicate query values, invalid enums, malformed cursors and unsupported methods fail closed. Dynamic responses are `no-store` and carry strict frame, content-type, referrer, permissions and same-origin headers.
 
-## Displayed real data
+## Durable Operation Journal and Event Log
 
-The UI never invents devices or metrics. It renders only exact allowlisted fields:
+`MCP_DEVBOX_TASK_ROOT=/state/tasks` contains `tasks.db`, not a bounded set of browser JSON files. The journal stores only opaque task ID and sequence, closed controller/operation/state values, fixed safe summary, precise UTC timestamps, version and terminal state. Prompts, tool parameters, results, repository names, paths, tokens, IPs and private identities are never journaled.
 
-- System: runtime identity plus container CPU, RAM, disk and load; unavailable probes
-  are labeled unavailable.
-- Agents: authenticated console state, latest generic controller activity and MCP
-  payload bytes with declared `bytes / 4 (estimate)` token approximation.
-- Tasks: bounded durable state under `MCP_DEVBOX_TASK_ROOT` (`/state/tasks`
-in the image), heartbeat and controller. Only public operation names and fixed
-summaries are stored.
-- Brain: readiness, schema, aggregate counts and timestamp; no note content.
-- Graph: real bounded Brain links with opaque ordinal IDs, trust and degree. No slug,
-  title, body, author or provenance.
-- Observability: aggregate normalized route requests, 4xx, 5xx and P95 only; no raw
-  log event or request content.
-- Security: OAuth/bearer/query/cookie/free-shell posture.
-- Events: safe browser refresh and task transition notices only.
-- Edge: exactly `Not paired` until P11.
+Task pages use stable opaque cursors and support more than 500 operations without the former 256-record ceiling. Terminal tasks have 30-day retention and a 10,000-task cap. The same SQLite database contains `task_events`, which is the sole truth for both `/console/event-log` and `/console/events`. Events retain 30 days and at most 20,000 rows.
 
-Task states are exactly requested, planned, awaiting_approval, executing, observing,
-validating, completed, failed, cancelled and disconnected. If a controller heartbeat
-expires, the presentation becomes disconnected. The console never claims autonomous
-work and never exposes private model reasoning.
+Legacy per-task JSON files are imported transactionally and idempotently. A successfully inserted legacy task receives exactly one durable migration event; reopening the database does not duplicate either row. Migrated JSON files are archived only after the database transaction commits.
+
+`/console/event-log` accepts only `limit`, `cursor`, `controller`, `state`, `operation` and `event_type`. Filters are exact, not substring searches. `/console/tasks` accepts only `limit` and `cursor`.
+
+## Recoverable SSE
+
+The browser receives `snapshot`, `event_snapshot`, persisted `journal` events and a `stream` live marker. The server sends `retry: 2000`. Reconnection uses `Last-Event-ID`; the browser also supplies the same value through `last_event_id` because a newly constructed `EventSource` cannot set custom headers. Conflicting header/query IDs fail closed. A retained range is replayed without duplicates. A gap or future ID produces fresh task/event snapshots before the live marker.
+
+React exposes `connecting`, `live`, `reconnecting` and `offline`, retries with bounded exponential backoff, merges live events by durable `event_id`, preserves events that arrive before the initial JSON page, and closes EventSource, reconnect timers, refresh timers and filter requests on cleanup.
+
+## Real data and opaque selectors
+
+The UI does not invent projects, devices, agents or measurements.
+
+- **System:** exact runtime identity plus real container CPU, RAM, disk, load and a combined storage budget.
+- **Agents:** controllers and model runtimes are separate entities. Tool calls remain operations, never agents.
+- **Tasks:** durable pages, exact filters, versions and precise timestamps.
+- **Brain:** aggregate index state and a bounded real link graph.
+- **Graph:** stable HMAC node IDs plus explicit redacted title, `console_summary`, trust and degree. No slug, body, private provenance or path.
+- **Edge:** active durable Edge devices only. Raw device ID, name, key and network details remain private.
+- **Projects:** one option per real configured policy root. Paths and repository names remain private.
+- **Events:** server-persisted journal history, not browser-generated notices.
+
+Project selector IDs are stable domain-separated SHA-256 derivations over the real root ordinal and use generic labels such as `Configured project 1`. Edge selector IDs are stable derivations over the server-generated random device ID and use generic labels such as `Paired Edge 1`. These selectors currently scope the presentation only; they grant no additional authority.
+
+## Brain console metadata
+
+Brain node identity is keyed by `/state/brain/console-node.key`. The directory is exactly `0700`, the file exactly `0600`, symlinks and unsafe existing permissions are rejected, and creation uses an atomic no-overwrite publication. The key is not regenerated when present and is never returned, logged or included in errors.
+
+Node IDs are domain-separated HMAC-SHA-256 outputs. They are stable across restart and cannot be reversed to a slug. `console_summary` is optional explicit frontmatter metadata, single-line and at most 160 bytes. During reindex, the derived `console_metadata` table is replaced in the same transaction as `notes`; incremental updates use the same upsert. Title and summary are secret-scanned and use fixed safe fallbacks. The body is never used to synthesize a summary.
+
+## Storage budgets
+
+The journal SQLite database enforces a 64 MiB page cap. The console also reports a combined private-state budget for SQLite databases, WAL/SHM files and `.log`/`.jsonl` files. Paths and filenames never leave the server.
+
+The combined reporting limit is 256 MiB: below 75% is `healthy`, from 75% is `nearing_limit`, and from 90% is `degraded`. The scanner rejects symlinks, non-regular files and more than 4,096 entries. This is an observability budget, not permission to delete arbitrary state.
 
 ## Browser security
 
-The authenticated page loads only same-origin embedded assets. The `Content-Security-Policy` includes same-origin
-script and connect sources for REST and SSE. No WebSockets are used. There are no
-remote fonts, analytics, third-party scripts, inline scripts, inline handlers,
-`dangerouslySetInnerHTML`, `innerHTML`, eval, service workers,
-`localStorage`, `sessionStorage`, IndexedDB or JavaScript-readable cookies.
+Only same-origin embedded assets are loaded. CSP permits same-origin script/connect sources for REST and SSE and excludes `unsafe-inline`. There are no WebSockets, remote fonts, analytics, third-party scripts, inline handlers, `dangerouslySetInnerHTML`, `innerHTML`, eval, service workers, local/session storage, IndexedDB or JavaScript-readable cookies.
 
-## Installation and update
+The console remains presentation-only. F9/F10 do not approve or execute anything. MCP single-use plans remain the only authority path for consequential actions.
 
-Build and deploy the normal image. Recommended production configuration:
+## Production configuration
 
 ```text
 MCP_DEVBOX_PUBLIC_URL=https://<your-mcp-host>
@@ -105,29 +95,30 @@ MCP_DEVBOX_OAUTH_PASSPHRASE=<configured-owner-passphrase>
 MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json
 MCP_DEVBOX_OAUTH_REFRESH_STORE=/state/oauth-refresh.json
 MCP_DEVBOX_TASK_ROOT=/state/tasks
+MCP_DEVBOX_BRAIN_ROOT=/brain
+MCP_DEVBOX_STATE_ROOT=/state
 MCP_DEVBOX_TOKEN=<optional-recovery-value>
 ```
 
-The Docker image reserves `/state` and creates private `/state/tasks` for
-UID/GID 10001. Reuse the existing persistent `/state` storage; do not create a
-new application.
+Reuse the existing private `/state` and `/brain` persistent mounts. Do not create another application.
 
-Update only through a tested `main` commit and the existing Coolify app. During
-container replacement an existing MCP connection may disconnect briefly; wait for
-health and reconnect without creating a duplicate deployment. Then verify exact
-commit, OAuth login, strict cookie, query-key 401, recovery bearer, data/task/SSE
-schemas, 67 tools, P9 catalog hash and both catalog/Brain smokes.
+## Upgrade and rollback
 
-## Rollback and Troubleshooting
+Before rollout, verify the exact catalog:
 
-Rollback by deploying the previous known-good `p9` commit/tag. Keep
-`/state` and `/brain` intact; old binaries ignore `/state/tasks`.
-Task records are closed content-free JSON and require no database migration.
+```text
+78
+sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed
+```
 
-If OAuth login returns to the login page, verify HTTPS, callback/public URL and the
-strict cookie, then retry because process restart invalidates console sessions. If SSE
-disconnects, polling `/console/tasks` remains the durable fallback. If data is
-unavailable, inspect runtime health and mounts; do not fabricate fallback values. If
-commit/catalog differ, stop and resolve deployment identity before retrying. Repository
-content, raw logs, prompts, params, results, paths, tokens, identities and tool control
-remain intentionally outside the console.
+Upgrade is additive and idempotent: legacy task JSON is imported into `/state/tasks/tasks.db`; durable sessions begin in `/state/console/sessions.db`; `/state/brain/console-node.key` is created once; and Brain reindex creates/refreshes `console_metadata` without changing Markdown truth.
+
+Rollback by deploying the previous known-good binary while keeping `/state` and `/brain` intact. Never delete the databases or Brain key to make an old binary start. Older binaries ignore new tables/files they do not use. If the console reports unavailable or degraded state, inspect private mounts and permissions; do not fabricate fallback values or expose private paths.
+
+## Historical P8/P8.1 compatibility markers
+
+This milestone remains inside the existing application: there is **no new Coolify application**. The existing session defaults remain an **eight-hour expiry** and **128 sessions** maximum, now backed by durable SQLite instead of process memory. Cookies remain **HttpOnly**, `SameSite=Strict` and Secure. Authentication and console pages use an explicit **Content-Security-Policy**. Edge renders **Not paired** when the real registry contains no active device.
+
+## Troubleshooting
+
+If durable sessions fail after restart, verify `/state/console` is a real 0700 directory and `sessions.db` is a regular 0600 file; do not chmod unsafe existing paths automatically. If SSE remains reconnecting, compare the displayed Last-Event-ID with retained journal bounds and query `/console/event-log`; a retention gap should yield fresh snapshots. If Project or Edge selectors are empty, verify real policy roots or active durable Edge devices rather than adding placeholder options. If storage is unavailable, inspect the private state tree for symlinks, non-regular files or excessive entries. Keep the console presentation-only and never expose private paths while diagnosing.

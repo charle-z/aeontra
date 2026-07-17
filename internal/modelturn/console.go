@@ -2,6 +2,7 @@ package modelturn
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 )
@@ -12,6 +13,7 @@ type ConsoleRuntime struct {
 	RuntimeID    string
 	State        RuntimeState
 	Controller   RuntimeController
+	DeviceID     string
 	LastActivity time.Time
 	Active       bool
 }
@@ -28,7 +30,7 @@ func (s *Store) ConsoleRuntimes(ctx context.Context, limit int) ([]ConsoleRuntim
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rows, err := s.db.QueryContext(ctx, `SELECT runtime_id,state,controller,
+	rows, err := s.db.QueryContext(ctx, `SELECT runtime_id,state,controller,device_id,
 		CASE WHEN last_heartbeat>updated_at THEN last_heartbeat ELSE updated_at END
 		FROM model_runtimes ORDER BY updated_at DESC,runtime_id DESC LIMIT ?`, limit)
 	if err != nil {
@@ -39,7 +41,7 @@ func (s *Store) ConsoleRuntimes(ctx context.Context, limit int) ([]ConsoleRuntim
 	for rows.Next() {
 		var runtime ConsoleRuntime
 		var activity int64
-		if err := rows.Scan(&runtime.RuntimeID, &runtime.State, &runtime.Controller, &activity); err != nil {
+		if err := rows.Scan(&runtime.RuntimeID, &runtime.State, &runtime.Controller, &runtime.DeviceID, &activity); err != nil {
 			return nil, errors.New("model runtime console snapshot invalid")
 		}
 		if !safeIdentifier.MatchString(runtime.RuntimeID) || !validRuntimeState(runtime.State) || !validRuntimeController(runtime.Controller) {
@@ -53,6 +55,28 @@ func (s *Store) ConsoleRuntimes(ctx context.Context, limit int) ([]ConsoleRuntim
 		return nil, errors.New("model runtime console snapshot failed")
 	}
 	return runtimes, nil
+}
+
+func (s *Store) ConsoleRuntimeDeviceID(ctx context.Context, runtimeID string) (string, error) {
+	if s == nil || s.db == nil {
+		return "", nil
+	}
+	if !safeIdentifier.MatchString(runtimeID) {
+		return "", errors.New("model runtime console id is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var deviceID string
+	if err := s.db.QueryRowContext(ctx, `SELECT device_id FROM model_runtimes WHERE runtime_id=?`, runtimeID).Scan(&deviceID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", errors.New("model runtime console scope failed")
+	}
+	if deviceID != "" && !safeIdentifier.MatchString(deviceID) {
+		return "", errors.New("model runtime console scope invalid")
+	}
+	return deviceID, nil
 }
 
 func validRuntimeController(controller RuntimeController) bool {

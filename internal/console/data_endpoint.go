@@ -84,7 +84,8 @@ type SecurityData struct {
 }
 
 type EdgeData struct {
-	State string `json:"state"`
+	State   string           `json:"state"`
+	Devices []EdgeDeviceData `json:"devices"`
 }
 
 type DataSnapshot struct {
@@ -94,6 +95,8 @@ type DataSnapshot struct {
 	DurableActivity DurableActivityData `json:"durable_activity"`
 	Controllers     []ControllerData    `json:"controllers"`
 	Runtimes        []RuntimeData       `json:"runtimes"`
+	Projects        []ProjectData       `json:"projects"`
+	Storage         StorageData         `json:"storage"`
 	Brain           BrainData           `json:"brain"`
 	Observability   ObservabilityData   `json:"observability"`
 	Security        SecurityData        `json:"security"`
@@ -120,7 +123,7 @@ func (h *Handler) handleData(w http.ResponseWriter, r *http.Request) {
 		writeGenericError(w, http.StatusServiceUnavailable)
 		return
 	}
-	snapshot.SchemaVersion = 2
+	snapshot.SchemaVersion = 3
 	hardenResponse(w, "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(snapshot)

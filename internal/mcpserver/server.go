@@ -40,6 +40,8 @@ type Server struct {
 	clients     *clientCapabilityStore
 	modelTurns  *modelturn.Store
 	edgeDevices edgeDeviceRegistry
+	stateRoot   string
+	auditPath   string
 	modelWaitMu sync.Mutex
 	modelWaits  map[string]struct{}
 }
@@ -267,7 +269,7 @@ func (s *Server) callToolObservedSession(req rpcRequest, transport observability
 		return errorResponse(req.ID, -32602, "unknown tool: "+params.Name), "unknown", observability.OutcomeError, observability.ErrorUnknownTool
 	}
 	s.payload.recordToolCall()
-	taskID, stopHeartbeat := s.startTaskJournal(params.Name, transport)
+	taskID, stopHeartbeat := s.startTaskJournal(params.Name, transport, params.Arguments)
 	var text string
 	var err error
 	if entry.sessionHandler != nil {

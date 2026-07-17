@@ -85,6 +85,11 @@ func TestSQLiteJournalMigratesLegacyJSONIdempotently(t *testing.T) {
 	if err != nil || len(entries) != 1 || entries[0].TaskID != testTaskID || entries[0].State != StateCompleted {
 		t.Fatalf("entries=%+v err=%v", entries, err)
 	}
+	eventPage, err := journal.EventPage(10, "", EventFilter{})
+	if err != nil || len(eventPage.Events) != 1 || eventPage.Events[0].TaskID != testTaskID || eventPage.Events[0].EventType != EventTransition || eventPage.Events[0].State != StateCompleted {
+		t.Fatalf("migration events=%+v err=%v", eventPage.Events, err)
+	}
+	firstEventID := eventPage.Events[0].EventID
 	if err := journal.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +101,10 @@ func TestSQLiteJournalMigratesLegacyJSONIdempotently(t *testing.T) {
 	entries, err = reopened.Snapshot(10)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("idempotent entries=%+v err=%v", entries, err)
+	}
+	eventPage, err = reopened.EventPage(10, "", EventFilter{})
+	if err != nil || len(eventPage.Events) != 1 || eventPage.Events[0].EventID != firstEventID {
+		t.Fatalf("idempotent events=%+v err=%v", eventPage.Events, err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "legacy-archive", filepath.Base(legacyPath))); err != nil {
 		t.Fatalf("legacy archive: %v", err)
@@ -185,5 +194,42 @@ func TestSQLiteJournalDatabaseBudgetAndPermissions(t *testing.T) {
 	}
 	if pageSize*maxPages > TargetMaxBytes || pageSize*maxPages < TargetMaxBytes-(1<<20) {
 		t.Fatalf("database cap=%d", pageSize*maxPages)
+	}
+}
+
+func TestSQLiteJournalEventsSurviveRestartWithStableCursor(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "tasks")
+	journal, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 17, 6, 0, 0, 123456789, time.UTC)
+	journal.now = func() time.Time { return now }
+	if err := journal.Start(testTaskID, "repo_status", "http"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	if err := journal.Transition(testTaskID, StateCompleted); err != nil {
+		t.Fatal(err)
+	}
+	first, err := journal.EventPage(1, "", EventFilter{})
+	if err != nil || len(first.Events) != 1 || !first.HasMore || first.NextCursor == "" {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	second, err := reopened.EventPage(1, first.NextCursor, EventFilter{})
+	if err != nil || len(second.Events) != 1 || second.Events[0].EventID == first.Events[0].EventID || second.HasMore {
+		t.Fatalf("second=%+v err=%v", second, err)
+	}
+	if second.Events[0].OccurredAt.Format(time.RFC3339Nano) != "2026-07-17T06:00:00.123456789Z" {
+		t.Fatalf("timestamp=%s", second.Events[0].OccurredAt.Format(time.RFC3339Nano))
 	}
 }

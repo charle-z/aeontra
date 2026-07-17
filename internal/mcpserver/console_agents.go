@@ -54,7 +54,7 @@ func (s *Server) consoleAgentState(ctx context.Context) ([]console.ControllerDat
 			}
 			runtimes = append(runtimes, console.RuntimeData{
 				RuntimeID: item.RuntimeID, State: string(item.State), Controller: controller,
-				LastActivity: item.LastActivity.Format(time.RFC3339),
+				EdgeID: s.consoleEdgeID(item.DeviceID), LastActivity: item.LastActivity.Format(time.RFC3339),
 			})
 		}
 	}

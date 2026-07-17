@@ -22,8 +22,15 @@ const (
 	DefaultPageSize         = 50
 	MaxPageSize             = 200
 	MaxRecords              = 10_000
+	MaxEvents               = 20_000
 	TerminalRetention       = 30 * 24 * time.Hour
+	EventRetention          = 30 * 24 * time.Hour
 	TargetMaxBytes    int64 = 64 << 20
+)
+
+const (
+	storagePruneTargetBytes = TargetMaxBytes * 7 / 8
+	storagePruneBatch       = 500
 )
 
 type SQLiteStore struct {
@@ -128,6 +135,8 @@ func (s *SQLiteStore) initialize() error {
 			controller TEXT NOT NULL,
 			operation TEXT NOT NULL,
 			safe_summary TEXT NOT NULL,
+			project_id TEXT NOT NULL DEFAULT '',
+			edge_id TEXT NOT NULL DEFAULT '',
 			state TEXT NOT NULL,
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL,
@@ -149,11 +158,52 @@ func (s *SQLiteStore) initialize() error {
 			FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS task_events_replay ON task_events(event_id)`,
+		`CREATE INDEX IF NOT EXISTS task_events_filter ON task_events(state,event_type,operation,event_id DESC)`,
+		`CREATE INDEX IF NOT EXISTS tasks_controller ON tasks(controller,task_id)`,
 		`CREATE TABLE IF NOT EXISTS journal_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL) WITHOUT ROWID`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil {
 			return errors.New("task journal: database initialization failed")
+		}
+	}
+	return s.ensureScopeSchema()
+}
+
+func (s *SQLiteStore) ensureScopeSchema() error {
+	rows, err := s.db.Query(`PRAGMA table_info(tasks)`)
+	if err != nil {
+		return errors.New("task journal: scope schema unavailable")
+	}
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, kind string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return errors.New("task journal: scope schema invalid")
+		}
+		columns[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return errors.New("task journal: scope schema unavailable")
+	}
+	for _, column := range []string{"project_id", "edge_id"} {
+		if columns[column] {
+			continue
+		}
+		if _, err := s.db.Exec(`ALTER TABLE tasks ADD COLUMN ` + column + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+			return errors.New("task journal: scope migration failed")
+		}
+	}
+	for _, statement := range []string{
+		`CREATE INDEX IF NOT EXISTS tasks_project_scope ON tasks(project_id,updated_at DESC,sequence DESC,task_id DESC)`,
+		`CREATE INDEX IF NOT EXISTS tasks_edge_scope ON tasks(edge_id,updated_at DESC,sequence DESC,task_id DESC)`,
+	} {
+		if _, err := s.db.Exec(statement); err != nil {
+			return errors.New("task journal: scope index failed")
 		}
 	}
 	return nil
@@ -219,10 +269,26 @@ func (s *SQLiteStore) migrateLegacy() error {
 		if entry.validate() != nil {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO tasks(task_id,controller,operation,safe_summary,state,created_at,updated_at,heartbeat_at,terminal_at,version) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			entry.TaskID, entry.Controller, entry.Operation, entry.Summary, entry.State,
-			unixNano(entry.CreatedAt), unixNano(entry.UpdatedAt), unixNano(entry.HeartbeatAt), nullableUnixNano(entry.TerminalAt), entry.Version); err != nil {
+		result, err := tx.Exec(`INSERT OR IGNORE INTO tasks(task_id,controller,operation,safe_summary,project_id,edge_id,state,created_at,updated_at,heartbeat_at,terminal_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			entry.TaskID, entry.Controller, entry.Operation, entry.Summary, entry.ProjectID, entry.EdgeID, entry.State,
+			unixNano(entry.CreatedAt), unixNano(entry.UpdatedAt), unixNano(entry.HeartbeatAt), nullableUnixNano(entry.TerminalAt), entry.Version)
+		if err != nil {
 			return errors.New("task journal: legacy import failed")
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return errors.New("task journal: legacy import result failed")
+		}
+		if rows == 1 {
+			entry.Sequence, _ = result.LastInsertId()
+			eventType := EventStarted
+			if isTerminal(entry.State) {
+				eventType = EventTransition
+			}
+			if _, err := tx.Exec(`INSERT INTO task_events(task_id,task_version,sequence,occurred_at,event_type,state,operation) VALUES(?,?,?,?,?,?,?)`,
+				entry.TaskID, entry.Version, entry.Sequence, unixNano(entry.UpdatedAt), eventType, entry.State, entry.Operation); err != nil {
+				return errors.New("task journal: legacy event import failed")
+			}
 		}
 		migrated = append(migrated, path)
 	}
@@ -263,8 +329,8 @@ func (s *SQLiteStore) Create(entry Entry) (Entry, Event, error) {
 		return Entry{}, Event{}, errors.New("task journal: write transaction failed")
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`INSERT INTO tasks(task_id,controller,operation,safe_summary,state,created_at,updated_at,heartbeat_at,terminal_at,version) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		entry.TaskID, entry.Controller, entry.Operation, entry.Summary, entry.State,
+	result, err := tx.Exec(`INSERT INTO tasks(task_id,controller,operation,safe_summary,project_id,edge_id,state,created_at,updated_at,heartbeat_at,terminal_at,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		entry.TaskID, entry.Controller, entry.Operation, entry.Summary, entry.ProjectID, entry.EdgeID, entry.State,
 		unixNano(entry.CreatedAt), unixNano(entry.UpdatedAt), unixNano(entry.HeartbeatAt), nullableUnixNano(entry.TerminalAt), entry.Version)
 	if err != nil {
 		return Entry{}, Event{}, errors.New("task journal: task already exists or storage is full")
@@ -286,6 +352,9 @@ func (s *SQLiteStore) Update(taskID string, state *State, now time.Time) (Entry,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.pruneLocked(now.UTC()); err != nil {
+		return Entry{}, Event{}, err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Entry{}, Event{}, errors.New("task journal: update transaction failed")
@@ -337,7 +406,7 @@ type sqliteQueryer interface {
 }
 
 func getSQLiteEntry(q sqliteQueryer, taskID string) (Entry, bool, error) {
-	row := q.QueryRow(`SELECT sequence,task_id,controller,operation,safe_summary,state,created_at,updated_at,heartbeat_at,terminal_at,version FROM tasks WHERE task_id=?`, taskID)
+	row := q.QueryRow(`SELECT sequence,task_id,controller,operation,safe_summary,project_id,edge_id,state,created_at,updated_at,heartbeat_at,terminal_at,version FROM tasks WHERE task_id=?`, taskID)
 	entry, err := scanSQLiteEntry(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Entry{}, false, nil
@@ -368,6 +437,10 @@ func (s *SQLiteStore) Get(taskID string) (Entry, bool, error) {
 }
 
 func (s *SQLiteStore) ListPage(limit int, cursor string) (Page, error) {
+	return s.ListPageFiltered(limit, cursor, TaskFilter{})
+}
+
+func (s *SQLiteStore) ListPageFiltered(limit int, cursor string, filter TaskFilter) (Page, error) {
 	if s == nil || s.db == nil {
 		return Page{}, errors.New("task journal: store is unavailable")
 	}
@@ -377,17 +450,44 @@ func (s *SQLiteStore) ListPage(limit int, cursor string) (Page, error) {
 	if limit < 1 || limit > MaxPageSize {
 		return Page{}, errors.New("task journal: invalid limit")
 	}
+	if err := filter.validate(); err != nil {
+		return Page{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	query := `SELECT sequence,task_id,controller,operation,safe_summary,state,created_at,updated_at,heartbeat_at,terminal_at,version FROM tasks`
-	args := make([]any, 0, 7)
+	query := `SELECT sequence,task_id,controller,operation,safe_summary,project_id,edge_id,state,created_at,updated_at,heartbeat_at,terminal_at,version FROM tasks`
+	conditions := make([]string, 0, 6)
+	args := make([]any, 0, 16)
+	if filter.Controller != "" {
+		conditions = append(conditions, `controller=?`)
+		args = append(args, filter.Controller)
+	}
+	if filter.State != "" {
+		conditions = append(conditions, `state=?`)
+		args = append(args, filter.State)
+	}
+	if filter.Operation != "" {
+		conditions = append(conditions, `operation=?`)
+		args = append(args, filter.Operation)
+	}
+	if filter.ProjectID != "" {
+		conditions = append(conditions, `project_id=?`)
+		args = append(args, filter.ProjectID)
+	}
+	if filter.EdgeID != "" {
+		conditions = append(conditions, `edge_id=?`)
+		args = append(args, filter.EdgeID)
+	}
 	if cursor != "" {
 		updated, sequence, taskID, err := decodeTaskCursor(cursor)
 		if err != nil {
 			return Page{}, err
 		}
-		query += ` WHERE updated_at < ? OR (updated_at = ? AND sequence < ?) OR (updated_at = ? AND sequence = ? AND task_id < ?)`
+		conditions = append(conditions, `(updated_at < ? OR (updated_at = ? AND sequence < ?) OR (updated_at = ? AND sequence = ? AND task_id < ?))`)
 		args = append(args, updated, updated, sequence, updated, sequence, taskID)
+	}
+	if len(conditions) > 0 {
+		query += ` WHERE ` + strings.Join(conditions, ` AND `)
 	}
 	query += ` ORDER BY updated_at DESC,sequence DESC,task_id DESC LIMIT ?`
 	args = append(args, limit+1)
@@ -422,7 +522,7 @@ func scanSQLiteEntry(row sqliteScanner) (Entry, error) {
 	var entry Entry
 	var created, updated, heartbeat int64
 	var terminal sql.NullInt64
-	if err := row.Scan(&entry.Sequence, &entry.TaskID, &entry.Controller, &entry.Operation, &entry.Summary, &entry.State,
+	if err := row.Scan(&entry.Sequence, &entry.TaskID, &entry.Controller, &entry.Operation, &entry.Summary, &entry.ProjectID, &entry.EdgeID, &entry.State,
 		&created, &updated, &heartbeat, &terminal, &entry.Version); err != nil {
 		return Entry{}, err
 	}
@@ -474,7 +574,7 @@ func (s *SQLiteStore) Replay(after int64, limit int) ([]Event, bool, error) {
 		return nil, true, nil
 	}
 	rows, err := s.db.Query(`SELECT e.event_id,e.task_id,e.task_version,e.sequence,e.occurred_at,e.event_type,e.state,e.operation,
-		t.controller,t.safe_summary,t.created_at,t.updated_at,t.heartbeat_at,t.terminal_at,t.version
+		t.controller,t.safe_summary,t.project_id,t.edge_id,t.created_at,t.updated_at,t.heartbeat_at,t.terminal_at,t.version
 		FROM task_events e JOIN tasks t ON t.task_id=e.task_id WHERE e.event_id>? ORDER BY e.event_id LIMIT ?`, after, limit)
 	if err != nil {
 		return nil, false, errors.New("task journal: replay failed")
@@ -486,7 +586,7 @@ func (s *SQLiteStore) Replay(after int64, limit int) ([]Event, bool, error) {
 		var occurred, created, updated, heartbeat int64
 		var terminal sql.NullInt64
 		if err := rows.Scan(&event.EventID, &event.TaskID, &event.TaskVersion, &event.Sequence, &occurred, &event.EventType, &event.State, &event.Operation,
-			&event.Task.Controller, &event.Task.Summary, &created, &updated, &heartbeat, &terminal, &event.Task.Version); err != nil {
+			&event.Task.Controller, &event.Task.Summary, &event.Task.ProjectID, &event.Task.EdgeID, &created, &updated, &heartbeat, &terminal, &event.Task.Version); err != nil {
 			return nil, false, errors.New("task journal: replay result failed")
 		}
 		event.OccurredAt = time.Unix(0, occurred).UTC()
@@ -526,10 +626,73 @@ func (s *SQLiteStore) pruneLocked(now time.Time) error {
 			return errors.New("task journal: count prune failed")
 		}
 	}
-	_, _ = s.db.Exec(`DELETE FROM task_events WHERE event_id NOT IN (SELECT event_id FROM task_events ORDER BY event_id DESC LIMIT 20000)`)
+	if _, err := s.db.Exec(`DELETE FROM task_events WHERE occurred_at < ?`, unixNano(now.Add(-EventRetention))); err != nil {
+		return errors.New("task journal: event retention prune failed")
+	}
+	if _, err := s.db.Exec(`DELETE FROM task_events WHERE event_id NOT IN (SELECT event_id FROM task_events ORDER BY event_id DESC LIMIT ?)`, MaxEvents); err != nil {
+		return errors.New("task journal: event count prune failed")
+	}
 	_, _ = s.db.Exec(`PRAGMA wal_checkpoint(PASSIVE)`)
 	_, _ = s.db.Exec(`PRAGMA incremental_vacuum(128)`)
+	if err := s.pruneBytesLocked(storagePruneTargetBytes); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *SQLiteStore) pruneBytesLocked(maxUsedBytes int64) error {
+	if maxUsedBytes <= 0 {
+		return errors.New("task journal: invalid storage prune target")
+	}
+	for attempt := 0; attempt < 256; attempt++ {
+		used, err := s.sqliteUsedBytesLocked()
+		if err != nil {
+			return err
+		}
+		if used <= maxUsedBytes {
+			return nil
+		}
+
+		result, err := s.db.Exec(`DELETE FROM task_events WHERE event_id IN (
+			SELECT event_id FROM task_events ORDER BY event_id ASC LIMIT ?
+		)`, storagePruneBatch)
+		if err != nil {
+			return errors.New("task journal: byte event prune failed")
+		}
+		deleted, _ := result.RowsAffected()
+		if deleted == 0 {
+			result, err = s.db.Exec(`DELETE FROM tasks WHERE task_id IN (
+				SELECT task_id FROM tasks WHERE terminal_at IS NOT NULL
+				ORDER BY updated_at ASC,sequence ASC,task_id ASC LIMIT ?
+			)`, storagePruneBatch)
+			if err != nil {
+				return errors.New("task journal: byte task prune failed")
+			}
+			deleted, _ = result.RowsAffected()
+		}
+		if deleted == 0 {
+			return errors.New("task journal: storage budget exhausted by active records")
+		}
+		_, _ = s.db.Exec(`PRAGMA incremental_vacuum(256)`)
+	}
+	return errors.New("task journal: storage prune did not converge")
+}
+
+func (s *SQLiteStore) sqliteUsedBytesLocked() (int64, error) {
+	var pageSize, pageCount, freePages int64
+	if err := s.db.QueryRow(`PRAGMA page_size`).Scan(&pageSize); err != nil {
+		return 0, errors.New("task journal: page size unavailable")
+	}
+	if err := s.db.QueryRow(`PRAGMA page_count`).Scan(&pageCount); err != nil {
+		return 0, errors.New("task journal: page count unavailable")
+	}
+	if err := s.db.QueryRow(`PRAGMA freelist_count`).Scan(&freePages); err != nil {
+		return 0, errors.New("task journal: free page count unavailable")
+	}
+	if pageSize <= 0 || pageCount < 0 || freePages < 0 || freePages > pageCount {
+		return 0, errors.New("task journal: page accounting invalid")
+	}
+	return pageSize * (pageCount - freePages), nil
 }
 
 func (s *SQLiteStore) Status(detail string) Status {

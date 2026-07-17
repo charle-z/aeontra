@@ -372,3 +372,17 @@ merges, `/brain` persistence is configured, and deployment smoke completes.
   deterministic ids, loopback synthetic servers, and temporary directories.
 - A skipped or prerequisite-blocked gate remains visible as blocked; it is never
   silently converted to a pass.
+
+
+## Console durable live state tests
+
+The console milestone adds deterministic tests for:
+
+- atomic/restart-safe Brain HMAC identity, permissions, secret fallbacks and graph bounds;
+- durable session restart, revocation, corruption and raw-cookie absence;
+- JSON-to-SQLite task/event migration idempotency and journal restart;
+- event retention/quota, exact filters, stable cursors and SSE replay/gap reset;
+- real opaque Project/Edge selectors and combined storage budget failure modes;
+- React schema v3, precise timestamps, pagination, Last-Event-ID reconnection and cleanup.
+
+Final closure must still run the complete gate matrix in `docs/quality-gates.md` and the production console smoke against the published branch SHA.

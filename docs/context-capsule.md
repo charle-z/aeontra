@@ -467,3 +467,8 @@ Coolify application `jqf7qz5ensoqtvl1tb197gcv` and tagged `p8.1`. Production rep
 catalog, Brain and console smokes are green. Query-string credentials return 401,
 header bearer recovery remains valid, the console cookie is strict and opaque,
 `/state/tasks` and SSE are operational, and Edge honestly reports `not_paired`.
+
+
+## Console durable live state release candidate
+
+Branch `console-durable-live-state` is based on `origin/main` merge `399d7ac`. It preserves the deployed P8.1/P9 foundations and keeps exactly 78 tools with hash `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`. New private state is additive under `/state/tasks/tasks.db`, `/state/console/sessions.db` and `/state/brain/console-node.key`. The browser Event Log is server-persisted, SSE replays by Last-Event-ID, and selectors expose only generic labels plus opaque IDs. Do not merge or deploy from documentation alone.

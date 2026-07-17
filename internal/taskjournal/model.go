@@ -6,6 +6,7 @@ package taskjournal
 import (
 	"errors"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -41,6 +42,7 @@ const (
 var (
 	taskIDPattern    = regexp.MustCompile(`^[a-f0-9]{32}$`)
 	operationPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+	scopeIDPattern   = regexp.MustCompile(`^(?:prj|edge)_[a-f0-9]{24}$`)
 )
 
 var validStates = map[State]struct{}{
@@ -61,6 +63,8 @@ type Entry struct {
 	Controller   string     `json:"controller"`
 	Operation    string     `json:"operation"`
 	Summary      string     `json:"safe_summary"`
+	ProjectID    string     `json:"project_id"`
+	EdgeID       string     `json:"edge_id"`
 	State        State      `json:"state"`
 	DerivedState bool       `json:"derived_state"`
 	CreatedAt    time.Time  `json:"created_at"`
@@ -97,6 +101,37 @@ type Page struct {
 	HasMore    bool
 }
 
+type TaskFilter struct {
+	Controller string
+	State      State
+	Operation  string
+	ProjectID  string
+	EdgeID     string
+}
+
+func (filter TaskFilter) validate() error {
+	if filter.Controller != "" {
+		if _, ok := validControllers[filter.Controller]; !ok {
+			return errors.New("task journal: invalid controller filter")
+		}
+	}
+	if filter.State != "" {
+		if _, ok := validStates[filter.State]; !ok {
+			return errors.New("task journal: invalid state filter")
+		}
+	}
+	if filter.Operation != "" && !operationPattern.MatchString(filter.Operation) {
+		return errors.New("task journal: invalid operation filter")
+	}
+	if filter.ProjectID != "" && (!scopeIDPattern.MatchString(filter.ProjectID) || !strings.HasPrefix(filter.ProjectID, "prj_")) {
+		return errors.New("task journal: invalid project filter")
+	}
+	if filter.EdgeID != "" && (!scopeIDPattern.MatchString(filter.EdgeID) || !strings.HasPrefix(filter.EdgeID, "edge_")) {
+		return errors.New("task journal: invalid edge filter")
+	}
+	return nil
+}
+
 func newEntry(taskID, operation, controller string, state State, now time.Time) (Entry, error) {
 	now = now.UTC()
 	entry := Entry{
@@ -119,6 +154,12 @@ func (e Entry) validate() error {
 	}
 	if e.Summary != "MCP tool operation: "+e.Operation {
 		return errors.New("task journal: invalid summary")
+	}
+	if e.ProjectID != "" && (!scopeIDPattern.MatchString(e.ProjectID) || !strings.HasPrefix(e.ProjectID, "prj_")) {
+		return errors.New("task journal: invalid project scope")
+	}
+	if e.EdgeID != "" && (!scopeIDPattern.MatchString(e.EdgeID) || !strings.HasPrefix(e.EdgeID, "edge_")) {
+		return errors.New("task journal: invalid edge scope")
 	}
 	if _, ok := validStates[e.State]; !ok {
 		return errors.New("task journal: invalid state")

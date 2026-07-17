@@ -39,10 +39,16 @@ func (j *Journal) Close() error {
 }
 
 func (j *Journal) Start(taskID, operation, controller string) error {
+	return j.StartScoped(taskID, operation, controller, "", "")
+}
+
+func (j *Journal) StartScoped(taskID, operation, controller, projectID, edgeID string) error {
 	if j == nil {
 		return errors.New("task journal: unavailable")
 	}
 	entry, err := newEntry(taskID, operation, controller, StateExecuting, j.now())
+	entry.ProjectID = projectID
+	entry.EdgeID = edgeID
 	if err != nil {
 		return err
 	}
@@ -95,10 +101,14 @@ func (j *Journal) Snapshot(limit int) ([]Entry, error) {
 }
 
 func (j *Journal) Page(limit int, cursor string) (Page, error) {
+	return j.PageFiltered(limit, cursor, TaskFilter{})
+}
+
+func (j *Journal) PageFiltered(limit int, cursor string, filter TaskFilter) (Page, error) {
 	if j == nil {
 		return Page{}, errors.New("task journal: unavailable")
 	}
-	page, err := j.store.ListPage(limit, cursor)
+	page, err := j.store.ListPageFiltered(limit, cursor, filter)
 	if err != nil {
 		j.RecordFailure(err)
 		return Page{}, err

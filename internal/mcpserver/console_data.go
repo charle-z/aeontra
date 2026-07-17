@@ -40,7 +40,9 @@ func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Pr
 				Cookie:           "Secure; HttpOnly; SameSite=Strict",
 				ConsoleAuthority: "presentation-only",
 			},
-			Edge:          console.EdgeData{State: "not_paired"},
+			Projects:      s.consoleProjects(),
+			Storage:       readConsoleStorageBudget(s.stateRoot, s.auditPath),
+			Edge:          console.EdgeData{State: "not_paired", Devices: []console.EdgeDeviceData{}},
 			Brain:         console.BrainData{Nodes: []console.BrainNode{}, Edges: []console.BrainEdge{}},
 			Observability: console.ObservabilityData{Routes: []console.ObservabilityRoute{}},
 		}
@@ -67,6 +69,12 @@ func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Pr
 			case "paired", "not_paired", "unavailable":
 				snapshot.Edge.State = state
 			}
+		}
+		devices, edgeErr := s.consoleEdgeDevices()
+		if edgeErr != nil {
+			snapshot.Edge.State = "unavailable"
+		} else {
+			snapshot.Edge.Devices = devices
 		}
 
 		if s.observer != nil {

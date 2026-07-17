@@ -17,7 +17,7 @@ import (
 func newTaskConsole(t *testing.T, journal *taskjournal.Journal) *Handler {
 	t.Helper()
 	handler, err := New(Config{
-		Runtime:     Status{Status: "ok", Version: "0.2.0", ProtocolVersion: "2024-11-05", Commit: "abcdef0", ToolCount: 67, CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		Runtime:     Status{Status: "ok", Version: "0.2.0", ProtocolVersion: "2024-11-05", Commit: "abcdef0", ToolCount: 78, CatalogHash: "sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed"},
 		Authorize:   func(r *http.Request) bool { return r.Header.Get("Authorization") == "Bearer test" },
 		TaskJournal: journal,
 	})
@@ -53,7 +53,7 @@ func TestTasksEndpointUsesExactSafeAllowlist(t *testing.T) {
 	if err := json.Unmarshal(raw["tasks"], &tasks); err != nil || len(tasks) != 1 {
 		t.Fatalf("tasks=%v err=%v", tasks, err)
 	}
-	if got := sortedKeys(tasks[0]); strings.Join(got, ",") != "controller,created_at,derived_state,heartbeat_at,operation,safe_summary,sequence,state,task_id,terminal_at,updated_at,version" {
+	if got := sortedKeys(tasks[0]); strings.Join(got, ",") != "controller,created_at,derived_state,edge_id,heartbeat_at,operation,project_id,safe_summary,sequence,state,task_id,terminal_at,updated_at,version" {
 		t.Fatalf("task keys=%v", got)
 	}
 	var storage map[string]json.RawMessage
@@ -121,4 +121,25 @@ func sortedKeys(values map[string]json.RawMessage) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func TestTasksEndpointRejectsUnknownOrMalformedQuery(t *testing.T) {
+	journal, err := taskjournal.Open(filepath.Join(t.TempDir(), "tasks"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	handler := newTaskConsole(t, journal)
+	for _, target := range []string{
+		tasksPath + "?unknown=value",
+		tasksPath + "?limit=1&limit=2",
+		tasksPath + "?limit=999",
+		tasksPath + "?cursor=not-a-cursor",
+	} {
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		request.Header.Set("Authorization", "Bearer test")
+		if got := serveConsole(t, handler, request).Code; got != http.StatusBadRequest {
+			t.Fatalf("%s status=%d", target, got)
+		}
+	}
 }

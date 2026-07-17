@@ -128,6 +128,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc(logoutPath, h.handleLogout)
 	mux.HandleFunc(statusPath, h.handleStatus)
 	mux.HandleFunc(tasksPath, h.handleTasks)
+	mux.HandleFunc(eventLogPath, h.handleEventLog)
 	mux.HandleFunc(taskEventsPath, h.handleTaskEvents)
 	mux.HandleFunc(dataPath, h.handleData)
 	if h.oauthClient != nil {
