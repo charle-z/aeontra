@@ -101,7 +101,16 @@ jobs:
                 else if (fields.includes('create_request') || message.includes('dismissal request')) result = '422-request';
                 else if (fields.includes('already') || message.includes('already')) result = '422-already';
                 else if (fields.includes('dismiss') || message.includes('dismiss')) result = '422-dismissal';
-                else result = '422-other';
+                else {
+                  const first = Array.isArray(data.errors) ? data.errors[0] : undefined;
+                  const safePart = (value) => String(value ?? 'none')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_-]/g, '-')
+                    .slice(0, 32);
+                  result = first
+                    ? `422-${safePart(first.resource)}-${safePart(first.field)}-${safePart(first.code)}`
+                    : '422-no-errors';
+                }
               }
               core.notice(`GitHub rejected the update with category ${result}.`);
               return result;
