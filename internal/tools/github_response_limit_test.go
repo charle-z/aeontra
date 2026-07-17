@@ -39,7 +39,7 @@ func TestGitHubCheckSummaryAcceptsBoundedResponsesLargerThanDefaultLimit(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Total != 100 || summary.Passed != 100 || summary.Pending != 0 || summary.Failed != 0 {
+	if summary.Source != "checks_api" || summary.RunsTotal != 100 || summary.Passed != 100 || summary.Pending != 0 || summary.Failed != 0 || !summary.EvidenceComplete || !summary.AllChecksGreen {
 		t.Fatalf("summary=%+v", summary)
 	}
 }
