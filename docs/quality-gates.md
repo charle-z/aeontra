@@ -164,6 +164,6 @@ For `console-durable-live-state`, require all of the following before the PR can
 6. legacy JSON migration and journal/event restart E2E.
 7. production Docker build.
 8. CodeQL, SBOM and Dependency Review.
-9. console smoke verifying the published SHA, 78 tools, catalog hash and presentation-only surface.
+9. console smoke verifying the published SHA, 85 tools, catalog hash and presentation-only surface.
 
 No gate authorizes merge or deployment.

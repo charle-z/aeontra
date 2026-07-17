@@ -1,10 +1,18 @@
 # Console Durable Live State & Auth Firmware
 
-Branch: `console-durable-live-state`, based on `origin/main` merge `399d7ac`.
+Branch: `console-durable-live-state`.
 
-Historical deployed foundations retained:
-- P8.1 Console 2.0 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`.
-- P9 Brain remains the Markdown-truth / SQLite-derived-cache foundation.
+
+Historical deployed foundations:
+- P9 Brain is deployed and remains the Markdown-truth / SQLite-derived-cache foundation.
+- P8.1 Console 2.0 is deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
+- The historical P8.1 surface had 67 tools and reported Edge as `not_paired`; those facts remain historical evidence, not the current catalog.
+
+Lineage:
+- initial branch base: `399d7ac58842f83475c581945d0d5065a517875a`;
+- Step 6 was completed at `225b6e1`;
+- main was merged through `6d042c2` at `0838476`;
+- latest main now contains the fail-closed GitHub Actions fallback through `77a93ad` and must be merged normally after Step 7 is committed.
 
 Closed commits:
 - `c284dcd` — Step 1: durable SQLite Operation Journal and recoverable SSE.
@@ -12,24 +20,16 @@ Closed commits:
 - `22a9daf` — Step 3: durable digest-only console browser sessions.
 - `9cdfe56` — Step 4: shared Neo-BIOS authentication firmware for console and OAuth.
 - `aa1c30d` — Step 5: safe Brain node metadata, HMAC IDs and restart-safe identity.
+- `225b6e1` — Step 6: persistent Events, SSE replay/reconnect, real opaque selectors, storage budget and complete live-state frontend.
 
-Current verified uncommitted Step 6:
-- persistent event log reusing `task_events` with 30-day/20,000-row retention;
-- exact event filters and stable opaque cursors;
-- recoverable SSE snapshots/replay/gap reset using Last-Event-ID and query fallback;
-- JSON migration creates one durable event transactionally and remains idempotent;
-- real opaque Project/Edge selectors only;
-- combined DB/WAL/log reporting budget, 256 MiB with 75/90% states;
-- console data schema v3 and exact TypeScript parser;
-- durable Tasks and Events pagination/filters/timestamps;
-- EventSource reconnect and complete timer/request cleanup;
-- updated baseline/documentation without merge/deploy claims.
+Pending Step 7 closure:
+- synchronize current documentation and tests to the exact 85-tool catalog;
+- keep historical 67/71/78-tool evidence unchanged;
+- rerun Go, frontend and security gates on the exact tree;
+- commit the closure before integrating latest main.
 
-Verified so far:
-- full `go test ./...` passes;
-- frontend TypeScript, Vitest (5 tests) and Vite production build pass;
-- migration/restart, SSE replay, quota, storage and selector tests pass.
+Current catalog invariant:
+- exactly 85 tools;
+- `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
-Catalog remains exactly 78 tools with hash `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
-
-Next: run all remaining closure gates, commit Step 6, publish branch, open PR and wait all required checks. No merge or deployment.
+Next: validate and commit Step 7, merge latest `origin/main` normally, rerun final gates, publish only this branch, open the PR and wait for every exact-SHA gate. Do not deploy before merge.

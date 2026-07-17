@@ -1,7 +1,6 @@
 package taskjournal
 
 import (
-	"fmt"
 	"testing"
 	"time"
 )
@@ -136,6 +135,6 @@ func TestEventRetentionAndQuotaAreDurable(t *testing.T) {
 		t.Fatalf("newest event missing: page=%+v err=%v", page, err)
 	}
 	if MaxEvents != 20_000 || EventRetention != 30*24*time.Hour {
-		t.Fatal(fmt.Sprintf("unexpected retention contract: max=%d retention=%s", MaxEvents, EventRetention))
+		t.Fatalf("unexpected retention contract: max=%d retention=%s", MaxEvents, EventRetention)
 	}
 }

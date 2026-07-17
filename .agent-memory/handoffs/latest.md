@@ -1,21 +1,28 @@
-# Latest handoff — security findings closure
+# Latest handoff — console durable live state
 
-Date: 2026-07-16
-Branch: security-findings-closure
-Base: production merge b9ee5ea9fd18a72d9687784eeb5cbfd8603427b5
+Date: 2026-07-17
+Branch: `console-durable-live-state`
+HEAD before final closure: `0838476dd5d37e834b61544ddfd823f6d1e852b4`
 
-Historical state remains intact: P8.1 is closed and deployed at d343264bffdc0ae1bc045a9d723e913be977090c. The historical p8.1 catalog had 67 tools and reported Edge as not_paired. P9 Brain and P11.2 are deployed successors; this branch does not modify them.
 
-Completed commits:
+Historical deployed foundations:
+- P8.1 is closed, deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
+- Its historical catalog had 67 tools and Edge state `not_paired`.
+- P9 Brain is deployed and preserved as the Markdown-truth / SQLite-derived-cache foundation.
 
-- 0e5b6768fbdfdfbdc447cbec2435a59f745b7cbf — server-owned validation repository registry.
-- 414ef78f09fe061e93f144b92cf21e3fa4460aa0 — unconditional secure production cookies.
-- bbc4316ec79f545d18993792609be22e9e76c978 — documented secret-scanner search semantics.
+Closed work:
+- Steps 1–5 are committed as `c284dcd`, `e4c674e`, `22a9daf`, `9cdfe56` and `aa1c30d`.
+- Step 6 is committed as `225b6e1` and includes persistent Events, recoverable SSE, server-side filters/cursors, real opaque Project/Edge scopes, the 256 MiB combined state budget and the React live-state implementation.
+- `0838476` merged main through the verified regex-alert closure.
 
-Uncommitted closure work pins package.json identity, updates console-smoke to the Path slash cookie policy, adds the dated CodeQL report and refreshes agent memory. Full serial tests, coverage gate, vet, build, Staticcheck, Govulncheck, Actionlint and focused security tests are green. Local race cannot start because gcc is absent; local no-cache Docker builds cannot start because Docker is absent. Remote gates are mandatory.
+Pending tree contains only Step 7 closure updates: current catalog identity, documentation consistency, one Brain runtime catalog assertion and frontend test synchronization. It must be preserved and committed before merging latest main.
 
-The current catalog remains exactly 78 tools with hash sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed.
+Latest production/main now includes the GitHub Checks→Actions fallback and the required-status-checks 403 handling through merge `77a93ad110af287b402c271703cd9ae1502a2582`. Integrate it with a normal merge; do not rebase or force push.
 
-The available token receives HTTP 403 from the code-scanning alerts endpoint. Historical checks expose the two cookie annotations; path and regex findings are reconstructed from rule IDs, production locations and Git history. Do not claim dashboard closure without direct evidence.
+Catalog invariant: exactly 85 tools with hash `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
-Next: create Step 4 closure commit, publish only security-findings-closure, open a PR against main, and wait for every required exact-SHA gate. Do not merge or deploy.
+Required next steps:
+1. validate and commit `Step 7: close console durable live state`;
+2. fetch and merge `origin/main` normally;
+3. run the full local gates and exact catalog checks;
+4. publish only `console-durable-live-state`, open its PR, wait for all gates, merge by merge commit and allow only the automatic Coolify deployment.

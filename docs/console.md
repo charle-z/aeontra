@@ -107,8 +107,8 @@ Reuse the existing private `/state` and `/brain` persistent mounts. Do not creat
 Before rollout, verify the exact catalog:
 
 ```text
-78
-sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed
+85
+sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941
 ```
 
 Upgrade is additive and idempotent: legacy task JSON is imported into `/state/tasks/tasks.db`; durable sessions begin in `/state/console/sessions.db`; `/state/brain/console-node.key` is created once; and Brain reindex creates/refreshes `console_metadata` without changing Markdown truth.

@@ -4,8 +4,8 @@ import App from "./App";
 
 const runtime = {
   status: "ok", version: "1.0.0", protocol_version: "2025-06-18",
-  commit: "aa1c30da07751a1b1701aac289adb88ee5c7d38b", tool_count: 78,
-  catalog_hash: "sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed",
+  commit: "aa1c30da07751a1b1701aac289adb88ee5c7d38b", tool_count: 85,
+  catalog_hash: "sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941",
   authenticated: true, surface: "presentation-only",
 };
 
@@ -81,7 +81,7 @@ describe("Neo-BIOS operations firmware", () => {
   it("renders exact catalog, real selectors, VPS and combined storage", async () => {
     render(<App />);
     expect(screen.getByText("MCP DEVBOX OPERATIONS FIRMWARE")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("78 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
     expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue(data.projects[0].id);
     expect(screen.getByRole("combobox", { name: "Edge device" })).toHaveValue(data.edge.devices[0].id);
     expect(screen.getByRole("option", { name: "Configured project 1 [current]" })).toBeInTheDocument();
@@ -93,7 +93,7 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("shows real controllers and paginates durable tasks with precise timestamps", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("78 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     expect(screen.getByText("connected")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
@@ -101,7 +101,7 @@ describe("Neo-BIOS operations firmware", () => {
     expect(screen.getByText(task.updated_at)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Load older tasks" }));
     await waitFor(() => expect(screen.getByText("repo_status")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Load older tasks" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Load older tasks" })).toBeDisabled());
   });
 
   it("uses persistent events, reconnects from Last-Event-ID and cleans resources", async () => {
@@ -128,7 +128,7 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("filters and paginates server events", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("78 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Events" }));
     expect(await screen.findByText(journalEvent.occurred_at)).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Event state filter" }), { target: { value: "completed" } });
@@ -139,7 +139,7 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("renders the safe Brain graph and keyboard help", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("78 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Graph" }));
     const node = screen.getByRole("group", { name: /Release gates.*Verified release controls.*curated.*1 link/i });
     fireEvent.focus(node);

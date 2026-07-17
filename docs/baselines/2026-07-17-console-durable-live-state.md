@@ -2,10 +2,10 @@
 
 - Date: 2026-07-17.
 - Branch: `console-durable-live-state`.
-- Base: `origin/main` merge `399d7ac58842f83475c581945d0d5065a517875a`.
+- Initial base: `origin/main` merge `399d7ac58842f83475c581945d0d5065a517875a`; later main integrations are merged normally before publication.
 - Status: release candidate; not merged and not deployed.
-- Catalog invariant: exactly 78 tools.
-- Catalog hash: `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
+- Catalog invariant: exactly 85 tools.
+- Catalog hash: `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
 ## Durable state
 
