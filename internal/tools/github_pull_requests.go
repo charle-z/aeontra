@@ -151,7 +151,7 @@ func terminalSuccess(conclusion string) bool {
 
 func (c *GitHubClient) checkSummary(ctx context.Context, repo, sha string) (githubCheckSummary, error) {
 	checksPath := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/commits/" + url.PathEscape(sha) + "/check-runs?per_page=100"
-	status, body, err := c.doJSON(ctx, http.MethodGet, checksPath, nil)
+	status, body, err := c.doJSONLimit(ctx, http.MethodGet, checksPath, nil, githubCheckRunsResponseLimit)
 	if err != nil {
 		return githubCheckSummary{}, err
 	}
