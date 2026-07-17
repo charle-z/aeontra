@@ -71,7 +71,7 @@ type githubCheckSummary struct {
 
 func (c *GitHubClient) branchSHA(ctx context.Context, repo, branch string) (string, error) {
 	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/git/ref/heads/" + url.PathEscape(branch)
-	status, body, err := c.doJSON(ctx, http.MethodGet, path, nil)
+	status, body, err := c.doJSONLimit(ctx, http.MethodGet, path, nil, githubRefAndMergeResponseLimit)
 	if err != nil {
 		return "", err
 	}
@@ -92,7 +92,7 @@ func (c *GitHubClient) findPullRequest(ctx context.Context, repo, head, base str
 	query.Set("base", base)
 	query.Set("per_page", "10")
 	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/pulls?" + query.Encode()
-	status, body, err := c.doJSON(ctx, http.MethodGet, path, nil)
+	status, body, err := c.doJSONLimit(ctx, http.MethodGet, path, nil, githubPullListResponseLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (c *GitHubClient) findPullRequest(ctx context.Context, repo, head, base str
 
 func (c *GitHubClient) pullRequest(ctx context.Context, repo string, number int) (githubPullResponse, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", url.PathEscape(c.owner), url.PathEscape(repo), number)
-	status, body, err := c.doJSON(ctx, http.MethodGet, path, nil)
+	status, body, err := c.doJSONLimit(ctx, http.MethodGet, path, nil, githubPullResponseLimit)
 	if err != nil {
 		return githubPullResponse{}, err
 	}
@@ -131,7 +131,7 @@ func (c *GitHubClient) createPullRequest(ctx context.Context, repo, head, base, 
 		return githubPullResponse{}, err
 	}
 	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/pulls"
-	status, responseBody, err := c.doJSON(ctx, http.MethodPost, path, body)
+	status, responseBody, err := c.doJSONLimit(ctx, http.MethodPost, path, body, githubPullResponseLimit)
 	if err != nil {
 		return githubPullResponse{}, err
 	}
@@ -218,7 +218,7 @@ func (c *GitHubClient) mergePullRequest(ctx context.Context, repo string, number
 		return githubMergeResponse{}, err
 	}
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", url.PathEscape(c.owner), url.PathEscape(repo), number)
-	status, responseBody, err := c.doJSON(ctx, http.MethodPut, path, body)
+	status, responseBody, err := c.doJSONLimit(ctx, http.MethodPut, path, body, githubRefAndMergeResponseLimit)
 	if err != nil {
 		return githubMergeResponse{}, err
 	}
@@ -241,7 +241,7 @@ func (c *GitHubClient) updateDefaultBranch(ctx context.Context, repo, branch str
 		return err
 	}
 	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo)
-	status, _, err := c.doJSON(ctx, http.MethodPatch, path, body)
+	status, _, err := c.doJSONLimit(ctx, http.MethodPatch, path, body, githubRepoMetadataResponseLimit)
 	if err != nil {
 		return err
 	}
