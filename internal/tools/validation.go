@@ -46,7 +46,7 @@ func NewValidationRunner(rawURL, token string) ValidationRunner {
 
 func (r validationHTTPRunner) Available() bool { return true }
 func (r validationHTTPRunner) Run(ctx context.Context, repo, profile string) (ValidationResult, error) {
-	b, _ := json.Marshal(map[string]string{"repo": repo, "profile": profile})
+	b, _ := json.Marshal(map[string]string{"repo_id": repo, "profile": profile})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.baseURL+"/v1/run", bytes.NewReader(b))
 	if err != nil {
 		return ValidationResult{}, err

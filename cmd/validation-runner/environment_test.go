@@ -6,9 +6,9 @@ import (
 )
 
 func TestValidationProfilesUseWritableEphemeralHome(t *testing.T) {
-	c := config{root: "/repos", hostRoot: "/host/repos", image: "node:22-alpine", store: "store", user: "10001:10001"}
+	c, entry := testValidationConfig(t)
 	for _, profile := range []string{"pnpm-lockfile", "pnpm-validate"} {
-		args, err := c.argv("/repos/demo", profile)
+		args, err := c.argv(entry, profile)
 		if err != nil {
 			t.Fatal(err)
 		}
