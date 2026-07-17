@@ -90,57 +90,34 @@ jobs:
               return 'ok';
             } catch (error) {
               const status = error?.status ?? error?.response?.status ?? 0;
-              core.notice(`GitHub rejected the update with HTTP ${status || 'unknown'}.`);
-              return String(status || 'unknown');
+              const data = error?.response?.data ?? {};
+              const fields = JSON.stringify(data.errors ?? []).toLowerCase();
+              const message = String(data.message ?? '').toLowerCase();
+              let result = String(status || 'unknown');
+              if (status === 422) {
+                if (fields.includes('state')) result = '422-state';
+                else if (fields.includes('dismissed_reason')) result = '422-reason';
+                else if (fields.includes('dismissed_comment')) result = '422-comment';
+                else if (fields.includes('create_request') || message.includes('dismissal request')) result = '422-request';
+                else if (fields.includes('already') || message.includes('already')) result = '422-already';
+                else if (fields.includes('dismiss') || message.includes('dismiss')) result = '422-dismissal';
+                else result = '422-other';
+              }
+              core.notice(`GitHub rejected the update with category ${result}.`);
+              return result;
             }
 
-  dismiss_forbidden:
-    name: Regex alert dismissal forbidden (HTTP 403)
+  diagnose_update:
+    name: Regex alert update rejected (${{ needs.dismiss_alerts.outputs.result }})
     needs: dismiss_alerts
-    if: needs.dismiss_alerts.outputs.result == '403'
+    if: needs.dismiss_alerts.outputs.result != 'ok'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions: {}
     steps:
       - uses: actions/github-script@v8
         with:
-          script: core.setFailed('GitHub rejected the exact alert update with HTTP 403.');
-
-  dismiss_bad_request:
-    name: Regex alert dismissal bad request (HTTP 400)
-    needs: dismiss_alerts
-    if: needs.dismiss_alerts.outputs.result == '400'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions: {}
-    steps:
-      - uses: actions/github-script@v8
-        with:
-          script: core.setFailed('GitHub rejected the exact alert update with HTTP 400.');
-
-  dismiss_unprocessable:
-    name: Regex alert dismissal unprocessable (HTTP 422)
-    needs: dismiss_alerts
-    if: needs.dismiss_alerts.outputs.result == '422'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions: {}
-    steps:
-      - uses: actions/github-script@v8
-        with:
-          script: core.setFailed('GitHub rejected the exact alert update with HTTP 422.');
-
-  dismiss_unexpected:
-    name: Regex alert dismissal unexpected response
-    needs: dismiss_alerts
-    if: ${{ !contains(fromJSON('["ok","403","400","422"]'), needs.dismiss_alerts.outputs.result) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions: {}
-    steps:
-      - uses: actions/github-script@v8
-        with:
-          script: core.setFailed('GitHub returned an unexpected status for the exact alert update.');
+          script: core.setFailed('GitHub rejected the exact alert update; see the bounded category in the check name.');
 
   verify_alerts:
     name: Regex alert verification
