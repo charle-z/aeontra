@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -89,7 +90,8 @@ func serveTransport(runtime *appRuntime, transport transportConfig) (serveErr er
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return runtime.Server.ServeHTTPWithOptions(ctx, transport.Addr, transport.Token, transport.OAuth, mcpserver.HTTPOptions{
-		EdgeHandler: edge.NewHTTPHandler(runtime.Edge, runtime.ModelTurns),
+		ConsoleSessionPath: filepath.Join(runtime.StateRoot, "console", "sessions.db"),
+		EdgeHandler:        edge.NewHTTPHandler(runtime.Edge, runtime.ModelTurns),
 		EdgeState: func() string {
 			count, err := runtime.Edge.ActiveCount()
 			if err != nil {

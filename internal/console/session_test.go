@@ -30,13 +30,15 @@ func TestSessionStoreCreatesDigestOnlySession(t *testing.T) {
 	if !store.Valid(raw) {
 		t.Fatal("created session is not valid")
 	}
-	if len(store.sessions) != 1 {
-		t.Fatalf("sessions = %d", len(store.sessions))
+	if count := sessionRowCount(t, store); count != 1 {
+		t.Fatalf("sessions = %d", count)
 	}
-	for digest := range store.sessions {
-		if strings.Contains(string(digest[:]), raw) {
-			t.Fatal("raw session id stored in map")
-		}
+	var digest []byte
+	if err := store.db.QueryRow(`SELECT digest FROM console_sessions`).Scan(&digest); err != nil {
+		t.Fatal(err)
+	}
+	if len(digest) != 32 || strings.Contains(string(digest), raw) {
+		t.Fatal("raw session id stored instead of digest")
 	}
 }
 
@@ -46,7 +48,7 @@ func TestSessionStoreExpiryAndRevoke(t *testing.T) {
 		TTL:         time.Hour,
 		MaxSessions: 4,
 		Now:         func() time.Time { return now },
-		Rand:        bytes.NewReader(bytes.Repeat([]byte{0x21}, 64)),
+		Rand:        bytes.NewReader(append(bytes.Repeat([]byte{0x21}, sessionBytes), bytes.Repeat([]byte{0x22}, sessionBytes)...)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -87,8 +89,8 @@ func TestSessionStoreCapsAndEvictsOldestExpiry(t *testing.T) {
 	second, _ := store.Create()
 	now = now.Add(time.Minute)
 	third, _ := store.Create()
-	if len(store.sessions) != 2 {
-		t.Fatalf("sessions = %d", len(store.sessions))
+	if count := activeSessionCount(t, store, now); count != 2 {
+		t.Fatalf("sessions = %d", count)
 	}
 	if store.Valid(first) {
 		t.Fatal("oldest session was not evicted")
