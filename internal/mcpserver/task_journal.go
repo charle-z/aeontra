@@ -32,6 +32,7 @@ func (s *Server) startTaskJournal(operation string, transport observability.Tran
 		controller = "stdio"
 	}
 	if err := s.journal.Start(taskID, operation, controller); err != nil {
+		s.journal.RecordFailure(err)
 		return "", func() {}
 	}
 	stop := make(chan struct{})
@@ -45,7 +46,9 @@ func (s *Server) startTaskJournal(operation string, transport observability.Tran
 			case <-stop:
 				return
 			case <-ticker.C:
-				_ = s.journal.Heartbeat(taskID)
+				if err := s.journal.Heartbeat(taskID); err != nil {
+					s.journal.RecordFailure(err)
+				}
 			}
 		}
 	}()
@@ -59,14 +62,22 @@ func (s *Server) finishTaskJournal(taskID, operation string, toolErr error) {
 	if s == nil || s.journal == nil || taskID == "" {
 		return
 	}
-	_ = s.journal.Transition(taskID, taskjournal.StateValidating)
+	if err := s.journal.Transition(taskID, taskjournal.StateValidating); err != nil {
+		s.journal.RecordFailure(err)
+	}
 	if toolErr != nil {
-		_ = s.journal.Transition(taskID, taskjournal.StateFailed)
+		if err := s.journal.Transition(taskID, taskjournal.StateFailed); err != nil {
+			s.journal.RecordFailure(err)
+		}
 		return
 	}
 	if strings.HasSuffix(operation, "_preview") {
-		_ = s.journal.Transition(taskID, taskjournal.StatePlanned)
+		if err := s.journal.Transition(taskID, taskjournal.StatePlanned); err != nil {
+			s.journal.RecordFailure(err)
+		}
 		return
 	}
-	_ = s.journal.Transition(taskID, taskjournal.StateCompleted)
+	if err := s.journal.Transition(taskID, taskjournal.StateCompleted); err != nil {
+		s.journal.RecordFailure(err)
+	}
 }

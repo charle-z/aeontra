@@ -46,15 +46,22 @@ func TestTasksEndpointUsesExactSafeAllowlist(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &raw); err != nil {
 		t.Fatal(err)
 	}
-	if got := sortedKeys(raw); strings.Join(got, ",") != "available,schema_version,tasks" {
+	if got := sortedKeys(raw); strings.Join(got, ",") != "available,has_more,next_cursor,schema_version,storage,tasks" {
 		t.Fatalf("top-level keys=%v", got)
 	}
 	var tasks []map[string]json.RawMessage
 	if err := json.Unmarshal(raw["tasks"], &tasks); err != nil || len(tasks) != 1 {
 		t.Fatalf("tasks=%v err=%v", tasks, err)
 	}
-	if got := sortedKeys(tasks[0]); strings.Join(got, ",") != "controller,heartbeat,operation,state,summary,task_id" {
+	if got := sortedKeys(tasks[0]); strings.Join(got, ",") != "controller,created_at,derived_state,heartbeat_at,operation,safe_summary,sequence,state,task_id,terminal_at,updated_at,version" {
 		t.Fatalf("task keys=%v", got)
+	}
+	var storage map[string]json.RawMessage
+	if err := json.Unmarshal(raw["storage"], &storage); err != nil {
+		t.Fatal(err)
+	}
+	if got := sortedKeys(storage); strings.Join(got, ",") != "database_size_bytes,detail,record_count,storage,wal_size_bytes" {
+		t.Fatalf("storage keys=%v", got)
 	}
 	body := strings.ToLower(response.Body.String())
 	for _, forbidden := range []string{"params", "result", "prompt", "repo", "path", "token", "ip"} {

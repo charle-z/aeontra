@@ -43,7 +43,7 @@ func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr, telemetryErr, resultErr, modelTurnErr, edgeErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, journalErr, resultErr, modelTurnErr, edgeErr error
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -56,6 +56,9 @@ func (r *appRuntime) Close() error {
 	if r.Telemetry != nil {
 		telemetryErr = r.Telemetry.Close()
 	}
+	if r.Journal != nil {
+		journalErr = r.Journal.Close()
+	}
 	if r.Results != nil {
 		resultErr = r.Results.Close()
 	}
@@ -65,7 +68,7 @@ func (r *appRuntime) Close() error {
 	if r.Edge != nil {
 		edgeErr = r.Edge.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil {
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || journalErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
