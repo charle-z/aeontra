@@ -39,6 +39,8 @@ func TestGitHubPullRequestWorkflowIsOwnerBoundPlannedAndGreen(t *testing.T) {
 			_, _ = w.Write([]byte(`{"total_count":2,"check_runs":[{"name":"CI","status":"completed","conclusion":"success","html_url":"https://github.com/acme/demo/actions/1"},{"name":"Security","status":"completed","conclusion":"success","html_url":"https://github.com/acme/demo/actions/2"}]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo/commits/"+headSHA+"/status":
 			_, _ = w.Write([]byte(`{"state":"success","statuses":[]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo/branches/main/protection/required_status_checks":
+			http.NotFound(w, r)
 		case r.Method == http.MethodPut && r.URL.Path == "/repos/acme/demo/pulls/7/merge":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["merge_method"] != "merge" || body["sha"] != headSHA {
@@ -69,7 +71,7 @@ func TestGitHubPullRequestWorkflowIsOwnerBoundPlannedAndGreen(t *testing.T) {
 		t.Fatalf("create result=%q err=%v created=%t", createdResult, err, created)
 	}
 	status, err := svc.SourcePullRequestStatus("demo", 7)
-	if err != nil || !strings.Contains(status, "all_checks_green: true") || !strings.Contains(status, "checks_total: 2") {
+	if err != nil || !strings.Contains(status, "all_checks_green: true") || !strings.Contains(status, "runs_total: 2") || !strings.Contains(status, "evidence_complete: true") {
 		t.Fatalf("status=%q err=%v", status, err)
 	}
 	mergePreview, err := svc.SourcePullRequestMergePreview("demo", 7)
