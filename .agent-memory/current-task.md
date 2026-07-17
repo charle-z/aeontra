@@ -1,7 +1,15 @@
 # Console Durable Live State & Auth Firmware
 
-Branch: `console-durable-live-state`, based on `origin/main` merge `399d7ac` (PR #14 CodeQL closure).
+Branch: `console-durable-live-state`, based on `origin/main` merge `399d7ac`.
 
-Current implementation: Step 1 is in progress and package tests are green. The runtime journal now uses `/state/tasks/tasks.db` through a private SQLite store with WAL, busy timeout, cursor pagination, monotonic event IDs, legacy JSON migration, 30-day terminal retention, 10,000-record secondary budget, a 64 MiB page cap, storage health, replay, and explicit derived disconnected state. `/console/tasks` is schema v2 and SSE accepts `Last-Event-ID`.
+Completed commits:
+- `c284dcd` — Step 1: private SQLite Operation Journal, idempotent legacy migration, bounded retention, cursor pagination, versioned SSE replay and explicit degraded storage state.
 
-No merge or deployment is allowed. Catalog must remain 78 tools with hash `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
+Ready to commit as Step 2:
+- telemetry lifetime table updated transactionally with hourly/daily buckets;
+- exact 24h, 7d, 30d, 90d and lifetime windows;
+- current-process requests/tool calls/bytes labeled separately with `estimate, not provider billing`;
+- restart test proving process counters reset while durable activity survives;
+- read-only controller and runtime models separated from operation history, with no prompts, paths, device keys or IPs.
+
+No merge or deployment. Catalog remains required at 78 tools with hash `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
