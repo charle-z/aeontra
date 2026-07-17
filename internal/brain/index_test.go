@@ -33,6 +33,10 @@ func openIndexedStore(t *testing.T) (*Store, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	identityPath := filepath.Join(t.TempDir(), "state", "brain", "console-node.key")
+	if err := store.ConfigureConsoleIdentity(identityPath); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.InitializeGit(context.Background()); err != nil {
 		t.Fatal(err)
 	}

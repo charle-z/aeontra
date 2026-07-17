@@ -189,6 +189,12 @@ func (i *Index) initialize(ctx context.Context) error {
 			body TEXT NOT NULL,
 			source_bytes INTEGER NOT NULL CHECK (source_bytes >= 0)
 		) STRICT`,
+		`CREATE TABLE IF NOT EXISTS console_metadata (
+			slug TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			console_summary TEXT NOT NULL,
+			FOREIGN KEY (slug) REFERENCES notes(slug) ON DELETE CASCADE
+		) STRICT`,
 		`CREATE TABLE IF NOT EXISTS links (
 			source_slug TEXT NOT NULL,
 			target_slug TEXT NOT NULL,
@@ -339,9 +345,37 @@ func validateIndexBounds(notes int, sourceBytes int64) error {
 
 func sanitizeIndexedNote(note Note) Note {
 	note.Metadata.Title, _ = policy.Redact(note.Metadata.Title)
+	note.Metadata.ConsoleSummary, _ = policy.Redact(note.Metadata.ConsoleSummary)
 	note.Metadata.Provenance, _ = policy.Redact(note.Metadata.Provenance)
 	note.Body, _ = policy.Redact(note.Body)
 	return note
+}
+
+func safeConsoleMetadata(note Note) (title, summary string) {
+	title = strings.TrimSpace(note.Metadata.Title)
+	if redacted, changed := policy.Redact(title); changed {
+		title = "Brain note"
+	} else {
+		title = strings.TrimSpace(redacted)
+	}
+	if title == "" || strings.Contains(title, "***REDACTED-SECRET***") {
+		title = "Brain note"
+	}
+	title = truncateUTF8(title, MaxTitleBytes)
+
+	summary = strings.TrimSpace(note.Metadata.ConsoleSummary)
+	if summary == "" {
+		summary = "No console summary provided."
+	} else if redacted, changed := policy.Redact(summary); changed {
+		summary = "Console summary withheld."
+	} else {
+		summary = strings.TrimSpace(redacted)
+	}
+	if summary == "" || strings.Contains(summary, "***REDACTED-SECRET***") {
+		summary = "Console summary withheld."
+	}
+	summary = truncateUTF8(summary, MaxConsoleSummaryBytes)
+	return title, summary
 }
 
 func (i *Index) replaceAll(ctx context.Context, sources []indexedSource) (IndexStatus, error) {
@@ -350,7 +384,7 @@ func (i *Index) replaceAll(ctx context.Context, sources []indexedSource) (IndexS
 		return IndexStatus{}, errors.New("brain: SQLite rebuild transaction could not start")
 	}
 	defer transaction.Rollback()
-	for _, statement := range []string{"DELETE FROM links", "DELETE FROM notes_fts", "DELETE FROM notes"} {
+	for _, statement := range []string{"DELETE FROM links", "DELETE FROM notes_fts", "DELETE FROM console_metadata", "DELETE FROM notes"} {
 		if _, err := transaction.ExecContext(ctx, statement); err != nil {
 			return IndexStatus{}, errors.New("brain: SQLite rebuild reset failed")
 		}
@@ -390,6 +424,13 @@ func upsertNoteTx(ctx context.Context, transaction *sql.Tx, note Note, sourceByt
 		expired, note.Body, sourceBytes,
 	); err != nil {
 		return errors.New("brain: SQLite note update failed")
+	}
+	consoleTitle, consoleSummary := safeConsoleMetadata(note)
+	if _, err := transaction.ExecContext(ctx, `INSERT INTO console_metadata(slug,title,console_summary) VALUES(?,?,?)
+	ON CONFLICT(slug) DO UPDATE SET title=excluded.title,console_summary=excluded.console_summary`,
+		metadata.Slug, consoleTitle, consoleSummary,
+	); err != nil {
+		return errors.New("brain: SQLite console metadata update failed")
 	}
 	if _, err := transaction.ExecContext(ctx, `DELETE FROM notes_fts WHERE slug=?`, metadata.Slug); err != nil {
 		return errors.New("brain: SQLite FTS update failed")

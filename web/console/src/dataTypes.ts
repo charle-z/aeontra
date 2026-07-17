@@ -19,7 +19,7 @@ export type PayloadData = {
   formula: string;
 };
 
-export type BrainNode = { id: string; trust: string; degree: number };
+export type BrainNode = { id: string; title: string; summary: string; trust: string; degree: number };
 export type BrainEdge = { source: string; target: string };
 export type BrainData = {
   available: boolean;
@@ -106,8 +106,11 @@ function flag(item: Record<string, unknown>, key: string, label: string): boolea
 }
 
 function parseNode(value: unknown): BrainNode {
-  const item = exact(value, ["degree", "id", "trust"], "brain node");
-  return { id: text(item, "id", "node"), trust: text(item, "trust", "node"), degree: numberValue(item, "degree", "node", true) };
+  const item = exact(value, ["degree", "id", "summary", "title", "trust"], "brain node");
+  return {
+    id: text(item, "id", "node"), title: text(item, "title", "node"), summary: text(item, "summary", "node"),
+    trust: text(item, "trust", "node"), degree: numberValue(item, "degree", "node", true),
+  };
 }
 
 function parseEdge(value: unknown): BrainEdge {

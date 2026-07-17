@@ -13,7 +13,7 @@ const data = {
   schema_version: 1,
   system: { available: true, cpu_count: 2, memory_total_bytes: 4294967296, memory_available_bytes: 2147483648, disk_total_bytes: 85899345920, disk_available_bytes: 42949672960, load_1: 0.1, load_5: 0.2, load_15: 0.3 },
   payload: { request_count: 8, input_bytes: 4096, output_bytes: 2048, input_tokens_estimate: 1024, output_tokens_estimate: 512, formula: "bytes / 4 (estimate)" },
-  brain: { available: true, ready: true, schema_version: 1, note_count: 2, source_bytes: 512, link_count: 1, broken_link_count: 0, indexed_at: "2026-07-14T20:00:00Z", graph_truncated: false, nodes: [{ id: "n0001", trust: "curated", degree: 1 }, { id: "n0002", trust: "working", degree: 1 }], edges: [{ source: "n0001", target: "n0002" }] },
+  brain: { available: true, ready: true, schema_version: 1, note_count: 2, source_bytes: 512, link_count: 1, broken_link_count: 0, indexed_at: "2026-07-14T20:00:00Z", graph_truncated: false, nodes: [{ id: "bn_release", title: "Release gates", summary: "Verified release controls.", trust: "curated", degree: 1 }, { id: "bn_working", title: "Console hypothesis", summary: "Working note awaiting review.", trust: "working", degree: 1 }], edges: [{ source: "bn_release", target: "bn_working" }] },
   observability: { enabled: true, failures: 0, routes: [{ route: "mcp", requests: 10, client_4xx: 1, server_5xx: 0, p95_ms: 12 }] },
   security: { oauth_enabled: true, bearer_recovery: true, query_auth: "rejected", free_shell: "absent", cookie: "Secure; HttpOnly; SameSite=Strict", console_authority: "presentation-only" },
   edge: { state: "not_paired" },
@@ -83,7 +83,10 @@ describe("Neo-BIOS operations firmware", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Graph" }));
     expect(screen.getByRole("img", { name: "Opaque Brain link graph" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
-    expect(screen.getByText("n0001")).toBeInTheDocument();
+    expect(screen.getByText("Release gates")).toBeInTheDocument();
+    const node = screen.getByRole("group", { name: /Release gates.*Verified release controls.*curated.*1 link/i });
+    fireEvent.focus(node);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Verified release controls.");
   });
 
   it("supports keyboard screen navigation and firmware help", async () => {

@@ -34,9 +34,11 @@ type PayloadData struct {
 }
 
 type BrainNode struct {
-	ID     string `json:"id"`
-	Trust  string `json:"trust"`
-	Degree int    `json:"degree"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
+	Trust   string `json:"trust"`
+	Degree  int    `json:"degree"`
 }
 
 type BrainEdge struct {

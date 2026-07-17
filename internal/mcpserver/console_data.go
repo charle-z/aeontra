@@ -96,7 +96,8 @@ func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Pr
 				snapshot.Brain.GraphTruncated = brainSnapshot.GraphTruncated
 				for _, node := range brainSnapshot.Nodes {
 					snapshot.Brain.Nodes = append(snapshot.Brain.Nodes, console.BrainNode{
-						ID: node.ID, Trust: string(node.Trust), Degree: node.Degree,
+						ID: node.ID, Title: node.Title, Summary: node.Summary,
+						Trust: string(node.Trust), Degree: node.Degree,
 					})
 				}
 				for _, edge := range brainSnapshot.Edges {

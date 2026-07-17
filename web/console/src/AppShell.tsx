@@ -68,7 +68,7 @@ function SystemTab({ status, data, error }: { status: RuntimeStatus | null; data
       <Row label="Status" value={error ? "[Unavailable]" : status ? "[" + status.status + "]" : "[Loading]"} tone={error ? "warn" : status ? "ok" : "dim"} help="Live status from the exact allowlisted /console/status response." />
       <Row label="Version / Commit" value={status ? status.version + " / " + status.commit : "—"} help="Exact process version and commit." />
       <Row label="Protocol" value={status?.protocol_version ?? "—"} help="MCP protocol version reported by the runtime." />
-      <Row label="Tool Catalog" value={status ? status.tool_count + " tools" : "—"} help="The public post-P9 catalog remains exactly 67 tools." />
+      <Row label="Tool Catalog" value={status ? status.tool_count + " tools" : "—"} help="The public catalog remains exactly 78 tools." />
       <Row label="Catalog Hash" value={status?.catalog_hash ?? "—"} help="Deterministic catalog identity used to detect drift." />
       <Section title="VPS Resources" />
       <Row label="Resource probe" value={system?.available ? "[Available]" : "[Unavailable]"} tone={system?.available ? "ok" : "warn"} help="The server marks this unavailable when any bounded host probe fails." />
@@ -119,11 +119,11 @@ function BrainTab({ data }: { data: ConsoleData | null }) {
       <Row label="Available" value={brain ? String(brain.available) : "—"} tone={brain?.available ? "ok" : "warn"} help="Whether the isolated Brain store is attached to this runtime." />
       <Row label="Ready" value={brain?.available ? String(brain.ready) : "Unavailable"} tone={brain?.ready ? "ok" : "warn"} help="Disposable SQLite index readiness." />
       <Row label="Schema" value={brain?.available ? String(brain.schema_version) : "—"} help="Real index schema version." />
-      <Row label="Notes" value={brain?.available ? String(brain.note_count) : "—"} help="Aggregate note count only; titles and bodies remain private." />
+      <Row label="Notes" value={brain?.available ? String(brain.note_count) : "—"} help="Aggregate note count. Only explicitly curated, redacted console titles and summaries are shown in Graph." />
       <Row label="Source bytes" value={brain?.available ? bytes(brain.source_bytes) : "—"} help="Aggregate Markdown source size." />
       <Row label="Links" value={brain?.available ? brain.link_count + " total · " + brain.broken_link_count + " broken" : "—"} help="Aggregate link counts from the Brain index." />
       <Row label="Indexed at" value={brain?.indexed_at || "—"} help="Last real index timestamp." />
-      <Row label="Graph" value={brain?.available ? brain.nodes.length + " opaque nodes · " + brain.edges.length + " edges" : "Unavailable"} help="Bounded real graph with request-local opaque IDs; no slugs or titles." />
+      <Row label="Graph" value={brain?.available ? brain.nodes.length + " opaque nodes · " + brain.edges.length + " edges" : "Unavailable"} help="Bounded real graph with stable HMAC IDs and explicit redacted console metadata; no slugs, bodies, provenance or paths." />
     </Panel>
   );
 }
