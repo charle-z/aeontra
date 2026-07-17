@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  discover-alerts:
+  discover_alerts:
     name: Regex alert discovery
     if: github.ref == 'refs/heads/ops/close-regex-alert'
     runs-on: ubuntu-latest
@@ -19,7 +19,7 @@ jobs:
       contents: read
       security-events: read
     outputs:
-      alert-numbers: ${{ steps.discover.outputs.result }}
+      alert_numbers: ${{ steps.discover.outputs.result }}
     steps:
       - name: Find exact historical regex alerts
         id: discover
@@ -50,41 +50,88 @@ jobs:
             core.notice(`Found ${numbers.length} exact alert record(s) across CodeQL configurations.`);
             return JSON.stringify(numbers);
 
-  dismiss-alerts:
-    name: Regex alert dismissal
-    needs: discover-alerts
+  dismiss_alerts:
+    name: Regex alert dismissal request
+    needs: discover_alerts
     if: github.ref == 'refs/heads/ops/close-regex-alert'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       security-events: write
+    outputs:
+      result: ${{ steps.dismiss.outputs.result }}
     steps:
-      - name: Dismiss exact historical regex alerts
+      - name: Update exact historical regex alerts
+        id: dismiss
         uses: actions/github-script@v8
         env:
-          ALERT_NUMBERS: ${{ needs.discover-alerts.outputs.alert-numbers }}
+          ALERT_NUMBERS: ${{ needs.discover_alerts.outputs.alert_numbers }}
         with:
+          result-encoding: string
           script: |
             const comment = 'This regular expression intentionally searches for GitHub tokens embedded inside arbitrary text. Anchoring it would break secret detection for logs, JSON, command output and source content. The behavior is covered by embedded-token, multiple-token and large-input tests, and the suppression is scoped to this exact query and expression.';
             const numbers = JSON.parse(process.env.ALERT_NUMBERS || '[]');
-            for (const alertNumber of numbers) {
-              await github.rest.codeScanning.updateAlert({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                alert_number: alertNumber,
-                state: 'dismissed',
-                dismissed_reason: 'false positive',
-                dismissed_comment: comment,
-                create_request: true,
-              });
+            try {
+              for (const alertNumber of numbers) {
+                await github.rest.codeScanning.updateAlert({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  alert_number: alertNumber,
+                  state: 'dismissed',
+                  dismissed_reason: 'false positive',
+                  dismissed_comment: comment,
+                  create_request: true,
+                });
+              }
+              core.notice(`Updated ${numbers.length} exact alert record(s).`);
+              return 'ok';
+            } catch (error) {
+              const status = error?.status ?? error?.response?.status ?? 0;
+              core.notice(`GitHub rejected the update with HTTP ${status || 'unknown'}.`);
+              return String(status || 'unknown');
             }
-            core.notice(`Dismissed ${numbers.length} exact alert record(s) as false positive.`);
 
-  verify-alerts:
+  dismiss_forbidden:
+    name: Regex alert dismissal forbidden (HTTP 403)
+    needs: dismiss_alerts
+    if: needs.dismiss_alerts.outputs.result == '403'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: core.setFailed('GitHub rejected the exact alert update with HTTP 403.');
+
+  dismiss_invalid:
+    name: Regex alert dismissal rejected (HTTP 400/422)
+    needs: dismiss_alerts
+    if: needs.dismiss_alerts.outputs.result == '400' || needs.dismiss_alerts.outputs.result == '422'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: core.setFailed('GitHub rejected the exact alert update as invalid.');
+
+  dismiss_unexpected:
+    name: Regex alert dismissal unexpected response
+    needs: dismiss_alerts
+    if: ${{ !contains(fromJSON('["ok","403","400","422"]'), needs.dismiss_alerts.outputs.result) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: core.setFailed('GitHub returned an unexpected status for the exact alert update.');
+
+  verify_alerts:
     name: Regex alert verification
-    needs: [discover-alerts, dismiss-alerts]
-    if: github.ref == 'refs/heads/ops/close-regex-alert'
+    needs: [discover_alerts, dismiss_alerts]
+    if: needs.dismiss_alerts.outputs.result == 'ok'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -94,7 +141,7 @@ jobs:
       - name: Verify exact alert state
         uses: actions/github-script@v8
         env:
-          ALERT_NUMBERS: ${{ needs.discover-alerts.outputs.alert-numbers }}
+          ALERT_NUMBERS: ${{ needs.discover_alerts.outputs.alert_numbers }}
         with:
           script: |
             const comment = 'This regular expression intentionally searches for GitHub tokens embedded inside arbitrary text. Anchoring it would break secret detection for logs, JSON, command output and source content. The behavior is covered by embedded-token, multiple-token and large-input tests, and the suppression is scoped to this exact query and expression.';
