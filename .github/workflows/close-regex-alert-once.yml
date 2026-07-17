@@ -107,17 +107,29 @@ jobs:
         with:
           script: core.setFailed('GitHub rejected the exact alert update with HTTP 403.');
 
-  dismiss_invalid:
-    name: Regex alert dismissal rejected (HTTP 400/422)
+  dismiss_bad_request:
+    name: Regex alert dismissal bad request (HTTP 400)
     needs: dismiss_alerts
-    if: needs.dismiss_alerts.outputs.result == '400' || needs.dismiss_alerts.outputs.result == '422'
+    if: needs.dismiss_alerts.outputs.result == '400'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions: {}
     steps:
       - uses: actions/github-script@v8
         with:
-          script: core.setFailed('GitHub rejected the exact alert update as invalid.');
+          script: core.setFailed('GitHub rejected the exact alert update with HTTP 400.');
+
+  dismiss_unprocessable:
+    name: Regex alert dismissal unprocessable (HTTP 422)
+    needs: dismiss_alerts
+    if: needs.dismiss_alerts.outputs.result == '422'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: core.setFailed('GitHub rejected the exact alert update with HTTP 422.');
 
   dismiss_unexpected:
     name: Regex alert dismissal unexpected response
