@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -61,24 +60,22 @@ type Config struct {
 	OAuthProvider *oauth.Provider
 	TaskJournal   *taskjournal.Journal
 	DataProvider  DataProvider
-	SecureCookies bool
 	Session       SessionConfig
 }
 
 // Handler owns only presentation assets and an in-memory digest-only session store.
 type Handler struct {
-	staticToken   string
-	runtime       Status
-	authorize     func(*http.Request) bool
-	secureCookies bool
-	sessions      *SessionStore
-	oauthClient   *oauth.ConsoleClient
-	oauthFlows    *oauthFlowStore
-	taskJournal   *taskjournal.Journal
-	dataProvider  DataProvider
-	indexHTML     []byte
-	css           []byte
-	js            []byte
+	staticToken  string
+	runtime      Status
+	authorize    func(*http.Request) bool
+	sessions     *SessionStore
+	oauthClient  *oauth.ConsoleClient
+	oauthFlows   *oauthFlowStore
+	taskJournal  *taskjournal.Journal
+	dataProvider DataProvider
+	indexHTML    []byte
+	css          []byte
+	js           []byte
 }
 
 func New(cfg Config) (*Handler, error) {
@@ -108,18 +105,17 @@ func New(cfg Config) (*Handler, error) {
 	cfg.Runtime.Authenticated = true
 	cfg.Runtime.Surface = "presentation-only"
 	return &Handler{
-		staticToken:   cfg.StaticToken,
-		runtime:       cfg.Runtime,
-		authorize:     cfg.Authorize,
-		secureCookies: cfg.SecureCookies,
-		sessions:      sessions,
-		oauthClient:   oauthClient,
-		oauthFlows:    newOAuthFlowStore(),
-		taskJournal:   cfg.TaskJournal,
-		dataProvider:  cfg.DataProvider,
-		indexHTML:     indexHTML,
-		css:           css,
-		js:            js,
+		staticToken:  cfg.StaticToken,
+		runtime:      cfg.Runtime,
+		authorize:    cfg.Authorize,
+		sessions:     sessions,
+		oauthClient:  oauthClient,
+		oauthFlows:   newOAuthFlowStore(),
+		taskJournal:  cfg.TaskJournal,
+		dataProvider: cfg.DataProvider,
+		indexHTML:    indexHTML,
+		css:          css,
+		js:           js,
 	}, nil
 }
 
@@ -397,7 +393,7 @@ func (h *Handler) validStaticToken(provided string) bool {
 	return subtle.ConstantTimeCompare(expectedDigest[:], providedDigest[:]) == 1
 }
 
-func (h *Handler) bootstrapSession(w http.ResponseWriter, r *http.Request) error {
+func (h *Handler) bootstrapSession(w http.ResponseWriter, _ *http.Request) error {
 	raw, err := h.sessions.Create()
 	if err != nil {
 		return err
@@ -409,45 +405,27 @@ func (h *Handler) bootstrapSession(w http.ResponseWriter, r *http.Request) error
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    raw,
-		Path:     consolePath,
+		Path:     "/",
 		Expires:  expires,
 		MaxAge:   int(h.sessions.ttl.Seconds()),
 		HttpOnly: true,
-		Secure:   h.cookieSecure(r),
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 	return nil
 }
 
-func (h *Handler) clearCookie(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) clearCookie(w http.ResponseWriter, _ *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    "",
-		Path:     consolePath,
+		Path:     "/",
 		Expires:  time.Unix(1, 0).UTC(),
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   h.cookieSecure(r),
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
-}
-
-func (h *Handler) cookieSecure(r *http.Request) bool {
-	if h.secureCookies || r.TLS != nil {
-		return true
-	}
-	host := r.Host
-	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
-		host = parsedHost
-	}
-	host = strings.Trim(host, "[]")
-	if strings.EqualFold(host, "localhost") {
-		return false
-	}
-	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
-		return false
-	}
-	return true
 }
 
 func hardenResponse(w http.ResponseWriter, csp string) {

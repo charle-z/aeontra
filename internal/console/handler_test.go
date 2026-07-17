@@ -20,8 +20,7 @@ func newTestHandler(t *testing.T) *Handler {
 	now := time.Date(2026, 7, 13, 21, 0, 0, 0, time.UTC)
 	random := bytes.Repeat([]byte{0x33}, 4096)
 	handler, err := New(Config{
-		StaticToken:   testConsoleToken,
-		SecureCookies: true,
+		StaticToken: testConsoleToken,
 		Runtime: Status{
 			Status:          "ok",
 			Version:         "0.2.0",
@@ -118,7 +117,7 @@ func TestSuccessfulLoginCreatesOpaqueScopedCookie(t *testing.T) {
 	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteStrictMode {
 		t.Fatalf("cookie security=%+v", cookie)
 	}
-	if cookie.Path != consolePath {
+	if cookie.Path != "/" {
 		t.Fatalf("cookie path=%q", cookie.Path)
 	}
 	if cookie.MaxAge <= 0 || cookie.Expires.IsZero() {

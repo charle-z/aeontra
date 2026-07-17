@@ -35,7 +35,7 @@ func newConsoleOAuthHandler(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	service := tools.NewService(pol, audit.New(&bytes.Buffer{}), pol.Roots()[0])
-	return New(service).HTTPHandlerWithOptions("", provider, HTTPOptions{ConsoleSecureCookies: true})
+	return New(service).HTTPHandlerWithOptions("", provider, HTTPOptions{})
 }
 
 func performConsoleOAuth(t *testing.T, handler http.Handler) (*http.Cookie, string) {

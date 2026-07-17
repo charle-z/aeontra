@@ -22,7 +22,6 @@ func newOAuthConsoleMux(t *testing.T) (*http.ServeMux, *Handler) {
 	}
 	handler, err := New(Config{
 		OAuthProvider: provider,
-		SecureCookies: true,
 		Runtime:       Status{Status: "ok", Version: "0.2.0", ProtocolVersion: "2024-11-05", Commit: "abcdef0", ToolCount: 67, CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		Session:       SessionConfig{TTL: time.Hour, MaxSessions: 4, Rand: bytes.NewReader(bytes.Repeat([]byte{0x51}, 256))},
 	})

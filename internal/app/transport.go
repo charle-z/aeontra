@@ -23,12 +23,11 @@ const (
 )
 
 type transportConfig struct {
-	Mode                 transportMode
-	Addr                 string
-	Token                string
-	OAuth                *oauth.Provider
-	AuthDescription      string
-	ConsoleSecureCookies bool
+	Mode            transportMode
+	Addr            string
+	Token           string
+	OAuth           *oauth.Provider
+	AuthDescription string
 }
 
 func resolveTransport(opts serveOptions) (transportConfig, error) {
@@ -56,12 +55,11 @@ func resolveTransport(opts serveOptions) (transportConfig, error) {
 		}
 	}
 	return transportConfig{
-		Mode:                 transportHTTP,
-		Addr:                 normalizeHTTPAddr(opts.HTTPAddr),
-		Token:                token,
-		OAuth:                oauthProvider,
-		AuthDescription:      authDescription,
-		ConsoleSecureCookies: strings.HasPrefix(strings.ToLower(strings.TrimSpace(os.Getenv(publicURLEnv))), "https://"),
+		Mode:            transportHTTP,
+		Addr:            normalizeHTTPAddr(opts.HTTPAddr),
+		Token:           token,
+		OAuth:           oauthProvider,
+		AuthDescription: authDescription,
 	}, nil
 }
 
@@ -91,8 +89,7 @@ func serveTransport(runtime *appRuntime, transport transportConfig) (serveErr er
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return runtime.Server.ServeHTTPWithOptions(ctx, transport.Addr, transport.Token, transport.OAuth, mcpserver.HTTPOptions{
-		ConsoleSecureCookies: transport.ConsoleSecureCookies,
-		EdgeHandler:          edge.NewHTTPHandler(runtime.Edge, runtime.ModelTurns),
+		EdgeHandler: edge.NewHTTPHandler(runtime.Edge, runtime.ModelTurns),
 		EdgeState: func() string {
 			count, err := runtime.Edge.ActiveCount()
 			if err != nil {
