@@ -11,7 +11,7 @@ import (
 
 func TestHTTPConsoleLoginAndStatusUsePublicRuntimeIdentity(t *testing.T) {
 	server, _, _ := newObservedServer(t)
-	handler := server.HTTPHandlerWithOptions(testToken, nil, HTTPOptions{ConsoleSecureCookies: true})
+	handler := server.HTTPHandlerWithOptions(testToken, nil, HTTPOptions{})
 
 	loginPage := httptest.NewRecorder()
 	handler.ServeHTTP(loginPage, httptest.NewRequest(http.MethodGet, "/console", nil))

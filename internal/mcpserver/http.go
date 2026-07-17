@@ -80,8 +80,7 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 	}
 
 	consoleHandler, err := console.New(console.Config{
-		StaticToken:   token,
-		SecureCookies: opts.ConsoleSecureCookies,
+		StaticToken: token,
 		Runtime: console.Status{
 			Status:          runtimeInfo.Status,
 			Version:         runtimeInfo.Version,

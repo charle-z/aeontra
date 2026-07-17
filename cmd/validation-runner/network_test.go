@@ -6,8 +6,8 @@ import (
 )
 
 func TestLockfileProfileEnablesCorepackNetworkOnlyForBootstrap(t *testing.T) {
-	c := config{root: "/repos", hostRoot: "/host/repos", image: "node:22-alpine", store: "store", user: "10001:10001"}
-	args, err := c.argv("/repos/demo", "pnpm-lockfile")
+	c, entry := testValidationConfig(t)
+	args, err := c.argv(entry, "pnpm-lockfile")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -16,7 +16,7 @@ func TestLockfileProfileEnablesCorepackNetworkOnlyForBootstrap(t *testing.T) {
 		t.Fatalf("lockfile profile cannot bootstrap Corepack: %s", joined)
 	}
 
-	args, err = c.argv("/repos/demo", "pnpm-validate")
+	args, err = c.argv(entry, "pnpm-validate")
 	if err != nil {
 		t.Fatal(err)
 	}

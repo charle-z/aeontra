@@ -17,6 +17,15 @@ type secretRule struct {
 	group int
 }
 
+// githubTokenSearchPattern is a search expression, not a whole-value validator.
+// Returned file content, command output, JSON and logs may contain a credential in
+// the middle of otherwise legitimate text. Anchoring this expression would allow
+// those embedded credentials to bypass redaction. Go's regexp engine is RE2-based,
+// so this bounded-token search remains linear on long non-matching input.
+//
+// codeql[go/regex/missing-regexp-anchor]
+var githubTokenSearchPattern = regexp.MustCompile(`\bgh[pousr]_[0-9A-Za-z]{36,}\b`)
+
 // secretRules is the content-scan rule set. It is intentionally conservative
 // toward safety: for a security tool, an occasional false-positive redaction is
 // preferable to leaking a credential. Order does not matter; all rules are applied.
@@ -25,7 +34,7 @@ var secretRules = []secretRule{
 	{"private-key-block", regexp.MustCompile(`(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----`), 0},
 	// Cloud / provider tokens (whole match).
 	{"aws-access-key-id", regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`), 0},
-	{"github-token", regexp.MustCompile(`\bgh[pousr]_[0-9A-Za-z]{36,}\b`), 0},
+	{"github-token", githubTokenSearchPattern, 0},
 	{"github-pat", regexp.MustCompile(`\bgithub_pat_[0-9A-Za-z_]{20,}\b`), 0},
 	{"slack-token", regexp.MustCompile(`\bxox[baprs]-[0-9A-Za-z-]{10,}\b`), 0},
 	{"google-api-key", regexp.MustCompile(`\bAIza[0-9A-Za-z\-_]{35}\b`), 0},

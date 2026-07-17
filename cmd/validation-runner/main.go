@@ -25,17 +25,17 @@ const (
 )
 
 type config struct {
-	token    string
-	root     string // runner-container path used to inspect the repository
-	hostRoot string // Docker-host path used only in the child bind mount
-	image    string
-	store    string
-	user     string
-	timeout  time.Duration
+	token     string
+	registry  *repositoryRegistry
+	image     string
+	store     string
+	user      string
+	timeout   time.Duration
+	runDocker func(context.Context, []string) (string, int, error)
 }
 
 type request struct {
-	Repo    string `json:"repo"`
+	RepoID  string `json:"repo_id"`
 	Profile string `json:"profile"`
 }
 
@@ -89,12 +89,18 @@ func loadConfig() (config, error) {
 	if !filepath.IsAbs(hostRoot) {
 		return config{}, fmt.Errorf("MCP_DEVBOX_VALIDATION_RUNNER_HOST_ROOT must be an absolute Docker-host path")
 	}
+	registry, err := discoverRepositoryRegistry(resolved, filepath.Clean(hostRoot), time.Now())
+	if err != nil {
+		return config{}, err
+	}
 	return config{
-		token: token, root: resolved, hostRoot: filepath.Clean(hostRoot),
-		image:   valueOr("MCP_DEVBOX_VALIDATION_RUNNER_IMAGE", "node:22-alpine"),
-		store:   valueOr("MCP_DEVBOX_VALIDATION_RUNNER_STORE", "mcp-devbox-pnpm-store"),
-		user:    valueOr("MCP_DEVBOX_VALIDATION_RUNNER_USER", "10001:10001"),
-		timeout: durationOr("MCP_DEVBOX_VALIDATION_RUNNER_TIMEOUT", 8*time.Minute),
+		token:     token,
+		registry:  registry,
+		image:     valueOr("MCP_DEVBOX_VALIDATION_RUNNER_IMAGE", "node:22-alpine"),
+		store:     valueOr("MCP_DEVBOX_VALIDATION_RUNNER_STORE", "mcp-devbox-pnpm-store"),
+		user:      valueOr("MCP_DEVBOX_VALIDATION_RUNNER_USER", "10001:10001"),
+		timeout:   durationOr("MCP_DEVBOX_VALIDATION_RUNNER_TIMEOUT", 8*time.Minute),
+		runDocker: dockerRun,
 	}, nil
 }
 
@@ -105,13 +111,15 @@ func (c config) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 	var req request
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&req); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	repo, err := c.repoPath(req.Repo)
+	repo, err := c.registry.lookup(req.RepoID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "unknown or changed repository identifier", http.StatusBadRequest)
 		return
 	}
 	argv, err := c.argv(repo, req.Profile)
@@ -119,37 +127,31 @@ func (c config) handleRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Revalidate immediately before the sensitive operation. Linux validation opens
+	// the root, repository and manifest by descriptor with O_NOFOLLOW and compares
+	// stable filesystem identities. Docker still requires a host path string, so
+	// the remaining cross-daemon TOCTOU window is deliberately minimized here.
+	if err := c.registry.revalidate(repo); err != nil {
+		http.Error(w, "registered repository changed", http.StatusConflict)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), c.timeout)
 	defer cancel()
-	out, code, err := dockerRun(ctx, argv)
+	runner := c.runDocker
+	if runner == nil {
+		runner = dockerRun
+	}
+	out, code, err := runner(ctx, argv)
+	out = c.registry.sanitizeOutput(out)
 	if err != nil {
-		http.Error(w, "runner failure: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "runner failure", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(response{Profile: req.Profile, ExitCode: code, Output: out})
 }
 
-func (c config) repoPath(name string) (string, error) {
-	name = strings.TrimSpace(name)
-	if name == "" || filepath.IsAbs(name) || strings.ContainsAny(name, `\\/`) || name == "." || name == ".." {
-		return "", fmt.Errorf("repo must be one direct repository name under the configured root")
-	}
-	p, err := filepath.EvalSymlinks(filepath.Join(c.root, name))
-	if err != nil || filepath.Dir(p) != c.root {
-		return "", fmt.Errorf("repository is outside the configured root")
-	}
-	info, err := os.Stat(p)
-	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("repository does not exist")
-	}
-	if _, err := os.Stat(filepath.Join(p, "package.json")); err != nil {
-		return "", fmt.Errorf("repository has no package.json")
-	}
-	return p, nil
-}
-
-func (c config) argv(repo, profile string) ([]string, error) {
+func (c config) argv(repo repositoryEntry, profile string) ([]string, error) {
 	// Scripts are constants owned by this binary. The project can influence only
 	// package metadata, never Docker flags, executable names, argv or environment.
 	script := ""
@@ -167,14 +169,10 @@ func (c config) argv(repo, profile string) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("unsupported validation profile")
 	}
-	// `repo` is resolved inside this runner container, while Docker resolves bind
-	// sources on its host. Convert exactly one already-validated child path to the
-	// configured host-side repository directory; never pass an agent-supplied path.
-	rel, err := filepath.Rel(c.root, repo)
-	if err != nil || rel == "." || strings.ContainsAny(rel, `\\/`) {
-		return nil, fmt.Errorf("validated repository is not a direct child of runner root")
+	hostRepo, err := repo.mountSource()
+	if err != nil {
+		return nil, err
 	}
-	hostRepo := filepath.Join(c.hostRoot, rel)
 	return []string{
 		"run", "--rm", "--network", network, "--read-only",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",

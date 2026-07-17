@@ -1,73 +1,62 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
+func testValidationConfig(t *testing.T) (config, repositoryEntry) {
+	t.Helper()
+	registry, _ := newRegistryFixture(t, "demo")
+	entry, err := registry.lookup("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return config{registry: registry, image: "node:22-alpine", store: "store", user: "10001:10001", timeout: time.Minute}, entry
+}
+
 func TestValidationProfileIsClosedAndHardened(t *testing.T) {
-	c := config{root: "/repos", hostRoot: "/host/repos", image: "node:22-alpine", store: "store", user: "10001:10001"}
-	args, err := c.argv("/repos/demo", "pnpm-validate")
+	c, entry := testValidationConfig(t)
+	args, err := c.argv(entry, "pnpm-validate")
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
 	for _, want := range []string{"--network none", "--read-only", "--cap-drop ALL", "no-new-privileges", "--user 10001:10001", "corepack install -g --cache-only /pnpm-store/corepack-pnpm-10.13.1.tgz", "corepack pnpm install --offline --frozen-lockfile --ignore-scripts", "COREPACK_ENABLE_NETWORK=0"} {
 		if !strings.Contains(joined, want) {
-			t.Fatalf("missing %q in %q", want, joined)
+			t.Fatalf("missing %q in validation argv", want)
 		}
 	}
-	if !strings.Contains(joined, "src=/host/repos/demo,dst=/workspace") {
-		t.Fatalf("runner used container path instead of host path: %q", joined)
+	if !strings.Contains(joined, "src="+entry.hostPath+",dst=/workspace") {
+		t.Fatal("runner did not use the server-owned registry mount")
 	}
-	if _, err := c.argv("/repos/demo", "anything-from-agent"); err == nil {
+	if _, err := c.argv(entry, "anything-from-agent"); err == nil {
 		t.Fatal("unknown profile accepted")
 	}
 }
 
 func TestLockfileProfileHasOnlyFixedRegistryNetwork(t *testing.T) {
-	c := config{root: "/repos", hostRoot: "/host/repos", image: "node:22-alpine", store: "store", user: "10001:10001"}
-	args, err := c.argv("/repos/demo", "pnpm-lockfile")
+	c, entry := testValidationConfig(t)
+	args, err := c.argv(entry, "pnpm-lockfile")
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
 	if strings.Contains(joined, "corepack enable") || !strings.Contains(joined, "--network bridge") || !strings.Contains(joined, "corepack pack pnpm@10.13.1 -o /pnpm-store/corepack-pnpm-10.13.1.tgz") || !strings.Contains(joined, "corepack pnpm install --lockfile-only --ignore-scripts --registry=https://registry.npmjs.org") {
-		t.Fatalf("unexpected lockfile argv: %s", joined)
+		t.Fatal("unexpected lockfile argv")
 	}
 }
 
 func TestValidationProfilesSharePersistentCorepackCache(t *testing.T) {
-	c := config{root: "/repos", hostRoot: "/host/repos", image: "node:22-alpine", store: "store", user: "10001:10001"}
+	c, entry := testValidationConfig(t)
 	for _, profile := range []string{"pnpm-lockfile", "pnpm-validate"} {
-		args, err := c.argv("/repos/demo", profile)
+		args, err := c.argv(entry, profile)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if joined := strings.Join(args, " "); !strings.Contains(joined, "COREPACK_HOME=/pnpm-store/corepack") {
-			t.Fatalf("profile %s does not reuse the persistent Corepack cache: %s", profile, joined)
-		}
-	}
-}
-
-func TestRepoPathRejectsTraversalAndOnlyAcceptsDirectChild(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "portfolio")
-	if err := os.Mkdir(repo, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "package.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	c := config{root: root}
-	if got, err := c.repoPath("portfolio"); err != nil || got != repo {
-		t.Fatalf("repoPath = %q, %v", got, err)
-	}
-	for _, bad := range []string{"..", "portfolio/child", "../portfolio", "."} {
-		if _, err := c.repoPath(bad); err == nil {
-			t.Fatalf("accepted %q", bad)
+			t.Fatalf("profile %s does not reuse the persistent Corepack cache", profile)
 		}
 	}
 }
