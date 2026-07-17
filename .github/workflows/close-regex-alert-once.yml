@@ -70,7 +70,7 @@ jobs:
         with:
           result-encoding: string
           script: |
-            const comment = 'This regular expression intentionally searches for GitHub tokens embedded inside arbitrary text. Anchoring it would break secret detection for logs, JSON, command output and source content. The behavior is covered by embedded-token, multiple-token and large-input tests, and the suppression is scoped to this exact query and expression.';
+            const comment = 'Intentional embedded-token detector; covered by dedicated tests.';
             const numbers = JSON.parse(process.env.ALERT_NUMBERS || '[]');
             try {
               for (const alertNumber of numbers) {
@@ -144,7 +144,7 @@ jobs:
           ALERT_NUMBERS: ${{ needs.discover_alerts.outputs.alert_numbers }}
         with:
           script: |
-            const comment = 'This regular expression intentionally searches for GitHub tokens embedded inside arbitrary text. Anchoring it would break secret detection for logs, JSON, command output and source content. The behavior is covered by embedded-token, multiple-token and large-input tests, and the suppression is scoped to this exact query and expression.';
+            const comment = 'Intentional embedded-token detector; covered by dedicated tests.';
             const numbers = JSON.parse(process.env.ALERT_NUMBERS || '[]');
             for (const alertNumber of numbers) {
               const verified = await github.rest.codeScanning.getAlert({
