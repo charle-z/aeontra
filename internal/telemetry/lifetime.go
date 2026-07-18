@@ -18,8 +18,12 @@ type DurableActivity struct {
 }
 
 func (s *Store) ensureLifetime() error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS lifetime_metrics (
+	tx, err := s.db.Begin()
+	if err != nil {
+		return errors.New("telemetry lifetime initialization failed")
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS lifetime_metrics (
 			id INTEGER PRIMARY KEY CHECK(id=1),
 			request_count INTEGER NOT NULL DEFAULT 0,
 			tool_call_count INTEGER NOT NULL DEFAULT 0,
@@ -31,13 +35,76 @@ func (s *Store) ensureLifetime() error {
 			client_errors INTEGER NOT NULL DEFAULT 0,
 			server_errors INTEGER NOT NULL DEFAULT 0,
 			updated_at INTEGER NOT NULL DEFAULT 0
-		)`,
-		`INSERT OR IGNORE INTO lifetime_metrics(id) VALUES(1)`,
+		)`); err != nil {
+		return errors.New("telemetry lifetime initialization failed")
 	}
-	for _, statement := range statements {
-		if _, err := s.db.Exec(statement); err != nil {
-			return errors.New("telemetry lifetime initialization failed")
-		}
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO lifetime_metrics(id) VALUES(?)`, lifetimeRowID); err != nil {
+		return errors.New("telemetry lifetime initialization failed")
+	}
+	if err := backfillLifetime(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New("telemetry lifetime initialization failed")
+	}
+	return nil
+}
+
+// backfillLifetime reconstructs the strongest retained lower bound without adding
+// hourly and daily copies of the same events. It keeps the larger value per UTC day
+// and metric, then only raises existing lifetime counters.
+func backfillLifetime(tx *sql.Tx) error {
+	var retained Snapshot
+	if err := tx.QueryRow(`WITH per_day AS (
+		SELECT CAST(bucket_start / 86400 AS INTEGER) AS day,
+			SUM(CASE WHEN period='daily' THEN request_count ELSE 0 END) AS daily_requests,
+			SUM(CASE WHEN period='hourly' THEN request_count ELSE 0 END) AS hourly_requests,
+			SUM(CASE WHEN period='daily' THEN tool_call_count ELSE 0 END) AS daily_tools,
+			SUM(CASE WHEN period='hourly' THEN tool_call_count ELSE 0 END) AS hourly_tools,
+			SUM(CASE WHEN period='daily' THEN input_bytes ELSE 0 END) AS daily_input,
+			SUM(CASE WHEN period='hourly' THEN input_bytes ELSE 0 END) AS hourly_input,
+			SUM(CASE WHEN period='daily' THEN output_bytes ELSE 0 END) AS daily_output,
+			SUM(CASE WHEN period='hourly' THEN output_bytes ELSE 0 END) AS hourly_output,
+			SUM(CASE WHEN period='daily' THEN http_duration_ms ELSE 0 END) AS daily_http,
+			SUM(CASE WHEN period='hourly' THEN http_duration_ms ELSE 0 END) AS hourly_http,
+			SUM(CASE WHEN period='daily' THEN tool_duration_ms ELSE 0 END) AS daily_tool_ms,
+			SUM(CASE WHEN period='hourly' THEN tool_duration_ms ELSE 0 END) AS hourly_tool_ms,
+			SUM(CASE WHEN period='daily' THEN external_wait_ms ELSE 0 END) AS daily_external,
+			SUM(CASE WHEN period='hourly' THEN external_wait_ms ELSE 0 END) AS hourly_external,
+			SUM(CASE WHEN period='daily' THEN client_errors ELSE 0 END) AS daily_client,
+			SUM(CASE WHEN period='hourly' THEN client_errors ELSE 0 END) AS hourly_client,
+			SUM(CASE WHEN period='daily' THEN server_errors ELSE 0 END) AS daily_server,
+			SUM(CASE WHEN period='hourly' THEN server_errors ELSE 0 END) AS hourly_server,
+			MAX(bucket_start) AS updated_at
+		FROM metric_buckets
+		GROUP BY day
+	) SELECT
+		COALESCE(SUM(MAX(daily_requests,hourly_requests)),0),
+		COALESCE(SUM(MAX(daily_tools,hourly_tools)),0),
+		COALESCE(SUM(MAX(daily_input,hourly_input)),0),
+		COALESCE(SUM(MAX(daily_output,hourly_output)),0),
+		COALESCE(SUM(MAX(daily_http,hourly_http)),0),
+		COALESCE(SUM(MAX(daily_tool_ms,hourly_tool_ms)),0),
+		COALESCE(SUM(MAX(daily_external,hourly_external)),0),
+		COALESCE(SUM(MAX(daily_client,hourly_client)),0),
+		COALESCE(SUM(MAX(daily_server,hourly_server)),0),
+		COALESCE(MAX(updated_at),0)
+	FROM per_day`).Scan(
+		&retained.RequestCount, &retained.ToolCallCount, &retained.InputBytes, &retained.OutputBytes,
+		&retained.HTTPDurationMS, &retained.ToolDurationMS, &retained.ExternalWaitMS,
+		&retained.ClientErrors, &retained.ServerErrors, &retained.UpdatedAt); err != nil {
+		return errors.New("telemetry lifetime backfill failed")
+	}
+	if _, err := tx.Exec(`UPDATE lifetime_metrics SET
+		request_count=MAX(request_count,?),tool_call_count=MAX(tool_call_count,?),
+		input_bytes=MAX(input_bytes,?),output_bytes=MAX(output_bytes,?),
+		http_duration_ms=MAX(http_duration_ms,?),tool_duration_ms=MAX(tool_duration_ms,?),
+		external_wait_ms=MAX(external_wait_ms,?),client_errors=MAX(client_errors,?),
+		server_errors=MAX(server_errors,?),updated_at=MAX(updated_at,?) WHERE id=?`,
+		retained.RequestCount, retained.ToolCallCount, retained.InputBytes, retained.OutputBytes,
+		retained.HTTPDurationMS, retained.ToolDurationMS, retained.ExternalWaitMS,
+		retained.ClientErrors, retained.ServerErrors, retained.UpdatedAt, lifetimeRowID); err != nil {
+		return errors.New("telemetry lifetime backfill failed")
 	}
 	return nil
 }
