@@ -167,7 +167,7 @@ func TestConsoleSnapshotBoundsNodeGraph(t *testing.T) {
 				slug, TrustCurated, "Bounded note", TypeFact, AuthorOwner, "2026-07-13T22:00:00Z", "2026-07-13T22:30:00Z", "test", "", 0, "private", 1); err != nil {
 				return err
 			}
-			if _, err := transaction.Exec(`INSERT INTO console_metadata(slug,title,console_summary) VALUES(?,?,?)`, slug, "Bounded note", "Safe summary."); err != nil {
+			if _, err := transaction.Exec(`INSERT INTO console_metadata(slug,title,console_label,console_summary) VALUES(?,?,?,?)`, slug, "Bounded note", "Bounded note", "Safe summary."); err != nil {
 				return err
 			}
 		}

@@ -58,59 +58,176 @@ td[data-tone="dim"] { color: var(--vga-gray); }
 .graph-wrap {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
   margin: 0.4rem 1rem 1rem;
   border: 1px solid var(--vga-cyan);
   background: var(--vga-blue-dark);
   overflow: hidden;
 }
 
+.graph-canvas {
+  position: relative;
+  width: 100%;
+  height: clamp(320px, 52vh, 560px);
+  min-height: 320px;
+  flex: none;
+  border-bottom: 1px solid var(--vga-cyan);
+  overflow: hidden;
+  touch-action: none;
+}
+
 .brain-graph {
   display: block;
   width: 100%;
-  height: min(55vh, 440px);
+  height: 100%;
   min-height: 320px;
   cursor: grab;
   touch-action: none;
 }
 
 .brain-graph:active { cursor: grabbing; }
-.brain-graph line { stroke: #2c66c8; stroke-width: 1; stroke-dasharray: 4 4; }
-.graph-node circle { fill: var(--vga-white); stroke: var(--vga-blue-dark); stroke-width: 2; }
-.graph-node[data-trust="curated"] circle { fill: var(--vga-yellow); }
-.graph-node text { fill: var(--vga-white); font-size: 11px; pointer-events: none; }
+.graph-pan-surface { fill: transparent; pointer-events: all; }
+.graph-world line { stroke: #2c66c8; stroke-width: 1; stroke-dasharray: 4 4; transition: opacity 120ms linear, stroke-width 120ms linear; }
+.graph-world line.graph-edge-related { stroke: var(--vga-cyan); stroke-width: 2.4; stroke-dasharray: none; }
+.graph-world line.graph-edge-muted { opacity: 0.22; }
+
+.graph-node {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 120ms linear;
+}
+
+.graph-node-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+
+.graph-node-visual {
+  fill: var(--vga-white);
+  stroke: var(--vga-blue-dark);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.graph-node[data-trust="curated"] .graph-node-visual { fill: var(--vga-yellow); }
+.graph-node[data-related="false"] { opacity: 0.32; }
+.graph-node[data-selected="true"],
+.graph-node[data-active="true"],
+.graph-node[data-related="true"] { opacity: 1; }
+
+.graph-node-halo,
+.graph-node-focus {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.graph-node-halo {
+  stroke: var(--vga-cyan);
+  stroke-width: 3;
+}
+
+.graph-node-focus {
+  display: none;
+  stroke: var(--vga-white);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+}
+
+.graph-node:focus-visible .graph-node-focus { display: block; }
+
+.graph-label {
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.graph-label rect {
+  fill: var(--vga-blue-dark);
+  stroke: var(--vga-gray-low);
+  stroke-width: 1;
+}
+
+.graph-label text {
+  fill: var(--vga-white);
+  font: 12px "Cascadia Mono", "IBM Plex Mono", Consolas, "Courier New", monospace;
+}
+
+.graph-label[data-priority="0"] rect { stroke: var(--vga-cyan); stroke-width: 2; }
+.graph-label[data-priority="0"] text { fill: var(--vga-yellow); }
+.graph-label[data-priority="1"] rect { stroke: var(--vga-white); }
 
 .graph-controls {
   position: absolute;
-  z-index: 2;
-  top: 0.5rem;
-  right: 0.5rem;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  width: 116px;
+  height: 36px;
   display: flex;
-  gap: 0.3rem;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 2px;
+  background: var(--vga-blue-dark);
 }
 
 .graph-controls button {
-  width: 2.6ch;
+  width: 32px;
+  height: 28px;
   border: 1px solid var(--vga-white);
+  padding: 0;
   background: var(--vga-gray);
   color: var(--vga-black);
-  box-shadow: 2px 2px 0 var(--vga-black);
   cursor: pointer;
 }
 
-.graph-tooltip {
-  position: absolute;
-  left: 0.6rem;
-  bottom: 2.2rem;
-  display: grid;
-  gap: 0.1rem;
-  border: 1px solid var(--vga-white);
-  padding: 0.35rem 0.55rem;
-  background: var(--vga-gray);
-  color: var(--vga-black);
-  box-shadow: 4px 4px 0 var(--vga-black);
-  pointer-events: none;
+.graph-detail {
+  flex: none;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.65rem 0.8rem;
+  background: var(--vga-blue);
+  color: var(--vga-white);
+  overflow-wrap: anywhere;
 }
+
+.graph-detail:focus-visible {
+  outline: 2px dotted var(--vga-white);
+  outline-offset: -4px;
+}
+
+.graph-detail h3 {
+  margin: 0 0 0.45rem;
+  color: var(--vga-cyan);
+  font-size: inherit;
+}
+
+.graph-detail p,
+.graph-detail dl,
+.graph-detail dd { margin: 0; }
+
+.graph-detail dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem 1.2rem;
+}
+
+.graph-detail dl div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.graph-detail dt { color: var(--vga-gray); }
+.graph-detail dd { color: var(--vga-yellow); }
+.graph-detail dl div:nth-child(2),
+.graph-detail dl div:nth-child(3) { grid-column: span 2; }
 
 .graph-empty {
   min-height: 320px;
@@ -128,7 +245,15 @@ td[data-tone="dim"] { color: var(--vga-gray); }
 @media (max-width: 720px) {
   th,
   td { padding-inline: 0.6ch; }
-  .brain-graph { min-height: 280px; }
+
+  .graph-wrap { margin-inline: 0.45rem; }
+  .graph-canvas,
+  .brain-graph { min-height: 330px; height: min(52vh, 430px); }
+  .graph-detail dl { grid-template-columns: 1fr; }
+  .graph-detail dl div,
+  .graph-detail dl div:nth-child(2),
+  .graph-detail dl div:nth-child(3) { grid-column: auto; grid-template-columns: 11ch minmax(0, 1fr); }
+  .graph-note { white-space: normal; }
 }
 
 

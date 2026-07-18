@@ -18,6 +18,11 @@ func TestCoreCIContainsBlockingVerifyRaceStaticAndVulnerabilityJobs(t *testing.T
 		"race:",
 		"staticcheck:",
 		"govulncheck:",
+		"responsive-graph:",
+		"name: Responsive Brain graph",
+		"pnpm --dir web/console exec playwright install --with-deps chromium",
+		"pnpm console:test:graph",
+		"brain-graph-responsive-${{ github.sha }}",
 		"go test ./... -coverprofile=coverage.out -covermode=atomic -count=1",
 		"go run ./cmd/coverage-gate --profile coverage.out",
 		"go vet ./...",
@@ -40,11 +45,11 @@ func TestCoreCIContainsBlockingVerifyRaceStaticAndVulnerabilityJobs(t *testing.T
 	if strings.Contains(text, "staticcheck:\n    name: Staticcheck\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    env:") {
 		t.Error("runner.temp is invalid in job-level env; staticcheck cache must be step-scoped")
 	}
-	if got := strings.Count(text, "timeout-minutes:"); got != 4 {
-		t.Fatalf("timeout count = %d, want 4 core jobs", got)
+	if got := strings.Count(text, "timeout-minutes:"); got != 5 {
+		t.Fatalf("timeout count = %d, want 5 blocking jobs", got)
 	}
-	if got := strings.Count(text, "uses: actions/checkout@v5"); got != 4 {
-		t.Fatalf("checkout count = %d, want 4", got)
+	if got := strings.Count(text, "uses: actions/checkout@v5"); got != 5 {
+		t.Fatalf("checkout count = %d, want 5", got)
 	}
 	if got := strings.Count(text, "uses: actions/setup-go@v6"); got != 4 {
 		t.Fatalf("setup-go count = %d, want 4", got)

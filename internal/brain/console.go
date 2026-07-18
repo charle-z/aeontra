@@ -13,11 +13,12 @@ const (
 // ConsoleNode is an opaque graph vertex. IDs are stable HMAC derivations and the
 // displayed title/summary come only from the redacted console_metadata table.
 type ConsoleNode struct {
-	ID      string     `json:"id"`
-	Title   string     `json:"title"`
-	Summary string     `json:"summary"`
-	Trust   TrustLevel `json:"trust"`
-	Degree  int        `json:"degree"`
+	ID           string     `json:"id"`
+	ConsoleLabel string     `json:"console_label"`
+	Title        string     `json:"title"`
+	Summary      string     `json:"summary"`
+	Trust        TrustLevel `json:"trust"`
+	Degree       int        `json:"degree"`
 }
 
 type ConsoleEdge struct {
@@ -56,7 +57,7 @@ func (s *Store) ConsoleSnapshot(ctx context.Context) (ConsoleSnapshot, error) {
 		}
 		snapshot.Status = status
 
-		rows, err := index.db.QueryContext(queryContext, `SELECT n.slug,n.trust,c.title,c.console_summary
+		rows, err := index.db.QueryContext(queryContext, `SELECT n.slug,n.trust,c.console_label,c.title,c.console_summary
 			FROM notes n JOIN console_metadata c ON c.slug=n.slug
 			ORDER BY n.slug LIMIT ?`, MaxConsoleGraphNodes+1)
 		if err != nil {
@@ -65,12 +66,13 @@ func (s *Store) ConsoleSnapshot(ctx context.Context) (ConsoleSnapshot, error) {
 		defer rows.Close()
 		slugs := make([]string, 0, MaxConsoleGraphNodes)
 		trustBySlug := make(map[string]TrustLevel, MaxConsoleGraphNodes)
+		labelBySlug := make(map[string]string, MaxConsoleGraphNodes)
 		titleBySlug := make(map[string]string, MaxConsoleGraphNodes)
 		summaryBySlug := make(map[string]string, MaxConsoleGraphNodes)
 		for rows.Next() {
-			var slug, title, summary string
+			var slug, label, title, summary string
 			var trust TrustLevel
-			if err := rows.Scan(&slug, &trust, &title, &summary); err != nil {
+			if err := rows.Scan(&slug, &trust, &label, &title, &summary); err != nil {
 				return errors.New("brain: console graph result failed")
 			}
 			if len(slugs) == MaxConsoleGraphNodes {
@@ -79,6 +81,7 @@ func (s *Store) ConsoleSnapshot(ctx context.Context) (ConsoleSnapshot, error) {
 			}
 			slugs = append(slugs, slug)
 			trustBySlug[slug] = trust
+			labelBySlug[slug] = label
 			titleBySlug[slug] = title
 			summaryBySlug[slug] = summary
 		}
@@ -127,11 +130,12 @@ func (s *Store) ConsoleSnapshot(ctx context.Context) (ConsoleSnapshot, error) {
 		snapshot.Nodes = make([]ConsoleNode, 0, len(slugs))
 		for _, slug := range slugs {
 			snapshot.Nodes = append(snapshot.Nodes, ConsoleNode{
-				ID:      idBySlug[slug],
-				Title:   titleBySlug[slug],
-				Summary: summaryBySlug[slug],
-				Trust:   trustBySlug[slug],
-				Degree:  degree[slug],
+				ID:           idBySlug[slug],
+				ConsoleLabel: labelBySlug[slug],
+				Title:        titleBySlug[slug],
+				Summary:      summaryBySlug[slug],
+				Trust:        trustBySlug[slug],
+				Degree:       degree[slug],
 			})
 		}
 		return nil

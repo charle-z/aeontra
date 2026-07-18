@@ -63,6 +63,48 @@ jobs:
       - name: Validate GitHub Actions
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
+
+  responsive-graph:
+    name: Responsive Brain graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install console dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Chromium
+        run: pnpm --dir web/console exec playwright install --with-deps chromium
+
+      - name: Run responsive graph tests
+        run: pnpm console:test:graph
+
+      - name: Upload graph screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: brain-graph-responsive-${{ github.sha }}
+          path: |
+            web/console/test-results/graph
+            web/console/playwright-report
+          if-no-files-found: error
+          retention-days: 14
+
   race:
     name: Race detector
     runs-on: ubuntu-latest

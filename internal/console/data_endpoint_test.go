@@ -24,7 +24,7 @@ func TestDataEndpointUsesExactNestedAllowlist(t *testing.T) {
 			Runtimes:      []RuntimeData{{RuntimeID: "mr_0123456789abcdef0123456789abcdef", State: "awaiting_model", Controller: "pull_rendezvous", LastActivity: "2026-07-17T12:00:00Z"}},
 			Projects:      []ProjectData{{ID: "prj_0123456789abcdef01234567", Label: "Configured project 1"}},
 			Storage:       StorageData{Available: true, DatabaseBytes: 100, WALBytes: 20, LogBytes: 30, TotalBytes: 150, LimitBytes: 256 << 20, State: "healthy"},
-			Brain:         BrainData{Available: true, Ready: true, SchemaVersion: 1, NoteCount: 2, SourceBytes: 100, LinkCount: 1, BrokenLinkCount: 0, IndexedAt: "2026-07-14T20:00:00Z", Nodes: []BrainNode{{ID: "bn_0123456789abcdefghijklmn", Title: "Release gates", Summary: "Verified release controls.", Trust: "curated", Degree: 1}}, Edges: []BrainEdge{{Source: "bn_0123456789abcdefghijklmn", Target: "bn_0123456789abcdefghijklmn"}}},
+			Brain:         BrainData{Available: true, Ready: true, SchemaVersion: 1, NoteCount: 2, SourceBytes: 100, LinkCount: 1, BrokenLinkCount: 0, IndexedAt: "2026-07-14T20:00:00Z", Nodes: []BrainNode{{ID: "bn_0123456789abcdefghijklmn", ConsoleLabel: "Release Gates", Title: "Release gates", Summary: "Verified release controls.", Trust: "curated", Degree: 1}}, Edges: []BrainEdge{{Source: "bn_0123456789abcdefghijklmn", Target: "bn_0123456789abcdefghijklmn"}}},
 			Observability: ObservabilityData{Enabled: true, Failures: 0, Routes: []ObservabilityRoute{{Route: "mcp", Requests: 4, Client4XX: 1, Server5XX: 0, P95MS: 12}}},
 			Security:      SecurityData{OAuthEnabled: true, BearerRecovery: true, QueryAuth: "rejected", FreeShell: "absent", Cookie: "Secure; HttpOnly; SameSite=Strict", ConsoleAuthority: "presentation-only"},
 			Edge:          EdgeData{State: "paired", Devices: []EdgeDeviceData{{ID: "edge_0123456789abcdef01234567", Label: "Paired Edge 1", PairedAt: "2026-07-17T12:00:00Z"}}},
@@ -58,7 +58,7 @@ func TestDataEndpointUsesExactNestedAllowlist(t *testing.T) {
 	assertRawArrayObjectKeys(t, root["projects"], "current", "id", "label")
 	assertObjectKeys(t, root["edge"], "devices", "state")
 	assertArrayObjectKeys(t, root["edge"], "devices", "id", "label", "paired_at")
-	assertArrayObjectKeys(t, root["brain"], "nodes", "degree", "id", "summary", "title", "trust")
+	assertArrayObjectKeys(t, root["brain"], "nodes", "console_label", "degree", "id", "summary", "title", "trust")
 	assertArrayObjectKeys(t, root["brain"], "edges", "source", "target")
 	assertArrayObjectKeys(t, root["observability"], "routes", "client_4xx", "p95_ms", "requests", "route", "server_5xx")
 

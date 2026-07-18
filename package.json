@@ -8,6 +8,7 @@
     "build": "corepack pnpm --dir web/console build",
     "console:check": "pnpm --dir web/console check",
     "console:test": "pnpm --dir web/console test",
+    "console:test:graph": "pnpm --dir web/console test:graph",
     "console:build": "pnpm --dir web/console build",
     "console:verify": "pnpm console:check && pnpm console:test && pnpm console:build"
   }

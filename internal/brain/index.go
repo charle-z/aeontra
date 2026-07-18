@@ -192,6 +192,7 @@ func (i *Index) initialize(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS console_metadata (
 			slug TEXT PRIMARY KEY,
 			title TEXT NOT NULL,
+			console_label TEXT NOT NULL,
 			console_summary TEXT NOT NULL,
 			FOREIGN KEY (slug) REFERENCES notes(slug) ON DELETE CASCADE
 		) STRICT`,
@@ -213,6 +214,9 @@ func (i *Index) initialize(ctx context.Context) error {
 			return errors.New("brain: SQLite/FTS5 schema initialization failed")
 		}
 	}
+	if err := ensureConsoleLabelColumn(ctx, i.db); err != nil {
+		return err
+	}
 	if _, err := i.db.ExecContext(ctx, `INSERT INTO brain_meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO NOTHING`, IndexSchemaVersion); err != nil {
 		return errors.New("brain: SQLite schema version initialization failed")
 	}
@@ -223,6 +227,40 @@ func (i *Index) initialize(ctx context.Context) error {
 	var check string
 	if err := i.db.QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&check); err != nil || check != "ok" {
 		return errors.New("brain: SQLite cache integrity check failed")
+	}
+	return nil
+}
+
+func ensureConsoleLabelColumn(ctx context.Context, database *sql.DB) error {
+	rows, err := database.QueryContext(ctx, `PRAGMA table_info(console_metadata)`)
+	if err != nil {
+		return errors.New("brain: SQLite console metadata schema inspection failed")
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return errors.New("brain: SQLite console metadata schema inspection failed")
+		}
+		if name == "console_label" {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return errors.New("brain: SQLite console metadata schema inspection failed")
+	}
+	if err := rows.Close(); err != nil {
+		return errors.New("brain: SQLite console metadata schema inspection failed")
+	}
+	if found {
+		return nil
+	}
+	if _, err := database.ExecContext(ctx, `ALTER TABLE console_metadata ADD COLUMN console_label TEXT NOT NULL DEFAULT ''`); err != nil {
+		return errors.New("brain: SQLite console metadata migration failed")
 	}
 	return nil
 }
@@ -345,13 +383,14 @@ func validateIndexBounds(notes int, sourceBytes int64) error {
 
 func sanitizeIndexedNote(note Note) Note {
 	note.Metadata.Title, _ = policy.Redact(note.Metadata.Title)
+	note.Metadata.ConsoleLabel, _ = policy.Redact(note.Metadata.ConsoleLabel)
 	note.Metadata.ConsoleSummary, _ = policy.Redact(note.Metadata.ConsoleSummary)
 	note.Metadata.Provenance, _ = policy.Redact(note.Metadata.Provenance)
 	note.Body, _ = policy.Redact(note.Body)
 	return note
 }
 
-func safeConsoleMetadata(note Note) (title, summary string) {
+func safeConsoleMetadata(note Note) (label, title, summary string) {
 	title = strings.TrimSpace(note.Metadata.Title)
 	if redacted, changed := policy.Redact(title); changed {
 		title = "Brain note"
@@ -363,9 +402,20 @@ func safeConsoleMetadata(note Note) (title, summary string) {
 	}
 	title = truncateUTF8(title, MaxTitleBytes)
 
+	label = strings.TrimSpace(note.Metadata.ConsoleLabel)
+	if redacted, changed := policy.Redact(label); changed {
+		label = ""
+	} else {
+		label = strings.TrimSpace(redacted)
+	}
+	if label == "" || strings.Contains(label, "***REDACTED-SECRET***") {
+		label = fallbackConsoleLabel(title)
+	}
+	label = truncateRunes(label, MaxConsoleLabelRunes)
+
 	summary = strings.TrimSpace(note.Metadata.ConsoleSummary)
 	if summary == "" {
-		summary = "No console summary provided."
+		summary = "No curated summary available."
 	} else if redacted, changed := policy.Redact(summary); changed {
 		summary = "Console summary withheld."
 	} else {
@@ -375,7 +425,37 @@ func safeConsoleMetadata(note Note) (title, summary string) {
 		summary = "Console summary withheld."
 	}
 	summary = truncateUTF8(summary, MaxConsoleSummaryBytes)
-	return title, summary
+	return label, title, summary
+}
+
+func fallbackConsoleLabel(title string) string {
+	words := strings.Fields(strings.TrimSpace(title))
+	if len(words) == 0 {
+		return "Brain note"
+	}
+	selected := make([]string, 0, len(words))
+	for _, word := range words {
+		candidate := word
+		if len(selected) > 0 {
+			candidate = strings.Join(selected, " ") + " " + word
+		}
+		if utf8.RuneCountInString(candidate) > MaxConsoleLabelRunes {
+			break
+		}
+		selected = append(selected, word)
+	}
+	if len(selected) > 0 {
+		return strings.Join(selected, " ")
+	}
+	return truncateRunes(words[0], MaxConsoleLabelRunes)
+}
+
+func truncateRunes(value string, maximum int) string {
+	points := []rune(value)
+	if len(points) <= maximum {
+		return value
+	}
+	return string(points[:maximum])
 }
 
 func (i *Index) replaceAll(ctx context.Context, sources []indexedSource) (IndexStatus, error) {
@@ -425,10 +505,10 @@ func upsertNoteTx(ctx context.Context, transaction *sql.Tx, note Note, sourceByt
 	); err != nil {
 		return errors.New("brain: SQLite note update failed")
 	}
-	consoleTitle, consoleSummary := safeConsoleMetadata(note)
-	if _, err := transaction.ExecContext(ctx, `INSERT INTO console_metadata(slug,title,console_summary) VALUES(?,?,?)
-	ON CONFLICT(slug) DO UPDATE SET title=excluded.title,console_summary=excluded.console_summary`,
-		metadata.Slug, consoleTitle, consoleSummary,
+	consoleLabel, consoleTitle, consoleSummary := safeConsoleMetadata(note)
+	if _, err := transaction.ExecContext(ctx, `INSERT INTO console_metadata(slug,title,console_label,console_summary) VALUES(?,?,?,?)
+	ON CONFLICT(slug) DO UPDATE SET title=excluded.title,console_label=excluded.console_label,console_summary=excluded.console_summary`,
+		metadata.Slug, consoleTitle, consoleLabel, consoleSummary,
 	); err != nil {
 		return errors.New("brain: SQLite console metadata update failed")
 	}
