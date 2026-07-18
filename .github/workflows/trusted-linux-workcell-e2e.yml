@@ -140,15 +140,26 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install rootless and browser dependencies
+      - name: Install rootless packages
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             podman uidmap slirp4netns fuse-overlayfs python3-venv
+          podman --version
+
+      - name: Install pinned podman-compose
+        run: |
           python3 -m venv "$RUNNER_TEMP/podman-compose"
-          "$RUNNER_TEMP/podman-compose/bin/pip" install --disable-pip-version-check --no-input podman-compose==1.6.0
+          "$RUNNER_TEMP/podman-compose/bin/pip" install \
+            --disable-pip-version-check --no-input podman-compose==1.6.0
+          "$RUNNER_TEMP/podman-compose/bin/podman-compose" --version
           echo "$RUNNER_TEMP/podman-compose/bin" >> "$GITHUB_PATH"
-          pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Chromium
+        run: |
           pnpm --dir web/console exec playwright install --with-deps chromium
           chromium_bin="$(pnpm --dir web/console exec node -e 'console.log(require("playwright").chromium.executablePath())')"
           test -x "$chromium_bin"
