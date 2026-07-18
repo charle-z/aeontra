@@ -18,12 +18,13 @@ import (
 )
 
 const (
-	MaxSlugBytes       = 64
-	MaxTitleBytes      = 160
-	MaxProvenanceBytes = 1024
-	MaxBodyBytes       = 32 << 10
-	MaxFileBytes       = 40 << 10
-	MaxAgentNameBytes  = 64
+	MaxSlugBytes           = 64
+	MaxTitleBytes          = 160
+	MaxConsoleSummaryBytes = 160
+	MaxProvenanceBytes     = 1024
+	MaxBodyBytes           = 32 << 10
+	MaxFileBytes           = 40 << 10
+	MaxAgentNameBytes      = 64
 
 	CuratedDir = "curated"
 	WorkingDir = "working"
@@ -62,14 +63,15 @@ var (
 
 // Metadata is the exact YAML frontmatter schema. Unknown fields are rejected.
 type Metadata struct {
-	Slug       string   `yaml:"slug" json:"slug"`
-	Title      string   `yaml:"title" json:"title"`
-	Type       NoteType `yaml:"type" json:"type"`
-	Author     string   `yaml:"author" json:"author"`
-	Created    string   `yaml:"created" json:"created"`
-	Updated    string   `yaml:"updated" json:"updated"`
-	Provenance string   `yaml:"provenance" json:"provenance"`
-	ReviewBy   string   `yaml:"review_by,omitempty" json:"review_by,omitempty"`
+	Slug           string   `yaml:"slug" json:"slug"`
+	Title          string   `yaml:"title" json:"title"`
+	Type           NoteType `yaml:"type" json:"type"`
+	Author         string   `yaml:"author" json:"author"`
+	Created        string   `yaml:"created" json:"created"`
+	Updated        string   `yaml:"updated" json:"updated"`
+	Provenance     string   `yaml:"provenance" json:"provenance"`
+	ReviewBy       string   `yaml:"review_by,omitempty" json:"review_by,omitempty"`
+	ConsoleSummary string   `yaml:"console_summary,omitempty" json:"console_summary,omitempty"`
 }
 
 // Note is one validated source note plus derived trust/link state.
@@ -179,6 +181,11 @@ func validateMetadata(metadata Metadata, expectedSlug string, trust TrustLevel, 
 	}
 	if err := validateSingleLine("title", metadata.Title, MaxTitleBytes); err != nil {
 		return false, err
+	}
+	if metadata.ConsoleSummary != "" {
+		if err := validateSingleLine("console_summary", metadata.ConsoleSummary, MaxConsoleSummaryBytes); err != nil {
+			return false, err
+		}
 	}
 	if err := validateType(metadata.Type); err != nil {
 		return false, err
@@ -324,6 +331,9 @@ func BuildAgentNote(draft AgentDraft, existing *Note, now time.Time) (Note, erro
 		Updated:    now.Format(time.RFC3339),
 		Provenance: strings.TrimSpace(draft.Provenance),
 		ReviewBy:   strings.TrimSpace(draft.ReviewBy),
+	}
+	if existing != nil {
+		metadata.ConsoleSummary = existing.Metadata.ConsoleSummary
 	}
 	body := strings.TrimSpace(draft.Body)
 	if body == "" || len(body) > MaxBodyBytes {

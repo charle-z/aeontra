@@ -25,14 +25,14 @@ func TestJournalPersistsTransitionsAndPublishesSafeEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	started := <-events
-	if started.TaskID != testTaskID || started.Operation != "repo_status" || started.Summary != "MCP tool operation: repo_status" || started.State != StateExecuting {
+	if started.TaskID != testTaskID || started.Operation != "repo_status" || started.Task.Summary != "MCP tool operation: repo_status" || started.State != StateExecuting {
 		t.Fatalf("started=%+v", started)
 	}
 	now = now.Add(time.Second)
 	if err := journal.Transition(testTaskID, StateValidating); err != nil {
 		t.Fatal(err)
 	}
-	if got := <-events; got.State != StateValidating || !got.Heartbeat.Equal(now) {
+	if got := <-events; got.State != StateValidating || !got.Task.HeartbeatAt.Equal(now) {
 		t.Fatalf("validating=%+v", got)
 	}
 	now = now.Add(time.Second)
@@ -52,7 +52,7 @@ func TestJournalPersistsTransitionsAndPublishesSafeEvents(t *testing.T) {
 	if err != nil || len(snapshot) != 1 || snapshot[0].State != StateCompleted {
 		t.Fatalf("snapshot=%+v err=%v", snapshot, err)
 	}
-	body, err := os.ReadFile(filepath.Join(root, testTaskID+".json"))
+	body, err := os.ReadFile(filepath.Join(root, "tasks.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,16 +134,19 @@ func TestJournalRejectsUnsafeFieldsAndFiles(t *testing.T) {
 	if _, err := Open("relative/tasks"); err == nil {
 		t.Fatal("relative root accepted")
 	}
-	if err := os.Symlink(t.TempDir(), filepath.Join(root, testTaskID+".json")); err != nil {
+	symlinkRoot := filepath.Join(t.TempDir(), "symlink-tasks")
+	if err := os.MkdirAll(symlinkRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := journal.store.Get(testTaskID); err == nil {
-		t.Fatal("symlink entry accepted")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "target.db"), filepath.Join(symlinkRoot, "tasks.db")); err == nil {
+		if _, err := Open(symlinkRoot); err == nil {
+			t.Fatal("symlink database accepted")
+		}
 	}
 	if err := journal.Transition("ffffffffffffffffffffffffffffffff", StateCompleted); err == nil {
 		t.Fatal("missing task transition accepted")
 	}
-	if _, err := journal.Snapshot(maxEntries + 1); err == nil {
+	if _, err := journal.Snapshot(MaxPageSize + 1); err == nil {
 		t.Fatal("invalid snapshot limit accepted")
 	}
 }

@@ -130,3 +130,47 @@ td[data-tone="dim"] { color: var(--vga-gray); }
   td { padding-inline: 0.6ch; }
   .brain-graph { min-height: 280px; }
 }
+
+
+.filter-bar,
+.stream-bar,
+.paging-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.45rem 1rem;
+  padding: 0.45rem 1rem;
+  border-block: 1px solid var(--vga-gray-low);
+  background: var(--vga-blue-dark);
+}
+
+.filter-bar label {
+  display: grid;
+  gap: 0.15rem;
+  color: var(--vga-cyan);
+}
+
+.filter-bar select,
+.filter-bar input,
+.paging-bar button {
+  border: 1px solid var(--vga-white);
+  padding: 0.12rem 0.4rem;
+  background: var(--vga-gray);
+  color: var(--vga-black);
+}
+
+.filter-bar input { width: 22ch; }
+.paging-bar { justify-content: space-between; color: var(--vga-gray); }
+.paging-bar button { cursor: pointer; }
+.paging-bar button:disabled { cursor: default; color: var(--vga-gray-low); }
+.stream-bar { align-items: center; color: var(--vga-gray); }
+.stream-bar span[data-tone="ok"] { color: var(--vga-green); }
+.stream-bar span[data-tone="warn"] { color: var(--vga-red); }
+.stream-bar span[data-tone="dim"] { color: var(--vga-yellow); }
+.table-scroll time { color: var(--vga-cyan); }
+
+@media (max-width: 720px) {
+  .filter-bar label { flex: 1 1 12rem; }
+  .filter-bar select,
+  .filter-bar input { width: 100%; }
+}

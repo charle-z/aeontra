@@ -46,6 +46,7 @@ type Snapshot struct {
 	ExternalWaitMS int64
 	ClientErrors   int64
 	ServerErrors   int64
+	UpdatedAt      int64
 	Outcomes       map[string]int64
 }
 
@@ -67,6 +68,10 @@ func Open(cfg Config) (*Store, error) {
 		store.now = time.Now
 	}
 	if err := store.initialize(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := store.ensureLifetime(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -126,14 +131,8 @@ func (s *Store) Observe(event observability.Event) error {
 	dimensions := safeDimensions(event)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, period := range []string{"hourly", "daily"} {
-		bucket := now.Truncate(time.Hour)
-		if period == "daily" {
-			bucket = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-		}
-		if err := s.upsert(period, bucket, dimensions, metric); err != nil {
-			return err
-		}
+	if err := s.observeTransactional(now, dimensions, metric); err != nil {
+		return err
 	}
 	s.observed++
 	if s.observed%pruneEvery == 0 {

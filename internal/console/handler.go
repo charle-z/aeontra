@@ -4,11 +4,9 @@
 package console
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/authfirmware"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 )
@@ -63,7 +62,7 @@ type Config struct {
 	Session       SessionConfig
 }
 
-// Handler owns only presentation assets and an in-memory digest-only session store.
+// Handler owns presentation assets and the configured digest-only session store.
 type Handler struct {
 	staticToken  string
 	runtime      Status
@@ -123,11 +122,13 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	if h == nil || mux == nil {
 		return
 	}
+	mux.HandleFunc(authfirmware.Path, authfirmware.ServeHTTP)
 	mux.HandleFunc(consolePath, h.handleConsole)
 	mux.HandleFunc(loginPath, h.handleLogin)
 	mux.HandleFunc(logoutPath, h.handleLogout)
 	mux.HandleFunc(statusPath, h.handleStatus)
 	mux.HandleFunc(tasksPath, h.handleTasks)
+	mux.HandleFunc(eventLogPath, h.handleEventLog)
 	mux.HandleFunc(taskEventsPath, h.handleTaskEvents)
 	mux.HandleFunc(dataPath, h.handleData)
 	if h.oauthClient != nil {
@@ -326,51 +327,6 @@ func (h *Handler) writeConsolePage(w http.ResponseWriter) {
 	_, _ = w.Write(h.indexHTML)
 }
 
-func (h *Handler) writeLoginPage(w http.ResponseWriter, failed bool) {
-	nonce, err := randomHex(16)
-	if err != nil {
-		writeGenericError(w, http.StatusServiceUnavailable)
-		return
-	}
-	hardenResponse(w, loginCSP(nonce))
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	status := http.StatusOK
-	message := ""
-	if failed {
-		status = http.StatusUnauthorized
-		message = `<p class="error" role="alert">Authentication failed.</p>`
-	}
-	loginControl := `<p class="note">No console authentication method is configured.</p>`
-	if h.oauthClient != nil {
-		loginControl = `<p><a class="oauth" href="/console/auth/start">Sign in with OAuth</a></p><p class="note">The owner passphrase is entered only on the OAuth authorization page. Access tokens never reach JavaScript.</p>`
-	}
-	if h.staticToken != "" {
-		bearerForm := `<form method="post" action="/console/login" autocomplete="off"><label for="token">Recovery bearer token</label><input id="token" name="token" type="password" required maxlength="4096" autocomplete="current-password"><button type="submit">Sign in with bearer</button></form><p class="note">The bearer is submitted in the HTTPS request body and is never stored in the browser session cookie.</p>`
-		loginControl += bearerForm
-	}
-	page := `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>MCP Devbox Console — Sign in</title>
-<style nonce="` + nonce + `">
-:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:#07090d;color:#edf4ff}
-*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:1rem;background:radial-gradient(circle at top,#142134 0,#07090d 45%)}
-main{width:min(28rem,100%);padding:2rem;border:1px solid #263044;border-radius:1rem;background:#0d1118;box-shadow:0 24px 70px #0008}
-mark{display:grid;width:3rem;height:3rem;place-items:center;border:1px solid #73f4c366;border-radius:.85rem;color:#73f4c3;background:#73f4c311;font-weight:800}
-h1{margin:1.25rem 0 .5rem;font-size:2rem;letter-spacing:-.04em}p{color:#9ba9bd}label{display:block;margin:1.5rem 0 .45rem;font-weight:700}
-input{width:100%;padding:.8rem;border:1px solid #35415a;border-radius:.7rem;background:#07090d;color:#edf4ff;font:inherit}input:focus{outline:3px solid #8ea8ff;outline-offset:2px}
-button,.oauth{display:block;width:100%;margin-top:1rem;padding:.8rem;border:0;border-radius:.7rem;background:#73f4c3;color:#07100d;font:inherit;font-weight:800;cursor:pointer;text-align:center;text-decoration:none;box-sizing:border-box}
-.error{padding:.75rem;border:1px solid #ff8e9e66;border-radius:.65rem;color:#ffb6c0;background:#ff8e9e10}.note{font-size:.82rem}
-</style>
-</head>
-<body><main><mark aria-hidden="true">M</mark><h1>MCP Devbox Console</h1><p>Sign in to the private presentation surface.</p>` + message + loginControl + `</main></body></html>`
-	w.WriteHeader(status)
-	_, _ = io.WriteString(w, page)
-}
-
 func (h *Handler) authorized(r *http.Request) bool {
 	return h.sessionAuthorized(r) || h.directAuthorized(r)
 }
@@ -441,10 +397,6 @@ func hardenResponse(w http.ResponseWriter, csp string) {
 	w.Header().Set("Pragma", "no-cache")
 }
 
-func loginCSP(nonce string) string {
-	return "default-src 'none'; style-src 'nonce-" + nonce + "'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
-}
-
 func errorCSP() string {
 	return "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 }
@@ -467,15 +419,4 @@ func writeUnauthorized(w http.ResponseWriter) {
 func writeGenericError(w http.ResponseWriter, status int) {
 	hardenResponse(w, "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
 	http.Error(w, "request failed", status)
-}
-
-func randomHex(size int) (string, error) {
-	if size <= 0 || size > 64 {
-		return "", errors.New("invalid random size")
-	}
-	buffer := make([]byte, size)
-	if _, err := io.ReadFull(rand.Reader, buffer); err != nil {
-		return "", errors.New("secure random generation failed")
-	}
-	return hex.EncodeToString(buffer), nil
 }

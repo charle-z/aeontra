@@ -6,8 +6,8 @@ Compact handoff for any AI session. Keep this file short and current.
 
 P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11.2 is a release
 candidate on `p11-2-remote-opencode-relay`; it is not merged or deployed. The
-candidate catalog contains 78 tools with hash
-`sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
+candidate catalog contains 85 tools with hash
+`sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
 P11.2 adds the signed Remote OpenCode Model-Turn Relay over Edge. The VPS stores
 the authoritative runtime and model-turn state; `mcp-edge` and
@@ -467,3 +467,8 @@ Coolify application `jqf7qz5ensoqtvl1tb197gcv` and tagged `p8.1`. Production rep
 catalog, Brain and console smokes are green. Query-string credentials return 401,
 header bearer recovery remains valid, the console cookie is strict and opaque,
 `/state/tasks` and SSE are operational, and Edge honestly reports `not_paired`.
+
+
+## Console durable live state release candidate
+
+Branch `console-durable-live-state` was initially based on `399d7ac` and now includes main through `77a93ad` via normal merge `ec0753d`. It preserves the deployed P8.1/P9 foundations and keeps exactly 85 tools with hash `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`. New private state is additive under `/state/tasks/tasks.db`, `/state/console/sessions.db` and `/state/brain/console-node.key`. The browser Event Log is server-persisted, SSE replays by Last-Event-ID, and selectors expose only generic labels plus opaque IDs. The branch is a release candidate only; PR gates, merge and deployment remain pending.

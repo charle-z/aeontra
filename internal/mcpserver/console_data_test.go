@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,6 +87,9 @@ func TestConsoleDataProviderIncludesOpaqueBrainSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := store.ConfigureConsoleIdentity(filepath.Join(t.TempDir(), "state", "brain", "console-node.key")); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.InitializeGit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +105,7 @@ author: owner
 created: 2026-07-14T19:00:00Z
 updated: 2026-07-14T19:00:00Z
 provenance: private test fixture
+console_summary: Safe console fixture
 ---
 
 A private body.
@@ -118,8 +123,12 @@ A private body.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !snapshot.Brain.Available || !snapshot.Brain.Ready || snapshot.Brain.SchemaVersion != 1 || snapshot.Brain.NoteCount != 1 || len(snapshot.Brain.Nodes) != 1 || snapshot.Brain.Nodes[0].ID != "n0001" {
+	if !snapshot.Brain.Available || !snapshot.Brain.Ready || snapshot.Brain.SchemaVersion != 1 || snapshot.Brain.NoteCount != 1 || len(snapshot.Brain.Nodes) != 1 {
 		t.Fatalf("brain=%+v", snapshot.Brain)
+	}
+	node := snapshot.Brain.Nodes[0]
+	if !strings.HasPrefix(node.ID, "bn_") || node.Title != "Private console source" || node.Summary != "Safe console fixture" || strings.Contains(node.ID, "private-console-source") {
+		t.Fatalf("node=%+v", node)
 	}
 	if snapshot.Security.OAuthEnabled || snapshot.Security.BearerRecovery || snapshot.Observability.Enabled {
 		t.Fatalf("unexpected optional state: security=%+v observability=%+v", snapshot.Security, snapshot.Observability)

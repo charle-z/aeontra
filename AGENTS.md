@@ -24,10 +24,10 @@ Operating rules for any AI agent working in this repo. Read this first, then
   `docs/baselines/2026-07-14-p8_1-production.md`. P11.2 adds signed Edge model
   runtimes, the remote OpenCode model-turn relay, a private local driver socket,
   mandatory Bubblewrap for OpenCode, restart/resume evidence and the human-only
-  Parrot WSL installation guide. The candidate has 78 tools and catalog hash
-  `sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed`.
+  Parrot WSL installation guide. The candidate has 85 tools and catalog hash
+  `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
   It is not merged, deployed, paired or installed on Parrot.
-  The project has stdio and HTTP/OAuth transports, policy core, 78 annotated MCP
+  The project has stdio and HTTP/OAuth transports, policy core, 85 annotated MCP
   tools, action plans, audit, persistent notes, Brain and adversarial tests.
   The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see

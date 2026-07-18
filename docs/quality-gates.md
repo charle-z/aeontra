@@ -150,3 +150,20 @@ justification, owner, and expiry date; global or permanent ignores are not accep
 - SSE is authenticated and best-effort with durable polling fallback.
 - System, payload, observability, Brain graph, security and Edge data use exact nested key allowlists; Brain identifiers are opaque and Edge remains Not paired.
 - Production closure requires exact commit, 67 tools, P9 catalog hash, existing catalog/Brain smokes, console OAuth/status/data/tasks/SSE smoke and no new application or pending deployment.
+
+
+## Console durable live state closure gates
+
+For `console-durable-live-state`, require all of the following before the PR can be considered green:
+
+1. `go test ./...` and coverage report.
+2. `go test -race ./...`, `go vet ./...` and production build.
+3. Staticcheck, Govulncheck and Actionlint.
+4. Frozen-lockfile frontend check, Vitest and Vite production build.
+5. OAuth and durable-session restart E2E.
+6. legacy JSON migration and journal/event restart E2E.
+7. production Docker build.
+8. CodeQL, SBOM and Dependency Review.
+9. console smoke verifying the published SHA, 85 tools, catalog hash and presentation-only surface.
+
+No gate authorizes merge or deployment.

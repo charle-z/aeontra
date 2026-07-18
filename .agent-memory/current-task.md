@@ -1,19 +1,32 @@
-# Current task
+# Console Durable Live State & Auth Firmware
 
-Date: 2026-07-16
-Branch: security-findings-closure
-Base: origin/main at b9ee5ea9fd18a72d9687784eeb5cbfd8603427b5
+Branch: `console-durable-live-state`.
+Current HEAD after normal main integration: `ec0753d437acb781aa76392c81099394d75f0d37`.
 
-P8.1 is deployed at d343264bffdc0ae1bc045a9d723e913be977090c. P9 Brain is deployed and P11.2 is the deployed successor. This task does not change those milestones, production, Parrot, Edge, OpenCode, Bubblewrap, frontend, protocol, catalog, Brain or telemetry.
+Historical deployed foundations:
+- P9 Brain is deployed and remains the Markdown-truth / SQLite-derived-cache foundation.
+- P8.1 Console 2.0 is deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
+- The historical P8.1 surface had 67 tools and reported Edge as `not_paired`; those facts remain historical evidence, not the current catalog.
 
-Objective: close the historical CodeQL findings for validation-runner paths, console cookies and the GitHub-token detector on branch security-findings-closure without merge or deployment.
+Closed milestone commits:
+- `c284dcd` — Step 1: durable SQLite Operation Journal and recoverable SSE.
+- `e4c674e` — Step 2: durable telemetry windows/lifetime and controller/runtime state.
+- `22a9daf` — Step 3: durable digest-only console browser sessions.
+- `9cdfe56` — Step 4: shared Neo-BIOS authentication firmware for console and OAuth.
+- `aa1c30d` — Step 5: safe Brain node metadata, HMAC IDs and restart-safe identity.
+- `225b6e1` — Step 6: persistent Events, SSE replay/reconnect, real opaque selectors, storage budget and complete live-state frontend.
+- `9c41638` — Step 7: documentation/catalog synchronization and coverage closure.
+- `ec0753d` — normal merge of main through `77a93ad`, preserving the GitHub Checks→Actions fallback and fail-closed merge evidence.
 
-Completed commits:
+Current catalog invariant:
+- exactly 85 tools;
+- `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
-- 0e5b6768fbdfdfbdc447cbec2435a59f745b7cbf — Step 1: bind validation mounts to server-owned registry.
-- 414ef78f09fe061e93f144b92cf21e3fa4460aa0 — Step 2: enforce secure production cookies.
-- bbc4316ec79f545d18993792609be22e9e76c978 — Step 3: document secret-scanner regex semantics.
+Local evidence on the integrated tree:
+- full Go packages pass, with resource-limited monolithic runs completed in verified groups;
+- coverage gate passes, including `internal/taskjournal` at 80.8%;
+- vet, build, Staticcheck, Govulncheck and Actionlint pass;
+- frontend TypeScript, 5 Vitest tests and Vite production build pass;
+- local race and Docker remain remote-gate requirements because this runner has no gcc or Docker backend.
 
-Current work: pin manifest filesystem identity, update console smoke expectations, create the dated security report, execute all gates, publish the branch and open a PR against main.
-
-The available GitHub token receives HTTP 403 from the code-scanning alerts REST endpoint. Historical check annotations recovered the two cookie findings exactly. Path and regex findings are reconstructed from their CodeQL rule IDs, production locations and Git history. The PR CodeQL check is the authoritative exact-SHA validation.
+Next: commit this final candidate record, rerun the exact final checks, publish only this branch, open the PR, wait every exact-SHA gate, merge by merge commit, and allow only the automatic Coolify deployment.

@@ -1,21 +1,22 @@
-# Latest handoff — security findings closure
+# Latest handoff — console durable live state release candidate
 
-Date: 2026-07-16
-Branch: security-findings-closure
-Base: production merge b9ee5ea9fd18a72d9687784eeb5cbfd8603427b5
+Date: 2026-07-17
+Branch: `console-durable-live-state`
+Integrated HEAD: `ec0753d437acb781aa76392c81099394d75f0d37`
 
-Historical state remains intact: P8.1 is closed and deployed at d343264bffdc0ae1bc045a9d723e913be977090c. The historical p8.1 catalog had 67 tools and reported Edge as not_paired. P9 Brain and P11.2 are deployed successors; this branch does not modify them.
+Historical foundations remain explicit:
+- P8.1 is closed, deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
+- Its historical catalog had 67 tools and Edge state `not_paired`.
+- P9 Brain is deployed and preserved as Markdown truth with a derived SQLite cache.
 
-Completed commits:
+Completed console work:
+- Steps 1–5: `c284dcd`, `e4c674e`, `22a9daf`, `9cdfe56`, `aa1c30d`.
+- Step 6: `225b6e1` — persistent Tasks/Events, replayable SSE, real opaque scopes, combined storage budget and complete React live state.
+- Step 7: `9c41638` — final documentation/catalog identity and coverage closure.
+- Main was merged normally at `ec0753d`, incorporating GitHub PR evidence fallback through `77a93ad` without conflicts.
 
-- 0e5b6768fbdfdfbdc447cbec2435a59f745b7cbf — server-owned validation repository registry.
-- 414ef78f09fe061e93f144b92cf21e3fa4460aa0 — unconditional secure production cookies.
-- bbc4316ec79f545d18993792609be22e9e76c978 — documented secret-scanner search semantics.
+Current catalog is exactly 85 tools with hash `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
-Uncommitted closure work pins package.json identity, updates console-smoke to the Path slash cookie policy, adds the dated CodeQL report and refreshes agent memory. Full serial tests, coverage gate, vet, build, Staticcheck, Govulncheck, Actionlint and focused security tests are green. Local race cannot start because gcc is absent; local no-cache Docker builds cannot start because Docker is absent. Remote gates are mandatory.
+Verified locally on the integrated tree: package suites, documentation, coverage thresholds, vet, build, Staticcheck, Govulncheck, Actionlint, TypeScript, Vitest and Vite. Race and Docker must be confirmed by GitHub because the public runner lacks gcc and Docker.
 
-The current catalog remains exactly 78 tools with hash sha256:9a20218d912bd2f6f42a254145d97c976cfcdd581f89340d563c1642e03318ed.
-
-The available token receives HTTP 403 from the code-scanning alerts endpoint. Historical checks expose the two cookie annotations; path and regex findings are reconstructed from rule IDs, production locations and Git history. Do not claim dashboard closure without direct evidence.
-
-Next: create Step 4 closure commit, publish only security-findings-closure, open a PR against main, and wait for every required exact-SHA gate. Do not merge or deploy.
+Next: create the final candidate record commit, publish only `console-durable-live-state`, open the PR against main, wait all gates, merge by merge commit, observe the automatic Coolify deployment, then run catalog, Brain, console and authentication smokes against the exact deployed commit.

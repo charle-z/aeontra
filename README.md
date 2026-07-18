@@ -213,3 +213,8 @@ writes require explicit approval in ask mode; aliases never weaken policy.
   privilege challenges, and infrastructure/security boundaries.
 - `docs/open-source-release.md` — proposed public/private boundary, license options,
   and release-readiness checklist.
+
+
+## Console durable live state candidate
+
+The `console-durable-live-state` branch upgrades the presentation-only console without changing the 78-tool MCP catalog. It adds durable digest-only sessions, SQLite task/event history, recoverable SSE, stable safe Brain metadata, real opaque Project/Edge selectors and combined DB/WAL/log budget reporting. The release-candidate contract is documented in `docs/console.md` and `docs/baselines/2026-07-17-console-durable-live-state.md`. It is not merged or deployed.

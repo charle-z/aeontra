@@ -43,7 +43,7 @@ func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr, telemetryErr, resultErr, modelTurnErr, edgeErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, journalErr, resultErr, modelTurnErr, edgeErr error
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -56,6 +56,9 @@ func (r *appRuntime) Close() error {
 	if r.Telemetry != nil {
 		telemetryErr = r.Telemetry.Close()
 	}
+	if r.Journal != nil {
+		journalErr = r.Journal.Close()
+	}
 	if r.Results != nil {
 		resultErr = r.Results.Close()
 	}
@@ -65,7 +68,7 @@ func (r *appRuntime) Close() error {
 	if r.Edge != nil {
 		edgeErr = r.Edge.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil {
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || journalErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
@@ -113,7 +116,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, err
 	}
-	service, err := buildToolService(opts.Config, pol, logger, primary, opts.BrainRoot)
+	service, err := buildToolService(opts.Config, pol, logger, primary, opts.BrainRoot, stateRoot)
 	if err != nil {
 		_ = metrics.Close()
 		_ = observer.Close()
@@ -153,7 +156,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Logger:      logger,
 		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore),
+		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithConsoleStorageRoots(stateRoot, auditPath),
 		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,
@@ -176,7 +179,7 @@ func buildTaskJournal(root string) (*taskjournal.Journal, error) {
 	return journal, nil
 }
 
-func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logger, primary, brainRoot string) (*tools.Service, error) {
+func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logger, primary, brainRoot, stateRoot string) (*tools.Service, error) {
 	service := tools.NewService(pol, logger, primary).
 		WithTestCommand(cfg.TestCommand).
 		WithSandboxRunner(buildSandboxRunner(cfg, primary)).
@@ -193,7 +196,7 @@ func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logge
 	if github := buildGitHubClientFromEnv(); github != nil {
 		service = service.WithGitHub(github)
 	}
-	brainStore, err := buildBrainStore(brainRoot, pol.Roots())
+	brainStore, err := buildBrainStore(brainRoot, pol.Roots(), filepath.Join(stateRoot, "brain", "console-node.key"))
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +206,7 @@ func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logge
 	return service, nil
 }
 
-func buildBrainStore(root string, repositoryRoots []string) (*brainpkg.Store, error) {
+func buildBrainStore(root string, repositoryRoots []string, consoleIdentityPath string) (*brainpkg.Store, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, nil
 	}
@@ -215,6 +218,10 @@ func buildBrainStore(root string, repositoryRoots []string) (*brainpkg.Store, er
 	store, err := brainpkg.OpenStoreWithClock(root, time.Now)
 	if err != nil {
 		return nil, fmt.Errorf("initializing brain store: %w", err)
+	}
+	if err := store.ConfigureConsoleIdentity(consoleIdentityPath); err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("initializing brain console identity: %w", err)
 	}
 	cleanup := func() { _ = store.Close() }
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

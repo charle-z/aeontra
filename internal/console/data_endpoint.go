@@ -21,18 +21,24 @@ type SystemData struct {
 }
 
 type PayloadData struct {
-	RequestCount         uint64 `json:"request_count"`
-	InputBytes           uint64 `json:"input_bytes"`
-	OutputBytes          uint64 `json:"output_bytes"`
-	InputTokensEstimate  uint64 `json:"input_tokens_estimate"`
-	OutputTokensEstimate uint64 `json:"output_tokens_estimate"`
-	Formula              string `json:"formula"`
+	ProcessStartedAt       string `json:"process_started_at"`
+	ToolCallCount          uint64 `json:"tool_call_count"`
+	EstimatedPayloadTokens uint64 `json:"estimated_payload_tokens"`
+	Warning                string `json:"warning"`
+	RequestCount           uint64 `json:"request_count"`
+	InputBytes             uint64 `json:"input_bytes"`
+	OutputBytes            uint64 `json:"output_bytes"`
+	InputTokensEstimate    uint64 `json:"input_tokens_estimate"`
+	OutputTokensEstimate   uint64 `json:"output_tokens_estimate"`
+	Formula                string `json:"formula"`
 }
 
 type BrainNode struct {
-	ID     string `json:"id"`
-	Trust  string `json:"trust"`
-	Degree int    `json:"degree"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
+	Trust   string `json:"trust"`
+	Degree  int    `json:"degree"`
 }
 
 type BrainEdge struct {
@@ -78,17 +84,23 @@ type SecurityData struct {
 }
 
 type EdgeData struct {
-	State string `json:"state"`
+	State   string           `json:"state"`
+	Devices []EdgeDeviceData `json:"devices"`
 }
 
 type DataSnapshot struct {
-	SchemaVersion int               `json:"schema_version"`
-	System        SystemData        `json:"system"`
-	Payload       PayloadData       `json:"payload"`
-	Brain         BrainData         `json:"brain"`
-	Observability ObservabilityData `json:"observability"`
-	Security      SecurityData      `json:"security"`
-	Edge          EdgeData          `json:"edge"`
+	SchemaVersion   int                 `json:"schema_version"`
+	System          SystemData          `json:"system"`
+	Payload         PayloadData         `json:"payload"`
+	DurableActivity DurableActivityData `json:"durable_activity"`
+	Controllers     []ControllerData    `json:"controllers"`
+	Runtimes        []RuntimeData       `json:"runtimes"`
+	Projects        []ProjectData       `json:"projects"`
+	Storage         StorageData         `json:"storage"`
+	Brain           BrainData           `json:"brain"`
+	Observability   ObservabilityData   `json:"observability"`
+	Security        SecurityData        `json:"security"`
+	Edge            EdgeData            `json:"edge"`
 }
 
 type DataProvider func(context.Context) (DataSnapshot, error)
@@ -111,7 +123,7 @@ func (h *Handler) handleData(w http.ResponseWriter, r *http.Request) {
 		writeGenericError(w, http.StatusServiceUnavailable)
 		return
 	}
-	snapshot.SchemaVersion = 1
+	snapshot.SchemaVersion = 3
 	hardenResponse(w, "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(snapshot)

@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/console"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
+	"github.com/charle-z/mcp-devbox/internal/telemetry"
 )
 
 func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Provider, edgeState func() string) console.DataProvider {
@@ -19,12 +21,16 @@ func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Pr
 		snapshot := console.DataSnapshot{
 			System: readSystemData(),
 			Payload: console.PayloadData{
-				RequestCount:         payload.RequestCount,
-				InputBytes:           payload.InputBytes,
-				OutputBytes:          payload.OutputBytes,
-				InputTokensEstimate:  payload.InputBytes / 4,
-				OutputTokensEstimate: payload.OutputBytes / 4,
-				Formula:              "bytes / 4 (estimate)",
+				ProcessStartedAt:       s.startedAt.Format(time.RFC3339),
+				RequestCount:           payload.RequestCount,
+				ToolCallCount:          payload.ToolCalls,
+				InputBytes:             payload.InputBytes,
+				OutputBytes:            payload.OutputBytes,
+				EstimatedPayloadTokens: (payload.InputBytes + payload.OutputBytes) / 4,
+				InputTokensEstimate:    payload.InputBytes / 4,
+				OutputTokensEstimate:   payload.OutputBytes / 4,
+				Formula:                "bytes / 4 (estimate)",
+				Warning:                "estimate, not provider billing",
 			},
 			Security: console.SecurityData{
 				OAuthEnabled:     oauthProvider != nil,
@@ -34,15 +40,41 @@ func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Pr
 				Cookie:           "Secure; HttpOnly; SameSite=Strict",
 				ConsoleAuthority: "presentation-only",
 			},
-			Edge:          console.EdgeData{State: "not_paired"},
+			Projects:      s.consoleProjects(),
+			Storage:       readConsoleStorageBudget(s.stateRoot, s.auditPath),
+			Edge:          console.EdgeData{State: "not_paired", Devices: []console.EdgeDeviceData{}},
 			Brain:         console.BrainData{Nodes: []console.BrainNode{}, Edges: []console.BrainEdge{}},
 			Observability: console.ObservabilityData{Routes: []console.ObservabilityRoute{}},
+		}
+		controllers, runtimes, err := s.consoleAgentState(ctx)
+		if err != nil {
+			return console.DataSnapshot{}, err
+		}
+		snapshot.Controllers = controllers
+		snapshot.Runtimes = runtimes
+
+		if s.telemetry != nil {
+			activity, err := s.telemetry.Activity()
+			if err != nil {
+				return console.DataSnapshot{}, err
+			}
+			snapshot.DurableActivity = console.DurableActivityData{
+				Last24Hours: activityWindowData(activity.Last24Hours), Last7Days: activityWindowData(activity.Last7Days),
+				Last30Days: activityWindowData(activity.Last30Days), Last90Days: activityWindowData(activity.Last90Days),
+				Lifetime: activityWindowData(activity.Lifetime),
+			}
 		}
 		if edgeState != nil {
 			switch state := edgeState(); state {
 			case "paired", "not_paired", "unavailable":
 				snapshot.Edge.State = state
 			}
+		}
+		devices, edgeErr := s.consoleEdgeDevices()
+		if edgeErr != nil {
+			snapshot.Edge.State = "unavailable"
+		} else {
+			snapshot.Edge.Devices = devices
 		}
 
 		if s.observer != nil {
@@ -72,7 +104,8 @@ func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Pr
 				snapshot.Brain.GraphTruncated = brainSnapshot.GraphTruncated
 				for _, node := range brainSnapshot.Nodes {
 					snapshot.Brain.Nodes = append(snapshot.Brain.Nodes, console.BrainNode{
-						ID: node.ID, Trust: string(node.Trust), Degree: node.Degree,
+						ID: node.ID, Title: node.Title, Summary: node.Summary,
+						Trust: string(node.Trust), Degree: node.Degree,
 					})
 				}
 				for _, edge := range brainSnapshot.Edges {
@@ -83,6 +116,20 @@ func (s *Server) consoleDataProvider(staticToken string, oauthProvider *oauth.Pr
 			}
 		}
 		return snapshot, nil
+	}
+}
+
+func activityWindowData(snapshot telemetry.Snapshot) console.ActivityWindowData {
+	updatedAt := ""
+	if snapshot.UpdatedAt > 0 {
+		updatedAt = time.Unix(snapshot.UpdatedAt, 0).UTC().Format(time.RFC3339)
+	}
+	return console.ActivityWindowData{
+		Requests: snapshot.RequestCount, ToolCalls: snapshot.ToolCallCount,
+		InputBytes: snapshot.InputBytes, OutputBytes: snapshot.OutputBytes,
+		EstimatedPayloadTokens: (snapshot.InputBytes + snapshot.OutputBytes) / 4,
+		ClientErrors:           snapshot.ClientErrors, ServerErrors: snapshot.ServerErrors,
+		ExternalWaitMS: snapshot.ExternalWaitMS, UpdatedAt: updatedAt,
 	}
 }
 

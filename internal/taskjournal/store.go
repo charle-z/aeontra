@@ -159,6 +159,7 @@ func (s *Store) readLocked(path string) (Entry, error) {
 	if err := entry.validate(); err != nil {
 		return Entry{}, err
 	}
+	entry.Heartbeat = entry.HeartbeatAt
 	return entry, nil
 }
 

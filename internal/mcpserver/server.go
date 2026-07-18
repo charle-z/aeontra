@@ -20,6 +20,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
+	"github.com/charle-z/mcp-devbox/internal/telemetry"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 )
 
@@ -33,10 +34,14 @@ type Server struct {
 	order       []string
 	observer    *observability.Logger
 	journal     *taskjournal.Journal
+	telemetry   *telemetry.Store
+	startedAt   time.Time
 	payload     payloadCounters
 	clients     *clientCapabilityStore
 	modelTurns  *modelturn.Store
 	edgeDevices edgeDeviceRegistry
+	stateRoot   string
+	auditPath   string
 	modelWaitMu sync.Mutex
 	modelWaits  map[string]struct{}
 }
@@ -71,6 +76,7 @@ func NewWithObserver(svc *tools.Service, observer *observability.Logger) *Server
 		name:       "mcp-devbox",
 		table:      map[string]toolEntry{},
 		observer:   observer,
+		startedAt:  time.Now().UTC(),
 		clients:    newClientCapabilityStore(),
 		modelWaits: map[string]struct{}{},
 	}
@@ -262,7 +268,8 @@ func (s *Server) callToolObservedSession(req rpcRequest, transport observability
 	if !ok {
 		return errorResponse(req.ID, -32602, "unknown tool: "+params.Name), "unknown", observability.OutcomeError, observability.ErrorUnknownTool
 	}
-	taskID, stopHeartbeat := s.startTaskJournal(params.Name, transport)
+	s.payload.recordToolCall()
+	taskID, stopHeartbeat := s.startTaskJournal(params.Name, transport, params.Arguments)
 	var text string
 	var err error
 	if entry.sessionHandler != nil {

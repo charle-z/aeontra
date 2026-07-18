@@ -93,6 +93,7 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 		OAuthProvider: oauthProvider,
 		TaskJournal:   s.journal,
 		DataProvider:  s.consoleDataProvider(token, oauthProvider, opts.EdgeState),
+		Session:       console.SessionConfig{Path: opts.ConsoleSessionPath},
 	})
 	if err != nil {
 		panic(fmt.Sprintf("invalid console configuration: %v", err))
