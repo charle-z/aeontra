@@ -696,11 +696,28 @@ func p12WriteArtifact(t *testing.T, name string, value any) {
 			t.Fatalf("P12 report leaked forbidden marker %q", forbidden)
 		}
 	}
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
+	directory := strings.TrimSpace(os.Getenv("P12_ARTIFACT_DIR"))
+	if directory == "" {
+		workingDirectory, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		current := workingDirectory
+		for {
+			if info, statErr := os.Stat(filepath.Join(current, "go.mod")); statErr == nil && info.Mode().IsRegular() {
+				directory = filepath.Join(current, "artifacts")
+				break
+			}
+			parent := filepath.Dir(current)
+			if parent == current {
+				t.Fatal("P12 artifact directory could not be resolved")
+			}
+			current = parent
+		}
 	}
-	directory := filepath.Join(root, "artifacts")
+	if !filepath.IsAbs(directory) {
+		t.Fatal("P12 artifact directory must be absolute")
+	}
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}

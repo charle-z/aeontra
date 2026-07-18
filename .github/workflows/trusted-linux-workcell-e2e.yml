@@ -49,6 +49,7 @@ jobs:
       - name: Run trusted host Bubblewrap E2E
         env:
           P12_WORKCELL_HOST_E2E: "1"
+          P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
         run: |
           "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
             -test.run=^TestTrustedLinuxWorkcellHostE2E$ -test.count=1 -test.v
@@ -56,6 +57,7 @@ jobs:
       - name: Run controlled HTB fixture E2E
         env:
           P12_HTB_FIXTURE_E2E: "1"
+          P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
         run: |
           "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
             -test.run=^TestTrustedLinuxWorkcellHTBFixtureE2E$ -test.count=1 -test.v
@@ -148,7 +150,7 @@ jobs:
           echo "$RUNNER_TEMP/podman-compose/bin" >> "$GITHUB_PATH"
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm --dir web/console exec playwright install --with-deps chromium
-          chromium_bin="$(find "$HOME/.cache/ms-playwright" -type f -path '*/chrome-linux/chrome' -print -quit)"
+          chromium_bin="$(pnpm --dir web/console exec node -e 'console.log(require("playwright").chromium.executablePath())')"
           test -x "$chromium_bin"
           echo "P12_CHROMIUM_BIN=$chromium_bin" >> "$GITHUB_ENV"
 
@@ -186,6 +188,7 @@ jobs:
       - name: Run rootless runtime E2E
         env:
           P12_ROOTLESS_E2E: "1"
+          P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
         run: |
           "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
             -test.run=^TestTrustedLinuxWorkcellRootlessE2E$ -test.count=1 -test.v
@@ -208,6 +211,7 @@ jobs:
       - name: Verify restart has no runtime orphans
         env:
           P12_ROOTLESS_RESTART_E2E: "1"
+          P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
         run: |
           "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
             -test.run=^TestTrustedLinuxWorkcellRootlessRestartE2E$ -test.count=1 -test.v
