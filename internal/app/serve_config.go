@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/console"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 )
 
@@ -26,14 +27,15 @@ func (r *rootsFlag) Set(v string) error {
 }
 
 type serveOptions struct {
-	Config        config.Config
-	AuditPath     string
-	HTTPAddr      string
-	HTTPToken     string
-	BrainRoot     string
-	TaskRoot      string
-	StateRoot     string
-	Observability observability.Config
+	Config          config.Config
+	AuditPath       string
+	HTTPAddr        string
+	HTTPToken       string
+	BrainRoot       string
+	TaskRoot        string
+	StateRoot       string
+	ConsoleTimezone string
+	Observability   observability.Config
 }
 
 func resolveBrainRoot(raw string) (string, error) {
@@ -139,14 +141,19 @@ func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
 	if err != nil {
 		return serveOptions{}, err
 	}
+	consoleTimezone, err := console.ValidateTimezone(os.Getenv(consoleTimezoneEnv))
+	if err != nil {
+		return serveOptions{}, fmt.Errorf("%s: %w", consoleTimezoneEnv, err)
+	}
 	return serveOptions{
-		Config:        cfg,
-		AuditPath:     *auditPath,
-		HTTPAddr:      *httpAddr,
-		HTTPToken:     *httpToken,
-		BrainRoot:     brainRoot,
-		TaskRoot:      taskRoot,
-		StateRoot:     stateRoot,
-		Observability: observabilityConfig,
+		Config:          cfg,
+		AuditPath:       *auditPath,
+		HTTPAddr:        *httpAddr,
+		HTTPToken:       *httpToken,
+		BrainRoot:       brainRoot,
+		TaskRoot:        taskRoot,
+		StateRoot:       stateRoot,
+		ConsoleTimezone: consoleTimezone,
+		Observability:   observabilityConfig,
 	}, nil
 }

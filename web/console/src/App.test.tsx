@@ -68,10 +68,16 @@ class EventSourceStub {
 
 function response(value: unknown) { return { ok: true, status: 200, json: async () => value }; }
 
-function fetchFixture(input: RequestInfo | URL) {
+let savedTimezone = "America/Bogota";
+
+function fetchFixture(input: RequestInfo | URL, init?: RequestInit) {
   const path = String(input);
   if (path.endsWith("/console/status")) return Promise.resolve(response(runtime));
   if (path.endsWith("/console/data")) return Promise.resolve(response(data));
+  if (path.endsWith("/console/preferences")) {
+    if (init?.method === "PUT") savedTimezone = JSON.parse(String(init.body)).timezone;
+    return Promise.resolve(response({ timezone: savedTimezone }));
+  }
   if (path.includes("/console/tasks?")) return Promise.resolve(response(path.includes("cursor=task-cursor") ? olderTasks : tasks));
   if (path.includes("/console/event-log?")) return Promise.resolve(response(path.includes("cursor=event-cursor") ? olderEventLog : eventLog));
   return Promise.reject(new Error("unexpected fetch: " + path));
@@ -80,6 +86,7 @@ function fetchFixture(input: RequestInfo | URL) {
 describe("Neo-BIOS operations firmware", () => {
   beforeEach(() => {
     EventSourceStub.instances = [];
+    savedTimezone = "America/Bogota";
     vi.stubGlobal("EventSource", EventSourceStub);
     vi.stubGlobal("fetch", vi.fn(fetchFixture));
   });
@@ -104,7 +111,8 @@ describe("Neo-BIOS operations firmware", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     expect(screen.getByRole("heading", { name: "Current process" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Durable activity" })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /2026-07-17T11:00:00Z 8 4 4.0 KiB 2.0 KiB 1536/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /2026-07-17 06:00:00 COT.*8 4 4.0 KiB 2.0 KiB 1536/ })).toBeInTheDocument();
+    expect(screen.getByTitle(data.payload.process_started_at)).toHaveAttribute("datetime", data.payload.process_started_at);
     expect(screen.getByRole("row", { name: /24 hours 24 12 4.0 KiB 2.0 KiB 1536/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /7 days 70 35 4.0 KiB 2.0 KiB 1536/ })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /30 days 300 150 4.0 KiB 2.0 KiB 1536/ })).toBeInTheDocument();
@@ -120,7 +128,10 @@ describe("Neo-BIOS operations firmware", () => {
     expect(screen.getByText("connected")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
     expect(screen.getByText("sandbox_status")).toBeInTheDocument();
-    expect(screen.getByText(task.updated_at)).toBeInTheDocument();
+    expect(screen.getByTitle(task.updated_at)).toHaveTextContent("2026-07-17 07:00:00 COT");
+    expect(screen.getByTitle(task.created_at)).toBeInTheDocument();
+    expect(screen.getByTitle(task.terminal_at)).toBeInTheDocument();
+    expect(screen.queryByTitle(task.heartbeat_at)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Load older tasks" }));
     await waitFor(() => expect(screen.getByText("repo_status")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("button", { name: "Load older tasks" })).toBeDisabled());
@@ -136,7 +147,7 @@ describe("Neo-BIOS operations firmware", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Events" }));
     expect(await screen.findByText("SSE: live")).toBeInTheDocument();
     expect(screen.getByText("Last-Event-ID: 2")).toBeInTheDocument();
-    expect(screen.getAllByText(liveEvent.occurred_at)).toHaveLength(1);
+    expect(screen.getAllByTitle(liveEvent.occurred_at)).toHaveLength(1);
 
     vi.useFakeTimers();
     EventSourceStub.instances[0].onerror?.(new Event("error"));
@@ -153,11 +164,39 @@ describe("Neo-BIOS operations firmware", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Events" }));
-    expect(await screen.findByText(journalEvent.occurred_at)).toBeInTheDocument();
+    expect(await screen.findByTitle(journalEvent.occurred_at)).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Event state filter" }), { target: { value: "completed" } });
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([target]) => String(target).includes("state=completed"))).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "Load older events" }));
-    await waitFor(() => expect(screen.getByText(olderEvent.occurred_at)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTitle(olderEvent.occurred_at)).toBeInTheDocument());
+  });
+
+  it("changes every timestamp from the durable preference without reordering rows", async () => {
+    const view = render(<App />);
+    await waitFor(() => expect(screen.getByText("Timezone: America/Bogota")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Load older tasks" }));
+    await waitFor(() => expect(screen.getByText("repo_status")).toBeInTheDocument());
+    const before = screen.getAllByRole("row").map((row) => row.textContent);
+    fireEvent.change(screen.getByRole("combobox", { name: "Timezone" }), { target: { value: "UTC" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(screen.getByText("Timezone: UTC")).toBeInTheDocument());
+    expect(screen.getByTitle(task.updated_at)).toHaveTextContent("2026-07-17 12:00:00 UTC");
+    const after = screen.getAllByRole("row").map((row) => row.textContent?.replace(/2026-[^a-z]+(?:COT|UTC).*?ago/g, "TIME"));
+    expect(after.map((value) => value?.includes("sandbox_status"))).toEqual(before.map((value) => value?.includes("sandbox_status")));
+    view.unmount();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Timezone: UTC")).toBeInTheDocument());
+  });
+
+  it("uses one shared relative timer and cleans it on unmount", async () => {
+    vi.useFakeTimers();
+    const interval = vi.spyOn(window, "setInterval");
+    const view = render(<App />);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(interval.mock.calls.filter(([, delay]) => delay === 30_000)).toHaveLength(1);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("renders the safe Brain graph and keyboard help", async () => {

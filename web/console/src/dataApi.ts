@@ -25,6 +25,36 @@ async function getJSON(path: string, signal?: AbortSignal): Promise<unknown> {
   return response.json();
 }
 
+export type ConsolePreferences = { timezone: string };
+
+function parsePreferences(value: unknown): ConsolePreferences {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("invalid preferences");
+  const item = value as Record<string, unknown>;
+  if (Object.keys(item).sort().join("\\n") !== "timezone" || typeof item.timezone !== "string" || !item.timezone) throw new Error("invalid preferences schema");
+  return { timezone: item.timezone };
+}
+
+export async function fetchPreferences(signal?: AbortSignal): Promise<ConsolePreferences> {
+  return parsePreferences(await getJSON("/console/preferences", signal));
+}
+
+export async function updatePreferences(timezone: string, signal?: AbortSignal): Promise<ConsolePreferences> {
+  const response = await fetch("/console/preferences", {
+    method: "PUT",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ timezone }),
+    signal,
+  });
+  if (response.status === 401) {
+    window.location.assign("/console");
+    throw new Error("unauthorized");
+  }
+  if (!response.ok) throw new Error("request failed: " + response.status);
+  return parsePreferences(await response.json());
+}
+
 export async function fetchConsoleData(signal?: AbortSignal): Promise<ConsoleData> {
   return parseConsoleData(await getJSON("/console/data", signal));
 }

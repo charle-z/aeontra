@@ -8,4 +8,5 @@ type HTTPOptions struct {
 	EdgeHandler        http.Handler
 	EdgeState          func() string
 	ConsoleSessionPath string
+	ConsoleTimezone    string
 }

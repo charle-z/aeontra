@@ -53,31 +53,37 @@ type Status struct {
 // Config contains only the existing static token, safe runtime identity, direct
 // authorization callback, cookie posture, and bounded session configuration.
 type Config struct {
-	StaticToken   string
-	Runtime       Status
-	Authorize     func(*http.Request) bool
-	OAuthProvider *oauth.Provider
-	TaskJournal   *taskjournal.Journal
-	DataProvider  DataProvider
-	Session       SessionConfig
+	StaticToken     string
+	Runtime         Status
+	Authorize       func(*http.Request) bool
+	OAuthProvider   *oauth.Provider
+	TaskJournal     *taskjournal.Journal
+	DataProvider    DataProvider
+	Session         SessionConfig
+	DefaultTimezone string
 }
 
 // Handler owns presentation assets and the configured digest-only session store.
 type Handler struct {
-	staticToken  string
-	runtime      Status
-	authorize    func(*http.Request) bool
-	sessions     *SessionStore
-	oauthClient  *oauth.ConsoleClient
-	oauthFlows   *oauthFlowStore
-	taskJournal  *taskjournal.Journal
-	dataProvider DataProvider
-	indexHTML    []byte
-	css          []byte
-	js           []byte
+	staticToken     string
+	runtime         Status
+	authorize       func(*http.Request) bool
+	sessions        *SessionStore
+	oauthClient     *oauth.ConsoleClient
+	oauthFlows      *oauthFlowStore
+	taskJournal     *taskjournal.Journal
+	dataProvider    DataProvider
+	defaultTimezone string
+	indexHTML       []byte
+	css             []byte
+	js              []byte
 }
 
 func New(cfg Config) (*Handler, error) {
+	defaultTimezone, err := ValidateTimezone(cfg.DefaultTimezone)
+	if err != nil {
+		return nil, err
+	}
 	sessions, err := NewSessionStore(cfg.Session)
 	if err != nil {
 		return nil, err
@@ -104,17 +110,18 @@ func New(cfg Config) (*Handler, error) {
 	cfg.Runtime.Authenticated = true
 	cfg.Runtime.Surface = "presentation-only"
 	return &Handler{
-		staticToken:  cfg.StaticToken,
-		runtime:      cfg.Runtime,
-		authorize:    cfg.Authorize,
-		sessions:     sessions,
-		oauthClient:  oauthClient,
-		oauthFlows:   newOAuthFlowStore(),
-		taskJournal:  cfg.TaskJournal,
-		dataProvider: cfg.DataProvider,
-		indexHTML:    indexHTML,
-		css:          css,
-		js:           js,
+		staticToken:     cfg.StaticToken,
+		runtime:         cfg.Runtime,
+		authorize:       cfg.Authorize,
+		sessions:        sessions,
+		oauthClient:     oauthClient,
+		oauthFlows:      newOAuthFlowStore(),
+		taskJournal:     cfg.TaskJournal,
+		dataProvider:    cfg.DataProvider,
+		defaultTimezone: defaultTimezone,
+		indexHTML:       indexHTML,
+		css:             css,
+		js:              js,
 	}, nil
 }
 
@@ -131,6 +138,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc(eventLogPath, h.handleEventLog)
 	mux.HandleFunc(taskEventsPath, h.handleTaskEvents)
 	mux.HandleFunc(dataPath, h.handleData)
+	mux.HandleFunc(preferencesPath, h.handlePreferences)
 	if h.oauthClient != nil {
 		mux.HandleFunc(oauthStartPath, h.handleOAuthStart)
 		mux.HandleFunc(oauthCallbackPath, h.handleOAuthCallback)
