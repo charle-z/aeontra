@@ -89,11 +89,12 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 			ToolCount:       runtimeInfo.ToolCount,
 			CatalogHash:     runtimeInfo.CatalogHash,
 		},
-		Authorize:     authorized,
-		OAuthProvider: oauthProvider,
-		TaskJournal:   s.journal,
-		DataProvider:  s.consoleDataProvider(token, oauthProvider, opts.EdgeState),
-		Session:       console.SessionConfig{Path: opts.ConsoleSessionPath},
+		Authorize:       authorized,
+		OAuthProvider:   oauthProvider,
+		TaskJournal:     s.journal,
+		DataProvider:    s.consoleDataProvider(token, oauthProvider, opts.EdgeState),
+		Session:         console.SessionConfig{Path: opts.ConsoleSessionPath},
+		DefaultTimezone: opts.ConsoleTimezone,
 	})
 	if err != nil {
 		panic(fmt.Sprintf("invalid console configuration: %v", err))

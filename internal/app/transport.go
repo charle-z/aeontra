@@ -29,6 +29,7 @@ type transportConfig struct {
 	Token           string
 	OAuth           *oauth.Provider
 	AuthDescription string
+	ConsoleTimezone string
 }
 
 func resolveTransport(opts serveOptions) (transportConfig, error) {
@@ -61,6 +62,7 @@ func resolveTransport(opts serveOptions) (transportConfig, error) {
 		Token:           token,
 		OAuth:           oauthProvider,
 		AuthDescription: authDescription,
+		ConsoleTimezone: opts.ConsoleTimezone,
 	}, nil
 }
 
@@ -91,6 +93,7 @@ func serveTransport(runtime *appRuntime, transport transportConfig) (serveErr er
 	defer stop()
 	return runtime.Server.ServeHTTPWithOptions(ctx, transport.Addr, transport.Token, transport.OAuth, mcpserver.HTTPOptions{
 		ConsoleSessionPath: filepath.Join(runtime.StateRoot, "console", "sessions.db"),
+		ConsoleTimezone:    transport.ConsoleTimezone,
 		EdgeHandler:        edge.NewHTTPHandler(runtime.Edge, runtime.ModelTurns),
 		EdgeState: func() string {
 			count, err := runtime.Edge.ActiveCount()

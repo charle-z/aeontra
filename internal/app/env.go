@@ -16,6 +16,7 @@ const tokenEnv = "MCP_DEVBOX_TOKEN"
 const brainRootEnv = "MCP_DEVBOX_BRAIN_ROOT"
 const taskRootEnv = "MCP_DEVBOX_TASK_ROOT"
 const stateRootEnv = "MCP_DEVBOX_STATE_ROOT"
+const consoleTimezoneEnv = "CONSOLE_TIMEZONE"
 
 const (
 	testCmdEnv      = "MCP_DEVBOX_TEST_CMD"

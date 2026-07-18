@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchRuntimeStatus } from "./api";
-import { fetchConsoleData, fetchEventLog, fetchTasks } from "./dataApi";
+import { fetchConsoleData, fetchEventLog, fetchPreferences, fetchTasks, updatePreferences } from "./dataApi";
 import {
   parseEventLogResponse,
   parseJournalEvent,
@@ -18,6 +18,8 @@ import {
 } from "./dataTypes";
 import type { RuntimeStatus } from "./types";
 import GraphView from "./GraphView";
+import { TimeDisplayProvider, Timestamp } from "./TimeDisplay";
+import { DEFAULT_TIMEZONE } from "./timeDisplay";
 
 const tabs = ["System", "Agents", "Tasks", "Brain", "Graph", "Edge", "Observability", "Security", "Events"] as const;
 const taskStates: TaskState[] = ["requested", "planned", "awaiting_approval", "executing", "observing", "validating", "completed", "failed", "cancelled", "disconnected"];
@@ -44,12 +46,7 @@ function stateTone(state: string): Tone {
   return "normal";
 }
 
-function Timestamp({ value }: { value: string }) {
-  if (!value) return <>—</>;
-  return <time dateTime={value} title={value}>{value}</time>;
-}
-
-function Row({ label, value, tone = "normal", help }: { label: string; value: string; tone?: Tone; help: string }) {
+function Row({ label, value, tone = "normal", help }: { label: string; value: React.ReactNode; tone?: Tone; help: string }) {
   return <button className="firmware-row" type="button" data-help={help}><span>{label}</span><strong data-tone={tone}>{value}</strong></button>;
 }
 function Section({ title }: { title: string }) { return <h2 className="section-title">{title}</h2>; }
@@ -136,7 +133,7 @@ function TasksTab({ tasks, filters, setFilters, loadMore, loading }: { tasks: Ta
       <div className="state-flow" aria-label="Task lifecycle">{taskStates.map((state) => <span key={state}>{state}</span>)}</div>
       {!tasks?.available && <p className="empty-note">Operation journal unavailable.</p>}
       {tasks?.available && !visible.length && <p className="empty-note">No durable operation matches the selected server-side filters.</p>}
-      {!!visible.length && <div className="table-scroll"><table><thead><tr><th>Task ID</th><th>Controller</th><th>Operation</th><th>State</th><th>Version</th><th>Updated</th><th>Heartbeat</th></tr></thead><tbody>{visible.map((task) => <tr key={task.task_id}><td>{task.task_id.slice(0, 8)}</td><td>{task.controller}</td><td>{task.operation}</td><td data-tone={stateTone(task.state)}>{task.state}{task.derived_state ? " (derived)" : ""}</td><td>{task.version}</td><td><Timestamp value={task.updated_at} /></td><td><Timestamp value={task.heartbeat_at} /></td></tr>)}</tbody></table></div>}
+      {!!visible.length && <div className="table-scroll"><table><thead><tr><th>Task ID</th><th>Controller</th><th>Operation</th><th>State</th><th>Version</th><th>Created</th><th>Last activity / Updated</th><th>Heartbeat</th><th>Terminal time</th></tr></thead><tbody>{visible.map((task) => <tr key={task.task_id}><td>{task.task_id.slice(0, 8)}</td><td>{task.controller}</td><td>{task.operation}</td><td data-tone={stateTone(task.state)}>{task.state}{task.derived_state ? " (derived)" : ""}</td><td>{task.version}</td><td><Timestamp value={task.created_at} /></td><td><Timestamp value={task.updated_at} /></td><td>{["completed", "failed", "cancelled"].includes(task.state) ? "—" : <Timestamp value={task.heartbeat_at} />}</td><td>{task.terminal_at ? <Timestamp value={task.terminal_at} /> : "—"}</td></tr>)}</tbody></table></div>}
       <div className="paging-bar"><span>storage: {tasks?.storage.storage ?? "unavailable"} · {tasks?.storage.record_count ?? 0} records</span><button type="button" disabled={!tasks?.has_more || loading} onClick={loadMore}>{loading ? "Loading…" : "Load older tasks"}</button></div>
       <p className="panel-note">Filtering and cursor pagination are server-side. Prompts, parameters, results, paths and identities are never journaled.</p>
     </div>
@@ -154,7 +151,7 @@ function BrainTab({ data }: { data: ConsoleData | null }) {
       <Row label="Notes" value={brain?.available ? String(brain.note_count) : "—"} help="Aggregate note count. Only explicit redacted console metadata is shown in Graph." />
       <Row label="Source bytes" value={brain?.available ? bytes(brain.source_bytes) : "—"} help="Aggregate Markdown source size." />
       <Row label="Links" value={brain?.available ? brain.link_count + " total · " + brain.broken_link_count + " broken" : "—"} help="Aggregate link counts from the Brain index." />
-      <Row label="Indexed at" value={brain?.indexed_at || "—"} help="Last real index timestamp." />
+      <Row label="Indexed at" value={<Timestamp value={brain?.indexed_at || ""} />} help="Last real index timestamp." />
       <Row label="Graph" value={brain?.available ? brain.nodes.length + " opaque nodes · " + brain.edges.length + " edges" : "Unavailable"} help="Stable HMAC IDs, safe title/summary, trust and degree; no slugs, bodies, provenance or paths." />
     </Panel>
   );
@@ -167,7 +164,7 @@ function EdgeTab({ data }: { data: ConsoleData | null }) {
       <Section title="Edge Devices" />
       <Row label="Pairing" value={paired ? "Paired" : data?.edge.state === "not_paired" ? "Not paired" : "Unavailable"} tone={paired ? "ok" : data?.edge.state === "unavailable" ? "warn" : "dim"} help="Derived from the real active-device registry." />
       <Row label="Active devices" value={data ? String(data.edge.devices.length) : "—"} help="Only opaque selector IDs, generic labels and pairing timestamps are exposed." />
-      {data?.edge.devices.map((device) => <Row key={device.id} label={device.label} value={device.paired_at || "paired"} tone="ok" help="Real active Edge entry. Device name, device_id, keys and network details remain private." />)}
+      {data?.edge.devices.map((device) => <Row key={device.id} label={device.label} value={device.paired_at ? <Timestamp value={device.paired_at} /> : "paired"} tone="ok" help="Real active Edge entry. Device name, device_id, keys and network details remain private." />)}
       {!data?.edge.devices.length && <Row label="Workcell" value="Unavailable until pairing" tone="dim" help="No Edge identity is fabricated when none is active." />}
     </Panel>
   );
@@ -184,6 +181,7 @@ function ObservabilityTab({ data, projectSelection, edgeSelection }: { data: Con
       {!projectMatches && <p className="empty-note">No observability aggregate belongs to the selected non-current project.</p>}
       {projectMatches && edgeSelection && <p className="empty-note">No device-scoped observability aggregate is recorded; global metrics are not relabeled as Edge data.</p>}
       {scopedAvailable && <p className="panel-note">Enabled: {String(observability?.enabled ?? false)} · sink failures: {observability?.failures ?? 0}</p>}
+      {scopedAvailable && <p className="panel-note">Last durable update: <Timestamp value={data?.durable_activity.lifetime.updated_at ?? ""} /></p>}
       {scopedAvailable && !observability?.routes.length && <p className="empty-note">No route events are available in the selected persisted scope.</p>}
       {scopedAvailable && !!observability?.routes.length && <div className="table-scroll"><table><thead><tr><th>Route</th><th>Requests</th><th>4xx</th><th>5xx</th><th>P95 ms</th></tr></thead><tbody>{observability.routes.map((route) => <tr key={route.route}><td>{route.route}</td><td>{route.requests}</td><td>{route.client_4xx}</td><td>{route.server_5xx}</td><td>{route.p95_ms}</td></tr>)}</tbody></table></div>}
       <p className="panel-note">Counters and bounded durations only. Raw request content remains outside this surface.</p>
@@ -284,6 +282,10 @@ export default function AppShell() {
   const [eventPaging, setEventPaging] = useState(false);
   const [streamState, setStreamState] = useState<StreamState>("connecting");
   const [lastEventID, setLastEventID] = useState("");
+  const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
+  const [timezoneDraft, setTimezoneDraft] = useState(DEFAULT_TIMEZONE);
+  const [timezoneSaving, setTimezoneSaving] = useState(false);
+  const [relativeNow, setRelativeNow] = useState(() => Date.now());
   const lastEventIDRef = useRef("");
   const projectSelectionInitializedRef = useRef(false);
   const edgeSelectionInitializedRef = useRef(false);
@@ -313,7 +315,7 @@ export default function AppShell() {
   }, [data?.edge.devices, edgeSelection]);
 
   const refresh = useCallback(async () => {
-    const results = await Promise.allSettled([fetchRuntimeStatus(), fetchConsoleData()]);
+    const results = await Promise.allSettled([fetchRuntimeStatus(), fetchConsoleData(), fetchPreferences()]);
     if (results[0].status === "fulfilled") setStatus(results[0].value);
     if (results[1].status === "fulfilled") {
       const nextData = results[1].value;
@@ -327,6 +329,10 @@ export default function AppShell() {
         setEdgeSelection(nextData.edge.devices[0]?.id ?? "");
       }
     }
+    if (results[2].status === "fulfilled") {
+      setTimezone(results[2].value.timezone);
+      setTimezoneDraft(results[2].value.timezone);
+    }
     let failed = results.filter((result) => result.status === "rejected").length;
     if (streamStateRef.current !== "live") {
       try { setTasks(await fetchTasks(taskFiltersRef.current)); }
@@ -337,7 +343,8 @@ export default function AppShell() {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
+    setRelativeNow(Date.now());
+    const timer = window.setInterval(() => { setRelativeNow(Date.now()); void refresh(); }, 30_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
 
@@ -475,6 +482,21 @@ export default function AppShell() {
     finally { setEventPaging(false); }
   }, [eventLog, eventPaging]);
 
+  const saveTimezone = useCallback(async () => {
+    setTimezoneSaving(true);
+    try {
+      const preference = await updatePreferences(timezoneDraft.trim());
+      setTimezone(preference.timezone);
+      setTimezoneDraft(preference.timezone);
+      setRelativeNow(Date.now());
+      setError(null);
+    } catch {
+      setError("timezone preference rejected");
+    } finally {
+      setTimezoneSaving(false);
+    }
+  }, [timezoneDraft]);
+
   const content = (() => {
     switch (active) {
       case "System": return <SystemTab status={status} data={data} error={error} />;
@@ -490,12 +512,14 @@ export default function AppShell() {
   })();
 
   return (
+    <TimeDisplayProvider value={{ timezone, now: relativeNow }}>
     <main className="firmware-shell">
-      <header className="firmware-header"><span>MCP DEVBOX OPERATIONS FIRMWARE</span><div className="runtime-selectors"><label>Project<select aria-label="Project" value={projectSelection} onChange={(event) => { projectSelectionInitializedRef.current = true; setProjectSelection(event.target.value); }}><option value="">All projects</option>{data?.projects.map((project) => <option key={project.id} value={project.id}>{project.label}{project.current ? " [current]" : ""}</option>)}</select></label><label>Edge<select aria-label="Edge device" value={edgeSelection} onChange={(event) => { edgeSelectionInitializedRef.current = true; setEdgeSelection(event.target.value); }}><option value="">All Edge devices</option>{data?.edge.devices.map((device) => <option key={device.id} value={device.id}>{device.label}</option>)}</select></label></div><span>Rev {status?.commit ? status.commit.slice(0, 8) : "unknown"}</span></header>
+      <header className="firmware-header"><span>MCP DEVBOX OPERATIONS FIRMWARE</span><div className="runtime-selectors"><form className="timezone-control" onSubmit={(event) => { event.preventDefault(); void saveTimezone(); }}><label>Timezone<input aria-label="Timezone" list="console-timezones" maxLength={64} value={timezoneDraft} onChange={(event) => setTimezoneDraft(event.target.value)} /></label><datalist id="console-timezones"><option value="America/Bogota" /><option value="America/Argentina/Buenos_Aires" /><option value="Europe/Moscow" /><option value="UTC" /></datalist><button type="submit" disabled={timezoneSaving}>{timezoneSaving ? "Saving…" : "Apply"}</button><span aria-live="polite">Timezone: {timezone}</span></form><label>Project<select aria-label="Project" value={projectSelection} onChange={(event) => { projectSelectionInitializedRef.current = true; setProjectSelection(event.target.value); }}><option value="">All projects</option>{data?.projects.map((project) => <option key={project.id} value={project.id}>{project.label}{project.current ? " [current]" : ""}</option>)}</select></label><label>Edge<select aria-label="Edge device" value={edgeSelection} onChange={(event) => { edgeSelectionInitializedRef.current = true; setEdgeSelection(event.target.value); }}><option value="">All Edge devices</option>{data?.edge.devices.map((device) => <option key={device.id} value={device.id}>{device.label}</option>)}</select></label></div><span>Rev {status?.commit ? status.commit.slice(0, 8) : "unknown"}</span></header>
       <nav className="tabs" role="tablist" aria-label="Console screens">{tabs.map((tab) => <button key={tab} type="button" role="tab" aria-selected={active === tab} onClick={() => { setActive(tab); setAttract(false); }}>{tab}</button>)}</nav>
       <section className="screen" aria-live="polite">{content}</section>
       <footer className="keybar"><span><b>F1</b> Help</span><span><b>↑↓</b> Item</span><span><b>←→</b> Screen</span><span><b>F5</b> Refresh</span><span><b>F8</b> Attract</span><span><b>F9</b> Cancel</span><span><b>F10</b> Approve</span><form method="post" action="/console/logout"><button type="submit">ESC Sign out</button></form></footer>
       {dialog && <div className="dialog-backdrop" role="presentation" onClick={() => setDialog(null)}><section className="firmware-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={(event) => event.stopPropagation()}><h2 id="dialog-title">{dialog.title}</h2><p>{dialog.body}</p><button type="button" onClick={() => setDialog(null)}>[ Ok ]</button></section></div>}
     </main>
+    </TimeDisplayProvider>
   );
 }

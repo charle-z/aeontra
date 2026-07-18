@@ -119,6 +119,12 @@ func initializeSessionDatabase(db *sql.DB) error {
 			version INTEGER NOT NULL CHECK(version>=1)
 		) WITHOUT ROWID`,
 		`CREATE INDEX IF NOT EXISTS console_sessions_expiry ON console_sessions(expires_at,revoked_at)`,
+		`CREATE TABLE IF NOT EXISTS console_preferences (
+			digest BLOB PRIMARY KEY CHECK(length(digest)=32),
+			timezone TEXT NOT NULL CHECK(length(timezone) BETWEEN 1 AND 64),
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY(digest) REFERENCES console_sessions(digest) ON DELETE CASCADE
+		) WITHOUT ROWID`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {

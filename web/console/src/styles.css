@@ -96,6 +96,40 @@ button:focus-visible,
   color: var(--vga-black);
 }
 
+.timezone-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.timezone-control label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.timezone-control input,
+.timezone-control button {
+  border: 1px solid var(--vga-black);
+  background: var(--vga-white);
+  color: var(--vga-black);
+}
+
+.timezone-control input { width: 28ch; }
+.timezone-control button { cursor: pointer; }
+.timezone-control span { white-space: nowrap; }
+
+.timestamp-display {
+  display: inline-grid;
+  gap: 0.05rem;
+}
+
+.timestamp-offset,
+.timestamp-relative {
+  color: var(--vga-gray);
+  font-size: 0.82em;
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -369,6 +403,16 @@ button:focus-visible,
   .runtime-selectors {
     order: 3;
     flex-basis: 100%;
+  }
+
+  .timezone-control {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .timezone-control label,
+  .timezone-control input {
+    width: 100%;
   }
 
   .runtime-selectors label {

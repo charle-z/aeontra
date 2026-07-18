@@ -102,6 +102,10 @@ func (s *SessionStore) Create() (string, error) {
 				_ = tx.Rollback()
 				return "", errors.New("console session eviction failed")
 			}
+			if _, err = tx.Exec(`DELETE FROM console_preferences WHERE digest IN (SELECT digest FROM console_sessions WHERE revoked_at IS NOT NULL)`); err != nil {
+				_ = tx.Rollback()
+				return "", errors.New("console preference eviction failed")
+			}
 		}
 		result, err := tx.Exec(`INSERT OR IGNORE INTO console_sessions(digest,created_at,expires_at,revoked_at,version) VALUES(?,?,?,NULL,1)`, digest[:], now.UnixNano(), expires.UnixNano())
 		if err != nil {
@@ -145,7 +149,18 @@ func (s *SessionStore) Revoke(raw string) {
 	}
 	digest := sha256.Sum256([]byte(raw))
 	now := s.now().UTC().UnixNano()
-	_, _ = s.db.Exec(`UPDATE console_sessions SET revoked_at=?,version=version+1 WHERE digest=? AND revoked_at IS NULL`, now, digest[:])
+	tx, err := s.db.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE console_sessions SET revoked_at=?,version=version+1 WHERE digest=? AND revoked_at IS NULL`, now, digest[:]); err != nil {
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM console_preferences WHERE digest=?`, digest[:]); err != nil {
+		return
+	}
+	_ = tx.Commit()
 }
 
 func (s *SessionStore) Expiry(raw string) (time.Time, bool) {
