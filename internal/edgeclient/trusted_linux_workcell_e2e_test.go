@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,7 +24,6 @@ import (
 )
 
 const (
-	p12E2ERuntimeID      = "mr_cccccccccccccccccccccccccccccccc"
 	p12RestartRuntimeID  = "mr_dddddddddddddddddddddddddddddddd"
 	p12FixtureUserSecret = "p12-fixture-user-secret"
 	p12FixtureRootSecret = "p12-fixture-root-secret"
@@ -56,20 +54,6 @@ type p12SandboxHelperReport struct {
 	RootVisible            bool `json:"root_visible"`
 	WindowsMountsVisible   bool `json:"windows_mounts_visible"`
 	RootfulSocketVisible   bool `json:"rootful_socket_visible"`
-}
-
-type p12RootlessReport struct {
-	SchemaVersion        int  `json:"schema_version"`
-	EndpointValidated    bool `json:"endpoint_validated"`
-	ImageBuilt           bool `json:"image_built"`
-	ComposeRan           bool `json:"compose_ran"`
-	PostgreSQLReady      bool `json:"postgresql_ready"`
-	ChromiumReady        bool `json:"chromium_ready"`
-	CancellationRan      bool `json:"cancellation_ran"`
-	ContainersCleaned    bool `json:"containers_cleaned"`
-	NetworksCleaned      bool `json:"networks_cleaned"`
-	VolumesCleaned       bool `json:"volumes_cleaned"`
-	RootfulSocketNotUsed bool `json:"rootful_socket_not_used"`
 }
 
 type p12HTBReport struct {
@@ -238,71 +222,25 @@ func p12CancellationE2E(t *testing.T, spec openCodeProcessSpec, workspace, runti
 
 func TestTrustedLinuxWorkcellRootlessE2E(t *testing.T) {
 	requireP12E2E(t, "P12_ROOTLESS_E2E")
-	endpoint, err := DiscoverRootlessContainerEndpoint(os.Geteuid(), openCodeDefaultToolPath)
-	if err != nil || endpoint == nil || endpoint.Engine != "podman" {
-		t.Fatalf("rootless Podman endpoint unavailable: endpoint=%+v err=%v", endpoint, err)
+	endpoint := p12RootlessEndpoint(t)
+	runtimeIDs := p12RootlessRuntimeIDs(t)
+	for index, runtimeID := range runtimeIDs {
+		for _, previousRuntimeID := range runtimeIDs[:index] {
+			p12AssertNoRuntimeResources(t, endpoint, previousRuntimeID)
+		}
+		report := p12RunRootlessCycle(t, endpoint, runtimeID, index+1, index == 1)
+		p12WriteArtifact(t, fmt.Sprintf("p12-trusted-linux-workcell-rootless-cycle-%d-report.json", index+1), report)
 	}
-	if err := validateRootlessContainerSocket(endpoint.SocketPath, filepath.Join("/run/user", strconv.Itoa(os.Geteuid())), os.Geteuid()); err != nil {
-		t.Fatal(err)
-	}
-	rootfulSocketNotUsed := endpoint.SocketPath != "/var/run/docker.sock" && endpoint.SocketPath != "/run/docker.sock" && pathInside(filepath.Join("/run/user", strconv.Itoa(os.Geteuid())), endpoint.SocketPath)
-
-	label := rootlessRuntimeLabelKey + "=" + p12E2ERuntimeID
-	prefix := rootlessEnginePrefix(endpoint)
-	workspace := t.TempDir()
-	containerfile := "FROM docker.io/library/alpine:3.20\nCOPY fixture.txt /fixture.txt\nCMD [\"/bin/sh\",\"-c\",\"test -f /fixture.txt && echo p12-image-ready\"]\n"
-	if err := os.WriteFile(filepath.Join(workspace, "Containerfile"), []byte(containerfile), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace, "fixture.txt"), []byte("trusted\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	image := "localhost/p12-trusted-workcell:" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	p12Engine(t, endpoint, append(prefix, "build", "--label", label, "--tag", image, workspace)...)
-	imageBuilt := true
-
-	network := "p12-net-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	volume := "p12-vol-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	p12Engine(t, endpoint, append(prefix, "network", "create", "--label", label, network)...)
-	p12Engine(t, endpoint, append(prefix, "volume", "create", "--label", label, volume)...)
-	p12Engine(t, endpoint, append(prefix, "run", "--name", "p12-build-"+strconv.FormatInt(time.Now().UnixNano(), 36), "--label", label, "--network", network, "--volume", volume+":/data", image)...)
-
-	composeRan := p12ComposeE2E(t, endpoint, image, label)
-	postgresReady := p12PostgreSQLE2E(t, endpoint, network, label)
-	chromiumReady := p12ChromiumE2E(t)
-	cancellationRan := p12RootlessCancellationE2E(t, endpoint, image, label)
-
-	if err := CleanupRootlessContainerResources(t.Context(), endpoint, p12E2ERuntimeID, openCodeDefaultToolPath, nil); err != nil {
-		t.Fatal(err)
-	}
-	containersCleaned := len(p12ResourceIDs(t, endpoint, "container", label)) == 0
-	networksCleaned := len(p12ResourceIDs(t, endpoint, "network", label)) == 0
-	volumesCleaned := len(p12ResourceIDs(t, endpoint, "volume", label)) == 0
-	_, _ = execContainerCommandRunner{}.Run(t.Context(), endpoint.Executable, append(prefix, "image", "rm", "--force", image), p12RootlessEnv(endpoint))
-	if !containersCleaned || !networksCleaned || !volumesCleaned {
-		t.Fatalf("rootless resources remain: containers=%t networks=%t volumes=%t", containersCleaned, networksCleaned, volumesCleaned)
-	}
-	report := p12RootlessReport{
-		SchemaVersion: 1, EndpointValidated: true, ImageBuilt: imageBuilt, ComposeRan: composeRan,
-		PostgreSQLReady: postgresReady, ChromiumReady: chromiumReady, CancellationRan: cancellationRan,
-		ContainersCleaned: containersCleaned, NetworksCleaned: networksCleaned, VolumesCleaned: volumesCleaned,
-		RootfulSocketNotUsed: rootfulSocketNotUsed,
-	}
-	p12WriteArtifact(t, "p12-trusted-linux-workcell-rootless-report.json", report)
 }
 
 func TestTrustedLinuxWorkcellRootlessRestartE2E(t *testing.T) {
 	requireP12E2E(t, "P12_ROOTLESS_RESTART_E2E")
-	endpoint, err := DiscoverRootlessContainerEndpoint(os.Geteuid(), openCodeDefaultToolPath)
-	if err != nil || endpoint == nil {
-		t.Fatalf("rootless endpoint unavailable after restart: %+v %v", endpoint, err)
-	}
-	label := rootlessRuntimeLabelKey + "=" + p12E2ERuntimeID
-	if len(p12ResourceIDs(t, endpoint, "container", label)) != 0 || len(p12ResourceIDs(t, endpoint, "network", label)) != 0 || len(p12ResourceIDs(t, endpoint, "volume", label)) != 0 {
-		t.Fatal("runtime-labelled resources survived rootless service restart")
+	endpoint := p12RootlessEndpoint(t)
+	for _, runtimeID := range p12RootlessRuntimeIDs(t) {
+		p12AssertNoRuntimeResources(t, endpoint, runtimeID)
 	}
 	p12WriteArtifact(t, "p12-trusted-linux-workcell-rootless-restart-report.json", map[string]any{
-		"schema_version": 1, "service_restarted": true, "orphan_resources": 0,
+		"schema_version": 1, "service_restarted": true, "cycles_checked": 2, "orphan_resources": 0,
 	})
 }
 
@@ -560,47 +498,6 @@ func p12ResourceIDs(t *testing.T, endpoint *RootlessContainerEndpoint, resource,
 	return ids
 }
 
-func p12ComposeE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image, label string) bool {
-	t.Helper()
-	compose, err := exec.LookPath("podman-compose")
-	if err != nil {
-		t.Fatal("podman-compose is required")
-	}
-	root := t.TempDir()
-	body := fmt.Sprintf("services:\n  fixture:\n    image: %s\n    command: [\"/bin/sh\", \"-c\", \"echo compose-ready >/data/result; sleep 300\"]\n    labels:\n      %s: %s\n    volumes:\n      - data:/data\nnetworks:\n  default:\n    labels:\n      %s: %s\nvolumes:\n  data:\n    labels:\n      %s: %s\n", image, rootlessRuntimeLabelKey, p12E2ERuntimeID, rootlessRuntimeLabelKey, p12E2ERuntimeID, rootlessRuntimeLabelKey, p12E2ERuntimeID)
-	path := filepath.Join(root, "compose.yml")
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	project := "p12compose" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	command := exec.CommandContext(t.Context(), compose, "--podman-path", endpoint.Executable, "-p", project, "-f", path, "up", "-d")
-	command.Env = append(os.Environ(), p12RootlessEnv(endpoint)...)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("podman-compose failed: %v output=%s", err, p12BoundedDiagnostic(string(output)))
-	}
-	return true
-}
-
-func p12PostgreSQLE2E(t *testing.T, endpoint *RootlessContainerEndpoint, network, label string) bool {
-	t.Helper()
-	prefix := rootlessEnginePrefix(endpoint)
-	volume := "p12-pg-vol-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	p12Engine(t, endpoint, append(prefix, "volume", "create", "--label", label, volume)...)
-	name := "p12-postgres-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	p12Engine(t, endpoint, append(prefix, "run", "-d", "--name", name, "--label", label, "--network", network, "--volume", volume+":/var/lib/postgresql/data", "--env", "POSTGRES_PASSWORD=fixture-only", "--env", "POSTGRES_DB=fixture", "docker.io/library/postgres:17-alpine")...)
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
-		output, _ := execContainerCommandRunner{}.Run(t.Context(), endpoint.Executable, append(prefix, "exec", name, "pg_isready", "-U", "postgres", "-d", "fixture"), p12RootlessEnv(endpoint))
-		if strings.Contains(string(output), "accepting connections") {
-			value := p12Engine(t, endpoint, append(prefix, "exec", name, "psql", "-U", "postgres", "-d", "fixture", "-tAc", "SELECT 1")...)
-			return strings.TrimSpace(value) == "1"
-		}
-		time.Sleep(time.Second)
-	}
-	return false
-}
-
 func p12ChromiumE2E(t *testing.T) bool {
 	t.Helper()
 	chromium := strings.TrimSpace(os.Getenv("P12_CHROMIUM_BIN"))
@@ -619,18 +516,6 @@ func p12ChromiumE2E(t *testing.T) bool {
 		t.Fatalf("Chromium smoke failed: %v output=%s", err, p12BoundedDiagnostic(string(output)))
 	}
 	return bytes.Contains(output, []byte("trusted-workcell-browser"))
-}
-
-func p12RootlessCancellationE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image, label string) bool {
-	t.Helper()
-	prefix := rootlessEnginePrefix(endpoint)
-	name := "p12-cancel-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	p12Engine(t, endpoint, append(prefix, "run", "-d", "--name", name, "--label", label, image, "/bin/sh", "-c", "sleep 300")...)
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	_, _ = execContainerCommandRunner{}.Run(ctx, endpoint.Executable, append(prefix, "wait", name), p12RootlessEnv(endpoint))
-	p12Engine(t, endpoint, append(prefix, "rm", "-f", name)...)
-	return errors.Is(ctx.Err(), context.DeadlineExceeded)
 }
 
 func p12HTBRegistry(t *testing.T) (*WorkspaceRegistry, string) {

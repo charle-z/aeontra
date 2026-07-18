@@ -27,6 +27,8 @@ func (r *fakeContainerRunner) Run(_ context.Context, executable string, args, en
 	r.commands = append(r.commands, recordedContainerCommand{executable: executable, args: append([]string(nil), args...), env: append([]string(nil), env...)})
 	joined := strings.Join(args, " ")
 	switch {
+	case strings.Contains(joined, " pod ps "):
+		return []byte("p1\n"), nil
 	case strings.Contains(joined, " ps "):
 		return []byte("c2\nc1\n"), nil
 	case strings.Contains(joined, " network ls "):
@@ -87,6 +89,28 @@ func TestCleanupRootlessContainerResourcesUsesExactRuntimeLabel(t *testing.T) {
 	}
 	if got := runner.commands[1].args[len(runner.commands[1].args)-2:]; !reflect.DeepEqual(got, []string{"c1", "c2"}) {
 		t.Fatalf("container cleanup ids=%v", got)
+	}
+}
+
+func TestCleanupRootlessContainerResourcesRemovesPodmanPods(t *testing.T) {
+	runner := &fakeContainerRunner{}
+	endpoint := &RootlessContainerEndpoint{Engine: "podman", SocketPath: "/run/user/1000/podman/podman.sock", Executable: "/usr/bin/podman"}
+	const runtimeID = "mr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := CleanupRootlessContainerResources(context.Background(), endpoint, runtimeID, openCodeDefaultToolPath, runner); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.commands) != 8 {
+		t.Fatalf("commands=%d %#v", len(runner.commands), runner.commands)
+	}
+	label := "label=" + rootlessRuntimeLabelKey + "=" + runtimeID
+	for _, index := range []int{0, 2, 4, 6} {
+		if !strings.Contains(strings.Join(runner.commands[index].args, " "), label) {
+			t.Fatalf("list command missing exact label: %#v", runner.commands[index])
+		}
+	}
+	podCleanup := strings.Join(runner.commands[1].args, " ")
+	if !strings.Contains(podCleanup, " pod rm -f p1") {
+		t.Fatalf("pod cleanup command=%q", podCleanup)
 	}
 }
 

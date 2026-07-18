@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -112,7 +113,12 @@ func CleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessCo
 	}
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
 	environment := rootlessContainerClientEnvironment(endpoint, toolPath)
-	for _, resource := range []string{"container", "network", "volume"} {
+	resources := []string{"container"}
+	if endpoint.Engine == "podman" {
+		resources = []string{"pod", "container"}
+	}
+	resources = append(resources, "network", "volume")
+	for _, resource := range resources {
 		ids, err := listRootlessContainerResources(ctx, endpoint, resource, label, environment, runner)
 		if err != nil {
 			return err
@@ -124,6 +130,8 @@ func CleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessCo
 		switch resource {
 		case "container":
 			args = append(args, "rm", "-f")
+		case "pod":
+			args = append(args, "pod", "rm", "-f")
 		case "network", "volume":
 			args = append(args, resource, "rm")
 		}
@@ -143,6 +151,8 @@ func listRootlessContainerResources(ctx context.Context, endpoint *RootlessConta
 	switch resource {
 	case "container":
 		args = append(args, "ps", "-aq", "--filter", "label="+label)
+	case "pod":
+		args = append(args, "pod", "ps", "-q", "--filter", "label="+label)
 	case "network", "volume":
 		args = append(args, resource, "ls", "-q", "--filter", "label="+label)
 	default:
@@ -184,6 +194,17 @@ func (execContainerCommandRunner) Run(ctx context.Context, executable string, ar
 	command.Stdout = capture
 	command.Stderr = capture
 	command.SysProcAttr = processGroupAttributes()
+	command.Cancel = func() error {
+		if command.Process == nil {
+			return os.ErrProcessDone
+		}
+		err := syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	command.WaitDelay = 5 * time.Second
 	err := command.Run()
 	if capture.Len() > 64<<10 {
 		return nil, errors.New("rootless container command output exceeded its limit")

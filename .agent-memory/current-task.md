@@ -1,7 +1,9 @@
 # P12 — Trusted Linux Workcell
 
-Current local branch is the unpublished legacy branch; rename it to `p12-trusted-linux-workcell` after the Step 6 commit and before publication.
-Base: `origin/main` at `087f00e404855cc83e76c1eb7d6ed85ab14577c5`.
+Branch: `p12-trusted-linux-workcell`.
+Pull request: `#25` against `main`.
+Published diagnostic HEAD: `15adccc016dd690a54336ca2d54423eff4ee74d9`.
+Base remains `origin/main` at `087f00e404855cc83e76c1eb7d6ed85ab14577c5` until merge.
 
 Historical deployed foundations preserved:
 - P8.1 Console 2.0 is deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
@@ -9,32 +11,20 @@ Historical deployed foundations preserved:
 - P11.2 Remote OpenCode Relay remains the sandbox/relay foundation.
 - Public catalog remains exactly 85 tools with `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
-Completed commits:
-- `03e83bb` — Step 1: trusted workspace metadata and local CLI.
-- `901ff9b` — Step 2: durable local context, HTB template and VPN/route preflight.
-- `bae1904` — Step 3: isolated Linux workcell policy.
-- `07b128f` — Step 4: rootless tools and durable cleanup.
-- `8c1a836` — Step 5: document trusted Linux workcell.
+Completed P12 sequence includes Steps 1–6 and the CI fixture/path/Chromium/ShellCheck corrections through `549271b`. Commit `15adccc` added failure-only redacted rootless diagnostics; its exact PR head completed all 15 checks green with evidence complete, but it is not the merge candidate because it still exercised only one rootless cycle.
 
-Step 6 candidate:
-- dated closure baseline `docs/baselines/2026-07-18-p12.md`;
-- regression/documentation test preserving one `linux-workcell` profile, default `dev`, optional local `htb-linux`, sandbox no-network behavior, rootless-only containers, strict Linux roots, local HTB metadata, versioned template, and catalog identity;
-- actual-process workflow `.github/workflows/trusted-linux-workcell-e2e.yml` for trusted Bubblewrap/shared-network behavior, process-group cancellation, controlled HTB fixture, rootless Podman build/Compose/PostgreSQL/Chromium, cleanup, service restart, and orphan verification;
-- rootless client environment now supplies the owning user's HOME and XDG runtime root for Podman API cleanup without exposing them to the VPS;
-- no real Parrot installation, pairing, VPN action, or host modification was performed.
+Current uncommitted lifecycle correction:
+- fixes the concrete cancellation race in `execContainerCommandRunner`: the command created a process group but context cancellation killed only its leader, allowing child processes to survive;
+- adds a deterministic regression proving a child heartbeat stops after cancellation;
+- cleans Podman pods before containers, then networks and volumes, all by exact runtime label;
+- removes the fixed rootless E2E runtime identity and derives two distinct IDs from the GitHub run;
+- executes two consecutive rootless cycles in one job, with the second proving the first left no resources;
+- validates a user-owned rootless socket, rootful socket inaccessible to the test user, one workspace project bind, image build, explicit pod, Compose readiness/down, PostgreSQL healthcheck/query, Chromium, cancellation, cleanup and service restart;
+- wraps the complete service lifecycle in an EXIT trap that cleans both runtime labels, stops the Podman process group, removes the temporary socket and restores rootful socket permissions;
+- keeps failure diagnostics bounded and allowlisted, preserving the original exit status and uploading no log on green runs.
 
-Local final verification passed:
-- `go fmt ./...`;
-- `go test -p 1 ./... -count=1`;
-- deterministic grouped atomic coverage combined into one profile, with all package thresholds green;
-- `go vet ./...`;
-- `go build ./...`;
-- Staticcheck `v0.7.0` with a private temporary cache;
-- Govulncheck `v1.6.0`: no vulnerabilities found;
-- Actionlint `v1.7.12`;
-- tagged test binaries for `opencode_e2e` edgeclient, `opencode_e2e` mcpserver, and `p12_e2e` edgeclient;
-- `git diff --check`.
+Final local gates pass on the correction tree: focused rootless/redactor/workflow/docs suites, the process-group regression repeated ten times, tagged `p12_e2e` compilation, full serial tests, atomic coverage with every threshold green, vet, build, Staticcheck v0.7.0, Govulncheck v1.6.0 with no vulnerabilities, Actionlint v1.7.12 and `git diff --check`.
 
-Race was not represented as local success; it remains a blocking GitHub Actions job with `CGO_ENABLED=1`.
+No real Parrot installation, pairing, VPN action or host modification has been performed.
 
-Next exact action: create `Step 6: close trusted Linux workcell`, confirm no temporary helpers/artifacts, rename the local branch to `p12-trusted-linux-workcell`, publish only that branch, open the PR against `main`, and wait for every exact-head check.
+Next exact action: complete full local gates, remove every temporary/generated file, commit the lifecycle correction, publish it, require all exact-head checks green simultaneously, then merge PR #25 by merge commit and verify the automatic deployment.

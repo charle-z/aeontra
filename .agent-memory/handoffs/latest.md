@@ -1,43 +1,22 @@
-# Latest handoff — P12 Trusted Linux Workcell closure candidate
+# Latest handoff — P12 rootless lifecycle correction
 
 Date: 2026-07-18
-Final branch before publication: `p12-trusted-linux-workcell`.
-Current HEAD before Step 6: `8c1a836fcaf33a10e9d7007b45a947c9c118e1f4`.
-Base: `origin/main` at `087f00e404855cc83e76c1eb7d6ed85ab14577c5`.
+Branch: p12-trusted-linux-workcell.
+Pull request: #25.
+Published diagnostic HEAD: 15adccc016dd690a54336ca2d54423eff4ee74d9.
+Base: origin/main at 087f00e404855cc83e76c1eb7d6ed85ab14577c5.
 
 Historical foundations remain explicit:
-- P8.1 is closed, deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
-- Its historical catalog had 67 tools and Edge state `not_paired`.
-- P9 Brain is deployed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+- P8.1 is closed, deployed and tagged p8.1 at d343264bffdc0ae1bc045a9d723e913be977090c.
+- Its historical catalog had 67 tools and Edge state not_paired.
+- P9 Brain is deployed at 4fbe1dda02351c632e67c0f10a5c5b314df745e2.
 - P11.2 Remote OpenCode Relay remains the sandbox and relay foundation.
-- The catalog remains exactly 85 tools with `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
+- The catalog remains exactly 85 tools with sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941.
 
-Completed commits:
-- `03e83bb` — Step 1: trusted workspace metadata and local CLI.
-- `901ff9b` — Step 2: durable local context, HTB template and VPN/route preflight.
-- `bae1904` — Step 3: isolated Linux workcell policy.
-- `07b128f` — Step 4: rootless tools and durable cleanup.
-- `8c1a836` — Step 5: document trusted Linux workcell.
+Commit 15adccc added bounded failure-only rootless diagnostics and completed all 15 PR checks green with evidence complete. It is intentionally not the merge candidate because it still ran one rootless cycle.
 
-Step 6 closure candidate contains:
-- `docs/baselines/2026-07-18-p12.md` and `docs/p12_closure_test.go`;
-- roadmap and documentation synchronization;
-- `.github/workflows/trusted-linux-workcell-e2e.yml` with actual-process trusted host/HTB and rootless Podman/PostgreSQL/Chromium jobs;
-- tagged P12 E2E tests and bounded reports;
-- Podman client environment support for runtime-labelled cleanup;
-- Staticcheck-compliant P12 errors without unrelated historical churn.
+The current working correction fixes the concrete lifecycle race: execContainerCommandRunner created a process group but context cancellation killed only the leader, so a child could survive. A deterministic heartbeat regression now proves the whole group stops. Cleanup now removes Podman pods before containers, then networks and volumes. The E2E derives two distinct runtime IDs per GitHub run, executes two clean cycles in one job, validates Compose readiness/down, PostgreSQL healthcheck/query, Chromium, the sole workspace project bind, process-group cancellation, rootful socket inaccessibility, service restart and no inherited resources. An EXIT trap cleans both labels, stops the user-owned Podman process group, removes the temporary socket and restores rootful socket permissions.
 
-Final local gates passed:
-- format;
-- full serial suite;
-- deterministic grouped atomic coverage with all thresholds passing;
-- vet and build;
-- Staticcheck v0.7.0;
-- Govulncheck v1.6.0 with no vulnerabilities;
-- Actionlint v1.7.12;
-- tagged OpenCode and P12 E2E test binary builds;
-- diff whitespace check.
+Final local gates pass: focused suites, the process-group regression repeated ten times, tagged compilation, full serial tests, atomic coverage thresholds, vet, build, Staticcheck, Govulncheck, Actionlint and diff validation. Only the correction commit, publication and exact-head CI remain pending. No real Parrot host was installed, paired or modified.
 
-Race remains intentionally pending as a blocking GitHub CGO job. Actual P12 E2E processes also remain pending until GitHub executes the new workflow. No real Parrot host was modified.
-
-Next: create `Step 6: close trusted Linux workcell`, confirm a clean tree, rename the unpublished local branch, publish only `p12-trusted-linux-workcell`, open the PR, and inspect every exact-head check before merge.
+Next: run all local gates, remove generated and temporary files, commit and publish the lifecycle correction, then require every exact-head check green before merge.

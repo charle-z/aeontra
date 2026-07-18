@@ -67,3 +67,18 @@ func TestRedactBoundsOutput(t *testing.T) {
 		t.Fatalf("bytes=%d max=%d", output.Len(), maxBytes)
 	}
 }
+
+func TestNormalizeClassifiesRootlessLifecycleFailures(t *testing.T) {
+	tests := map[string]string{
+		"rootful container socket is accessible to the rootless test user": "P12 rootless category=rootful_socket",
+		"rootless container socket is unsafe":                              "P12 rootless category=endpoint_socket",
+		"rootless pod resources inherited by runtime cycle":                "P12 rootless category=inherited_state",
+		"PostgreSQL healthcheck timed out":                                 "P12 rootless category=postgresql_health",
+		"podman-compose cleanup failed":                                    "P12 rootless category=compose_cleanup",
+	}
+	for input, expected := range tests {
+		if got := normalize(input); got != expected {
+			t.Fatalf("input=%q normalized=%q expected=%q", input, got, expected)
+		}
+	}
+}
