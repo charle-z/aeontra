@@ -27,7 +27,7 @@ Final local gates pass on the correction tree: focused rootless/redactor/workflo
 
 The first CI run of correction `39e8475` exposed a deterministic false negative in the workspace bind probe: BusyBox `sh` may exit when redirection for the `printf` builtin fails, so the success marker was never emitted even though the bind was read-only. The probe now uses external `touch` inside an `if`, and Podman inspection independently proves exactly one project bind targets `/workspace`.
 
-The workspace probe fix now passes the focused suites, full serial repository tests, tagged p12_e2e compilation, vet, build, Staticcheck v0.7.0, Govulncheck v1.6.0 and Actionlint v1.7.12. A correction commit and exact-head CI remain pending.
+Workspace probe correction `d37c99146e053a9bada19822d4fcb7effbf3f7cf` is published. Its exact PR head completed 15/15 checks green, with zero pending, zero failed, mergeable=true and evidence_complete=true. Both push and pull-request rootless jobs passed two consecutive clean cycles, restart/orphan verification and bounded evidence. Only this memory synchronization commit and its exact-head CI remain before merge preview.
 
 No real Parrot installation, pairing, VPN action or host modification has been performed.
 
