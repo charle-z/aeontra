@@ -27,7 +27,7 @@ export type StorageData = {
   total_bytes: number; limit_bytes: number; state: string;
 };
 
-export type BrainNode = { id: string; title: string; summary: string; trust: string; degree: number };
+export type BrainNode = { id: string; console_label: string; title: string; summary: string; trust: string; degree: number };
 export type BrainEdge = { source: string; target: string };
 export type BrainData = {
   available: boolean; ready: boolean; schema_version: number; note_count: number; source_bytes: number;
@@ -109,8 +109,8 @@ const eventTypes = new Set<EventType>(["started", "heartbeat", "transition"]);
 const storageStates = new Set(["healthy", "nearing_limit", "degraded"]);
 
 function parseNode(value: unknown): BrainNode {
-  const item = exact(value, ["degree", "id", "summary", "title", "trust"], "brain node");
-  return { id: text(item, "id", "node"), title: text(item, "title", "node"), summary: text(item, "summary", "node"), trust: text(item, "trust", "node"), degree: numberValue(item, "degree", "node", true) };
+  const item = exact(value, ["console_label", "degree", "id", "summary", "title", "trust"], "brain node");
+  return { id: text(item, "id", "node"), console_label: text(item, "console_label", "node"), title: text(item, "title", "node"), summary: text(item, "summary", "node"), trust: text(item, "trust", "node"), degree: numberValue(item, "degree", "node", true) };
 }
 function parseEdge(value: unknown): BrainEdge {
   const item = exact(value, ["source", "target"], "brain edge");

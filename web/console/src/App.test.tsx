@@ -18,7 +18,7 @@ const durableActivity = {
   lifetime: { ...windowData, requests: 1200, tool_calls: 600 },
 };
 const data = {
-  schema_version: 3,
+  schema_version: 4,
   system: { available: true, cpu_count: 2, memory_total_bytes: 4294967296, memory_available_bytes: 2147483648, disk_total_bytes: 85899345920, disk_available_bytes: 42949672960, load_1: 0.1, load_5: 0.2, load_15: 0.3 },
   payload: { process_started_at: "2026-07-17T11:00:00Z", tool_call_count: 4, estimated_payload_tokens: 1536, warning: "estimate, not provider billing", request_count: 8, input_bytes: 4096, output_bytes: 2048, input_tokens_estimate: 1024, output_tokens_estimate: 512, formula: "bytes / 4 (estimate)" },
   durable_activity: durableActivity,
@@ -26,7 +26,7 @@ const data = {
   runtimes: [{ runtime_id: "mr_0123456789abcdef0123456789abcdef", state: "awaiting_model", controller: "http", edge_id: "edge_0123456789abcdef01234567", last_activity: "2026-07-17T12:00:00.789Z" }],
   projects: [{ id: "prj_0123456789abcdef01234567", label: "Configured project 1", current: true }],
   storage: { available: true, database_bytes: 1048576, wal_bytes: 65536, log_bytes: 32768, total_bytes: 1146880, limit_bytes: 268435456, state: "healthy" },
-  brain: { available: true, ready: true, schema_version: 1, note_count: 2, source_bytes: 512, link_count: 1, broken_link_count: 0, indexed_at: "2026-07-14T20:00:00Z", graph_truncated: false, nodes: [{ id: "bn_release", title: "Release gates", summary: "Verified release controls.", trust: "curated", degree: 1 }, { id: "bn_working", title: "Console hypothesis", summary: "Working note awaiting review.", trust: "working", degree: 1 }], edges: [{ source: "bn_release", target: "bn_working" }] },
+  brain: { available: true, ready: true, schema_version: 1, note_count: 2, source_bytes: 512, link_count: 1, broken_link_count: 0, indexed_at: "2026-07-14T20:00:00Z", graph_truncated: false, nodes: [{ id: "bn_release", console_label: "Release Gates", title: "Release gates", summary: "Verified release controls.", trust: "curated", degree: 1 }, { id: "bn_working", console_label: "Console Hypothesis", title: "Console hypothesis", summary: "Working note awaiting review.", trust: "working", degree: 1 }], edges: [{ source: "bn_release", target: "bn_working" }] },
   observability: { enabled: true, failures: 0, routes: [{ route: "mcp", requests: 10, client_4xx: 1, server_5xx: 0, p95_ms: 12 }] },
   security: { oauth_enabled: true, bearer_recovery: true, query_auth: "rejected", free_shell: "absent", cookie: "Secure; HttpOnly; SameSite=Strict", console_authority: "presentation-only" },
   edge: { state: "paired", devices: [{ id: "edge_0123456789abcdef01234567", label: "Paired Edge 1", paired_at: "2026-07-17T10:00:00.456Z" }] },
@@ -199,13 +199,54 @@ describe("Neo-BIOS operations firmware", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("keeps timestamp display contracts across every timestamp-bearing tab", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
+    const assertTimestamp = async (raw: string) => {
+      await waitFor(() => {
+        const values = screen.getAllByTitle(raw);
+        expect(values.length).toBeGreaterThan(0);
+        for (const value of values) {
+          expect(value).toHaveAttribute("datetime", raw);
+          expect(value).toHaveTextContent(/COT/);
+          expect(value.closest(".timestamp-display")).toHaveTextContent("UTC-05:00");
+          expect(value.closest(".timestamp-display")).toHaveTextContent(/ago|just now/);
+        }
+      });
+    };
+
+    fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
+    for (const raw of [data.payload.process_started_at, data.durable_activity.lifetime.updated_at, data.controllers[0].last_seen_at, data.runtimes[0].last_activity]) await assertTimestamp(raw);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
+    for (const raw of [task.created_at, task.updated_at, task.terminal_at]) await assertTimestamp(raw);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Brain" }));
+    await assertTimestamp(data.brain.indexed_at);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Edge" }));
+    await assertTimestamp(data.edge.devices[0].paired_at);
+
+    const edgeSelector = screen.getByRole("combobox", { name: "Edge device" });
+    fireEvent.change(edgeSelector, { target: { value: "" } });
+    await waitFor(() => expect(edgeSelector).toHaveValue(""));
+    fireEvent.click(screen.getByRole("tab", { name: "Observability" }));
+    await assertTimestamp(data.durable_activity.lifetime.updated_at);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Events" }));
+    await assertTimestamp(journalEvent.occurred_at);
+  });
+
   it("renders the safe Brain graph and keyboard help", async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Graph" }));
-    const node = screen.getByRole("group", { name: /Release gates.*Verified release controls.*curated.*1 link/i });
+    const node = screen.getByRole("button", { name: /Release gates.*Trust curated.*1 connection/i });
     fireEvent.focus(node);
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Verified release controls.");
+    const detail = screen.getByRole("status");
+    expect(detail).toHaveTextContent("Release Gates");
+    expect(detail).toHaveTextContent("Release gates");
+    expect(detail).toHaveTextContent("Verified release controls.");
     fireEvent.keyDown(window, { key: "F1" });
     expect(screen.getByRole("dialog", { name: "Help" })).toBeInTheDocument();
   });

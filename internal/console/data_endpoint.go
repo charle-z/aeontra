@@ -34,11 +34,12 @@ type PayloadData struct {
 }
 
 type BrainNode struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Summary string `json:"summary"`
-	Trust   string `json:"trust"`
-	Degree  int    `json:"degree"`
+	ID           string `json:"id"`
+	ConsoleLabel string `json:"console_label"`
+	Title        string `json:"title"`
+	Summary      string `json:"summary"`
+	Trust        string `json:"trust"`
+	Degree       int    `json:"degree"`
 }
 
 type BrainEdge struct {
@@ -123,7 +124,7 @@ func (h *Handler) handleData(w http.ResponseWriter, r *http.Request) {
 		writeGenericError(w, http.StatusServiceUnavailable)
 		return
 	}
-	snapshot.SchemaVersion = 3
+	snapshot.SchemaVersion = 4
 	hardenResponse(w, "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(snapshot)

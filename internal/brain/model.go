@@ -20,6 +20,7 @@ import (
 const (
 	MaxSlugBytes           = 64
 	MaxTitleBytes          = 160
+	MaxConsoleLabelRunes   = 32
 	MaxConsoleSummaryBytes = 160
 	MaxProvenanceBytes     = 1024
 	MaxBodyBytes           = 32 << 10
@@ -71,6 +72,7 @@ type Metadata struct {
 	Updated        string   `yaml:"updated" json:"updated"`
 	Provenance     string   `yaml:"provenance" json:"provenance"`
 	ReviewBy       string   `yaml:"review_by,omitempty" json:"review_by,omitempty"`
+	ConsoleLabel   string   `yaml:"console_label,omitempty" json:"console_label,omitempty"`
 	ConsoleSummary string   `yaml:"console_summary,omitempty" json:"console_summary,omitempty"`
 }
 
@@ -145,6 +147,16 @@ func validateSingleLine(name, value string, maximum int) error {
 	return nil
 }
 
+func validateOptionalUnicodeLine(name, value string, maximumRunes int) error {
+	if value == "" {
+		return nil
+	}
+	if value != strings.TrimSpace(value) || !utf8.ValidString(value) || utf8.RuneCountInString(value) > maximumRunes || strings.ContainsAny(value, "\r\n\x00") {
+		return fmt.Errorf("brain: %s must be a trimmed single line of at most %d Unicode characters", name, maximumRunes)
+	}
+	return nil
+}
+
 func parseUTCRFC3339(name, value string) (time.Time, error) {
 	if !strings.HasSuffix(value, "Z") {
 		return time.Time{}, fmt.Errorf("brain: %s must be UTC RFC3339", name)
@@ -180,6 +192,9 @@ func validateMetadata(metadata Metadata, expectedSlug string, trust TrustLevel, 
 		return false, fmt.Errorf("brain: filename/frontmatter slug mismatch")
 	}
 	if err := validateSingleLine("title", metadata.Title, MaxTitleBytes); err != nil {
+		return false, err
+	}
+	if err := validateOptionalUnicodeLine("console_label", metadata.ConsoleLabel, MaxConsoleLabelRunes); err != nil {
 		return false, err
 	}
 	if metadata.ConsoleSummary != "" {
@@ -333,6 +348,7 @@ func BuildAgentNote(draft AgentDraft, existing *Note, now time.Time) (Note, erro
 		ReviewBy:   strings.TrimSpace(draft.ReviewBy),
 	}
 	if existing != nil {
+		metadata.ConsoleLabel = existing.Metadata.ConsoleLabel
 		metadata.ConsoleSummary = existing.Metadata.ConsoleSummary
 	}
 	body := strings.TrimSpace(draft.Body)
