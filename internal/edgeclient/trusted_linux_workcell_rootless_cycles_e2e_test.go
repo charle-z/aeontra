@@ -4,6 +4,7 @@ package edgeclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -158,11 +159,34 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 	workspaceOutput := p12Engine(t, endpoint, append(prefix,
 		"run", "--name", containerName, "--label", label, "--network", network,
 		"--volume", volume+":/data", "--volume", workspaceMount,
-		image, "/bin/sh", "-c", "test -f /workspace/fixture.txt && ! printf denied >>/workspace/fixture.txt && echo workspace-ready",
+		image, "/bin/sh", "-c", "test -f /workspace/fixture.txt && if touch /workspace/p12-denied 2>/dev/null; then exit 1; fi; echo workspace-ready",
 	)...)
 	workspaceBindValidated := strings.TrimSpace(workspaceOutput) == "workspace-ready"
 	if !workspaceBindValidated {
 		t.Fatal("workspace bind validation failed")
+	}
+	type mountEvidence struct {
+		Type        string `json:"Type"`
+		Source      string `json:"Source"`
+		Destination string `json:"Destination"`
+	}
+	mountOutput := p12Engine(t, endpoint, append(prefix, "inspect", "--format", "{{json .Mounts}}", containerName)...)
+	var mounts []mountEvidence
+	if err := json.Unmarshal([]byte(mountOutput), &mounts); err != nil {
+		t.Fatal("workspace bind inventory was not valid JSON")
+	}
+	projectBinds := 0
+	for _, mount := range mounts {
+		if mount.Type != "bind" {
+			continue
+		}
+		projectBinds++
+		if filepath.Clean(mount.Source) != filepath.Clean(workspace) || mount.Destination != "/workspace" {
+			t.Fatal("unexpected project bind exposed to rootless container")
+		}
+	}
+	if projectBinds != 1 {
+		t.Fatal("workspace was not the sole project bind")
 	}
 
 	composeRan := p12ComposeCycleE2E(t, endpoint, image, runtimeID, suffix)

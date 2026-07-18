@@ -25,6 +25,10 @@ Current uncommitted lifecycle correction:
 
 Final local gates pass on the correction tree: focused rootless/redactor/workflow/docs suites, the process-group regression repeated ten times, tagged `p12_e2e` compilation, full serial tests, atomic coverage with every threshold green, vet, build, Staticcheck v0.7.0, Govulncheck v1.6.0 with no vulnerabilities, Actionlint v1.7.12 and `git diff --check`.
 
+The first CI run of correction `39e8475` exposed a deterministic false negative in the workspace bind probe: BusyBox `sh` may exit when redirection for the `printf` builtin fails, so the success marker was never emitted even though the bind was read-only. The probe now uses external `touch` inside an `if`, and Podman inspection independently proves exactly one project bind targets `/workspace`.
+
+The workspace probe fix now passes the focused suites, full serial repository tests, tagged p12_e2e compilation, vet, build, Staticcheck v0.7.0, Govulncheck v1.6.0 and Actionlint v1.7.12. A correction commit and exact-head CI remain pending.
+
 No real Parrot installation, pairing, VPN action or host modification has been performed.
 
 Next exact action: complete full local gates, remove every temporary/generated file, commit the lifecycle correction, publish it, require all exact-head checks green simultaneously, then merge PR #25 by merge commit and verify the automatic deployment.
