@@ -161,7 +161,7 @@ jobs:
       - name: Install Chromium
         run: |
           pnpm --dir web/console exec playwright install --with-deps chromium
-          chromium_bin="$(pnpm --dir web/console exec node -e 'console.log(require("playwright").chromium.executablePath())')"
+          chromium_bin="$(pnpm --dir web/console exec node -e 'console.log(require("@playwright/test").chromium.executablePath())')"
           test -x "$chromium_bin"
           echo "P12_CHROMIUM_BIN=$chromium_bin" >> "$GITHUB_ENV"
 
