@@ -6,7 +6,12 @@ export default defineConfig({
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: [
+  reporter: process.env.CI ? [
+    ["github"],
+    ["line"],
+    ["json", { outputFile: "test-results/graph/results.json" }],
+    ["html", { outputFolder: "playwright-report", open: "never" }],
+  ] : [
     ["line"],
     ["html", { outputFolder: "playwright-report", open: "never" }],
   ],
