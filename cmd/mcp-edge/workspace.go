@@ -15,13 +15,15 @@ func workspaceCommand(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return errors.New("workspace command requires add, configure, list, or remove")
+		return errors.New("workspace command requires add, configure, inventory, list, or remove")
 	}
 	switch args[0] {
 	case "add":
 		return workspaceAdd(args[1:], stdout, stderr)
 	case "configure":
 		return workspaceConfigure(args[1:], stdout, stderr)
+	case "inventory":
+		return workspaceInventory(args[1:], stdout, stderr)
 	case "list":
 		return workspaceList(args[1:], stdout, stderr)
 	case "remove":

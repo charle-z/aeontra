@@ -39,6 +39,10 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 		mountIndex += 3
 	}
 
+	if preparation.RootlessContainer != nil {
+		args = insertOpenCodeArgs(args, mountIndex, "--bind", preparation.RootlessContainer.SocketPath, rootlessContainerSocketTarget)
+		mountIndex += 3
+	}
 	persistentPath := strings.Join([]string{
 		openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin",
 		openCodeSandboxWorkspace + "/.mcp-devbox/tools/go/bin",
@@ -64,6 +68,13 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 		"MCP_DEVBOX_MODE":            string(workspace.Mode),
 		"MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 		"COMPOSE_PROJECT_NAME":       strings.ReplaceAll(lease.RuntimeID, "-", "_"),
+	}
+	if preparation.RootlessContainer != nil {
+		containerURI := "unix://" + rootlessContainerSocketTarget
+		replacements["DOCKER_HOST"] = containerURI
+		replacements["CONTAINER_HOST"] = containerURI
+		replacements["MCP_DEVBOX_CONTAINER_ENGINE"] = preparation.RootlessContainer.Engine
+		replacements["MCP_DEVBOX_CONTAINER_LABEL"] = rootlessRuntimeLabelKey + "=" + lease.RuntimeID
 	}
 	if workspace.Mode == WorkspaceModeHTBLinux {
 		replacements["TARGET"] = workspace.TargetIP
@@ -201,6 +212,16 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 			required[target] = openCodeSandboxMount{Source: source, Target: target, Kind: "bind"}
 		}
 	}
+	if expectedEnv["DOCKER_HOST"] != "" || expectedEnv["CONTAINER_HOST"] != "" {
+		if expectedEnv["DOCKER_HOST"] != "unix://"+rootlessContainerSocketTarget || expectedEnv["CONTAINER_HOST"] != "unix://"+rootlessContainerSocketTarget {
+			return errors.New("Linux workcell rootless container environment is invalid")
+		}
+		mount, ok := mounts[rootlessContainerSocketTarget]
+		if !ok || !mount.Writable || mount.Kind != "bind" || !pathInside("/run/user", mount.Source) || mount.Source == "/var/run/docker.sock" || mount.Source == "/run/docker.sock" {
+			return errors.New("Linux workcell rootless container socket is invalid")
+		}
+		required[rootlessContainerSocketTarget] = mount
+	}
 	if len(mounts) != len(required) {
 		return errors.New("Linux workcell contains an unexpected mount")
 	}
@@ -212,6 +233,9 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 	for _, mount := range spec.Mounts {
 		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && mount.Source != runtimeDir) {
 			return errors.New("Linux workcell exposes private Edge state")
+		}
+		if mount.Target == rootlessContainerSocketTarget {
+			continue
 		}
 		if mount.Target != openCodeSandboxWorkspace && mount.Target != openCodeSandboxRuntime && mount.Writable && mount.Kind == "bind" {
 			return errors.New("Linux workcell exposes an unexpected writable bind mount")

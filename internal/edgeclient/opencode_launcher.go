@@ -91,9 +91,12 @@ type OpenCodeLauncher struct {
 	resolveWorkspace       func(string) (string, error)
 	resolveWorkspaceRecord func(string) (Workspace, error)
 	linuxNetworkProbe      LinuxNetworkProbe
+	rootlessEndpoint       func(int, string) (*RootlessContainerEndpoint, error)
+	containerRunner        ContainerCommandRunner
 	effectiveUID           func() int
 	now                    func() time.Time
 	allowRootTest          bool
+	allowRootlessRootTest  bool
 }
 
 type openCodeProcessSpec struct {
@@ -184,6 +187,7 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 	launcher.verifySandbox = launcher.verifyOpenCodeSandbox
 	launcher.resolveWorkspace = config.Workspaces.Resolve
 	launcher.resolveWorkspaceRecord = config.Workspaces.Get
+	launcher.rootlessEndpoint = DiscoverRootlessContainerEndpoint
 	launcher.remoteFactory = func(lease ModelRuntimeLease) (OpenCodeRemoteTransport, error) {
 		return NewRemoteEdgeTransport(RemoteEdgeTransportOptions{StateRoot: config.StateRoot, Lease: lease, HTTPClient: config.HTTPClient})
 	}
@@ -268,11 +272,24 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	}
 	var preparation *LinuxWorkcellPreparation
 	if workspaceRecord.Profile == WorkspaceProfileLinuxWorkcell {
-		prepared, prepareErr := PrepareLinuxWorkcell(ctx, workspaceRecord, lease, l.linuxNetworkProbe)
+		prepared, prepareErr := PrepareLinuxWorkcellWithToolPath(ctx, workspaceRecord, lease, l.config.ToolPath, l.linuxNetworkProbe)
 		if prepareErr != nil {
 			failLocal(OpenCodeLocalFailed, -1, false)
 			_, _ = remote.Failed(context.Background(), "")
 			return result, prepareErr
+		}
+		uid := l.effectiveUID()
+		if l.rootlessEndpoint != nil && (uid > 0 || l.allowRootlessRootTest) {
+			endpoint, endpointErr := l.rootlessEndpoint(uid, l.config.ToolPath)
+			if endpointErr != nil {
+				failLocal(OpenCodeLocalFailed, -1, false)
+				_, _ = remote.Failed(context.Background(), "")
+				return result, endpointErr
+			}
+			prepared.RootlessContainer = endpoint
+			if l.allowRootTest {
+				l.effectiveUID = os.Geteuid
+			}
 		}
 		preparation = &prepared
 	}
@@ -368,17 +385,36 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	case <-heartbeatErr:
 	default:
 	}
+	var cleanupErr error
+	if preparation != nil {
+		cleanupErr = CleanupRootlessContainerResources(context.Background(), preparation.RootlessContainer, lease.RuntimeID, l.config.ToolPath, l.containerRunner)
+	}
+	cleanupState := LinuxWorkcellContainerCleanupState(preparation, cleanupErr)
+	terminalCheckpoint := "failed"
+	if preparation != nil {
+		defer func() {
+			_ = RecordLinuxWorkcellTerminalState(preparation, terminalCheckpoint, cleanupState)
+		}()
+	}
+	if cleanupErr != nil {
+		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
+		_, _ = remote.Failed(context.Background(), "")
+		return result, errors.New("Linux workcell rootless container cleanup failed")
+	}
 	truncated := stdout.Truncated() || stderr.Truncated()
 	if terminalRuntime.State == modelturn.RuntimeStateCancelled {
+		terminalCheckpoint = "cancelled"
 		failLocal(OpenCodeLocalCancelled, processResult.ExitCode, truncated)
 		return result, context.Canceled
 	}
 	if l.killSwitchActive() {
+		terminalCheckpoint = "cancelled: kill switch"
 		failLocal(OpenCodeLocalCancelled, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, ErrKillSwitch
 	}
 	if errors.Is(runContextErr, context.DeadlineExceeded) {
+		terminalCheckpoint = "timeout"
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, context.DeadlineExceeded
@@ -405,6 +441,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		return result, err
 	}
+	terminalCheckpoint = "completed"
 	failLocal(OpenCodeLocalCompleted, processResult.ExitCode, truncated)
 	return result, nil
 }

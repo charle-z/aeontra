@@ -2,6 +2,7 @@ package edgeclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -17,6 +18,7 @@ const (
 	linuxWorkcellDirName          = ".mcp-devbox"
 	linuxWorkcellInstructionsFile = "instructions.md"
 	linuxWorkcellStateFile        = "current-state.md"
+	linuxWorkcellInventoryFile    = "tool-inventory.json"
 	linuxWorkcellStateLimit       = int64(1 << 20)
 )
 
@@ -26,16 +28,22 @@ type LinuxNetworkProbe interface {
 }
 
 type LinuxWorkcellPreparation struct {
-	Workspace        Workspace
-	LHOST            string
-	InstructionsPath string
-	CurrentStatePath string
-	ResumeState      string
+	Workspace         Workspace
+	LHOST             string
+	InstructionsPath  string
+	CurrentStatePath  string
+	ToolInventoryPath string
+	RootlessContainer *RootlessContainerEndpoint
+	ResumeState       string
 }
 
 type systemLinuxNetworkProbe struct{}
 
 func PrepareLinuxWorkcell(ctx context.Context, workspace Workspace, lease ModelRuntimeLease, probe LinuxNetworkProbe) (LinuxWorkcellPreparation, error) {
+	return PrepareLinuxWorkcellWithToolPath(ctx, workspace, lease, openCodeDefaultToolPath, probe)
+}
+
+func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, lease ModelRuntimeLease, toolPath string, probe LinuxNetworkProbe) (LinuxWorkcellPreparation, error) {
 	result := LinuxWorkcellPreparation{Workspace: workspace}
 	if workspace.Profile != WorkspaceProfileLinuxWorkcell {
 		return result, errors.New("workspace is not a trusted Linux workcell")
@@ -80,6 +88,22 @@ func PrepareLinuxWorkcell(ctx context.Context, workspace Workspace, lease ModelR
 		}
 	}
 
+	inventory, err := CollectLinuxToolInventory(ctx, toolPath)
+	if err != nil {
+		return result, err
+	}
+	if err := ValidateLinuxToolInventory(inventory); err != nil {
+		return result, err
+	}
+	inventoryBody, err := json.MarshalIndent(inventory, "", "  ")
+	if err != nil {
+		return result, errors.New("Linux workcell tool inventory could not be encoded")
+	}
+	inventoryBody = append(inventoryBody, '\n')
+	inventoryPath := filepath.Join(controlDir, linuxWorkcellInventoryFile)
+	if err := atomicWorkspaceFile(inventoryPath, inventoryBody, 0o400); err != nil {
+		return result, err
+	}
 	statePath := filepath.Join(controlDir, linuxWorkcellStateFile)
 	resume, err := readOrCreateCurrentState(statePath, initialCurrentState(workspace))
 	if err != nil {
@@ -95,6 +119,7 @@ func PrepareLinuxWorkcell(ctx context.Context, workspace Workspace, lease ModelR
 	}
 	result.InstructionsPath = instructionsPath
 	result.CurrentStatePath = statePath
+	result.ToolInventoryPath = inventoryPath
 	result.ResumeState = resume
 	return result, nil
 }
