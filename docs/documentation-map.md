@@ -37,6 +37,10 @@ P11 release-candidate evidence is `docs/baselines/2026-07-15-p11.md` plus
 historical 67-tool P8.1/P9 and 71-tool P11 evidence. P11.2 relay/isolation evidence
 is `docs/baselines/2026-07-16-p11_2.md` plus `docs/p11_2_closure_test.go`;
 the current release-candidate contract has 85 tools.
+P12 Trusted Linux Workcell candidate behavior and operations are governed by
+`docs/linux-workcell.md`, `docs/edge-workcells.md`, and `profiles/htb-linux-v1.md`.
+Until merge, deployment, and real Parrot validation, its status is **in progress**
+with **validation pending** for device-dependent smokes. Closure evidence is `docs/baselines/2026-07-18-p12.md` plus `docs/p12_closure_test.go`.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |

@@ -1,32 +1,34 @@
-# Console Durable Live State & Auth Firmware
+# P12 — Trusted Linux Workcell
 
-Branch: `console-durable-live-state`.
-Current HEAD after normal main integration: `ec0753d437acb781aa76392c81099394d75f0d37`.
+Branch: `p12-trusted-linux-workcell`.
+Pull request: `#25` against `main`.
+Published diagnostic HEAD: `15adccc016dd690a54336ca2d54423eff4ee74d9`.
+Base remains `origin/main` at `087f00e404855cc83e76c1eb7d6ed85ab14577c5` until merge.
 
-Historical deployed foundations:
-- P9 Brain is deployed and remains the Markdown-truth / SQLite-derived-cache foundation.
+Historical deployed foundations preserved:
 - P8.1 Console 2.0 is deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
-- The historical P8.1 surface had 67 tools and reported Edge as `not_paired`; those facts remain historical evidence, not the current catalog.
+- P9 Brain is deployed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+- P11.2 Remote OpenCode Relay remains the sandbox/relay foundation.
+- Public catalog remains exactly 85 tools with `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
-Closed milestone commits:
-- `c284dcd` — Step 1: durable SQLite Operation Journal and recoverable SSE.
-- `e4c674e` — Step 2: durable telemetry windows/lifetime and controller/runtime state.
-- `22a9daf` — Step 3: durable digest-only console browser sessions.
-- `9cdfe56` — Step 4: shared Neo-BIOS authentication firmware for console and OAuth.
-- `aa1c30d` — Step 5: safe Brain node metadata, HMAC IDs and restart-safe identity.
-- `225b6e1` — Step 6: persistent Events, SSE replay/reconnect, real opaque selectors, storage budget and complete live-state frontend.
-- `9c41638` — Step 7: documentation/catalog synchronization and coverage closure.
-- `ec0753d` — normal merge of main through `77a93ad`, preserving the GitHub Checks→Actions fallback and fail-closed merge evidence.
+Completed P12 sequence includes Steps 1–6 and the CI fixture/path/Chromium/ShellCheck corrections through `549271b`. Commit `15adccc` added failure-only redacted rootless diagnostics; its exact PR head completed all 15 checks green with evidence complete, but it is not the merge candidate because it still exercised only one rootless cycle.
 
-Current catalog invariant:
-- exactly 85 tools;
-- `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
+Current uncommitted lifecycle correction:
+- fixes the concrete cancellation race in `execContainerCommandRunner`: the command created a process group but context cancellation killed only its leader, allowing child processes to survive;
+- adds a deterministic regression proving a child heartbeat stops after cancellation;
+- cleans Podman pods before containers, then networks and volumes, all by exact runtime label;
+- removes the fixed rootless E2E runtime identity and derives two distinct IDs from the GitHub run;
+- executes two consecutive rootless cycles in one job, with the second proving the first left no resources;
+- validates a user-owned rootless socket, rootful socket inaccessible to the test user, one workspace project bind, image build, explicit pod, Compose readiness/down, PostgreSQL healthcheck/query, Chromium, cancellation, cleanup and service restart;
+- wraps the complete service lifecycle in an EXIT trap that cleans both runtime labels, stops the Podman process group, removes the temporary socket and restores rootful socket permissions;
+- keeps failure diagnostics bounded and allowlisted, preserving the original exit status and uploading no log on green runs.
 
-Local evidence on the integrated tree:
-- full Go packages pass, with resource-limited monolithic runs completed in verified groups;
-- coverage gate passes, including `internal/taskjournal` at 80.8%;
-- vet, build, Staticcheck, Govulncheck and Actionlint pass;
-- frontend TypeScript, 5 Vitest tests and Vite production build pass;
-- local race and Docker remain remote-gate requirements because this runner has no gcc or Docker backend.
+Final local gates pass on the correction tree: focused rootless/redactor/workflow/docs suites, the process-group regression repeated ten times, tagged `p12_e2e` compilation, full serial tests, atomic coverage with every threshold green, vet, build, Staticcheck v0.7.0, Govulncheck v1.6.0 with no vulnerabilities, Actionlint v1.7.12 and `git diff --check`.
 
-Next: commit this final candidate record, rerun the exact final checks, publish only this branch, open the PR, wait every exact-SHA gate, merge by merge commit, and allow only the automatic Coolify deployment.
+The first CI run of correction `39e8475` exposed a deterministic false negative in the workspace bind probe: BusyBox `sh` may exit when redirection for the `printf` builtin fails, so the success marker was never emitted even though the bind was read-only. The probe now uses external `touch` inside an `if`, and Podman inspection independently proves exactly one project bind targets `/workspace`.
+
+Workspace probe correction `d37c99146e053a9bada19822d4fcb7effbf3f7cf` is published. Its exact PR head completed 15/15 checks green, with zero pending, zero failed, mergeable=true and evidence_complete=true. Both push and pull-request rootless jobs passed two consecutive clean cycles, restart/orphan verification and bounded evidence. Only this memory synchronization commit and its exact-head CI remain before merge preview.
+
+No real Parrot installation, pairing, VPN action or host modification has been performed.
+
+Next exact action: complete full local gates, remove every temporary/generated file, commit the lifecycle correction, publish it, require all exact-head checks green simultaneously, then merge PR #25 by merge commit and verify the automatic deployment.

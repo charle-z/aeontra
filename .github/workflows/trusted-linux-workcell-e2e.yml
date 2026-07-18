@@ -1,0 +1,480 @@
+name: Trusted Linux Workcell E2E
+
+on:
+  push:
+    branches:
+      - main
+      - p12-trusted-linux-workcell
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: trusted-linux-workcell-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  trusted-host:
+    name: Trusted host and HTB fixture
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Bubblewrap and controlled wordlists
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          sudo install -d -o root -g root -m 0755 /usr/share/seclists /usr/share/wordlists
+          printf 'p12-seclists-fixture\n' | sudo tee /usr/share/seclists/p12-fixture.txt >/dev/null
+          printf 'p12-wordlists-fixture\n' | sudo tee /usr/share/wordlists/p12-fixture.txt >/dev/null
+          sudo chmod 0644 /usr/share/seclists/p12-fixture.txt /usr/share/wordlists/p12-fixture.txt
+          bwrap --version
+          stat -c '%u %g %a %F %n' /usr/share/seclists /usr/share/wordlists
+
+      - name: Build tagged P12 E2E binary
+        run: |
+          mkdir -p artifacts "$RUNNER_TEMP/p12-bin"
+          go test -c -tags=p12_e2e -o "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" ./internal/edgeclient
+
+      - name: Run trusted host Bubblewrap E2E
+        env:
+          P12_WORKCELL_HOST_E2E: "1"
+          P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
+        run: |
+          "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellHostE2E$ -test.count=1 -test.v
+
+      - name: Run controlled HTB fixture E2E
+        env:
+          P12_HTB_FIXTURE_E2E: "1"
+          P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
+        run: |
+          "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellHTBFixtureE2E$ -test.count=1 -test.v
+
+      - name: Verify trusted host evidence
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          host = json.loads(Path("artifacts/p12-trusted-linux-workcell-host-report.json").read_text())
+          assert host["schema_version"] == 1
+          assert host["shared_network_reachable"] is True
+          assert host["workspace_writable"] is True
+          assert host["runtime_writable"] is True
+          assert host["wordlists_read_only"] is True
+          assert host["seclists_read_only"] is True
+          assert host["host_home_visible"] is False
+          assert host["root_visible"] is False
+          assert host["windows_mounts_visible"] is False
+          assert host["rootful_socket_visible"] is False
+          assert host["process_group_cancelled"] is True
+          assert host["network_posture_validated"] is True
+
+          htb = json.loads(Path("artifacts/p12-trusted-linux-workcell-htb-fixture-report.json").read_text())
+          assert htb["schema_version"] == 1
+          for key in (
+              "preflight_passed",
+              "template_rendered",
+              "recon_completed",
+              "exploit_completed",
+              "user_flag_verified",
+              "root_flag_verified",
+              "current_state_written",
+              "resume_validated",
+              "cleanup_completed",
+              "secrets_absent",
+          ):
+              assert htb[key] is True
+          serialized = json.dumps({"host": host, "htb": htb}).lower()
+          for forbidden in ("p12-fixture-user-secret", "p12-fixture-root-secret", "authorization", "cookie", "private key"):
+              assert forbidden not in serialized
+          PY
+
+      - name: Upload trusted host evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p12-trusted-host-e2e-${{ github.sha }}
+          path: |
+            artifacts/p12-trusted-linux-workcell-host-report.json
+            artifacts/p12-trusted-linux-workcell-htb-fixture-report.json
+          if-no-files-found: error
+          retention-days: 30
+
+  rootless-runtime:
+    name: Rootless Podman, PostgreSQL and Chromium
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install rootless packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            podman uidmap slirp4netns fuse-overlayfs python3-venv
+          podman --version
+          command -v setsid
+
+      - name: Install pinned podman-compose
+        run: |
+          python3 -m venv "$RUNNER_TEMP/podman-compose"
+          "$RUNNER_TEMP/podman-compose/bin/pip" install \
+            --disable-pip-version-check --no-input podman-compose==1.6.0
+          "$RUNNER_TEMP/podman-compose/bin/podman-compose" --version
+          echo "$RUNNER_TEMP/podman-compose/bin" >> "$GITHUB_PATH"
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Chromium
+        run: |
+          pnpm --dir web/console exec playwright install --with-deps chromium
+          chromium_bin="$(pnpm --dir web/console exec node -e 'console.log(require("@playwright/test").chromium.executablePath())')"
+          test -x "$chromium_bin"
+          echo "P12_CHROMIUM_BIN=$chromium_bin" >> "$GITHUB_ENV"
+
+      - name: Build tagged P12 E2E and redactor binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/p12-bin" artifacts
+          go test ./cmd/rootless-e2e-log-redactor -count=1
+          go build -trimpath -o "$RUNNER_TEMP/p12-bin/rootless-e2e-log-redactor" ./cmd/rootless-e2e-log-redactor
+          go test -c -tags=p12_e2e -o "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" ./internal/edgeclient
+
+      - name: Run two clean rootless cycles and restart
+        env:
+          P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
+        run: |
+          set -Eeuo pipefail
+          runtime_root="/run/user/$(id -u)"
+          socket="$runtime_root/podman/podman.sock"
+          service_pid=""
+          cleanup_failed=0
+          declare -a rootful_paths=()
+          declare -a rootful_modes=()
+
+          mapfile -t runtime_ids < <(python3 - <<'PY'
+          import hashlib
+          import os
+
+          seed = "|".join(
+              os.environ[name]
+              for name in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "GITHUB_EVENT_NAME", "GITHUB_REF")
+          )
+          for cycle in (1, 2):
+              digest = hashlib.sha256(f"{seed}|cycle={cycle}".encode()).hexdigest()[:32]
+              print(f"mr_{digest}")
+          PY
+          )
+          test "${#runtime_ids[@]}" -eq 2
+          test "${runtime_ids[0]}" != "${runtime_ids[1]}"
+          export P12_RUNTIME_ID_CYCLE_1="${runtime_ids[0]}"
+          export P12_RUNTIME_ID_CYCLE_2="${runtime_ids[1]}"
+
+          stop_service() {
+            if [ -z "$service_pid" ]; then
+              rm -f "$socket"
+              return 0
+            fi
+            if kill -0 "$service_pid" 2>/dev/null; then
+              kill -TERM -- "-$service_pid" 2>/dev/null || true
+              deadline=$((SECONDS + 10))
+              while kill -0 "$service_pid" 2>/dev/null && [ "$SECONDS" -lt "$deadline" ]; do
+                sleep 0.1
+              done
+              if kill -0 "$service_pid" 2>/dev/null; then
+                kill -KILL -- "-$service_pid" 2>/dev/null || true
+              fi
+            fi
+            wait "$service_pid" 2>/dev/null || true
+            service_pid=""
+            rm -f "$socket"
+            test ! -e "$socket"
+          }
+
+          start_service() {
+            rm -f "$socket"
+            export XDG_RUNTIME_DIR="$runtime_root"
+            mkdir -p "$runtime_root/podman"
+            podman system migrate
+            setsid podman system service --time=0 "unix://$socket" \
+              >"$RUNNER_TEMP/p12-podman-service.log" 2>&1 &
+            service_pid=$!
+            deadline=$((SECONDS + 60))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              if ! kill -0 "$service_pid" 2>/dev/null; then
+                echo "P12 rootless category=service_exit"
+                return 1
+              fi
+              if [ -S "$socket" ] && podman --url "unix://$socket" info >/dev/null 2>&1; then
+                test "$(stat -c '%u' "$socket")" = "$(id -u)"
+                mode="$(stat -c '%a' "$socket")"
+                test "${mode: -1}" = "0"
+                return 0
+              fi
+              sleep 0.25
+            done
+            echo "P12 rootless category=socket_readiness"
+            return 1
+          }
+
+          restore_rootful_sockets() {
+            local index
+            for index in "${!rootful_paths[@]}"; do
+              sudo chmod "${rootful_modes[$index]}" "${rootful_paths[$index]}" || return 1
+            done
+          }
+
+          cleanup() {
+            original_status=$?
+            trap - EXIT
+            set +e
+            resource_cleanup_failed=0
+            stop_failed=0
+            restore_failed=0
+            if [ -n "$service_pid" ] && kill -0 "$service_pid" 2>/dev/null; then
+              P12_ROOTLESS_CLEANUP_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+                -test.run=^TestTrustedLinuxWorkcellRootlessCleanupE2E$ -test.count=1 >/dev/null 2>&1 \
+                || resource_cleanup_failed=1
+            fi
+            stop_service || stop_failed=1
+            restore_rootful_sockets || restore_failed=1
+            service_stopped=true
+            socket_removed=true
+            resources_cleaned=true
+            permissions_restored=true
+            if [ -n "$service_pid" ] && kill -0 "$service_pid" 2>/dev/null; then
+              service_stopped=false
+            fi
+            if [ -e "$socket" ]; then
+              socket_removed=false
+            fi
+            if [ "$resource_cleanup_failed" -ne 0 ]; then
+              resources_cleaned=false
+            fi
+            if [ "$restore_failed" -ne 0 ]; then
+              permissions_restored=false
+            fi
+            if [ "$resource_cleanup_failed" -ne 0 ] || [ "$stop_failed" -ne 0 ] || [ "$restore_failed" -ne 0 ]; then
+              cleanup_failed=1
+            fi
+            cat >artifacts/p12-trusted-linux-workcell-rootless-lifecycle-report.json <<EOF
+          {"schema_version":1,"cleanup_trap_ran":true,"runtime_resources_cleaned":$resources_cleaned,"service_stopped":$service_stopped,"temporary_socket_removed":$socket_removed,"rootful_socket_permissions_restored":$permissions_restored}
+          EOF
+            if [ "$original_status" -ne 0 ]; then
+              exit "$original_status"
+            fi
+            if [ "$cleanup_failed" -ne 0 ]; then
+              exit 1
+            fi
+            exit 0
+          }
+          trap cleanup EXIT
+
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 "$runtime_root"
+          if ! grep -q "^${USER}:" /etc/subuid; then
+            sudo usermod --add-subuids 100000-165535 "$USER"
+            sudo usermod --add-subgids 100000-165535 "$USER"
+          fi
+
+          for candidate in /var/run/docker.sock /run/docker.sock; do
+            if [ ! -S "$candidate" ]; then
+              continue
+            fi
+            canonical="$(readlink -f "$candidate")"
+            case "$canonical" in
+              /run/docker.sock|/var/run/docker.sock) ;;
+              *) echo "P12 rootless category=rootful_socket_path"; exit 1 ;;
+            esac
+            duplicate=false
+            for existing in "${rootful_paths[@]}"; do
+              if [ "$existing" = "$canonical" ]; then
+                duplicate=true
+              fi
+            done
+            if [ "$duplicate" = false ]; then
+              rootful_paths+=("$canonical")
+              rootful_modes+=("$(stat -Lc '%a' "$canonical")")
+              sudo chmod 000 "$canonical"
+            fi
+          done
+
+          python3 - <<'PY'
+          import os
+          import socket
+
+          for path in ("/var/run/docker.sock", "/run/docker.sock"):
+              if not os.path.exists(path):
+                  continue
+              client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+              client.settimeout(0.5)
+              try:
+                  client.connect(path)
+              except OSError:
+                  pass
+              else:
+                  raise SystemExit("rootful socket remained accessible")
+              finally:
+                  client.close()
+          PY
+
+          start_service
+          P12_ROOTLESS_CLEANUP_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellRootlessCleanupE2E$ -test.count=1 >/dev/null 2>&1
+
+          set +e
+          P12_ROOTLESS_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellRootlessE2E$ -test.count=1 -test.v 2>&1 \
+            | "$RUNNER_TEMP/p12-bin/rootless-e2e-log-redactor" \
+            | tee artifacts/p12-rootless-test.log
+          pipeline_status=("${PIPESTATUS[@]}")
+          set -e
+          test_status="${pipeline_status[0]}"
+          redactor_status="${pipeline_status[1]}"
+          tee_status="${pipeline_status[2]}"
+          if [ "$test_status" -ne 0 ]; then
+            exit "$test_status"
+          fi
+          if [ "$redactor_status" -ne 0 ] || [ "$tee_status" -ne 0 ]; then
+            echo "P12 rootless category=redactor_failure"
+            exit 1
+          fi
+          rm -f artifacts/p12-rootless-test.log
+
+          stop_service
+          start_service
+
+          set +e
+          P12_ROOTLESS_RESTART_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellRootlessRestartE2E$ -test.count=1 -test.v 2>&1 \
+            | "$RUNNER_TEMP/p12-bin/rootless-e2e-log-redactor" \
+            | tee artifacts/p12-rootless-test.log
+          pipeline_status=("${PIPESTATUS[@]}")
+          set -e
+          test_status="${pipeline_status[0]}"
+          redactor_status="${pipeline_status[1]}"
+          tee_status="${pipeline_status[2]}"
+          if [ "$test_status" -ne 0 ]; then
+            exit "$test_status"
+          fi
+          if [ "$redactor_status" -ne 0 ] || [ "$tee_status" -ne 0 ]; then
+            echo "P12 rootless category=redactor_failure"
+            exit 1
+          fi
+          rm -f artifacts/p12-rootless-test.log
+
+      - name: Annotate rootless E2E failure
+        if: ${{ failure() && hashFiles('artifacts/p12-rootless-test.log') != '' }}
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          allowed = re.compile(r"^(?:=== RUN   TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E)|--- FAIL: TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E) \([0-9.]+s\)|FAIL|P12 rootless category=[a-z_]+)$")
+          lines = [line for line in Path("artifacts/p12-rootless-test.log").read_text(errors="replace").splitlines() if allowed.fullmatch(line)]
+          summary = "\n".join(lines[-30:])[-2000:] or "P12 rootless category=unknown"
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=internal/edgeclient/trusted_linux_workcell_e2e_test.go,line=1,title=Rootless workcell E2E failure::{escaped}")
+          PY
+
+      - name: Upload rootless failure diagnostic
+        if: ${{ failure() && hashFiles('artifacts/p12-rootless-test.log') != '' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p12-rootless-failure-${{ github.sha }}-${{ github.run_attempt }}
+          path: artifacts/p12-rootless-test.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify two-cycle rootless evidence
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          for cycle in (1, 2):
+              report = json.loads(Path(f"artifacts/p12-trusted-linux-workcell-rootless-cycle-{cycle}-report.json").read_text())
+              assert report["schema_version"] == 1
+              assert report["cycle"] == cycle
+              for key in (
+                  "endpoint_validated",
+                  "rootful_socket_inaccessible",
+                  "clean_start",
+                  "image_built",
+                  "workspace_bind_validated",
+                  "pod_created",
+                  "compose_ran",
+                  "postgresql_healthy",
+                  "postgresql_ready",
+                  "chromium_ready",
+                  "cancellation_ran",
+                  "processes_cleaned",
+                  "containers_cleaned",
+                  "pods_cleaned",
+                  "networks_cleaned",
+                  "volumes_cleaned",
+                  "rootless_socket_owned_by_user",
+                  "rootless_socket_permissions",
+              ):
+                  assert report[key] is True
+              assert report["second_cycle_clean_start"] is (cycle == 2)
+
+          restart = json.loads(Path("artifacts/p12-trusted-linux-workcell-rootless-restart-report.json").read_text())
+          assert restart["schema_version"] == 1
+          assert restart["service_restarted"] is True
+          assert restart["cycles_checked"] == 2
+          assert restart["orphan_resources"] == 0
+
+          lifecycle = json.loads(Path("artifacts/p12-trusted-linux-workcell-rootless-lifecycle-report.json").read_text())
+          assert lifecycle["schema_version"] == 1
+          assert lifecycle["cleanup_trap_ran"] is True
+          assert lifecycle["runtime_resources_cleaned"] is True
+          assert lifecycle["service_stopped"] is True
+          assert lifecycle["temporary_socket_removed"] is True
+          assert lifecycle["rootful_socket_permissions_restored"] is True
+          PY
+
+      - name: Upload rootless evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p12-rootless-runtime-e2e-${{ github.sha }}
+          path: |
+            artifacts/p12-trusted-linux-workcell-rootless-cycle-1-report.json
+            artifacts/p12-trusted-linux-workcell-rootless-cycle-2-report.json
+            artifacts/p12-trusted-linux-workcell-rootless-restart-report.json
+            artifacts/p12-trusted-linux-workcell-rootless-lifecycle-report.json
+          if-no-files-found: warn
+          retention-days: 30

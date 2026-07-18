@@ -1,8 +1,8 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-07-16
+Last updated: 2026-07-18
 
-## Status snapshot — 2026-07-16
+## Status snapshot — 2026-07-18
 
 This table distinguishes implemented state from roadmap intent. Detailed acceptance
 criteria below remain future requirements until their status changes with evidence.
@@ -19,6 +19,7 @@ criteria below remain future requirements until their status changes with eviden
 | Console 2.0 / P8.1 | Deployed | `main` at `d343264bffdc0ae1bc045a9d723e913be977090c` is deployed healthy and tagged `p8.1`; React Neo-BIOS UI, console OAuth, strict query-key rejection, durable `/state/tasks`, SSE and exact safe-data contracts passed production smoke. |
 | P11 bounded state and development Edge | Release candidate | Historical 71-tool foundation recorded in `docs/baselines/2026-07-15-p11.md`; merge, deployment, WSL installation and pairing remain pending. |
 | P11.2 remote OpenCode relay | Release candidate | Exact tree `e8862ee9229ec8a98237251de6d3272e3f72ee1e` passed distributed relay and host Bubblewrap E2E with OpenCode 1.18.1, four tools, restart/resume, repository mutation and zero duplicates. PR #13 remains unmerged and unpaired. |
+| P12 Trusted Linux Workcell | Complete / merge-ready candidate; Parrot validation pending | One opt-in `linux-workcell` with default `dev`, optional local `htb-linux`, honest host-shared networking, durable local state, sanitized inventory, optional rootless Docker/Podman, runtime cleanup, and 85-tool catalog invariant. Branch publication, exact-SHA CI, merge, deployment, and real Parrot setup remain pending. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
 | Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |
 | Edge agents | Development Edge implemented; WSL validation pending | Setup is outbound-only, revocable and locally bounded; broader PC/Parrot/security workcells remain planned. |

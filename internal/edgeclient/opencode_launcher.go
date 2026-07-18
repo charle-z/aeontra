@@ -84,14 +84,19 @@ type OpenCodeLaunchResult struct {
 }
 
 type OpenCodeLauncher struct {
-	config           OpenCodeLauncherConfig
-	remoteFactory    func(ModelRuntimeLease) (OpenCodeRemoteTransport, error)
-	runProcess       func(context.Context, openCodeProcessSpec) openCodeProcessResult
-	verifySandbox    func(context.Context, openCodeProcessSpec) error
-	resolveWorkspace func(string) (string, error)
-	effectiveUID     func() int
-	now              func() time.Time
-	allowRootTest    bool
+	config                 OpenCodeLauncherConfig
+	remoteFactory          func(ModelRuntimeLease) (OpenCodeRemoteTransport, error)
+	runProcess             func(context.Context, openCodeProcessSpec) openCodeProcessResult
+	verifySandbox          func(context.Context, openCodeProcessSpec) error
+	resolveWorkspace       func(string) (string, error)
+	resolveWorkspaceRecord func(string) (Workspace, error)
+	linuxNetworkProbe      LinuxNetworkProbe
+	rootlessEndpoint       func(int, string) (*RootlessContainerEndpoint, error)
+	containerRunner        ContainerCommandRunner
+	effectiveUID           func() int
+	now                    func() time.Time
+	allowRootTest          bool
+	allowRootlessRootTest  bool
 }
 
 type openCodeProcessSpec struct {
@@ -113,6 +118,7 @@ type openCodeSandboxMount struct {
 
 type openCodeSandboxSpec struct {
 	UnshareAll       bool
+	ShareNetwork     bool
 	ClearEnv         bool
 	NewSession       bool
 	DieWithParent    bool
@@ -180,6 +186,8 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 	launcher := &OpenCodeLauncher{config: config, effectiveUID: os.Geteuid, now: time.Now, runProcess: runOpenCodeProcess}
 	launcher.verifySandbox = launcher.verifyOpenCodeSandbox
 	launcher.resolveWorkspace = config.Workspaces.Resolve
+	launcher.resolveWorkspaceRecord = config.Workspaces.Get
+	launcher.rootlessEndpoint = DiscoverRootlessContainerEndpoint
 	launcher.remoteFactory = func(lease ModelRuntimeLease) (OpenCodeRemoteTransport, error) {
 		return NewRemoteEdgeTransport(RemoteEdgeTransportOptions{StateRoot: config.StateRoot, Lease: lease, HTTPClient: config.HTTPClient})
 	}
@@ -245,13 +253,53 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		return result, err
 	}
 	defer remote.Close()
+	workspaceRecord, err := l.resolveWorkspaceRecord(lease.WorkspaceID)
+	if err != nil {
+		failLocal(OpenCodeLocalFailed, -1, false)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, err
+	}
 	workspace, err := l.resolveWorkspace(lease.WorkspaceID)
 	if err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
-	if err := l.verifyLocalInstallation(ctx, workspace, lease); err != nil {
+	if workspace != workspaceRecord.Path {
+		failLocal(OpenCodeLocalFailed, -1, false)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, errors.New("workspace path changed during local resolution")
+	}
+	var preparation *LinuxWorkcellPreparation
+	if workspaceRecord.Profile == WorkspaceProfileLinuxWorkcell {
+		prepared, prepareErr := PrepareLinuxWorkcellWithToolPath(ctx, workspaceRecord, lease, l.config.ToolPath, l.linuxNetworkProbe)
+		if prepareErr != nil {
+			failLocal(OpenCodeLocalFailed, -1, false)
+			_, _ = remote.Failed(context.Background(), "")
+			return result, prepareErr
+		}
+		uid := l.effectiveUID()
+		if l.rootlessEndpoint != nil && (uid > 0 || l.allowRootlessRootTest) {
+			endpoint, endpointErr := l.rootlessEndpoint(uid, l.config.ToolPath)
+			if endpointErr != nil {
+				failLocal(OpenCodeLocalFailed, -1, false)
+				_, _ = remote.Failed(context.Background(), "")
+				return result, endpointErr
+			}
+			prepared.RootlessContainer = endpoint
+			if l.allowRootTest {
+				l.effectiveUID = os.Geteuid
+			}
+		}
+		preparation = &prepared
+	}
+	if err := l.verifyLocalInstallationForWorkspace(ctx, workspaceRecord, preparation, lease); err != nil {
+		failLocal(OpenCodeLocalFailed, -1, false)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, err
+	}
+	workspaceAfter, err := l.resolveWorkspaceRecord(lease.WorkspaceID)
+	if err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
@@ -262,6 +310,12 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
+	if workspace != workspaceAfter.Path || !sameWorkspaceRuntimeContract(workspaceRecord, workspaceAfter) {
+		failLocal(OpenCodeLocalFailed, -1, false)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, errors.New("workspace contract changed during local preflight")
+	}
+	workspaceRecord = workspaceAfter
 	if _, err := remote.Started(ctx); err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
 		return result, err
@@ -303,7 +357,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 
 	stdout := newBoundedSink(l.config.OutputLimit)
 	stderr := newBoundedSink(l.config.OutputLimit)
-	spec, err := l.processSpec(runtimeDir, workspace, socketPath, lease, stdout, stderr)
+	spec, err := l.processSpecForWorkspace(runtimeDir, workspaceRecord, preparation, socketPath, lease, stdout, stderr)
 	if err != nil {
 		cancel()
 		<-driverDone
@@ -331,17 +385,36 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	case <-heartbeatErr:
 	default:
 	}
+	var cleanupErr error
+	if preparation != nil {
+		cleanupErr = CleanupRootlessContainerResources(context.Background(), preparation.RootlessContainer, lease.RuntimeID, l.config.ToolPath, l.containerRunner)
+	}
+	cleanupState := LinuxWorkcellContainerCleanupState(preparation, cleanupErr)
+	terminalCheckpoint := "failed"
+	if preparation != nil {
+		defer func() {
+			_ = RecordLinuxWorkcellTerminalState(preparation, terminalCheckpoint, cleanupState)
+		}()
+	}
+	if cleanupErr != nil {
+		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
+		_, _ = remote.Failed(context.Background(), "")
+		return result, errors.New("linux workcell rootless container cleanup failed")
+	}
 	truncated := stdout.Truncated() || stderr.Truncated()
 	if terminalRuntime.State == modelturn.RuntimeStateCancelled {
+		terminalCheckpoint = "cancelled"
 		failLocal(OpenCodeLocalCancelled, processResult.ExitCode, truncated)
 		return result, context.Canceled
 	}
 	if l.killSwitchActive() {
+		terminalCheckpoint = "cancelled: kill switch"
 		failLocal(OpenCodeLocalCancelled, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, ErrKillSwitch
 	}
 	if errors.Is(runContextErr, context.DeadlineExceeded) {
+		terminalCheckpoint = "timeout"
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, context.DeadlineExceeded
@@ -368,6 +441,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		return result, err
 	}
+	terminalCheckpoint = "completed"
 	failLocal(OpenCodeLocalCompleted, processResult.ExitCode, truncated)
 	return result, nil
 }
@@ -605,6 +679,9 @@ func parseOpenCodeSandboxArgs(args []string) (openCodeSandboxSpec, error) {
 		case "--unshare-all":
 			spec.UnshareAll = true
 			index++
+		case "--share-net":
+			spec.ShareNetwork = true
+			index++
 		case "--clearenv":
 			spec.ClearEnv = true
 			index++
@@ -651,7 +728,7 @@ func parseOpenCodeSandboxArgs(args []string) (openCodeSandboxSpec, error) {
 }
 
 func validateOpenCodeSandboxSpec(spec openCodeSandboxSpec, stateRoot, runtimeDir, workspace, providerPath, openCodePath, toolPath string, lease ModelRuntimeLease) error {
-	if !spec.DieWithParent || !spec.NewSession || !spec.UnshareAll || !spec.ClearEnv {
+	if !spec.DieWithParent || !spec.NewSession || !spec.UnshareAll || spec.ShareNetwork || !spec.ClearEnv {
 		return errors.New("OpenCode sandbox isolation flags are incomplete")
 	}
 	expectedCommand := []string{openCodeSandboxExecutable, "run", "--auto", "--model", openCodeModelID, "--format", "json", "--dir", openCodeSandboxWorkspace, lease.Goal}

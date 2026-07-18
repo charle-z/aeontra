@@ -91,6 +91,14 @@ DNS, mount and private-path isolation. Installation and pairing remain explicit
 human steps; see [the P11.2 baseline](docs/baselines/2026-07-16-p11_2.md) and the
 [Parrot WSL guide](docs/install-opencode-edge-parrot.md).
 
+**P12 Trusted Linux Workcell implementation candidate:** one explicit `linux-workcell`
+profile adds default development behavior and an optional local `htb-linux`
+context without changing the 85-tool MCP catalog. The existing `sandbox` remains
+networkless; the trusted workcell honestly declares `trusted_host_shared_network`,
+keeps authority and HTB metadata local to Edge, and permits only user-owned rootless
+Docker or Podman sockets. It is not merged, deployed, paired, or installed on Parrot.
+See [docs/linux-workcell.md](docs/linux-workcell.md).
+
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused
 capability services over one shared policy, audit, root, runner, redaction, and
@@ -211,6 +219,8 @@ writes require explicit approval in ask mode; aliases never weaken policy.
   edge-enforced authorized security workspaces.
 - `docs/edge-workcells.md` — flexible outbound WSL/Parrot workcells, local agents,
   privilege challenges, and infrastructure/security boundaries.
+- `docs/linux-workcell.md` — exact P12 trusted-workcell architecture, local CLI,
+  rootless containers, HTB context, residual risks, tests, and Parrot setup steps.
 - `docs/open-source-release.md` — proposed public/private boundary, license options,
   and release-readiness checklist.
 

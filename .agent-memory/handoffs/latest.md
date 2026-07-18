@@ -1,22 +1,22 @@
-# Latest handoff — console durable live state release candidate
+# Latest handoff — P12 rootless lifecycle correction
 
-Date: 2026-07-17
-Branch: `console-durable-live-state`
-Integrated HEAD: `ec0753d437acb781aa76392c81099394d75f0d37`
+Date: 2026-07-18
+Branch: p12-trusted-linux-workcell.
+Pull request: #25.
+Published diagnostic HEAD: 15adccc016dd690a54336ca2d54423eff4ee74d9.
+Base: origin/main at 087f00e404855cc83e76c1eb7d6ed85ab14577c5.
 
 Historical foundations remain explicit:
-- P8.1 is closed, deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
-- Its historical catalog had 67 tools and Edge state `not_paired`.
-- P9 Brain is deployed and preserved as Markdown truth with a derived SQLite cache.
+- P8.1 is closed, deployed and tagged p8.1 at d343264bffdc0ae1bc045a9d723e913be977090c.
+- Its historical catalog had 67 tools and Edge state not_paired.
+- P9 Brain is deployed at 4fbe1dda02351c632e67c0f10a5c5b314df745e2.
+- P11.2 Remote OpenCode Relay remains the sandbox and relay foundation.
+- The catalog remains exactly 85 tools with sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941.
 
-Completed console work:
-- Steps 1–5: `c284dcd`, `e4c674e`, `22a9daf`, `9cdfe56`, `aa1c30d`.
-- Step 6: `225b6e1` — persistent Tasks/Events, replayable SSE, real opaque scopes, combined storage budget and complete React live state.
-- Step 7: `9c41638` — final documentation/catalog identity and coverage closure.
-- Main was merged normally at `ec0753d`, incorporating GitHub PR evidence fallback through `77a93ad` without conflicts.
+Commit 15adccc added bounded failure-only rootless diagnostics and completed all 15 PR checks green with evidence complete. It is intentionally not the merge candidate because it still ran one rootless cycle.
 
-Current catalog is exactly 85 tools with hash `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
+The current working correction fixes the concrete lifecycle race: execContainerCommandRunner created a process group but context cancellation killed only the leader, so a child could survive. A deterministic heartbeat regression now proves the whole group stops. Cleanup now removes Podman pods before containers, then networks and volumes. The E2E derives two distinct runtime IDs per GitHub run, executes two clean cycles in one job, validates Compose readiness/down, PostgreSQL healthcheck/query, Chromium, the sole workspace project bind, process-group cancellation, rootful socket inaccessibility, service restart and no inherited resources. An EXIT trap cleans both labels, stops the user-owned Podman process group, removes the temporary socket and restores rootful socket permissions.
 
-Verified locally on the integrated tree: package suites, documentation, coverage thresholds, vet, build, Staticcheck, Govulncheck, Actionlint, TypeScript, Vitest and Vite. Race and Docker must be confirmed by GitHub because the public runner lacks gcc and Docker.
+Final local gates pass: focused suites, the process-group regression repeated ten times, tagged compilation, full serial tests, atomic coverage thresholds, vet, build, Staticcheck, Govulncheck, Actionlint and diff validation. Only the correction commit, publication and exact-head CI remain pending. No real Parrot host was installed, paired or modified.
 
-Next: create the final candidate record commit, publish only `console-durable-live-state`, open the PR against main, wait all gates, merge by merge commit, observe the automatic Coolify deployment, then run catalog, Brain, console and authentication smokes against the exact deployed commit.
+Correction `39e8475` was published. Both rootless runs then failed with the redacted category `workspace_bind`; the cause was a shell-probe false negative, not a Podman bind failure. BusyBox `sh` could terminate when the failed redirection of the `printf` builtin was evaluated. The pending fix uses external `touch` under an `if` and separately inspects Podman mounts to prove the workspace is the sole project bind. Probe fix `d37c99146e053a9bada19822d4fcb7effbf3f7cf` is published and completed 15/15 exact-head checks green with mergeable=true and evidence complete. Both rootless jobs passed the two-cycle lifecycle, restart, cleanup trap and evidence verification. This memory synchronization is the only remaining branch change; after its checks are green, revalidate PR #25 and merge by merge commit.

@@ -15,11 +15,15 @@ func workspaceCommand(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if len(args) == 0 {
-		return errors.New("workspace command requires add, list, or remove")
+		return errors.New("workspace command requires add, configure, inventory, list, or remove")
 	}
 	switch args[0] {
 	case "add":
 		return workspaceAdd(args[1:], stdout, stderr)
+	case "configure":
+		return workspaceConfigure(args[1:], stdout, stderr)
+	case "inventory":
+		return workspaceInventory(args[1:], stdout, stderr)
 	case "list":
 		return workspaceList(args[1:], stdout, stderr)
 	case "remove":
@@ -33,19 +37,31 @@ func workspaceAdd(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("workspace add", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	state := fs.String("state", defaultStateRoot(), "private Edge state root")
-	path := fs.String("path", "", "absolute local workspace path")
+	pathFlag := fs.String("path", "", "absolute local workspace path")
+	profileFlag := fs.String("profile", string(edgeclient.WorkspaceProfileSandbox), "sandbox or linux-workcell")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 || strings.TrimSpace(*path) == "" {
-		return errors.New("workspace add requires exactly --path")
+	if fs.NArg() > 1 {
+		return errors.New("workspace add accepts one local path")
+	}
+	path := strings.TrimSpace(*pathFlag)
+	if fs.NArg() == 1 {
+		if path != "" {
+			return errors.New("workspace add accepts either --path or one positional path")
+		}
+		path = strings.TrimSpace(fs.Arg(0))
+	}
+	if path == "" {
+		return errors.New("workspace add requires one local path")
 	}
 	registry, err := edgeclient.OpenWorkspaceRegistry(*state)
 	if err != nil {
 		return err
 	}
 	defer registry.Close()
-	workspace, created, err := registry.Add(*path)
+	profile := edgeclient.WorkspaceProfile(strings.TrimSpace(*profileFlag))
+	workspace, created, err := registry.AddProfile(path, profile)
 	if err != nil {
 		return err
 	}
@@ -53,7 +69,11 @@ func workspaceAdd(args []string, stdout, stderr io.Writer) error {
 	if created {
 		status = "added"
 	}
-	fmt.Fprintf(stdout, "%s %s %s\n", status, workspace.ID, workspace.Path)
+	if workspace.Profile == edgeclient.WorkspaceProfileLinuxWorkcell {
+		fmt.Fprintf(stdout, "%s %s %s %s %s\n", status, workspace.ID, workspace.Profile, workspace.Mode, workspace.Path)
+	} else {
+		fmt.Fprintf(stdout, "%s %s %s\n", status, workspace.ID, workspace.Path)
+	}
 	return nil
 }
 
@@ -77,7 +97,11 @@ func workspaceList(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	for _, workspace := range workspaces {
-		fmt.Fprintf(stdout, "%s %s\n", workspace.ID, workspace.Path)
+		if workspace.Profile == edgeclient.WorkspaceProfileLinuxWorkcell {
+			fmt.Fprintf(stdout, "%s %s %s %s %s\n", workspace.ID, workspace.Profile, workspace.Mode, workspace.NetworkPosture, workspace.Path)
+		} else {
+			fmt.Fprintf(stdout, "%s %s\n", workspace.ID, workspace.Path)
+		}
 	}
 	return nil
 }
