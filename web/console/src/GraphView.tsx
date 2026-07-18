@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { BrainData, BrainNode } from "./dataTypes";
 import {
   computeNodePoints,
+  maximumVisibleLabels,
   placeGraphLabels,
   resolveConsoleLabel,
   visualNodeRadius,
@@ -168,7 +169,12 @@ export default function GraphView({ brain }: Props) {
         setSelectedId(null);
       }
     }}>
-      <div className="graph-canvas" ref={canvasRef} data-zoom-level={zoomLevel(view.scale)}>
+      <div
+        className="graph-canvas"
+        ref={canvasRef}
+        data-zoom-level={zoomLevel(view.scale)}
+        data-label-capacity={maximumVisibleLabels(viewport, view.scale)}
+      >
         <div className="graph-controls" role="group" aria-label="Graph controls">
           <button type="button" onClick={() => zoom(1.25)} aria-label="Zoom in">+</button>
           <button type="button" onClick={() => zoom(0.8)} aria-label="Zoom out">−</button>

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -143,35 +143,40 @@ function overlaps(left: Box, right: Box, padding = 0.5): boolean {
     && left.y + left.height + padding > right.y;
 }
 
-async function requiredBox(locator: Locator): Promise<Box> {
-  const box = await locator.boundingBox();
-  expect(box).not.toBeNull();
-  return box!;
-}
-
 async function verifyCollisionContract(page: Page): Promise<void> {
-  const labels = page.locator('[data-graph-label="true"]');
-  const controls = await requiredBox(page.getByRole("group", { name: "Graph controls" }));
-  const detail = await requiredBox(page.locator("#graph-detail-panel"));
-  const labelBoxes: Array<{ nodeId: string; box: Box }> = [];
-  for (let index = 0; index < await labels.count(); index += 1) {
-    const label = labels.nth(index);
-    const nodeId = await label.getAttribute("data-node-id");
-    expect(nodeId).not.toBeNull();
-    const box = await requiredBox(label);
-    expect(overlaps(box, controls)).toBe(false);
-    expect(overlaps(box, detail)).toBe(false);
-    for (const prior of labelBoxes) expect(overlaps(box, prior.box)).toBe(false);
-    labelBoxes.push({ nodeId: nodeId!, box });
-  }
+  const snapshot = await page.evaluate(() => {
+    const toBox = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    const controls = document.querySelector('[role="group"][aria-label="Graph controls"]');
+    const detail = document.querySelector("#graph-detail-panel");
+    if (!controls || !detail) throw new Error("graph controls or detail panel missing");
+    return {
+      controls: toBox(controls),
+      detail: toBox(detail),
+      labels: Array.from(document.querySelectorAll('[data-graph-label="true"]')).map((element) => ({
+        nodeId: element.getAttribute("data-node-id") ?? "",
+        box: toBox(element),
+      })),
+      nodes: Array.from(document.querySelectorAll('[data-graph-node="true"]')).map((element) => {
+        const visual = element.querySelector(".graph-node-visual");
+        if (!visual) throw new Error("graph node visual missing");
+        return { nodeId: element.getAttribute("data-node-id") ?? "", box: toBox(visual) };
+      }),
+    };
+  });
 
-  const nodes = page.locator('[data-graph-node="true"]');
-  for (const label of labelBoxes) {
-    for (let index = 0; index < await nodes.count(); index += 1) {
-      const node = nodes.nth(index);
-      if (await node.getAttribute("data-node-id") === label.nodeId) continue;
-      const visual = await requiredBox(node.locator(".graph-node-visual"));
-      expect(overlaps(label.box, visual)).toBe(false);
+  for (const [index, label] of snapshot.labels.entries()) {
+    expect(label.nodeId).not.toBe("");
+    expect(label.box.width).toBeGreaterThan(0);
+    expect(label.box.height).toBeGreaterThan(0);
+    expect(overlaps(label.box, snapshot.controls)).toBe(false);
+    expect(overlaps(label.box, snapshot.detail)).toBe(false);
+    for (const prior of snapshot.labels.slice(0, index)) expect(overlaps(label.box, prior.box)).toBe(false);
+    for (const node of snapshot.nodes) {
+      if (node.nodeId === label.nodeId) continue;
+      expect(overlaps(label.box, node.box)).toBe(false);
     }
   }
 }
@@ -213,15 +218,17 @@ test("zoom density, keyboard and touch interaction remain stable", async ({ page
   await page.getByRole("button", { name: "Zoom out" }).click();
   await page.getByRole("button", { name: "Zoom out" }).click();
   await expect(page.locator(".graph-canvas")).toHaveAttribute("data-zoom-level", "far");
-  const farLabels = await page.locator('[data-graph-label="true"]').count();
+  const farCapacity = Number(await page.locator(".graph-canvas").getAttribute("data-label-capacity"));
+  expect(farCapacity).toBeGreaterThan(0);
 
   await page.getByRole("button", { name: "Reset graph" }).click();
   await page.getByRole("button", { name: "Zoom in" }).click();
   await page.getByRole("button", { name: "Zoom in" }).click();
   await page.getByRole("button", { name: "Zoom in" }).click();
   await expect(page.locator(".graph-canvas")).toHaveAttribute("data-zoom-level", "near");
-  const nearLabels = await page.locator('[data-graph-label="true"]').count();
-  expect(nearLabels).toBeGreaterThanOrEqual(farLabels);
+  const nearCapacity = Number(await page.locator(".graph-canvas").getAttribute("data-label-capacity"));
+  expect(nearCapacity).toBeGreaterThan(farCapacity);
+  await verifyCollisionContract(page);
 
   if (testInfo.project.use.hasTouch) {
     await target.tap();
