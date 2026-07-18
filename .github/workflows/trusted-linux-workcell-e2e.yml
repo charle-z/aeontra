@@ -181,7 +181,7 @@ jobs:
           service_pid=$!
           echo "P12_PODMAN_SERVICE_PID=$service_pid" >> "$GITHUB_ENV"
           echo "XDG_RUNTIME_DIR=$runtime_root" >> "$GITHUB_ENV"
-          for attempt in $(seq 1 60); do
+          for ((attempt = 0; attempt < 60; attempt++)); do
             test -S "$runtime_root/podman/podman.sock" && break
             sleep 1
           done
@@ -213,7 +213,7 @@ jobs:
             >>artifacts/p12-podman-service.log 2>&1 &
           service_pid=$!
           echo "P12_PODMAN_SERVICE_PID=$service_pid" >> "$GITHUB_ENV"
-          for attempt in $(seq 1 60); do
+          for ((attempt = 0; attempt < 60; attempt++)); do
             test -S "$XDG_RUNTIME_DIR/podman/podman.sock" && break
             sleep 1
           done
