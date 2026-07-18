@@ -191,9 +191,11 @@ jobs:
           test "$runtime_root/podman/podman.sock" != /var/run/docker.sock
           test "$runtime_root/podman/podman.sock" != /run/docker.sock
 
-      - name: Build tagged P12 E2E binary
+      - name: Build tagged P12 E2E and redactor binaries
         run: |
           mkdir -p "$RUNNER_TEMP/p12-bin"
+          go test ./cmd/rootless-e2e-log-redactor -count=1
+          go build -trimpath -o "$RUNNER_TEMP/p12-bin/rootless-e2e-log-redactor" ./cmd/rootless-e2e-log-redactor
           go test -c -tags=p12_e2e -o "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" ./internal/edgeclient
 
       - name: Run rootless runtime E2E
@@ -201,8 +203,46 @@ jobs:
           P12_ROOTLESS_E2E: "1"
           P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
         run: |
+          set +e
           "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
-            -test.run=^TestTrustedLinuxWorkcellRootlessE2E$ -test.count=1 -test.v
+            -test.run=^TestTrustedLinuxWorkcellRootlessE2E$ -test.count=1 -test.v 2>&1 \
+            | "$RUNNER_TEMP/p12-bin/rootless-e2e-log-redactor" \
+            | tee artifacts/p12-rootless-test.log
+          status=${PIPESTATUS[0]}
+          redactor_status=${PIPESTATUS[1]}
+          tee_status=${PIPESTATUS[2]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          if [ "$redactor_status" -ne 0 ] || [ "$tee_status" -ne 0 ]; then
+            echo "::error file=cmd/rootless-e2e-log-redactor/main.go,line=1,title=Rootless diagnostic failure::P12 rootless category=redactor_failure"
+            exit 1
+          fi
+          rm -f artifacts/p12-rootless-test.log
+
+      - name: Annotate rootless E2E failure
+        if: ${{ failure() && hashFiles('artifacts/p12-rootless-test.log') != '' }}
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          allowed = re.compile(r"^(?:=== RUN   TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E)|--- FAIL: TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E) \([0-9.]+s\)|FAIL|P12 rootless category=[a-z_]+)$")
+          lines = [line for line in Path("artifacts/p12-rootless-test.log").read_text(errors="replace").splitlines() if allowed.fullmatch(line)]
+          summary = "\n".join(lines[-30:])[-2000:] or "P12 rootless category=unknown"
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=internal/edgeclient/trusted_linux_workcell_e2e_test.go,line=1,title=Rootless workcell E2E failure::{escaped}")
+          PY
+
+      - name: Upload rootless failure diagnostic
+        if: ${{ failure() && hashFiles('artifacts/p12-rootless-test.log') != '' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p12-rootless-failure-${{ github.sha }}-${{ github.run_attempt }}
+          path: artifacts/p12-rootless-test.log
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Restart user-owned Podman API
         run: |
@@ -267,6 +307,5 @@ jobs:
           path: |
             artifacts/p12-trusted-linux-workcell-rootless-report.json
             artifacts/p12-trusted-linux-workcell-rootless-restart-report.json
-            artifacts/p12-podman-service.log
           if-no-files-found: warn
           retention-days: 30
