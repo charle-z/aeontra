@@ -145,7 +145,7 @@ func (h *Handler) handleTaskEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
-	if _, err := io.WriteString(w, "retry: 2000\\n\\n"); err != nil {
+	if _, err := io.WriteString(w, "retry: 2000\n\n"); err != nil {
 		return
 	}
 	flusher.Flush()
@@ -165,6 +165,12 @@ func (h *Handler) handleTaskEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		flusher.Flush()
 		return true
+	}
+	writeJournalEvent := func(event taskjournal.Event) bool {
+		if event.EventID <= 0 {
+			return false
+		}
+		return writeEvent(event.EventID, "journal", event)
 	}
 
 	writeSnapshots := func() bool {
@@ -193,7 +199,7 @@ func (h *Handler) handleTaskEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			for _, event := range events {
-				if !writeEvent(event.EventID, "journal", event) {
+				if !writeJournalEvent(event) {
 					return
 				}
 				after = event.EventID
@@ -221,7 +227,7 @@ func (h *Handler) handleTaskEvents(w http.ResponseWriter, r *http.Request) {
 			if event.EventID <= after {
 				continue
 			}
-			if !writeEvent(event.EventID, "journal", event) {
+			if !writeJournalEvent(event) {
 				return
 			}
 			after = event.EventID

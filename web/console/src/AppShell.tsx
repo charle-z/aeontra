@@ -93,12 +93,27 @@ function SystemTab({ status, data, error }: { status: RuntimeStatus | null; data
 }
 
 function AgentsTab({ data, projectSelection, edgeSelection }: { data: ConsoleData | null; projectSelection: string; edgeSelection: string }) {
+  const payload = data?.payload;
+  const durable = data?.durable_activity;
+  const activityWindows = durable ? [
+    ["24 hours", durable.last_24_hours],
+    ["7 days", durable.last_7_days],
+    ["30 days", durable.last_30_days],
+    ["90 days", durable.last_90_days],
+    ["Lifetime", durable.lifetime],
+  ] as const : [];
   const projectMatches = !projectSelection || Boolean(data?.projects.some((project) => project.id === projectSelection && project.current));
   const runtimes = projectMatches ? (data?.runtimes ?? []).filter((runtime) => !edgeSelection || runtime.edge_id === edgeSelection) : [];
   const runtimeControllers = new Set(runtimes.map((runtime) => runtime.controller));
   const visibleControllers = projectMatches ? (edgeSelection ? (data?.controllers ?? []).filter((controller) => runtimeControllers.has(controller.kind)) : (data?.controllers ?? [])) : [];
   return (
     <div className="table-panel">
+      <Section title="Current process" />
+      <div className="table-scroll"><table><thead><tr><th>Started at</th><th>Requests</th><th>Tool calls</th><th>Input bytes</th><th>Output bytes</th><th>Estimated payload tokens</th></tr></thead><tbody><tr><td><Timestamp value={payload?.process_started_at ?? ""} /></td><td>{payload?.request_count ?? 0}</td><td>{payload?.tool_call_count ?? 0}</td><td>{payload ? bytes(payload.input_bytes) : "—"}</td><td>{payload ? bytes(payload.output_bytes) : "—"}</td><td>{payload?.estimated_payload_tokens ?? 0}</td></tr></tbody></table></div>
+      <p className="panel-note">Current process counters may reset when the process restarts. Estimated payload tokens is the explicit bytes/4 estimate, not provider-reported token usage.</p>
+      <Section title="Durable activity" />
+      <div className="table-scroll"><table><thead><tr><th>Window</th><th>Requests</th><th>Tool calls</th><th>Input bytes</th><th>Output bytes</th><th>Estimated payload tokens</th><th>Updated</th></tr></thead><tbody>{activityWindows.map(([label, window]) => <tr key={label}><td>{label}</td><td>{window.requests}</td><td>{window.tool_calls}</td><td>{bytes(window.input_bytes)}</td><td>{bytes(window.output_bytes)}</td><td>{window.estimated_payload_tokens}</td><td><Timestamp value={window.updated_at} /></td></tr>)}</tbody></table></div>
+      <p className="panel-note">Durable windows are persisted independently from the current process and survive deployments.</p>
       <Section title="Controllers — real transport state" />
       {!visibleControllers.length ? <p className="empty-note">No controller activity matches the selected real scope.</p> : <div className="table-scroll"><table><thead><tr><th>Kind</th><th>State</th><th>Operations</th><th>Runtimes</th><th>Last seen</th></tr></thead><tbody>{visibleControllers.map((controller) => <tr key={controller.kind}><td>{controller.kind}</td><td data-tone={stateTone(controller.state)}>{controller.state}</td><td>{controller.active_operations}</td><td>{controller.active_runtimes}</td><td><Timestamp value={controller.last_seen_at} /></td></tr>)}</tbody></table></div>}
       <Section title="Model Runtimes — distinct from tool calls" />
@@ -209,11 +224,16 @@ function matchesEvent(event: JournalEvent, filters: EventFilters): boolean {
   return matchesTaskScope(event.task, filters) && (!filters.event_type || event.event_type === filters.event_type);
 }
 
+function eventKey(event: JournalEvent): string {
+  return event.event_id + ":" + event.task_version;
+}
+
 function mergeLiveEvents(page: EventLogResponse, live: JournalEvent[], filters: EventFilters): EventLogResponse {
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   const events = [...live.filter((event) => matchesEvent(event, filters)), ...page.events].filter((event) => {
-    if (seen.has(event.event_id)) return false;
-    seen.add(event.event_id);
+    const key = eventKey(event);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   }).slice(0, 200);
   return { ...page, events };
@@ -232,7 +252,7 @@ function EventsTab({ log, filters, setFilters, streamState, lastEventID, loadMor
       </div>
       {!log?.available && <p className="empty-note">Persistent event log unavailable.</p>}
       {log?.available && !log.events.length && <p className="empty-note">No durable event matches the selected server-side filters.</p>}
-      {!!log?.events.length && <div className="table-scroll"><table><thead><tr><th>ID</th><th>Occurred at</th><th>Controller</th><th>Operation</th><th>Type</th><th>State</th><th>Version</th></tr></thead><tbody>{log.events.map((event) => <tr key={event.event_id}><td>{event.event_id}</td><td><Timestamp value={event.occurred_at} /></td><td>{event.task.controller}</td><td>{event.operation}</td><td>{event.event_type}</td><td data-tone={stateTone(event.state)}>{event.state}</td><td>{event.task_version}</td></tr>)}</tbody></table></div>}
+      {!!log?.events.length && <div className="table-scroll"><table><thead><tr><th>ID</th><th>Occurred at</th><th>Controller</th><th>Operation</th><th>Type</th><th>State</th><th>Version</th></tr></thead><tbody>{log.events.map((event) => <tr key={eventKey(event)}><td>{event.event_id}</td><td><Timestamp value={event.occurred_at} /></td><td>{event.task.controller}</td><td>{event.operation}</td><td>{event.event_type}</td><td data-tone={stateTone(event.state)}>{event.state}</td><td>{event.task_version}</td></tr>)}</tbody></table></div>}
       <div className="paging-bar"><span>storage: {log?.storage.storage ?? "unavailable"} · {log?.storage.record_count ?? 0} tasks</span><button type="button" disabled={!log?.has_more || loading} onClick={loadMore}>{loading ? "Loading…" : "Load older events"}</button></div>
     </div>
   );
@@ -243,8 +263,8 @@ function mergeTaskPage(current: TasksResponse, page: TasksResponse): TasksRespon
   return { ...page, tasks: [...current.tasks, ...page.tasks.filter((task) => !seen.has(task.task_id))] };
 }
 function mergeEventPage(current: EventLogResponse, page: EventLogResponse): EventLogResponse {
-  const seen = new Set(current.events.map((event) => event.event_id));
-  return { ...page, events: [...current.events, ...page.events.filter((event) => !seen.has(event.event_id))] };
+  const seen = new Set(current.events.map(eventKey));
+  return { ...page, events: [...current.events, ...page.events.filter((event) => !seen.has(eventKey(event)))] };
 }
 
 export default function AppShell() {
@@ -377,7 +397,7 @@ export default function AppShell() {
           const nextID = raw.lastEventId || String(event.event_id);
           lastEventIDRef.current = nextID;
           setLastEventID(nextID);
-          pendingEventsRef.current = [event, ...pendingEventsRef.current.filter((item) => item.event_id !== event.event_id)].slice(0, 200);
+          pendingEventsRef.current = [event, ...pendingEventsRef.current.filter((item) => eventKey(item) !== eventKey(event))].slice(0, 200);
           if (matchesTaskScope(event.task, taskFiltersRef.current)) {
             setTasks((current) => current ? { ...current, tasks: [event.task, ...current.tasks.filter((task) => task.task_id !== event.task.task_id)].slice(0, 200) } : current);
           }
