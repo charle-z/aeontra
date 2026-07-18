@@ -81,7 +81,7 @@ func normalizeWorkspaceRoots(roots WorkspaceRoots) (WorkspaceRoots, error) {
 	roots.Dev = filepath.Clean(strings.TrimSpace(roots.Dev))
 	roots.HTBLinux = filepath.Clean(strings.TrimSpace(roots.HTBLinux))
 	if !filepath.IsAbs(roots.Dev) || !filepath.IsAbs(roots.HTBLinux) || roots.Dev == roots.HTBLinux || isWindowsMount(roots.Dev) || isWindowsMount(roots.HTBLinux) {
-		return WorkspaceRoots{}, errors.New("Linux workcell roots are unsafe")
+		return WorkspaceRoots{}, errors.New("linux workcell roots are unsafe")
 	}
 	return roots, nil
 }

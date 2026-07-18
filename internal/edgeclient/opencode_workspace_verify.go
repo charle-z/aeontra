@@ -21,15 +21,15 @@ func (l *OpenCodeLauncher) verifyLocalInstallationForWorkspace(ctx context.Conte
 		return nil
 	}
 	if workspace.Profile != WorkspaceProfileLinuxWorkcell || preparation == nil {
-		return errors.New("Linux workcell verification contract is invalid")
+		return errors.New("linux workcell verification contract is invalid")
 	}
 	verifyRuntime, err := os.MkdirTemp(l.config.SocketRoot, "verify-linux-workcell-")
 	if err != nil {
-		return errors.New("Linux workcell verification runtime could not be created")
+		return errors.New("linux workcell verification runtime could not be created")
 	}
 	defer removePrivateRuntimeDir(verifyRuntime, l.config.SocketRoot)
 	if err := os.Chmod(verifyRuntime, 0o700); err != nil {
-		return errors.New("Linux workcell verification runtime is unsafe")
+		return errors.New("linux workcell verification runtime is unsafe")
 	}
 	spec, err := l.processSpecForWorkspace(verifyRuntime, workspace, preparation, filepath.Join(verifyRuntime, openCodeDriverSocketName), lease, io.Discard, io.Discard)
 	if err != nil {

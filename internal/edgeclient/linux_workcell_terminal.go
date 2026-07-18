@@ -14,11 +14,11 @@ func RecordLinuxWorkcellTerminalState(preparation *LinuxWorkcellPreparation, run
 	runtimeState = strings.TrimSpace(runtimeState)
 	cleanupState = strings.TrimSpace(cleanupState)
 	if runtimeState == "" || cleanupState == "" {
-		return errors.New("Linux workcell terminal state is invalid")
+		return errors.New("linux workcell terminal state is invalid")
 	}
 	content, err := os.ReadFile(preparation.CurrentStatePath)
 	if err != nil {
-		return errors.New("Linux workcell current state is unavailable")
+		return errors.New("linux workcell current state is unavailable")
 	}
 	checkpoint := fmt.Sprintf(`
 
@@ -30,7 +30,7 @@ func RecordLinuxWorkcellTerminalState(preparation *LinuxWorkcellPreparation, run
 - Durable checkpoint: %s
 `, runtimeState, cleanupState, preparation.CurrentStatePath)
 	if int64(len(content)+len(checkpoint)) > linuxWorkcellStateLimit {
-		return errors.New("Linux workcell current state limit would be exceeded")
+		return errors.New("linux workcell current state limit would be exceeded")
 	}
 	return WriteLinuxWorkcellState(preparation.CurrentStatePath, string(content)+checkpoint)
 }

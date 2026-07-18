@@ -86,7 +86,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"## Status snapshot — 2026-07-16",
+		"## Status snapshot — 2026-07-18",
 		"P0-P5 architecture, hardening, and deeper testing",
 		"Deployed",
 		"P5 deeper testing",

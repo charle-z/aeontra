@@ -142,10 +142,10 @@ func ValidateLinuxToolInventory(entries []LinuxToolInventoryEntry) error {
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
 		if entry.Name == "" || entry.Capability == "" || entry.Version == "" || strings.ContainsAny(entry.Version, `/\\`) {
-			return errors.New("Linux tool inventory contains unsafe data")
+			return errors.New("linux tool inventory contains unsafe data")
 		}
 		if _, duplicate := seen[entry.Name]; duplicate {
-			return errors.New("Linux tool inventory contains duplicate tools")
+			return errors.New("linux tool inventory contains duplicate tools")
 		}
 		seen[entry.Name] = struct{}{}
 	}

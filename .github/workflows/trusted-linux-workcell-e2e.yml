@@ -1,0 +1,254 @@
+name: Trusted Linux Workcell E2E
+
+on:
+  push:
+    branches:
+      - main
+      - p12-trusted-linux-workcell
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: trusted-linux-workcell-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  trusted-host:
+    name: Trusted host and HTB fixture
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Bubblewrap and controlled wordlists
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          sudo install -d -o root -g root -m 0755 /usr/share/seclists /usr/share/wordlists
+          printf 'p12-seclists-fixture\n' | sudo tee /usr/share/seclists/p12-fixture.txt >/dev/null
+          printf 'p12-wordlists-fixture\n' | sudo tee /usr/share/wordlists/p12-fixture.txt >/dev/null
+          sudo chmod 0644 /usr/share/seclists/p12-fixture.txt /usr/share/wordlists/p12-fixture.txt
+          bwrap --version
+          stat -c '%u %g %a %F %n' /usr/share/seclists /usr/share/wordlists
+
+      - name: Build tagged P12 E2E binary
+        run: |
+          mkdir -p artifacts "$RUNNER_TEMP/p12-bin"
+          go test -c -tags=p12_e2e -o "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" ./internal/edgeclient
+
+      - name: Run trusted host Bubblewrap E2E
+        env:
+          P12_WORKCELL_HOST_E2E: "1"
+        run: |
+          "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellHostE2E$ -test.count=1 -test.v
+
+      - name: Run controlled HTB fixture E2E
+        env:
+          P12_HTB_FIXTURE_E2E: "1"
+        run: |
+          "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellHTBFixtureE2E$ -test.count=1 -test.v
+
+      - name: Verify trusted host evidence
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          host = json.loads(Path("artifacts/p12-trusted-linux-workcell-host-report.json").read_text())
+          assert host["schema_version"] == 1
+          assert host["shared_network_reachable"] is True
+          assert host["workspace_writable"] is True
+          assert host["runtime_writable"] is True
+          assert host["wordlists_read_only"] is True
+          assert host["seclists_read_only"] is True
+          assert host["host_home_visible"] is False
+          assert host["root_visible"] is False
+          assert host["windows_mounts_visible"] is False
+          assert host["rootful_socket_visible"] is False
+          assert host["process_group_cancelled"] is True
+          assert host["network_posture_validated"] is True
+
+          htb = json.loads(Path("artifacts/p12-trusted-linux-workcell-htb-fixture-report.json").read_text())
+          assert htb["schema_version"] == 1
+          for key in (
+              "preflight_passed",
+              "template_rendered",
+              "recon_completed",
+              "exploit_completed",
+              "user_flag_verified",
+              "root_flag_verified",
+              "current_state_written",
+              "resume_validated",
+              "cleanup_completed",
+              "secrets_absent",
+          ):
+              assert htb[key] is True
+          serialized = json.dumps({"host": host, "htb": htb}).lower()
+          for forbidden in ("p12-fixture-user-secret", "p12-fixture-root-secret", "authorization", "cookie", "private key"):
+              assert forbidden not in serialized
+          PY
+
+      - name: Upload trusted host evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p12-trusted-host-e2e-${{ github.sha }}
+          path: |
+            artifacts/p12-trusted-linux-workcell-host-report.json
+            artifacts/p12-trusted-linux-workcell-htb-fixture-report.json
+          if-no-files-found: error
+          retention-days: 30
+
+  rootless-runtime:
+    name: Rootless Podman, PostgreSQL and Chromium
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install rootless and browser dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            podman podman-compose uidmap slirp4netns fuse-overlayfs
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm --dir web/console exec playwright install --with-deps chromium
+          chromium_bin="$(find "$HOME/.cache/ms-playwright" -type f -path '*/chrome-linux/chrome' -print -quit)"
+          test -x "$chromium_bin"
+          echo "P12_CHROMIUM_BIN=$chromium_bin" >> "$GITHUB_ENV"
+
+      - name: Start user-owned Podman API
+        run: |
+          runtime_root="/run/user/$(id -u)"
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 "$runtime_root"
+          if ! grep -q "^${USER}:" /etc/subuid; then
+            sudo usermod --add-subuids 100000-165535 "$USER"
+            sudo usermod --add-subgids 100000-165535 "$USER"
+          fi
+          export XDG_RUNTIME_DIR="$runtime_root"
+          mkdir -p "$runtime_root/podman" artifacts
+          podman system migrate
+          podman system service --time=0 "unix://$runtime_root/podman/podman.sock" \
+            >artifacts/p12-podman-service.log 2>&1 &
+          service_pid=$!
+          echo "P12_PODMAN_SERVICE_PID=$service_pid" >> "$GITHUB_ENV"
+          echo "XDG_RUNTIME_DIR=$runtime_root" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            test -S "$runtime_root/podman/podman.sock" && break
+            sleep 1
+          done
+          test -S "$runtime_root/podman/podman.sock"
+          podman --url "unix://$runtime_root/podman/podman.sock" info
+          stat -c '%u %g %a %F %n' "$runtime_root" "$runtime_root/podman" "$runtime_root/podman/podman.sock"
+          test ! -e /var/run/docker.sock
+          test ! -e /run/docker.sock
+
+      - name: Build tagged P12 E2E binary
+        run: |
+          mkdir -p "$RUNNER_TEMP/p12-bin"
+          go test -c -tags=p12_e2e -o "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" ./internal/edgeclient
+
+      - name: Run rootless runtime E2E
+        env:
+          P12_ROOTLESS_E2E: "1"
+        run: |
+          "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellRootlessE2E$ -test.count=1 -test.v
+
+      - name: Restart user-owned Podman API
+        run: |
+          kill "$P12_PODMAN_SERVICE_PID"
+          wait "$P12_PODMAN_SERVICE_PID" || true
+          rm -f "$XDG_RUNTIME_DIR/podman/podman.sock"
+          podman system service --time=0 "unix://$XDG_RUNTIME_DIR/podman/podman.sock" \
+            >>artifacts/p12-podman-service.log 2>&1 &
+          service_pid=$!
+          echo "P12_PODMAN_SERVICE_PID=$service_pid" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            test -S "$XDG_RUNTIME_DIR/podman/podman.sock" && break
+            sleep 1
+          done
+          test -S "$XDG_RUNTIME_DIR/podman/podman.sock"
+
+      - name: Verify restart has no runtime orphans
+        env:
+          P12_ROOTLESS_RESTART_E2E: "1"
+        run: |
+          "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestTrustedLinuxWorkcellRootlessRestartE2E$ -test.count=1 -test.v
+
+      - name: Verify rootless evidence
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          rootless = json.loads(Path("artifacts/p12-trusted-linux-workcell-rootless-report.json").read_text())
+          assert rootless["schema_version"] == 1
+          for key in (
+              "endpoint_validated",
+              "image_built",
+              "compose_ran",
+              "postgresql_ready",
+              "chromium_ready",
+              "cancellation_ran",
+              "containers_cleaned",
+              "networks_cleaned",
+              "volumes_cleaned",
+              "rootful_socket_absent",
+          ):
+              assert rootless[key] is True
+          restart = json.loads(Path("artifacts/p12-trusted-linux-workcell-rootless-restart-report.json").read_text())
+          assert restart["schema_version"] == 1
+          assert restart["service_restarted"] is True
+          assert restart["orphan_resources"] == 0
+          PY
+
+      - name: Stop user-owned Podman API
+        if: always()
+        run: |
+          test -z "${P12_PODMAN_SERVICE_PID:-}" || kill "$P12_PODMAN_SERVICE_PID" || true
+
+      - name: Upload rootless evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p12-rootless-runtime-e2e-${{ github.sha }}
+          path: |
+            artifacts/p12-trusted-linux-workcell-rootless-report.json
+            artifacts/p12-trusted-linux-workcell-rootless-restart-report.json
+            artifacts/p12-podman-service.log
+          if-no-files-found: warn
+          retention-days: 30

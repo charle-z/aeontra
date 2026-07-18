@@ -49,13 +49,13 @@ func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, 
 		return result, errors.New("workspace is not a trusted Linux workcell")
 	}
 	if lease.WorkspaceID != workspace.ID || strings.TrimSpace(lease.Goal) == "" || lease.TimeoutSeconds < 1 || lease.TimeoutSeconds > 3600 {
-		return result, errors.New("Linux workcell runtime contract is invalid")
+		return result, errors.New("linux workcell runtime contract is invalid")
 	}
 	if _, err := ValidateRegisteredWorkspace(workspace.Path); err != nil {
 		return result, err
 	}
 	if workspace.Mode != WorkspaceModeDev && workspace.Mode != WorkspaceModeHTBLinux {
-		return result, errors.New("Linux workcell mode is invalid")
+		return result, errors.New("linux workcell mode is invalid")
 	}
 
 	if workspace.Mode == WorkspaceModeHTBLinux {
@@ -97,7 +97,7 @@ func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, 
 	}
 	inventoryBody, err := json.MarshalIndent(inventory, "", "  ")
 	if err != nil {
-		return result, errors.New("Linux workcell tool inventory could not be encoded")
+		return result, errors.New("linux workcell tool inventory could not be encoded")
 	}
 	inventoryBody = append(inventoryBody, '\n')
 	inventoryPath := filepath.Join(controlDir, linuxWorkcellInventoryFile)
@@ -126,19 +126,19 @@ func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, 
 
 func preflightHTBLinux(ctx context.Context, workspace Workspace, probe LinuxNetworkProbe) (string, error) {
 	if workspace.Mode != WorkspaceModeHTBLinux || workspace.TargetIP == "" || workspace.VPNInterface == "" {
-		return "", errors.New("HTB Linux metadata is incomplete")
+		return "", errors.New("htb Linux metadata is incomplete")
 	}
 	ip := net.ParseIP(workspace.TargetIP)
 	if ip == nil || ip.To4() == nil || strings.Contains(workspace.TargetIP, "/") {
-		return "", errors.New("HTB target must be one IPv4 address")
+		return "", errors.New("htb target must be one IPv4 address")
 	}
 	lhost, err := probe.InterfaceIPv4(ctx, workspace.VPNInterface)
 	if err != nil || net.ParseIP(lhost).To4() == nil {
-		return "", errors.New("HTB VPN interface has no usable IPv4")
+		return "", errors.New("htb VPN interface has no usable IPv4")
 	}
 	routeInterface, err := probe.RouteInterface(ctx, workspace.TargetIP)
 	if err != nil || routeInterface != workspace.VPNInterface {
-		return "", errors.New("HTB target route does not use the configured VPN interface")
+		return "", errors.New("htb target route does not use the configured VPN interface")
 	}
 	return net.ParseIP(lhost).To4().String(), nil
 }
@@ -183,18 +183,18 @@ func ensurePrivateWorkspaceDir(workspace, path string) error {
 	workspace = filepath.Clean(workspace)
 	path = filepath.Clean(path)
 	if !pathInside(workspace, path) || path == workspace {
-		return errors.New("Linux workcell directory escaped the workspace")
+		return errors.New("linux workcell directory escaped the workspace")
 	}
 	if info, err := os.Lstat(path); err == nil {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
-			return errors.New("Linux workcell directory is unsafe")
+			return errors.New("linux workcell directory is unsafe")
 		}
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return errors.New("Linux workcell directory is unavailable")
+		return errors.New("linux workcell directory is unavailable")
 	}
 	if err := os.Mkdir(path, 0o700); err != nil {
-		return errors.New("Linux workcell directory could not be created")
+		return errors.New("linux workcell directory could not be created")
 	}
 	return nil
 }
@@ -202,15 +202,15 @@ func ensurePrivateWorkspaceDir(workspace, path string) error {
 func readOrCreateCurrentState(path, initial string) (string, error) {
 	if info, err := os.Lstat(path); err == nil {
 		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 || info.Size() > linuxWorkcellStateLimit {
-			return "", errors.New("Linux workcell current state is unsafe")
+			return "", errors.New("linux workcell current state is unsafe")
 		}
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return "", errors.New("Linux workcell current state is unavailable")
+			return "", errors.New("linux workcell current state is unavailable")
 		}
 		return string(content), nil
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", errors.New("Linux workcell current state is unavailable")
+		return "", errors.New("linux workcell current state is unavailable")
 	}
 	if err := atomicWorkspaceFile(path, []byte(initial), 0o600); err != nil {
 		return "", err
@@ -220,10 +220,10 @@ func readOrCreateCurrentState(path, initial string) (string, error) {
 
 func WriteLinuxWorkcellState(path, content string) error {
 	if len(content) == 0 || int64(len(content)) > linuxWorkcellStateLimit {
-		return errors.New("Linux workcell current state is invalid")
+		return errors.New("linux workcell current state is invalid")
 	}
 	if filepath.Base(path) != linuxWorkcellStateFile || filepath.Base(filepath.Dir(path)) != linuxWorkcellDirName {
-		return errors.New("Linux workcell current state path is invalid")
+		return errors.New("linux workcell current state path is invalid")
 	}
 	return atomicWorkspaceFile(path, []byte(content), 0o600)
 }
@@ -233,41 +233,41 @@ func atomicWorkspaceFile(path string, content []byte, mode os.FileMode) error {
 	parent := filepath.Dir(path)
 	parentInfo, err := os.Lstat(parent)
 	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 || parentInfo.Mode().Perm()&0o077 != 0 {
-		return errors.New("Linux workcell file parent is unsafe")
+		return errors.New("linux workcell file parent is unsafe")
 	}
 	if info, err := os.Lstat(path); err == nil {
 		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("Linux workcell file target is unsafe")
+			return errors.New("linux workcell file target is unsafe")
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return errors.New("Linux workcell file target is unavailable")
+		return errors.New("linux workcell file target is unavailable")
 	}
 	temporary, err := os.CreateTemp(parent, ".mcp-write-*")
 	if err != nil {
-		return errors.New("Linux workcell file could not be staged")
+		return errors.New("linux workcell file could not be staged")
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
 	if err := temporary.Chmod(0o600); err != nil {
 		_ = temporary.Close()
-		return errors.New("Linux workcell file staging permissions failed")
+		return errors.New("linux workcell file staging permissions failed")
 	}
 	if _, err := temporary.Write(content); err != nil {
 		_ = temporary.Close()
-		return errors.New("Linux workcell file staging failed")
+		return errors.New("linux workcell file staging failed")
 	}
 	if err := temporary.Sync(); err != nil {
 		_ = temporary.Close()
-		return errors.New("Linux workcell file staging failed")
+		return errors.New("linux workcell file staging failed")
 	}
 	if err := temporary.Close(); err != nil {
-		return errors.New("Linux workcell file staging failed")
+		return errors.New("linux workcell file staging failed")
 	}
 	if err := os.Chmod(temporaryPath, mode); err != nil {
-		return errors.New("Linux workcell file permissions failed")
+		return errors.New("linux workcell file permissions failed")
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
-		return errors.New("Linux workcell file replacement failed")
+		return errors.New("linux workcell file replacement failed")
 	}
 	return nil
 }
@@ -280,7 +280,7 @@ func renderLinuxWorkcellInstructions(workspace Workspace, lease ModelRuntimeLeas
 	case WorkspaceModeHTBLinux:
 		contract = renderHTBTemplate(workspace, lhost)
 	default:
-		return "", errors.New("Linux workcell mode is invalid")
+		return "", errors.New("linux workcell mode is invalid")
 	}
 	return fmt.Sprintf(`# TRUSTED LINUX WORKCELL
 

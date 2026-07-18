@@ -13,7 +13,7 @@ const linuxWorkcellOpenCodePrompt = "Read /workspace/.mcp-devbox/instructions.md
 
 func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace Workspace, preparation LinuxWorkcellPreparation, socketPath string, lease ModelRuntimeLease, stdout, stderr io.Writer) (openCodeProcessSpec, error) {
 	if workspace.Profile != WorkspaceProfileLinuxWorkcell || workspace.Path != preparation.Workspace.Path || workspace.ID != lease.WorkspaceID {
-		return openCodeProcessSpec{}, errors.New("Linux workcell preparation does not match the runtime")
+		return openCodeProcessSpec{}, errors.New("linux workcell preparation does not match the runtime")
 	}
 	base, err := l.processSpec(runtimeDir, workspace.Path, socketPath, lease, stdout, stderr)
 	if err != nil {
@@ -22,13 +22,13 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 	args := append([]string(nil), base.Args...)
 	unshareIndex := slices.Index(args, "--unshare-all")
 	if unshareIndex < 0 {
-		return openCodeProcessSpec{}, errors.New("Linux workcell namespace baseline is missing")
+		return openCodeProcessSpec{}, errors.New("linux workcell namespace baseline is missing")
 	}
 	args = insertOpenCodeArgs(args, unshareIndex+1, "--share-net")
 
 	mountIndex := slices.Index(args, "--proc")
 	if mountIndex < 0 {
-		return openCodeProcessSpec{}, errors.New("Linux workcell mount baseline is missing")
+		return openCodeProcessSpec{}, errors.New("linux workcell mount baseline is missing")
 	}
 	for _, target := range []string{"/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/etc/passwd", "/etc/group", "/etc/services", "/etc/protocols"} {
 		source, ok := safeLinuxWorkcellSystemFile(target)
@@ -100,7 +100,7 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 	}
 	separator := slices.Index(args, "--")
 	if separator < 0 || len(args) < separator+2 {
-		return openCodeProcessSpec{}, errors.New("Linux workcell command baseline is missing")
+		return openCodeProcessSpec{}, errors.New("linux workcell command baseline is missing")
 	}
 	args[len(args)-1] = linuxWorkcellOpenCodePrompt
 	parsed, err := parseOpenCodeSandboxArgs(args)
@@ -144,7 +144,7 @@ func replaceOpenCodeSetEnv(args []string, key, value string) ([]string, bool) {
 func appendOpenCodeSetEnv(args []string, key, value string) ([]string, error) {
 	separator := slices.Index(args, "--")
 	if separator < 0 {
-		return nil, errors.New("OpenCode command separator is missing")
+		return nil, errors.New("opencode command separator is missing")
 	}
 	return insertOpenCodeArgs(args, separator, "--setenv", key, value), nil
 }
@@ -167,15 +167,15 @@ func safeLinuxWorkcellSystemFile(path string) (string, bool) {
 
 func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runtimeDir string, workspace Workspace, providerPath, openCodePath, toolPath string, lease ModelRuntimeLease, expectedEnv map[string]string) error {
 	if !spec.DieWithParent || !spec.NewSession || !spec.UnshareAll || !spec.ShareNetwork || !spec.ClearEnv {
-		return errors.New("Linux workcell namespace posture is incomplete")
+		return errors.New("linux workcell namespace posture is incomplete")
 	}
 	expectedCommand := []string{openCodeSandboxExecutable, "run", "--auto", "--model", openCodeModelID, "--format", "json", "--dir", openCodeSandboxWorkspace, linuxWorkcellOpenCodePrompt}
 	if spec.WorkingDirectory != openCodeSandboxWorkspace || !slices.Equal(spec.Command, expectedCommand) {
-		return errors.New("Linux workcell OpenCode command is invalid")
+		return errors.New("linux workcell OpenCode command is invalid")
 	}
 	for key, value := range expectedEnv {
 		if spec.Environment[key] != value {
-			return errors.New("Linux workcell environment is incomplete")
+			return errors.New("linux workcell environment is incomplete")
 		}
 	}
 	if err := validateOpenCodeSandboxConfig(spec.Environment["OPENCODE_CONFIG_CONTENT"], lease); err != nil {
@@ -184,15 +184,15 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 	mounts := make(map[string]openCodeSandboxMount)
 	for _, mount := range spec.Mounts {
 		if mount.Target == "" {
-			return errors.New("Linux workcell mount target is empty")
+			return errors.New("linux workcell mount target is empty")
 		}
 		if _, duplicate := mounts[mount.Target]; duplicate {
-			return errors.New("Linux workcell mount target is duplicated")
+			return errors.New("linux workcell mount target is duplicated")
 		}
 		mounts[mount.Target] = mount
 		for _, forbidden := range []string{"/var/run/docker.sock", "/run/docker.sock", "/mnt/c", "/mnt/d", "/root"} {
 			if mount.Target == forbidden || mount.Source == forbidden || pathInside(forbidden, mount.Target) || pathInside(forbidden, mount.Source) {
-				return errors.New("Linux workcell exposes a forbidden host path")
+				return errors.New("linux workcell exposes a forbidden host path")
 			}
 		}
 	}
@@ -227,35 +227,35 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 	}
 	if expectedEnv["DOCKER_HOST"] != "" || expectedEnv["CONTAINER_HOST"] != "" {
 		if expectedEnv["DOCKER_HOST"] != "unix://"+rootlessContainerSocketTarget || expectedEnv["CONTAINER_HOST"] != "unix://"+rootlessContainerSocketTarget {
-			return errors.New("Linux workcell rootless container environment is invalid")
+			return errors.New("linux workcell rootless container environment is invalid")
 		}
 		mount, ok := mounts[rootlessContainerSocketTarget]
 		if !ok || !mount.Writable || mount.Kind != "bind" || !pathInside("/run/user", mount.Source) || mount.Source == "/var/run/docker.sock" || mount.Source == "/run/docker.sock" {
-			return errors.New("Linux workcell rootless container socket is invalid")
+			return errors.New("linux workcell rootless container socket is invalid")
 		}
 		required[rootlessContainerSocketTarget] = mount
 	}
 	if len(mounts) != len(required) {
-		return errors.New("Linux workcell contains an unexpected mount")
+		return errors.New("linux workcell contains an unexpected mount")
 	}
 	for target, expected := range required {
 		if mounts[target] != expected {
-			return errors.New("Linux workcell required mount is missing or has wrong permissions")
+			return errors.New("linux workcell required mount is missing or has wrong permissions")
 		}
 	}
 	for _, mount := range spec.Mounts {
 		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && mount.Source != runtimeDir) {
-			return errors.New("Linux workcell exposes private Edge state")
+			return errors.New("linux workcell exposes private Edge state")
 		}
 		if mount.Target == rootlessContainerSocketTarget {
 			continue
 		}
 		if mount.Target != openCodeSandboxWorkspace && mount.Target != openCodeSandboxRuntime && mount.Writable && mount.Kind == "bind" {
-			return errors.New("Linux workcell exposes an unexpected writable bind mount")
+			return errors.New("linux workcell exposes an unexpected writable bind mount")
 		}
 	}
 	if spec.Environment["PATH"] == toolPath {
-		return errors.New("Linux workcell persistent tool prefixes are missing")
+		return errors.New("linux workcell persistent tool prefixes are missing")
 	}
 	return nil
 }

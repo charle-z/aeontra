@@ -1,22 +1,43 @@
-# Latest handoff — console durable live state release candidate
+# Latest handoff — P12 Trusted Linux Workcell closure candidate
 
-Date: 2026-07-17
-Branch: `console-durable-live-state`
-Integrated HEAD: `ec0753d437acb781aa76392c81099394d75f0d37`
+Date: 2026-07-18
+Final branch before publication: `p12-trusted-linux-workcell`.
+Current HEAD before Step 6: `8c1a836fcaf33a10e9d7007b45a947c9c118e1f4`.
+Base: `origin/main` at `087f00e404855cc83e76c1eb7d6ed85ab14577c5`.
 
 Historical foundations remain explicit:
 - P8.1 is closed, deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
 - Its historical catalog had 67 tools and Edge state `not_paired`.
-- P9 Brain is deployed and preserved as Markdown truth with a derived SQLite cache.
+- P9 Brain is deployed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+- P11.2 Remote OpenCode Relay remains the sandbox and relay foundation.
+- The catalog remains exactly 85 tools with `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
-Completed console work:
-- Steps 1–5: `c284dcd`, `e4c674e`, `22a9daf`, `9cdfe56`, `aa1c30d`.
-- Step 6: `225b6e1` — persistent Tasks/Events, replayable SSE, real opaque scopes, combined storage budget and complete React live state.
-- Step 7: `9c41638` — final documentation/catalog identity and coverage closure.
-- Main was merged normally at `ec0753d`, incorporating GitHub PR evidence fallback through `77a93ad` without conflicts.
+Completed commits:
+- `03e83bb` — Step 1: trusted workspace metadata and local CLI.
+- `901ff9b` — Step 2: durable local context, HTB template and VPN/route preflight.
+- `bae1904` — Step 3: isolated Linux workcell policy.
+- `07b128f` — Step 4: rootless tools and durable cleanup.
+- `8c1a836` — Step 5: document trusted Linux workcell.
 
-Current catalog is exactly 85 tools with hash `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
+Step 6 closure candidate contains:
+- `docs/baselines/2026-07-18-p12.md` and `docs/p12_closure_test.go`;
+- roadmap and documentation synchronization;
+- `.github/workflows/trusted-linux-workcell-e2e.yml` with actual-process trusted host/HTB and rootless Podman/PostgreSQL/Chromium jobs;
+- tagged P12 E2E tests and bounded reports;
+- Podman client environment support for runtime-labelled cleanup;
+- Staticcheck-compliant P12 errors without unrelated historical churn.
 
-Verified locally on the integrated tree: package suites, documentation, coverage thresholds, vet, build, Staticcheck, Govulncheck, Actionlint, TypeScript, Vitest and Vite. Race and Docker must be confirmed by GitHub because the public runner lacks gcc and Docker.
+Final local gates passed:
+- format;
+- full serial suite;
+- deterministic grouped atomic coverage with all thresholds passing;
+- vet and build;
+- Staticcheck v0.7.0;
+- Govulncheck v1.6.0 with no vulnerabilities;
+- Actionlint v1.7.12;
+- tagged OpenCode and P12 E2E test binary builds;
+- diff whitespace check.
 
-Next: create the final candidate record commit, publish only `console-durable-live-state`, open the PR against main, wait all gates, merge by merge commit, observe the automatic Coolify deployment, then run catalog, Brain, console and authentication smokes against the exact deployed commit.
+Race remains intentionally pending as a blocking GitHub CGO job. Actual P12 E2E processes also remain pending until GitHub executes the new workflow. No real Parrot host was modified.
+
+Next: create `Step 6: close trusted Linux workcell`, confirm a clean tree, rename the unpublished local branch, publish only `p12-trusted-linux-workcell`, open the PR, and inspect every exact-head check before merge.

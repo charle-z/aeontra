@@ -16,7 +16,7 @@ func (l *OpenCodeLauncher) processSpecForWorkspace(runtimeDir string, workspace 
 		return l.processSpec(runtimeDir, workspace.Path, socketPath, lease, stdout, stderr)
 	case WorkspaceProfileLinuxWorkcell:
 		if preparation == nil {
-			return openCodeProcessSpec{}, errors.New("Linux workcell preparation is missing")
+			return openCodeProcessSpec{}, errors.New("linux workcell preparation is missing")
 		}
 		return l.linuxWorkcellProcessSpec(runtimeDir, workspace, *preparation, socketPath, lease, stdout, stderr)
 	default:

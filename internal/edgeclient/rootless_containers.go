@@ -111,7 +111,7 @@ func CleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessCo
 		runner = execContainerCommandRunner{}
 	}
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
-	environment := []string{"PATH=" + toolPath, "HOME=/nonexistent", "LANG=C", "LC_ALL=C"}
+	environment := rootlessContainerClientEnvironment(endpoint, toolPath)
 	for _, resource := range []string{"container", "network", "volume"} {
 		ids, err := listRootlessContainerResources(ctx, endpoint, resource, label, environment, runner)
 		if err != nil {

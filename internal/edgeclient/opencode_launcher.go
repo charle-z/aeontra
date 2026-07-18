@@ -399,7 +399,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	if cleanupErr != nil {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
 		_, _ = remote.Failed(context.Background(), "")
-		return result, errors.New("Linux workcell rootless container cleanup failed")
+		return result, errors.New("linux workcell rootless container cleanup failed")
 	}
 	truncated := stdout.Truncated() || stderr.Truncated()
 	if terminalRuntime.State == modelturn.RuntimeStateCancelled {
