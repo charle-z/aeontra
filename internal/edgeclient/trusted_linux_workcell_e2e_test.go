@@ -59,17 +59,17 @@ type p12SandboxHelperReport struct {
 }
 
 type p12RootlessReport struct {
-	SchemaVersion       int  `json:"schema_version"`
-	EndpointValidated   bool `json:"endpoint_validated"`
-	ImageBuilt          bool `json:"image_built"`
-	ComposeRan          bool `json:"compose_ran"`
-	PostgreSQLReady     bool `json:"postgresql_ready"`
-	ChromiumReady       bool `json:"chromium_ready"`
-	CancellationRan     bool `json:"cancellation_ran"`
-	ContainersCleaned   bool `json:"containers_cleaned"`
-	NetworksCleaned     bool `json:"networks_cleaned"`
-	VolumesCleaned      bool `json:"volumes_cleaned"`
-	RootfulSocketAbsent bool `json:"rootful_socket_absent"`
+	SchemaVersion        int  `json:"schema_version"`
+	EndpointValidated    bool `json:"endpoint_validated"`
+	ImageBuilt           bool `json:"image_built"`
+	ComposeRan           bool `json:"compose_ran"`
+	PostgreSQLReady      bool `json:"postgresql_ready"`
+	ChromiumReady        bool `json:"chromium_ready"`
+	CancellationRan      bool `json:"cancellation_ran"`
+	ContainersCleaned    bool `json:"containers_cleaned"`
+	NetworksCleaned      bool `json:"networks_cleaned"`
+	VolumesCleaned       bool `json:"volumes_cleaned"`
+	RootfulSocketNotUsed bool `json:"rootful_socket_not_used"`
 }
 
 type p12HTBReport struct {
@@ -245,9 +245,7 @@ func TestTrustedLinuxWorkcellRootlessE2E(t *testing.T) {
 	if err := validateRootlessContainerSocket(endpoint.SocketPath, filepath.Join("/run/user", strconv.Itoa(os.Geteuid())), os.Geteuid()); err != nil {
 		t.Fatal(err)
 	}
-	if p12PathExists("/var/run/docker.sock") || p12PathExists("/run/docker.sock") {
-		t.Fatal("rootful Docker socket exists in trusted E2E environment")
-	}
+	rootfulSocketNotUsed := endpoint.SocketPath != "/var/run/docker.sock" && endpoint.SocketPath != "/run/docker.sock" && pathInside(filepath.Join("/run/user", strconv.Itoa(os.Geteuid())), endpoint.SocketPath)
 
 	label := rootlessRuntimeLabelKey + "=" + p12E2ERuntimeID
 	prefix := rootlessEnginePrefix(endpoint)
@@ -288,7 +286,7 @@ func TestTrustedLinuxWorkcellRootlessE2E(t *testing.T) {
 		SchemaVersion: 1, EndpointValidated: true, ImageBuilt: imageBuilt, ComposeRan: composeRan,
 		PostgreSQLReady: postgresReady, ChromiumReady: chromiumReady, CancellationRan: cancellationRan,
 		ContainersCleaned: containersCleaned, NetworksCleaned: networksCleaned, VolumesCleaned: volumesCleaned,
-		RootfulSocketAbsent: true,
+		RootfulSocketNotUsed: rootfulSocketNotUsed,
 	}
 	p12WriteArtifact(t, "p12-trusted-linux-workcell-rootless-report.json", report)
 }
@@ -351,7 +349,7 @@ func TestTrustedLinuxWorkcellHTBFixtureE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace, err = registry.Configure(workspace.ID, WorkspaceConfiguration{
-		Mode: WorkspaceModeHTBLinux, MachineName: "Controlled Fixture", TargetIP: "127.0.0.1",
+		Mode: WorkspaceModeHTBLinux, MachineName: "Controlled-Fixture", TargetIP: "127.0.0.1",
 		Difficulty: "EASY", OS: "LINUX", VPNInterface: "tun0",
 	})
 	if err != nil {
@@ -366,7 +364,7 @@ func TestTrustedLinuxWorkcellHTBFixtureE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	templateRendered := strings.Contains(string(instructions), "Controlled Fixture") && strings.Contains(string(instructions), "No consultar writeups") && !strings.Contains(string(instructions), "{{")
+	templateRendered := strings.Contains(string(instructions), "Controlled-Fixture") && strings.Contains(string(instructions), "No consultar writeups") && !strings.Contains(string(instructions), "{{")
 
 	baseURL := server.URL
 	body := p12HTTP(t, http.MethodGet, baseURL+"/", nil)

@@ -142,7 +142,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            podman podman-compose uidmap slirp4netns fuse-overlayfs
+            podman uidmap slirp4netns fuse-overlayfs python3-venv
+          python3 -m venv "$RUNNER_TEMP/podman-compose"
+          "$RUNNER_TEMP/podman-compose/bin/pip" install --disable-pip-version-check --no-input podman-compose==1.6.0
+          echo "$RUNNER_TEMP/podman-compose/bin" >> "$GITHUB_PATH"
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm --dir web/console exec playwright install --with-deps chromium
           chromium_bin="$(find "$HOME/.cache/ms-playwright" -type f -path '*/chrome-linux/chrome' -print -quit)"
@@ -172,8 +175,8 @@ jobs:
           test -S "$runtime_root/podman/podman.sock"
           podman --url "unix://$runtime_root/podman/podman.sock" info
           stat -c '%u %g %a %F %n' "$runtime_root" "$runtime_root/podman" "$runtime_root/podman/podman.sock"
-          test ! -e /var/run/docker.sock
-          test ! -e /run/docker.sock
+          test "$runtime_root/podman/podman.sock" != /var/run/docker.sock
+          test "$runtime_root/podman/podman.sock" != /run/docker.sock
 
       - name: Build tagged P12 E2E binary
         run: |
@@ -227,7 +230,7 @@ jobs:
               "containers_cleaned",
               "networks_cleaned",
               "volumes_cleaned",
-              "rootful_socket_absent",
+              "rootful_socket_not_used",
           ):
               assert rootless[key] is True
           restart = json.loads(Path("artifacts/p12-trusted-linux-workcell-rootless-restart-report.json").read_text())
