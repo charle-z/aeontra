@@ -39,6 +39,14 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 		mountIndex += 3
 	}
 
+	for _, target := range []string{"/usr/share/seclists", "/usr/share/wordlists"} {
+		source, ok := safeLinuxWorkcellReadonlyDirectory(target, "/usr/share", 0)
+		if !ok {
+			continue
+		}
+		args = insertOpenCodeArgs(args, mountIndex, "--ro-bind", source, target)
+		mountIndex += 3
+	}
 	if preparation.RootlessContainer != nil {
 		args = insertOpenCodeArgs(args, mountIndex, "--bind", preparation.RootlessContainer.SocketPath, rootlessContainerSocketTarget)
 		mountIndex += 3
@@ -209,6 +217,11 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 	}
 	for _, target := range []string{"/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/etc/passwd", "/etc/group", "/etc/services", "/etc/protocols"} {
 		if source, ok := safeLinuxWorkcellSystemFile(target); ok {
+			required[target] = openCodeSandboxMount{Source: source, Target: target, Kind: "bind"}
+		}
+	}
+	for _, target := range []string{"/usr/share/seclists", "/usr/share/wordlists"} {
+		if source, ok := safeLinuxWorkcellReadonlyDirectory(target, "/usr/share", 0); ok {
 			required[target] = openCodeSandboxMount{Source: source, Target: target, Kind: "bind"}
 		}
 	}
