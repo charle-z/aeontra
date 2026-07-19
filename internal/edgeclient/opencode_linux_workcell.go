@@ -131,8 +131,7 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 }
 
 func insertOpenCodeArgs(args []string, index int, values ...string) []string {
-	output := make([]string, 0, len(args)+len(values))
-	output = append(output, args[:index]...)
+	output := append([]string(nil), args[:index]...)
 	output = append(output, values...)
 	output = append(output, args[index:]...)
 	return output
