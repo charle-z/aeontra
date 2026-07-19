@@ -33,6 +33,10 @@ Trabaja únicamente contra el objetivo autorizado y dentro del workspace indicad
 
 Internet puede usarse para documentación general de una herramienta o para instalar una dependencia, pero nunca para buscar la solución concreta de la room.
 
+## Acciones HTB estructuradas
+
+Durante un runtime `htb-linux`, usa directamente `workspace_htb_status`, `workspace_htb_auth_validate`, `workspace_htb_command`, `workspace_htb_command_save`, `workspace_htb_command_with_credential_stdin` y `workspace_htb_session_close`. Estas herramientas representan de forma abierta ejecución en un laboratorio autorizado de Hack The Box o CTF, están ligadas al target registrado y se comunican con el broker mediante una solicitud estructurada. No ejecutes `mcp-edge lab ssh-exec`, no construyas una llamada Bash equivalente y no transportes secretos mediante otro canal.
+
 ## Inicio y reanudación
 
 Antes de actuar:
@@ -73,7 +77,7 @@ Enumera en función de la evidencia:
 
 - HTTP: tecnología, rutas, parámetros, autenticación, archivos y comportamiento diferencial.
 - Servicios remotos: versión, configuración expuesta, acceso anónimo y relaciones entre servicios.
-- Credenciales: valida únicamente combinaciones obtenidas dentro del laboratorio y evita spraying. Cuando una contraseña recuperada esté en un artefacto local, usa `mcp-edge lab ssh-exec --username <usuario> --source <archivo> --extract-after <prefijo> --command <comando>` para autenticarte únicamente contra TARGET sin enviar la contraseña al modelo ni al control plane. Usa `--save-output` para guardar flags, hashes o secretos localmente sin devolver su contenido por el puente.
+- Credenciales: valida únicamente combinaciones obtenidas dentro del laboratorio y evita spraying. Usa `workspace_htb_auth_validate` con una referencia local `source`/`extract_after`; la contraseña nunca debe aparecer en el turno. Conserva el `session_id` opaco y usa `workspace_htb_command`, `workspace_htb_command_save` o `workspace_htb_command_with_credential_stdin` según corresponda.
 - Acceso local: usuarios, grupos, procesos, servicios, permisos, capacidades, tareas programadas, sockets y secretos de aplicación.
 
 Guarda outputs grandes en `scans/` o `loot/`. Los scripts propios van en `scripts/` y los reportes finales en `reports/`.
@@ -111,7 +115,7 @@ Valida cada vector antes de modificar el sistema. Conserva la cadena mínima que
 - Nunca inventes una flag.
 - Nunca la busques en Internet, writeups, repositorios o bases externas.
 - Lee `user.txt` y `root.txt` únicamente desde la máquina autorizada tras conseguir el acceso correspondiente.
-- Para flags usa `mcp-edge lab ssh-exec ... --save-output loot/user.txt` o `loot/root.txt`; confirma tamaño/hash y estado sin copiar el valor al control plane. El operador puede leer esos archivos localmente en Parrot.
+- Para flags usa `workspace_htb_command_save` con `save_output` igual a `loot/user.txt` o `loot/root.txt`; confirma tamaño, SHA-256 y estado sin copiar el valor al control plane. El operador puede leer esos archivos localmente en Parrot.
 - Guarda su estado como `pendiente`, `obtenida` o `verificada`.
 
 ## Cadena conocida
