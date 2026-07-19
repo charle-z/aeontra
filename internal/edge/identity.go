@@ -104,6 +104,8 @@ func Open(cfg Config) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS nonces(device_id TEXT NOT NULL, nonce_hash BLOB NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(device_id,nonce_hash)) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS edge_tasks(task_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, workcell TEXT NOT NULL, objective_json BLOB NOT NULL, restrictions_json BLOB NOT NULL, state TEXT NOT NULL, lease_id TEXT, lease_holder TEXT, lease_until INTEGER, cancel_requested INTEGER NOT NULL DEFAULT 0, attempt_count INTEGER NOT NULL DEFAULT 0, outcome TEXT, result_summary TEXT, result_ref TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(device_id,idempotency_key), FOREIGN KEY(device_id) REFERENCES devices(device_id))`,
 		`CREATE INDEX IF NOT EXISTS edge_tasks_queue ON edge_tasks(device_id,workcell,state,created_at)`,
+		`CREATE TABLE IF NOT EXISTS edge_workspaces(workspace_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, profile TEXT NOT NULL, mode TEXT NOT NULL, registered_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(device_id) REFERENCES devices(device_id)) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS edge_workspaces_device ON edge_workspaces(device_id,workspace_id)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			_ = db.Close()

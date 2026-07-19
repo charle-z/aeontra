@@ -63,6 +63,7 @@ func openCodeFailureCode(err error) string {
 		{"external driver", "installation_provider"},
 		{"driver executable", "installation_driver"},
 		{"workspace", "workspace"},
+		{"workspace registration", "workspace_registration"},
 		{"socket", "socket"},
 		{"journal", "journal"},
 		{"lease", "lease"},
@@ -182,9 +183,29 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	if err := configureOpenCodeRelayE2E(launcher); err != nil {
 		return err
 	}
+	transport, err := edgeclient.NewTransport(*state, nil)
+	if err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	for {
+		workspaces, registryErr := registry.List()
+		if registryErr == nil {
+			registryErr = transport.RegisterWorkspaces(ctx, workspaces)
+		}
+		if registryErr != nil {
+			if *once {
+				return registryErr
+			}
+			fmt.Fprintf(stderr, "mcp-edge: OpenCode runtime failed safely runtime= state= failure=%s\n", openCodeFailureCode(registryErr))
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(*poll):
+			}
+			continue
+		}
 		worked, result, runErr := launcher.RunNext(ctx, *wait)
 		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(runErr, edgeclient.ErrKillSwitch) {
 			return nil
