@@ -25,6 +25,7 @@ do not replace server-side enforcement.
 | `mcp_client_capabilities` | 1/0/1/0 | Return only the current session's allowlisted client name/version, protocol and explicitly announced sampling/roots/elicitation flags. |
 | `model_runtime_start` | 0/0/0/0 | Create one durable external-model runtime; it does not start or select a model provider. |
 | `opencode_runtime_start` | 0/0/1/0 | Request one pinned OpenCode runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
+| `workspace_runtime_continue` | 0/0/1/0 | Continue one registered workspace using its local trusted contract; accepts only the opaque workspace id and timeout, creates one runtime, and does not retry automatically. |
 | `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, and optional result ref. |
 | `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
 | `model_turn_respond` | 0/0/0/0 | Submit one bounded text/tool-call response after runtime, sequence, digest and offered-tool validation. |

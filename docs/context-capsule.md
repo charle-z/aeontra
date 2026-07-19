@@ -6,8 +6,8 @@ Compact handoff for any AI session. Keep this file short and current.
 
 P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11.2 is a release
 candidate on `p11-2-remote-opencode-relay`; it is not merged or deployed. The
-candidate catalog contains 85 tools with hash
-`sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
+candidate catalog contains 86 tools with hash
+`sha256:deb3419f64ac9e63e1f85b4ed841b19c2ac252f411fcef9ff9aca5b5e1108a85`.
 
 P11.2 adds the signed Remote OpenCode Model-Turn Relay over Edge. The VPS stores
 the authoritative runtime and model-turn state; `mcp-edge` and
