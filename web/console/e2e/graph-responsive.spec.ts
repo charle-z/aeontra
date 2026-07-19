@@ -7,7 +7,7 @@ const runtime = {
   version: "1.0.0",
   protocol_version: "2025-06-18",
   commit: "681f55cf20853fa8365485b7f9343953eaaceae8",
-  tool_count: 86,
+  tool_count: 92,
   catalog_hash: "sha256:ea9cc3749c68fcc12b608efbddc259b01eb7868c98bbc1ab35c75f456e118a98",
   authenticated: true,
   surface: "presentation-only",

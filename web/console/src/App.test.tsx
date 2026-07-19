@@ -4,7 +4,7 @@ import App from "./App";
 
 const runtime = {
   status: "ok", version: "1.0.0", protocol_version: "2025-06-18",
-  commit: "aa1c30da07751a1b1701aac289adb88ee5c7d38b", tool_count: 86,
+  commit: "aa1c30da07751a1b1701aac289adb88ee5c7d38b", tool_count: 92,
   catalog_hash: "sha256:ea9cc3749c68fcc12b608efbddc259b01eb7868c98bbc1ab35c75f456e118a98",
   authenticated: true, surface: "presentation-only",
 };
