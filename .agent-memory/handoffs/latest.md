@@ -4,6 +4,13 @@ Branch: `p12-parrot-onboarding-hardening`
 Base: `origin/main` at `3946fd7033f28906deb932298387034e2fa27fe8`
 Current implementation HEAD: `1e164696bd178de79ff7cab5519426d977e042ae`
 
+Historical foundations preserved:
+- P8.1 is closed, deployed, and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
+- Its historical catalog had 67 tools and its historical Edge state was `not_paired`.
+- P9 Brain is deployed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+- P11.2 Remote OpenCode Relay remains the sandbox and relay foundation.
+- Current production has 85 tools; the historical values above are preserved only as closure evidence.
+
 Real Parrot evidence:
 - runtime `mr_829f6601fca6f887bc2d0133a4c5dff1`;
 - workspace `ws_7c4686f5d9244bbad30ae705d4b660c5`;
