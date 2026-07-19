@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -31,13 +32,14 @@ type HTBLabBrokerConfig struct {
 	StateRoot  string
 	Workspace  Workspace
 	RuntimeID  string
+	ExpiresAt  time.Time
 	ToolPath   string
 	Probe      LinuxNetworkProbe
 }
 
 func StartHTBLabBroker(ctx context.Context, config HTBLabBrokerConfig) (<-chan error, error) {
 	if config.Workspace.Profile != WorkspaceProfileLinuxWorkcell || config.Workspace.Mode != WorkspaceModeHTBLinux ||
-		config.RuntimeID == "" || config.SocketPath == "" || config.StateRoot == "" {
+		config.RuntimeID == "" || config.SocketPath == "" || config.StateRoot == "" || !config.ExpiresAt.After(time.Now().UTC()) {
 		return nil, errors.New("HTB lab broker configuration is invalid")
 	}
 	if filepath.Base(config.SocketPath) != HTBLabBrokerSocketName {
@@ -63,8 +65,14 @@ func StartHTBLabBroker(ctx context.Context, config HTBLabBrokerConfig) (<-chan e
 		_ = os.Remove(config.SocketPath)
 		return nil, errors.New("HTB lab broker socket permissions failed")
 	}
-	broker := &htbLabBroker{config: config}
+	broker := &htbLabBroker{config: config, sessions: make(map[string]htbLabSession), now: time.Now}
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/status", broker.status)
+	mux.HandleFunc("POST /v1/auth-validate", broker.authValidate)
+	mux.HandleFunc("POST /v1/command", broker.command)
+	mux.HandleFunc("POST /v1/command-save", broker.commandSave)
+	mux.HandleFunc("POST /v1/command-credential-stdin", broker.commandCredentialStdin)
+	mux.HandleFunc("POST /v1/session-close", broker.sessionClose)
 	mux.HandleFunc("POST /v1/ssh-exec", broker.sshExec)
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	done := make(chan error, 1)
@@ -74,6 +82,7 @@ func StartHTBLabBroker(ctx context.Context, config HTBLabBrokerConfig) (<-chan e
 		go func() { errCh <- server.Serve(listener) }()
 		select {
 		case <-ctx.Done():
+			broker.closeAllSessions()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = server.Shutdown(shutdownCtx)
@@ -93,6 +102,9 @@ func StartHTBLabBroker(ctx context.Context, config HTBLabBrokerConfig) (<-chan e
 type htbLabBroker struct {
 	config   HTBLabBrokerConfig
 	attempts atomic.Uint32
+	mu       sync.Mutex
+	sessions map[string]htbLabSession
+	now      func() time.Time
 }
 
 func (broker *htbLabBroker) sshExec(writer http.ResponseWriter, request *http.Request) {
@@ -137,6 +149,15 @@ func (broker *htbLabBroker) executeSSH(parent context.Context, request HTBLabSSH
 		return HTBLabSSHResponse{}, err
 	}
 	defer zeroHTBBytes(password)
+	return broker.executeSSHWithCredential(parent, request, password)
+}
+
+func (broker *htbLabBroker) executeSSHWithCredential(parent context.Context, request HTBLabSSHRequest, password []byte) (HTBLabSSHResponse, error) {
+	validated, err := validateHTBLabSSHRequest(request)
+	if err != nil {
+		return HTBLabSSHResponse{}, err
+	}
+	request = validated
 	sshPath, ok := htbLabResolveSSH("ssh", broker.config.ToolPath)
 	if !ok {
 		return HTBLabSSHResponse{}, errors.New("OpenSSH client is unavailable")
@@ -191,15 +212,32 @@ func (broker *htbLabBroker) executeSSH(parent context.Context, request HTBLabSSH
 	}
 	stdout := &boundedHTBLabCapture{limit: htbLabSSHOutputLimit}
 	stderr := &boundedHTBLabCapture{limit: 256 << 10}
-	if err := htbLabRunSSHProcess(ctx, sshPath, args, environment, stdin, stdout, stderr); err != nil || stdout.truncated || stderr.truncated {
-		return HTBLabSSHResponse{}, errors.New("lab SSH command failed")
+	exitCode, runErr := classifyHTBLabSSHProcessResult(ctx, htbLabRunSSHProcess(ctx, sshPath, args, environment, stdin, stdout, stderr))
+	if runErr != nil {
+		return HTBLabSSHResponse{}, runErr
 	}
 	response, err := newHTBLabSSHResponse(broker.config.Workspace.Path, request, broker.config.Workspace.TargetIP, stdout.Bytes(), stderr.Bytes())
+	response.ExitCode = exitCode
+	response.Truncated = stdout.truncated || stderr.truncated
 	if request.SaveOutput != "" {
 		zeroHTBBytes(stdout.Bytes())
 		zeroHTBBytes(stderr.Bytes())
 	}
 	return response, err
+}
+
+func classifyHTBLabSSHProcessResult(ctx context.Context, runErr error) (int, error) {
+	if runErr == nil {
+		return 0, nil
+	}
+	if ctx.Err() != nil {
+		return 0, errors.New("lab SSH command timed out or was cancelled")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(runErr, &exitErr) || exitErr.ExitCode() <= 0 || exitErr.ExitCode() == 255 {
+		return 0, errors.New("lab SSH transport failed")
+	}
+	return exitErr.ExitCode(), nil
 }
 
 func buildHTBLabSSHArgs(request HTBLabSSHRequest, target string) []string {
