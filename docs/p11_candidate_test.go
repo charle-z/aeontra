@@ -51,8 +51,8 @@ func TestP11CandidateEvidenceIsSynchronized(t *testing.T) {
 	if !strings.Contains(read("documentation-map.md"), "2026-07-15-p11.md") {
 		t.Error("documentation map does not identify P11 candidate evidence")
 	}
-	if !strings.Contains(read("product-roadmap.md"), "| P11 bounded state and development Edge | Release candidate |") {
-		t.Error("roadmap does not identify the P11 release candidate")
+	if !strings.Contains(read("product-roadmap.md"), "| P11 bounded state and development Edge | Deployed / superseded by P11.2 and P12 |") {
+		t.Error("roadmap does not identify the deployed P11 successor state")
 	}
 	if !strings.Contains(read("design.md"), "current 78-tool P11.2 candidate") {
 		t.Error("design does not identify the current P11 catalog")

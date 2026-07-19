@@ -37,6 +37,7 @@ func openCodeFailureCode(err error) string {
 	}
 	message := strings.ToLower(err.Error())
 	for _, code := range []string{
+		"bubblewrap_netlink_route_denied",
 		"bubblewrap_user_namespace_denied",
 		"bubblewrap_uid_map_denied",
 		"bubblewrap_gid_map_denied",

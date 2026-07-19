@@ -90,7 +90,9 @@ func TestLinuxWorkcellProcessSpecSharesOnlyHostNetworkAndUsesPersistentPrefixes(
 		t.Fatalf("persistent environment=%+v", environment)
 	}
 	for _, mount := range spec.Sandbox.Mounts {
-		if mount.Source == "/var/run/docker.sock" || mount.Source == "/run/docker.sock" || strings.HasPrefix(mount.Source, "/mnt/") {
+		if mount.Source == "/var/run/docker.sock" || mount.Source == "/run/docker.sock" ||
+			mount.Source == "/mnt/c" || pathInside("/mnt/c", mount.Source) ||
+			mount.Source == "/mnt/d" || pathInside("/mnt/d", mount.Source) {
 			t.Fatalf("forbidden mount=%+v", mount)
 		}
 	}

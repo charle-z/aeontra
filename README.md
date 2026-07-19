@@ -1,5 +1,11 @@
 # mcp-devbox
 
+[![Hosted on CubePath](https://img.shields.io/badge/Hosted%20on-CubePath-00C853?style=for-the-badge&logo=cloud&logoColor=white)](https://cubepath.com)
+[![Production](https://img.shields.io/badge/Production-mcp--devbox--charlez.duckdns.org-1565C0?style=for-the-badge)](https://mcp-devbox-charlez.duckdns.org)
+
+Production control plane and authenticated console are hosted on CubePath at
+`https://mcp-devbox-charlez.duckdns.org`.
+
 A **secure-by-default**, local-first MCP server that lets ChatGPT and other AI
 agents work on your local repositories — read code, search, apply patches, run
 allowed tests/commands, and keep agent-agnostic project memory — **without giving
@@ -57,7 +63,7 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **OAuth-first authentication with header-only bearer recovery**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** the current P11.2 candidate exposes 78 deliberately annotated
+**Secure builder evolution:** current production exposes 85 deliberately annotated
 tools, including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
 private validation profiles, bounded Coolify logs, and disabled-by-default
@@ -81,7 +87,7 @@ uses `/state/results/results.db`, 24-hour success / 7-day failure TTLs, a 256 Mi
 logical quota, exact search, and 16 KiB reads. It exposes no arbitrary paths,
 embeddings, prompts, credentials, or model reasoning.
 
-**P11.2 Edge/OpenCode candidate:** the VPS control plane can pair an independently
+**P11.2 Edge/OpenCode relay is deployed:** the VPS control plane can pair an independently
 installed WSL device with a one-use, short-lived code and a per-device Ed25519 key.
 The signed model-turn relay keeps the server, `mcp-edge`,
 `model-turn-driver`, and OpenCode 1.18.1 as distinct processes. Only OpenCode enters
@@ -91,13 +97,17 @@ DNS, mount and private-path isolation. Installation and pairing remain explicit
 human steps; see [the P11.2 baseline](docs/baselines/2026-07-16-p11_2.md) and the
 [Parrot WSL guide](docs/install-opencode-edge-parrot.md).
 
-**P12 Trusted Linux Workcell implementation candidate:** one explicit `linux-workcell`
-profile adds default development behavior and an optional local `htb-linux`
-context without changing the 85-tool MCP catalog. The existing `sandbox` remains
-networkless; the trusted workcell honestly declares `trusted_host_shared_network`,
-keeps authority and HTB metadata local to Edge, and permits only user-owned rootless
-Docker or Podman sockets. It is not merged, deployed, paired, or installed on Parrot.
-See [docs/linux-workcell.md](docs/linux-workcell.md).
+**P12 Trusted Linux Workcell is merged, deployed, paired, and validated on Parrot
+WSL2:** one explicit `linux-workcell` profile adds default development behavior and
+an optional local `htb-linux` context without changing the 85-tool MCP catalog. The
+existing `sandbox` remains networkless; the trusted workcell honestly declares
+`trusted_host_shared_network`, keeps authority and HTB metadata local to Edge, and
+permits only user-owned rootless Docker or Podman sockets. The first real remote
+Parrot smoke completed with six model-turn sequences and an exact repository edit.
+The onboarding hardening follow-up packages the required systemd `AF_NETLINK`
+allowance, bounded Bubblewrap diagnostics, repeatable terminal objectives, and a
+reproducible preflight. See [docs/linux-workcell.md](docs/linux-workcell.md) and the
+[Parrot onboarding guide](docs/install-opencode-edge-parrot.md).
 
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused
@@ -141,7 +151,8 @@ local Git, disposable SQLite FTS5, `/brain`, 67 tools, `cmd/mcp-catalog-smoke` a
 `d343264bffdc0ae1bc045a9d723e913be977090c`:** the existing
 Go application now embeds a React/TypeScript/Vite Neo-BIOS operations firmware. It
 shows only exact allowlisted real data, durable content-free task state and SSE; Brain
-uses opaque graph IDs and Edge honestly remains Not paired. Console OAuth completes
+uses opaque graph IDs. At the historical P8.1 closure Edge was not paired; the current
+P12 status above supersedes that snapshot. Console OAuth completes
 server-side with PKCE/state/single-use codes and an opaque
 `Secure; HttpOnly; SameSite=Strict` cookie. Query-string credentials always return
 401, while an Authorization bearer remains recovery-only. No new MCP tool, listener,

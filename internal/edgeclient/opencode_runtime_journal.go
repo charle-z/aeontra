@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -77,8 +78,7 @@ func OpenOpenCodeRuntimeJournal(stateRoot string) (*OpenCodeRuntimeJournal, erro
 			exit_code INTEGER NOT NULL DEFAULT 0,
 			output_truncated INTEGER NOT NULL DEFAULT 0 CHECK(output_truncated IN (0,1)),
 			created_at INTEGER NOT NULL,
-			updated_at INTEGER NOT NULL,
-			UNIQUE(workspace_id,goal_digest)
+			updated_at INTEGER NOT NULL
 		) WITHOUT ROWID`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS local_opencode_active_workspace
 		 ON local_opencode_runtimes(workspace_id) WHERE state IN ('starting','running')`,
@@ -88,11 +88,67 @@ func OpenOpenCodeRuntimeJournal(stateRoot string) (*OpenCodeRuntimeJournal, erro
 			return nil, errors.New("OpenCode runtime journal initialization failed")
 		}
 	}
+	if err := migrateOpenCodeRuntimeObjectiveUniqueness(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = db.Close()
 		return nil, errors.New("OpenCode runtime journal permissions failed")
 	}
 	return journal, nil
+}
+
+func migrateOpenCodeRuntimeObjectiveUniqueness(db *sql.DB) error {
+	var schema string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='local_opencode_runtimes'`).Scan(&schema); err != nil {
+		return errors.New("OpenCode runtime journal schema inspection failed")
+	}
+	normalized := strings.ToLower(strings.Join(strings.Fields(schema), ""))
+	if !strings.Contains(normalized, "unique(workspace_id,goal_digest)") {
+		return nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return errors.New("OpenCode runtime journal migration failed")
+	}
+	fail := func() error {
+		_ = tx.Rollback()
+		return errors.New("OpenCode runtime journal migration failed")
+	}
+	statements := []string{
+		`DROP INDEX IF EXISTS local_opencode_active_workspace`,
+		`ALTER TABLE local_opencode_runtimes RENAME TO local_opencode_runtimes_legacy`,
+		`CREATE TABLE local_opencode_runtimes (
+			runtime_id TEXT PRIMARY KEY,
+			workspace_id TEXT NOT NULL,
+			goal_digest TEXT NOT NULL,
+			provider_profile TEXT NOT NULL,
+			state TEXT NOT NULL CHECK(state IN ('starting','running','completed','failed','cancelled')),
+			exit_code INTEGER NOT NULL DEFAULT 0,
+			output_truncated INTEGER NOT NULL DEFAULT 0 CHECK(output_truncated IN (0,1)),
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`INSERT INTO local_opencode_runtimes(
+			runtime_id,workspace_id,goal_digest,provider_profile,state,
+			exit_code,output_truncated,created_at,updated_at
+		) SELECT runtime_id,workspace_id,goal_digest,provider_profile,state,
+			exit_code,output_truncated,created_at,updated_at
+		FROM local_opencode_runtimes_legacy`,
+		`DROP TABLE local_opencode_runtimes_legacy`,
+		`CREATE UNIQUE INDEX local_opencode_active_workspace
+		 ON local_opencode_runtimes(workspace_id) WHERE state IN ('starting','running')`,
+	}
+	for _, statement := range statements {
+		if _, err := tx.Exec(statement); err != nil {
+			return fail()
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New("OpenCode runtime journal migration failed")
+	}
+	return nil
 }
 
 func (j *OpenCodeRuntimeJournal) Begin(ctx context.Context, runtimeID, workspaceID, goalDigest, providerProfile string) (OpenCodeRuntimeEntry, bool, error) {
@@ -114,10 +170,6 @@ func (j *OpenCodeRuntimeJournal) Begin(ctx context.Context, runtimeID, workspace
 			return OpenCodeRuntimeEntry{}, false, errors.New("OpenCode runtime identity conflict")
 		}
 		return entry, false, nil
-	}
-	var duplicateRuntime string
-	if err := j.db.QueryRowContext(ctx, `SELECT runtime_id FROM local_opencode_runtimes WHERE workspace_id=? AND goal_digest=?`, workspaceID, goalDigest).Scan(&duplicateRuntime); err == nil {
-		return OpenCodeRuntimeEntry{}, false, errors.New("OpenCode objective was already journaled")
 	}
 	var activeRuntime string
 	if err := j.db.QueryRowContext(ctx, `SELECT runtime_id FROM local_opencode_runtimes WHERE workspace_id=? AND state IN ('starting','running')`, workspaceID).Scan(&activeRuntime); err == nil {

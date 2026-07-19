@@ -1,0 +1,56 @@
+[Unit]
+Description=MCP Devbox Trusted Linux Workcell Edge for %i
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/%i/.local/state/mcp-edge/identity.json
+ConditionPathExists=!/home/%i/.local/state/mcp-edge/STOP
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+UMask=0077
+WorkingDirectory=/home/%i/.local/state/mcp-edge
+
+Environment=HOME=/home/%i
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ExecStartPre=/usr/bin/test -x /usr/bin/bwrap
+ExecStartPre=/usr/bin/test -x /usr/local/bin/mcp-edge
+ExecStartPre=/usr/bin/test -x /usr/local/libexec/mcp-devbox/model-turn-driver
+ExecStartPre=/usr/bin/test -x /opt/mcp-devbox/opencode-1.18.1/opencode
+ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/opencode-1.18.1/package-lock.json
+ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/opencode-provider/index.js
+ExecStartPre=/opt/mcp-devbox/opencode-1.18.1/opencode --version
+
+ExecStart=/usr/local/bin/mcp-edge opencode --state /home/%i/.local/state/mcp-edge --opencode /opt/mcp-devbox/opencode-1.18.1/opencode --driver /usr/local/libexec/mcp-devbox/model-turn-driver --provider /opt/mcp-devbox/opencode-provider --bubblewrap /usr/bin/bwrap --integrity /opt/mcp-devbox/opencode-1.18.1/package-lock.json --wait 120s --poll 5s --heartbeat 5s --output-limit 1048576
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillMode=control-group
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/%i/.local/state/mcp-edge /home/%i/workspaces /home/%i/htb-machines
+
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=false
+RestrictRealtime=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

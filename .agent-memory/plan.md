@@ -1,12 +1,14 @@
-# Plan — P12 Trusted Linux Workcell final closure
+# Plan — P12 Parrot onboarding hardening
 
-1. Preserve the one-profile contract: linux-workcell, default dev, optional local htb-linux; keep P11.2 sandbox networkless and fail-closed.
-2. Finish the rootless lifecycle correction without expanding scope: whole-process-group cancellation, pod cleanup, unique per-run identities, two consecutive clean cycles, condition-based readiness, restart/orphan proof and EXIT-trap cleanup.
-3. Run format, focused suites, tagged builds, full serial tests, coverage gate, vet, build, Staticcheck, Govulncheck, Actionlint and git diff --check.
-4. Confirm no temporary helpers, scratch, logs, reports, private artifacts or binaries remain; commit the correction and publish only p12-trusted-linux-workcell.
-5. Re-run the blocking matrix for the memory synchronization head and require every check green simultaneously with evidence complete; implementation head `d37c991` already demonstrated 15/15 green.
-6. Correct only evidenced failures. Do not add hidden retries, continue-on-error, skips, relaxed assertions, arbitrary sleeps, rootful Docker or global serialization.
-7. Revalidate and merge PR #25 using a merge commit only; do not squash, rebase or rewrite history.
-8. Observe the existing automatic Coolify deployment for jqf7qz5ensoqtvl1tb197gcv. Trigger one normal non-force deployment only if no webhook deployment appears after bounded observation and production remains on the old commit.
-9. Verify the merge commit in healthy production with 85 tools, the unchanged catalog hash, catalog/Brain/console/OAuth/session/Graph/Lifetime/P11.2 smokes, no Edge requirement and not_paired state.
-10. Report the exact rootless cause, commits, final SHA/tree, checks, merge, deployment, production, shared-network risk, Parrot human setup and residual risks. Do not modify real Parrot or open later milestones.
+1. Add regression coverage and code fixes for:
+   - `bubblewrap_netlink_route_denied` classification;
+   - bounded Bubblewrap verification diagnostics;
+   - remote failure propagation for local preflight/journal rejection;
+   - repeatable terminal objectives while preserving one active runtime per workspace;
+   - WSL `/mnt/wsl/resolv.conf` acceptance without allowing `/mnt/c` or `/mnt/d`.
+2. Package a P12 OpenCode Edge systemd unit with `AF_NETLINK`, non-root user execution, private state, and rootless workspace paths.
+3. Add an executable Parrot onboarding preflight/smoke script and deterministic tests for the unit/script/docs contract.
+4. Rewrite the Parrot installation/onboarding guide from the real successful procedure: exact merge, Node 24 wrappers, provider test, Bubblewrap + Podman preflight, pairing, workspace registration, service, unique smoke objective, diagnostics, rollback.
+5. Update Linux Workcell baseline/status, README, documentation map, and Cubethon-facing presentation. Keep honest residual risks: host-shared network, rootless socket authority, no universal egress isolation.
+6. Run focused tests, full Go suite, vet, diff checks, and documentation closure tests.
+7. Commit in bounded steps, publish branch, open PR, and prepare the Cubethon issue draft. Do not merge or deploy without green checks.

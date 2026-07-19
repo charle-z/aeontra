@@ -58,8 +58,8 @@ func TestP112ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 	guide := read("install-opencode-edge-parrot.md")
 	for _, required := range []string{
 		"Parrot WSL2",
-		"mcpedge",
-		"Bubblewrap preflight",
+		"non-root user",
+		"onboarding preflight",
 		"OpenCode 1.18.1",
 		"systemd",
 		"pair",
@@ -79,8 +79,8 @@ func TestP112ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 	if !strings.Contains(read("documentation-map.md"), "2026-07-16-p11_2.md") {
 		t.Error("documentation map does not identify P11.2 evidence")
 	}
-	if !strings.Contains(read("product-roadmap.md"), "| P11.2 remote OpenCode relay | Release candidate |") {
-		t.Error("roadmap does not identify P11.2 release candidate")
+	if !strings.Contains(read("product-roadmap.md"), "| P11.2 remote OpenCode relay | Deployed |") {
+		t.Error("roadmap does not identify deployed P11.2")
 	}
 	if !strings.Contains(read("design.md"), "current 78-tool P11.2 candidate") {
 		t.Error("design does not identify the current P11.2 catalog")

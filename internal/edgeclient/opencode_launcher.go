@@ -223,8 +223,14 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	if l.killSwitchActive() {
 		return result, ErrKillSwitch
 	}
+	remote, err := l.remoteFactory(lease)
+	if err != nil {
+		return result, err
+	}
+	defer remote.Close()
 	entry, created, err := l.config.Journal.Begin(ctx, lease.RuntimeID, lease.WorkspaceID, lease.GoalDigest, lease.ProviderProfile)
 	if err != nil {
+		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
 	if !created {
@@ -238,6 +244,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 			_ = l.config.Journal.Finish(context.Background(), lease.RuntimeID, OpenCodeLocalFailed, -1, entry.OutputTruncated)
 			result.State = OpenCodeLocalFailed
 			result.ExitCode = -1
+			_, _ = remote.Failed(context.Background(), "")
 			return result, ErrOpenCodeInterrupted
 		}
 	}
@@ -247,12 +254,6 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		result.ExitCode = exitCode
 		result.OutputTruncated = truncated
 	}
-	remote, err := l.remoteFactory(lease)
-	if err != nil {
-		failLocal(OpenCodeLocalFailed, -1, false)
-		return result, err
-	}
-	defer remote.Close()
 	workspaceRecord, err := l.resolveWorkspaceRecord(lease.WorkspaceID)
 	if err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
@@ -920,15 +921,18 @@ func (l *OpenCodeLauncher) verifyOpenCodeSandbox(ctx context.Context, spec openC
 	}
 	versionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	output := newBoundedCapture(4096)
+	stdout := newBoundedCapture(4096)
+	stderr := newBoundedCapture(4096)
 	spec.Args = append(append([]string(nil), spec.Args[:separator+1]...), openCodeSandboxExecutable, "--version")
-	spec.Stdout = output
-	spec.Stderr = io.Discard
+	spec.Stdout = stdout
+	spec.Stderr = stderr
+	started := time.Now()
 	result := runOpenCodeProcess(versionCtx, spec)
 	if result.Err != nil || result.ExitCode != 0 {
-		return errors.New("bubblewrap could not create the required OpenCode sandbox")
+		diagnostic := classifyBubblewrapFailure(bubblewrapStageHelperExec, result.Err, stderr.String(), time.Since(started))
+		return fmt.Errorf("bubblewrap verification failed (%s)", diagnostic.Code)
 	}
-	if output.Truncated() || strings.TrimSpace(output.String()) != PinnedOpenCodeVersion {
+	if stdout.Truncated() || strings.TrimSpace(stdout.String()) != PinnedOpenCodeVersion {
 		return errors.New("OpenCode version does not match the pinned release")
 	}
 	return nil

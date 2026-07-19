@@ -28,6 +28,7 @@ func TestClassifyBubblewrapFailure(t *testing.T) {
 		{name: "tmpfs mount", stage: bubblewrapStageTmpfsMount, err: errors.New("exit"), stderr: "bwrap: mount tmpfs: Permission denied", code: "bubblewrap_tmpfs_mount_denied"},
 		{name: "exec denied", stage: bubblewrapStageHelperExec, err: errors.New("exit"), stderr: "bwrap: execvp helper: Permission denied", code: "bubblewrap_exec_denied"},
 		{name: "path missing", stage: bubblewrapStageHelperExec, err: errors.New("exit"), stderr: "bwrap: execvp helper: No such file or directory", code: "bubblewrap_path_missing"},
+		{name: "netlink route policy", stage: bubblewrapStageHelperExec, err: errors.New("exit"), stderr: "bwrap: loopback: Failed to create NETLINK_ROUTE socket: Address family not supported by protocol", code: "bubblewrap_netlink_route_denied"},
 		{name: "generic permission", stage: bubblewrapStageEmptyFilesystem, err: errors.New("exit"), stderr: "bwrap: Operation not permitted", code: "bubblewrap_permission_denied"},
 		{name: "process exit", stage: bubblewrapStageHelperExec, err: errors.New("exit"), stderr: "bwrap: child failed", code: "bubblewrap_process_exit"},
 		{name: "timeout", stage: bubblewrapStageHelperExec, err: context.DeadlineExceeded, code: "bubblewrap_timeout"},

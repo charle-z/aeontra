@@ -68,6 +68,10 @@ func classifyBubblewrapFailure(stage int, err error, stderr string, duration tim
 		strings.Contains(lowered, "eperm") || strings.Contains(lowered, "eacces")
 
 	switch {
+	case strings.Contains(lowered, "netlink_route") &&
+		(strings.Contains(lowered, "address family not supported") ||
+			strings.Contains(lowered, "failed to create")):
+		diagnostic.Code = "bubblewrap_netlink_route_denied"
 	case strings.Contains(lowered, "no permissions to create new namespace"),
 		strings.Contains(lowered, "creating new namespace") && permissionDenied,
 		strings.Contains(lowered, "unshare") && strings.Contains(lowered, "user") && permissionDenied:
