@@ -116,6 +116,12 @@ func p12CleanupRuntime(endpoint *RootlessContainerEndpoint, runtimeID, image str
 
 func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runtimeID string, cycle int, secondCycleCleanStart bool) p12RootlessCycleReport {
 	t.Helper()
+	stage := "clean_start"
+	defer func() {
+		if t.Failed() {
+			fmt.Printf("P12 rootless category=stage_%s\n", stage)
+		}
+	}()
 	p12AssertNoRuntimeResources(t, endpoint, runtimeID)
 	if !p12RootfulSocketsInaccessible() {
 		t.Fatal("rootful container socket is accessible to the rootless test user")
@@ -145,15 +151,19 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 	if err := os.WriteFile(filepath.Join(workspace, "fixture.txt"), []byte("trusted\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	stage = "image_build"
 	p12Engine(t, endpoint, append(prefix, "build", "--label", label, "--tag", image, workspace)...)
 
+	stage = "pod_create"
 	podName := "p12-pod-" + suffix
 	p12Engine(t, endpoint, append(prefix, "pod", "create", "--name", podName, "--label", label)...)
+	stage = "network_volume_create"
 	network := "p12-net-" + suffix
 	volume := "p12-vol-" + suffix
 	p12Engine(t, endpoint, append(prefix, "network", "create", "--label", label, network)...)
 	p12Engine(t, endpoint, append(prefix, "volume", "create", "--label", label, volume)...)
 
+	stage = "workspace_bind"
 	containerName := "p12-workspace-" + suffix
 	workspaceMount := workspace + ":/workspace:ro"
 	workspaceOutput := p12Engine(t, endpoint, append(prefix,
@@ -189,17 +199,22 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 		t.Fatal("workspace was not the sole project bind")
 	}
 
+	stage = "compose"
 	composeRan := p12ComposeCycleE2E(t, endpoint, image, runtimeID, suffix)
+	stage = "postgres"
 	postgresHealthy, postgresReady := p12PostgreSQLCycleE2E(t, endpoint, network, runtimeID, suffix)
+	stage = "chromium"
 	chromiumReady := p12ChromiumE2E(t)
 	if !chromiumReady {
 		t.Fatal("Chromium readiness marker was not rendered")
 	}
+	stage = "cancellation"
 	cancellationRan := p12RootlessCancellationCycleE2E(t, endpoint, image, runtimeID, suffix)
 	if !cancellationRan {
 		t.Fatal("rootless process-group cancellation was not observed")
 	}
 
+	stage = "cleanup"
 	if err := cleanup(); err != nil {
 		t.Fatal(err)
 	}
