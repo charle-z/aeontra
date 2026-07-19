@@ -1,6 +1,7 @@
 # Trusted Linux Workcell
 
 Status: merged and deployed on 2026-07-18. Pairing, rootless Podman, Bubblewrap, systemd, OpenCode 1.18.1, provider loading, and one real six-sequence remote repository smoke were validated on the owner's Parrot WSL2 machine. The canonical installation procedure is `docs/install-opencode-edge-parrot.md`.
+The operator workflow for authorized HTB rooms is `docs/htb-lab-workflow.md`.
 
 ## One profile, two local contexts
 

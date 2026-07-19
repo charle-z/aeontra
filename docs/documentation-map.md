@@ -42,7 +42,9 @@ P12 Trusted Linux Workcell candidate behavior and operations are governed by
 P12 is merged, deployed, paired, and validated on Parrot WSL2. Historical candidate
 evidence remains in `docs/baselines/2026-07-18-p12.md`; real-host production evidence
 is recorded separately in `docs/baselines/2026-07-18-p12-parrot-production.md`.
-The canonical onboarding procedure is `docs/install-opencode-edge-parrot.md`.
+The canonical onboarding procedure is `docs/install-opencode-edge-parrot.md`;
+authorized HTB room setup and local credential handles are documented in
+`docs/htb-lab-workflow.md`.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |
