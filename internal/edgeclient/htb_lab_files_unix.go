@@ -22,7 +22,7 @@ func readHTBLabArtifact(workspace, relative string, limit int64) ([]byte, error)
 	if err != nil {
 		return nil, errors.New("lab credential artifact is unavailable")
 	}
-	file := os.NewFile(uintptr(fileFD), relative)
+	file := os.NewFile(uintptr(fileFD), "htb-lab-artifact")
 	if file == nil {
 		_ = unix.Close(fileFD)
 		return nil, errors.New("lab credential artifact is unavailable")
