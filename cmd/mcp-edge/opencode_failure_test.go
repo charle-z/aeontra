@@ -26,6 +26,7 @@ func TestOpenCodeFailureCodeIsStableAndRedacted(t *testing.T) {
 		{errors.New("pinned OpenCode executable is unsafe"), "installation_opencode"},
 		{errors.New("OpenCode external driver manifest is invalid"), "installation_provider"},
 		{errors.New("model-turn driver executable is unsafe"), "installation_driver"},
+		{errors.New("bubblewrap verification failed (bubblewrap_netlink_route_denied)"), "bubblewrap_netlink_route_denied"},
 		{errors.New("OpenCode model-turn socket is not private"), "socket"},
 		{errors.New("OpenCode terminated unexpectedly (request_stage)"), "opencode_request_stage"},
 		{errors.New("OpenCode terminated unexpectedly (turn_create)"), "opencode_turn_create"},

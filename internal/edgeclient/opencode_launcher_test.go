@@ -378,9 +378,15 @@ func TestOpenCodeRuntimeJournalPreventsConcurrentAndDuplicateExecution(t *testin
 		if _, err := fixture.launcher.RunLease(context.Background(), second); err == nil || !strings.Contains(err.Error(), "active") {
 			t.Fatalf("second active workspace err=%v", err)
 		}
+		fixture.remote.mu.Lock()
+		failedCalls := fixture.remote.failedCalls
+		fixture.remote.mu.Unlock()
+		if failedCalls != 1 {
+			t.Fatalf("remote failed calls=%d", failedCalls)
+		}
 	})
 
-	t.Run("duplicate objective", func(t *testing.T) {
+	t.Run("repeat completed objective", func(t *testing.T) {
 		fixture := newOpenCodeLauncherFixture(t)
 		first := fixture.lease
 		if _, created, err := fixture.journal.Begin(context.Background(), first.RuntimeID, first.WorkspaceID, first.GoalDigest, first.ProviderProfile); err != nil || !created {
@@ -391,8 +397,8 @@ func TestOpenCodeRuntimeJournalPreventsConcurrentAndDuplicateExecution(t *testin
 		}
 		second := first
 		second.RuntimeID = "mr_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-		if _, err := fixture.launcher.RunLease(context.Background(), second); err == nil || !strings.Contains(err.Error(), "already journaled") {
-			t.Fatalf("duplicate objective err=%v", err)
+		if _, created, err := fixture.journal.Begin(context.Background(), second.RuntimeID, second.WorkspaceID, second.GoalDigest, second.ProviderProfile); err != nil || !created {
+			t.Fatalf("repeat objective created=%t err=%v", created, err)
 		}
 	})
 }
