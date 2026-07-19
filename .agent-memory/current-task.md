@@ -1,34 +1,27 @@
-# P12 — Trusted Linux Workcell
+# Current task — P12 Parrot onboarding hardening and Cubethon readiness
 
-Branch: `p12-trusted-linux-workcell`.
-Pull request: `#25` against `main`.
-Published diagnostic HEAD: `15adccc016dd690a54336ca2d54423eff4ee74d9`.
-Base remains `origin/main` at `087f00e404855cc83e76c1eb7d6ed85ab14577c5` until merge.
+Branch: `p12-parrot-onboarding-hardening`.
+Base: `origin/main` at `3946fd7033f28906deb932298387034e2fa27fe8`.
 
 Historical deployed foundations preserved:
 - P8.1 Console 2.0 is deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
 - P9 Brain is deployed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 - P11.2 Remote OpenCode Relay remains the sandbox/relay foundation.
+- P12 Trusted Linux Workcell was merged by PR #25 at `3946fd7033f28906deb932298387034e2fa27fe8`.
 - Public catalog remains exactly 85 tools with `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`.
 
-Completed P12 sequence includes Steps 1–6 and the CI fixture/path/Chromium/ShellCheck corrections through `549271b`. Commit `15adccc` added failure-only redacted rootless diagnostics; its exact PR head completed all 15 checks green with evidence complete, but it is not the merge candidate because it still exercised only one rootless cycle.
+Real Parrot WSL validation completed on 2026-07-18 with runtime `mr_829f6601fca6f887bc2d0133a4c5dff1`, workspace `ws_7c4686f5d9244bbad30ae705d4b660c5`, state `completed`, six sequences, exact `edge-smoke.txt`, and clean `git diff --check`.
 
-Current uncommitted lifecycle correction:
-- fixes the concrete cancellation race in `execContainerCommandRunner`: the command created a process group but context cancellation killed only its leader, allowing child processes to survive;
-- adds a deterministic regression proving a child heartbeat stops after cancellation;
-- cleans Podman pods before containers, then networks and volumes, all by exact runtime label;
-- removes the fixed rootless E2E runtime identity and derives two distinct IDs from the GitHub run;
-- executes two consecutive rootless cycles in one job, with the second proving the first left no resources;
-- validates a user-owned rootless socket, rootful socket inaccessible to the test user, one workspace project bind, image build, explicit pod, Compose readiness/down, PostgreSQL healthcheck/query, Chromium, cancellation, cleanup and service restart;
-- wraps the complete service lifecycle in an EXIT trap that cleans both runtime labels, stops the Podman process group, removes the temporary socket and restores rootful socket permissions;
-- keeps failure diagnostics bounded and allowlisted, preserving the original exit status and uploading no log on green runs.
+This follow-up fixes the production gaps exposed by onboarding:
+- Bubblewrap under systemd requires `AF_NETLINK` for `NETLINK_ROUTE` loopback setup.
+- Bubblewrap verification discarded bounded stderr and returned only a generic failure.
+- early local journal failures could leave the remote runtime stuck in `starting`.
+- the journal permanently rejected a legitimate rerun of the same completed objective.
+- `/mnt/wsl/resolv.conf` is a WSL system file, not a forbidden Windows workspace mount.
+- the Parrot/provider/systemd installation docs were stale and contained non-runnable commands.
+- onboarding needed one packaged, executable preflight/smoke path.
+- README/P12 status and Cubethon presentation needed to reflect merged/deployed/validated reality without overstating isolation.
 
-Final local gates pass on the correction tree: focused rootless/redactor/workflow/docs suites, the process-group regression repeated ten times, tagged `p12_e2e` compilation, full serial tests, atomic coverage with every threshold green, vet, build, Staticcheck v0.7.0, Govulncheck v1.6.0 with no vulnerabilities, Actionlint v1.7.12 and `git diff --check`.
+Current implementation adds safe NETLINK diagnostics, bounded Bubblewrap stderr classification, remote failure propagation, transactional journal migration, repeatable terminal objectives, the packaged OpenCode Edge systemd template, a Parrot onboarding preflight, production evidence, and a Cubethon submission draft.
 
-The first CI run of correction `39e8475` exposed a deterministic false negative in the workspace bind probe: BusyBox `sh` may exit when redirection for the `printf` builtin fails, so the success marker was never emitted even though the bind was read-only. The probe now uses external `touch` inside an `if`, and Podman inspection independently proves exactly one project bind targets `/workspace`.
-
-Workspace probe correction `d37c99146e053a9bada19822d4fcb7effbf3f7cf` is published. Its exact PR head completed 15/15 checks green, with zero pending, zero failed, mergeable=true and evidence_complete=true. Both push and pull-request rootless jobs passed two consecutive clean cycles, restart/orphan verification and bounded evidence. Only this memory synchronization commit and its exact-head CI remain before merge preview.
-
-No real Parrot installation, pairing, VPN action or host modification has been performed.
-
-Next exact action: complete full local gates, remove every temporary/generated file, commit the lifecycle correction, publish it, require all exact-head checks green simultaneously, then merge PR #25 by merge commit and verify the automatic deployment.
+Do not merge or deploy until focused tests, full gates, review, exact-head CI, and the final public presentation checks are complete.

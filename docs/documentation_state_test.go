@@ -101,7 +101,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		"Universal execution profiles",
 		"Planned",
 		"Edge agents",
-		"Development Edge implemented; WSL validation pending",
+		"Development and Trusted Linux Workcell validated",
 		"P11.2 remote OpenCode relay",
 	} {
 		if !strings.Contains(roadmap, required) {

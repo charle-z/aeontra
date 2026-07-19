@@ -17,12 +17,12 @@ criteria below remain future requirements until their status changes with eviden
 | Console/showcase | Deployed | P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8`; the original authenticated console remains historical evidence. |
 | Brain memory | Deployed | P9 merge `4fbe1dda02351c632e67c0f10a5c5b314df745e2` is deployed and tagged `p9`; persistent `/brain`, 67 tools, catalog and Brain smokes are verified. |
 | Console 2.0 / P8.1 | Deployed | `main` at `d343264bffdc0ae1bc045a9d723e913be977090c` is deployed healthy and tagged `p8.1`; React Neo-BIOS UI, console OAuth, strict query-key rejection, durable `/state/tasks`, SSE and exact safe-data contracts passed production smoke. |
-| P11 bounded state and development Edge | Release candidate | Historical 71-tool foundation recorded in `docs/baselines/2026-07-15-p11.md`; merge, deployment, WSL installation and pairing remain pending. |
-| P11.2 remote OpenCode relay | Release candidate | Exact tree `e8862ee9229ec8a98237251de6d3272e3f72ee1e` passed distributed relay and host Bubblewrap E2E with OpenCode 1.18.1, four tools, restart/resume, repository mutation and zero duplicates. PR #13 remains unmerged and unpaired. |
-| P12 Trusted Linux Workcell | Complete / merge-ready candidate; Parrot validation pending | One opt-in `linux-workcell` with default `dev`, optional local `htb-linux`, honest host-shared networking, durable local state, sanitized inventory, optional rootless Docker/Podman, runtime cleanup, and 85-tool catalog invariant. Branch publication, exact-SHA CI, merge, deployment, and real Parrot setup remain pending. |
+| P11 bounded state and development Edge | Deployed / superseded by P11.2 and P12 | Historical 71-tool foundation remains in `docs/baselines/2026-07-15-p11.md`; the current production catalog has 85 tools. |
+| P11.2 remote OpenCode relay | Deployed | The four-process relay, pinned OpenCode 1.18.1, restart/resume, Bubblewrap isolation, and zero-duplicate turn contract are deployed and form the P12 runtime foundation. |
+| P12 Trusted Linux Workcell | Deployed and validated on Parrot | PR #25 merged at `3946fd7033f28906deb932298387034e2fa27fe8`; one real outbound Parrot runtime completed six sequences and an exact verified repository edit. Onboarding hardening packages `AF_NETLINK`, safe diagnostics, journal migration, and a reproducible preflight. |
 | Asset broker | Not started | Requires explicit private/public asset and authority contracts. |
 | Universal execution profiles | Planned | Registry/profile contract defined below; implementation not claimed. |
-| Edge agents | Development Edge implemented; WSL validation pending | Setup is outbound-only, revocable and locally bounded; broader PC/Parrot/security workcells remain planned. |
+| Edge agents | Development and Trusted Linux Workcell validated | Outbound pairing, revocation, local STOP, Parrot WSL2, Bubblewrap, rootless Podman, and a real repository smoke are proven; broader security workcells and target-isolated networking remain planned. |
 | Multi-model orchestrator | Planned | Must remain provider-neutral and subordinate to policy. |
 | Authorized security workspaces | Planned | Requires administrator-owned active engagement scope. |
 
@@ -103,7 +103,7 @@ uses workcells rather than hundreds of rigid one-tool wrappers; see
 
 ## Milestone 0 - Cubethon submission foundation
 
-Target: Monday morning, 2026-07-13. Submission deadline remains 2026-07-15.
+Target: final submission before the official 2026-07-26 deadline. Finalists and winners are scheduled after the submission window; verify the official Cubethon repository before filing.
 
 ### M0.1 Stabilize the demonstrated path
 

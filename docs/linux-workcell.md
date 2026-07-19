@@ -1,6 +1,6 @@
 # Trusted Linux Workcell
 
-Status: implementation candidate on `p12-trusted-linux-workcell`. This document does not claim that the branch is merged, deployed, paired, or installed on the owner's Parrot WSL machine.
+Status: merged and deployed on 2026-07-18. Pairing, rootless Podman, Bubblewrap, systemd, OpenCode 1.18.1, provider loading, and one real six-sequence remote repository smoke were validated on the owner's Parrot WSL2 machine. The canonical installation procedure is `docs/install-opencode-edge-parrot.md`.
 
 ## One profile, two local contexts
 
@@ -295,7 +295,7 @@ Large scans, build logs, loot, scripts, and evidence stay in their normal worksp
 
 The lease timeout remains bounded to at most 3600 seconds. OpenCode runs in a new process group with Bubblewrap `--die-with-parent` and `--new-session`; cancellation terminates the runtime group. Rootless cleanup commands are independently time- and output-bounded.
 
-This version deliberately does not add Goal Runtime, 24-hour jobs, a scheduler, durable remote jobs, Windows access, Active Directory, an overlay network, nftables target filtering, or a public onboarding flow.
+This version deliberately does not add Goal Runtime, 24-hour jobs, a scheduler, durable remote jobs, Windows access, Active Directory, an overlay network, or nftables target filtering. A human-operated Parrot onboarding flow is now packaged and documented; it does not automate pairing codes, sudo, or remote trust decisions.
 
 ## Verification matrix
 
