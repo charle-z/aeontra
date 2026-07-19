@@ -332,6 +332,30 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	socketPath := filepath.Join(runtimeDir, openCodeDriverSocketName)
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second)
 	defer cancel()
+	var labBrokerDone <-chan error
+	var labBrokerCancel context.CancelFunc
+	if preparation != nil && workspaceRecord.Mode == WorkspaceModeHTBLinux {
+		brokerCtx, brokerCancel := context.WithCancel(runCtx)
+		labBrokerCancel = brokerCancel
+		labBrokerDone, err = StartHTBLabBroker(brokerCtx, HTBLabBrokerConfig{
+			SocketPath: filepath.Join(runtimeDir, HTBLabBrokerSocketName),
+			StateRoot:  l.config.StateRoot, Workspace: workspaceRecord, RuntimeID: lease.RuntimeID, ToolPath: l.config.ToolPath,
+		})
+		if err != nil {
+			brokerCancel()
+			failLocal(OpenCodeLocalFailed, -1, false)
+			_, _ = remote.Failed(context.Background(), "")
+			return result, err
+		}
+		defer func() {
+			if labBrokerCancel != nil {
+				labBrokerCancel()
+			}
+			if labBrokerDone != nil {
+				<-labBrokerDone
+			}
+		}()
+	}
 	driverDone, err := l.startDriver(runCtx, socketPath, lease, remote)
 	if err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
@@ -373,9 +397,28 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	heartbeatErr := make(chan error, 1)
 	go l.monitorRuntime(runCtx, cancel, remote, heartbeatDone, heartbeatErr)
 
-	processResult := <-processDone
+	processResult := openCodeProcessResult{}
+	var labBrokerErr error
+	if labBrokerDone == nil {
+		processResult = <-processDone
+	} else {
+		select {
+		case processResult = <-processDone:
+		case labBrokerErr = <-labBrokerDone:
+			labBrokerDone = nil
+			cancel()
+			processResult = <-processDone
+		}
+	}
 	runContextErr := runCtx.Err()
 	cancel()
+	if labBrokerCancel != nil {
+		labBrokerCancel()
+	}
+	if labBrokerDone != nil {
+		labBrokerErr = <-labBrokerDone
+		labBrokerDone = nil
+	}
 	driverErr := <-driverDone
 	terminalRuntime := modelturn.Runtime{}
 	select {
@@ -396,6 +439,11 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		defer func() {
 			_ = RecordLinuxWorkcellTerminalState(preparation, terminalCheckpoint, cleanupState)
 		}()
+	}
+	if labBrokerErr != nil && !errors.Is(labBrokerErr, context.Canceled) {
+		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
+		_, _ = remote.Failed(context.Background(), "")
+		return result, errors.New("HTB lab broker terminated unexpectedly")
 	}
 	if cleanupErr != nil {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())

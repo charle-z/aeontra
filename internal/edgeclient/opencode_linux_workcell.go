@@ -87,6 +87,8 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 	if workspace.Mode == WorkspaceModeHTBLinux {
 		replacements["TARGET"] = workspace.TargetIP
 		replacements["LHOST"] = preparation.LHOST
+		replacements["MCP_DEVBOX_MACHINE"] = workspace.MachineName
+		replacements["MCP_DEVBOX_VPN_INTERFACE"] = workspace.VPNInterface
 	}
 	for key, value := range replacements {
 		var replaced bool
