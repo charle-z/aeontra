@@ -4,27 +4,28 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-P8.1 Console 2.0 is deployed, healthy and tagged `p8.1`. P11.2 is a release
-candidate on `p11-2-remote-opencode-relay`; it is not merged or deployed. The
-candidate catalog contains 86 tools with hash
-`sha256:deb3419f64ac9e63e1f85b4ed841b19c2ac252f411fcef9ff9aca5b5e1108a85`.
+P13 opaque workspace continuation is merged and deployed on `main` at
+`b604fa4ad75ca4d36d04115c9f09977baf52093a`. Production is healthy with
+86 tools and the P13 catalog hash. The active branch is
+`p14-first-class-authorized-htb-actions`, based exactly on that merge.
 
-P11.2 adds the signed Remote OpenCode Model-Turn Relay over Edge. The VPS stores
-the authoritative runtime and model-turn state; `mcp-edge` and
-`model-turn-driver` remain separate host processes; OpenCode 1.18.1 is mandatory
-inside Bubblewrap with no fallback. Docker validates the distributed relay without
-elevated capabilities, while Ubuntu 22.04 validates the real host sandbox. Exact
-tree `e8862ee9229ec8a98237251de6d3272e3f72ee1e` passed pull-request and push E2E:
-four turns, `read`, `grep`, `edit`, `bash`, large `request_ref`, repository
-modification, green tests, restart/resume, runtime completion and zero duplicates.
-Bubblewrap blocks network and DNS and hides host home, `/root`, WSL mounts, Docker,
-SSH, browser and VPN state; runtime/socket modes are `0700`/`0600`.
+P14 replaces model-generated Bash calls to `mcp-edge lab ssh-exec` with six
+transparent first-class actions for explicitly authorized Hack The Box and controlled
+CTF Linux workspaces. Edge keeps target, VPN binding, credential extraction, SSH,
+output files and session lifecycle local. OpenCode receives the actions only in
+`htb-linux` mode and executes them over the private runtime Unix socket. Dev and
+sandbox runtimes do not receive them. The current candidate catalog contains 92 tools
+with hash `sha256:ea9cc3749c68fcc12b608efbddc259b01eb7868c98bbc1ab35c75f456e118a98`.
 
-Installation and pairing remain explicit human steps. No remote shell, arbitrary
-argv, sudo, Docker socket, Windows mount, deployment, tag, Parrot installation,
-pairing or Coolify change is implied. See
-`docs/baselines/2026-07-16-p11_2.md` and
-`docs/install-opencode-edge-parrot.md`.
+P14 remains unmerged and undeployed. Parrot must not be modified until all local and
+exact-head CI gates are green, the PR is merged with a merge commit and the automatic
+Coolify deployment is verified. See `docs/authorized-htb-actions.md`.
+
+Historical deployed milestones remain part of the current evidence chain: P8.1 Console
+2.0 is deployed and tagged from d343264bffdc0ae1bc045a9d723e913be977090c;
+query-string credentials return 401; durable task state remains under /state/tasks;
+P9 Brain is deployed; and the 67 tools milestone is preserved in
+`docs/baselines/2026-07-14-p8_1.md` and the later P9 evidence.
 
 P0 architecture foundations are deployed. The deterministic catalog, centralized
 build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`

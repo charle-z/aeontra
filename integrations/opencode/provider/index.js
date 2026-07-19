@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { request as nodeRequest } from "node:http";
+import { appendHTBResults, configureHTBActions, isInternalHTBCall, maxHTBInternalRounds } from "./htb-actions.js";
 
 const PROTOCOL_VERSION = "mcp-devbox.model-turn.v1";
 const DRIVER_PROTOCOL_VERSION = "mcp-devbox.model-turn-driver.v1";
@@ -23,10 +24,15 @@ export function createMCPDevboxModelBridge(options = {}) {
   const timeoutMs = validateDuration(options.timeoutMs ?? ttlMs, "timeoutMs", 1000, ttlMs);
   const requestImpl = options.requestImpl ?? createUnixRequester(socketPath);
   if (typeof requestImpl !== "function") throw new Error("requestImpl must be a function");
+  const htbRequesterFactory = options.htbRequestImpl === undefined ? createUnixRequester : (() => {
+    if (typeof options.htbRequestImpl !== "function") throw new Error("htbRequestImpl must be a function");
+    return options.htbRequestImpl;
+  });
+  const htb = configureHTBActions(options, htbRequesterFactory);
 
   return Object.freeze({
     languageModel(modelID) {
-      return new PullRendezvousLanguageModel({ providerName, modelID, runtimeID, ttlMs, timeoutMs, requestImpl });
+      return new PullRendezvousLanguageModel({ providerName, modelID, runtimeID, ttlMs, timeoutMs, requestImpl, htb });
     },
   });
 }
@@ -35,19 +41,20 @@ class PullRendezvousLanguageModel {
   specificationVersion = "v3";
   supportedUrls = {};
 
-  constructor({ providerName, modelID, runtimeID, ttlMs, timeoutMs, requestImpl }) {
+  constructor({ providerName, modelID, runtimeID, ttlMs, timeoutMs, requestImpl, htb }) {
     this.provider = providerName;
     this.modelId = requireIdentifier(modelID, "model id");
     this.runtimeID = runtimeID;
     this.ttlMs = ttlMs;
     this.timeoutMs = timeoutMs;
     this.requestImpl = requestImpl;
+    this.htb = htb;
     this.queue = Promise.resolve();
   }
 
   async doGenerate(options) {
     return this.#serialize(async () => {
-      const completed = await this.#runTurn(options);
+      const completed = await this.#runWithInternalTools(options);
       if (completed.response.finish_reason === "error") {
         throw new Error(completed.response.text || "external model returned an error");
       }
@@ -67,7 +74,7 @@ class PullRendezvousLanguageModel {
   }
 
   async doStream(options) {
-    const completed = await this.#serialize(() => this.#runTurn(options));
+    const completed = await this.#serialize(() => this.#runWithInternalTools(options));
     const modelID = this.modelId;
     return {
       stream: new ReadableStream({
@@ -124,6 +131,32 @@ class PullRendezvousLanguageModel {
     const scheduled = this.queue.then(operation, operation);
     this.queue = scheduled.catch(() => undefined);
     return scheduled;
+  }
+
+  async #runWithInternalTools(options) {
+    if (!this.htb) return this.#runTurn(options);
+    if (!Array.isArray(options?.prompt)) throw new Error("prompt must be an array");
+    let current = {
+      ...options,
+      prompt: [...options.prompt],
+      tools: this.htb.augmentTools(options.tools ?? []),
+    };
+    for (let round = 0; round < maxHTBInternalRounds(); round += 1) {
+      const completed = await this.#runTurn(current);
+      const calls = completed.response.tool_calls.map((call) => ({ ...call, tool: completed.toolsByID.get(call.tool_id) }));
+      const internal = calls.filter((call) => isInternalHTBCall(this.htb, call.tool));
+      if (internal.length === 0) return completed;
+      if (internal.length !== calls.length) throw new Error("HTB actions cannot be mixed with non-HTB tool calls in one model response");
+      const results = [];
+      for (const call of internal) {
+        results.push(await this.htb.execute(call.tool.name, call.arguments, options.abortSignal));
+      }
+      current = {
+        ...current,
+        prompt: appendHTBResults(current.prompt, internal, results),
+      };
+    }
+    throw new Error("HTB internal tool loop exceeded the bounded round limit");
   }
 
   async #runTurn(options) {
@@ -257,7 +290,8 @@ function createUnixRequester(socketPath) {
             return;
           }
           if (response.statusCode < 200 || response.statusCode >= 300) {
-            const error = new Error(typeof parsed?.error === "string" ? parsed.error : `model turn driver status ${response.statusCode}`);
+            const detail = typeof parsed?.error === "string" ? parsed.error : (typeof parsed?.failure_category === "string" ? parsed.failure_category : `model turn driver status ${response.statusCode}`);
+            const error = new Error(detail);
             error.statusCode = response.statusCode;
             error.driverCode = parsed?.code;
             reject(error);

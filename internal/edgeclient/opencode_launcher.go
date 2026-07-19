@@ -339,7 +339,8 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		labBrokerCancel = brokerCancel
 		labBrokerDone, err = StartHTBLabBroker(brokerCtx, HTBLabBrokerConfig{
 			SocketPath: filepath.Join(runtimeDir, HTBLabBrokerSocketName),
-			StateRoot:  l.config.StateRoot, Workspace: workspaceRecord, RuntimeID: lease.RuntimeID, ToolPath: l.config.ToolPath,
+			StateRoot:  l.config.StateRoot, Workspace: workspaceRecord, RuntimeID: lease.RuntimeID,
+			ExpiresAt: time.Now().UTC().Add(time.Duration(lease.TimeoutSeconds) * time.Second), ToolPath: l.config.ToolPath,
 		})
 		if err != nil {
 			brokerCancel()
@@ -868,7 +869,9 @@ func validateOpenCodeSandboxConfig(configJSON string, lease ModelRuntimeLease) e
 		return errors.New("OpenCode sandbox provider configuration is unsafe")
 	}
 	options, ok := bridge["options"].(map[string]any)
-	if !ok || !hasExactJSONKeys(options, "socketPath", "runtimeID", "ttlMs", "timeoutMs") || options["socketPath"] != openCodeSandboxSocket {
+	baseOptions := ok && hasExactJSONKeys(options, "socketPath", "runtimeID", "ttlMs", "timeoutMs")
+	htbOptions := ok && hasExactJSONKeys(options, "socketPath", "runtimeID", "ttlMs", "timeoutMs", "htbSocketPath", "htbWorkspaceID", "htbTools")
+	if !ok || (!baseOptions && !htbOptions) || options["socketPath"] != openCodeSandboxSocket {
 		return errors.New("OpenCode sandbox provider options are unsafe")
 	}
 	runtimeID, runtimeOK := options["runtimeID"].(string)

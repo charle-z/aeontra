@@ -5,6 +5,7 @@ package edgeclient
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 type HTBLabBrokerConfig struct {
@@ -12,6 +13,7 @@ type HTBLabBrokerConfig struct {
 	StateRoot  string
 	Workspace  Workspace
 	RuntimeID  string
+	ExpiresAt  time.Time
 	ToolPath   string
 	Probe      LinuxNetworkProbe
 }

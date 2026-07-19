@@ -45,6 +45,8 @@ type HTBLabSSHResponse struct {
 	SavedPath string `json:"saved_path,omitempty"`
 	Bytes     int    `json:"bytes,omitempty"`
 	SHA256    string `json:"sha256,omitempty"`
+	ExitCode  int    `json:"exit_code,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
 	ErrorCode string `json:"error_code,omitempty"`
 }
 
