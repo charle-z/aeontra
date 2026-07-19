@@ -40,6 +40,10 @@ type runtimePublicView struct {
 
 func (s *Server) WithEdgeStore(store edgeDeviceRegistry) *Server {
 	s.edgeDevices = store
+	s.edgeWorkspaces = nil
+	if workspaces, ok := store.(edgeWorkspaceRegistry); ok {
+		s.edgeWorkspaces = workspaces
+	}
 	return s
 }
 

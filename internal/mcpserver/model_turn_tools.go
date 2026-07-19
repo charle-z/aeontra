@@ -53,6 +53,8 @@ func (s *Server) addModelTurnTools() {
 		Annotations: idempotentWriteHints,
 	}, s.handleOpenCodeRuntimeStart)
 
+	s.addWorkspaceRuntimeContinueTool()
+
 	s.addDirectTool(toolDef{
 		Name:        "model_runtime_status",
 		Description: "Return compact durable status for one external-model runtime.",

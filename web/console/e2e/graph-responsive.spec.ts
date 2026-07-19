@@ -7,8 +7,8 @@ const runtime = {
   version: "1.0.0",
   protocol_version: "2025-06-18",
   commit: "681f55cf20853fa8365485b7f9343953eaaceae8",
-  tool_count: 85,
-  catalog_hash: "sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941",
+  tool_count: 86,
+  catalog_hash: "sha256:deb3419f64ac9e63e1f85b4ed841b19c2ac252f411fcef9ff9aca5b5e1108a85",
   authenticated: true,
   surface: "presentation-only",
 };

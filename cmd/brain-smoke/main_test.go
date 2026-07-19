@@ -84,7 +84,7 @@ func TestRunValidatesConfiguredBrainWithoutPrintingPrivateData(t *testing.T) {
 	for _, required := range []string{
 		"brain smoke passed",
 		"commit=" + info.Commit,
-		"tool_count=85",
+		"tool_count=86",
 		info.CatalogHash,
 		"index_ready=true",
 		"schema_version=1",

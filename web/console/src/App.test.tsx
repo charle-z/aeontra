@@ -4,8 +4,8 @@ import App from "./App";
 
 const runtime = {
   status: "ok", version: "1.0.0", protocol_version: "2025-06-18",
-  commit: "aa1c30da07751a1b1701aac289adb88ee5c7d38b", tool_count: 85,
-  catalog_hash: "sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941",
+  commit: "aa1c30da07751a1b1701aac289adb88ee5c7d38b", tool_count: 86,
+  catalog_hash: "sha256:deb3419f64ac9e63e1f85b4ed841b19c2ac252f411fcef9ff9aca5b5e1108a85",
   authenticated: true, surface: "presentation-only",
 };
 
@@ -95,7 +95,7 @@ describe("Neo-BIOS operations firmware", () => {
   it("renders exact catalog, real selectors, VPS and combined storage", async () => {
     render(<App />);
     expect(screen.getByText("MCP DEVBOX OPERATIONS FIRMWARE")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("86 tools")).toBeInTheDocument());
     expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue(data.projects[0].id);
     expect(screen.getByRole("combobox", { name: "Edge device" })).toHaveValue(data.edge.devices[0].id);
     expect(screen.getByRole("option", { name: "Configured project 1 [current]" })).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("renders current process separately from every durable activity window", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("86 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     expect(screen.getByRole("heading", { name: "Current process" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Durable activity" })).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("shows real controllers and paginates durable tasks with precise timestamps", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("86 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     expect(screen.getByText("connected")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
@@ -162,7 +162,7 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("filters and paginates server events", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("86 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Events" }));
     expect(await screen.findByTitle(journalEvent.occurred_at)).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Event state filter" }), { target: { value: "completed" } });
@@ -201,7 +201,7 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("keeps timestamp display contracts across every timestamp-bearing tab", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("86 tools")).toBeInTheDocument());
     const assertTimestamp = async (raw: string) => {
       await waitFor(() => {
         const values = screen.getAllByTitle(raw);
@@ -239,7 +239,7 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("renders the safe Brain graph and keyboard help", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("85 tools")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("86 tools")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Graph" }));
     const node = screen.getByRole("button", { name: /Release gates.*Trust curated.*1 connection/i });
     fireEvent.focus(node);

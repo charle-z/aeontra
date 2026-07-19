@@ -32,12 +32,13 @@ func modelTurnServer(t *testing.T) (*Server, *modelturn.Store) {
 func TestModelTurnToolsFailClosedWithoutStore(t *testing.T) {
 	server := stampServer(t)
 	for name, arguments := range map[string]string{
-		"model_runtime_start":    `{}`,
-		"opencode_runtime_start": `{"device_id":"ed_11111111111111111111111111111111","workspace_id":"ws_22222222222222222222222222222222","goal":"bounded","timeout_seconds":60,"idempotency_key":"key-1"}`,
-		"model_runtime_status":   `{"runtime_id":"mr_00000000000000000000000000000000"}`,
-		"model_turn_next":        `{"runtime_id":"mr_00000000000000000000000000000000"}`,
-		"model_turn_respond":     `{"runtime_id":"mr_00000000000000000000000000000000","turn_id":"mt_00000000000000000000000000000000","expected_sequence":1,"request_digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","response":{"finish_reason":"stop"}}`,
-		"model_runtime_cancel":   `{"runtime_id":"mr_00000000000000000000000000000000"}`,
+		"model_runtime_start":        `{}`,
+		"workspace_runtime_continue": `{"workspace_id":"ws_22222222222222222222222222222222","timeout_seconds":60}`,
+		"opencode_runtime_start":     `{"device_id":"ed_11111111111111111111111111111111","workspace_id":"ws_22222222222222222222222222222222","goal":"bounded","timeout_seconds":60,"idempotency_key":"key-1"}`,
+		"model_runtime_status":       `{"runtime_id":"mr_00000000000000000000000000000000"}`,
+		"model_turn_next":            `{"runtime_id":"mr_00000000000000000000000000000000"}`,
+		"model_turn_respond":         `{"runtime_id":"mr_00000000000000000000000000000000","turn_id":"mt_00000000000000000000000000000000","expected_sequence":1,"request_digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","response":{"finish_reason":"stop"}}`,
+		"model_runtime_cancel":       `{"runtime_id":"mr_00000000000000000000000000000000"}`,
 	} {
 		response := call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+name+`","arguments":`+arguments+`}}`)
 		var result toolResult

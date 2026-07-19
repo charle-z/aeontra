@@ -28,28 +28,30 @@ const largeResultThresholdBytes = 32 << 10
 
 // Server dispatches MCP requests to the tool service.
 type Server struct {
-	svc         *tools.Service
-	name        string
-	table       map[string]toolEntry
-	order       []string
-	observer    *observability.Logger
-	journal     *taskjournal.Journal
-	telemetry   *telemetry.Store
-	startedAt   time.Time
-	payload     payloadCounters
-	clients     *clientCapabilityStore
-	modelTurns  *modelturn.Store
-	edgeDevices edgeDeviceRegistry
-	stateRoot   string
-	auditPath   string
-	modelWaitMu sync.Mutex
-	modelWaits  map[string]struct{}
+	svc            *tools.Service
+	name           string
+	table          map[string]toolEntry
+	order          []string
+	observer       *observability.Logger
+	journal        *taskjournal.Journal
+	telemetry      *telemetry.Store
+	startedAt      time.Time
+	payload        payloadCounters
+	clients        *clientCapabilityStore
+	modelTurns     *modelturn.Store
+	edgeDevices    edgeDeviceRegistry
+	edgeWorkspaces edgeWorkspaceRegistry
+	stateRoot      string
+	auditPath      string
+	modelWaitMu    sync.Mutex
+	modelWaits     map[string]struct{}
 }
 
 type toolEntry struct {
 	def            toolDef
 	handler        func(args json.RawMessage) (string, error)
 	sessionHandler func(args json.RawMessage, sessionKey string) (string, error)
+	requestHandler func(args json.RawMessage, sessionKey string, requestID json.RawMessage) (string, error)
 }
 
 type toolDef struct {
@@ -272,7 +274,9 @@ func (s *Server) callToolObservedSession(req rpcRequest, transport observability
 	taskID, stopHeartbeat := s.startTaskJournal(params.Name, transport, params.Arguments)
 	var text string
 	var err error
-	if entry.sessionHandler != nil {
+	if entry.requestHandler != nil {
+		text, err = entry.requestHandler(params.Arguments, sessionKey, req.ID)
+	} else if entry.sessionHandler != nil {
 		text, err = entry.sessionHandler(params.Arguments, sessionKey)
 	} else {
 		text, err = entry.handler(params.Arguments)

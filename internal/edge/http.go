@@ -41,6 +41,7 @@ type pairRequest struct {
 func NewHTTPHandler(store *Store, modelTurns ...*modelturn.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(PairPath, store.handlePair)
+	mux.Handle("/edge/v1/workspaces/register", store.RequireDevice(http.HandlerFunc(store.handleWorkspaceRegistration)))
 	mux.Handle("/edge/v1/tasks/lease", store.RequireDevice(http.HandlerFunc(store.handleLease)))
 	mux.Handle("/edge/v1/tasks/", store.RequireDevice(http.HandlerFunc(store.handleTaskAction)))
 	if len(modelTurns) > 0 && modelTurns[0] != nil {
@@ -248,4 +249,25 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+type workspaceRegistrationRequest struct {
+	Workspaces []WorkspaceRegistration `json:"workspaces"`
+}
+
+func (s *Store) handleWorkspaceRegistration(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	var request workspaceRegistrationRequest
+	if !decodeStrictJSON(w, r, &request) {
+		return
+	}
+	device := DeviceFromContext(r.Context())
+	status, err := s.RegisterWorkspaces(device.ID, request.Workspaces)
+	if err != nil {
+		http.Error(w, "workspace registration rejected", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }

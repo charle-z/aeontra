@@ -245,7 +245,27 @@ A later runtime may intentionally repeat a completed objective. The local journa
 still prevents two active runtimes in one workspace, but no longer treats a
 terminal goal digest as a permanent ban.
 
-## 10. Diagnostics and recovery
+## 10. Continue a registered workspace without a prompt
+
+After `lab init` has prepared a machine once, later chats should not reconstruct or
+transport its operational objective. Use `workspace_runtime_continue` with only the
+opaque workspace ID and a bounded timeout:
+
+```text
+workspace_runtime_continue(
+  workspace_id="ws_...",
+  timeout_seconds=3600
+)
+```
+
+The server resolves the paired Edge from its signed opaque workspace registration,
+uses the fixed `resume-local-contract-v1` objective, and creates at most one active
+runtime for that workspace. The Edge reads `.mcp-devbox/instructions.md` and
+`.mcp-devbox/current-state.md` locally. The call carries no target, IP, machine,
+credential, flag, command, checkpoint, path, or free-form instruction and is never
+retried automatically. See `docs/workspace-runtime-continuation.md`.
+
+## 11. Diagnostics and recovery
 
 Inspect bounded safe codes only:
 
@@ -259,7 +279,7 @@ failures, installation integrity/version/provider/driver failures, socket failur
 and OpenCode provider/driver failures. Raw prompts, credentials, signatures, and
 host paths must not be logged.
 
-## 11. Kill switch, Revocation, Rollback, and Uninstall
+## 12. Kill switch, Revocation, Rollback, and Uninstall
 
 Create `$HOME/.local/state/mcp-edge/STOP` and stop the service for a local Kill switch.
 Revoke the device independently from production before deleting identity. Update

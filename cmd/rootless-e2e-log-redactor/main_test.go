@@ -11,6 +11,7 @@ func TestRedactKeepsOnlyBoundedAllowlistedSignals(t *testing.T) {
 		"=== RUN   TestTrustedLinuxWorkcellRootlessE2E",
 		"rootless command failed: exit status 125 output=permission denied /home/private Authorization: Bearer token-value cookie=session body=secret",
 		"podman-compose failed: connection refused at /run/user/1001/podman.sock",
+		"P12 rootless category=stage_chromium",
 		"Chromium smoke failed: private body",
 		"--- FAIL: TestTrustedLinuxWorkcellRootlessE2E (1.23s)",
 		"FAIL",
@@ -24,6 +25,7 @@ func TestRedactKeepsOnlyBoundedAllowlistedSignals(t *testing.T) {
 		"=== RUN   TestTrustedLinuxWorkcellRootlessE2E",
 		"P12 rootless category=permission",
 		"P12 rootless category=compose",
+		"P12 rootless category=stage_chromium",
 		"P12 rootless category=chromium",
 		"--- FAIL: TestTrustedLinuxWorkcellRootlessE2E (1.23s)",
 		"FAIL",
@@ -47,6 +49,7 @@ func TestNormalizeDropsUnknownAndSensitiveContent(t *testing.T) {
 		"cookie=session-value",
 		"private body /home/private/repo",
 		"=== RUN   TestUnrelated",
+		"P12 rootless category=stage_private_path",
 	} {
 		if got := normalize(input); got != "" {
 			t.Fatalf("input=%q normalized=%q", input, got)
