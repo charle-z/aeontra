@@ -28,7 +28,7 @@ Trabaja únicamente contra el objetivo autorizado y dentro del workspace indicad
 - No reutilizar una cadena de explotación ajena como si hubiera sido confirmada localmente.
 - No atacar otros hosts, rangos, servicios o workspaces.
 - No usar fuerza bruta indiscriminada, denegación de servicio ni acciones destructivas.
-- No exponer credenciales, hashes, flags, shells, tickets o loot al VPS, Brain, Events, audit u observabilidad.
+- No exponer credenciales, hashes, flags, shells, tickets o loot al VPS, Brain, Events, audit u observabilidad. La ejecución target-locked puede consumirlos localmente desde artefactos del workspace mediante handles de archivo, nunca como argumentos o texto del turno.
 - No usar sudo general, Docker rootful, mounts de Windows, claves SSH personales ni perfiles de navegador.
 
 Internet puede usarse para documentación general de una herramienta o para instalar una dependencia, pero nunca para buscar la solución concreta de la room.
@@ -48,6 +48,7 @@ Antes de actuar:
 Haz primero un reconocimiento corto, acotado y reproducible:
 
 - confirma conectividad al único TARGET;
+- usa `nmap -sT -Pn` como primera opción sin privilegios; no declares nmap inutilizable solo porque SYN/raw sockets requieran capacidades;
 - identifica puertos y servicios relevantes;
 - guarda resultados completos bajo `scans/`;
 - resume únicamente hechos confirmados en `current-state.md`;
@@ -72,7 +73,7 @@ Enumera en función de la evidencia:
 
 - HTTP: tecnología, rutas, parámetros, autenticación, archivos y comportamiento diferencial.
 - Servicios remotos: versión, configuración expuesta, acceso anónimo y relaciones entre servicios.
-- Credenciales: valida únicamente combinaciones obtenidas dentro del laboratorio y evita spraying.
+- Credenciales: valida únicamente combinaciones obtenidas dentro del laboratorio y evita spraying. Cuando una contraseña recuperada esté en un artefacto local, usa `mcp-edge lab ssh-exec --username <usuario> --source <archivo> --extract-after <prefijo> --command <comando>` para autenticarte únicamente contra TARGET sin enviar la contraseña al modelo ni al control plane. Usa `--save-output` para guardar flags, hashes o secretos localmente sin devolver su contenido por el puente.
 - Acceso local: usuarios, grupos, procesos, servicios, permisos, capacidades, tareas programadas, sockets y secretos de aplicación.
 
 Guarda outputs grandes en `scans/` o `loot/`. Los scripts propios van en `scripts/` y los reportes finales en `reports/`.
@@ -110,7 +111,8 @@ Valida cada vector antes de modificar el sistema. Conserva la cadena mínima que
 - Nunca inventes una flag.
 - Nunca la busques en Internet, writeups, repositorios o bases externas.
 - Lee `user.txt` y `root.txt` únicamente desde la máquina autorizada tras conseguir el acceso correspondiente.
-- Guarda su estado como `pendiente`, `obtenida` o `verificada`; evita copiar el valor al control plane.
+- Para flags usa `mcp-edge lab ssh-exec ... --save-output loot/user.txt` o `loot/root.txt`; confirma tamaño/hash y estado sin copiar el valor al control plane. El operador puede leer esos archivos localmente en Parrot.
+- Guarda su estado como `pendiente`, `obtenida` o `verificada`.
 
 ## Cadena conocida
 

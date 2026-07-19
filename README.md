@@ -107,7 +107,10 @@ Parrot smoke completed with six model-turn sequences and an exact repository edi
 The onboarding hardening follow-up packages the required systemd `AF_NETLINK`
 allowance, bounded Bubblewrap diagnostics, repeatable terminal objectives, and a
 reproducible preflight. See [docs/linux-workcell.md](docs/linux-workcell.md) and the
-[Parrot onboarding guide](docs/install-opencode-edge-parrot.md).
+[Parrot onboarding guide](docs/install-opencode-edge-parrot.md). For authorized HTB rooms,
+[`mcp-edge lab init`](docs/htb-lab-workflow.md) reduces machine setup to one command
+after the VPN is connected, while target-locked SSH consumes recovered credentials
+locally without copying them into model turns.
 
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused

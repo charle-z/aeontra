@@ -110,7 +110,11 @@ func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, 
 		return result, err
 	}
 	instructionsPath := filepath.Join(controlDir, linuxWorkcellInstructionsFile)
-	instructions, err := renderLinuxWorkcellInstructions(workspace, lease, result.LHOST, resume)
+	resumeForModel := resume
+	if workspace.Mode == WorkspaceModeHTBLinux {
+		resumeForModel = sanitizeHTBResumeForModel(resume)
+	}
+	instructions, err := renderLinuxWorkcellInstructions(workspace, lease, result.LHOST, resumeForModel)
 	if err != nil {
 		return result, err
 	}

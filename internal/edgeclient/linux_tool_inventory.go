@@ -36,6 +36,7 @@ func CollectLinuxToolInventory(ctx context.Context, toolPath string) ([]LinuxToo
 	}
 	definitions := []linuxToolDefinition{
 		{Name: "nmap", Executables: []string{"nmap"}, VersionArgs: []string{"--version"}, Capability: "network-recon"},
+		{Name: "ssh", Executables: []string{"ssh"}, VersionArgs: []string{"-V"}, Capability: "target-locked-remote-access"},
 		{Name: "curl", Executables: []string{"curl"}, VersionArgs: []string{"--version"}, Capability: "http-client"},
 		{Name: "wget", Executables: []string{"wget"}, VersionArgs: []string{"--version"}, Capability: "download-client"},
 		{Name: "openssl", Executables: []string{"openssl"}, VersionArgs: []string{"version"}, Capability: "tls-crypto"},

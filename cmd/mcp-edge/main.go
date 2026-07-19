@@ -19,6 +19,12 @@ import (
 )
 
 func main() {
+	if handled, err := runAskpassIfRequested(os.Stdout); handled {
+		if err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
@@ -37,6 +43,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = runOpenCodeRelay(args[1:], stderr)
 	case "workspace":
 		err = workspaceCommand(args[1:], stdout, stderr)
+	case "lab":
+		err = labCommand(args[1:], stdout, stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -170,7 +178,19 @@ func defaultStateRoot() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "mcp-devbox-edge")
+	stateBase := strings.TrimSpace(os.Getenv("XDG_STATE_HOME"))
+	if stateBase == "" || !filepath.IsAbs(stateBase) {
+		stateBase = filepath.Join(home, ".local", "state")
+	}
+	preferred := filepath.Join(stateBase, "mcp-edge")
+	legacy := filepath.Join(home, ".config", "mcp-devbox-edge")
+	if _, err := os.Stat(filepath.Join(preferred, "identity.json")); err == nil {
+		return preferred
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "identity.json")); err == nil {
+		return legacy
+	}
+	return preferred
 }
 
 func pathsOverlap(left, right string) bool {
@@ -196,6 +216,8 @@ Usage:
   mcp-edge workspace inventory <OPAQUE_ID> [--state <ABS_PATH>]
   mcp-edge workspace list [--state <ABS_PATH>]
   mcp-edge workspace remove --id <OPAQUE_ID> [--state <ABS_PATH>]
+  mcp-edge lab init --platform htb --machine <NAME> --target <IP> --difficulty EASY|MEDIUM|HARD [--vpn-interface tun0] [--state <ABS_PATH>]
+  mcp-edge lab ssh-exec --username <USER> --source <FILE> --extract-after <PREFIX> --command <COMMAND> [--save-output <FILE>]
 
 The pairing code is read from stdin and is never accepted as a command-line flag.
 Create the local STOP file to activate the kill switch.

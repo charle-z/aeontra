@@ -1,14 +1,10 @@
-# Plan — P12 Parrot onboarding hardening
+# Plan — HTB lab autonomy
 
-1. Add regression coverage and code fixes for:
-   - `bubblewrap_netlink_route_denied` classification;
-   - bounded Bubblewrap verification diagnostics;
-   - remote failure propagation for local preflight/journal rejection;
-   - repeatable terminal objectives while preserving one active runtime per workspace;
-   - WSL `/mnt/wsl/resolv.conf` acceptance without allowing `/mnt/c` or `/mnt/d`.
-2. Package a P12 OpenCode Edge systemd unit with `AF_NETLINK`, non-root user execution, private state, and rootless workspace paths.
-3. Add an executable Parrot onboarding preflight/smoke script and deterministic tests for the unit/script/docs contract.
-4. Rewrite the Parrot installation/onboarding guide from the real successful procedure: exact merge, Node 24 wrappers, provider test, Bubblewrap + Podman preflight, pairing, workspace registration, service, unique smoke objective, diagnostics, rollback.
-5. Update Linux Workcell baseline/status, README, documentation map, and Cubethon-facing presentation. Keep honest residual risks: host-shared network, rootless socket authority, no universal egress isolation.
-6. Run focused tests, full Go suite, vet, diff checks, and documentation closure tests.
-7. Commit in bounded steps, publish branch, open PR, and prepare the Cubethon issue draft. Do not merge or deploy without green checks.
+1. Add an idempotent `mcp-edge lab init` flow that creates or reuses the Git workspace, applies `htb-linux` metadata, validates the VPN route, and reports the opaque workspace ID.
+2. Add a private HTB lab broker owned by the Edge process. The model sends only username, artifact handle, extraction prefix, and remote command; the broker fixes the registered target and keeps the recovered password outside Bubblewrap and the control plane.
+3. Support local-only output capture for flags and other sensitive results, returning only path, byte count, and SHA-256.
+4. Sanitize HTB checkpoints before they are embedded into model turns. Preserve local handles and statuses while removing passwords, tokens, and flag-like values.
+5. Teach the HTB profile to use non-root `nmap -sT -Pn` and brokered SSH rather than abandoning a confirmed credential chain.
+6. Preserve bans on operator credentials, arbitrary targets, CIDRs, rootful Docker, Windows mounts, solution lookup, and telemetry leakage.
+7. Run focused tests, full Go tests, vet, staticcheck, build, diff checks, exact-head CI, and a real continuation of the existing Cap workspace.
+8. After this local one-command flow is proven, design a separate signed remote bootstrap protocol if the operator should literally do nothing beyond connecting the VPN.

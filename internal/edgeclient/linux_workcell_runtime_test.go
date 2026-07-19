@@ -205,3 +205,50 @@ func TestPrepareLinuxWorkcellRejectsSymlinkedControlDirectory(t *testing.T) {
 		t.Fatal("symlinked control directory accepted")
 	}
 }
+
+func TestPrepareLinuxWorkcellHTBRedactsCheckpointOnlyInModelInstructions(t *testing.T) {
+	registry, _, htbRoot := newLinuxWorkcellRegistry(t)
+	path := filepath.Join(htbRoot, "checkpoint")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace, _, err := registry.AddProfile(path, WorkspaceProfileLinuxWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err = registry.Configure(workspace.ID, WorkspaceConfiguration{
+		Mode: WorkspaceModeHTBLinux, MachineName: "Checkpoint", TargetIP: "10.10.10.10",
+		Difficulty: "EASY", OS: "LINUX", VPNInterface: "tun0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := fakeLinuxNetworkProbe{ipv4: "10.10.14.25", routeInterface: "tun0"}
+	first, err := PrepareLinuxWorkcell(context.Background(), workspace, runtimeLeaseFor(workspace, "first"), probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := "# Current State\n\n- Password: local-lab-password\n- Credential handle: source=loot/capture.txt prefix=PASS\n- user.txt: 0123456789abcdef0123456789abcdef\n"
+	if err := WriteLinuxWorkcellState(first.CurrentStatePath, checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	second, err := PrepareLinuxWorkcell(context.Background(), workspace, runtimeLeaseFor(workspace, "continue"), probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, err := os.ReadFile(second.CurrentStatePath)
+	if err != nil || string(local) != checkpoint {
+		t.Fatalf("local checkpoint=%q err=%v", local, err)
+	}
+	instructions, err := os.ReadFile(second.InstructionsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(instructions)
+	if strings.Contains(text, "local-lab-password") || strings.Contains(text, "0123456789abcdef0123456789abcdef") {
+		t.Fatalf("instructions leaked checkpoint: %s", text)
+	}
+	if !strings.Contains(text, "source=loot/capture.txt prefix=PASS") || !strings.Contains(text, "[LOCAL-ONLY-VALUE]") {
+		t.Fatalf("instructions lost handle/redaction: %s", text)
+	}
+}

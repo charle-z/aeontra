@@ -104,7 +104,7 @@ func TestLinuxWorkcellProcessSpecRendersHTBEnvironmentLocally(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spec.Sandbox.Environment["TARGET"] != "10.10.10.10" || spec.Sandbox.Environment["LHOST"] != "10.10.14.9" || spec.Sandbox.Environment["MCP_DEVBOX_MODE"] != "htb-linux" {
+	if spec.Sandbox.Environment["TARGET"] != "10.10.10.10" || spec.Sandbox.Environment["LHOST"] != "10.10.14.9" || spec.Sandbox.Environment["MCP_DEVBOX_MODE"] != "htb-linux" || spec.Sandbox.Environment["MCP_DEVBOX_MACHINE"] != "Fixture" || spec.Sandbox.Environment["MCP_DEVBOX_VPN_INTERFACE"] != "tun0" {
 		t.Fatalf("HTB environment=%+v", spec.Sandbox.Environment)
 	}
 }
