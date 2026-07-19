@@ -110,7 +110,7 @@ func extractHTBLabCredential(workspace string, request HTBLabSSHRequest) ([]byte
 			continue
 		}
 		value := bytes.TrimSpace(line[len(request.ExtractAfter):])
-		if len(value) == 0 || len(value) > 1024 || bytes.IndexAny(value, "\x00\r\n") >= 0 {
+		if len(value) == 0 || len(value) > 1024 || bytes.ContainsAny(value, "\x00\r\n") {
 			continue
 		}
 		matches = append(matches, append([]byte(nil), value...))
