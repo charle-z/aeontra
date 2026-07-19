@@ -17,7 +17,7 @@ import (
 func newPreferenceHandler(t *testing.T, path string, now *time.Time, random []byte, journal *taskjournal.Journal) *Handler {
 	t.Helper()
 	handler, err := New(Config{
-		Runtime:     Status{Status: "ok", Version: "0.2.0", ProtocolVersion: "2024-11-05", Commit: "abcdef0", ToolCount: 86, CatalogHash: "sha256:deb3419f64ac9e63e1f85b4ed841b19c2ac252f411fcef9ff9aca5b5e1108a85"},
+		Runtime:     Status{Status: "ok", Version: "0.2.0", ProtocolVersion: "2024-11-05", Commit: "abcdef0", ToolCount: 92, CatalogHash: "sha256:ea9cc3749c68fcc12b608efbddc259b01eb7868c98bbc1ab35c75f456e118a98"},
 		TaskJournal: journal,
 		Session: SessionConfig{
 			Path: path, TTL: time.Hour, MaxSessions: 8,

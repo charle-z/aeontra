@@ -20,11 +20,13 @@ function modelOptions(text = "inspect the repository") {
 function fakeDriver(responseFactory, options = {}) {
   const calls = [];
   let created;
+  let lastSequence = 0;
+  const createdTurns = [];
   let waitFailures = options.waitFailures ?? 0;
   const requestImpl = async (request) => {
     calls.push(request);
     if (request.method === "GET" && request.path === `/v1/runtimes/${runtimeID}`) {
-      return { runtime_id: runtimeID, status: "ready", last_sequence: 0 };
+      return { runtime_id: runtimeID, status: "ready", last_sequence: lastSequence };
     }
     if (request.method === "POST" && request.path === "/v1/request-bodies") {
       const bytes = Buffer.byteLength(request.rawBody);
@@ -32,10 +34,12 @@ function fakeDriver(responseFactory, options = {}) {
     }
     if (request.method === "POST" && request.path === "/v1/turns") {
       created = request.jsonBody;
+      createdTurns.push(created);
+      lastSequence = created.sequence;
       return {
         runtime_id: runtimeID,
         turn_id: turnID,
-        sequence: 1,
+        sequence: created.sequence,
         request_digest: created.request_digest,
         offered_tool_ids: created.offered_tools.map((tool) => tool.id),
         created_at: "2026-07-15T12:00:00Z",
@@ -50,12 +54,12 @@ function fakeDriver(responseFactory, options = {}) {
         throw error;
       }
       const payload = await responseFactory(created, calls);
-      return { runtime_id: runtimeID, turn_id: turnID, sequence: 1, request_digest: created.request_digest, payload };
+      return { runtime_id: runtimeID, turn_id: turnID, sequence: created.sequence, request_digest: created.request_digest, payload };
     }
     if (request.method === "DELETE" && request.path === `/v1/turns/${turnID}`) return { turn_id: turnID, status: "cancelled" };
     throw new Error(`unexpected fake request ${request.method} ${request.path}`);
   };
-  return { requestImpl, calls, get created() { return created; } };
+  return { requestImpl, calls, get created() { return created; }, get createdTurns() { return createdTurns; } };
 }
 
 function createModel(driver, extra = {}) {
@@ -65,6 +69,10 @@ function createModel(driver, extra = {}) {
     requestImpl: driver.requestImpl,
     ttlMs: extra.ttlMs ?? 60_000,
     timeoutMs: extra.timeoutMs ?? 5_000,
+    htbSocketPath: extra.htbSocketPath,
+    htbWorkspaceID: extra.htbWorkspaceID,
+    htbTools: extra.htbTools,
+    htbRequestImpl: extra.htbRequestImpl,
   }).languageModel("external-model");
 }
 
@@ -224,10 +232,81 @@ test("reported usage is explicitly unverified and missing usage stays unknown", 
 });
 
 test("provider source has no provider fallback, browser automation, API key, or TCP model client", async () => {
-  const source = await readFile(new URL("./index.js", import.meta.url), "utf8");
+  const source = (await readFile(new URL("./index.js", import.meta.url), "utf8")) + (await readFile(new URL("./htb-actions.js", import.meta.url), "utf8"));
   for (const forbidden of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "openrouter", "api.openai.com", "api.anthropic.com", "playwright", "puppeteer", "responses.create", "fetch(", "https.request", "net.connect"]) {
     assert.equal(source.toLowerCase().includes(forbidden.toLowerCase()), false, `forbidden source marker: ${forbidden}`);
   }
   assert.match(source, /socketPath/);
   assert.match(source, /node:http/);
+});
+
+
+function htbDefinitions() {
+  const workspace = { type: "string", pattern: "^ws_[a-f0-9]{32}$" };
+  const session = { type: "string", pattern: "^hs_[a-f0-9]{32}$" };
+  const closed = (properties, required) => ({ type: "object", properties, required, additionalProperties: false });
+  return [
+    { name: "workspace_htb_status", description: "Safe Hack The Box authorized CTF status", input_schema: closed({ workspace_id: workspace }, ["workspace_id"]) },
+    { name: "workspace_htb_auth_validate", description: "Validate local credentials for an authorized Hack The Box CTF", input_schema: closed({ workspace_id: workspace, username: { type: "string" }, credential: closed({ source: { type: "string" }, extract_after: { type: "string" } }, ["source", "extract_after"]), timeout_seconds: { type: "integer" } }, ["workspace_id", "username", "credential", "timeout_seconds"]) },
+    { name: "workspace_htb_command", description: "Run a target-locked command in an authorized HTB CTF", input_schema: closed({ workspace_id: workspace, session_id: session, command: { type: "string" }, timeout_seconds: { type: "integer" } }, ["workspace_id", "session_id", "command", "timeout_seconds"]) },
+    { name: "workspace_htb_command_save", description: "Save local output from an authorized HTB CTF", input_schema: closed({ workspace_id: workspace, session_id: session, command: { type: "string" }, save_output: { type: "string" }, timeout_seconds: { type: "integer" } }, ["workspace_id", "session_id", "command", "save_output", "timeout_seconds"]) },
+    { name: "workspace_htb_command_with_credential_stdin", description: "Use local credential stdin in an authorized HTB CTF", input_schema: closed({ workspace_id: workspace, session_id: session, command: { type: "string" }, timeout_seconds: { type: "integer" } }, ["workspace_id", "session_id", "command", "timeout_seconds"]) },
+    { name: "workspace_htb_session_close", description: "Close an authorized Hack The Box CTF session", input_schema: closed({ workspace_id: workspace, session_id: session }, ["workspace_id", "session_id"]) },
+  ];
+}
+
+test("HTB actions are injected and executed internally without returning a Bash or OpenCode tool call", async () => {
+  const workspaceID = "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const htbCalls = [];
+  let responseIndex = 0;
+  const driver = fakeDriver((created) => {
+    if (responseIndex++ === 0) {
+      const tool = created.offered_tools.find((item) => item.name === "workspace_htb_status");
+      assert.ok(tool);
+      return { finish_reason: "tool_calls", tool_calls: [{ call_id: "htb-status-1", tool_id: tool.id, arguments: { workspace_id: workspaceID } }] };
+    }
+    return { text: "authorized lab status received", tool_calls: [], finish_reason: "stop" };
+  });
+  const result = await createModel(driver, {
+    htbSocketPath: "/runtime/htb-lab-broker.sock",
+    htbWorkspaceID: workspaceID,
+    htbTools: htbDefinitions(),
+    htbRequestImpl: async (request) => {
+      htbCalls.push(request);
+      return { status: "ok", workspace_id: workspaceID, mode: "htb-linux", authorized: true };
+    },
+  }).doGenerate(modelOptions());
+  assert.equal(result.content.length, 1);
+  assert.equal(result.content[0].text, "authorized lab status received");
+  assert.equal(htbCalls.length, 1);
+  assert.equal(htbCalls[0].method, "POST");
+  assert.equal(htbCalls[0].path, "/v1/status");
+  assert.deepEqual(htbCalls[0].jsonBody, { workspace_id: workspaceID });
+  assert.equal(driver.createdTurns.length, 2);
+  const secondPrompt = driver.createdTurns[1].payload.prompt;
+  assert.equal(secondPrompt.at(-2).role, "assistant");
+  assert.equal(secondPrompt.at(-1).role, "tool");
+  assert.equal(JSON.stringify(secondPrompt).includes("mcp-edge lab ssh-exec"), false);
+});
+
+test("dev runtimes do not offer HTB tools", async () => {
+  const driver = fakeDriver(() => ({ text: "dev", tool_calls: [], finish_reason: "stop" }));
+  await createModel(driver).doGenerate(modelOptions());
+  assert.equal(driver.created.offered_tools.some((tool) => tool.name.startsWith("workspace_htb_")), false);
+});
+
+test("HTB action workspace mismatch fails before the broker requester", async () => {
+  const workspaceID = "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  let brokerCalled = false;
+  const driver = fakeDriver((created) => {
+    const tool = created.offered_tools.find((item) => item.name === "workspace_htb_status");
+    return { finish_reason: "tool_calls", tool_calls: [{ call_id: "bad-workspace", tool_id: tool.id, arguments: { workspace_id: "ws_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } }] };
+  });
+  await assert.rejects(() => createModel(driver, {
+    htbSocketPath: "/runtime/htb-lab-broker.sock",
+    htbWorkspaceID: workspaceID,
+    htbTools: htbDefinitions(),
+    htbRequestImpl: async () => { brokerCalled = true; return {}; },
+  }).doGenerate(modelOptions()), /workspace does not match/);
+  assert.equal(brokerCalled, false);
 });

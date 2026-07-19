@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newHTBLabBrokerFixture(t *testing.T) (*htbLabBroker, string) {
@@ -42,9 +43,10 @@ func newHTBLabBrokerFixture(t *testing.T) (*htbLabBroker, string) {
 	broker := &htbLabBroker{config: HTBLabBrokerConfig{
 		StateRoot: stateRoot, Workspace: workspace,
 		RuntimeID: "mr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ExpiresAt: time.Now().UTC().Add(time.Hour),
 		ToolPath:  openCodeDefaultToolPath,
 		Probe:     fakeLinuxNetworkProbe{ipv4: "10.10.15.152", routeInterface: "tun0"},
-	}}
+	}, sessions: make(map[string]htbLabSession), now: time.Now}
 	return broker, workspacePath
 }
 

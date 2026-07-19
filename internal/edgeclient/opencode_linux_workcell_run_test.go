@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -35,8 +36,8 @@ func TestOpenCodeLauncherExposesPrivateHTBLabBrokerDuringRuntime(t *testing.T) {
 	fixture.remote.runtime.WorkspaceID = workspace.ID
 	fixture.launcher.linuxNetworkProbe = fakeLinuxNetworkProbe{ipv4: "10.10.14.9", routeInterface: "tun0"}
 	brokerObserved := false
+	runtimeSource := ""
 	fixture.launcher.runProcess = func(_ context.Context, spec openCodeProcessSpec) openCodeProcessResult {
-		runtimeSource := ""
 		for _, mount := range spec.Sandbox.Mounts {
 			if mount.Target == openCodeSandboxRuntime {
 				runtimeSource = mount.Source
@@ -45,6 +46,9 @@ func TestOpenCodeLauncherExposesPrivateHTBLabBrokerDuringRuntime(t *testing.T) {
 		}
 		if runtimeSource == "" {
 			t.Fatal("runtime mount missing")
+		}
+		if !strings.Contains(spec.Sandbox.Environment["OPENCODE_CONFIG_CONTENT"], "workspace_htb_status") {
+			t.Fatal("structured HTB tools missing from provider configuration")
 		}
 		info, err := os.Lstat(filepath.Join(runtimeSource, HTBLabBrokerSocketName))
 		if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0o600 {
@@ -56,5 +60,8 @@ func TestOpenCodeLauncherExposesPrivateHTBLabBrokerDuringRuntime(t *testing.T) {
 	result, err := fixture.launcher.RunLease(context.Background(), lease)
 	if err != nil || result.State != OpenCodeLocalCompleted || !brokerObserved {
 		t.Fatalf("result=%+v observed=%t err=%v", result, brokerObserved, err)
+	}
+	if _, err := os.Lstat(filepath.Join(runtimeSource, HTBLabBrokerSocketName)); !os.IsNotExist(err) {
+		t.Fatalf("broker socket survived runtime cleanup: %v", err)
 	}
 }
