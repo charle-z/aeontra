@@ -14,7 +14,10 @@ const (
 	maxBytes = 16 << 10
 )
 
-var safeTestLine = regexp.MustCompile(`^(=== RUN   TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E)|--- (?:PASS|FAIL): TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E) \([0-9.]+s\)|PASS|FAIL)$`)
+var (
+	safeTestLine  = regexp.MustCompile(`^(=== RUN   TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E)|--- (?:PASS|FAIL): TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E) \([0-9.]+s\)|PASS|FAIL)$`)
+	safeStageLine = regexp.MustCompile(`^P12 rootless category=stage_(?:clean_start|image_build|pod_create|network_volume_create|workspace_bind|compose|postgres|chromium|cancellation|cleanup)$`)
+)
 
 func category(line string) string {
 	lower := strings.ToLower(line)
@@ -81,7 +84,7 @@ func category(line string) string {
 
 func normalize(line string) string {
 	line = strings.TrimSpace(line)
-	if safeTestLine.MatchString(line) {
+	if safeTestLine.MatchString(line) || safeStageLine.MatchString(line) {
 		return line
 	}
 	if code := category(line); code != "" {
