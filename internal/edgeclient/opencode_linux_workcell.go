@@ -89,6 +89,15 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 		replacements["LHOST"] = preparation.LHOST
 		replacements["MCP_DEVBOX_MACHINE"] = workspace.MachineName
 		replacements["MCP_DEVBOX_VPN_INTERFACE"] = workspace.VPNInterface
+		configJSON, ok := openCodeSetEnvValue(args, "OPENCODE_CONFIG_CONTENT")
+		if !ok {
+			return openCodeProcessSpec{}, errors.New("OpenCode provider configuration is missing")
+		}
+		configJSON, err = augmentOpenCodeConfigForHTB(configJSON, workspace)
+		if err != nil {
+			return openCodeProcessSpec{}, err
+		}
+		replacements["OPENCODE_CONFIG_CONTENT"] = configJSON
 	}
 	for key, value := range replacements {
 		var replaced bool
@@ -181,6 +190,9 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 		}
 	}
 	if err := validateOpenCodeSandboxConfig(spec.Environment["OPENCODE_CONFIG_CONTENT"], lease); err != nil {
+		return err
+	}
+	if err := validateOpenCodeHTBConfig(spec.Environment["OPENCODE_CONFIG_CONTENT"], workspace, lease); err != nil {
 		return err
 	}
 	mounts := make(map[string]openCodeSandboxMount)
