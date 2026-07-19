@@ -4,6 +4,13 @@ Branch: `htb-lab-authorized-credentials`
 Base: `origin/main` at `f501064597b750533010ad706249f9447c07d6f2`.
 Implementation HEAD: `b48c45ba3ee7c85c27b93f9ba0798df814ee4b83`.
 
+## Historical deployment snapshots preserved
+
+- P8.1 is closed and deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`.
+- The historical P8.1 snapshot had 67 tools and Edge state `not_paired`; those values are evidence for that closure, not the current production state.
+- P9 Brain is deployed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+- Current production remains on the later P12/P12-hardening foundation with 85 tools.
+
 ## Trigger
 
 A real authorized HTB runtime completed recon and found a locally verifiable authentication chain, but the bridge rejected the next target-authentication operation. The result proved that broad provider-side blocking prevented legitimate lab progress even though the target and workspace were already locally authorized.
