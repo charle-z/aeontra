@@ -443,6 +443,24 @@ func TestOpenCodeLauncherRejectsLocalInstallationDrift(t *testing.T) {
 	})
 }
 
+func TestVerifyProviderPackageAcceptsResolvedReleaseSymlink(t *testing.T) {
+	release := filepath.Join(t.TempDir(), "release-provider")
+	if err := os.Mkdir(release, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"name":"@mcp-devbox/opencode-external-driver","version":"1.0.0","exports":"./index.js"}`
+	if err := os.WriteFile(filepath.Join(release, "package.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	compatibility := filepath.Join(t.TempDir(), "opencode-provider")
+	if err := os.Symlink(release, compatibility); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyProviderPackage(compatibility); err != nil {
+		t.Fatalf("signed release compatibility symlink rejected: %v", err)
+	}
+}
+
 func TestOpenCodeLauncherRejectsUnsafeBubblewrapAndSandboxLayouts(t *testing.T) {
 	t.Run("bubblewrap absent", func(t *testing.T) {
 		fixture := newOpenCodeLauncherFixture(t)

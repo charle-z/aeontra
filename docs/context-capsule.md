@@ -19,6 +19,10 @@ P15 now restores the already proven P14 interactive continuation for registered
 model and drives `model_turn_next` / `model_turn_respond` while the chat is active;
 the pinned OpenCode process is only the local Edge harness and consumes no model/API
 credits. The loopback P15 autopilot remains optional for unattended continuation.
+The follow-up runtime hardening resolves signed-release compatibility symlinks before
+validating the provider and driver, and normalizes mixed HTB/ordinary model responses
+by executing the structured HTB calls first and deferring ordinary calls instead of
+terminating the runtime for a recoverable model mistake.
 
 Real P14 migration exposed a packaging defect not covered by the original isolated
 package test: `ln -sfn` cannot replace the existing P14

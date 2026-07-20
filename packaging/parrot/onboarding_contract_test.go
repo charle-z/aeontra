@@ -70,6 +70,7 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 		"User=%i",
 		"/usr/local/bin/mcp-edge opencode",
 		"--bundle-root /opt/mcp-devbox/current",
+		"--driver /opt/mcp-devbox/current/libexec/model-turn-driver",
 		"AF_NETLINK",
 		"NoNewPrivileges=yes",
 		"RestrictNamespaces=false",

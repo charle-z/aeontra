@@ -289,6 +289,37 @@ test("HTB actions are injected and executed internally without returning a Bash 
   assert.equal(JSON.stringify(secondPrompt).includes("mcp-edge lab ssh-exec"), false);
 });
 
+test("mixed HTB and ordinary calls execute HTB safely and defer ordinary work instead of killing the runtime", async () => {
+  const workspaceID = "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const htbCalls = [];
+  let responseIndex = 0;
+  const driver = fakeDriver((created) => {
+    const htb = created.offered_tools.find((item) => item.name === "workspace_htb_status");
+    const read = created.offered_tools.find((item) => item.name === "read_file");
+    if (responseIndex++ === 0) {
+      return { finish_reason: "tool_calls", tool_calls: [
+        { call_id: "htb-status-mixed", tool_id: htb.id, arguments: { workspace_id: workspaceID } },
+        { call_id: "read-deferred", tool_id: read.id, arguments: { path: "current-state.md" } },
+      ] };
+    }
+    return { finish_reason: "tool_calls", tool_calls: [{ call_id: "read-reissued", tool_id: read.id, arguments: { path: "current-state.md" } }] };
+  });
+  const result = await createModel(driver, {
+    htbSocketPath: "/runtime/htb-lab-broker.sock",
+    htbWorkspaceID: workspaceID,
+    htbTools: htbDefinitions(),
+    htbRequestImpl: async (request) => {
+      htbCalls.push(request);
+      return { status: "ok", workspace_id: workspaceID, authorized: true };
+    },
+  }).doGenerate(modelOptions());
+  assert.equal(htbCalls.length, 1);
+  assert.equal(result.content.length, 1);
+  assert.equal(result.content[0].toolName, "read_file");
+  assert.equal(result.content[0].toolCallId, "read-reissued");
+  assert.equal(driver.createdTurns.length, 2);
+});
+
 test("dev runtimes do not offer HTB tools", async () => {
   const driver = fakeDriver(() => ({ text: "dev", tool_calls: [], finish_reason: "stop" }));
   await createModel(driver).doGenerate(modelOptions());
