@@ -65,6 +65,23 @@ func TestStableAvailableRejectsSignedIncompatibleProtocol(t *testing.T) {
 	}
 }
 
+func TestOfficialArchiveDestinationRejectsTraversal(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"../manifest.json", "/manifest.json", "."} {
+		if path, err := officialArchiveDestination(root, name); err == nil {
+			t.Fatalf("unsafe archive path accepted: name=%q path=%q", name, path)
+		}
+	}
+	path, err := officialArchiveDestination(root, "opencode-provider/index.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, err := filepath.Rel(root, path)
+	if err != nil || filepath.ToSlash(relative) != "opencode-provider/index.js" {
+		t.Fatalf("safe archive path resolved incorrectly: path=%q relative=%q err=%v", path, relative, err)
+	}
+}
+
 type fakeService struct {
 	restarts int
 	healthy  bool

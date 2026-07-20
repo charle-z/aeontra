@@ -180,8 +180,22 @@ jobs:
           bin="$RUNNER_TEMP/p11-2-bin"
           mkdir -p "$bin" artifacts
           install -m 0755 test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode "$bin/opencode-1.18.1"
-          go build -trimpath -o "$bin/mcp-edge" ./cmd/mcp-edge
-          go build -trimpath -o "$bin/model-turn-driver" ./cmd/model-turn-driver
+          bundle="$RUNNER_TEMP/p15-opencode-e2e-bundle"
+          release_key="$RUNNER_TEMP/p15-opencode-e2e-release.key"
+          public_key="$(go run ./cmd/mcp-bundle-keygen --output "$release_key")"
+          ./packaging/parrot/stage-edge-bundle.sh \
+            --output "$bundle" \
+            --release p15.0.0 \
+            --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+            --private-key "$release_key" \
+            --public-key "$public_key" \
+            --node-bin "$(command -v node)" \
+            --opencode-bin "$bin/opencode-1.18.1" \
+            --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+          rm "$release_key"
+          install -m 0755 "$bundle/bin/mcp-edge" "$bin/mcp-edge"
+          install -m 0755 "$bundle/libexec/model-turn-driver" "$bin/model-turn-driver"
           go test -c -tags=opencode_e2e -o "$bin/bubblewrap-host.test" ./internal/edgeclient
           go test -c -tags=opencode_e2e -o "$bin/opencode-host.test" ./internal/mcpserver
           go test ./cmd/opencode-e2e-log-redactor -count=1
@@ -192,6 +206,7 @@ jobs:
             echo "OPENCODE_E2E_BIN=$bin/opencode-1.18.1"
             echo "MCP_EDGE_E2E_BIN=$bin/mcp-edge"
             echo "MODEL_TURN_DRIVER_E2E_BIN=$bin/model-turn-driver"
+            echo "MCP_EDGE_E2E_BUNDLE_ROOT=$bundle"
             echo "BWRAP_E2E_BIN=$bin/bubblewrap-host.test"
             echo "MCP_E2E_BIN=$bin/opencode-host.test"
             echo "REDACTOR_BIN=$bin/opencode-e2e-log-redactor"

@@ -157,7 +157,10 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			t.Fatal("Bubblewrap is required by the host OpenCode E2E")
 		}
 	}
-	integrityPath := filepath.Join(repoRoot(t), "test", "opencode-e2e", "package-lock.json")
+	integrityPath := os.Getenv("OPENCODE_E2E_INTEGRITY")
+	if integrityPath == "" {
+		integrityPath = filepath.Join(repoRoot(t), "test", "opencode-e2e", "package-lock.json")
+	}
 	if _, err := os.Stat(integrityPath); err != nil {
 		t.Fatal(err)
 	}
@@ -205,6 +208,13 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("workspace=%+v created=%t err=%v", workspace, created, err)
 	}
+	registrationTransport, err := edgeclient.NewTransport(edgeState, httpServer.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registrationTransport.RegisterWorkspaces(t.Context(), []edgeclient.Workspace{workspace}); err != nil {
+		t.Fatal(err)
+	}
 	if err := registry.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -234,11 +244,15 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+	bundleRoot := os.Getenv("MCP_EDGE_E2E_BUNDLE_ROOT")
+	if bundleRoot == "" {
+		bundleRoot = "/opt/mcp-devbox/current"
+	}
 	cmd := exec.CommandContext(ctx, edgeBinary,
 		"opencode", "--once", "--state", edgeState,
 		"--opencode", opencodeBinary, "--driver", driverBinary,
 		"--provider", providerPath, "--integrity", integrityPath,
-		"--bubblewrap", bubblewrapPath,
+		"--bubblewrap", bubblewrapPath, "--bundle-root", bundleRoot,
 		"--wait", "30s", "--poll", "1s", "--heartbeat", "1s", "--output-limit", "1048576",
 	)
 	cmd.Dir = workspacePath

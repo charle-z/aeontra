@@ -143,6 +143,10 @@ type autopilotControlParams struct {
 	RunUntil    string `json:"run_until,omitempty"`
 }
 
+type workspaceIDParams struct {
+	WorkspaceID string `json:"workspace_id"`
+}
+
 func (s *Server) handleAutopilotControl(arguments json.RawMessage, kind edge.OperationKind) (string, error) {
 	if s.edgeOperations == nil || s.edgeWorkspaces == nil {
 		return "", errEdgeStoreUnavailable
@@ -168,7 +172,7 @@ func (s *Server) handleAutopilotStatus(arguments json.RawMessage) (string, error
 	if s.edgeOperations == nil {
 		return "", errEdgeStoreUnavailable
 	}
-	var params htbWorkspaceParams
+	var params workspaceIDParams
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
 	}

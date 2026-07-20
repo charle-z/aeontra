@@ -152,7 +152,10 @@ func extractOfficialArchive(content []byte, destination string) error {
 			return &bundle.VerificationError{Code: bundle.BundleMismatch}
 		}
 		seen[name] = struct{}{}
-		path := filepath.Join(destination, filepath.FromSlash(name))
+		path, err := officialArchiveDestination(destination, name)
+		if err != nil {
+			return &bundle.VerificationError{Code: bundle.BundleMismatch}
+		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return errors.New("official release staging failed")
 		}
@@ -174,6 +177,22 @@ func extractOfficialArchive(content []byte, destination string) error {
 		return &bundle.VerificationError{Code: bundle.BundleMismatch}
 	}
 	return nil
+}
+
+func officialArchiveDestination(destination, name string) (string, error) {
+	if !filepath.IsLocal(name) {
+		return "", errors.New("official release path is not local")
+	}
+	root, err := filepath.Abs(destination)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(root, filepath.FromSlash(name))
+	relative, err := filepath.Rel(root, path)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+		return "", errors.New("official release path escapes staging")
+	}
+	return path, nil
 }
 
 func digestBytes(content []byte) string {
