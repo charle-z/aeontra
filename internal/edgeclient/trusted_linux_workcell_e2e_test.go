@@ -287,7 +287,7 @@ func TestTrustedLinuxWorkcellHTBFixtureE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace, err = registry.Configure(workspace.ID, WorkspaceConfiguration{
-		Mode: WorkspaceModeHTBLinux, MachineName: "Controlled-Fixture", TargetIP: "127.0.0.1",
+		Mode: WorkspaceModeHTBLinux, MachineName: "Controlled-Fixture", TargetIP: "10.10.10.10",
 		Difficulty: "EASY", OS: "LINUX", VPNInterface: "tun0",
 	})
 	if err != nil {
