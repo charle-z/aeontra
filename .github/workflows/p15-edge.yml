@@ -65,7 +65,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/release" "$RUNNER_TEMP/deb-a" "$RUNNER_TEMP/deb-b"
           public_key="$(go run ./cmd/mcp-bundle-keygen --output "$RUNNER_TEMP/release/edge.key")"
           echo "PUBLIC_KEY=$public_key" >> "$GITHUB_ENV"
-          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          GNUPGHOME="$RUNNER_TEMP/gnupg"
+          export GNUPGHOME
           mkdir -m 0700 "$GNUPGHOME"
           gpg --batch --passphrase '' --quick-gen-key 'MCP Devbox CI <ci@localhost>' ed25519 sign 1d
           key_id="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="sec" {print $5; exit}')"
@@ -88,7 +89,8 @@ jobs:
 
       - name: Build package twice reproducibly
         run: |
-          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
           bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-a" --release p15.0.0 --signing-key "$GPG_KEY_ID"
           bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-b" --release p15.0.0 --signing-key "$GPG_KEY_ID"
           cmp "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb" "$RUNNER_TEMP/deb-b/mcp-devbox-edge_15.0.0_amd64.deb"

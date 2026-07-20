@@ -60,7 +60,8 @@ jobs:
           printf '%s' "$EDGE_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/release/edge.key"
           chmod 0600 "$RUNNER_TEMP/release/edge.key"
           test "$(stat -c %s "$RUNNER_TEMP/release/edge.key")" = 64
-          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          GNUPGHOME="$RUNNER_TEMP/gnupg"
+          export GNUPGHOME
           printf '%s' "$DEB_GPG_PRIVATE_KEY_B64" | base64 --decode | gpg --batch --import
           key_id="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="sec" {print $5; exit}')"
           test -n "$key_id"
@@ -81,7 +82,8 @@ jobs:
             --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode" \
             --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
           go build -trimpath -o "$RUNNER_TEMP/release/mcp-release-channel" ./cmd/mcp-release-channel
-          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
           bash packaging/parrot/build-edge-release.sh \
             --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/release/assets" \
             --release "$RELEASE" --architecture amd64 \
