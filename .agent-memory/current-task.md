@@ -1,25 +1,59 @@
-# Current task — HTB lab autonomy without operator-secret exposure
+# Current task — P15 zero-touch local autopilot
 
-Branch: `htb-lab-authorized-credentials`
-Base: `origin/main` at `f501064597b750533010ad706249f9447c07d6f2`.
+Branch: `p15-zero-touch-local-autopilot`
+Base: `origin/main` at P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.
 
-Historical deployed foundations preserved:
-- P8.1 Console 2.0 is deployed and tagged `p8.1` at `d343264bffdc0ae1bc045a9d723e913be977090c`.
-- P9 Brain is deployed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
-- P11.2 Remote OpenCode Relay remains the sandbox and relay foundation.
-- P12 Trusted Linux Workcell and Parrot onboarding hardening are deployed at `f501064597b750533010ad706249f9447c07d6f2`.
-- Production remains at 85 tools with the documented catalog hash.
+Historical verified foundation: P8.1 is closed and deployed at
+`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`, with the verified
+67 tools milestone and safe `not_paired` Edge state. P15 work is additive.
 
-Real Cap runtime `mr_82813d7f90db44bac2d79c2b693a5ec6` proved the HTB workcell could route over `tun0`, enumerate the target, download a PCAP and identify a valid FTP credential, but the remote model/tool bridge would not place the recovered password into SSH or FTP tool arguments. The runtime stopped before user access.
+Current P15 status: Steps 01-06 are committed. Exact-head Linux CI, PR merge,
+automatic deployment and structured Parrot migration remain pending and are not
+claimed by this local handoff.
 
-Fix the product rather than disabling global secret protections:
+P14 is the preserved foundation: target-locked local HTB actions, opaque sessions,
+local credential handles, local-only sensitive results, OpenCode integration, and
+registered VPN/target metadata. P15 must close the operator workflow without weakening
+those boundaries.
 
-1. Add an idempotent `mcp-edge lab init` command that creates the Git workspace, README, registration, `htb-linux` metadata, VPN route validation and tool inventory in one operator command.
-2. Align the default state root with the packaged service (`$XDG_STATE_HOME/mcp-edge` or `$HOME/.local/state/mcp-edge`) while preserving a safe legacy fallback.
-3. Add a target-locked local `mcp-edge lab ssh-exec` helper available only inside an active `htb-linux` runtime. It must extract one password from an existing workspace artifact by a literal prefix, use it through SSH_ASKPASS without putting the password in argv, environment, logs or the model turn, connect only to the immutable `TARGET`, and execute one bounded remote command.
-4. Add optional local output capture so later credentials/loot can remain in the workspace without crossing the bridge.
-5. Export machine/VPN metadata into the Bubblewrap environment and document the helper in the rendered HTB contract.
-6. Preserve global bans on operator secrets, host credentials, other targets, CIDRs, rootful Docker, Windows mounts and Internet solution lookup.
-7. Add regression tests for state selection, lab init idempotency, target locking, source-file jail/symlink rejection, unique extraction, askpass secrecy and bounded SSH invocation.
+Completed Step 01 — signed indivisible Edge bundles:
 
-Do not merge or deploy until exact-head CI is green and a real Parrot/Cap continuation proves the credential path.
+1. Define one versioned manifest covering Edge, model driver, autopilot worker,
+   provider files, HTB actions, systemd unit, protocol, catalog, commit and architecture.
+2. Sign and verify the canonical manifest with Ed25519.
+3. Hash every required regular non-symlink component inside the release root.
+4. Fail before a runtime starts with only the safe precise codes `bundle_mismatch`,
+   `provider_outdated`, `driver_outdated`, or `manifest_invalid`.
+5. Add the release builder and wire verification into the persistent Edge service.
+
+Verification executed with an official temporary Go 1.26.5 SDK and private temporary
+caches: bundle and Parrot packaging tests pass; Linux `go vet ./...`, Linux
+`go build ./...`, and `git diff --check` pass. The Windows host cannot execute the
+Linux-only full suite (`syscall.Statfs` and Bubblewrap paths); exact-head CI Linux
+remains mandatory and no local pass is claimed for that suite.
+
+Completed Step 02 — atomic Parrot installer and updater:
+
+1. Build the reproducible Debian filesystem/package layout around a pre-signed bundle.
+2. Add the root-owned closed updater with staging, atomic `current`, health check,
+   previous-release rollback and conservative cleanup.
+3. Add repair and P12–P14 migration that preserve identity, keys, workspaces,
+   contracts, checkpoints, artifacts, target authorization and opaque IDs.
+4. Add clean-install, migration, repeat-install, atomicity, rollback and restricted
+   authority tests before exposing update controls.
+
+Verification: portable bundle/Debian/Parrot contract tests and every shell syntax
+check pass; Linux cross `go vet ./...`, `go build ./...`, and `git diff --check`
+pass. Linux-only updater transaction tests compile and remain mandatory in exact-head
+CI, because this Windows host cannot execute Unix symlink/flock tests.
+
+Active Step 03 — automatic lab preparation and retargeting:
+
+1. Add closed durable Edge task kinds for HTB prepare and retarget metadata only.
+2. Execute preparation locally: private target validation, VPN route/LHOST discovery,
+   private Git workspace/README/directories, idempotent registry/profile/inventory and
+   same machine workspace ID reuse across IP changes.
+3. Retarget in place while preserving evidence/checkpoint, invalidating sessions and
+   incrementing a durable authorization revision.
+4. Expose only `workspace_lab_prepare` and `workspace_lab_retarget` through the remote
+   control plane and return opaque safe status/IDs.

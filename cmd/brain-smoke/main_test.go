@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -84,7 +85,7 @@ func TestRunValidatesConfiguredBrainWithoutPrintingPrivateData(t *testing.T) {
 	for _, required := range []string{
 		"brain smoke passed",
 		"commit=" + info.Commit,
-		"tool_count=92",
+		"tool_count=" + strconv.Itoa(info.ToolCount),
 		info.CatalogHash,
 		"index_ready=true",
 		"schema_version=1",

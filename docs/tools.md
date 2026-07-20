@@ -26,12 +26,18 @@ do not replace server-side enforcement.
 | `model_runtime_start` | 0/0/0/0 | Create one durable external-model runtime; it does not start or select a model provider. |
 | `opencode_runtime_start` | 0/0/1/0 | Request one pinned OpenCode runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
 | `workspace_runtime_continue` | 0/0/1/0 | Continue one registered workspace using its local trusted contract; accepts only the opaque workspace id and timeout, creates one runtime, and does not retry automatically. |
-| `workspace_htb_status` | 1/0/1/0 | Runtime-scoped safe status for an explicitly authorized Hack The Box or controlled CTF workspace; no target, secret or flag values. |
-| `workspace_htb_auth_validate` | 0/0/0/0 | In an `htb-linux` runtime, validate one local credential handle against the single registered target and return an opaque session. |
-| `workspace_htb_command` | 0/0/0/0 | Execute one explicit remote command in a runtime/workspace/target-bound authorized HTB or CTF session; output is bounded and sensitive values are redacted. |
-| `workspace_htb_command_save` | 0/0/0/0 | Execute one explicit authorized-lab command and save stdout locally under `loot/`, `reports/` or `tmp/`; return metadata only. |
-| `workspace_htb_command_with_credential_stdin` | 0/0/0/0 | Execute one bounded authorized-lab command while supplying the locally held session credential only through stdin. |
-| `workspace_htb_session_close` | 0/1/1/0 | Invalidate one target-locked HTB session while preserving local evidence and removing temporary session state. |
+| `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
+| `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
+| `workspace_autopilot_start` | 0/0/1/0 | Start or reuse one durable local job with `run_until=completed_or_cancelled`; no free-form objective is accepted. |
+| `workspace_autopilot_status` | 1/0/1/0 | Return signed, content-free job state, progress revision, cycle count and safe blocker code. |
+| `workspace_autopilot_pause` | 0/0/1/0 | Pause the local job after its current bounded cycle without discarding checkpoint or evidence. |
+| `workspace_autopilot_resume` | 0/0/1/0 | Resume a paused or safely blocked job using the existing local state and provider configuration. |
+| `workspace_autopilot_cancel` | 0/1/1/0 | Cancel the durable job and prevent further local cycles while preserving collected evidence. |
+| `edge_bundle_status` | 1/0/1/0 | Return only signed release, commit, manifest/component compatibility, service health and update availability metadata from one paired Edge. |
+| `edge_bundle_update` | 0/0/1/0 | Request only `release=stable`; the restricted root updater resolves and verifies the official signed channel. |
+| `edge_bundle_rollback` | 0/1/1/0 | Activate only the previous locally known signed release and verify Edge health. |
+| `edge_repair` | 0/0/1/0 | Restore only reviewed signed components, permissions, fixed symlinks, packaged unit and Edge health. |
+| `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, bundle, provider, driver, Bubblewrap, rootless, workspace count and blocker metadata. |
 | `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, and optional result ref. |
 | `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
 | `model_turn_respond` | 0/0/0/0 | Submit one bounded text/tool-call response after runtime, sequence, digest and offered-tool validation. |

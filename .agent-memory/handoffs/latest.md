@@ -1,59 +1,62 @@
-# Handoff — HTB lab autonomy
+# Handoff — P15 zero-touch local autopilot
 
-Branch: `htb-lab-authorized-credentials`
-Base: `origin/main` at `f501064597b750533010ad706249f9447c07d6f2`.
-Implementation HEAD: `b48c45ba3ee7c85c27b93f9ba0798df814ee4b83`.
+Branch: `p15-zero-touch-local-autopilot`
+Base: P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.
 
-## Historical deployment snapshots preserved
+Historical verified foundation: P8.1 is closed and deployed at
+`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`, with the verified
+67 tools milestone and safe `not_paired` Edge state. P15 is additive.
 
-- P8.1 is closed and deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`.
-- The historical P8.1 snapshot had 67 tools and Edge state `not_paired`; those values are evidence for that closure, not the current production state.
-- P9 Brain is deployed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
-- Current production remains on the later P12/P12-hardening foundation with 85 tools.
+Current P15 status: Steps 01-06 are committed. Exact-head Linux CI, PR merge,
+automatic deployment and structured Parrot migration remain pending and are not
+claimed by this handoff.
 
-## Trigger
+## Completed Step 01
 
-A real authorized HTB runtime completed recon and found a locally verifiable authentication chain, but the bridge rejected the next target-authentication operation. The result proved that broad provider-side blocking prevented legitimate lab progress even though the target and workspace were already locally authorized.
+- `internal/bundle` defines a strict version-1 Ed25519 manifest and fixed release
+  layout for Edge, model driver, autopilot worker, provider, HTB actions and systemd.
+- Verification binds release, exact commit, protocol, catalog hash and architecture;
+  all components must be regular non-symlink files below the release root.
+- Closed safe errors are `bundle_mismatch`, `provider_outdated`, `driver_outdated`
+  and `manifest_invalid`.
+- `mcp-bundle-manifest` hashes a staged release and creates new manifest/signature
+  files using an external raw Ed25519 private key. It never overwrites files.
+- Packaged `mcp-edge opencode` verifies the compiled bundle identity before polling
+  for a new runtime. Unstamped local builds fail closed.
+- The systemd unit and onboarding preflight require `/opt/mcp-devbox/current`, its
+  manifest/signature and the autopilot worker.
+- Architecture, security, operations and context documentation are updated.
 
-## Commits
+## Verification
 
-- `58f3c3b6868d5d066fa47aa1a1b2dd8098ad1ba3` — Add target-locked HTB lab autonomy.
-  - adds idempotent `mcp-edge lab init`;
-  - adds a private Edge-owned Unix-socket broker for target authentication;
-  - accepts no caller-selected target and always uses the immutable workspace registration;
-  - consumes one local artifact handle without placing its value in argv, environment, model turns, logs, or the control plane;
-  - supports local-only output capture with path, size, and SHA-256 returned to the model;
-  - uses descriptor-relative O_NOFOLLOW file access and atomic writes;
-  - redacts sensitive HTB checkpoint fields before later model turns while preserving the local checkpoint;
-  - updates the HTB profile for non-root TCP nmap and brokered access.
-- `b48c45ba3ee7c85c27b93f9ba0798df814ee4b83` — Document streamlined HTB lab workflow.
+- `go test ./internal/bundle ./cmd/mcp-bundle-manifest -count=1` -> pass.
+- `go test ./internal/bundle ./packaging/parrot -count=1` with Git Bash -> pass.
+- Linux cross `go vet ./...` -> pass.
+- Linux cross `go build ./...` -> pass.
+- `git diff --check` -> pass.
+- Full executable suite is not claimed locally: this Windows host cannot execute the
+  repository's Linux-only `syscall.Statfs`/Bubblewrap packages. Exact-head CI Linux
+  remains mandatory.
 
-## Validation
+## Completed Step 02
 
-- focused Edge, CLI, broker, file-jail, checkpoint and documentation tests passed;
-- all Go packages passed in two serial chunks;
-- atomic coverage and the coverage gate passed;
-- `go vet ./...` passed;
-- `go build ./...` passed;
-- `git diff --check` passed;
-- local Race was unavailable because the private runner has CGO disabled;
-- local Staticcheck invocation was denied by the runner command allowlist;
-- exact-head CI Race and Staticcheck remain mandatory.
+- reproducible Debian content builder plus detached GPG signature and SHA-256;
+- deterministic signed update archive/channel publisher;
+- official-only bounded downloader with strict tar extraction;
+- flock-serialized staging, signed verification, atomic `current`/`previous`, exact
+  unit install, Edge-only restart, health rollback and conservative signed cleanup;
+- root-only updater accepting only `status`, `update stable`, `rollback`, `repair`;
+- repair of exact official modes/links/unit/service, with P14 backups;
+- package `postinst` rollback, preferred/legacy state preservation and no ID rewrite;
+- one `mcp-edge onboard --server` action plus a systemd path unit that starts Edge
+  when identity appears.
 
-## Boundary
+Portable bundle/Debian/Parrot tests, shell syntax, Linux vet/build and diff checks
+pass. Linux-only updater transaction tests compile but need exact-head CI execution.
 
-- operator and host authentication material remains globally protected;
-- brokered access is limited to the registered workspace target and registered VPN route;
-- no password flag, target flag, raw audit output, or VPS transport exists;
-- sensitive output may remain only under workspace `loot/`, `reports/`, or `tmp/`;
-- host-shared networking remains explicit and is not presented as universal packet filtering.
+## Active Step 03
 
-## Remaining actions
-
-1. commit this handoff;
-2. publish the branch and open a PR;
-3. require all exact-head CI checks green;
-4. merge and deploy only after green CI;
-5. update the reviewed Edge binary on Parrot and restart the packaged service;
-6. continue the existing authorized lab workspace without repeating recon;
-7. design a separate signed remote bootstrap protocol for literal VPN-only operator setup. The current `lab init` reduces setup to one local command but does not remove the pre-runtime workspace-ID dependency.
+Implement closed control-plane lab preparation and retarget tasks. All target/VPN/
+LHOST/path/Git/contract/inventory work happens on Edge. Reuse machine workspaces and
+IDs, preserve evidence/checkpoints, invalidate sessions and increment authorization
+revision on retarget.

@@ -91,7 +91,7 @@ func TestOpenCodeRuntimeStartRequiresConfiguredActiveDevice(t *testing.T) {
 
 func TestOpenCodeRuntimeStartIsIdempotentAndPubliclyRedacted(t *testing.T) {
 	server, store := modelTurnServer(t)
-	server.WithEdgeStore(fixedEdgeDevices{testEdgeDeviceID: true})
+	server.WithEdgeStore(continuationStore(testWorkspaceID, "linux-workcell", "dev"))
 	goal := "Read the bounded fixture, edit it, and run go test ./...."
 	arguments := openCodeStartArguments(goal, "goal-2")
 	firstText := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"opencode_runtime_start","arguments":`+arguments+`}}`))
@@ -136,7 +136,7 @@ func TestOpenCodeRuntimeStartIsIdempotentAndPubliclyRedacted(t *testing.T) {
 
 func TestOpenCodeRuntimeStartRejectsConflictsAndForbiddenFields(t *testing.T) {
 	server, _ := modelTurnServer(t)
-	server.WithEdgeStore(fixedEdgeDevices{testEdgeDeviceID: true})
+	server.WithEdgeStore(continuationStore(testWorkspaceID, "linux-workcell", "dev"))
 	first := openCodeStartArguments("First bounded goal.", "same-key")
 	_ = toolText(t, call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"opencode_runtime_start","arguments":`+first+`}}`))
 	changed := openCodeStartArguments("Different bounded goal.", "same-key")
@@ -159,7 +159,7 @@ func TestOpenCodeRuntimeStartRejectsConflictsAndForbiddenFields(t *testing.T) {
 
 func TestRemoteRuntimeStatusAndCancelExposeOnlyPublicView(t *testing.T) {
 	server, _ := modelTurnServer(t)
-	server.WithEdgeStore(fixedEdgeDevices{testEdgeDeviceID: true})
+	server.WithEdgeStore(continuationStore(testWorkspaceID, "linux-workcell", "dev"))
 	start := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"opencode_runtime_start","arguments":`+openCodeStartArguments("Bounded goal.", "goal-3")+`}}`))
 	var view runtimePublicView
 	if err := json.Unmarshal([]byte(start), &view); err != nil {
@@ -173,5 +173,14 @@ func TestRemoteRuntimeStatusAndCancelExposeOnlyPublicView(t *testing.T) {
 	repeated := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"model_runtime_cancel","arguments":{"runtime_id":"`+view.RuntimeID+`"}}}`))
 	if cancelled != repeated || !strings.Contains(cancelled, `"state":"cancelled"`) || strings.Contains(cancelled, `"status"`) || strings.Contains(cancelled, "goal") {
 		t.Fatalf("cancelled=%s repeated=%s", cancelled, repeated)
+	}
+}
+
+func TestRemoteOpenCodeRuntimeCannotTargetAuthorizedHTBWorkspace(t *testing.T) {
+	server, _ := modelTurnServer(t)
+	server.WithEdgeStore(continuationStore(testWorkspaceID, "linux-workcell", "htb-linux"))
+	got := callToolErrorText(t, server, "opencode_runtime_start", openCodeStartArguments("Caller supplied operational goal.", "htb-forbidden"))
+	if got != "registered development workspace not found" {
+		t.Fatalf("HTB runtime error=%q", got)
 	}
 }

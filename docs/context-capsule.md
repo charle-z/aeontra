@@ -4,22 +4,50 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-P13 opaque workspace continuation is merged and deployed on `main` at
-`b604fa4ad75ca4d36d04115c9f09977baf52093a`. Production is healthy with
-86 tools and the P13 catalog hash. The active branch is
-`p14-first-class-authorized-htb-actions`, based exactly on that merge.
+P14 is merged on `main` at `54891fe7bced14e5eacace754f0072ad4d7996c2`.
+P15 is active on `p15-zero-touch-local-autopilot`, based exactly on that merge. It
+must turn the reviewed P14 local HTB foundation into a one-time-installed, signed,
+self-updating Parrot Edge with chat-driven lab preparation and durable local autopilot.
 
-P14 replaces model-generated Bash calls to `mcp-edge lab ssh-exec` with six
-transparent first-class actions for explicitly authorized Hack The Box and controlled
-CTF Linux workspaces. Edge keeps target, VPN binding, credential extraction, SSH,
-output files and session lifecycle local. OpenCode receives the actions only in
-`htb-linux` mode and executes them over the private runtime Unix socket. Dev and
-sandbox runtimes do not receive them. The current candidate catalog contains 92 tools
-with hash `sha256:ea9cc3749c68fcc12b608efbddc259b01eb7868c98bbc1ab35c75f456e118a98`.
+Step 01 is implemented locally: an indivisible Ed25519-signed release manifest binds Edge,
+driver, autopilot worker, provider, HTB actions, systemd unit, commit, protocol,
+architecture and exterior catalog. The packaged Edge refuses new runtime leases on
+any mismatch before starting OpenCode. Focused tests, Linux vet/build and diff checks
+pass. Step 02 adds the reproducible signed Debian package, signed stable channel,
+restricted updater, atomic activation/rollback, repair, legacy-state migration,
+single-action onboarding and systemd path activation. Portable tests and Linux
+vet/build pass; Linux transaction tests still require exact-head CI. Step 03
+(automatic lab prepare/retarget) is implemented locally: closed public operations
+are leased over the signed outbound Edge channel, create/reuse the lab workspace,
+persist its private contract/inventory, rotate authorization on retarget, and keep
+all operational HTB actions outside the exterior catalog. Exact-head Linux CI is
+still required before the step can be considered remotely verified. Step 04 adds
+the durable local autopilot state machine, bounded signed-bundle worker cycles,
+loopback-only local model interface, Unix-socket HTB broker execution, restart
+supervision, safe progress reporting, lifecycle tools and circuit breakers. Focused
+portable tests and Linux compile/vet/build pass; exact-head Linux CI remains required.
+Step 05 adds closed remote bundle status/update/rollback/repair/onboarding operations,
+signed official-channel availability checks, fixed systemd/polkit updater authority,
+safe partial-install diagnostics, and a durable exclusive updater receipt so an Edge
+restart cannot apply rollback twice. Focused portable tests and Linux compile/vet pass;
+exact-head Linux CI remains required. Step 06 adds pinned Node inside the signed bundle,
+mandatory rootless Podman onboarding, reproducible package/migration CI, protected
+official release automation with SBOM, and prevents legacy remote OpenCode runtimes
+from targeting `htb-linux` workspaces. Local contracts, cross-Linux compile/vet,
+workflow lint and shell syntax checks pass; exact-head CI remains required. Step 07
+(complete gates and release-candidate closure) records the local candidate evidence.
+Step 08 closes audit findings: server-signed control leases with in-place P14 identity
+trust migration, durable transient retry backoff, compiled-protocol enforcement for
+the signed stable channel, and same-release repair with health-failure restoration.
+Focused tests, Linux test compilation/vet and diff checks pass; exact-head Linux CI
+remains mandatory. Local RC evidence is in
+`docs/baselines/2026-07-19-p15-rc.md`. See
+`docs/autopilot.md`, `docs/edge-bundles.md` and
+`docs/install-edge-parrot-p15.md`.
 
-P14 remains unmerged and undeployed. Parrot must not be modified until all local and
-exact-head CI gates are green, the PR is merged with a merge commit and the automatic
-Coolify deployment is verified. See `docs/authorized-htb-actions.md`.
+Production and Parrot remain on the previous verified deployment until all P15 local
+and exact-head remote gates pass, the separate PR merges with a merge commit, the
+automatic deployment is healthy, and the structured updater completes the migration.
 
 Historical deployed milestones remain part of the current evidence chain: P8.1 Console
 2.0 is deployed and tagged from d343264bffdc0ae1bc045a9d723e913be977090c;

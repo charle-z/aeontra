@@ -71,6 +71,12 @@ func TestLabInitCreatesAndReusesAuthorizedHTBWorkspace(t *testing.T) {
 			t.Fatalf("missing %s: %v", relative, err)
 		}
 	}
+	for _, relative := range []string{".mcp-devbox/lab-contract.json", ".mcp-devbox/tool-inventory.json", ".mcp-devbox/authorization-revision"} {
+		info, err := os.Stat(filepath.Join(workspacePath, relative))
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("private lab state %s: mode=%v err=%v", relative, info, err)
+		}
+	}
 	registry, err := edgeclient.OpenWorkspaceRegistry(state)
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +98,38 @@ func TestLabInitCreatesAndReusesAuthorizedHTBWorkspace(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "lab-ready existing "+workspace.ID) {
 		t.Fatalf("second init output=%q", stdout.String())
+	}
+	checkpoint := filepath.Join(workspacePath, "checkpoint.md")
+	if err := os.WriteFile(checkpoint, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	labRouteLookup = func(context.Context, string, string) (string, string, error) {
+		return "tun1", "10.10.14.10", nil
+	}
+	stdout.Reset()
+	stderr.Reset()
+	retargetArgs := []string{"lab", "retarget", "--state", state, "--workspace-id", workspace.ID, "--target", "10.129.63.200"}
+	if code := run(retargetArgs, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("retarget code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "workspace="+workspace.ID+" authorization_revision=2") {
+		t.Fatalf("retarget output=%q", stdout.String())
+	}
+	registry, err = edgeclient.OpenWorkspaceRegistry(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retargeted, err := registry.Get(workspace.ID)
+	_ = registry.Close()
+	if err != nil || retargeted.ID != workspace.ID || retargeted.TargetIP != "10.129.63.200" || retargeted.AuthorizationRevision != 2 {
+		t.Fatalf("retargeted=%+v err=%v", retargeted, err)
+	}
+	if content, err := os.ReadFile(checkpoint); err != nil || string(content) != "keep" {
+		t.Fatalf("checkpoint=%q err=%v", content, err)
+	}
+	contract, err := os.ReadFile(filepath.Join(workspacePath, ".mcp-devbox", "lab-contract.json"))
+	if err != nil || !strings.Contains(string(contract), `"target": "10.129.63.200"`) || !strings.Contains(string(contract), `"authorization_revision": 2`) {
+		t.Fatalf("retarget contract=%q err=%v", contract, err)
 	}
 }
 
@@ -119,7 +157,7 @@ func TestHelpDocumentsSingleCommandLabOnboarding(t *testing.T) {
 	if code := run([]string{"help"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, stderr.String())
 	}
-	for _, expected := range []string{"lab init", "lab ssh-exec"} {
+	for _, expected := range []string{"lab init", "lab retarget", "lab ssh-exec"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Fatalf("help missing %q: %s", expected, stdout.String())
 		}

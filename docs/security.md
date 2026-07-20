@@ -146,6 +146,16 @@ Calling the tool "secure" raises the bar: a bypass here is worse than in a
 permissive tool. **Under-promise.** Ship `SECURITY.md` + a vulnerability disclosure
 policy. Keep the MIT "as is" disclaimer. Never claim guarantees that can't be held.
 
+## Signed Edge release boundary
+
+P15 Edge workers accept new local jobs only when the complete versioned release
+manifest has a valid Ed25519 signature and every fixed component matches its SHA-256.
+The compiled release, commit, protocol, architecture and exterior catalog identity
+must agree. Provider and driver mismatches fail before runtime creation with closed,
+content-free codes. The installed Edge contains no signing private key, and neither
+the chat nor a public tool may supply a URL, path, hash, script or command to the
+updater. See `docs/edge-bundles.md`.
+
 ## Required security tests (Layer 1)
 
 - path traversal blocked · access outside workspace blocked · `.env`/`.ssh` blocked
@@ -157,3 +167,25 @@ policy. Keep the MIT "as is" disclaimer. Never claim guarantees that can't be he
 - HTTP: auth required, oversized bodies fail, empty/over-128 batches fail with bounded errors
 - access grants: agent cannot self-approve; expired/used grants fail; exact path only;
   default output remains redacted; raw requires explicit raw approval; restart clears grants
+## P15 lab-control boundary
+
+The public server is a durable control plane, not an HTB command relay. Its lab
+operations are closed-schema requests and never contain a command, credential,
+credential flag, output, checkpoint, local path or provider configuration. Only a
+paired Edge can lease or complete an operation, using the existing signed request
+protocol and replay protection.
+
+Control delivery is authenticated in both directions. Edge signs every polling and
+completion request with its device key. The server signs each leased operation over
+the operation/device/kind/request digest, lease ID and exact expiry using a private
+control key persisted with mode `0600`; Edge verifies that signature before any local
+operation, including updater/rollback/repair. New pairing records only the public
+control key. A preserved schema-v1 P14 identity obtains that public key once over its
+already authenticated HTTPS/device-signed channel, upgrades only identity metadata,
+and preserves the device ID and private device key.
+
+Every HTB target must be one private IPv4 whose route is currently attached to a
+local `tun*` or `tap*` interface. The authorization revision is written atomically
+inside the private workspace. The broker verifies that revision for every request;
+retargeting therefore closes the authority of already-running sessions even if an
+old process is still alive.

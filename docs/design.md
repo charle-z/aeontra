@@ -148,6 +148,20 @@ device on your PC connects out to their cloud relay. Two paths for us:
 For a security-first tool, **(A)** is the honest default; **(B)** trades the
 security narrative for adoption. Not decided.
 
+## P15 local-autopilot boundary
+
+P15 uses four explicit layers. The remote control plane owns only durable job
+lifecycle and safe metadata. The persistent Parrot Edge owns device identity,
+workspaces, authorization, VPN/target validation and worker supervision. A bounded
+local autopilot worker owns reasoning cycles and invokes only the private structured
+runtime broker; operational HTB commands, credentials, flags and raw results never
+enter the control plane. A separate root-owned updater accepts only official signed
+release identifiers and has no generic shell or sudo interface.
+
+All Edge executables, provider files and systemd definitions are one signed release.
+`/opt/mcp-devbox/current` changes atomically only after staged verification and smoke;
+failure restores the previous signed release. See `docs/edge-bundles.md`.
+
 ## Open considerations (contemplate before/during build)
 
 1. **Content-level secret scanning** (not just path-blocking) — see `security.md`.
@@ -156,3 +170,19 @@ security narrative for adoption. Not decided.
 4. **Validate the ChatGPT-web premise** with a real session before heavy build.
 5. **Repo location: WSL2 vs Windows FS** — affects path jail + performance (owner
    is Windows-first; secure mode is Linux/WSL2). Decide where repos live.
+## P15 outbound lab control operations
+
+`workspace_lab_prepare` and `workspace_lab_retarget` persist closed, typed
+operations in the remote Edge store. A paired Edge leases them over its existing
+Ed25519-authenticated outbound channel. The request may contain only the device or
+workspace selector and the lab contract metadata; commands, credentials, flags,
+paths, URLs, scripts and caller-provided hashes have no schema or transport field.
+
+Preparation and retargeting execute on the Edge. They validate a private IPv4 and
+its `tun*`/`tap*` route, derive LHOST locally, atomically persist the local contract
+and sanitized inventory, and return only opaque IDs, authorization revision and a
+closed safe failure code. Retarget increments the revision marker used by the local
+broker, invalidating every older session without deleting evidence or checkpoints.
+
+The six `workspace_htb_*` actions remain available to the local runtime provider,
+but are intentionally absent from the exterior MCP catalog and dispatcher.

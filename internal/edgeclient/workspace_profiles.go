@@ -24,7 +24,7 @@ const (
 	LinuxWorkcellNetworkPosture = "trusted_host_shared_network"
 )
 
-const workspaceSelect = "SELECT w.workspace_id,w.path,w.created_at,w.updated_at,c.profile,c.mode,c.machine_name,c.target_ip,c.difficulty,c.os,c.vpn_interface FROM workspaces w JOIN workspace_configs c ON c.workspace_id=w.workspace_id"
+const workspaceSelect = "SELECT w.workspace_id,w.path,w.created_at,w.updated_at,c.profile,c.mode,c.machine_name,c.target_ip,c.difficulty,c.os,c.vpn_interface,c.authorization_revision FROM workspaces w JOIN workspace_configs c ON c.workspace_id=w.workspace_id"
 
 type WorkspaceRoots struct {
 	Dev      string
@@ -131,7 +131,7 @@ func validateWorkspaceConfiguration(workspace Workspace, roots WorkspaceRoots, c
 			return WorkspaceConfiguration{}, errors.New("HTB target must be one IPv4 address")
 		}
 		ip := net.ParseIP(config.TargetIP)
-		if ip == nil || ip.To4() == nil {
+		if ip == nil || ip.To4() == nil || !ip.IsPrivate() {
 			return WorkspaceConfiguration{}, errors.New("HTB target must be one IPv4 address")
 		}
 		config.TargetIP = ip.To4().String()
@@ -188,7 +188,7 @@ func (r *WorkspaceRegistry) AddProfile(path string, profile WorkspaceProfile) (W
 	if _, err := tx.Exec(`INSERT INTO workspaces(workspace_id,path,created_at,updated_at) VALUES(?,?,?,?)`, id, validated, now.UnixNano(), now.UnixNano()); err != nil {
 		return Workspace{}, false, errors.New("workspace registration failed")
 	}
-	if _, err := tx.Exec(`INSERT INTO workspace_configs(workspace_id,profile,mode,machine_name,target_ip,difficulty,os,vpn_interface) VALUES(?,?,?,?,?,?,?,?)`, id, profile, WorkspaceModeDev, "", "", "", "", ""); err != nil {
+	if _, err := tx.Exec(`INSERT INTO workspace_configs(workspace_id,profile,mode,machine_name,target_ip,difficulty,os,vpn_interface,authorization_revision) VALUES(?,?,?,?,?,?,?,?,0)`, id, profile, WorkspaceModeDev, "", "", "", "", ""); err != nil {
 		return Workspace{}, false, errors.New("workspace registration failed")
 	}
 	if err := tx.Commit(); err != nil {
@@ -226,13 +226,29 @@ func (r *WorkspaceRegistry) Configure(id string, config WorkspaceConfiguration) 
 	if err != nil {
 		return Workspace{}, err
 	}
+	if workspace.Mode == config.Mode && workspace.MachineName == config.MachineName && workspace.TargetIP == config.TargetIP && workspace.Difficulty == config.Difficulty && workspace.OS == config.OS && workspace.VPNInterface == config.VPNInterface && (workspace.Mode != WorkspaceModeHTBLinux || workspace.AuthorizationRevision > 0) {
+		if workspace.Mode == WorkspaceModeHTBLinux {
+			if err := writeWorkspaceAuthorizationRevision(workspace.Path, workspace.AuthorizationRevision); err != nil {
+				return Workspace{}, err
+			}
+		}
+		return workspace, nil
+	}
+	revision := workspace.AuthorizationRevision
+	if config.Mode == WorkspaceModeHTBLinux {
+		if revision == 0 || workspace.TargetIP != config.TargetIP {
+			revision++
+		}
+	} else {
+		revision = 0
+	}
 	now := r.now().UTC()
 	tx, err := r.db.Begin()
 	if err != nil {
 		return Workspace{}, errors.New("workspace configuration failed")
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`UPDATE workspace_configs SET mode=?,machine_name=?,target_ip=?,difficulty=?,os=?,vpn_interface=? WHERE workspace_id=?`, config.Mode, config.MachineName, config.TargetIP, config.Difficulty, config.OS, config.VPNInterface, id)
+	result, err := tx.Exec(`UPDATE workspace_configs SET mode=?,machine_name=?,target_ip=?,difficulty=?,os=?,vpn_interface=?,authorization_revision=? WHERE workspace_id=?`, config.Mode, config.MachineName, config.TargetIP, config.Difficulty, config.OS, config.VPNInterface, revision, id)
 	if err != nil {
 		return Workspace{}, errors.New("workspace configuration failed")
 	}
@@ -246,7 +262,28 @@ func (r *WorkspaceRegistry) Configure(id string, config WorkspaceConfiguration) 
 	if err := tx.Commit(); err != nil {
 		return Workspace{}, errors.New("workspace configuration failed")
 	}
-	return r.Get(id)
+	configured, err := r.Get(id)
+	if err != nil {
+		return Workspace{}, err
+	}
+	if err := writeWorkspaceAuthorizationRevision(configured.Path, configured.AuthorizationRevision); err != nil {
+		return Workspace{}, err
+	}
+	return configured, nil
+}
+
+func (r *WorkspaceRegistry) Retarget(id, target, vpnInterface string) (Workspace, error) {
+	workspace, err := r.Get(id)
+	if err != nil {
+		return Workspace{}, err
+	}
+	if workspace.Mode != WorkspaceModeHTBLinux {
+		return Workspace{}, errors.New("workspace is not an authorized HTB lab")
+	}
+	return r.Configure(id, WorkspaceConfiguration{
+		Mode: workspace.Mode, MachineName: workspace.MachineName, TargetIP: target,
+		Difficulty: workspace.Difficulty, OS: workspace.OS, VPNInterface: vpnInterface,
+	})
 }
 
 func (r *WorkspaceRegistry) revalidate(workspace Workspace) error {

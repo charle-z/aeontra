@@ -9,6 +9,9 @@ const (
 	// ProtocolVersion is the default MCP protocol version when the client does not
 	// request a specific compatible version.
 	ProtocolVersion = "2024-11-05"
+	// EdgeBundleProtocolVersion is the compatibility contract shared by the
+	// packaged Edge, provider, driver and local autopilot worker.
+	EdgeBundleProtocolVersion = "mcp-devbox.edge-bundle.v1"
 )
 
 // Commit and BuiltAt may be set at link time with -ldflags. They keep safe explicit
@@ -17,6 +20,11 @@ const (
 var (
 	Commit  = "unknown"
 	BuiltAt = "unknown"
+	// Edge bundle identity is injected into packaged binaries. Unstamped local
+	// builds deliberately cannot validate or run a production Edge bundle.
+	EdgeBundleRelease     = "unbundled"
+	EdgeBundleCatalogHash = ""
+	EdgeBundlePublicKey   = ""
 )
 
 // Info is the stable build identity shared by CLI and transports.

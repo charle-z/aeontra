@@ -18,12 +18,13 @@ Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStartPre=/usr/bin/test -x /usr/bin/bwrap
 ExecStartPre=/usr/bin/test -x /usr/local/bin/mcp-edge
 ExecStartPre=/usr/bin/test -x /usr/local/libexec/mcp-devbox/model-turn-driver
+ExecStartPre=/usr/bin/test -x /usr/local/libexec/mcp-devbox/node
 ExecStartPre=/usr/bin/test -x /opt/mcp-devbox/opencode-1.18.1/opencode
 ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/opencode-1.18.1/package-lock.json
 ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/opencode-provider/index.js
 ExecStartPre=/opt/mcp-devbox/opencode-1.18.1/opencode --version
 
-ExecStart=/usr/local/bin/mcp-edge opencode --state /home/%i/.local/state/mcp-edge --opencode /opt/mcp-devbox/opencode-1.18.1/opencode --driver /usr/local/libexec/mcp-devbox/model-turn-driver --provider /opt/mcp-devbox/opencode-provider --bubblewrap /usr/bin/bwrap --integrity /opt/mcp-devbox/opencode-1.18.1/package-lock.json --wait 120s --poll 5s --heartbeat 5s --output-limit 1048576
+ExecStart=/usr/local/bin/mcp-edge opencode --bundle-root /opt/mcp-devbox/current --state /home/%i/.local/state/mcp-edge --opencode /opt/mcp-devbox/opencode-1.18.1/opencode --driver /usr/local/libexec/mcp-devbox/model-turn-driver --provider /opt/mcp-devbox/opencode-provider --bubblewrap /usr/bin/bwrap --integrity /opt/mcp-devbox/opencode-1.18.1/package-lock.json --wait 120s --poll 5s --heartbeat 5s --output-limit 1048576
 
 Restart=on-failure
 RestartSec=5s

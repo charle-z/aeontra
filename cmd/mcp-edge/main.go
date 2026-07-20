@@ -37,6 +37,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "pair":
 		err = pair(args[1:], stdin, stdout, stderr)
+	case "onboard":
+		err = onboard(args[1:], stdin, stdout, stderr)
 	case "run":
 		err = runWorkcell(args[1:], stderr)
 	case "opencode":
@@ -45,6 +47,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = workspaceCommand(args[1:], stdout, stderr)
 	case "lab":
 		err = labCommand(args[1:], stdout, stderr)
+	case "bundle":
+		err = bundleCommand(args[1:], stdout)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -209,6 +213,7 @@ func usage(output io.Writer) {
 
 Usage:
   mcp-edge pair --server https://mcp.example.com [--state <ABS_PATH>] [--name wsl-development]
+  mcp-edge onboard --server https://mcp.example.com [--state <ABS_PATH>] [--name parrot-edge]
   mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 1m]
   mcp-edge opencode --opencode <ABS_PATH> --provider <ABS_PATH> --integrity <ABS_PATH> [--bubblewrap <ABS_PATH>] [--state <ABS_PATH>]
   mcp-edge workspace add [--profile sandbox|linux-workcell] <ABS_LINUX_PATH> [--state <ABS_PATH>]
@@ -217,7 +222,9 @@ Usage:
   mcp-edge workspace list [--state <ABS_PATH>]
   mcp-edge workspace remove --id <OPAQUE_ID> [--state <ABS_PATH>]
   mcp-edge lab init --platform htb --machine <NAME> --target <IP> --difficulty EASY|MEDIUM|HARD [--vpn-interface tun0] [--state <ABS_PATH>]
+  mcp-edge lab retarget --workspace-id <OPAQUE_ID> --target <IP> [--state <ABS_PATH>]
   mcp-edge lab ssh-exec --username <USER> --source <FILE> --extract-after <PREFIX> --command <COMMAND> [--save-output <FILE>]
+  mcp-edge bundle verify
 
 The pairing code is read from stdin and is never accepted as a command-line flag.
 Create the local STOP file to activate the kill switch.

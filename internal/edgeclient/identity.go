@@ -28,10 +28,11 @@ const (
 )
 
 type Identity struct {
-	SchemaVersion int    `json:"schema_version"`
-	ServerURL     string `json:"server_url"`
-	DeviceID      string `json:"device_id"`
-	Name          string `json:"name"`
+	SchemaVersion    int    `json:"schema_version"`
+	ServerURL        string `json:"server_url"`
+	DeviceID         string `json:"device_id"`
+	Name             string `json:"name"`
+	ControlPublicKey string `json:"control_public_key,omitempty"`
 }
 
 type PairOptions struct {
@@ -90,7 +91,10 @@ func Pair(ctx context.Context, opts PairOptions) (Identity, error) {
 	if err := decodeSingleJSON(decoder, &device); err != nil || !deviceIDPattern.MatchString(device.ID) || !deviceNamePattern.MatchString(device.Name) || device.State != edge.StateActive {
 		return Identity{}, errors.New("invalid pairing response")
 	}
-	identity := Identity{SchemaVersion: 1, ServerURL: serverURL, DeviceID: device.ID, Name: device.Name}
+	if controlKey, keyErr := edge.DecodePublicKey(device.ControlPublicKey); keyErr != nil || len(controlKey) != ed25519.PublicKeySize {
+		return Identity{}, errors.New("invalid pairing response")
+	}
+	identity := Identity{SchemaVersion: 2, ServerURL: serverURL, DeviceID: device.ID, Name: device.Name, ControlPublicKey: device.ControlPublicKey}
 	if err := persistIdentity(opts.StateRoot, identity, privateKey); err != nil {
 		return Identity{}, err
 	}
@@ -116,10 +120,11 @@ func LoadIdentity(root string) (Identity, ed25519.PrivateKey, error) {
 	var identity Identity
 	decoder := json.NewDecoder(bytes.NewReader(identityBytes))
 	decoder.DisallowUnknownFields()
-	if err := decodeSingleJSON(decoder, &identity); err != nil || identity.SchemaVersion != 1 {
+	if err := decodeSingleJSON(decoder, &identity); err != nil || (identity.SchemaVersion != 1 && identity.SchemaVersion != 2) {
 		return Identity{}, nil, errors.New("edge identity is invalid")
 	}
-	if _, err := validateServerURL(identity.ServerURL); err != nil || !deviceIDPattern.MatchString(identity.DeviceID) || !deviceNamePattern.MatchString(identity.Name) {
+	_, controlKeyErr := edge.DecodePublicKey(identity.ControlPublicKey)
+	if _, err := validateServerURL(identity.ServerURL); err != nil || !deviceIDPattern.MatchString(identity.DeviceID) || !deviceNamePattern.MatchString(identity.Name) || (identity.SchemaVersion == 1 && identity.ControlPublicKey != "") || (identity.SchemaVersion == 2 && controlKeyErr != nil) {
 		return Identity{}, nil, errors.New("edge identity is invalid")
 	}
 	keyBytes, err := os.ReadFile(keyPath)
@@ -131,6 +136,14 @@ func LoadIdentity(root string) (Identity, ed25519.PrivateKey, error) {
 		return Identity{}, nil, errors.New("device key is invalid")
 	}
 	return identity, ed25519.PrivateKey(decoded), nil
+}
+
+func persistIdentityOnly(root string, identity Identity) error {
+	identityBytes, _ := json.Marshal(identity)
+	if err := writePrivateAtomic(filepath.Join(root, identityFile), append(identityBytes, '\n')); err != nil {
+		return errors.New("identity persistence failed")
+	}
+	return nil
 }
 
 func persistIdentity(root string, identity Identity, privateKey ed25519.PrivateKey) error {

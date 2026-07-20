@@ -1,6 +1,7 @@
 package workflowpolicy
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,5 +26,16 @@ func TestRepositoryWorkflowsSatisfyPolicy(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestContentsWriteIsLimitedToProtectedManualEdgeRelease(t *testing.T) {
+	allowed, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "edge-release.yml"))
+	if err != nil || Validate("edge-release.yml", allowed) != nil {
+		t.Fatalf("protected release rejected: read=%v validate=%v", err, Validate("edge-release.yml", allowed))
+	}
+	unsafe := []byte("name: unsafe\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  publish:\n    timeout-minutes: 10\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n    steps:\n      - run: echo unsafe\n")
+	if err := Validate("other.yml", unsafe); !errors.Is(err, ErrForbiddenPermission) {
+		t.Fatalf("unprotected contents write accepted: %v", err)
 	}
 }

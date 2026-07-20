@@ -16,12 +16,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/bundle"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
 func openCodeFailureCode(err error) string {
 	if err == nil {
 		return "none"
+	}
+	var bundleError *bundle.VerificationError
+	if errors.As(err, &bundleError) {
+		return string(bundleError.Code)
 	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
@@ -133,6 +138,7 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	providerPath := fs.String("provider", "", "absolute path to the local external-driver provider")
 	bubblewrapPath := fs.String("bubblewrap", "", "absolute path to the Bubblewrap sandbox executable")
 	integrityPath := fs.String("integrity", "", "absolute path to the pinned npm package-lock.json")
+	bundleRoot := fs.String("bundle-root", "/opt/mcp-devbox/current", "official signed MCP Devbox release root")
 	wait := fs.Duration("wait", 120*time.Second, "signed runtime long-poll duration")
 	poll := fs.Duration("poll", 5*time.Second, "delay after an empty long-poll or safe failure")
 	heartbeat := fs.Duration("heartbeat", 5*time.Second, "runtime heartbeat interval")
@@ -156,6 +162,9 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 			return errors.New("bubblewrap is required for the OpenCode relay")
 		}
 		*bubblewrapPath = resolved
+	}
+	if err := verifyInstalledEdgeBundle(*bundleRoot); err != nil {
+		return err
 	}
 	for name, value := range map[string]string{"opencode": *opencodePath, "driver": *driverPath, "provider": *providerPath, "bubblewrap": *bubblewrapPath, "integrity": *integrityPath} {
 		if !filepath.IsAbs(filepath.Clean(value)) {
@@ -189,6 +198,8 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go runControlOperationLoop(ctx, *state, transport, stderr)
+	go runAutopilotSupervisor(ctx, *state, *bundleRoot, transport, stderr)
 	for {
 		workspaces, registryErr := registry.List()
 		if registryErr == nil {

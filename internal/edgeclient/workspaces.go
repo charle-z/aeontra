@@ -19,18 +19,19 @@ const workspaceRegistryFile = "workspaces.db"
 var workspaceIDPattern = regexp.MustCompile(`^ws_[a-f0-9]{32}$`)
 
 type Workspace struct {
-	ID             string           `json:"workspace_id"`
-	Path           string           `json:"path"`
-	Profile        WorkspaceProfile `json:"profile"`
-	Mode           WorkspaceMode    `json:"mode"`
-	MachineName    string           `json:"machine_name,omitempty"`
-	TargetIP       string           `json:"target_ip,omitempty"`
-	Difficulty     string           `json:"difficulty,omitempty"`
-	OS             string           `json:"os,omitempty"`
-	VPNInterface   string           `json:"vpn_interface,omitempty"`
-	NetworkPosture string           `json:"network_posture"`
-	CreatedAt      time.Time        `json:"created_at"`
-	UpdatedAt      time.Time        `json:"updated_at"`
+	ID                    string           `json:"workspace_id"`
+	Path                  string           `json:"path"`
+	Profile               WorkspaceProfile `json:"profile"`
+	Mode                  WorkspaceMode    `json:"mode"`
+	MachineName           string           `json:"machine_name,omitempty"`
+	TargetIP              string           `json:"target_ip,omitempty"`
+	Difficulty            string           `json:"difficulty,omitempty"`
+	OS                    string           `json:"os,omitempty"`
+	VPNInterface          string           `json:"vpn_interface,omitempty"`
+	AuthorizationRevision uint64           `json:"authorization_revision"`
+	NetworkPosture        string           `json:"network_posture"`
+	CreatedAt             time.Time        `json:"created_at"`
+	UpdatedAt             time.Time        `json:"updated_at"`
 }
 
 type WorkspaceRegistry struct {
@@ -85,6 +86,10 @@ func OpenWorkspaceRegistry(stateRoot string) (*WorkspaceRegistry, error) {
 			_ = db.Close()
 			return nil, errors.New("workspace registry initialization failed")
 		}
+	}
+	if err := ensureWorkspaceAuthorizationRevision(db); err != nil {
+		_ = db.Close()
+		return nil, errors.New("workspace registry migration failed")
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = db.Close()
@@ -158,13 +163,45 @@ func (r *WorkspaceRegistry) byPath(path string) (Workspace, error) {
 func scanWorkspace(scanner interface{ Scan(...any) error }) (Workspace, error) {
 	var item Workspace
 	var createdAt, updatedAt int64
-	if err := scanner.Scan(&item.ID, &item.Path, &createdAt, &updatedAt, &item.Profile, &item.Mode, &item.MachineName, &item.TargetIP, &item.Difficulty, &item.OS, &item.VPNInterface); err != nil {
+	if err := scanner.Scan(&item.ID, &item.Path, &createdAt, &updatedAt, &item.Profile, &item.Mode, &item.MachineName, &item.TargetIP, &item.Difficulty, &item.OS, &item.VPNInterface, &item.AuthorizationRevision); err != nil {
 		return Workspace{}, err
 	}
 	item.CreatedAt = time.Unix(0, createdAt).UTC()
 	item.UpdatedAt = time.Unix(0, updatedAt).UTC()
 	item.NetworkPosture = networkPosture(item.Profile)
 	return item, nil
+}
+
+func ensureWorkspaceAuthorizationRevision(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(workspace_configs)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue any
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == "authorization_revision" {
+			found = true
+		}
+	}
+	rowErr := rows.Err()
+	closeErr := rows.Close()
+	if rowErr != nil {
+		return rowErr
+	}
+	if closeErr != nil || found {
+		return closeErr
+	}
+	_, err = db.Exec(`ALTER TABLE workspace_configs ADD COLUMN authorization_revision INTEGER NOT NULL DEFAULT 0`)
+	return err
 }
 
 func ValidateRegisteredWorkspace(path string) (string, error) {

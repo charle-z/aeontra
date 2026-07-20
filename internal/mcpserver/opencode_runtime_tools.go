@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/modelturn"
 )
 
@@ -17,6 +18,13 @@ var errEdgeStoreUnavailable = errors.New("edge device store is not configured")
 
 type edgeDeviceRegistry interface {
 	DeviceActive(string) bool
+}
+
+type edgeOperationRegistry interface {
+	CreateOperation(string, edge.OperationKind, edge.OperationRequest) (edge.Operation, bool, error)
+	OperationStatus(string) (edge.Operation, error)
+	AutopilotStatus(string) (edge.OperationResult, error)
+	WaitOperation(context.Context, string, time.Duration) (edge.Operation, error)
 }
 
 type openCodeRuntimeStartParams struct {
@@ -41,8 +49,12 @@ type runtimePublicView struct {
 func (s *Server) WithEdgeStore(store edgeDeviceRegistry) *Server {
 	s.edgeDevices = store
 	s.edgeWorkspaces = nil
+	s.edgeOperations = nil
 	if workspaces, ok := store.(edgeWorkspaceRegistry); ok {
 		s.edgeWorkspaces = workspaces
+	}
+	if operations, ok := store.(edgeOperationRegistry); ok {
+		s.edgeOperations = operations
 	}
 	return s
 }
@@ -75,6 +87,13 @@ func (s *Server) handleOpenCodeRuntimeStart(arguments json.RawMessage) (string, 
 	}
 	if !s.edgeDevices.DeviceActive(params.DeviceID) {
 		return "", errors.New("active edge device not found")
+	}
+	if s.edgeWorkspaces == nil {
+		return "", errWorkspaceRegistryUnavailable
+	}
+	binding, err := s.edgeWorkspaces.ResolveWorkspace(params.WorkspaceID)
+	if err != nil || !validWorkspaceBinding(binding, params.WorkspaceID) || binding.DeviceID != params.DeviceID || binding.Mode != "dev" {
+		return "", errors.New("registered development workspace not found")
 	}
 	ttl := time.Duration(params.TimeoutSeconds) * time.Second
 	body, err := s.modelTurns.StageRuntimeGoal(context.Background(), goal, ttl)

@@ -47,8 +47,14 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 		"/mnt/c",
 		"/mnt/d",
 		"/runtime/rootless-container.sock",
+		"MCP_DEVBOX_REQUIRE_ROOTLESS:-1",
 		"v24.18.0",
+		"/usr/local/libexec/mcp-devbox/node",
 		"1.18.1",
+		"$BUNDLE_ROOT/manifest.json",
+		"$BUNDLE_ROOT/manifest.sig",
+		"$BUNDLE_ROOT/libexec/mcp-autopilot-worker",
+		"$BUNDLE_ROOT/libexec/mcp-bundle-updater",
 		"parrot-onboarding-preflight-ok",
 	} {
 		if !strings.Contains(script, expected) {
@@ -63,6 +69,7 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	for _, expected := range []string{
 		"User=%i",
 		"/usr/local/bin/mcp-edge opencode",
+		"--bundle-root /opt/mcp-devbox/current",
 		"AF_NETLINK",
 		"NoNewPrivileges=yes",
 		"RestrictNamespaces=false",

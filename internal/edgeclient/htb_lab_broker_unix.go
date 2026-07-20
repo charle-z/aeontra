@@ -39,7 +39,7 @@ type HTBLabBrokerConfig struct {
 
 func StartHTBLabBroker(ctx context.Context, config HTBLabBrokerConfig) (<-chan error, error) {
 	if config.Workspace.Profile != WorkspaceProfileLinuxWorkcell || config.Workspace.Mode != WorkspaceModeHTBLinux ||
-		config.RuntimeID == "" || config.SocketPath == "" || config.StateRoot == "" || !config.ExpiresAt.After(time.Now().UTC()) {
+		config.Workspace.AuthorizationRevision == 0 || config.RuntimeID == "" || config.SocketPath == "" || config.StateRoot == "" || !config.ExpiresAt.After(time.Now().UTC()) {
 		return nil, errors.New("HTB lab broker configuration is invalid")
 	}
 	if filepath.Base(config.SocketPath) != HTBLabBrokerSocketName {
@@ -66,6 +66,11 @@ func StartHTBLabBroker(ctx context.Context, config HTBLabBrokerConfig) (<-chan e
 		return nil, errors.New("HTB lab broker socket permissions failed")
 	}
 	broker := &htbLabBroker{config: config, sessions: make(map[string]htbLabSession), now: time.Now}
+	if !broker.authorizationCurrent() {
+		_ = listener.Close()
+		_ = os.Remove(config.SocketPath)
+		return nil, errors.New("HTB lab authorization changed")
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/status", broker.status)
 	mux.HandleFunc("POST /v1/auth-validate", broker.authValidate)
@@ -74,7 +79,15 @@ func StartHTBLabBroker(ctx context.Context, config HTBLabBrokerConfig) (<-chan e
 	mux.HandleFunc("POST /v1/command-credential-stdin", broker.commandCredentialStdin)
 	mux.HandleFunc("POST /v1/session-close", broker.sessionClose)
 	mux.HandleFunc("POST /v1/ssh-exec", broker.sshExec)
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if !broker.authorizationCurrent() {
+			broker.closeAllSessions()
+			writeHTBLabBrokerError(writer, http.StatusConflict, "authorization_changed")
+			return
+		}
+		mux.ServeHTTP(writer, request)
+	})
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	done := make(chan error, 1)
 	go func() {
 		defer os.Remove(config.SocketPath)
@@ -97,6 +110,11 @@ func StartHTBLabBroker(ctx context.Context, config HTBLabBrokerConfig) (<-chan e
 		}
 	}()
 	return done, nil
+}
+
+func (broker *htbLabBroker) authorizationCurrent() bool {
+	revision, err := readWorkspaceAuthorizationRevision(broker.config.Workspace.Path)
+	return err == nil && revision == broker.config.Workspace.AuthorizationRevision
 }
 
 type htbLabBroker struct {

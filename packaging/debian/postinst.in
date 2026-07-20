@@ -1,0 +1,82 @@
+#!/bin/sh
+set -eu
+
+RELEASE='@RELEASE@'
+ROOT='/opt/mcp-devbox'
+RELEASE_ROOT="$ROOT/releases/$RELEASE"
+CURRENT_NEXT="$ROOT/.current.next"
+OLD_TARGET=''
+
+test "$(id -u)" -eq 0
+test -f "$RELEASE_ROOT/manifest.json"
+test -f "$RELEASE_ROOT/manifest.sig"
+
+if [ -L "$ROOT/current" ]; then
+  OLD_TARGET="$(readlink "$ROOT/current")"
+fi
+rollback_install() {
+  if [ -n "$OLD_TARGET" ]; then
+    rm -f "$CURRENT_NEXT"
+    ln -s "$OLD_TARGET" "$CURRENT_NEXT"
+    mv -Tf "$CURRENT_NEXT" "$ROOT/current"
+    if [ -f "$ROOT/current/systemd/mcp-devbox-opencode-edge@.service" ]; then
+      install -m 0644 "$ROOT/current/systemd/mcp-devbox-opencode-edge@.service" /etc/systemd/system/mcp-devbox-opencode-edge@.service
+    fi
+  else
+    rm -f "$ROOT/current"
+  fi
+  systemctl daemon-reload || true
+}
+trap rollback_install EXIT INT TERM
+
+rm -f "$CURRENT_NEXT"
+ln -s "releases/$RELEASE" "$CURRENT_NEXT"
+mv -Tf "$CURRENT_NEXT" "$ROOT/current"
+
+ln -sfn "$ROOT/current/bin/mcp-edge" /usr/local/bin/mcp-edge
+ln -sfn "$ROOT/current/libexec/model-turn-driver" /usr/local/libexec/mcp-devbox/model-turn-driver
+ln -sfn "$ROOT/current/libexec/mcp-autopilot-worker" /usr/local/libexec/mcp-devbox/mcp-autopilot-worker
+ln -sfn "$ROOT/current/libexec/mcp-bundle-updater" /usr/local/libexec/mcp-devbox/mcp-bundle-updater
+ln -sfn "$ROOT/current/libexec/node" /usr/local/libexec/mcp-devbox/node
+ln -sfn "$ROOT/current/opencode-provider" "$ROOT/opencode-provider"
+ln -sfn "$ROOT/current/opencode" "$ROOT/opencode-1.18.1"
+install -m 0644 "$ROOT/current/systemd/mcp-devbox-opencode-edge@.service" /etc/systemd/system/mcp-devbox-opencode-edge@.service
+
+EDGE_USER=''
+if [ -s /etc/mcp-devbox/edge-user ]; then
+  EDGE_USER="$(cat /etc/mcp-devbox/edge-user)"
+elif [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+  EDGE_USER="$SUDO_USER"
+elif id charles >/dev/null 2>&1; then
+  EDGE_USER='charles'
+fi
+
+systemctl daemon-reload
+/usr/local/bin/mcp-edge bundle verify
+if [ -n "$EDGE_USER" ]; then
+	case "$EDGE_USER" in *[!a-z0-9_-]*|'') echo 'invalid Edge user' >&2; exit 1;; esac
+	printf '%s\n' "$EDGE_USER" >/etc/mcp-devbox/edge-user
+	chmod 0600 /etc/mcp-devbox/edge-user
+	sed "s/@EDGE_USER@/$EDGE_USER/g" /usr/share/mcp-devbox/49-mcp-devbox-updater.rules.in >/etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+	chmod 0644 /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+  loginctl enable-linger "$EDGE_USER"
+  systemctl --user --machine="${EDGE_USER}@" enable --now podman.socket
+  PREFERRED_STATE="/home/${EDGE_USER}/.local/state/mcp-edge"
+  LEGACY_STATE="/home/${EDGE_USER}/.config/mcp-devbox-edge"
+  if [ ! -e "$PREFERRED_STATE/identity.json" ] && [ -f "$LEGACY_STATE/identity.json" ] && [ ! -L "$LEGACY_STATE" ]; then
+    install -d -m 0700 "$(dirname "$PREFERRED_STATE")"
+    mv "$LEGACY_STATE" "$PREFERRED_STATE"
+    chown -hR "$EDGE_USER:$EDGE_USER" "$PREFERRED_STATE"
+    chmod 0700 "$PREFERRED_STATE"
+  fi
+  systemctl enable "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+  systemctl enable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
+  runuser -u "$EDGE_USER" -- /usr/local/libexec/mcp-devbox/onboarding-preflight
+  if [ -f "/home/${EDGE_USER}/.local/state/mcp-edge/identity.json" ]; then
+    systemctl restart "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+    systemctl is-active --quiet "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+  fi
+fi
+
+trap - EXIT INT TERM
+exit 0

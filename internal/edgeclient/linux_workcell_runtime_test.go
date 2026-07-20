@@ -141,6 +141,15 @@ func TestPrepareLinuxWorkcellHTBPreflightFailsClosedBeforeWriting(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	controlDir := filepath.Join(path, linuxWorkcellDirName)
+	beforeEntries, err := os.ReadDir(controlDir)
+	if err != nil || len(beforeEntries) != 1 || beforeEntries[0].Name() != workspaceAuthorizationRevisionFile {
+		t.Fatalf("configured authorization state = %v, %v", beforeEntries, err)
+	}
+	beforeAuthorization, err := os.ReadFile(filepath.Join(controlDir, workspaceAuthorizationRevisionFile))
+	if err != nil {
+		t.Fatal(err)
+	}
 	badProbes := []fakeLinuxNetworkProbe{
 		{interfaceErr: errors.New("missing")},
 		{ipv4: "10.10.14.25", routeInterface: "eth0"},
@@ -150,8 +159,13 @@ func TestPrepareLinuxWorkcellHTBPreflightFailsClosedBeforeWriting(t *testing.T) 
 		if _, err := PrepareLinuxWorkcell(context.Background(), workspace, runtimeLeaseFor(workspace, "fixture"), probe); err == nil {
 			t.Fatalf("preflight accepted probe=%+v", probe)
 		}
-		if _, err := os.Stat(filepath.Join(path, ".mcp-devbox")); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("preflight wrote state before validation: %v", err)
+		afterEntries, readErr := os.ReadDir(controlDir)
+		if readErr != nil || len(afterEntries) != 1 || afterEntries[0].Name() != workspaceAuthorizationRevisionFile {
+			t.Fatalf("preflight wrote runtime state before validation: %v, %v", afterEntries, readErr)
+		}
+		afterAuthorization, readErr := os.ReadFile(filepath.Join(controlDir, workspaceAuthorizationRevisionFile))
+		if readErr != nil || string(afterAuthorization) != string(beforeAuthorization) {
+			t.Fatalf("preflight changed authorization before validation: %q, %v", afterAuthorization, readErr)
 		}
 	}
 }

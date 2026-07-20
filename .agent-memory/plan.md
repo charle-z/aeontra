@@ -1,10 +1,19 @@
-# Plan — HTB lab autonomy
+# Plan — P15 zero-touch local autopilot
 
-1. Add an idempotent `mcp-edge lab init` flow that creates or reuses the Git workspace, applies `htb-linux` metadata, validates the VPN route, and reports the opaque workspace ID.
-2. Add a private HTB lab broker owned by the Edge process. The model sends only username, artifact handle, extraction prefix, and remote command; the broker fixes the registered target and keeps the recovered password outside Bubblewrap and the control plane.
-3. Support local-only output capture for flags and other sensitive results, returning only path, byte count, and SHA-256.
-4. Sanitize HTB checkpoints before they are embedded into model turns. Preserve local handles and statuses while removing passwords, tokens, and flag-like values.
-5. Teach the HTB profile to use non-root `nmap -sT -Pn` and brokered SSH rather than abandoning a confirmed credential chain.
-6. Preserve bans on operator credentials, arbitrary targets, CIDRs, rootful Docker, Windows mounts, solution lookup, and telemetry leakage.
-7. Run focused tests, full Go tests, vet, staticcheck, build, diff checks, exact-head CI, and a real continuation of the existing Cap workspace.
-8. After this local one-command flow is proven, design a separate signed remote bootstrap protocol if the operator should literally do nothing beyond connecting the VPN.
+1. Add signed versioned Edge bundles and reject mismatched components before runtime.
+2. Add a reproducible Debian package, atomic updater, previous-release rollback,
+   restricted repair, P12–P14 migration and one-action onboarding.
+3. Add idempotent remote lab preparation and retargeting while preserving workspace IDs,
+   checkpoints, evidence and incremented authorization state.
+4. Add durable local autopilot jobs built from bounded worker cycles, atomic redacted
+   state, local model providers, progress circuit breakers and restart recovery.
+5. Remove HTB execution tools from the exterior catalog and offer them only through the
+   private local worker broker.
+6. Add safe public control tools for bundle status/update/rollback, onboarding, repair,
+   lab preparation/retarget, and autopilot lifecycle.
+7. Verify installer, updater, migration, rollback, Edge, provider, TypeScript, Bubblewrap,
+   rootless runtime, durable recovery, coverage, race, vet, static analysis, vulnerability,
+   build, formatting and workflow gates.
+8. Publish a separate PR, require exact-head checks, merge with a merge commit, wait for
+   automatic deployment, then use only structured updater/lab/autopilot operations for
+   the real Parrot migration and safe smoke.

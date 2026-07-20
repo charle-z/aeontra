@@ -23,6 +23,7 @@ const (
 	PairingTTL      = 10 * time.Minute
 	SignatureWindow = 2 * time.Minute
 	NonceTTL        = 10 * time.Minute
+	controlKeyFile  = "control-signing.key"
 )
 
 type State string
@@ -38,10 +39,11 @@ type Config struct {
 }
 
 type Device struct {
-	ID       string    `json:"device_id"`
-	Name     string    `json:"name"`
-	State    State     `json:"state"`
-	PairedAt time.Time `json:"paired_at"`
+	ID               string    `json:"device_id"`
+	Name             string    `json:"name"`
+	State            State     `json:"state"`
+	PairedAt         time.Time `json:"paired_at"`
+	ControlPublicKey string    `json:"control_public_key,omitempty"`
 }
 type SignedRequest struct {
 	DeviceID            string
@@ -56,9 +58,11 @@ func (r SignedRequest) Canonical() []byte {
 }
 
 type Store struct {
-	mu  sync.Mutex
-	db  *sql.DB
-	now func() time.Time
+	mu                sync.Mutex
+	db                *sql.DB
+	now               func() time.Time
+	controlPrivateKey ed25519.PrivateKey
+	controlPublicKey  ed25519.PublicKey
 }
 
 var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -93,7 +97,12 @@ func Open(cfg Config) (*Store, error) {
 		return nil, errors.New("edge database unavailable")
 	}
 	db.SetMaxOpenConns(1)
-	store := &Store{db: db, now: cfg.Now}
+	controlPublicKey, controlPrivateKey, err := loadOrCreateControlKey(root)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	store := &Store{db: db, now: cfg.Now, controlPrivateKey: controlPrivateKey, controlPublicKey: controlPublicKey}
 	if store.now == nil {
 		store.now = time.Now
 	}
@@ -106,6 +115,10 @@ func Open(cfg Config) (*Store, error) {
 		`CREATE INDEX IF NOT EXISTS edge_tasks_queue ON edge_tasks(device_id,workcell,state,created_at)`,
 		`CREATE TABLE IF NOT EXISTS edge_workspaces(workspace_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, profile TEXT NOT NULL, mode TEXT NOT NULL, registered_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(device_id) REFERENCES devices(device_id)) WITHOUT ROWID`,
 		`CREATE INDEX IF NOT EXISTS edge_workspaces_device ON edge_workspaces(device_id,workspace_id)`,
+		`CREATE TABLE IF NOT EXISTS edge_operations(operation_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, kind TEXT NOT NULL, request_json BLOB NOT NULL, request_digest TEXT NOT NULL, state TEXT NOT NULL, lease_id TEXT, lease_until INTEGER, result_json BLOB, safe_code TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(device_id) REFERENCES devices(device_id))`,
+		`CREATE INDEX IF NOT EXISTS edge_operations_idempotency ON edge_operations(device_id,kind,request_digest,created_at)`,
+		`CREATE INDEX IF NOT EXISTS edge_operations_queue ON edge_operations(device_id,state,created_at)`,
+		`CREATE TABLE IF NOT EXISTS edge_autopilot_status(workspace_id TEXT PRIMARY KEY,device_id TEXT NOT NULL,result_json BLOB NOT NULL,updated_at INTEGER NOT NULL,FOREIGN KEY(device_id) REFERENCES devices(device_id)) WITHOUT ROWID`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			_ = db.Close()
@@ -198,7 +211,44 @@ func (s *Store) Pair(code, name string, publicKey ed25519.PublicKey) (Device, er
 	if err := tx.Commit(); err != nil {
 		return Device{}, errors.New("pairing unavailable")
 	}
-	return Device{ID: id, Name: name, State: StateActive, PairedAt: now}, nil
+	return Device{ID: id, Name: name, State: StateActive, PairedAt: now, ControlPublicKey: EncodePublicKey(s.controlPublicKey)}, nil
+}
+
+func loadOrCreateControlKey(root string) (ed25519.PublicKey, ed25519.PrivateKey, error) {
+	path := filepath.Join(root, controlKeyFile)
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || info.Size() != ed25519.PrivateKeySize {
+			return nil, nil, errors.New("edge control signing key is unsafe")
+		}
+		content, err := os.ReadFile(path)
+		if err != nil || len(content) != ed25519.PrivateKeySize {
+			return nil, nil, errors.New("edge control signing key is unavailable")
+		}
+		privateKey := ed25519.PrivateKey(content)
+		return privateKey.Public().(ed25519.PublicKey), privateKey, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, nil, errors.New("edge control signing key is unavailable")
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, nil, errors.New("edge control signing key generation failed")
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return nil, nil, errors.New("edge control signing key persistence failed")
+	}
+	_, writeErr := file.Write(privateKey)
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	if writeErr != nil || syncErr != nil || closeErr != nil {
+		_ = os.Remove(path)
+		return nil, nil, errors.New("edge control signing key persistence failed")
+	}
+	return publicKey, privateKey, nil
+}
+
+func (s *Store) ControlPublicKey() ed25519.PublicKey {
+	return append(ed25519.PublicKey(nil), s.controlPublicKey...)
 }
 
 func (s *Store) Authenticate(request SignedRequest) (Device, error) {
@@ -285,4 +335,12 @@ func (s *Store) Close() error {
 
 func EncodePublicKey(key ed25519.PublicKey) string {
 	return base64.RawURLEncoding.EncodeToString(key)
+}
+
+func DecodePublicKey(encoded string) (ed25519.PublicKey, error) {
+	key, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(key) != ed25519.PublicKeySize {
+		return nil, errors.New("public key is invalid")
+	}
+	return ed25519.PublicKey(key), nil
 }

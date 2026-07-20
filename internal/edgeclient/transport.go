@@ -88,6 +88,90 @@ func (t *Transport) Complete(ctx context.Context, taskID, leaseID string, result
 	return task, nil
 }
 
+func (t *Transport) LeaseOperation(ctx context.Context, ttl time.Duration) (*edge.OperationLease, error) {
+	if err := t.ensureControlPublicKey(ctx); err != nil {
+		return nil, err
+	}
+	var lease edge.OperationLease
+	status, err := t.do(ctx, http.MethodPost, "/edge/v1/operations/lease", map[string]any{"lease_seconds": int(ttl.Seconds())}, &lease)
+	if err != nil {
+		return nil, err
+	}
+	if status == http.StatusNoContent {
+		return nil, nil
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("edge operation lease rejected with HTTP %d", status)
+	}
+	publicKey, err := edge.DecodePublicKey(t.identity.ControlPublicKey)
+	if err != nil {
+		return nil, errors.New("edge control trust is invalid")
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(lease.ControlSignature)
+	if err != nil || len(signature) != ed25519.SignatureSize || !ed25519.Verify(publicKey, lease.ControlCanonical(), signature) {
+		return nil, errors.New("edge operation signature is invalid")
+	}
+	return &lease, nil
+}
+
+func (t *Transport) ensureControlPublicKey(ctx context.Context) error {
+	if t.identity.SchemaVersion == 2 {
+		_, err := edge.DecodePublicKey(t.identity.ControlPublicKey)
+		if err != nil {
+			return errors.New("edge control trust is invalid")
+		}
+		return nil
+	}
+	if t.identity.SchemaVersion != 1 || t.identity.ControlPublicKey != "" {
+		return errors.New("edge control trust is invalid")
+	}
+	var response struct {
+		PublicKey string `json:"public_key"`
+	}
+	status, err := t.do(ctx, http.MethodPost, "/edge/v1/control-key", struct{}{}, &response)
+	if err != nil || status != http.StatusOK {
+		return errors.New("edge control trust bootstrap failed")
+	}
+	if _, err := edge.DecodePublicKey(response.PublicKey); err != nil {
+		return errors.New("edge control trust bootstrap failed")
+	}
+	upgraded := t.identity
+	upgraded.SchemaVersion = 2
+	upgraded.ControlPublicKey = response.PublicKey
+	if err := persistIdentityOnly(t.stateRoot, upgraded); err != nil {
+		return err
+	}
+	t.identity = upgraded
+	return nil
+}
+
+func (t *Transport) CompleteOperation(ctx context.Context, operationID, leaseID string, result edge.OperationResult, safeCode string) (edge.Operation, error) {
+	request := map[string]any{"lease_id": leaseID, "result": result}
+	if safeCode != "" {
+		request["safe_code"] = safeCode
+	}
+	var operation edge.Operation
+	status, err := t.do(ctx, http.MethodPost, "/edge/v1/operations/"+operationID+"/complete", request, &operation)
+	if err != nil {
+		return edge.Operation{}, err
+	}
+	if status != http.StatusOK {
+		return edge.Operation{}, fmt.Errorf("edge operation completion rejected with HTTP %d", status)
+	}
+	return operation, nil
+}
+
+func (t *Transport) ReportAutopilot(ctx context.Context, result edge.OperationResult) error {
+	status, err := t.do(ctx, http.MethodPost, "/edge/v1/autopilot/report", result, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("edge autopilot report rejected with HTTP %d", status)
+	}
+	return nil
+}
+
 func (t *Transport) do(ctx context.Context, method, path string, input, output any) (int, error) {
 	return t.doLimited(ctx, method, path, input, output, maxEdgeResponse)
 }
