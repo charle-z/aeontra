@@ -23,12 +23,16 @@ const (
 )
 
 const (
-	ComponentEdge       = "mcp-edge"
-	ComponentDriver     = "model-turn-driver"
-	ComponentWorker     = "mcp-autopilot-worker"
-	ComponentProvider   = "provider-index"
-	ComponentHTBActions = "provider-htb-actions"
-	ComponentSystemd    = "systemd-unit"
+	ComponentEdge            = "mcp-edge"
+	ComponentDriver          = "model-turn-driver"
+	ComponentWorker          = "mcp-autopilot-worker"
+	ComponentUpdater         = "mcp-bundle-updater"
+	ComponentProvider        = "provider-index"
+	ComponentHTBActions      = "provider-htb-actions"
+	ComponentProviderPackage = "provider-package"
+	ComponentOpenCode        = "opencode"
+	ComponentOpenCodeLock    = "opencode-lock"
+	ComponentSystemd         = "systemd-unit"
 )
 
 type Code string
@@ -84,17 +88,21 @@ type VerificationError struct {
 func (e *VerificationError) Error() string { return string(e.Code) }
 
 func RequiredComponents() []string {
-	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentProvider, ComponentHTBActions, ComponentSystemd}
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentProvider, ComponentHTBActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
 }
 
 func DefaultLayout() map[string]string {
 	return map[string]string{
-		ComponentEdge:       "bin/mcp-edge",
-		ComponentDriver:     "libexec/model-turn-driver",
-		ComponentWorker:     "libexec/mcp-autopilot-worker",
-		ComponentProvider:   "opencode-provider/index.js",
-		ComponentHTBActions: "opencode-provider/htb-actions.js",
-		ComponentSystemd:    "systemd/mcp-devbox-opencode-edge@.service",
+		ComponentEdge:            "bin/mcp-edge",
+		ComponentDriver:          "libexec/model-turn-driver",
+		ComponentWorker:          "libexec/mcp-autopilot-worker",
+		ComponentUpdater:         "libexec/mcp-bundle-updater",
+		ComponentProvider:        "opencode-provider/index.js",
+		ComponentHTBActions:      "opencode-provider/htb-actions.js",
+		ComponentProviderPackage: "opencode-provider/package.json",
+		ComponentOpenCode:        "opencode/opencode",
+		ComponentOpenCodeLock:    "opencode/package-lock.json",
+		ComponentSystemd:         "systemd/mcp-devbox-opencode-edge@.service",
 	}
 }
 
@@ -122,25 +130,44 @@ func Build(root string, metadata Metadata) (Manifest, error) {
 }
 
 func LoadAndVerify(root string, publicKey ed25519.PublicKey, expected Compatibility) (Verified, error) {
+	manifest, signature, err := loadManifestFiles(root)
+	if err != nil {
+		return Verified{}, err
+	}
+	return Verify(root, manifest, signature, publicKey, DefaultLayout(), expected)
+}
+
+func LoadTrusted(root string, publicKey ed25519.PublicKey) (Verified, error) {
+	manifest, signature, err := loadManifestFiles(root)
+	if err != nil {
+		return Verified{}, err
+	}
+	return Verify(root, manifest, signature, publicKey, DefaultLayout(), Compatibility{
+		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
+	})
+}
+
+func loadManifestFiles(root string) (Manifest, []byte, error) {
 	root = filepath.Clean(strings.TrimSpace(root))
 	manifestBytes, err := readMetadataFile(root, ManifestFile, 64<<10)
 	if err != nil {
-		return Verified{}, &VerificationError{Code: ManifestInvalid}
+		return Manifest{}, nil, &VerificationError{Code: ManifestInvalid}
 	}
 	signature, err := readMetadataFile(root, SignatureFile, ed25519.SignatureSize)
 	if err != nil || len(signature) != ed25519.SignatureSize {
-		return Verified{}, &VerificationError{Code: ManifestInvalid}
+		return Manifest{}, nil, &VerificationError{Code: ManifestInvalid}
 	}
 	var manifest Manifest
 	decoder := json.NewDecoder(strings.NewReader(string(manifestBytes)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&manifest); err != nil {
-		return Verified{}, &VerificationError{Code: ManifestInvalid}
+		return Manifest{}, nil, &VerificationError{Code: ManifestInvalid}
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return Verified{}, &VerificationError{Code: ManifestInvalid}
+		return Manifest{}, nil, &VerificationError{Code: ManifestInvalid}
 	}
-	return Verify(root, manifest, signature, publicKey, DefaultLayout(), expected)
+	return manifest, signature, nil
 }
 
 func Sign(manifest Manifest, privateKey ed25519.PrivateKey) ([]byte, error) {
@@ -256,7 +283,7 @@ func HashFile(path string) (string, error) {
 
 func componentError(component string) error {
 	switch component {
-	case ComponentProvider, ComponentHTBActions:
+	case ComponentProvider, ComponentHTBActions, ComponentProviderPackage:
 		return &VerificationError{Code: ProviderOutdated}
 	case ComponentDriver:
 		return &VerificationError{Code: DriverOutdated}

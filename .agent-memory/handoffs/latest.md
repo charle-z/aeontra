@@ -30,9 +30,25 @@ Base: P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.
   repository's Linux-only `syscall.Statfs`/Bubblewrap packages. Exact-head CI Linux
   remains mandatory.
 
-## Active Step 02
+## Completed Step 02
 
-Implement the reproducible Debian package, restricted updater, atomic activation,
-rollback, repair and P12–P14 migration. Preserve existing identity, keys, workspace
-IDs, checkpoints, artifacts, target and authorization; accept no chat-supplied URL,
-path, hash, script or command.
+- reproducible Debian content builder plus detached GPG signature and SHA-256;
+- deterministic signed update archive/channel publisher;
+- official-only bounded downloader with strict tar extraction;
+- flock-serialized staging, signed verification, atomic `current`/`previous`, exact
+  unit install, Edge-only restart, health rollback and conservative signed cleanup;
+- root-only updater accepting only `status`, `update stable`, `rollback`, `repair`;
+- repair of exact official modes/links/unit/service, with P14 backups;
+- package `postinst` rollback, preferred/legacy state preservation and no ID rewrite;
+- one `mcp-edge onboard --server` action plus a systemd path unit that starts Edge
+  when identity appears.
+
+Portable bundle/Debian/Parrot tests, shell syntax, Linux vet/build and diff checks
+pass. Linux-only updater transaction tests compile but need exact-head CI execution.
+
+## Active Step 03
+
+Implement closed control-plane lab preparation and retarget tasks. All target/VPN/
+LHOST/path/Git/contract/inventory work happens on Edge. Reuse machine workspaces and
+IDs, preserve evidence/checkpoints, invalidate sessions and increment authorization
+revision on retarget.

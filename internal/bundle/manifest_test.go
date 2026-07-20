@@ -11,14 +11,7 @@ import (
 
 func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 	root := t.TempDir()
-	paths := map[string]string{
-		ComponentEdge:       "bin/mcp-edge",
-		ComponentDriver:     "libexec/model-turn-driver",
-		ComponentWorker:     "libexec/mcp-autopilot-worker",
-		ComponentProvider:   "provider/index.js",
-		ComponentHTBActions: "provider/htb-actions.js",
-		ComponentSystemd:    "systemd/mcp-devbox-opencode-edge@.service",
-	}
+	paths := DefaultLayout()
 	for component, relative := range paths {
 		path := filepath.Join(root, filepath.FromSlash(relative))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

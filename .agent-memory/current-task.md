@@ -24,7 +24,7 @@ caches: bundle and Parrot packaging tests pass; Linux `go vet ./...`, Linux
 Linux-only full suite (`syscall.Statfs` and Bubblewrap paths); exact-head CI Linux
 remains mandatory and no local pass is claimed for that suite.
 
-Active Step 02 — atomic Parrot installer and updater:
+Completed Step 02 — atomic Parrot installer and updater:
 
 1. Build the reproducible Debian filesystem/package layout around a pre-signed bundle.
 2. Add the root-owned closed updater with staging, atomic `current`, health check,
@@ -33,3 +33,19 @@ Active Step 02 — atomic Parrot installer and updater:
    contracts, checkpoints, artifacts, target authorization and opaque IDs.
 4. Add clean-install, migration, repeat-install, atomicity, rollback and restricted
    authority tests before exposing update controls.
+
+Verification: portable bundle/Debian/Parrot contract tests and every shell syntax
+check pass; Linux cross `go vet ./...`, `go build ./...`, and `git diff --check`
+pass. Linux-only updater transaction tests compile and remain mandatory in exact-head
+CI, because this Windows host cannot execute Unix symlink/flock tests.
+
+Active Step 03 — automatic lab preparation and retargeting:
+
+1. Add closed durable Edge task kinds for HTB prepare and retarget metadata only.
+2. Execute preparation locally: private target validation, VPN route/LHOST discovery,
+   private Git workspace/README/directories, idempotent registry/profile/inventory and
+   same machine workspace ID reuse across IP changes.
+3. Retarget in place while preserving evidence/checkpoint, invalidating sessions and
+   incrementing a durable authorization revision.
+4. Expose only `workspace_lab_prepare` and `workspace_lab_retarget` through the remote
+   control plane and return opaque safe status/IDs.

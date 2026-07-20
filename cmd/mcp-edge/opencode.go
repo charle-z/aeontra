@@ -4,8 +4,6 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,12 +12,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
@@ -239,18 +235,4 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 		case <-time.After(delay):
 		}
 	}
-}
-
-func verifyInstalledEdgeBundle(root string) error {
-	keyBytes, err := hex.DecodeString(buildinfo.EdgeBundlePublicKey)
-	if err != nil || len(keyBytes) != ed25519.PublicKeySize {
-		return &bundle.VerificationError{Code: bundle.ManifestInvalid}
-	}
-	_, err = bundle.LoadAndVerify(root, ed25519.PublicKey(keyBytes), bundle.Compatibility{
-		Release: buildinfo.EdgeBundleRelease, Commit: buildinfo.Commit,
-		ProtocolVersion: buildinfo.EdgeBundleProtocolVersion,
-		CatalogHash:     buildinfo.EdgeBundleCatalogHash,
-		Architecture:    runtime.GOARCH,
-	})
-	return err
 }

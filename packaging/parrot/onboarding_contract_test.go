@@ -52,6 +52,7 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 		"$BUNDLE_ROOT/manifest.json",
 		"$BUNDLE_ROOT/manifest.sig",
 		"$BUNDLE_ROOT/libexec/mcp-autopilot-worker",
+		"$BUNDLE_ROOT/libexec/mcp-bundle-updater",
 		"parrot-onboarding-preflight-ok",
 	} {
 		if !strings.Contains(script, expected) {

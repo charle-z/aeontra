@@ -18,8 +18,8 @@ The version-1 manifest binds:
 - release, exact 40-character Git commit, bundle protocol and architecture;
 - the deterministic exterior MCP catalog hash;
 - SHA-256 hashes for `mcp-edge`, `model-turn-driver`,
-  `mcp-autopilot-worker`, provider `index.js`, provider `htb-actions.js`, and the
-  packaged Edge systemd unit.
+  `mcp-autopilot-worker`, the privileged updater, OpenCode and its lockfile, provider `index.js`, provider
+  `htb-actions.js`, provider `package.json`, and the packaged Edge systemd unit.
 
 Every component must be a regular non-symlink file below the release root. Unknown,
 missing, extra or malformed manifest fields fail closed. The Edge verifies the bundle
@@ -49,3 +49,9 @@ hashes or scripts.
 
 Do not hand-edit a manifest, copy one component between releases, or repoint `current`
 outside the reviewed installer/updater transaction.
+
+The stable update channel is a separate canonical JSON document signed by the same
+release trust key. It contains only version, release, commit, protocol, catalog,
+architecture and archive SHA-256. The archive URL is derived from the compiled official
+release base and signed release name; it is never an input to a public tool. See
+`docs/install-edge-parrot-p15.md`.

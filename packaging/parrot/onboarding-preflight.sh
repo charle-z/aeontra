@@ -24,7 +24,7 @@ for command in bwrap curl git go node npm python3; do
   command -v "$command" >/dev/null 2>&1 || fail "missing command: $command"
 done
 
-for path in /usr/local/bin/mcp-edge "$DRIVER" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker"; do
+for path in /usr/local/bin/mcp-edge "$DRIVER" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker" "$BUNDLE_ROOT/libexec/mcp-bundle-updater"; do
   [ -e "$path" ] || fail "missing reviewed installation path: $path"
 done
 [ -x /usr/local/bin/mcp-edge ] || fail "mcp-edge is not executable"

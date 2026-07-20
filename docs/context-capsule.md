@@ -13,8 +13,12 @@ Step 01 is implemented locally: an indivisible Ed25519-signed release manifest b
 driver, autopilot worker, provider, HTB actions, systemd unit, commit, protocol,
 architecture and exterior catalog. The packaged Edge refuses new runtime leases on
 any mismatch before starting OpenCode. Focused tests, Linux vet/build and diff checks
-pass; full exact-head Linux CI remains required. Step 02 (atomic Debian installer,
-updater, rollback, repair and migration) is active. See `docs/edge-bundles.md`.
+pass. Step 02 adds the reproducible signed Debian package, signed stable channel,
+restricted updater, atomic activation/rollback, repair, legacy-state migration,
+single-action onboarding and systemd path activation. Portable tests and Linux
+vet/build pass; Linux transaction tests still require exact-head CI. Step 03
+(automatic lab prepare/retarget) is active. See `docs/edge-bundles.md` and
+`docs/install-edge-parrot-p15.md`.
 
 Production and Parrot remain on the previous verified deployment until all P15 local
 and exact-head remote gates pass, the separate PR merges with a merge commit, the
