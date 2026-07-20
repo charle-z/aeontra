@@ -32,14 +32,21 @@ func verifyInstalledEdgeBundle(root string) error {
 }
 
 func verifyInstalledEdgeBundleAt(root string) (bundle.Verified, error) {
-	keyBytes, err := hex.DecodeString(buildinfo.EdgeBundlePublicKey)
-	if err != nil || len(keyBytes) != ed25519.PublicKeySize {
+	publicKey, err := installedBundlePublicKey()
+	if err != nil {
 		return bundle.Verified{}, &bundle.VerificationError{Code: bundle.ManifestInvalid}
 	}
-	return bundle.LoadAndVerify(root, ed25519.PublicKey(keyBytes), bundle.Compatibility{
+	return bundle.LoadAndVerify(root, publicKey, bundle.Compatibility{
 		Release: buildinfo.EdgeBundleRelease, Commit: buildinfo.Commit,
 		ProtocolVersion: buildinfo.EdgeBundleProtocolVersion,
 		CatalogHash:     buildinfo.EdgeBundleCatalogHash,
 		Architecture:    runtime.GOARCH,
 	})
+}
+func installedBundlePublicKey() (ed25519.PublicKey, error) {
+	keyBytes, err := hex.DecodeString(buildinfo.EdgeBundlePublicKey)
+	if err != nil || len(keyBytes) != ed25519.PublicKeySize {
+		return nil, errors.New("bundle public key invalid")
+	}
+	return ed25519.PublicKey(keyBytes), nil
 }

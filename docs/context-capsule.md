@@ -26,7 +26,12 @@ the durable local autopilot state machine, bounded signed-bundle worker cycles,
 loopback-only local model interface, Unix-socket HTB broker execution, restart
 supervision, safe progress reporting, lifecycle tools and circuit breakers. Focused
 portable tests and Linux compile/vet/build pass; exact-head Linux CI remains required.
-Step 05 (repair, diagnostics and remaining zero-touch gates) is active. See
+Step 05 adds closed remote bundle status/update/rollback/repair/onboarding operations,
+signed official-channel availability checks, fixed systemd/polkit updater authority,
+safe partial-install diagnostics, and a durable exclusive updater receipt so an Edge
+restart cannot apply rollback twice. Focused portable tests and Linux compile/vet pass;
+exact-head Linux CI remains required. Step 06 (full zero-touch integration evidence,
+release automation and documentation) is active. See
 `docs/autopilot.md`, `docs/edge-bundles.md` and
 `docs/install-edge-parrot-p15.md`.
 

@@ -4,15 +4,23 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
+	"os"
+	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/autopilot"
+	"github.com/charle-z/mcp-devbox/internal/bundle"
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+	"github.com/charle-z/mcp-devbox/internal/edgeupdate"
 )
 
 func runControlOperationLoop(ctx context.Context, stateRoot string, transport *edgeclient.Transport, stderr io.Writer) {
@@ -51,6 +59,9 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 		}
 		completionCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		_, err = transport.CompleteOperation(completionCtx, lease.Operation.ID, lease.LeaseID, result, code)
+		if err == nil && isBundleOperation(lease.Operation.Kind) {
+			clearBundleReceipt(stateRoot, lease.Operation.ID)
+		}
 		if err == nil && result.JobID != "" {
 			err = transport.ReportAutopilot(completionCtx, result)
 		}
@@ -79,9 +90,273 @@ func executeControlOperation(ctx context.Context, stateRoot string, operation ed
 		return resolveOperationWorkspace(stateRoot, operation.Request.WorkspaceID)
 	case edge.OperationAutopilotStart, edge.OperationAutopilotPause, edge.OperationAutopilotResume, edge.OperationAutopilotCancel:
 		return executeAutopilotControl(stateRoot, operation)
+	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
+		return collectEdgeDiagnostic(stateRoot, true)
+	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:
+		return executeBundleControl(stateRoot, operation)
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}
+}
+
+type bundleOperationReceipt struct {
+	OperationID string             `json:"operation_id"`
+	Kind        edge.OperationKind `json:"kind"`
+}
+
+const bundleReceiptFile = "bundle-operation-receipt.json"
+
+func executeBundleControl(stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
+	unit := bundleOperationUnit(operation.Kind)
+	if unit == "" {
+		return edge.OperationResult{}, "operation_invalid"
+	}
+	receipt, receiptErr := readBundleReceipt(stateRoot)
+	switch {
+	case receiptErr == nil:
+		if receipt.OperationID != operation.ID || receipt.Kind != operation.Kind {
+			return edge.OperationResult{}, "updater_busy"
+		}
+		if !waitBundleUnitInactive(unit, 15*time.Minute) {
+			return edge.OperationResult{}, "updater_timeout"
+		}
+		return collectEdgeDiagnostic(stateRoot, false)
+	case !errors.Is(receiptErr, os.ErrNotExist):
+		return edge.OperationResult{}, "updater_receipt_invalid"
+	}
+	if err := writeBundleReceipt(stateRoot, bundleOperationReceipt{OperationID: operation.ID, Kind: operation.Kind}); err != nil {
+		return edge.OperationResult{}, "updater_receipt_unavailable"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 16*time.Minute)
+	defer cancel()
+	command := exec.CommandContext(ctx, "/usr/bin/systemctl", "start", unit)
+	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+	if command.Run() != nil {
+		clearBundleReceipt(stateRoot, operation.ID)
+		return edge.OperationResult{}, "updater_failed"
+	}
+	return collectEdgeDiagnostic(stateRoot, false)
+}
+
+func bundleOperationUnit(kind edge.OperationKind) string {
+	switch kind {
+	case edge.OperationBundleUpdate:
+		return "mcp-devbox-bundle-updater.service"
+	case edge.OperationBundleRollback:
+		return "mcp-devbox-bundle-rollback.service"
+	case edge.OperationEdgeRepair:
+		return "mcp-devbox-edge-repair.service"
+	}
+	return ""
+}
+
+func waitBundleUnitInactive(unit string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		command := exec.CommandContext(ctx, "/usr/bin/systemctl", "is-active", "--quiet", unit)
+		command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
+		command.Stdout = io.Discard
+		command.Stderr = io.Discard
+		err := command.Run()
+		cancel()
+		if err != nil {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func writeBundleReceipt(stateRoot string, receipt bundleOperationReceipt) error {
+	if !edgeOperationID(receipt.OperationID) || !isBundleOperation(receipt.Kind) {
+		return errors.New("bundle operation receipt is invalid")
+	}
+	content, err := json.Marshal(receipt)
+	if err != nil {
+		return err
+	}
+	path := bundleReceiptPath(stateRoot)
+	temporary := path + ".tmp"
+	file, err := os.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(append(content, '\n'))
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	if writeErr != nil || syncErr != nil || closeErr != nil {
+		_ = os.Remove(temporary)
+		return errors.New("bundle operation receipt write failed")
+	}
+	if err := os.Link(temporary, path); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return os.Remove(temporary)
+}
+
+func readBundleReceipt(stateRoot string) (bundleOperationReceipt, error) {
+	path := bundleReceiptPath(stateRoot)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return bundleOperationReceipt{}, err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || info.Size() > 1024 {
+		return bundleOperationReceipt{}, errors.New("bundle operation receipt is unsafe")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return bundleOperationReceipt{}, err
+	}
+	var receipt bundleOperationReceipt
+	decoder := json.NewDecoder(strings.NewReader(string(content)))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&receipt) != nil || decoder.Decode(&struct{}{}) != io.EOF || !edgeOperationID(receipt.OperationID) || !isBundleOperation(receipt.Kind) {
+		return bundleOperationReceipt{}, errors.New("bundle operation receipt is invalid")
+	}
+	return receipt, nil
+}
+
+func clearBundleReceipt(stateRoot, operationID string) {
+	receipt, err := readBundleReceipt(stateRoot)
+	if err == nil && receipt.OperationID == operationID {
+		_ = os.Remove(bundleReceiptPath(stateRoot))
+	}
+}
+
+func bundleReceiptPath(stateRoot string) string {
+	return stateRoot + string(os.PathSeparator) + bundleReceiptFile
+}
+
+func edgeOperationID(value string) bool {
+	return len(value) == len("eo_")+32 && strings.HasPrefix(value, "eo_") && strings.IndexFunc(value[3:], func(r rune) bool {
+		return !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f')
+	}) == -1
+}
+
+func isBundleOperation(kind edge.OperationKind) bool {
+	return bundleOperationUnit(kind) != ""
+}
+func collectEdgeDiagnostic(stateRoot string, allowInvalid bool) (edge.OperationResult, string) {
+	verified, verifyErr := verifyInstalledEdgeBundleAt(installedBundleRoot)
+	manifestStatus := "valid"
+	componentsCompatible := verifyErr == nil
+	providerValid := componentsCompatible
+	driverValid := componentsCompatible
+	if verifyErr != nil {
+		manifestStatus = openCodeFailureCode(verifyErr)
+		var verification *bundle.VerificationError
+		if errors.As(verifyErr, &verification) && verification.Code == bundle.ProviderOutdated {
+			driverValid = true
+		}
+		if !allowInvalid {
+			return edge.OperationResult{}, manifestStatus
+		}
+	}
+	identity, _, identityErr := edgeclient.LoadIdentity(stateRoot)
+	registry, registryErr := edgeclient.OpenWorkspaceRegistry(stateRoot)
+	count := 0
+	if registryErr == nil {
+		items, listErr := registry.List()
+		_ = registry.Close()
+		if listErr == nil {
+			count = len(items)
+		} else {
+			registryErr = listErr
+		}
+	}
+	bubble := false
+	if info, statErr := os.Stat("/usr/bin/bwrap"); statErr == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+		bubble = true
+	}
+	rootless := false
+	if endpoint, discoverErr := edgeclient.DiscoverRootlessContainerEndpoint(os.Geteuid(), ""); discoverErr == nil && endpoint != nil {
+		rootless = true
+	}
+	if identityErr != nil || registryErr != nil {
+		return edge.OperationResult{}, "diagnostic_unavailable"
+	}
+	blockers := []string{}
+	if !componentsCompatible {
+		blockers = append(blockers, manifestStatus)
+	}
+	paired := identity.DeviceID != ""
+	if !paired {
+		blockers = append(blockers, "edge_unpaired")
+	}
+	serviceActive := installedEdgeServiceActive()
+	if !serviceActive {
+		blockers = append(blockers, "edge_service_inactive")
+	}
+	if !bubble {
+		blockers = append(blockers, "bubblewrap_unavailable")
+	}
+	if !rootless {
+		blockers = append(blockers, "rootless_unavailable")
+	}
+	if !installedModelProviderValid("/etc/mcp-devbox/autopilot-model.json") {
+		blockers = append(blockers, "local_model_unconfigured")
+	}
+	available := false
+	if key, keyErr := installedBundlePublicKey(); keyErr == nil {
+		channelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		var channelErr error
+		available, channelErr = (edgeupdate.OfficialResolver{PublicKey: key}).StableAvailable(channelCtx, verified.Release)
+		cancel()
+		if channelErr != nil {
+			blockers = append(blockers, "release_channel_unavailable")
+		}
+	}
+	return edge.OperationResult{Release: verified.Release, Commit: verified.Commit, ManifestStatus: manifestStatus, ComponentsCompatible: componentsCompatible, ServiceActive: serviceActive, UpdateAvailable: available, Paired: paired, BubblewrapValid: bubble, RootlessValid: rootless, WorkspaceCount: count, ProviderValid: providerValid, DriverValid: driverValid, Blockers: blockers}, ""
+}
+
+var installedEdgeUserPattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+
+func installedEdgeServiceActive() bool {
+	content, err := os.ReadFile("/etc/mcp-devbox/edge-user")
+	username := strings.TrimSpace(string(content))
+	if err != nil || !installedEdgeUserPattern.MatchString(username) {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "/usr/bin/systemctl", "is-active", "--quiet", "mcp-devbox-opencode-edge@"+username+".service")
+	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+	return command.Run() == nil
+}
+
+func installedModelProviderValid(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 || info.Size() <= 0 || info.Size() > 4096 {
+		return false
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var config struct {
+		Version  int    `json:"version"`
+		Provider string `json:"provider"`
+		Endpoint string `json:"endpoint"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(content)))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&config) != nil || decoder.Decode(&struct{}{}) != io.EOF || config.Version != 1 || (config.Provider != "local-http" && config.Provider != "opencode-local") {
+		return false
+	}
+	endpoint, err := url.Parse(config.Endpoint)
+	if err != nil || endpoint.Scheme != "http" || endpoint.User != nil || endpoint.Port() == "" || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.Path != "/v1/next-action" {
+		return false
+	}
+	host, _, err := net.SplitHostPort(endpoint.Host)
+	return err == nil && net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
 }
 
 func executeAutopilotControl(stateRoot string, operation edge.Operation) (edge.OperationResult, string) {

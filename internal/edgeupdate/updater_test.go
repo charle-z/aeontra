@@ -3,16 +3,53 @@
 package edgeupdate
 
 import (
+	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
+
+type officialRoundTripper struct{ channel, signature []byte }
+
+func (r officialRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	body := r.channel
+	if filepath.Ext(request.URL.Path) == ".sig" {
+		body = r.signature
+	}
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: http.Header{}}, nil
+}
+
+func TestStableAvailableUsesOnlySignedOfficialChannel(t *testing.T) {
+	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	channel := bundle.Channel{Version: 1, Release: "p15.9.0", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ProtocolVersion: "mcp-devbox.edge-bundle.v1", CatalogHash: "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)), Architecture: runtime.GOARCH, ArchiveHash: "sha256:" + string(bytes.Repeat([]byte{'c'}, 64))}
+	body, signature, err := bundle.SignChannel(channel, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := OfficialResolver{PublicKey: publicKey, Client: &http.Client{Transport: officialRoundTripper{channel: body, signature: signature}}}
+	available, err := resolver.StableAvailable(context.Background(), "p15.8.0")
+	if err != nil || !available {
+		t.Fatalf("available=%t err=%v", available, err)
+	}
+	available, err = resolver.StableAvailable(context.Background(), "p15.9.0")
+	if err != nil || available {
+		t.Fatalf("current available=%t err=%v", available, err)
+	}
+	resolver.Client = &http.Client{Transport: officialRoundTripper{channel: body, signature: bytes.Repeat([]byte{0}, ed25519.SignatureSize)}}
+	if _, err := resolver.StableAvailable(context.Background(), "p15.8.0"); err == nil {
+		t.Fatal("tampered channel accepted")
+	}
+}
 
 type fakeService struct {
 	restarts int

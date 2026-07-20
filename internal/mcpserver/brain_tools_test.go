@@ -39,19 +39,19 @@ var p8ToolOrder = []string{
 var brainToolOrder = []string{"brain_search", "brain_read", "brain_write", "brain_index", "brain_context"}
 
 func isP15Control(name string) bool {
-	return strings.HasPrefix(name, "workspace_lab_") || strings.HasPrefix(name, "workspace_autopilot_")
+	return strings.HasPrefix(name, "workspace_lab_") || strings.HasPrefix(name, "workspace_autopilot_") || strings.HasPrefix(name, "edge_bundle_") || name == "edge_repair" || name == "edge_onboarding_status"
 }
 
 func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 93 {
-		t.Fatalf("tool order length=%d want=93", len(server.order))
+	if len(server.order) != 98 {
+		t.Fatalf("tool order length=%d want=98", len(server.order))
 	}
-	if server.order[17] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:19])
+	if server.order[22] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:24])
 	}
-	if !reflect.DeepEqual(server.order[22:25], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[22:25])
+	if !reflect.DeepEqual(server.order[27:30], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[27:30])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
@@ -62,8 +62,8 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[88:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[88:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[93:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[93:], brainToolOrder)
 	}
 
 	snapshot, err := server.CatalogInfo()
@@ -148,7 +148,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("historical Step 4 catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 93 || snapshot.Hash != "sha256:bca5c63cde730091b081e3c413a1f1bc2a90c30160d99ed7623f63e1c20b5c6e" {
+	if snapshot.ToolCount != 98 || snapshot.Hash != "sha256:108991b3eae448f60abd05e7a8b6a45f127e63ec7261766344f1b6b4df6699a8" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

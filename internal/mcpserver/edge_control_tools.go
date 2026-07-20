@@ -25,6 +25,7 @@ type labRetargetParams struct {
 
 type edgeOperationPublicView struct {
 	OperationID           string              `json:"operation_id"`
+	DeviceID              string              `json:"device_id,omitempty"`
 	State                 edge.OperationState `json:"state"`
 	WorkspaceID           string              `json:"workspace_id,omitempty"`
 	AuthorizationRevision uint64              `json:"authorization_revision,omitempty"`
@@ -34,6 +35,19 @@ type edgeOperationPublicView struct {
 	ProgressRevision      uint64              `json:"progress_revision,omitempty"`
 	CycleCount            uint64              `json:"cycle_count,omitempty"`
 	JobSafeCode           string              `json:"job_safe_code,omitempty"`
+	Release               string              `json:"release,omitempty"`
+	Commit                string              `json:"commit,omitempty"`
+	ManifestStatus        string              `json:"manifest_status,omitempty"`
+	ComponentsCompatible  bool                `json:"components_compatible,omitempty"`
+	ServiceActive         bool                `json:"service_active,omitempty"`
+	UpdateAvailable       bool                `json:"update_available"`
+	Paired                bool                `json:"paired,omitempty"`
+	BubblewrapValid       bool                `json:"bubblewrap_valid,omitempty"`
+	RootlessValid         bool                `json:"rootless_valid,omitempty"`
+	WorkspaceCount        int                 `json:"workspace_count,omitempty"`
+	ProviderValid         bool                `json:"provider_valid,omitempty"`
+	DriverValid           bool                `json:"driver_valid,omitempty"`
+	Blockers              []string            `json:"blockers,omitempty"`
 }
 
 func (s *Server) addEdgeControlTools() {
@@ -77,6 +91,51 @@ func (s *Server) addEdgeControlTools() {
 		})
 	}
 	s.addDirectTool(toolDef{Name: "workspace_autopilot_status", Description: "Return only durable non-sensitive state and progress metadata for one local autopilot job.", InputSchema: closedObject(map[string]any{"workspace_id": stringSchema("opaque authorized workspace id", `^ws_[a-f0-9]{32}$`, 35)}, []string{"workspace_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, s.handleAutopilotStatus)
+	deviceSchema := map[string]any{"device_id": stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35)}
+	s.addDirectTool(toolDef{Name: "edge_bundle_status", Description: "Return signed-bundle and service compatibility metadata from one paired Edge.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
+		return s.handleDeviceOperation(arguments, edge.OperationBundleStatus, false)
+	})
+	s.addDirectTool(toolDef{Name: "edge_bundle_update", Description: "Request only the official signed stable bundle through the restricted privileged updater.", InputSchema: closedObject(map[string]any{"device_id": deviceSchema["device_id"], "release": map[string]any{"type": "string", "enum": []string{"stable"}}}, []string{"device_id", "release"}), Version: "1", Annotations: writeHints}, func(arguments json.RawMessage) (string, error) {
+		return s.handleDeviceOperation(arguments, edge.OperationBundleUpdate, true)
+	})
+	s.addDirectTool(toolDef{Name: "edge_bundle_rollback", Description: "Roll back one paired Edge only to its previous known signed bundle.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
+		return s.handleDeviceOperation(arguments, edge.OperationBundleRollback, false)
+	})
+	s.addDirectTool(toolDef{Name: "edge_repair", Description: "Restore only official signed MCP Devbox components, links, permissions, unit and Edge health.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: writeHints}, func(arguments json.RawMessage) (string, error) {
+		return s.handleDeviceOperation(arguments, edge.OperationEdgeRepair, false)
+	})
+	s.addDirectTool(toolDef{Name: "edge_onboarding_status", Description: "Return safe paired, service, bundle, provider, driver, Bubblewrap, rootless, workspace-count and blocker metadata.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
+		return s.handleDeviceOperation(arguments, edge.OperationOnboardingStatus, false)
+	})
+}
+
+type deviceOperationParams struct {
+	DeviceID string `json:"device_id"`
+	Release  string `json:"release,omitempty"`
+}
+
+func (s *Server) handleDeviceOperation(arguments json.RawMessage, kind edge.OperationKind, requiresStable bool) (string, error) {
+	if s.edgeOperations == nil || s.edgeDevices == nil {
+		return "", errEdgeStoreUnavailable
+	}
+	var params deviceOperationParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	if !s.edgeDevices.DeviceActive(params.DeviceID) {
+		return "", errors.New("active edge device not found")
+	}
+	request := edge.OperationRequest{}
+	if requiresStable {
+		request.Release = params.Release
+	} else if params.Release != "" {
+		return "", errors.New("release is not accepted")
+	}
+	operation, _, err := s.edgeOperations.CreateOperation(params.DeviceID, kind, request)
+	if err == nil {
+		operation, err = s.edgeOperations.WaitOperation(context.Background(), operation.ID, 180*time.Second)
+	}
+	return marshalToolValue(publicEdgeOperation(operation), err)
 }
 
 type autopilotControlParams struct {
@@ -155,5 +214,5 @@ func (s *Server) handleLabRetarget(arguments json.RawMessage) (string, error) {
 }
 
 func publicEdgeOperation(op edge.Operation) edgeOperationPublicView {
-	return edgeOperationPublicView{OperationID: op.ID, State: op.State, WorkspaceID: op.Result.WorkspaceID, AuthorizationRevision: op.Result.AuthorizationRevision, SafeCode: op.SafeCode, JobID: op.Result.JobID, JobState: op.Result.JobState, ProgressRevision: op.Result.ProgressRevision, CycleCount: op.Result.CycleCount, JobSafeCode: op.Result.JobSafeCode}
+	return edgeOperationPublicView{OperationID: op.ID, DeviceID: op.DeviceID, State: op.State, WorkspaceID: op.Result.WorkspaceID, AuthorizationRevision: op.Result.AuthorizationRevision, SafeCode: op.SafeCode, JobID: op.Result.JobID, JobState: op.Result.JobState, ProgressRevision: op.Result.ProgressRevision, CycleCount: op.Result.CycleCount, JobSafeCode: op.Result.JobSafeCode, Release: op.Result.Release, Commit: op.Result.Commit, ManifestStatus: op.Result.ManifestStatus, ComponentsCompatible: op.Result.ComponentsCompatible, ServiceActive: op.Result.ServiceActive, UpdateAvailable: op.Result.UpdateAvailable, Paired: op.Result.Paired, BubblewrapValid: op.Result.BubblewrapValid, RootlessValid: op.Result.RootlessValid, WorkspaceCount: op.Result.WorkspaceCount, ProviderValid: op.Result.ProviderValid, DriverValid: op.Result.DriverValid, Blockers: op.Result.Blockers}
 }

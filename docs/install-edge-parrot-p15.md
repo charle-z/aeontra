@@ -81,3 +81,16 @@ Repair restores exact compatibility links/modes/unit/service from a valid signed
 release or fetches `stable` when the active bundle is incomplete. Cleanup always keeps
 current, previous and at least one additional signed release, and removes only older
 signed P15 directories after 30 days.
+
+The unprivileged Edge can request only three fixed root-owned units through a generated
+polkit rule: official stable update, previous signed rollback, and official repair.
+The rule accepts only `start` for those exact unit names. A private `0600` operation
+receipt survives the Edge restart performed by an update; the same operation resumes
+diagnosis, while a different or malformed receipt fails closed. The receipt is removed
+only after the signed control plane acknowledges completion.
+
+Public tools never accept updater implementation details. `edge_bundle_update` accepts
+only `device_id` plus `release=stable`; status, rollback, repair and onboarding status
+accept only `device_id`. Diagnostics contain opaque identity and version/health booleans
+plus closed blocker codes—never URLs, filesystem paths, hashes supplied by a caller,
+commands, scripts, targets, credentials or flags.

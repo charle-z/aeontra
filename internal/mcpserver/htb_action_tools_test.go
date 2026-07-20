@@ -38,4 +38,16 @@ func TestExternalLabToolsDoNotAcceptCommandsCredentialsOrFlags(t *testing.T) {
 			}
 		}
 	}
+	for _, name := range []string{"edge_bundle_status", "edge_bundle_update", "edge_bundle_rollback", "edge_repair", "edge_onboarding_status"} {
+		entry, ok := server.table[name]
+		if !ok || entry.def.InputSchema["additionalProperties"] != false {
+			t.Fatalf("closed Edge tool missing: %s", name)
+		}
+		properties := entry.def.InputSchema["properties"].(map[string]any)
+		for _, forbidden := range []string{"url", "path", "command", "script", "hash", "options"} {
+			if _, ok := properties[forbidden]; ok {
+				t.Fatalf("%s exposes %s", name, forbidden)
+			}
+		}
+	}
 }

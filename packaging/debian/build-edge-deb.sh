@@ -52,6 +52,8 @@ install -d -m 0755 \
   "$PACKAGE_ROOT/usr/local/libexec/mcp-devbox" "$PACKAGE_ROOT/usr/share/doc/mcp-devbox" \
   "$PACKAGE_ROOT/etc/systemd/system"
 
+install -d -m 0755 "$PACKAGE_ROOT/usr/share/mcp-devbox" "$PACKAGE_ROOT/etc/polkit-1/rules.d"
+
 install -m 0755 "$BUNDLE/bin/mcp-edge" "$RELEASE_ROOT/bin/mcp-edge"
 install -m 0755 "$BUNDLE/libexec/model-turn-driver" "$RELEASE_ROOT/libexec/model-turn-driver"
 install -m 0755 "$BUNDLE/libexec/mcp-autopilot-worker" "$RELEASE_ROOT/libexec/mcp-autopilot-worker"
@@ -66,6 +68,9 @@ install -m 0644 "$BUNDLE/manifest.json" "$RELEASE_ROOT/manifest.json"
 install -m 0644 "$BUNDLE/manifest.sig" "$RELEASE_ROOT/manifest.sig"
 install -m 0755 packaging/parrot/onboarding-preflight.sh "$PACKAGE_ROOT/usr/local/libexec/mcp-devbox/onboarding-preflight"
 install -m 0644 packaging/systemd/mcp-devbox-bundle-updater.service "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-bundle-updater.service"
+install -m 0644 packaging/systemd/mcp-devbox-bundle-rollback.service "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-bundle-rollback.service"
+install -m 0644 packaging/systemd/mcp-devbox-edge-repair.service "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-repair.service"
+install -m 0644 packaging/polkit/49-mcp-devbox-updater.rules.in "$PACKAGE_ROOT/usr/share/mcp-devbox/49-mcp-devbox-updater.rules.in"
 install -m 0644 packaging/systemd/mcp-devbox-edge-onboard@.path "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
 install -m 0644 packaging/parrot/autopilot-model.json "$PACKAGE_ROOT/etc/mcp-devbox/autopilot-model.json"
 install -m 0644 docs/edge-bundles.md "$PACKAGE_ROOT/usr/share/doc/mcp-devbox/edge-bundles.md"
@@ -81,7 +86,7 @@ Package: mcp-devbox-edge
 Version: ${RELEASE#p}
 Architecture: amd64
 Maintainer: MCP Devbox Release Engineering
-Depends: bubblewrap, curl, git, nodejs, npm, python3, systemd
+Depends: bubblewrap, curl, git, nodejs, npm, policykit-1, python3, systemd
 Section: devel
 Priority: optional
 Description: Signed MCP Devbox Edge and local autopilot bundle

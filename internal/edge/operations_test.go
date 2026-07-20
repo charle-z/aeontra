@@ -3,6 +3,7 @@ package edge
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -30,11 +31,11 @@ func TestLabOperationIsClosedIdempotentAndDurable(t *testing.T) {
 	}
 	result := OperationResult{WorkspaceID: "ws_0123456789abcdef0123456789abcdef", AuthorizationRevision: 1}
 	completed, err := store.CompleteOperation(device.ID, created.ID, lease.LeaseID, result, "")
-	if err != nil || completed.State != OperationSucceeded || completed.Result != result {
+	if err != nil || completed.State != OperationSucceeded || !reflect.DeepEqual(completed.Result, result) {
 		t.Fatalf("completed=%+v err=%v", completed, err)
 	}
 	after, err := store.OperationStatus(created.ID)
-	if err != nil || after.Result != result {
+	if err != nil || !reflect.DeepEqual(after.Result, result) {
 		t.Fatalf("after=%+v err=%v", after, err)
 	}
 }
@@ -77,11 +78,49 @@ func TestAutopilotControlOperationsPublishOnlySafeDurableMetadata(t *testing.T) 
 		t.Fatal(err)
 	}
 	status, err := store.AutopilotStatus(workspaceID)
-	if err != nil || status != result {
+	if err != nil || !reflect.DeepEqual(status, result) {
 		t.Fatalf("status=%+v err=%v", status, err)
 	}
 	second, fresh, err := store.CreateOperation(device.ID, OperationAutopilotStart, OperationRequest{WorkspaceID: workspaceID, RunUntil: "completed_or_cancelled"})
 	if err != nil || !fresh || second.ID == operation.ID {
 		t.Fatalf("second=%+v fresh=%t err=%v", second, fresh, err)
+	}
+}
+
+func TestBundleOperationsAcceptOnlyOfficialClosedRequests(t *testing.T) {
+	store := openHTTPTestStore(t)
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	if _, _, err := store.CreateOperation(device.ID, OperationBundleUpdate, OperationRequest{Release: "stable"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []OperationRequest{{Release: "https://evil.example/bundle"}, {Release: "stable", Target: "10.0.0.1"}, {Machine: "command"}} {
+		if _, _, err := store.CreateOperation(device.ID, OperationBundleUpdate, request); err == nil {
+			t.Fatalf("unsafe update accepted: %+v", request)
+		}
+	}
+	if _, _, err := store.CreateOperation(device.ID, OperationEdgeRepair, OperationRequest{Release: "stable"}); err == nil {
+		t.Fatal("repair accepted caller options")
+	}
+}
+
+func TestBundleDiagnosticCompletionAcceptsOnlySafePreciseStates(t *testing.T) {
+	valid := OperationResult{Release: "p15.1.0", Commit: "0123456789abcdef0123456789abcdef01234567", ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true}
+	if !validOperationCompletion(valid, "") {
+		t.Fatal("valid signed bundle diagnostic rejected")
+	}
+	partial := OperationResult{ManifestStatus: "provider_outdated", DriverValid: true, Blockers: []string{"provider_outdated", "edge_service_inactive"}}
+	if !validOperationCompletion(partial, "") {
+		t.Fatal("safe partial-install diagnostic rejected")
+	}
+	for _, unsafe := range []OperationResult{
+		{ManifestStatus: "arbitrary"},
+		{ManifestStatus: "provider_outdated", ProviderValid: true},
+		{ManifestStatus: "manifest_invalid", Blockers: []string{"contains-target-10.0.0.1"}},
+	} {
+		if validOperationCompletion(unsafe, "") {
+			t.Fatalf("unsafe diagnostic accepted: %+v", unsafe)
+		}
 	}
 }

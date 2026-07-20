@@ -17,12 +17,17 @@ type OperationKind string
 type OperationState string
 
 const (
-	OperationLabPrepare      OperationKind = "lab_prepare"
-	OperationLabRetarget     OperationKind = "lab_retarget"
-	OperationAutopilotStart  OperationKind = "autopilot_start"
-	OperationAutopilotPause  OperationKind = "autopilot_pause"
-	OperationAutopilotResume OperationKind = "autopilot_resume"
-	OperationAutopilotCancel OperationKind = "autopilot_cancel"
+	OperationLabPrepare       OperationKind = "lab_prepare"
+	OperationLabRetarget      OperationKind = "lab_retarget"
+	OperationAutopilotStart   OperationKind = "autopilot_start"
+	OperationAutopilotPause   OperationKind = "autopilot_pause"
+	OperationAutopilotResume  OperationKind = "autopilot_resume"
+	OperationAutopilotCancel  OperationKind = "autopilot_cancel"
+	OperationBundleStatus     OperationKind = "bundle_status"
+	OperationBundleUpdate     OperationKind = "bundle_update"
+	OperationBundleRollback   OperationKind = "bundle_rollback"
+	OperationEdgeRepair       OperationKind = "edge_repair"
+	OperationOnboardingStatus OperationKind = "onboarding_status"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -40,16 +45,30 @@ type OperationRequest struct {
 	OperatingSystem string `json:"operating_system,omitempty"`
 	WorkspaceID     string `json:"workspace_id,omitempty"`
 	RunUntil        string `json:"run_until,omitempty"`
+	Release         string `json:"release,omitempty"`
 }
 
 type OperationResult struct {
-	WorkspaceID           string `json:"workspace_id,omitempty"`
-	AuthorizationRevision uint64 `json:"authorization_revision,omitempty"`
-	JobID                 string `json:"job_id,omitempty"`
-	JobState              string `json:"job_state,omitempty"`
-	ProgressRevision      uint64 `json:"progress_revision,omitempty"`
-	CycleCount            uint64 `json:"cycle_count,omitempty"`
-	JobSafeCode           string `json:"job_safe_code,omitempty"`
+	WorkspaceID           string   `json:"workspace_id,omitempty"`
+	AuthorizationRevision uint64   `json:"authorization_revision,omitempty"`
+	JobID                 string   `json:"job_id,omitempty"`
+	JobState              string   `json:"job_state,omitempty"`
+	ProgressRevision      uint64   `json:"progress_revision,omitempty"`
+	CycleCount            uint64   `json:"cycle_count,omitempty"`
+	JobSafeCode           string   `json:"job_safe_code,omitempty"`
+	Release               string   `json:"release,omitempty"`
+	Commit                string   `json:"commit,omitempty"`
+	ManifestStatus        string   `json:"manifest_status,omitempty"`
+	ComponentsCompatible  bool     `json:"components_compatible,omitempty"`
+	ServiceActive         bool     `json:"service_active,omitempty"`
+	UpdateAvailable       bool     `json:"update_available"`
+	Paired                bool     `json:"paired,omitempty"`
+	BubblewrapValid       bool     `json:"bubblewrap_valid,omitempty"`
+	RootlessValid         bool     `json:"rootless_valid,omitempty"`
+	WorkspaceCount        int      `json:"workspace_count,omitempty"`
+	ProviderValid         bool     `json:"provider_valid,omitempty"`
+	DriverValid           bool     `json:"driver_valid,omitempty"`
+	Blockers              []string `json:"blockers,omitempty"`
 }
 
 type Operation struct {
@@ -229,6 +248,14 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 		if !workspaceIDPattern.MatchString(request.WorkspaceID) || request.RunUntil != "" || request.Target != "" || request.Platform != "" || request.Machine != "" || request.Difficulty != "" || request.OperatingSystem != "" {
 			return OperationRequest{}, errors.New("autopilot control request is invalid")
 		}
+	case OperationBundleStatus, OperationBundleRollback, OperationEdgeRepair, OperationOnboardingStatus:
+		if request != (OperationRequest{}) {
+			return OperationRequest{}, errors.New("edge diagnostic request is invalid")
+		}
+	case OperationBundleUpdate:
+		if request != (OperationRequest{Release: "stable"}) {
+			return OperationRequest{}, errors.New("bundle update request is invalid")
+		}
 	default:
 		return OperationRequest{}, errors.New("operation kind is invalid")
 	}
@@ -237,15 +264,33 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 
 func validOperationCompletion(result OperationResult, code string) bool {
 	if code != "" {
-		return regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(code) && result == (OperationResult{})
+		return regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(code) && emptyOperationResult(result)
 	}
 	if !workspaceIDPattern.MatchString(result.WorkspaceID) {
-		return false
+		validBundle := regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`).MatchString(result.Release) && regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(result.Commit) && result.ManifestStatus == "valid" && result.ComponentsCompatible && result.ProviderValid && result.DriverValid
+		invalidComponents := !result.ProviderValid && (!result.DriverValid || result.ManifestStatus == "provider_outdated")
+		invalidBundle := result.Release == "" && result.Commit == "" && regexp.MustCompile(`^(bundle_mismatch|provider_outdated|driver_outdated|manifest_invalid)$`).MatchString(result.ManifestStatus) && !result.ComponentsCompatible && invalidComponents
+		return (validBundle || invalidBundle) && validDiagnosticBlockers(result.Blockers)
 	}
 	if result.JobID != "" {
 		return regexp.MustCompile(`^aj_[a-f0-9]{32}$`).MatchString(result.JobID) && regexp.MustCompile(`^(running|paused|blocked|completed|cancelled)$`).MatchString(result.JobState) && (result.JobSafeCode == "" || regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(result.JobSafeCode))
 	}
 	return result.AuthorizationRevision > 0
+}
+
+func validDiagnosticBlockers(blockers []string) bool {
+	if len(blockers) > 16 {
+		return false
+	}
+	for _, blocker := range blockers {
+		if !regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(blocker) {
+			return false
+		}
+	}
+	return true
+}
+func emptyOperationResult(result OperationResult) bool {
+	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0
 }
 
 func (s *Store) AutopilotStatus(workspaceID string) (OperationResult, error) {

@@ -53,8 +53,11 @@ fi
 systemctl daemon-reload
 /usr/local/bin/mcp-edge bundle verify
 if [ -n "$EDGE_USER" ]; then
-  printf '%s\n' "$EDGE_USER" >/etc/mcp-devbox/edge-user
-  chmod 0600 /etc/mcp-devbox/edge-user
+	case "$EDGE_USER" in *[!a-z0-9_-]*|'') echo 'invalid Edge user' >&2; exit 1;; esac
+	printf '%s\n' "$EDGE_USER" >/etc/mcp-devbox/edge-user
+	chmod 0600 /etc/mcp-devbox/edge-user
+	sed "s/@EDGE_USER@/$EDGE_USER/g" /usr/share/mcp-devbox/49-mcp-devbox-updater.rules.in >/etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+	chmod 0644 /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
   PREFERRED_STATE="/home/${EDGE_USER}/.local/state/mcp-edge"
   LEGACY_STATE="/home/${EDGE_USER}/.config/mcp-devbox-edge"
   if [ ! -e "$PREFERRED_STATE/identity.json" ] && [ -f "$LEGACY_STATE/identity.json" ] && [ ! -L "$LEGACY_STATE" ]; then

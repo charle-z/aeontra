@@ -31,31 +31,9 @@ type OfficialResolver struct {
 }
 
 func (r OfficialResolver) UpdateStable(ctx context.Context, engine Engine) (Status, error) {
-	if len(r.PublicKey) != ed25519.PublicKeySize {
-		return Status{}, &bundle.VerificationError{Code: bundle.ManifestInvalid}
-	}
-	client := r.Client
-	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Minute}
-	}
-	channelPath := OfficialBaseURL + "/stable/channel-" + runtime.GOARCH + ".json"
-	channelBytes, err := getBounded(ctx, client, channelPath, 64<<10)
+	channel, client, err := r.stableChannel(ctx)
 	if err != nil {
-		return Status{}, errors.New("official release channel unavailable")
-	}
-	signature, err := getBounded(ctx, client, channelPath+".sig", ed25519.SignatureSize)
-	if err != nil || len(signature) != ed25519.SignatureSize || !ed25519.Verify(r.PublicKey, channelBytes, signature) {
-		return Status{}, &bundle.VerificationError{Code: bundle.ManifestInvalid}
-	}
-	var channel bundle.Channel
-	decoder := json.NewDecoder(strings.NewReader(string(channelBytes)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&channel); err != nil {
-		return Status{}, &bundle.VerificationError{Code: bundle.ManifestInvalid}
-	}
-	canonical, canonicalErr := bundle.CanonicalChannel(channel)
-	if canonicalErr != nil || !bytes.Equal(canonical, channelBytes) || channel.Architecture != runtime.GOARCH {
-		return Status{}, &bundle.VerificationError{Code: bundle.ManifestInvalid}
+		return Status{}, err
 	}
 	archiveURL := OfficialBaseURL + "/" + channel.Release + "/mcp-devbox-edge_" + channel.Release + "_" + channel.Architecture + ".tar.gz"
 	archive, err := getBounded(ctx, client, archiveURL, 512<<20)
@@ -74,6 +52,44 @@ func (r OfficialResolver) UpdateStable(ctx context.Context, engine Engine) (Stat
 		Release: channel.Release, Commit: channel.Commit, ProtocolVersion: channel.ProtocolVersion,
 		CatalogHash: channel.CatalogHash, Architecture: channel.Architecture,
 	})
+}
+
+func (r OfficialResolver) StableAvailable(ctx context.Context, currentRelease string) (bool, error) {
+	channel, _, err := r.stableChannel(ctx)
+	if err != nil {
+		return false, err
+	}
+	return channel.Release != currentRelease, nil
+}
+
+func (r OfficialResolver) stableChannel(ctx context.Context) (bundle.Channel, *http.Client, error) {
+	if len(r.PublicKey) != ed25519.PublicKeySize {
+		return bundle.Channel{}, nil, &bundle.VerificationError{Code: bundle.ManifestInvalid}
+	}
+	client := r.Client
+	if client == nil {
+		client = &http.Client{Timeout: 2 * time.Minute}
+	}
+	channelPath := OfficialBaseURL + "/stable/channel-" + runtime.GOARCH + ".json"
+	channelBytes, err := getBounded(ctx, client, channelPath, 64<<10)
+	if err != nil {
+		return bundle.Channel{}, nil, errors.New("official release channel unavailable")
+	}
+	signature, err := getBounded(ctx, client, channelPath+".sig", ed25519.SignatureSize)
+	if err != nil || len(signature) != ed25519.SignatureSize || !ed25519.Verify(r.PublicKey, channelBytes, signature) {
+		return bundle.Channel{}, nil, &bundle.VerificationError{Code: bundle.ManifestInvalid}
+	}
+	var channel bundle.Channel
+	decoder := json.NewDecoder(strings.NewReader(string(channelBytes)))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&channel) != nil {
+		return bundle.Channel{}, nil, &bundle.VerificationError{Code: bundle.ManifestInvalid}
+	}
+	canonical, canonicalErr := bundle.CanonicalChannel(channel)
+	if canonicalErr != nil || !bytes.Equal(canonical, channelBytes) || channel.Architecture != runtime.GOARCH {
+		return bundle.Channel{}, nil, &bundle.VerificationError{Code: bundle.ManifestInvalid}
+	}
+	return channel, client, nil
 }
 
 func getBounded(ctx context.Context, client *http.Client, url string, limit int64) ([]byte, error) {

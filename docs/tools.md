@@ -33,6 +33,11 @@ do not replace server-side enforcement.
 | `workspace_autopilot_pause` | 0/0/1/0 | Pause the local job after its current bounded cycle without discarding checkpoint or evidence. |
 | `workspace_autopilot_resume` | 0/0/1/0 | Resume a paused or safely blocked job using the existing local state and provider configuration. |
 | `workspace_autopilot_cancel` | 0/1/1/0 | Cancel the durable job and prevent further local cycles while preserving collected evidence. |
+| `edge_bundle_status` | 1/0/1/0 | Return only signed release, commit, manifest/component compatibility, service health and update availability metadata from one paired Edge. |
+| `edge_bundle_update` | 0/0/1/0 | Request only `release=stable`; the restricted root updater resolves and verifies the official signed channel. |
+| `edge_bundle_rollback` | 0/1/1/0 | Activate only the previous locally known signed release and verify Edge health. |
+| `edge_repair` | 0/0/1/0 | Restore only reviewed signed components, permissions, fixed symlinks, packaged unit and Edge health. |
+| `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, bundle, provider, driver, Bubblewrap, rootless, workspace count and blocker metadata. |
 | `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, and optional result ref. |
 | `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
 | `model_turn_respond` | 0/0/0/0 | Submit one bounded text/tool-call response after runtime, sequence, digest and offered-tool validation. |
