@@ -47,6 +47,8 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 		"LEGACY_STATE", "mv \"$LEGACY_STATE\" \"$PREFERRED_STATE\"",
 		"49-mcp-devbox-updater.rules", "@EDGE_USER@",
 		"loginctl enable-linger", "podman.socket",
+		"stage_legacy_directory", "restore_legacy_directory",
+		"LEGACY_PROVIDER_BACKUP", "LEGACY_OPENCODE_BACKUP",
 	} {
 		if !strings.Contains(postinst, required) {
 			t.Fatalf("postinst missing %q", required)
@@ -111,7 +113,7 @@ func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 		}
 	}
 	evidence := repoFile(t, ".github/workflows/p15-edge.yml")
-	for _, required := range []string{"Reproducible signed Debian package", "cmp ", "dpkg --force-depends -i", "mcp-edge bundle verify", "preserved-identity", "ws_593c26b24ba6dc583c9aa1da5e9e0152"} {
+	for _, required := range []string{"Reproducible signed Debian package", "cmp ", "dpkg --force-depends -i", "mcp-edge bundle verify", "preserved-identity", "ws_593c26b24ba6dc583c9aa1da5e9e0152", "p14-provider", "test -L /opt/mcp-devbox/opencode-provider", "test -L /opt/mcp-devbox/opencode-1.18.1"} {
 		if !strings.Contains(evidence, required) {
 			t.Fatalf("P15 evidence workflow missing %q", required)
 		}

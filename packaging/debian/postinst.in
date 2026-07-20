@@ -6,6 +6,12 @@ ROOT='/opt/mcp-devbox'
 RELEASE_ROOT="$ROOT/releases/$RELEASE"
 CURRENT_NEXT="$ROOT/.current.next"
 OLD_TARGET=''
+LEGACY_PROVIDER="$ROOT/opencode-provider"
+LEGACY_PROVIDER_BACKUP="$ROOT/.p15-migration-opencode-provider"
+LEGACY_OPENCODE="$ROOT/opencode-1.18.1"
+LEGACY_OPENCODE_BACKUP="$ROOT/.p15-migration-opencode-1.18.1"
+MIGRATED_PROVIDER=0
+MIGRATED_OPENCODE=0
 
 test "$(id -u)" -eq 0
 test -f "$RELEASE_ROOT/manifest.json"
@@ -14,7 +20,40 @@ test -f "$RELEASE_ROOT/manifest.sig"
 if [ -L "$ROOT/current" ]; then
   OLD_TARGET="$(readlink "$ROOT/current")"
 fi
+
+stage_legacy_directory() {
+  legacy_path="$1"
+  backup_path="$2"
+
+  if [ -e "$backup_path" ] || [ -L "$backup_path" ]; then
+    echo "stale MCP Devbox migration backup: $backup_path" >&2
+    exit 1
+  fi
+  if [ -L "$legacy_path" ] || [ ! -e "$legacy_path" ]; then
+    return 1
+  fi
+  if [ ! -d "$legacy_path" ]; then
+    echo "MCP Devbox compatibility path is not a directory: $legacy_path" >&2
+    exit 1
+  fi
+  mv "$legacy_path" "$backup_path"
+  return 0
+}
+
+restore_legacy_directory() {
+  legacy_path="$1"
+  backup_path="$2"
+  migrated="$3"
+
+  if [ "$migrated" -eq 1 ] && [ -d "$backup_path" ]; then
+    rm -f "$legacy_path"
+    mv "$backup_path" "$legacy_path"
+  fi
+}
+
 rollback_install() {
+  restore_legacy_directory "$LEGACY_PROVIDER" "$LEGACY_PROVIDER_BACKUP" "$MIGRATED_PROVIDER"
+  restore_legacy_directory "$LEGACY_OPENCODE" "$LEGACY_OPENCODE_BACKUP" "$MIGRATED_OPENCODE"
   if [ -n "$OLD_TARGET" ]; then
     rm -f "$CURRENT_NEXT"
     ln -s "$OLD_TARGET" "$CURRENT_NEXT"
@@ -38,8 +77,14 @@ ln -sfn "$ROOT/current/libexec/model-turn-driver" /usr/local/libexec/mcp-devbox/
 ln -sfn "$ROOT/current/libexec/mcp-autopilot-worker" /usr/local/libexec/mcp-devbox/mcp-autopilot-worker
 ln -sfn "$ROOT/current/libexec/mcp-bundle-updater" /usr/local/libexec/mcp-devbox/mcp-bundle-updater
 ln -sfn "$ROOT/current/libexec/node" /usr/local/libexec/mcp-devbox/node
-ln -sfn "$ROOT/current/opencode-provider" "$ROOT/opencode-provider"
-ln -sfn "$ROOT/current/opencode" "$ROOT/opencode-1.18.1"
+if stage_legacy_directory "$LEGACY_PROVIDER" "$LEGACY_PROVIDER_BACKUP"; then
+  MIGRATED_PROVIDER=1
+fi
+ln -sfn "$ROOT/current/opencode-provider" "$LEGACY_PROVIDER"
+if stage_legacy_directory "$LEGACY_OPENCODE" "$LEGACY_OPENCODE_BACKUP"; then
+  MIGRATED_OPENCODE=1
+fi
+ln -sfn "$ROOT/current/opencode" "$LEGACY_OPENCODE"
 install -m 0644 "$ROOT/current/systemd/mcp-devbox-opencode-edge@.service" /etc/systemd/system/mcp-devbox-opencode-edge@.service
 
 EDGE_USER=''
@@ -78,5 +123,11 @@ if [ -n "$EDGE_USER" ]; then
   fi
 fi
 
+if [ "$MIGRATED_PROVIDER" -eq 1 ]; then
+  rm -rf "$LEGACY_PROVIDER_BACKUP"
+fi
+if [ "$MIGRATED_OPENCODE" -eq 1 ]; then
+  rm -rf "$LEGACY_OPENCODE_BACKUP"
+fi
 trap - EXIT INT TERM
 exit 0
