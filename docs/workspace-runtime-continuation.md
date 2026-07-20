@@ -5,6 +5,12 @@ an ephemeral execution lease created for one explicit continuation request. Remo
 or finishing a runtime does not remove the workspace, its local contract, its
 checkpoint, or its evidence.
 
+This is the primary interactive mode for ChatGPT web. While the chat remains active,
+ChatGPT drives each Edge request with `model_turn_next` and `model_turn_respond`.
+OpenCode is only the pinned local execution harness in this path; it is not the model
+and does not require model credits or an API key. The P15 loopback autopilot provider
+is optional and is used only when execution must continue without an active chat.
+
 ## Public MCP contract
 
 `workspace_runtime_continue` accepts exactly:
@@ -71,6 +77,11 @@ For `htb-linux`, the local workspace registry and contract continue to enforce t
 immutable target, VPN preflight, target-locked broker, checkpoint redaction,
 local-only secret handling, and `--save-output` for sensitive artifacts.
 
+Registered `linux-workcell` workspaces in either `dev` or `htb-linux` mode may use
+this continuation path. Caller-supplied operational goals remain forbidden in both
+modes. In `htb-linux`, the private Edge provider offers only the structured HTB
+actions authorized by the local contract; raw credential material remains local.
+
 ## Normal onboarding and continuation
 
 ```text
@@ -78,7 +89,9 @@ local-only secret handling, and `--save-output` for sensitive artifacts.
 2. Run mcp-edge lab init once for the machine.
 3. Ask the chat to continue the registered workspace.
 4. The chat calls workspace_runtime_continue using only workspace_id and timeout_seconds.
-5. The Edge executes the local trusted contract.
+5. The chat polls `model_turn_next` and answers each pending turn with
+   `model_turn_respond` until the runtime reaches a terminal state or the user stops.
+6. The Edge executes the local trusted contract and its structured tools.
 ```
 
 `lab init` prepares and registers the persistent local workspace. It is not repeated

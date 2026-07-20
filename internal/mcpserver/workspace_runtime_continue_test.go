@@ -83,7 +83,7 @@ func TestWorkspaceRuntimeContinueContractHasNoInstructionSurface(t *testing.T) {
 	}
 }
 
-func TestWorkspaceRuntimeContinueUsesFixedDevelopmentContractGoalAndBoundedPublicView(t *testing.T) {
+func TestWorkspaceRuntimeContinueUsesFixedLocalContractGoalAndBoundedPublicView(t *testing.T) {
 	server, store := modelTurnServer(t)
 	server.WithEdgeStore(continuationStore(testWorkspaceID, "linux-workcell", "dev"))
 	text := toolText(t, call(t, server, continueCall("continue-1", testWorkspaceID, 300, "")))
@@ -117,6 +117,26 @@ func TestWorkspaceRuntimeContinueUsesFixedDevelopmentContractGoalAndBoundedPubli
 		t.Fatal(err)
 	}
 	if string(goal) != workspaceContinuationGoal || strings.Contains(string(goal), testWorkspaceID) || strings.Contains(string(goal), "10.129") || strings.Contains(string(goal), "checkpoint-value") {
+		t.Fatalf("goal=%q", goal)
+	}
+}
+
+func TestWorkspaceRuntimeContinueAcceptsRegisteredHTBWorkspace(t *testing.T) {
+	server, store := modelTurnServer(t)
+	server.WithEdgeStore(continuationStore(testWorkspaceID, "linux-workcell", "htb-linux"))
+	text := toolText(t, call(t, server, continueCall("continue-htb-1", testWorkspaceID, 300, "")))
+	var view workspaceRuntimeContinueView
+	if err := json.Unmarshal([]byte(text), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.RuntimeID == "" || view.WorkspaceID != testWorkspaceID || view.DeviceID != testEdgeDeviceID || view.State != modelturn.RuntimeStateAwaitingEdge {
+		t.Fatalf("view=%+v", view)
+	}
+	goal, _, err := store.RuntimeGoal(context.Background(), view.RuntimeID, testEdgeDeviceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(goal) != workspaceContinuationGoal {
 		t.Fatalf("goal=%q", goal)
 	}
 }
@@ -167,9 +187,6 @@ func TestWorkspaceRuntimeContinueRejectsInjectionMissingBindingsAndInvalidModes(
 		t.Fatalf("missing registry error=%q", got)
 	}
 	server.WithEdgeStore(continuationStore(testWorkspaceID, "linux-workcell", "htb-linux"))
-	if got := callToolErrorText(t, server, "workspace_runtime_continue", `{"workspace_id":"`+testWorkspaceID+`","timeout_seconds":300}`); got != modelturn.ErrInvalidRequest.Error() {
-		t.Fatalf("HTB workspace was not kept local: %q", got)
-	}
 	for _, forbidden := range []string{"objective", "prompt", "instructions", "command", "target", "host", "ip", "username", "password", "secret", "credential", "flag", "machine", "platform"} {
 		response := call(t, server, continueCall("inject-"+forbidden, testWorkspaceID, 300, forbidden))
 		var result toolResult

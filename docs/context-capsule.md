@@ -14,6 +14,12 @@ durable job. The job is safely blocked with `provider_transient`: the configured
 loopback endpoint `http://127.0.0.1:4096/v1/next-action` has no resident model
 provider. No credential, flag or completed lab result is claimed.
 
+P15 now restores the already proven P14 interactive continuation for registered
+`htb-linux` workspaces. In that mode ChatGPT web is the
+model and drives `model_turn_next` / `model_turn_respond` while the chat is active;
+the pinned OpenCode process is only the local Edge harness and consumes no model/API
+credits. The loopback P15 autopilot remains optional for unattended continuation.
+
 Real P14 migration exposed a packaging defect not covered by the original isolated
 package test: `ln -sfn` cannot replace the existing P14
 `/opt/mcp-devbox/opencode-provider` and `/opt/mcp-devbox/opencode-1.18.1`

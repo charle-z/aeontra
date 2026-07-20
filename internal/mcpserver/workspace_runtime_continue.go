@@ -50,7 +50,7 @@ func (s *Server) addWorkspaceRuntimeContinueTool() {
 	hints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
 	s.addRequestTool(toolDef{
 		Name:        "workspace_runtime_continue",
-		Description: "Continue one already registered workspace using only its local trusted contract. The tool accepts no instructions, creates one runtime, and never retries automatically.",
+		Description: "Continue one already registered workspace through the active ChatGPT session using only its local trusted contract. The tool accepts no instructions, creates one runtime, and never retries automatically.",
 		InputSchema: closedObject(map[string]any{
 			"workspace_id":    stringSchema("opaque registered workspace id", `^ws_[a-f0-9]{32}$`, 35),
 			"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
@@ -125,7 +125,7 @@ func validWorkspaceBinding(binding edge.WorkspaceBinding, workspaceID string) bo
 	case "sandbox":
 		return binding.Mode == "dev"
 	case "linux-workcell":
-		return binding.Mode == "dev"
+		return binding.Mode == "dev" || binding.Mode == "htb-linux"
 	default:
 		return false
 	}
