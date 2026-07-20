@@ -11,7 +11,8 @@ DRIVER="${MCP_DEVBOX_DRIVER:-/usr/local/libexec/mcp-devbox/model-turn-driver}"
 BWRAP="${MCP_DEVBOX_BWRAP:-/usr/bin/bwrap}"
 BUNDLE_ROOT="${MCP_DEVBOX_BUNDLE_ROOT:-/opt/mcp-devbox/current}"
 AUTOPILOT_MODEL="${MCP_DEVBOX_AUTOPILOT_MODEL:-/etc/mcp-devbox/autopilot-model.json}"
-REQUIRE_ROOTLESS="${MCP_DEVBOX_REQUIRE_ROOTLESS:-0}"
+NODE="${MCP_DEVBOX_NODE:-/usr/local/libexec/mcp-devbox/node}"
+REQUIRE_ROOTLESS="${MCP_DEVBOX_REQUIRE_ROOTLESS:-1}"
 
 fail() {
   printf 'parrot-onboarding-preflight: %s\n' "$*" >&2
@@ -21,23 +22,24 @@ fail() {
 [ "$(id -u)" -ne 0 ] || fail "run as the future Edge user, not root"
 [ "$(ps -p 1 -o comm= | tr -d '[:space:]')" = "systemd" ] || fail "PID 1 is not systemd"
 
-for command in bwrap curl git go node npm python3; do
+for command in bwrap curl git go python3; do
   command -v "$command" >/dev/null 2>&1 || fail "missing command: $command"
 done
 [ -r "$AUTOPILOT_MODEL" ] && [ ! -L "$AUTOPILOT_MODEL" ] || fail "local autopilot model configuration is missing"
 
-for path in /usr/local/bin/mcp-edge "$DRIVER" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker" "$BUNDLE_ROOT/libexec/mcp-bundle-updater"; do
+for path in /usr/local/bin/mcp-edge "$DRIVER" "$NODE" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker" "$BUNDLE_ROOT/libexec/mcp-bundle-updater"; do
   [ -e "$path" ] || fail "missing reviewed installation path: $path"
 done
 [ -x /usr/local/bin/mcp-edge ] || fail "mcp-edge is not executable"
 [ -x "$DRIVER" ] || fail "model-turn-driver is not executable"
+[ -x "$NODE" ] || fail "reviewed Node runtime is not executable"
 [ -x "$OPENCODE" ] || fail "OpenCode is not executable"
 [ -x "$BWRAP" ] || fail "Bubblewrap is not executable"
 
-[ "$(node --version)" = "v24.18.0" ] || fail "Node must be v24.18.0"
+[ "$("$NODE" --version)" = "v24.18.0" ] || fail "Node must be v24.18.0"
 [ "$("$OPENCODE" --version)" = "1.18.1" ] || fail "OpenCode must be 1.18.1"
 
-node --input-type=module -e '
+"$NODE" --input-type=module -e '
   const provider = await import("file:///opt/mcp-devbox/opencode-provider/index.js");
   if (typeof provider.createMCPDevboxModelBridge !== "function") {
     throw new Error("provider export missing");

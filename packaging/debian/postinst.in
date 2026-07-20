@@ -37,6 +37,7 @@ ln -sfn "$ROOT/current/bin/mcp-edge" /usr/local/bin/mcp-edge
 ln -sfn "$ROOT/current/libexec/model-turn-driver" /usr/local/libexec/mcp-devbox/model-turn-driver
 ln -sfn "$ROOT/current/libexec/mcp-autopilot-worker" /usr/local/libexec/mcp-devbox/mcp-autopilot-worker
 ln -sfn "$ROOT/current/libexec/mcp-bundle-updater" /usr/local/libexec/mcp-devbox/mcp-bundle-updater
+ln -sfn "$ROOT/current/libexec/node" /usr/local/libexec/mcp-devbox/node
 ln -sfn "$ROOT/current/opencode-provider" "$ROOT/opencode-provider"
 ln -sfn "$ROOT/current/opencode" "$ROOT/opencode-1.18.1"
 install -m 0644 "$ROOT/current/systemd/mcp-devbox-opencode-edge@.service" /etc/systemd/system/mcp-devbox-opencode-edge@.service
@@ -58,6 +59,8 @@ if [ -n "$EDGE_USER" ]; then
 	chmod 0600 /etc/mcp-devbox/edge-user
 	sed "s/@EDGE_USER@/$EDGE_USER/g" /usr/share/mcp-devbox/49-mcp-devbox-updater.rules.in >/etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
 	chmod 0644 /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+  loginctl enable-linger "$EDGE_USER"
+  systemctl --user --machine="${EDGE_USER}@" enable --now podman.socket
   PREFERRED_STATE="/home/${EDGE_USER}/.local/state/mcp-edge"
   LEGACY_STATE="/home/${EDGE_USER}/.config/mcp-devbox-edge"
   if [ ! -e "$PREFERRED_STATE/identity.json" ] && [ -f "$LEGACY_STATE/identity.json" ] && [ ! -L "$LEGACY_STATE" ]; then

@@ -17,7 +17,7 @@ The version-1 manifest binds:
 
 - release, exact 40-character Git commit, bundle protocol and architecture;
 - the deterministic exterior MCP catalog hash;
-- SHA-256 hashes for `mcp-edge`, `model-turn-driver`,
+- SHA-256 hashes for `mcp-edge`, `model-turn-driver`, the reviewed Node 24.18.0 runtime,
   `mcp-autopilot-worker`, the privileged updater, OpenCode and its lockfile, provider `index.js`, provider
   `htb-actions.js`, provider `package.json`, and the packaged Edge systemd unit.
 

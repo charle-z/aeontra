@@ -30,11 +30,12 @@ install -d -m 0755 "$OUTPUT/$RELEASE" "$OUTPUT/stable"
 ARCHIVE="$OUTPUT/$RELEASE/mcp-devbox-edge_${RELEASE}_${ARCHITECTURE}.tar.gz"
 tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
   --format=posix -C "$BUNDLE" -czf "$ARCHIVE" \
-  manifest.json manifest.sig bin/mcp-edge libexec/model-turn-driver \
+  manifest.json manifest.sig bin/mcp-edge libexec/model-turn-driver libexec/node \
   libexec/mcp-autopilot-worker libexec/mcp-bundle-updater \
   opencode/opencode opencode/package-lock.json opencode-provider/index.js \
   opencode-provider/htb-actions.js opencode-provider/package.json \
   systemd/mcp-devbox-opencode-edge@.service
+(cd "$(dirname "$ARCHIVE")" && sha256sum "$(basename "$ARCHIVE")") >"$ARCHIVE.sha256"
 
 "$CHANNEL_TOOL" --archive "$ARCHIVE" --output "$OUTPUT/stable" \
   --release "$RELEASE" --commit "$COMMIT" --protocol "$PROTOCOL" \

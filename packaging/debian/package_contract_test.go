@@ -27,6 +27,7 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	for _, required := range []string{
 		"SOURCE_DATE_EPOCH", "dpkg-deb --root-owner-group", "gpg --batch", "sha256sum",
 		"mcp-autopilot-worker", "model-turn-driver", "opencode-provider/htb-actions.js",
+		"libexec/node", "golang-go", "podman",
 		"mcp-bundle-updater", "mcp-devbox-bundle-updater.service",
 		"mcp-devbox-edge-onboard@.path",
 		"autopilot-model.json", "DEBIAN/conffiles",
@@ -45,6 +46,7 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 		"mcp-edge bundle verify", "rollback_install", "onboarding-preflight",
 		"LEGACY_STATE", "mv \"$LEGACY_STATE\" \"$PREFERRED_STATE\"",
 		"49-mcp-devbox-updater.rules", "@EDGE_USER@",
+		"loginctl enable-linger", "podman.socket",
 	} {
 		if !strings.Contains(postinst, required) {
 			t.Fatalf("postinst missing %q", required)
@@ -86,6 +88,32 @@ func TestPrivilegedUpdaterAuthorityIsLimitedToFixedUnits(t *testing.T) {
 		unit := repoFile(t, path)
 		if !strings.Contains(unit, "mcp-bundle-updater "+operation) || strings.Contains(unit, "%i") || strings.Contains(unit, "EnvironmentFile") {
 			t.Fatalf("unsafe fixed updater unit %s", path)
+		}
+	}
+}
+
+func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
+	stage := repoFile(t, "packaging/parrot/stage-edge-bundle.sh")
+	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "--node-bin", "libexec/node"} {
+		if !strings.Contains(stage, required) {
+			t.Fatalf("bundle staging missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{"curl ", "wget ", "eval ", "bash -c", "go get"} {
+		if strings.Contains(stage, forbidden) {
+			t.Fatalf("bundle staging contains open-ended acquisition %q", forbidden)
+		}
+	}
+	release := repoFile(t, ".github/workflows/edge-release.yml")
+	for _, required := range []string{"workflow_dispatch", "environment: edge-release", "EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64", "stage-edge-bundle.sh", "build-edge-release.sh", "build-edge-deb.sh", "Generate Edge bundle SBOM", "gh release create", "gh release upload stable --clobber"} {
+		if !strings.Contains(release, required) {
+			t.Fatalf("release workflow missing %q", required)
+		}
+	}
+	evidence := repoFile(t, ".github/workflows/p15-edge.yml")
+	for _, required := range []string{"Reproducible signed Debian package", "cmp ", "dpkg --force-depends -i", "mcp-edge bundle verify", "preserved-identity", "ws_593c26b24ba6dc583c9aa1da5e9e0152"} {
+		if !strings.Contains(evidence, required) {
+			t.Fatalf("P15 evidence workflow missing %q", required)
 		}
 	}
 }

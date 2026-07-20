@@ -125,7 +125,7 @@ func validWorkspaceBinding(binding edge.WorkspaceBinding, workspaceID string) bo
 	case "sandbox":
 		return binding.Mode == "dev"
 	case "linux-workcell":
-		return binding.Mode == "dev" || binding.Mode == "htb-linux"
+		return binding.Mode == "dev"
 	default:
 		return false
 	}

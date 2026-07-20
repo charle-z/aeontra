@@ -1,0 +1,135 @@
+name: P15 Edge bundle and zero-touch evidence
+
+on:
+  push:
+    branches:
+      - main
+      - p15-zero-touch-local-autopilot
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  edge-contracts:
+    name: Edge, autopilot, updater, and migration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run zero-touch component tests
+        run: |
+          go test -p 1 ./internal/bundle ./internal/edgeupdate ./internal/autopilot ./internal/edge ./internal/edgeclient ./cmd/mcp-edge ./cmd/mcp-autopilot-worker ./cmd/mcp-bundle-updater ./packaging/debian ./packaging/parrot -count=1
+          go test ./internal/mcpserver -run 'Test(HTBActionsRemain|ExternalLabTools|RemoteOpenCodeRuntimeCannot|WorkspaceRuntimeContinueRejects|Bundle|Autopilot)' -count=1
+
+      - name: Compile and vet every P15 component
+        run: |
+          go vet ./internal/bundle ./internal/edgeupdate ./internal/autopilot ./cmd/mcp-edge ./cmd/mcp-autopilot-worker ./cmd/mcp-bundle-updater
+          go build ./cmd/mcp-edge ./cmd/model-turn-driver ./cmd/mcp-autopilot-worker ./cmd/mcp-bundle-updater ./cmd/mcp-bundle-manifest ./cmd/mcp-release-channel
+
+  signed-package:
+    name: Reproducible signed Debian package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up pinned Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.18.0'
+          cache: npm
+          cache-dependency-path: test/opencode-e2e/package-lock.json
+
+      - name: Install pinned OpenCode
+        run: npm ci --prefix test/opencode-e2e --no-audit --no-fund
+
+      - name: Create ephemeral release trust and GPG identity
+        run: |
+          mkdir -p "$RUNNER_TEMP/release" "$RUNNER_TEMP/deb-a" "$RUNNER_TEMP/deb-b"
+          public_key="$(go run ./cmd/mcp-bundle-keygen --output "$RUNNER_TEMP/release/edge.key")"
+          echo "PUBLIC_KEY=$public_key" >> "$GITHUB_ENV"
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 0700 "$GNUPGHOME"
+          gpg --batch --passphrase '' --quick-gen-key 'MCP Devbox CI <ci@localhost>' ed25519 sign 1d
+          key_id="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="sec" {print $5; exit}')"
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          echo "GPG_KEY_ID=$key_id" >> "$GITHUB_ENV"
+
+      - name: Stage one indivisible signed bundle
+        run: |
+          catalog="$(go run ./cmd/mcp-catalog-id)"
+          bash packaging/parrot/stage-edge-bundle.sh \
+            --output "$RUNNER_TEMP/release/bundle" \
+            --release p15.0.0 \
+            --commit "$(git rev-parse HEAD)" \
+            --catalog "$catalog" \
+            --private-key "$RUNNER_TEMP/release/edge.key" \
+            --public-key "$PUBLIC_KEY" \
+            --node-bin "$(command -v node)" \
+            --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode" \
+            --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+
+      - name: Build package twice reproducibly
+        run: |
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-a" --release p15.0.0 --signing-key "$GPG_KEY_ID"
+          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-b" --release p15.0.0 --signing-key "$GPG_KEY_ID"
+          cmp "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb" "$RUNNER_TEMP/deb-b/mcp-devbox-edge_15.0.0_amd64.deb"
+          dpkg-deb --info "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb"
+          dpkg-deb --contents "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb" > "$RUNNER_TEMP/package-contents.txt"
+
+      - name: Exercise clean package and P14 state migration in isolation
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/deb-a:/artifacts:ro" \
+            debian:bookworm-slim sh -euxc '
+              printf "#!/bin/sh\nexit 0\n" >/usr/bin/systemctl
+              chmod 0755 /usr/bin/systemctl
+              printf "#!/bin/sh\nexit 0\n" >/usr/bin/loginctl
+              chmod 0755 /usr/bin/loginctl
+              dpkg --force-depends -i /artifacts/mcp-devbox-edge_15.0.0_amd64.deb
+              test -L /opt/mcp-devbox/current
+              test -x /usr/local/bin/mcp-edge
+              /usr/local/bin/mcp-edge bundle verify
+              useradd -m charles
+              install -d -o charles -g charles -m 0700 /home/charles/.config/mcp-devbox-edge
+              printf "preserved-identity\n" >/home/charles/.config/mcp-devbox-edge/identity.json
+              printf "ws_593c26b24ba6dc583c9aa1da5e9e0152\n" >/home/charles/.config/mcp-devbox-edge/workspaces.db
+              chown -R charles:charles /home/charles/.config/mcp-devbox-edge
+              printf "#!/bin/sh\nexit 0\n" >/usr/local/libexec/mcp-devbox/onboarding-preflight
+              chmod 0755 /usr/local/libexec/mcp-devbox/onboarding-preflight
+              /var/lib/dpkg/info/mcp-devbox-edge.postinst configure
+              test "$(cat /home/charles/.local/state/mcp-edge/identity.json)" = preserved-identity
+              test "$(cat /home/charles/.local/state/mcp-edge/workspaces.db)" = ws_593c26b24ba6dc583c9aa1da5e9e0152
+              test ! -e /home/charles/.config/mcp-devbox-edge
+              /var/lib/dpkg/info/mcp-devbox-edge.postinst configure
+              test "$(cat /home/charles/.local/state/mcp-edge/identity.json)" = preserved-identity
+            '
+
+      - name: Upload package evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p15-signed-package-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/deb-a/*
+            ${{ runner.temp }}/package-contents.txt
+          if-no-files-found: error
+          retention-days: 14

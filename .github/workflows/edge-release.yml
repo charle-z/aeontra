@@ -1,0 +1,126 @@
+name: Publish signed P15 Edge release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Exact immutable P15 release (p15.x.y)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build, verify, and publish official stable bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: edge-release
+    env:
+      EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
+      DEB_GPG_PRIVATE_KEY_B64: ${{ secrets.EDGE_DEB_GPG_PRIVATE_KEY_B64 }}
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate immutable release input
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ ]]
+          test -n "$EDGE_PRIVATE_KEY_B64"
+          test -n "$DEB_GPG_PRIVATE_KEY_B64"
+          ! git rev-parse "$RELEASE" >/dev/null 2>&1
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up pinned Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.18.0'
+          cache: npm
+          cache-dependency-path: test/opencode-e2e/package-lock.json
+
+      - name: Install pinned OpenCode
+        run: npm ci --prefix test/opencode-e2e --no-audit --no-fund
+
+      - name: Import offline release identities
+        run: |
+          install -d -m 0700 "$RUNNER_TEMP/release" "$RUNNER_TEMP/gnupg"
+          printf '%s' "$EDGE_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/release/edge.key"
+          chmod 0600 "$RUNNER_TEMP/release/edge.key"
+          test "$(stat -c %s "$RUNNER_TEMP/release/edge.key")" = 64
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          printf '%s' "$DEB_GPG_PRIVATE_KEY_B64" | base64 --decode | gpg --batch --import
+          key_id="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="sec" {print $5; exit}')"
+          test -n "$key_id"
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          echo "GPG_KEY_ID=$key_id" >> "$GITHUB_ENV"
+
+      - name: Build and verify signed artifacts
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          commit="$(git rev-parse HEAD)"
+          catalog="$(go run ./cmd/mcp-catalog-id)"
+          public_key="$(go run ./cmd/mcp-bundle-public-key "$RUNNER_TEMP/release/edge.key")"
+          bash packaging/parrot/stage-edge-bundle.sh \
+            --output "$RUNNER_TEMP/release/bundle" --release "$RELEASE" --commit "$commit" \
+            --catalog "$catalog" --private-key "$RUNNER_TEMP/release/edge.key" --public-key "$public_key" \
+            --node-bin "$(command -v node)" \
+            --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode" \
+            --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+          go build -trimpath -o "$RUNNER_TEMP/release/mcp-release-channel" ./cmd/mcp-release-channel
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          bash packaging/parrot/build-edge-release.sh \
+            --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/release/assets" \
+            --release "$RELEASE" --architecture amd64 \
+            --channel-tool "$RUNNER_TEMP/release/mcp-release-channel" \
+            --private-key "$RUNNER_TEMP/release/edge.key" --commit "$commit" \
+            --protocol mcp-devbox.edge-bundle.v1 --catalog "$catalog"
+          bash packaging/debian/build-edge-deb.sh \
+            --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/release/assets/$RELEASE" \
+            --release "$RELEASE" --signing-key "$GPG_KEY_ID"
+          go test -p 1 ./internal/bundle ./internal/edgeupdate ./internal/autopilot ./cmd/mcp-edge ./cmd/mcp-bundle-updater ./packaging/debian ./packaging/parrot -count=1
+          go vet ./...
+          go build ./...
+          git diff --check
+
+      - name: Generate Edge bundle SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          path: ${{ runner.temp }}/release/bundle
+          format: spdx-json
+          output-file: ${{ runner.temp }}/release/assets/${{ inputs.release }}/mcp-devbox-edge_${{ inputs.release }}_amd64.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+
+      - name: Publish immutable release and stable signed channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          release_dir="$RUNNER_TEMP/release/assets/$RELEASE"
+          gh release create "$RELEASE" "$release_dir"/* --target "$(git rev-parse HEAD)" --title "MCP Devbox Edge $RELEASE" --notes "Official signed P15 Edge bundle, Debian installer, checksums, signatures, and SBOM."
+          if ! gh release view stable >/dev/null 2>&1; then
+            gh release create stable --target "$(git rev-parse HEAD)" --title 'MCP Devbox Edge stable channel' --notes 'Mutable pointer containing only the currently signed stable channel metadata.'
+          fi
+          gh release upload stable --clobber "$RUNNER_TEMP/release/assets/stable/channel-amd64.json" "$RUNNER_TEMP/release/assets/stable/channel-amd64.json.sig"
+
+      - name: Upload retained workflow evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: edge-release-${{ inputs.release }}-${{ github.sha }}
+          path: ${{ runner.temp }}/release/assets
+          if-no-files-found: error
+          retention-days: 30

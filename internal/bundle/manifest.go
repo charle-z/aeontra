@@ -27,6 +27,7 @@ const (
 	ComponentDriver          = "model-turn-driver"
 	ComponentWorker          = "mcp-autopilot-worker"
 	ComponentUpdater         = "mcp-bundle-updater"
+	ComponentNode            = "runtime-node"
 	ComponentProvider        = "provider-index"
 	ComponentHTBActions      = "provider-htb-actions"
 	ComponentProviderPackage = "provider-package"
@@ -88,7 +89,7 @@ type VerificationError struct {
 func (e *VerificationError) Error() string { return string(e.Code) }
 
 func RequiredComponents() []string {
-	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentProvider, ComponentHTBActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
 }
 
 func DefaultLayout() map[string]string {
@@ -97,6 +98,7 @@ func DefaultLayout() map[string]string {
 		ComponentDriver:          "libexec/model-turn-driver",
 		ComponentWorker:          "libexec/mcp-autopilot-worker",
 		ComponentUpdater:         "libexec/mcp-bundle-updater",
+		ComponentNode:            "libexec/node",
 		ComponentProvider:        "opencode-provider/index.js",
 		ComponentHTBActions:      "opencode-provider/htb-actions.js",
 		ComponentProviderPackage: "opencode-provider/package.json",

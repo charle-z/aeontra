@@ -88,6 +88,13 @@ func (s *Server) handleOpenCodeRuntimeStart(arguments json.RawMessage) (string, 
 	if !s.edgeDevices.DeviceActive(params.DeviceID) {
 		return "", errors.New("active edge device not found")
 	}
+	if s.edgeWorkspaces == nil {
+		return "", errWorkspaceRegistryUnavailable
+	}
+	binding, err := s.edgeWorkspaces.ResolveWorkspace(params.WorkspaceID)
+	if err != nil || !validWorkspaceBinding(binding, params.WorkspaceID) || binding.DeviceID != params.DeviceID || binding.Mode != "dev" {
+		return "", errors.New("registered development workspace not found")
+	}
 	ttl := time.Duration(params.TimeoutSeconds) * time.Second
 	body, err := s.modelTurns.StageRuntimeGoal(context.Background(), goal, ttl)
 	if err != nil {

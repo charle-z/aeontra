@@ -43,12 +43,19 @@ links:
 - `/usr/local/libexec/mcp-devbox/model-turn-driver`;
 - `/usr/local/libexec/mcp-devbox/mcp-autopilot-worker`;
 - `/usr/local/libexec/mcp-devbox/mcp-bundle-updater`;
+- `/usr/local/libexec/mcp-devbox/node` (the reviewed Node 24.18.0 runtime);
 - `/opt/mcp-devbox/opencode-provider`;
 - `/opt/mcp-devbox/opencode-1.18.1`.
 
 It installs the Edge template, restricted updater oneshot and onboarding path unit
 under `/etc/systemd/system`, root-owned configuration under `/etc/mcp-devbox`, and
 documentation under `/usr/share/doc/mcp-devbox`.
+
+Node 24.18.0 is part of the signed bundle rather than an ambient host dependency.
+The Debian package declares Bubblewrap, Go, Podman, polkit and systemd dependencies,
+enables the Edge user's rootless Podman socket, and makes rootless validation mandatory
+in onboarding. A missing user-owned socket therefore blocks onboarding instead of
+silently producing a partially capable Edge.
 
 ## Migration and repeat installation
 
@@ -94,3 +101,17 @@ only `device_id` plus `release=stable`; status, rollback, repair and onboarding 
 accept only `device_id`. Diagnostics contain opaque identity and version/health booleans
 plus closed blocker codes—never URLs, filesystem paths, hashes supplied by a caller,
 commands, scripts, targets, credentials or flags.
+
+## Release automation
+
+`.github/workflows/edge-release.yml` is the only supported publication path. A protected
+`edge-release` environment supplies the base64-encoded raw Ed25519 bundle key and the
+base64-encoded Debian GPG signing identity. The workflow checks out exact `main`, derives
+the public key without disclosing private material, stages all pinned components, runs
+the P15 tests/vet/build gates, generates an SPDX SBOM, publishes one immutable GitHub
+release, and updates only the separately signed `stable` channel documents.
+
+`.github/workflows/p15-edge.yml` uses ephemeral release identities on pull requests. It
+builds the Debian package twice and compares bytes, exercises a clean isolated package
+transaction, reruns post-install migration twice, and proves that identity/workspace
+bytes remain unchanged. Ephemeral CI keys never produce an official release.

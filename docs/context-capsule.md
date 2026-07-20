@@ -30,8 +30,12 @@ Step 05 adds closed remote bundle status/update/rollback/repair/onboarding opera
 signed official-channel availability checks, fixed systemd/polkit updater authority,
 safe partial-install diagnostics, and a durable exclusive updater receipt so an Edge
 restart cannot apply rollback twice. Focused portable tests and Linux compile/vet pass;
-exact-head Linux CI remains required. Step 06 (full zero-touch integration evidence,
-release automation and documentation) is active. See
+exact-head Linux CI remains required. Step 06 adds pinned Node inside the signed bundle,
+mandatory rootless Podman onboarding, reproducible package/migration CI, protected
+official release automation with SBOM, and prevents legacy remote OpenCode runtimes
+from targeting `htb-linux` workspaces. Local contracts, cross-Linux compile/vet,
+workflow lint and shell syntax checks pass; exact-head CI remains required. Step 07
+(complete gates and release-candidate closure) is active. See
 `docs/autopilot.md`, `docs/edge-bundles.md` and
 `docs/install-edge-parrot-p15.md`.
 

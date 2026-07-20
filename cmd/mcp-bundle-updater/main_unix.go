@@ -113,7 +113,7 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 	}
 	for component, relative := range bundle.DefaultLayout() {
 		mode := os.FileMode(0o644)
-		if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentOpenCode {
+		if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentOpenCode {
 			mode = 0o755
 		}
 		if err := os.Chmod(filepath.Join(releaseRoot, filepath.FromSlash(relative)), mode); err != nil {
@@ -125,6 +125,7 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 		"/usr/local/libexec/mcp-devbox/model-turn-driver":    "/opt/mcp-devbox/current/libexec/model-turn-driver",
 		"/usr/local/libexec/mcp-devbox/mcp-autopilot-worker": "/opt/mcp-devbox/current/libexec/mcp-autopilot-worker",
 		"/usr/local/libexec/mcp-devbox/mcp-bundle-updater":   "/opt/mcp-devbox/current/libexec/mcp-bundle-updater",
+		"/usr/local/libexec/mcp-devbox/node":                 "/opt/mcp-devbox/current/libexec/node",
 		"/opt/mcp-devbox/opencode-provider":                  "/opt/mcp-devbox/current/opencode-provider",
 		"/opt/mcp-devbox/opencode-1.18.1":                    "/opt/mcp-devbox/current/opencode",
 	}

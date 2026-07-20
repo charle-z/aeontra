@@ -18,6 +18,7 @@ Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStartPre=/usr/bin/test -x /usr/bin/bwrap
 ExecStartPre=/usr/bin/test -x /usr/local/bin/mcp-edge
 ExecStartPre=/usr/bin/test -x /usr/local/libexec/mcp-devbox/model-turn-driver
+ExecStartPre=/usr/bin/test -x /usr/local/libexec/mcp-devbox/node
 ExecStartPre=/usr/bin/test -x /opt/mcp-devbox/opencode-1.18.1/opencode
 ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/opencode-1.18.1/package-lock.json
 ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/opencode-provider/index.js

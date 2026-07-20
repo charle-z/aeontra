@@ -28,7 +28,7 @@ for command in dpkg-deb gpg sha256sum install mktemp; do
 done
 
 for path in \
-  manifest.json manifest.sig bin/mcp-edge libexec/model-turn-driver \
+  manifest.json manifest.sig bin/mcp-edge libexec/model-turn-driver libexec/node \
   libexec/mcp-autopilot-worker libexec/mcp-bundle-updater opencode/opencode opencode/package-lock.json \
   opencode-provider/index.js opencode-provider/htb-actions.js \
   opencode-provider/package.json systemd/mcp-devbox-opencode-edge@.service; do
@@ -58,6 +58,7 @@ install -m 0755 "$BUNDLE/bin/mcp-edge" "$RELEASE_ROOT/bin/mcp-edge"
 install -m 0755 "$BUNDLE/libexec/model-turn-driver" "$RELEASE_ROOT/libexec/model-turn-driver"
 install -m 0755 "$BUNDLE/libexec/mcp-autopilot-worker" "$RELEASE_ROOT/libexec/mcp-autopilot-worker"
 install -m 0755 "$BUNDLE/libexec/mcp-bundle-updater" "$RELEASE_ROOT/libexec/mcp-bundle-updater"
+install -m 0755 "$BUNDLE/libexec/node" "$RELEASE_ROOT/libexec/node"
 install -m 0755 "$BUNDLE/opencode/opencode" "$RELEASE_ROOT/opencode/opencode"
 install -m 0644 "$BUNDLE/opencode/package-lock.json" "$RELEASE_ROOT/opencode/package-lock.json"
 install -m 0644 "$BUNDLE/opencode-provider/index.js" "$RELEASE_ROOT/opencode-provider/index.js"
@@ -86,7 +87,7 @@ Package: mcp-devbox-edge
 Version: ${RELEASE#p}
 Architecture: amd64
 Maintainer: MCP Devbox Release Engineering
-Depends: bubblewrap, curl, git, nodejs, npm, policykit-1, python3, systemd
+Depends: bubblewrap, curl, git, golang-go, podman, policykit-1, python3, systemd
 Section: devel
 Priority: optional
 Description: Signed MCP Devbox Edge and local autopilot bundle
@@ -97,5 +98,5 @@ install -d -m 0755 "$OUTPUT"
 DEB="$OUTPUT/mcp-devbox-edge_${RELEASE#p}_amd64.deb"
 dpkg-deb --root-owner-group --build "$PACKAGE_ROOT" "$DEB"
 gpg --batch --yes --local-user "$SIGNING_KEY" --armor --detach-sign --output "$DEB.asc" "$DEB"
-sha256sum "$DEB" >"$DEB.sha256"
+(cd "$OUTPUT" && sha256sum "$(basename "$DEB")") >"$DEB.sha256"
 printf 'built signed package %s\n' "$DEB"
