@@ -146,6 +146,16 @@ Calling the tool "secure" raises the bar: a bypass here is worse than in a
 permissive tool. **Under-promise.** Ship `SECURITY.md` + a vulnerability disclosure
 policy. Keep the MIT "as is" disclaimer. Never claim guarantees that can't be held.
 
+## Signed Edge release boundary
+
+P15 Edge workers accept new local jobs only when the complete versioned release
+manifest has a valid Ed25519 signature and every fixed component matches its SHA-256.
+The compiled release, commit, protocol, architecture and exterior catalog identity
+must agree. Provider and driver mismatches fail before runtime creation with closed,
+content-free codes. The installed Edge contains no signing private key, and neither
+the chat nor a public tool may supply a URL, path, hash, script or command to the
+updater. See `docs/edge-bundles.md`.
+
 ## Required security tests (Layer 1)
 
 - path traversal blocked · access outside workspace blocked · `.env`/`.ssh` blocked

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/charle-z/mcp-devbox/internal/bundle"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
@@ -32,6 +33,10 @@ func TestOpenCodeFailureCodeIsStableAndRedacted(t *testing.T) {
 		{errors.New("OpenCode terminated unexpectedly (turn_create)"), "opencode_turn_create"},
 		{errors.New("OpenCode terminated unexpectedly (response_wait)"), "opencode_response_wait"},
 		{errors.New("OpenCode terminated unexpectedly"), "opencode_exit"},
+		{&bundle.VerificationError{Code: bundle.BundleMismatch}, "bundle_mismatch"},
+		{&bundle.VerificationError{Code: bundle.ProviderOutdated}, "provider_outdated"},
+		{&bundle.VerificationError{Code: bundle.DriverOutdated}, "driver_outdated"},
+		{&bundle.VerificationError{Code: bundle.ManifestInvalid}, "manifest_invalid"},
 		{errors.New("unknown sensitive detail /private/path"), "internal"},
 	}
 	for _, test := range cases {

@@ -148,6 +148,20 @@ device on your PC connects out to their cloud relay. Two paths for us:
 For a security-first tool, **(A)** is the honest default; **(B)** trades the
 security narrative for adoption. Not decided.
 
+## P15 local-autopilot boundary
+
+P15 uses four explicit layers. The remote control plane owns only durable job
+lifecycle and safe metadata. The persistent Parrot Edge owns device identity,
+workspaces, authorization, VPN/target validation and worker supervision. A bounded
+local autopilot worker owns reasoning cycles and invokes only the private structured
+runtime broker; operational HTB commands, credentials, flags and raw results never
+enter the control plane. A separate root-owned updater accepts only official signed
+release identifiers and has no generic shell or sudo interface.
+
+All Edge executables, provider files and systemd definitions are one signed release.
+`/opt/mcp-devbox/current` changes atomically only after staged verification and smoke;
+failure restores the previous signed release. See `docs/edge-bundles.md`.
+
 ## Open considerations (contemplate before/during build)
 
 1. **Content-level secret scanning** (not just path-blocking) — see `security.md`.

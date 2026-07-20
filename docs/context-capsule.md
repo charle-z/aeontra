@@ -4,22 +4,21 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-P13 opaque workspace continuation is merged and deployed on `main` at
-`b604fa4ad75ca4d36d04115c9f09977baf52093a`. Production is healthy with
-86 tools and the P13 catalog hash. The active branch is
-`p14-first-class-authorized-htb-actions`, based exactly on that merge.
+P14 is merged on `main` at `54891fe7bced14e5eacace754f0072ad4d7996c2`.
+P15 is active on `p15-zero-touch-local-autopilot`, based exactly on that merge. It
+must turn the reviewed P14 local HTB foundation into a one-time-installed, signed,
+self-updating Parrot Edge with chat-driven lab preparation and durable local autopilot.
 
-P14 replaces model-generated Bash calls to `mcp-edge lab ssh-exec` with six
-transparent first-class actions for explicitly authorized Hack The Box and controlled
-CTF Linux workspaces. Edge keeps target, VPN binding, credential extraction, SSH,
-output files and session lifecycle local. OpenCode receives the actions only in
-`htb-linux` mode and executes them over the private runtime Unix socket. Dev and
-sandbox runtimes do not receive them. The current candidate catalog contains 92 tools
-with hash `sha256:ea9cc3749c68fcc12b608efbddc259b01eb7868c98bbc1ab35c75f456e118a98`.
+Step 01 is implemented locally: an indivisible Ed25519-signed release manifest binds Edge,
+driver, autopilot worker, provider, HTB actions, systemd unit, commit, protocol,
+architecture and exterior catalog. The packaged Edge refuses new runtime leases on
+any mismatch before starting OpenCode. Focused tests, Linux vet/build and diff checks
+pass; full exact-head Linux CI remains required. Step 02 (atomic Debian installer,
+updater, rollback, repair and migration) is active. See `docs/edge-bundles.md`.
 
-P14 remains unmerged and undeployed. Parrot must not be modified until all local and
-exact-head CI gates are green, the PR is merged with a merge commit and the automatic
-Coolify deployment is verified. See `docs/authorized-htb-actions.md`.
+Production and Parrot remain on the previous verified deployment until all P15 local
+and exact-head remote gates pass, the separate PR merges with a merge commit, the
+automatic deployment is healthy, and the structured updater completes the migration.
 
 Historical deployed milestones remain part of the current evidence chain: P8.1 Console
 2.0 is deployed and tagged from d343264bffdc0ae1bc045a9d723e913be977090c;

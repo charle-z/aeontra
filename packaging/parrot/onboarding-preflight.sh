@@ -9,6 +9,7 @@ INTEGRITY="${MCP_DEVBOX_INTEGRITY:-/opt/mcp-devbox/opencode-1.18.1/package-lock.
 PROVIDER="${MCP_DEVBOX_PROVIDER:-/opt/mcp-devbox/opencode-provider}"
 DRIVER="${MCP_DEVBOX_DRIVER:-/usr/local/libexec/mcp-devbox/model-turn-driver}"
 BWRAP="${MCP_DEVBOX_BWRAP:-/usr/bin/bwrap}"
+BUNDLE_ROOT="${MCP_DEVBOX_BUNDLE_ROOT:-/opt/mcp-devbox/current}"
 REQUIRE_ROOTLESS="${MCP_DEVBOX_REQUIRE_ROOTLESS:-0}"
 
 fail() {
@@ -23,7 +24,7 @@ for command in bwrap curl git go node npm python3; do
   command -v "$command" >/dev/null 2>&1 || fail "missing command: $command"
 done
 
-for path in /usr/local/bin/mcp-edge "$DRIVER" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json"; do
+for path in /usr/local/bin/mcp-edge "$DRIVER" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker"; do
   [ -e "$path" ] || fail "missing reviewed installation path: $path"
 done
 [ -x /usr/local/bin/mcp-edge ] || fail "mcp-edge is not executable"

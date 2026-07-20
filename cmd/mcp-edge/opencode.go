@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,16 +14,23 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
+	"github.com/charle-z/mcp-devbox/internal/bundle"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
 func openCodeFailureCode(err error) string {
 	if err == nil {
 		return "none"
+	}
+	var bundleError *bundle.VerificationError
+	if errors.As(err, &bundleError) {
+		return string(bundleError.Code)
 	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
@@ -133,6 +142,7 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	providerPath := fs.String("provider", "", "absolute path to the local external-driver provider")
 	bubblewrapPath := fs.String("bubblewrap", "", "absolute path to the Bubblewrap sandbox executable")
 	integrityPath := fs.String("integrity", "", "absolute path to the pinned npm package-lock.json")
+	bundleRoot := fs.String("bundle-root", "/opt/mcp-devbox/current", "official signed MCP Devbox release root")
 	wait := fs.Duration("wait", 120*time.Second, "signed runtime long-poll duration")
 	poll := fs.Duration("poll", 5*time.Second, "delay after an empty long-poll or safe failure")
 	heartbeat := fs.Duration("heartbeat", 5*time.Second, "runtime heartbeat interval")
@@ -156,6 +166,9 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 			return errors.New("bubblewrap is required for the OpenCode relay")
 		}
 		*bubblewrapPath = resolved
+	}
+	if err := verifyInstalledEdgeBundle(*bundleRoot); err != nil {
+		return err
 	}
 	for name, value := range map[string]string{"opencode": *opencodePath, "driver": *driverPath, "provider": *providerPath, "bubblewrap": *bubblewrapPath, "integrity": *integrityPath} {
 		if !filepath.IsAbs(filepath.Clean(value)) {
@@ -226,4 +239,18 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 		case <-time.After(delay):
 		}
 	}
+}
+
+func verifyInstalledEdgeBundle(root string) error {
+	keyBytes, err := hex.DecodeString(buildinfo.EdgeBundlePublicKey)
+	if err != nil || len(keyBytes) != ed25519.PublicKeySize {
+		return &bundle.VerificationError{Code: bundle.ManifestInvalid}
+	}
+	_, err = bundle.LoadAndVerify(root, ed25519.PublicKey(keyBytes), bundle.Compatibility{
+		Release: buildinfo.EdgeBundleRelease, Commit: buildinfo.Commit,
+		ProtocolVersion: buildinfo.EdgeBundleProtocolVersion,
+		CatalogHash:     buildinfo.EdgeBundleCatalogHash,
+		Architecture:    runtime.GOARCH,
+	})
+	return err
 }
