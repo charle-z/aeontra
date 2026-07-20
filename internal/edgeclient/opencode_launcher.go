@@ -1016,14 +1016,18 @@ func verifyOpenCodeLock(path string) error {
 }
 
 func verifyProviderPackage(path string) error {
-	if err := rejectSymlinkPath(path); err != nil {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || !filepath.IsAbs(resolved) {
 		return errors.New("OpenCode external driver path is unsafe")
 	}
-	info, err := os.Lstat(path)
+	if err := rejectSymlinkPath(resolved); err != nil {
+		return errors.New("OpenCode external driver path is unsafe")
+	}
+	info, err := os.Lstat(resolved)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
 		return errors.New("OpenCode external driver is unavailable")
 	}
-	body, err := os.ReadFile(filepath.Join(path, "package.json"))
+	body, err := os.ReadFile(filepath.Join(resolved, "package.json"))
 	if err != nil || len(body) > 64<<10 {
 		return errors.New("OpenCode external driver manifest is unavailable")
 	}

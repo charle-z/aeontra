@@ -25,9 +25,11 @@ over the runtime-owned Unix socket and consumes the safe tool result internally.
 It never builds a Bash command and never calls `mcp-edge lab ssh-exec` through the
 model's shell tool.
 
-The provider does not inject these tools in `dev` or sandbox workspaces. Mixed HTB
-and non-HTB tool calls in one external-model response are rejected so execution and
-result attribution remain unambiguous.
+The provider does not inject these tools in `dev` or sandbox workspaces. When an
+external-model response mixes HTB and ordinary tool calls, the provider executes
+only the structured HTB calls, returns their results to the model, and defers the
+ordinary work to a later response. This preserves unambiguous execution and result
+attribution without terminating the runtime for a recoverable model mistake.
 
 ## Tools
 

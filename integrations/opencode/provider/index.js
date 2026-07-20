@@ -146,7 +146,6 @@ class PullRendezvousLanguageModel {
       const calls = completed.response.tool_calls.map((call) => ({ ...call, tool: completed.toolsByID.get(call.tool_id) }));
       const internal = calls.filter((call) => isInternalHTBCall(this.htb, call.tool));
       if (internal.length === 0) return completed;
-      if (internal.length !== calls.length) throw new Error("HTB actions cannot be mixed with non-HTB tool calls in one model response");
       const results = [];
       for (const call of internal) {
         results.push(await this.htb.execute(call.tool.name, call.arguments, options.abortSignal));
