@@ -106,8 +106,15 @@ jobs:
               chmod 0755 /usr/bin/systemctl
               printf "#!/bin/sh\nexit 0\n" >/usr/bin/loginctl
               chmod 0755 /usr/bin/loginctl
+              install -d /opt/mcp-devbox/opencode-provider /opt/mcp-devbox/opencode-1.18.1
+              printf "p14-provider\n" >/opt/mcp-devbox/opencode-provider/index.js
+              printf "p14-opencode\n" >/opt/mcp-devbox/opencode-1.18.1/opencode
               dpkg --force-depends -i /artifacts/mcp-devbox-edge_15.0.0_amd64.deb
               test -L /opt/mcp-devbox/current
+              test -L /opt/mcp-devbox/opencode-provider
+              test -L /opt/mcp-devbox/opencode-1.18.1
+              test ! -e /opt/mcp-devbox/.p15-migration-opencode-provider
+              test ! -e /opt/mcp-devbox/.p15-migration-opencode-1.18.1
               test -x /usr/local/bin/mcp-edge
               /usr/local/bin/mcp-edge bundle verify
               useradd -m charles

@@ -4,50 +4,33 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-P14 is merged on `main` at `54891fe7bced14e5eacace754f0072ad4d7996c2`.
-P15 is active on `p15-zero-touch-local-autopilot`, based exactly on that merge. It
-must turn the reviewed P14 local HTB foundation into a one-time-installed, signed,
-self-updating Parrot Edge with chat-driven lab preparation and durable local autopilot.
+P15 merged through PR #32 on `main` at merge commit
+`2b72df3625f6f223f8a0d974a94ebf1052bea117`; all required exact-head checks passed.
+The protected release workflow published signed release `p15.0.1`, and Parrot now
+runs that bundle with the P14 device identity and Cap workspace ID preserved. The
+Edge consumed the queued prepare, retarget and autopilot operations and created a
+durable job. The job is safely blocked with `provider_transient`: the configured
+loopback endpoint `http://127.0.0.1:4096/v1/next-action` has no resident model
+provider. No credential, flag or completed lab result is claimed.
 
-Step 01 is implemented locally: an indivisible Ed25519-signed release manifest binds Edge,
-driver, autopilot worker, provider, HTB actions, systemd unit, commit, protocol,
-architecture and exterior catalog. The packaged Edge refuses new runtime leases on
-any mismatch before starting OpenCode. Focused tests, Linux vet/build and diff checks
-pass. Step 02 adds the reproducible signed Debian package, signed stable channel,
-restricted updater, atomic activation/rollback, repair, legacy-state migration,
-single-action onboarding and systemd path activation. Portable tests and Linux
-vet/build pass; Linux transaction tests still require exact-head CI. Step 03
-(automatic lab prepare/retarget) is implemented locally: closed public operations
-are leased over the signed outbound Edge channel, create/reuse the lab workspace,
-persist its private contract/inventory, rotate authorization on retarget, and keep
-all operational HTB actions outside the exterior catalog. Exact-head Linux CI is
-still required before the step can be considered remotely verified. Step 04 adds
-the durable local autopilot state machine, bounded signed-bundle worker cycles,
-loopback-only local model interface, Unix-socket HTB broker execution, restart
-supervision, safe progress reporting, lifecycle tools and circuit breakers. Focused
-portable tests and Linux compile/vet/build pass; exact-head Linux CI remains required.
-Step 05 adds closed remote bundle status/update/rollback/repair/onboarding operations,
-signed official-channel availability checks, fixed systemd/polkit updater authority,
-safe partial-install diagnostics, and a durable exclusive updater receipt so an Edge
-restart cannot apply rollback twice. Focused portable tests and Linux compile/vet pass;
-exact-head Linux CI remains required. Step 06 adds pinned Node inside the signed bundle,
-mandatory rootless Podman onboarding, reproducible package/migration CI, protected
-official release automation with SBOM, and prevents legacy remote OpenCode runtimes
-from targeting `htb-linux` workspaces. Local contracts, cross-Linux compile/vet,
-workflow lint and shell syntax checks pass; exact-head CI remains required. Step 07
-(complete gates and release-candidate closure) records the local candidate evidence.
-Step 08 closes audit findings: server-signed control leases with in-place P14 identity
-trust migration, durable transient retry backoff, compiled-protocol enforcement for
-the signed stable channel, and same-release repair with health-failure restoration.
-Focused tests, Linux test compilation/vet and diff checks pass; exact-head Linux CI
-remains mandatory. Local RC evidence is in
-`docs/baselines/2026-07-19-p15-rc.md`. See
-`docs/autopilot.md`, `docs/edge-bundles.md` and
-`docs/install-edge-parrot-p15.md`.
+Real P14 migration exposed a packaging defect not covered by the original isolated
+package test: `ln -sfn` cannot replace the existing P14
+`/opt/mcp-devbox/opencode-provider` and `/opt/mcp-devbox/opencode-1.18.1`
+directories. Parrot was recovered by moving only those compatibility directories,
+finishing package configuration, verifying the signed bundle and service, and then
+removing the obsolete copies. Branch `codex/p15-installer-directory-migration`
+contains the follow-up fix: stage only those two directories, restore them on failed
+smoke, remove the temporary copies after success, and reproduce the real P14 shape
+in package CI. Publish a new signed patch release only after its PR and release gates
+are green.
 
-Production and Parrot remain on the previous verified deployment until all P15 local
-and exact-head remote gates pass, the separate PR merges with a merge commit, the
-automatic deployment is healthy, and the structured updater completes the migration.
+P15 implements the indivisible Ed25519-signed bundle, reproducible Debian package,
+restricted updater, atomic activation/rollback, repair, onboarding, signed outbound
+control leases, automatic lab prepare/retarget, durable local autopilot state,
+loopback model interface, Unix-socket HTB broker, circuit breakers, pinned Node,
+rootless Podman checks, release SBOM and protected release automation. RC evidence
+is in `docs/baselines/2026-07-19-p15-rc.md`; operational detail is in
+`docs/autopilot.md`, `docs/edge-bundles.md` and `docs/install-edge-parrot-p15.md`.
 
 Historical deployed milestones remain part of the current evidence chain: P8.1 Console
 2.0 is deployed and tagged from d343264bffdc0ae1bc045a9d723e913be977090c;
