@@ -51,3 +51,37 @@ func TestLabOperationsRejectPublicTargetsAndUnsafeCompletion(t *testing.T) {
 		t.Fatal("unsafe failure code accepted")
 	}
 }
+
+func TestAutopilotControlOperationsPublishOnlySafeDurableMetadata(t *testing.T) {
+	store := openHTTPTestStore(t)
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	workspaceID := "ws_0123456789abcdef0123456789abcdef"
+	if _, err := store.RegisterWorkspaces(device.ID, []WorkspaceRegistration{{WorkspaceID: workspaceID, Profile: "linux-workcell", Mode: "htb-linux"}}); err != nil {
+		t.Fatal(err)
+	}
+	operation, _, err := store.CreateOperation(device.ID, OperationAutopilotStart, OperationRequest{WorkspaceID: workspaceID, RunUntil: "completed_or_cancelled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := store.LeaseOperation(device.ID, time.Minute)
+	if err != nil || lease.Operation.ID != operation.ID {
+		t.Fatalf("lease=%+v err=%v", lease, err)
+	}
+	result := OperationResult{WorkspaceID: workspaceID, JobID: "aj_0123456789abcdef0123456789abcdef", JobState: "running", ProgressRevision: 3, CycleCount: 7}
+	if _, err = store.CompleteOperation(device.ID, operation.ID, lease.LeaseID, result, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.ReportAutopilot(device.ID, result); err != nil {
+		t.Fatal(err)
+	}
+	status, err := store.AutopilotStatus(workspaceID)
+	if err != nil || status != result {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+	second, fresh, err := store.CreateOperation(device.ID, OperationAutopilotStart, OperationRequest{WorkspaceID: workspaceID, RunUntil: "completed_or_cancelled"})
+	if err != nil || !fresh || second.ID == operation.ID {
+		t.Fatalf("second=%+v fresh=%t err=%v", second, fresh, err)
+	}
+}

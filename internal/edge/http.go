@@ -46,10 +46,26 @@ func NewHTTPHandler(store *Store, modelTurns ...*modelturn.Store) http.Handler {
 	mux.Handle("/edge/v1/tasks/", store.RequireDevice(http.HandlerFunc(store.handleTaskAction)))
 	mux.Handle("/edge/v1/operations/lease", store.RequireDevice(http.HandlerFunc(store.handleOperationLease)))
 	mux.Handle("/edge/v1/operations/", store.RequireDevice(http.HandlerFunc(store.handleOperationAction)))
+	mux.Handle("/edge/v1/autopilot/report", store.RequireDevice(http.HandlerFunc(store.handleAutopilotReport)))
 	if len(modelTurns) > 0 && modelTurns[0] != nil {
 		registerModelRelayRoutes(mux, store, modelTurns[0])
 	}
 	return mux
+}
+
+func (s *Store) handleAutopilotReport(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	var result OperationResult
+	if !decodeStrictJSON(w, r, &result) {
+		return
+	}
+	if err := s.ReportAutopilot(DeviceFromContext(r.Context()).ID, result); err != nil {
+		http.Error(w, "autopilot report rejected", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type operationLeaseRequest struct {

@@ -1,6 +1,7 @@
 package edge
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -16,8 +17,12 @@ type OperationKind string
 type OperationState string
 
 const (
-	OperationLabPrepare  OperationKind = "lab_prepare"
-	OperationLabRetarget OperationKind = "lab_retarget"
+	OperationLabPrepare      OperationKind = "lab_prepare"
+	OperationLabRetarget     OperationKind = "lab_retarget"
+	OperationAutopilotStart  OperationKind = "autopilot_start"
+	OperationAutopilotPause  OperationKind = "autopilot_pause"
+	OperationAutopilotResume OperationKind = "autopilot_resume"
+	OperationAutopilotCancel OperationKind = "autopilot_cancel"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -34,11 +39,17 @@ type OperationRequest struct {
 	Difficulty      string `json:"difficulty,omitempty"`
 	OperatingSystem string `json:"operating_system,omitempty"`
 	WorkspaceID     string `json:"workspace_id,omitempty"`
+	RunUntil        string `json:"run_until,omitempty"`
 }
 
 type OperationResult struct {
 	WorkspaceID           string `json:"workspace_id,omitempty"`
 	AuthorizationRevision uint64 `json:"authorization_revision,omitempty"`
+	JobID                 string `json:"job_id,omitempty"`
+	JobState              string `json:"job_state,omitempty"`
+	ProgressRevision      uint64 `json:"progress_revision,omitempty"`
+	CycleCount            uint64 `json:"cycle_count,omitempty"`
+	JobSafeCode           string `json:"job_safe_code,omitempty"`
 }
 
 type Operation struct {
@@ -74,7 +85,9 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 		return Operation{}, false, errors.New("active edge device not found")
 	}
 	if existing, err := s.operationByDigest(deviceID, kind, digest); err == nil {
-		return existing, false, nil
+		if kind == OperationLabPrepare || kind == OperationLabRetarget || existing.State == OperationQueued || existing.State == OperationLeased {
+			return existing, false, nil
+		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Operation{}, false, errors.New("edge operation persistence failed")
 	}
@@ -158,14 +171,40 @@ func (s *Store) OperationStatus(operationID string) (Operation, error) {
 	return op, nil
 }
 
-func validateOperationRequest(kind OperationKind, request OperationRequest) (OperationRequest, error) {
-	parsed := net.ParseIP(strings.TrimSpace(request.Target))
-	if parsed == nil || parsed.To4() == nil || !parsed.IsPrivate() || strings.Contains(request.Target, "/") {
-		return OperationRequest{}, errors.New("target is invalid")
+func (s *Store) WaitOperation(ctx context.Context, operationID string, timeout time.Duration) (Operation, error) {
+	if timeout <= 0 || timeout > 3*time.Minute {
+		return Operation{}, errors.New("operation wait is invalid")
 	}
-	request.Target = parsed.To4().String()
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		operation, err := s.OperationStatus(operationID)
+		if err != nil {
+			return Operation{}, err
+		}
+		if operation.State == OperationSucceeded || operation.State == OperationFailed {
+			return operation, nil
+		}
+		select {
+		case <-ctx.Done():
+			return operation, ctx.Err()
+		case <-deadline.C:
+			return operation, nil
+		case <-ticker.C:
+		}
+	}
+}
+
+func validateOperationRequest(kind OperationKind, request OperationRequest) (OperationRequest, error) {
 	switch kind {
 	case OperationLabPrepare:
+		parsed := net.ParseIP(strings.TrimSpace(request.Target))
+		if parsed == nil || parsed.To4() == nil || !parsed.IsPrivate() || strings.Contains(request.Target, "/") {
+			return OperationRequest{}, errors.New("target is invalid")
+		}
+		request.Target = parsed.To4().String()
 		request.Platform = strings.ToLower(strings.TrimSpace(request.Platform))
 		request.Difficulty = strings.ToLower(strings.TrimSpace(request.Difficulty))
 		request.OperatingSystem = strings.ToLower(strings.TrimSpace(request.OperatingSystem))
@@ -174,8 +213,21 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 			return OperationRequest{}, errors.New("prepare request is invalid")
 		}
 	case OperationLabRetarget:
+		parsed := net.ParseIP(strings.TrimSpace(request.Target))
+		if parsed == nil || parsed.To4() == nil || !parsed.IsPrivate() || strings.Contains(request.Target, "/") {
+			return OperationRequest{}, errors.New("target is invalid")
+		}
+		request.Target = parsed.To4().String()
 		if !workspaceIDPattern.MatchString(request.WorkspaceID) || request.Platform != "" || request.Machine != "" || request.Difficulty != "" || request.OperatingSystem != "" {
 			return OperationRequest{}, errors.New("retarget request is invalid")
+		}
+	case OperationAutopilotStart:
+		if !workspaceIDPattern.MatchString(request.WorkspaceID) || request.RunUntil != "completed_or_cancelled" || request.Target != "" || request.Platform != "" || request.Machine != "" || request.Difficulty != "" || request.OperatingSystem != "" {
+			return OperationRequest{}, errors.New("autopilot start request is invalid")
+		}
+	case OperationAutopilotPause, OperationAutopilotResume, OperationAutopilotCancel:
+		if !workspaceIDPattern.MatchString(request.WorkspaceID) || request.RunUntil != "" || request.Target != "" || request.Platform != "" || request.Machine != "" || request.Difficulty != "" || request.OperatingSystem != "" {
+			return OperationRequest{}, errors.New("autopilot control request is invalid")
 		}
 	default:
 		return OperationRequest{}, errors.New("operation kind is invalid")
@@ -187,11 +239,50 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if code != "" {
 		return regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(code) && result == (OperationResult{})
 	}
-	return workspaceIDPattern.MatchString(result.WorkspaceID) && result.AuthorizationRevision > 0
+	if !workspaceIDPattern.MatchString(result.WorkspaceID) {
+		return false
+	}
+	if result.JobID != "" {
+		return regexp.MustCompile(`^aj_[a-f0-9]{32}$`).MatchString(result.JobID) && regexp.MustCompile(`^(running|paused|blocked|completed|cancelled)$`).MatchString(result.JobState) && (result.JobSafeCode == "" || regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(result.JobSafeCode))
+	}
+	return result.AuthorizationRevision > 0
+}
+
+func (s *Store) AutopilotStatus(workspaceID string) (OperationResult, error) {
+	if !workspaceIDPattern.MatchString(workspaceID) {
+		return OperationResult{}, errors.New("workspace id is invalid")
+	}
+	var body []byte
+	if err := s.db.QueryRow(`SELECT result_json FROM edge_autopilot_status WHERE workspace_id=?`, workspaceID).Scan(&body); err != nil {
+		return OperationResult{}, errors.New("autopilot job not found")
+	}
+	var result OperationResult
+	if json.Unmarshal(body, &result) != nil || result.WorkspaceID != workspaceID || !validOperationCompletion(result, "") {
+		return OperationResult{}, errors.New("autopilot status unavailable")
+	}
+	return result, nil
+}
+
+func (s *Store) ReportAutopilot(deviceID string, result OperationResult) error {
+	if !idPattern.MatchString(deviceID) || !validOperationCompletion(result, "") || result.JobID == "" {
+		return errors.New("autopilot report is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var bound string
+	if err := s.db.QueryRow(`SELECT device_id FROM edge_workspaces WHERE workspace_id=?`, result.WorkspaceID).Scan(&bound); err != nil || bound != deviceID {
+		return errors.New("autopilot workspace is not registered")
+	}
+	body, _ := json.Marshal(result)
+	_, err := s.db.Exec(`INSERT INTO edge_autopilot_status(workspace_id,device_id,result_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(workspace_id) DO UPDATE SET device_id=excluded.device_id,result_json=excluded.result_json,updated_at=excluded.updated_at`, result.WorkspaceID, deviceID, body, s.now().UTC().UnixNano())
+	if err != nil {
+		return errors.New("autopilot report unavailable")
+	}
+	return nil
 }
 
 func (s *Store) operationByDigest(device string, kind OperationKind, digest string) (Operation, error) {
-	return scanOperation(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,created_at,updated_at FROM edge_operations WHERE device_id=? AND kind=? AND request_digest=?`, device, kind, digest))
+	return scanOperation(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,created_at,updated_at FROM edge_operations WHERE device_id=? AND kind=? AND request_digest=? ORDER BY created_at DESC LIMIT 1`, device, kind, digest))
 }
 func (s *Store) operationByID(id string) (Operation, error) {
 	return scanOperation(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,created_at,updated_at FROM edge_operations WHERE operation_id=?`, id))

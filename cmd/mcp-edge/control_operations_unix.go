@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/autopilot"
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
@@ -50,6 +51,9 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 		}
 		completionCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		_, err = transport.CompleteOperation(completionCtx, lease.Operation.ID, lease.LeaseID, result, code)
+		if err == nil && result.JobID != "" {
+			err = transport.ReportAutopilot(completionCtx, result)
+		}
 		cancel()
 		if err != nil {
 			fmt.Fprintln(stderr, "mcp-edge: control operation completion failed safely")
@@ -73,9 +77,39 @@ func executeControlOperation(ctx context.Context, stateRoot string, operation ed
 			return edge.OperationResult{}, safeControlFailure(err)
 		}
 		return resolveOperationWorkspace(stateRoot, operation.Request.WorkspaceID)
+	case edge.OperationAutopilotStart, edge.OperationAutopilotPause, edge.OperationAutopilotResume, edge.OperationAutopilotCancel:
+		return executeAutopilotControl(stateRoot, operation)
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}
+}
+
+func executeAutopilotControl(stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
+	registry, err := edgeclient.OpenWorkspaceRegistry(stateRoot)
+	if err != nil {
+		return edge.OperationResult{}, "workspace_unavailable"
+	}
+	workspace, err := registry.Get(operation.Request.WorkspaceID)
+	_ = registry.Close()
+	if err != nil || workspace.Mode != edgeclient.WorkspaceModeHTBLinux {
+		return edge.OperationResult{}, "workspace_unavailable"
+	}
+	store := autopilot.Store{Workspace: workspace.Path}
+	var job autopilot.State
+	switch operation.Kind {
+	case edge.OperationAutopilotStart:
+		job, _, err = store.Start(workspace.ID, operation.Request.RunUntil)
+	case edge.OperationAutopilotPause:
+		job, err = store.Pause()
+	case edge.OperationAutopilotResume:
+		job, err = store.Resume()
+	case edge.OperationAutopilotCancel:
+		job, err = store.Cancel()
+	}
+	if err != nil {
+		return edge.OperationResult{}, "autopilot_control_failed"
+	}
+	return edge.OperationResult{WorkspaceID: workspace.ID, JobID: job.JobID, JobState: string(job.State), ProgressRevision: job.ProgressRevision, CycleCount: job.CycleCount, JobSafeCode: job.SafeCode}, ""
 }
 
 func resolvePreparedWorkspace(stateRoot, machine string) (edge.OperationResult, string) {

@@ -119,6 +119,17 @@ func (t *Transport) CompleteOperation(ctx context.Context, operationID, leaseID 
 	return operation, nil
 }
 
+func (t *Transport) ReportAutopilot(ctx context.Context, result edge.OperationResult) error {
+	status, err := t.do(ctx, http.MethodPost, "/edge/v1/autopilot/report", result, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent {
+		return fmt.Errorf("edge autopilot report rejected with HTTP %d", status)
+	}
+	return nil
+}
+
 func (t *Transport) do(ctx context.Context, method, path string, input, output any) (int, error) {
 	return t.doLimited(ctx, method, path, input, output, maxEdgeResponse)
 }

@@ -26,7 +26,7 @@ func TestHTBActionsRemainDefinedButAreAbsentFromExternalCatalog(t *testing.T) {
 
 func TestExternalLabToolsDoNotAcceptCommandsCredentialsOrFlags(t *testing.T) {
 	server := stampServer(t)
-	for _, name := range []string{"workspace_lab_prepare", "workspace_lab_retarget"} {
+	for _, name := range []string{"workspace_lab_prepare", "workspace_lab_retarget", "workspace_autopilot_start", "workspace_autopilot_status", "workspace_autopilot_pause", "workspace_autopilot_resume", "workspace_autopilot_cancel"} {
 		entry, ok := server.table[name]
 		if !ok || entry.def.InputSchema["additionalProperties"] != false {
 			t.Fatalf("closed lab tool missing: %s", name)

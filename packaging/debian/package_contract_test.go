@@ -29,6 +29,7 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 		"mcp-autopilot-worker", "model-turn-driver", "opencode-provider/htb-actions.js",
 		"mcp-bundle-updater", "mcp-devbox-bundle-updater.service",
 		"mcp-devbox-edge-onboard@.path",
+		"autopilot-model.json", "DEBIAN/conffiles",
 		"manifest.json", "manifest.sig", "/usr/share/doc/mcp-devbox",
 	} {
 		if !strings.Contains(build, required) {

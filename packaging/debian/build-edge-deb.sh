@@ -67,7 +67,10 @@ install -m 0644 "$BUNDLE/manifest.sig" "$RELEASE_ROOT/manifest.sig"
 install -m 0755 packaging/parrot/onboarding-preflight.sh "$PACKAGE_ROOT/usr/local/libexec/mcp-devbox/onboarding-preflight"
 install -m 0644 packaging/systemd/mcp-devbox-bundle-updater.service "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-bundle-updater.service"
 install -m 0644 packaging/systemd/mcp-devbox-edge-onboard@.path "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
+install -m 0644 packaging/parrot/autopilot-model.json "$PACKAGE_ROOT/etc/mcp-devbox/autopilot-model.json"
 install -m 0644 docs/edge-bundles.md "$PACKAGE_ROOT/usr/share/doc/mcp-devbox/edge-bundles.md"
+
+printf '%s\n' '/etc/mcp-devbox/autopilot-model.json' >"$PACKAGE_ROOT/DEBIAN/conffiles"
 
 sed "s/@RELEASE@/$RELEASE/g" packaging/debian/postinst.in >"$PACKAGE_ROOT/DEBIAN/postinst"
 chmod 0755 "$PACKAGE_ROOT/DEBIAN/postinst"

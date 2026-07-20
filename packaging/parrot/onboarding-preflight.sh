@@ -10,6 +10,7 @@ PROVIDER="${MCP_DEVBOX_PROVIDER:-/opt/mcp-devbox/opencode-provider}"
 DRIVER="${MCP_DEVBOX_DRIVER:-/usr/local/libexec/mcp-devbox/model-turn-driver}"
 BWRAP="${MCP_DEVBOX_BWRAP:-/usr/bin/bwrap}"
 BUNDLE_ROOT="${MCP_DEVBOX_BUNDLE_ROOT:-/opt/mcp-devbox/current}"
+AUTOPILOT_MODEL="${MCP_DEVBOX_AUTOPILOT_MODEL:-/etc/mcp-devbox/autopilot-model.json}"
 REQUIRE_ROOTLESS="${MCP_DEVBOX_REQUIRE_ROOTLESS:-0}"
 
 fail() {
@@ -23,6 +24,7 @@ fail() {
 for command in bwrap curl git go node npm python3; do
   command -v "$command" >/dev/null 2>&1 || fail "missing command: $command"
 done
+[ -r "$AUTOPILOT_MODEL" ] && [ ! -L "$AUTOPILOT_MODEL" ] || fail "local autopilot model configuration is missing"
 
 for path in /usr/local/bin/mcp-edge "$DRIVER" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker" "$BUNDLE_ROOT/libexec/mcp-bundle-updater"; do
   [ -e "$path" ] || fail "missing reviewed installation path: $path"
