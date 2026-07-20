@@ -3,6 +3,14 @@
 Branch: `p15-zero-touch-local-autopilot`
 Base: P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.
 
+Historical verified foundation: P8.1 is closed and deployed at
+`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`, with the verified
+67 tools milestone and safe `not_paired` Edge state. P15 is additive.
+
+Current P15 status: Steps 01-06 are committed. Exact-head Linux CI, PR merge,
+automatic deployment and structured Parrot migration remain pending and are not
+claimed by this handoff.
+
 ## Completed Step 01
 
 - `internal/bundle` defines a strict version-1 Ed25519 manifest and fixed release

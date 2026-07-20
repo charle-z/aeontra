@@ -9,7 +9,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   publish:
@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment: edge-release
+    permissions:
+      contents: write
     env:
       EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
       DEB_GPG_PRIVATE_KEY_B64: ${{ secrets.EDGE_DEB_GPG_PRIVATE_KEY_B64 }}

@@ -35,7 +35,8 @@ mandatory rootless Podman onboarding, reproducible package/migration CI, protect
 official release automation with SBOM, and prevents legacy remote OpenCode runtimes
 from targeting `htb-linux` workspaces. Local contracts, cross-Linux compile/vet,
 workflow lint and shell syntax checks pass; exact-head CI remains required. Step 07
-(complete gates and release-candidate closure) is active. See
+(complete gates and release-candidate closure) is active. Local RC evidence is in
+`docs/baselines/2026-07-19-p15-rc.md`. See
 `docs/autopilot.md`, `docs/edge-bundles.md` and
 `docs/install-edge-parrot-p15.md`.
 

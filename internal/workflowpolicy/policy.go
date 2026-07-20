@@ -164,11 +164,21 @@ func validateJob(workflowName, jobName string, job *yaml.Node, pullRequestFacing
 		return fmt.Errorf("%w: %s job %s timeout %q", ErrInvalidTimeout, workflowName, jobName, timeout.Value)
 	}
 	if permissions := mappingValue(job, "permissions"); permissions != nil {
-		if err := validatePermissions(permissions, workflowName+" job "+jobName); err != nil {
+		if err := validatePermissions(permissions, workflowName+" job "+jobName); err != nil && !validProtectedReleasePermission(workflowName, pullRequestFacing, job, permissions) {
 			return err
 		}
 	}
 	return walkJob(job, pullRequestFacing, workflowName+" job "+jobName)
+}
+
+func validProtectedReleasePermission(workflowName string, pullRequestFacing bool, job, permissions *yaml.Node) bool {
+	if workflowName != "edge-release.yml" || pullRequestFacing || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 2 {
+		return false
+	}
+	environment := mappingValue(job, "environment")
+	return environment != nil && environment.Kind == yaml.ScalarNode && environment.Value == "edge-release" &&
+		strings.ToLower(strings.TrimSpace(permissions.Content[0].Value)) == "contents" &&
+		strings.ToLower(strings.TrimSpace(permissions.Content[1].Value)) == "write"
 }
 
 func walkJob(node *yaml.Node, pullRequestFacing bool, scope string) error {

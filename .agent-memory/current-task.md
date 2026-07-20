@@ -3,6 +3,14 @@
 Branch: `p15-zero-touch-local-autopilot`
 Base: `origin/main` at P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.
 
+Historical verified foundation: P8.1 is closed and deployed at
+`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`, with the verified
+67 tools milestone and safe `not_paired` Edge state. P15 work is additive.
+
+Current P15 status: Steps 01-06 are committed. Exact-head Linux CI, PR merge,
+automatic deployment and structured Parrot migration remain pending and are not
+claimed by this local handoff.
+
 P14 is the preserved foundation: target-locked local HTB actions, opaque sessions,
 local credential handles, local-only sensitive results, OpenCode integration, and
 registered VPN/target metadata. P15 must close the operator workflow without weakening

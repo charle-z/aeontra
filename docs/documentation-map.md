@@ -49,6 +49,8 @@ P15 signed release identity, fixed component layout and fail-closed compatibilit
 codes are governed by `docs/edge-bundles.md`.
 P15 one-time Debian installation, onboarding, migration, update, repair and rollback
 are governed by `docs/install-edge-parrot-p15.md`.
+P15 local release-candidate evidence and its still-pending exact-head/deployment/device
+gates are recorded in `docs/baselines/2026-07-19-p15-rc.md`.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |
