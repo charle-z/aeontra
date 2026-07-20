@@ -173,6 +173,22 @@ jobs:
           go build -trimpath -o "$RUNNER_TEMP/p12-bin/rootless-e2e-log-redactor" ./cmd/rootless-e2e-log-redactor
           go test -c -tags=p12_e2e -o "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" ./internal/edgeclient
 
+      - name: Stage PostgreSQL fixture image
+        run: |
+          set -Eeuo pipefail
+          archive="$RUNNER_TEMP/p12-postgres-17-alpine.tar"
+          for delay in 0 5 15; do
+            if [ "$delay" -ne 0 ]; then
+              sleep "$delay"
+            fi
+            if docker pull docker.io/library/postgres:17-alpine; then
+              docker image save --output "$archive" docker.io/library/postgres:17-alpine
+              test -s "$archive"
+              exit 0
+            fi
+          done
+          exit 1
+
       - name: Run two clean rootless cycles and restart
         env:
           P12_ARTIFACT_DIR: ${{ github.workspace }}/artifacts
@@ -351,6 +367,8 @@ jobs:
           PY
 
           start_service
+          podman --url "unix://$socket" load --input "$RUNNER_TEMP/p12-postgres-17-alpine.tar" >/dev/null
+          rm -f "$RUNNER_TEMP/p12-postgres-17-alpine.tar"
           P12_ROOTLESS_CLEANUP_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
             -test.run=^TestTrustedLinuxWorkcellRootlessCleanupE2E$ -test.count=1 >/dev/null 2>&1
 
