@@ -54,7 +54,7 @@ func TestStableAvailableUsesOnlySignedOfficialChannel(t *testing.T) {
 
 func TestStableAvailableRejectsSignedIncompatibleProtocol(t *testing.T) {
 	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
-	channel := bundle.Channel{Version: 1, Release: "p16.0.0", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ProtocolVersion: "mcp-devbox.edge-bundle.v2", CatalogHash: "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)), Architecture: runtime.GOARCH, ArchiveHash: "sha256:" + string(bytes.Repeat([]byte{'c'}, 64))}
+	channel := bundle.Channel{Version: 1, Release: "p15.9.1", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ProtocolVersion: "mcp-devbox.edge-bundle.v2", CatalogHash: "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)), Architecture: runtime.GOARCH, ArchiveHash: "sha256:" + string(bytes.Repeat([]byte{'c'}, 64))}
 	body, signature, err := bundle.SignChannel(channel, privateKey)
 	if err != nil {
 		t.Fatal(err)
