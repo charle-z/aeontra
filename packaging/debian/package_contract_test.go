@@ -31,7 +31,7 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 		"mcp-bundle-updater", "mcp-devbox-bundle-updater.service",
 		"mcp-devbox-edge-onboard@.path",
 		"autopilot-model.json", "DEBIAN/conffiles",
-		"mcp-devbox-bundle-rollback.service", "mcp-devbox-edge-repair.service", "49-mcp-devbox-updater.rules.in", "policykit-1",
+		"mcp-devbox-bundle-rollback.service", "mcp-devbox-edge-repair.service", "49-mcp-devbox-updater.rules.in", "policykit-1 | polkitd",
 		"manifest.json", "manifest.sig", "/usr/share/doc/mcp-devbox",
 	} {
 		if !strings.Contains(build, required) {
