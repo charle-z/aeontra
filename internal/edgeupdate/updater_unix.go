@@ -187,6 +187,10 @@ func stageSignedRelease(source, releases string, expected bundle.Compatibility, 
 	if err != nil {
 		return "", errors.New("release staging unavailable")
 	}
+	if err := os.Chmod(staging, 0o755); err != nil {
+		_ = os.RemoveAll(staging)
+		return "", errors.New("release staging permissions failed")
+	}
 	if err := copySignedRelease(source, staging); err != nil {
 		_ = os.RemoveAll(staging)
 		return "", err

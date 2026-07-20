@@ -105,6 +105,13 @@ func TestUpdaterInstallsAtomicallyIdempotentlyAndRollsBack(t *testing.T) {
 		t.Fatalf("first install = %+v, %v", status, err)
 	}
 	assertCurrentRelease(t, root, "p15.0.0")
+	releaseInfo, err := os.Stat(filepath.Join(root, ReleasesDirectory, "p15.0.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if releaseInfo.Mode().Perm() != 0o755 {
+		t.Fatalf("installed release root mode = %v; want 0755", releaseInfo.Mode().Perm())
+	}
 
 	if status, err := engine.Install(firstSource, firstCompatibility); err != nil || status.Release != "p15.0.0" || service.restarts != 1 {
 		t.Fatalf("idempotent install = %+v, %v, restarts=%d", status, err, service.restarts)

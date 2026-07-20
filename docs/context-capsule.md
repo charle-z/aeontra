@@ -18,11 +18,16 @@ package test: `ln -sfn` cannot replace the existing P14
 `/opt/mcp-devbox/opencode-provider` and `/opt/mcp-devbox/opencode-1.18.1`
 directories. Parrot was recovered by moving only those compatibility directories,
 finishing package configuration, verifying the signed bundle and service, and then
-removing the obsolete copies. Branch `codex/p15-installer-directory-migration`
-contains the follow-up fix: stage only those two directories, restore them on failed
-smoke, remove the temporary copies after success, and reproduce the real P14 shape
-in package CI. Publish a new signed patch release only after its PR and release gates
-are green.
+removing the obsolete copies. PR #33 merged the follow-up fix and all gates passed;
+signed release `p15.0.2` was published.
+
+The first real structured update to `p15.0.2` exposed a second updater defect: Go's
+`MkdirTemp` left the versioned release root at mode `0700`, so root could verify the
+bundle but the `charles` Edge service could not traverse it. Both update attempts
+rolled back safely to active `p15.0.1`; device key hash remained unchanged. Branch
+`codex/p15-updater-release-permissions` adds the missing `0755` staging-root mode and
+a regression test. Publish and install the next signed patch only after its PR and
+release gates are green.
 
 P15 implements the indivisible Ed25519-signed bundle, reproducible Debian package,
 restricted updater, atomic activation/rollback, repair, onboarding, signed outbound
