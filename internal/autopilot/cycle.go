@@ -76,6 +76,9 @@ func (r CycleRunner) Run(ctx context.Context) (State, error) {
 	if job.State != StateRunning {
 		return job, nil
 	}
+	if !job.NextCycleAt.IsZero() && r.Store.now().Before(job.NextCycleAt) {
+		return job, nil
+	}
 	if _, err := os.Stat(filepath.Join(r.Store.Workspace, ".mcp-devbox", "STOP")); err == nil {
 		return r.Store.transition(StateBlocked, "stop")
 	}

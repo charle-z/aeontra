@@ -47,6 +47,7 @@ type State struct {
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
 	LastProgressAt        time.Time `json:"last_progress_at"`
+	NextCycleAt           time.Time `json:"next_cycle_at,omitempty"`
 }
 
 type CycleResult struct {
@@ -130,6 +131,7 @@ func (s Store) Resume() (State, error) {
 	job.LastFailureCode = ""
 	job.LastActionDigest = ""
 	job.RepeatedActionCount = 0
+	job.NextCycleAt = time.Time{}
 	job.UpdatedAt = s.now()
 	return job, s.write(job)
 }
@@ -145,6 +147,7 @@ func (s Store) transition(next JobState, code string) (State, error) {
 	}
 	job.State = next
 	job.SafeCode = code
+	job.NextCycleAt = time.Time{}
 	job.UpdatedAt = s.now()
 	return job, s.write(job)
 }
@@ -165,9 +168,11 @@ func (s Store) RecordCycle(result CycleResult) (State, error) {
 	if result.Completed {
 		job.State = StateCompleted
 		job.SafeCode = "completed"
+		job.NextCycleAt = time.Time{}
 	} else if result.ProviderBlocked {
 		job.State = StateBlocked
 		job.SafeCode = "provider_blocked"
+		job.NextCycleAt = time.Time{}
 	} else {
 		if result.Progress {
 			job.ProgressRevision++
@@ -186,9 +191,11 @@ func (s Store) RecordCycle(result CycleResult) (State, error) {
 				job.LastFailureCode = result.FailureCode
 				job.RepeatedFailureCount = 1
 			}
+			job.NextCycleAt = job.UpdatedAt.Add(retryBackoff(job.RepeatedFailureCount))
 		} else {
 			job.LastFailureCode = ""
 			job.RepeatedFailureCount = 0
+			job.NextCycleAt = time.Time{}
 		}
 		if result.ActionDigest != "" {
 			if !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(result.ActionDigest) {
@@ -207,17 +214,34 @@ func (s Store) RecordCycle(result CycleResult) (State, error) {
 		if job.ConsecutiveNoProgress >= 2 {
 			job.State = StateBlocked
 			job.SafeCode = "no_progress"
+			job.NextCycleAt = time.Time{}
 		}
 		if job.RepeatedFailureCount >= 3 {
 			job.State = StateBlocked
 			job.SafeCode = "repeated_failure"
+			job.NextCycleAt = time.Time{}
 		}
 		if job.RepeatedActionCount >= 2 {
 			job.State = StateBlocked
 			job.SafeCode = "repeated_action"
+			job.NextCycleAt = time.Time{}
 		}
 	}
 	return job, s.write(job)
+}
+
+func retryBackoff(failures int) time.Duration {
+	if failures < 1 {
+		return 0
+	}
+	delay := 2 * time.Second
+	for i := 1; i < failures && delay < 2*time.Minute; i++ {
+		delay *= 2
+	}
+	if delay > 2*time.Minute {
+		return 2 * time.Minute
+	}
+	return delay
 }
 
 func (s Store) path() (string, error) {

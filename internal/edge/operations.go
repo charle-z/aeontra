@@ -2,8 +2,10 @@ package edge
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -84,9 +86,27 @@ type Operation struct {
 }
 
 type OperationLease struct {
-	Operation Operation `json:"operation"`
-	LeaseID   string    `json:"lease_id"`
-	ExpiresAt time.Time `json:"lease_expires_at"`
+	Operation        Operation `json:"operation"`
+	LeaseID          string    `json:"lease_id"`
+	ExpiresAt        time.Time `json:"lease_expires_at"`
+	ControlSignature string    `json:"control_signature"`
+}
+
+func (lease OperationLease) ControlCanonical() []byte {
+	request, _ := json.Marshal(lease.Operation.Request)
+	sum := sha256.Sum256(request)
+	return []byte(strings.Join([]string{
+		"edge-control-v1", lease.Operation.ID, lease.Operation.DeviceID, string(lease.Operation.Kind),
+		hex.EncodeToString(sum[:]), lease.LeaseID, lease.ExpiresAt.UTC().Format(time.RFC3339Nano),
+	}, "\n"))
+}
+
+func (s *Store) SignOperationLease(lease OperationLease) (OperationLease, error) {
+	if len(s.controlPrivateKey) != ed25519.PrivateKeySize || lease.Operation.State != OperationLeased || !operationIDPattern.MatchString(lease.Operation.ID) || !leaseIDPattern.MatchString(lease.LeaseID) {
+		return OperationLease{}, errors.New("operation lease signing failed")
+	}
+	lease.ControlSignature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(s.controlPrivateKey, lease.ControlCanonical()))
+	return lease, nil
 }
 
 func (s *Store) CreateOperation(deviceID string, kind OperationKind, request OperationRequest) (Operation, bool, error) {

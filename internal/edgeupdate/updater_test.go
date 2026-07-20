@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
 
@@ -31,7 +32,7 @@ func (r officialRoundTripper) RoundTrip(request *http.Request) (*http.Response, 
 
 func TestStableAvailableUsesOnlySignedOfficialChannel(t *testing.T) {
 	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
-	channel := bundle.Channel{Version: 1, Release: "p15.9.0", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ProtocolVersion: "mcp-devbox.edge-bundle.v1", CatalogHash: "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)), Architecture: runtime.GOARCH, ArchiveHash: "sha256:" + string(bytes.Repeat([]byte{'c'}, 64))}
+	channel := bundle.Channel{Version: 1, Release: "p15.9.0", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ProtocolVersion: buildinfo.EdgeBundleProtocolVersion, CatalogHash: "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)), Architecture: runtime.GOARCH, ArchiveHash: "sha256:" + string(bytes.Repeat([]byte{'c'}, 64))}
 	body, signature, err := bundle.SignChannel(channel, privateKey)
 	if err != nil {
 		t.Fatal(err)
@@ -48,6 +49,19 @@ func TestStableAvailableUsesOnlySignedOfficialChannel(t *testing.T) {
 	resolver.Client = &http.Client{Transport: officialRoundTripper{channel: body, signature: bytes.Repeat([]byte{0}, ed25519.SignatureSize)}}
 	if _, err := resolver.StableAvailable(context.Background(), "p15.8.0"); err == nil {
 		t.Fatal("tampered channel accepted")
+	}
+}
+
+func TestStableAvailableRejectsSignedIncompatibleProtocol(t *testing.T) {
+	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	channel := bundle.Channel{Version: 1, Release: "p16.0.0", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ProtocolVersion: "mcp-devbox.edge-bundle.v2", CatalogHash: "sha256:" + string(bytes.Repeat([]byte{'b'}, 64)), Architecture: runtime.GOARCH, ArchiveHash: "sha256:" + string(bytes.Repeat([]byte{'c'}, 64))}
+	body, signature, err := bundle.SignChannel(channel, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := OfficialResolver{PublicKey: publicKey, Client: &http.Client{Transport: officialRoundTripper{channel: body, signature: signature}}}
+	if _, err := resolver.StableAvailable(context.Background(), "p15.9.0"); err == nil {
+		t.Fatal("signed incompatible channel accepted")
 	}
 }
 
@@ -111,6 +125,57 @@ func TestUpdaterRestoresPreviousReleaseWhenHealthCheckFails(t *testing.T) {
 	assertCurrentRelease(t, root, "p15.1.0")
 }
 
+func TestUpdaterRepairsCorruptActiveReleaseAndRestoresItOnHealthFailure(t *testing.T) {
+	root := t.TempDir()
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &fakeService{healthy: true}
+	engine := Engine{Root: root, PublicKey: publicKey, Service: service}
+	previousSource, previousCompatibility := signedRelease(t, "p15.1.1", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", privateKey)
+	if _, err := engine.Install(previousSource, previousCompatibility); err != nil {
+		t.Fatal(err)
+	}
+	source, compatibility := signedRelease(t, "p15.1.2", "ffffffffffffffffffffffffffffffffffffffff", privateKey)
+	if _, err := engine.Install(source, compatibility); err != nil {
+		t.Fatal(err)
+	}
+	activeComponent := filepath.Join(root, ReleasesDirectory, compatibility.Release, "opencode-provider", "index.js")
+	if err := os.WriteFile(activeComponent, []byte("corrupt-active"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service.healthy = false
+	if _, err := engine.Install(source, compatibility); !errors.Is(err, ErrHealthCheck) {
+		t.Fatalf("repair health failure = %v", err)
+	}
+	content, err := os.ReadFile(activeComponent)
+	if err != nil || string(content) != "corrupt-active" {
+		t.Fatalf("failed repair did not restore prior active content: %q %v", content, err)
+	}
+	service.healthy = true
+	if _, err := engine.Install(source, compatibility); err != nil {
+		t.Fatalf("repair active release: %v", err)
+	}
+	if _, err := bundle.LoadAndVerify(filepath.Join(root, ReleasesDirectory, compatibility.Release), publicKey, compatibility); err != nil {
+		t.Fatalf("repaired active release did not verify: %v", err)
+	}
+	status, err := engine.Status()
+	if err != nil || status.PreviousRelease != previousCompatibility.Release {
+		t.Fatalf("repair changed previous release: %+v %v", status, err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, ReleasesDirectory, compatibility.Release)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Install(source, compatibility); err != nil {
+		t.Fatalf("repair missing active release: %v", err)
+	}
+	status, err = engine.Status()
+	if err != nil || status.Release != compatibility.Release || status.PreviousRelease != previousCompatibility.Release {
+		t.Fatalf("missing-release repair changed links: %+v %v", status, err)
+	}
+}
+
 func TestUpdaterRejectsUnsignedOrCallerMixedBundleBeforeActivation(t *testing.T) {
 	root := t.TempDir()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -144,7 +209,7 @@ func signedRelease(t *testing.T, release, commit string, privateKey ed25519.Priv
 		}
 	}
 	metadata := bundle.Metadata{
-		Release: release, Commit: commit, ProtocolVersion: "mcp-devbox.edge-bundle.v1",
+		Release: release, Commit: commit, ProtocolVersion: buildinfo.EdgeBundleProtocolVersion,
 		CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Architecture: "amd64",
 	}
 	manifest, err := bundle.Build(root, metadata)

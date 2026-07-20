@@ -175,6 +175,15 @@ credential flag, output, checkpoint, local path or provider configuration. Only 
 paired Edge can lease or complete an operation, using the existing signed request
 protocol and replay protection.
 
+Control delivery is authenticated in both directions. Edge signs every polling and
+completion request with its device key. The server signs each leased operation over
+the operation/device/kind/request digest, lease ID and exact expiry using a private
+control key persisted with mode `0600`; Edge verifies that signature before any local
+operation, including updater/rollback/repair. New pairing records only the public
+control key. A preserved schema-v1 P14 identity obtains that public key once over its
+already authenticated HTTPS/device-signed channel, upgrades only identity metadata,
+and preserves the device ID and private device key.
+
 Every HTB target must be one private IPv4 whose route is currently attached to a
 local `tun*` or `tap*` interface. The authorization revision is written atomically
 inside the private workspace. The broker verifies that revision for every request;

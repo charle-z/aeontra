@@ -55,3 +55,8 @@ release trust key. It contains only version, release, commit, protocol, catalog,
 architecture and archive SHA-256. The archive URL is derived from the compiled official
 release base and signed release name; it is never an input to a public tool. See
 `docs/install-edge-parrot-p15.md`.
+
+The official channel signature proves artifact identity; a separate durable server
+control signature proves that the paired device was actually assigned the closed
+`update stable`, rollback or repair operation. Edge verifies both boundaries before
+the privileged fixed unit can run.

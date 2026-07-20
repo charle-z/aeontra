@@ -65,63 +65,90 @@ func (e Engine) Install(source string, expected bundle.Compatibility) (Status, e
 	if _, err := bundle.LoadAndVerify(source, e.PublicKey, expected); err != nil {
 		return Status{}, err
 	}
+	desiredTarget := filepath.Join(ReleasesDirectory, expected.Release)
+	rawCurrentTarget, _ := os.Readlink(filepath.Join(root, CurrentLink))
 	before, _ := statusFromLinks(root, e.Service)
+	replaceInvalidActive := rawCurrentTarget == desiredTarget
 	if before.Release == expected.Release {
 		activeRoot := filepath.Join(root, ReleasesDirectory, expected.Release)
-		if _, err := bundle.LoadAndVerify(activeRoot, e.PublicKey, expected); err != nil {
-			return Status{}, err
+		if _, err := bundle.LoadAndVerify(activeRoot, e.PublicKey, expected); err == nil {
+			return before, nil
 		}
-		return before, nil
+		replaceInvalidActive = true
 	}
 	releases := filepath.Join(root, ReleasesDirectory)
 	if err := os.MkdirAll(releases, 0o755); err != nil {
 		return Status{}, errors.New("release directory unavailable")
 	}
 	target := filepath.Join(releases, expected.Release)
+	replacedBackup := ""
 	if info, statErr := os.Lstat(target); statErr == nil {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return Status{}, errors.New("existing release path is unsafe")
 		}
 		if _, err := bundle.LoadAndVerify(target, e.PublicKey, expected); err != nil {
-			return Status{}, err
+			if !replaceInvalidActive {
+				return Status{}, err
+			}
+			staging, stageErr := stageSignedRelease(source, releases, expected, e.PublicKey)
+			if stageErr != nil {
+				return Status{}, stageErr
+			}
+			backup, backupErr := os.MkdirTemp(releases, ".replaced-"+expected.Release+"-")
+			if backupErr != nil {
+				_ = os.RemoveAll(staging)
+				return Status{}, errors.New("release repair backup unavailable")
+			}
+			if removeErr := os.Remove(backup); removeErr != nil {
+				_ = os.RemoveAll(staging)
+				return Status{}, errors.New("release repair backup unavailable")
+			}
+			if renameErr := os.Rename(target, backup); renameErr != nil {
+				_ = os.RemoveAll(staging)
+				return Status{}, errors.New("invalid release backup failed")
+			}
+			if renameErr := os.Rename(staging, target); renameErr != nil {
+				_ = os.Rename(backup, target)
+				_ = os.RemoveAll(staging)
+				return Status{}, errors.New("release repair activation failed")
+			}
+			replacedBackup = backup
 		}
 	} else if errors.Is(statErr, os.ErrNotExist) {
-		staging, err := os.MkdirTemp(releases, ".staging-"+expected.Release+"-")
+		staging, err := stageSignedRelease(source, releases, expected, e.PublicKey)
 		if err != nil {
-			return Status{}, errors.New("release staging unavailable")
-		}
-		stagingKept := false
-		defer func() {
-			if !stagingKept {
-				_ = os.RemoveAll(staging)
-			}
-		}()
-		if err := copySignedRelease(source, staging); err != nil {
-			return Status{}, err
-		}
-		if _, err := bundle.LoadAndVerify(staging, e.PublicKey, expected); err != nil {
 			return Status{}, err
 		}
 		if err := os.Rename(staging, target); err != nil {
+			_ = os.RemoveAll(staging)
 			return Status{}, errors.New("release activation staging failed")
 		}
-		stagingKept = true
 	} else {
 		return Status{}, errors.New("release path unavailable")
 	}
+	restoreReplaced := func() {
+		if replacedBackup == "" {
+			return
+		}
+		_ = os.RemoveAll(target)
+		_ = os.Rename(replacedBackup, target)
+		replacedBackup = ""
+	}
 
 	oldTarget, _ := os.Readlink(filepath.Join(root, CurrentLink))
-	if oldTarget != "" {
-		if err := atomicLink(root, PreviousLink, oldTarget); err != nil {
+	if !replaceInvalidActive {
+		if oldTarget != "" {
+			if err := atomicLink(root, PreviousLink, oldTarget); err != nil {
+				return Status{}, err
+			}
+		}
+		if err := atomicLink(root, CurrentLink, desiredTarget); err != nil {
 			return Status{}, err
 		}
 	}
-	newTarget := filepath.Join(ReleasesDirectory, expected.Release)
-	if err := atomicLink(root, CurrentLink, newTarget); err != nil {
-		return Status{}, err
-	}
 	if e.Service == nil || e.Service.InstallUnit(target) != nil {
 		_ = restoreLink(root, oldTarget)
+		restoreReplaced()
 		if oldTarget != "" && e.Service != nil {
 			_ = e.Service.InstallUnit(filepath.Join(root, oldTarget))
 		}
@@ -129,10 +156,16 @@ func (e Engine) Install(source string, expected bundle.Compatibility) (Status, e
 	}
 	if e.Service == nil || e.Service.RestartEdge() != nil {
 		_ = restoreLink(root, oldTarget)
+		restoreReplaced()
+		if oldTarget != "" && e.Service != nil {
+			_ = e.Service.InstallUnit(filepath.Join(root, oldTarget))
+			_ = e.Service.RestartEdge()
+		}
 		return Status{}, errors.New("edge restart failed; previous bundle restored")
 	}
 	if !e.Service.EdgeHealthy() {
 		_ = restoreLink(root, oldTarget)
+		restoreReplaced()
 		if oldTarget != "" {
 			_ = e.Service.InstallUnit(filepath.Join(root, oldTarget))
 		}
@@ -141,9 +174,28 @@ func (e Engine) Install(source string, expected bundle.Compatibility) (Status, e
 	}
 	status, err := statusFromLinks(root, e.Service)
 	if err == nil {
+		if replacedBackup != "" {
+			_ = os.RemoveAll(replacedBackup)
+		}
 		_ = pruneOldReleases(root, e.PublicKey, e.now())
 	}
 	return status, err
+}
+
+func stageSignedRelease(source, releases string, expected bundle.Compatibility, publicKey ed25519.PublicKey) (string, error) {
+	staging, err := os.MkdirTemp(releases, ".staging-"+expected.Release+"-")
+	if err != nil {
+		return "", errors.New("release staging unavailable")
+	}
+	if err := copySignedRelease(source, staging); err != nil {
+		_ = os.RemoveAll(staging)
+		return "", err
+	}
+	if _, err := bundle.LoadAndVerify(staging, publicKey, expected); err != nil {
+		_ = os.RemoveAll(staging)
+		return "", err
+	}
+	return staging, nil
 }
 
 func (e Engine) Rollback() (Status, error) {

@@ -7,11 +7,22 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 type fixedModel struct {
 	response LocalAgentResponse
 	err      error
+}
+
+type countingModel struct {
+	calls int
+	err   error
+}
+
+func (m *countingModel) NextAction(context.Context, LocalAgentRequest) (LocalAgentResponse, error) {
+	m.calls++
+	return LocalAgentResponse{}, m.err
 }
 
 func (m fixedModel) NextAction(context.Context, LocalAgentRequest) (LocalAgentResponse, error) {
@@ -83,6 +94,29 @@ func TestCycleRunnerBlocksRepeatedActionWithoutNewEvidence(t *testing.T) {
 	second, err := runner.Run(context.Background())
 	if err != nil || second.State != StateBlocked || second.SafeCode != "repeated_action" {
 		t.Fatalf("second=%+v err=%v", second, err)
+	}
+}
+
+func TestTransientFailureBackoffSurvivesWorkerRestart(t *testing.T) {
+	workspace := cycleWorkspace(t)
+	now := time.Date(2026, 7, 20, 2, 0, 0, 0, time.UTC)
+	store := Store{Workspace: workspace, Now: func() time.Time { return now }}
+	_, _, _ = store.Start("ws_0123456789abcdef0123456789abcdef", RunUntilCompletedOrCancelled)
+	model := &countingModel{err: errors.New("temporary")}
+	runner := CycleRunner{Store: store, Model: model, Executor: &fixedExecutor{}, Authorization: fixedAuthorization{}}
+	failed, err := runner.Run(context.Background())
+	if err != nil || failed.State != StateRunning || failed.LastFailureCode != "provider_transient" || failed.NextCycleAt.Sub(now) != 2*time.Second || model.calls != 1 {
+		t.Fatalf("failed=%+v calls=%d err=%v", failed, model.calls, err)
+	}
+	restarted := CycleRunner{Store: Store{Workspace: workspace, Now: func() time.Time { return now }}, Model: model, Executor: &fixedExecutor{}, Authorization: fixedAuthorization{}}
+	waiting, err := restarted.Run(context.Background())
+	if err != nil || waiting.JobID != failed.JobID || model.calls != 1 {
+		t.Fatalf("backoff was not durable: waiting=%+v calls=%d err=%v", waiting, model.calls, err)
+	}
+	now = now.Add(2 * time.Second)
+	second, err := restarted.Run(context.Background())
+	if err != nil || second.State != StateBlocked || second.SafeCode != "no_progress" || model.calls != 2 {
+		t.Fatalf("second backoff=%+v calls=%d err=%v", second, model.calls, err)
 	}
 }
 

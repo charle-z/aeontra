@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -147,5 +148,32 @@ func TestIdentityStoreRejectsSymlinkRootAndAncestor(t *testing.T) {
 			_ = store.Close()
 			t.Fatalf("symlinked root %q accepted", root)
 		}
+	}
+}
+
+func TestControlSigningKeyPersistsPrivatelyAcrossServerRestart(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "edge")
+	store, err := Open(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := store.ControlPublicKey()
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(root, controlKeyFile))
+	if err != nil || runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 || info.Size() != ed25519.PrivateKeySize {
+		t.Fatalf("control key mode/size=%v err=%v", info, err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	reopened, err := Open(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if !first.Equal(reopened.ControlPublicKey()) {
+		t.Fatal("control signing identity changed after restart")
 	}
 }

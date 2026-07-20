@@ -28,3 +28,6 @@ Circuit breakers block new cycles after two no-progress cycles, a repeated actio
 without new evidence, three identical failures, authorization or VPN loss, `STOP`,
 provider refusal, invalid contract/observation, or the local storage limit. Resume
 keeps evidence and checkpoint but resets transient breaker counters.
+Transient failures also persist `next_cycle_at` in the private state. A restarted
+worker or Edge checks that timestamp before inference, so retry backoff survives
+process and server redeploys rather than becoming a one-second failure loop.

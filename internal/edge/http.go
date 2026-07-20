@@ -41,6 +41,7 @@ type pairRequest struct {
 func NewHTTPHandler(store *Store, modelTurns ...*modelturn.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(PairPath, store.handlePair)
+	mux.Handle("/edge/v1/control-key", store.RequireDevice(http.HandlerFunc(store.handleControlKey)))
 	mux.Handle("/edge/v1/workspaces/register", store.RequireDevice(http.HandlerFunc(store.handleWorkspaceRegistration)))
 	mux.Handle("/edge/v1/tasks/lease", store.RequireDevice(http.HandlerFunc(store.handleLease)))
 	mux.Handle("/edge/v1/tasks/", store.RequireDevice(http.HandlerFunc(store.handleTaskAction)))
@@ -94,7 +95,26 @@ func (s *Store) handleOperationLease(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "operation lease rejected", http.StatusBadRequest)
 		return
 	}
+	lease, err = s.SignOperationLease(lease)
+	if err != nil {
+		http.Error(w, "operation lease rejected", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusOK, lease)
+}
+
+type controlKeyResponse struct {
+	PublicKey string `json:"public_key"`
+}
+
+func (s *Store) handleControlKey(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	if !decodeStrictJSON(w, r, &struct{}{}) {
+		return
+	}
+	writeJSON(w, http.StatusOK, controlKeyResponse{PublicKey: EncodePublicKey(s.ControlPublicKey())})
 }
 
 func (s *Store) handleOperationAction(w http.ResponseWriter, r *http.Request) {

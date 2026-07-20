@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
 
@@ -86,7 +87,8 @@ func (r OfficialResolver) stableChannel(ctx context.Context) (bundle.Channel, *h
 		return bundle.Channel{}, nil, &bundle.VerificationError{Code: bundle.ManifestInvalid}
 	}
 	canonical, canonicalErr := bundle.CanonicalChannel(channel)
-	if canonicalErr != nil || !bytes.Equal(canonical, channelBytes) || channel.Architecture != runtime.GOARCH {
+	if canonicalErr != nil || !bytes.Equal(canonical, channelBytes) ||
+		channel.Architecture != runtime.GOARCH || channel.ProtocolVersion != buildinfo.EdgeBundleProtocolVersion {
 		return bundle.Channel{}, nil, &bundle.VerificationError{Code: bundle.ManifestInvalid}
 	}
 	return channel, client, nil

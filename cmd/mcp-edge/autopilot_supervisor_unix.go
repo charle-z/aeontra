@@ -47,6 +47,9 @@ func runAutopilotSupervisor(ctx context.Context, stateRoot, bundleRoot string, t
 			if loadErr != nil || job.State != autopilot.StateRunning {
 				continue
 			}
+			if !job.NextCycleAt.IsZero() && time.Now().UTC().Before(job.NextCycleAt) {
+				continue
+			}
 			worked = true
 			cycleCtx, cancel := context.WithTimeout(ctx, 11*time.Minute)
 			command := exec.CommandContext(cycleCtx, worker, "--state", stateRoot, "--workspace-id", workspace.ID)

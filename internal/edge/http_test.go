@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -79,6 +80,42 @@ func TestHTTPPairIsStrictAndBounded(t *testing.T) {
 	handler.ServeHTTP(method, httptest.NewRequest(http.MethodGet, PairPath, nil))
 	if method.Code != http.StatusMethodNotAllowed || method.Header().Get("Allow") != http.MethodPost {
 		t.Fatalf("status=%d allow=%q", method.Code, method.Header().Get("Allow"))
+	}
+}
+
+func TestHTTPControlKeyAndOperationLeaseAreServerSigned(t *testing.T) {
+	store := openHTTPTestStore(t)
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	device, err := store.Pair(code, "parrot-edge", publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHTTPHandler(store)
+	now := time.Now().UTC()
+	keyResponse := performSignedRequest(t, handler, device.ID, privateKey, now, "nonce-control-key-000001", http.MethodPost, "/edge/v1/control-key", []byte(`{}`))
+	if keyResponse.Code != http.StatusOK {
+		t.Fatalf("control key status=%d body=%s", keyResponse.Code, keyResponse.Body.String())
+	}
+	var keyBody controlKeyResponse
+	if json.Unmarshal(keyResponse.Body.Bytes(), &keyBody) != nil || keyBody.PublicKey != EncodePublicKey(store.ControlPublicKey()) {
+		t.Fatalf("control key response=%s", keyResponse.Body.String())
+	}
+	operation, _, err := store.CreateOperation(device.ID, OperationBundleUpdate, OperationRequest{Release: "stable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaseResponse := performSignedRequest(t, handler, device.ID, privateKey, now, "nonce-control-lease-0001", http.MethodPost, "/edge/v1/operations/lease", []byte(`{"lease_seconds":60}`))
+	if leaseResponse.Code != http.StatusOK {
+		t.Fatalf("lease status=%d body=%s", leaseResponse.Code, leaseResponse.Body.String())
+	}
+	var lease OperationLease
+	if json.Unmarshal(leaseResponse.Body.Bytes(), &lease) != nil || lease.Operation.ID != operation.ID {
+		t.Fatalf("lease response=%s", leaseResponse.Body.String())
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(lease.ControlSignature)
+	if err != nil || !ed25519.Verify(store.ControlPublicKey(), lease.ControlCanonical(), signature) {
+		t.Fatal("operation lease does not carry a valid server signature")
 	}
 }
 
