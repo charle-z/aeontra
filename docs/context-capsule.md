@@ -6,8 +6,9 @@ Compact handoff for any AI session. Keep this file short and current.
 
 P15 merged through PR #32 on `main` at merge commit
 `2b72df3625f6f223f8a0d974a94ebf1052bea117`; all required exact-head checks passed.
-The protected release workflow published signed release `p15.0.1`, and Parrot now
-runs that bundle with the P14 device identity and Cap workspace ID preserved. The
+The protected release workflow published the signed P15 line, and Parrot now runs
+`p15.0.3` at commit `d600eb27052255a8b9827d47d4e1b6ae20953507` with the P14
+device identity and Cap workspace ID preserved. The
 Edge consumed the queued prepare, retarget and autopilot operations and created a
 durable job. The job is safely blocked with `provider_transient`: the configured
 loopback endpoint `http://127.0.0.1:4096/v1/next-action` has no resident model
@@ -24,10 +25,15 @@ signed release `p15.0.2` was published.
 The first real structured update to `p15.0.2` exposed a second updater defect: Go's
 `MkdirTemp` left the versioned release root at mode `0700`, so root could verify the
 bundle but the `charles` Edge service could not traverse it. Both update attempts
-rolled back safely to active `p15.0.1`; device key hash remained unchanged. Branch
-`codex/p15-updater-release-permissions` adds the missing `0755` staging-root mode and
-a regression test. Publish and install the next signed patch only after its PR and
-release gates are green.
+rolled back safely to active `p15.0.1`; device key hash remained unchanged. PR #34
+added the missing `0755` staging-root mode and regression test, passed all gates and
+merged. Signed `p15.0.3` was then published. Because the installed `p15.0.1` updater
+still contained the defect, the first `p15.0.3` staging attempt was allowed to fail
+closed; after verifying its exact signed release directory and mode, that one path
+was changed from `0700` to `0755` and the structured updater completed. Final live
+verification reports `p15.0.3`, previous `p15.0.1`, valid bundle, active Edge,
+unchanged device-key hash and preserved workspace
+`ws_593c26b24ba6dc583c9aa1da5e9e0152`. Future updates use the corrected updater.
 
 P15 implements the indivisible Ed25519-signed bundle, reproducible Debian package,
 restricted updater, atomic activation/rollback, repair, onboarding, signed outbound
