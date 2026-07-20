@@ -44,10 +44,63 @@ func NewHTTPHandler(store *Store, modelTurns ...*modelturn.Store) http.Handler {
 	mux.Handle("/edge/v1/workspaces/register", store.RequireDevice(http.HandlerFunc(store.handleWorkspaceRegistration)))
 	mux.Handle("/edge/v1/tasks/lease", store.RequireDevice(http.HandlerFunc(store.handleLease)))
 	mux.Handle("/edge/v1/tasks/", store.RequireDevice(http.HandlerFunc(store.handleTaskAction)))
+	mux.Handle("/edge/v1/operations/lease", store.RequireDevice(http.HandlerFunc(store.handleOperationLease)))
+	mux.Handle("/edge/v1/operations/", store.RequireDevice(http.HandlerFunc(store.handleOperationAction)))
 	if len(modelTurns) > 0 && modelTurns[0] != nil {
 		registerModelRelayRoutes(mux, store, modelTurns[0])
 	}
 	return mux
+}
+
+type operationLeaseRequest struct {
+	LeaseSeconds int `json:"lease_seconds"`
+}
+type operationCompletionRequest struct {
+	LeaseID  string          `json:"lease_id"`
+	Result   OperationResult `json:"result"`
+	SafeCode string          `json:"safe_code,omitempty"`
+}
+
+func (s *Store) handleOperationLease(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	var request operationLeaseRequest
+	if !decodeStrictJSON(w, r, &request) {
+		return
+	}
+	lease, err := s.LeaseOperation(DeviceFromContext(r.Context()).ID, time.Duration(request.LeaseSeconds)*time.Second)
+	if errors.Is(err, ErrNoTaskAvailable) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err != nil {
+		http.Error(w, "operation lease rejected", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, lease)
+}
+
+func (s *Store) handleOperationAction(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+	remainder := strings.TrimPrefix(r.URL.Path, "/edge/v1/operations/")
+	parts := strings.Split(remainder, "/")
+	if len(parts) != 2 || parts[1] != "complete" || !operationIDPattern.MatchString(parts[0]) {
+		http.NotFound(w, r)
+		return
+	}
+	var request operationCompletionRequest
+	if !decodeStrictJSON(w, r, &request) {
+		return
+	}
+	op, err := s.CompleteOperation(DeviceFromContext(r.Context()).ID, parts[0], request.LeaseID, request.Result, request.SafeCode)
+	if err != nil {
+		http.Error(w, "operation completion rejected", http.StatusConflict)
+		return
+	}
+	writeJSON(w, http.StatusOK, op)
 }
 
 func (s *Store) handlePair(w http.ResponseWriter, r *http.Request) {

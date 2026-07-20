@@ -222,6 +222,7 @@ Usage:
   mcp-edge workspace list [--state <ABS_PATH>]
   mcp-edge workspace remove --id <OPAQUE_ID> [--state <ABS_PATH>]
   mcp-edge lab init --platform htb --machine <NAME> --target <IP> --difficulty EASY|MEDIUM|HARD [--vpn-interface tun0] [--state <ABS_PATH>]
+  mcp-edge lab retarget --workspace-id <OPAQUE_ID> --target <IP> [--state <ABS_PATH>]
   mcp-edge lab ssh-exec --username <USER> --source <FILE> --extract-after <PREFIX> --command <COMMAND> [--save-output <FILE>]
   mcp-edge bundle verify
 

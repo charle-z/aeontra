@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/modelturn"
 )
 
@@ -17,6 +18,11 @@ var errEdgeStoreUnavailable = errors.New("edge device store is not configured")
 
 type edgeDeviceRegistry interface {
 	DeviceActive(string) bool
+}
+
+type edgeOperationRegistry interface {
+	CreateOperation(string, edge.OperationKind, edge.OperationRequest) (edge.Operation, bool, error)
+	OperationStatus(string) (edge.Operation, error)
 }
 
 type openCodeRuntimeStartParams struct {
@@ -41,8 +47,12 @@ type runtimePublicView struct {
 func (s *Server) WithEdgeStore(store edgeDeviceRegistry) *Server {
 	s.edgeDevices = store
 	s.edgeWorkspaces = nil
+	s.edgeOperations = nil
 	if workspaces, ok := store.(edgeWorkspaceRegistry); ok {
 		s.edgeWorkspaces = workspaces
+	}
+	if operations, ok := store.(edgeOperationRegistry); ok {
+		s.edgeOperations = operations
 	}
 	return s
 }

@@ -54,7 +54,7 @@ func (s *Server) addModelTurnTools() {
 	}, s.handleOpenCodeRuntimeStart)
 
 	s.addWorkspaceRuntimeContinueTool()
-	s.addHTBActionTools()
+	s.addEdgeControlTools()
 
 	s.addDirectTool(toolDef{
 		Name:        "model_runtime_status",

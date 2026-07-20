@@ -37,11 +37,50 @@ func labCommand(args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "init":
 		return labInit(args[1:], stdout, stderr)
+	case "retarget":
+		return labRetarget(args[1:], stdout, stderr)
 	case "ssh-exec":
 		return labSSHExec(args[1:], stdout, stderr)
 	default:
 		return errors.New("unknown lab command")
 	}
+}
+
+func labRetarget(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("lab retarget", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	state := fs.String("state", defaultStateRoot(), "private Edge state root")
+	workspaceID := fs.String("workspace-id", "", "opaque authorized workspace id")
+	target := fs.String("target", "", "new single authorized target IPv4")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
+		return errors.New("lab retarget accepts only workspace-id and target")
+	}
+	targetIP := strings.TrimSpace(*target)
+	if parsed := net.ParseIP(targetIP); parsed == nil || parsed.To4() == nil || !parsed.IsPrivate() || strings.Contains(targetIP, "/") {
+		return errors.New("lab target must be one private IPv4 address")
+	} else {
+		targetIP = parsed.To4().String()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), labCommandTimeout)
+	defer cancel()
+	iface, lhost, err := labRouteLookup(ctx, targetIP, "")
+	if err != nil {
+		return err
+	}
+	registry, err := edgeclient.OpenWorkspaceRegistry(*state)
+	if err != nil {
+		return err
+	}
+	defer registry.Close()
+	workspace, err := registry.Retarget(strings.TrimSpace(*workspaceID), targetIP, iface)
+	if err != nil {
+		return err
+	}
+	if err := edgeclient.WriteLabRetarget(workspace, lhost); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "lab-retargeted workspace=%s authorization_revision=%d\n", workspace.ID, workspace.AuthorizationRevision)
+	return nil
 }
 
 func labInit(args []string, stdout, stderr io.Writer) error {
@@ -70,8 +109,8 @@ func labInit(args []string, stdout, stderr io.Writer) error {
 	if !labMachinePattern.MatchString(machineName) {
 		return errors.New("lab machine name is invalid")
 	}
-	if parsed := net.ParseIP(targetIP); parsed == nil || parsed.To4() == nil || strings.Contains(targetIP, "/") {
-		return errors.New("lab target must be one IPv4 address")
+	if parsed := net.ParseIP(targetIP); parsed == nil || parsed.To4() == nil || !parsed.IsPrivate() || strings.Contains(targetIP, "/") {
+		return errors.New("lab target must be one private IPv4 address")
 	} else {
 		targetIP = parsed.To4().String()
 	}
@@ -122,6 +161,9 @@ func labInit(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if err := edgeclient.ValidateLinuxToolInventory(inventory); err != nil {
+		return err
+	}
+	if err := edgeclient.WriteLabPreparation(workspace, inventory, lhost); err != nil {
 		return err
 	}
 	available := 0

@@ -85,6 +85,68 @@ func TestWorkspaceRegistryConfiguresHTBLinuxContext(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRegistryRetargetPreservesIdentityAndEvidenceWhileRotatingAuthorization(t *testing.T) {
+	registry, _, htbRoot := newLinuxWorkcellRegistry(t)
+	defer registry.Close()
+	path := filepath.Join(htbRoot, "Cap")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace, _, err := registry.AddProfile(path, WorkspaceProfileLinuxWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err = registry.Configure(workspace.ID, WorkspaceConfiguration{
+		Mode: WorkspaceModeHTBLinux, MachineName: "Cap", TargetIP: "10.129.63.164",
+		Difficulty: "EASY", OS: "LINUX", VPNInterface: "tun0",
+	})
+	if err != nil || workspace.AuthorizationRevision != 1 {
+		t.Fatalf("initial authorization = %+v, %v", workspace, err)
+	}
+	checkpoint := filepath.Join(path, "checkpoint.md")
+	if err := os.WriteFile(checkpoint, []byte("preserved evidence"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	retargeted, err := registry.Retarget(workspace.ID, "10.129.63.200", "tun1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retargeted.ID != workspace.ID || retargeted.AuthorizationRevision != 2 || retargeted.TargetIP != "10.129.63.200" || retargeted.VPNInterface != "tun1" {
+		t.Fatalf("unexpected retarget: %+v", retargeted)
+	}
+	if content, err := os.ReadFile(checkpoint); err != nil || string(content) != "preserved evidence" {
+		t.Fatalf("checkpoint changed: %q, %v", content, err)
+	}
+	marker, err := readWorkspaceAuthorizationRevision(path)
+	if err != nil || marker != 2 {
+		t.Fatalf("authorization marker = %d, %v", marker, err)
+	}
+	again, err := registry.Retarget(workspace.ID, "10.129.63.200", "tun1")
+	if err != nil || again.AuthorizationRevision != 2 {
+		t.Fatalf("idempotent retarget = %+v, %v", again, err)
+	}
+}
+
+func TestWorkspaceRegistryRejectsPublicHTBTarget(t *testing.T) {
+	registry, _, htbRoot := newLinuxWorkcellRegistry(t)
+	defer registry.Close()
+	path := filepath.Join(htbRoot, "Unsafe")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace, _, err := registry.AddProfile(path, WorkspaceProfileLinuxWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = registry.Configure(workspace.ID, WorkspaceConfiguration{
+		Mode: WorkspaceModeHTBLinux, MachineName: "Unsafe", TargetIP: "8.8.8.8",
+		Difficulty: "EASY", OS: "LINUX", VPNInterface: "tun0",
+	})
+	if err == nil {
+		t.Fatal("public target was authorized")
+	}
+}
+
 func TestWorkspaceRegistryRejectsInvalidHTBConfiguration(t *testing.T) {
 	registry, _, htbRoot := newLinuxWorkcellRegistry(t)
 	machinePath := filepath.Join(htbRoot, "fixture")

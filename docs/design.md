@@ -170,3 +170,19 @@ failure restores the previous signed release. See `docs/edge-bundles.md`.
 4. **Validate the ChatGPT-web premise** with a real session before heavy build.
 5. **Repo location: WSL2 vs Windows FS** — affects path jail + performance (owner
    is Windows-first; secure mode is Linux/WSL2). Decide where repos live.
+## P15 outbound lab control operations
+
+`workspace_lab_prepare` and `workspace_lab_retarget` persist closed, typed
+operations in the remote Edge store. A paired Edge leases them over its existing
+Ed25519-authenticated outbound channel. The request may contain only the device or
+workspace selector and the lab contract metadata; commands, credentials, flags,
+paths, URLs, scripts and caller-provided hashes have no schema or transport field.
+
+Preparation and retargeting execute on the Edge. They validate a private IPv4 and
+its `tun*`/`tap*` route, derive LHOST locally, atomically persist the local contract
+and sanitized inventory, and return only opaque IDs, authorization revision and a
+closed safe failure code. Retarget increments the revision marker used by the local
+broker, invalidating every older session without deleting evidence or checkpoints.
+
+The six `workspace_htb_*` actions remain available to the local runtime provider,
+but are intentionally absent from the exterior MCP catalog and dispatcher.

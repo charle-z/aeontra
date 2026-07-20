@@ -88,6 +88,37 @@ func (t *Transport) Complete(ctx context.Context, taskID, leaseID string, result
 	return task, nil
 }
 
+func (t *Transport) LeaseOperation(ctx context.Context, ttl time.Duration) (*edge.OperationLease, error) {
+	var lease edge.OperationLease
+	status, err := t.do(ctx, http.MethodPost, "/edge/v1/operations/lease", map[string]any{"lease_seconds": int(ttl.Seconds())}, &lease)
+	if err != nil {
+		return nil, err
+	}
+	if status == http.StatusNoContent {
+		return nil, nil
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("edge operation lease rejected with HTTP %d", status)
+	}
+	return &lease, nil
+}
+
+func (t *Transport) CompleteOperation(ctx context.Context, operationID, leaseID string, result edge.OperationResult, safeCode string) (edge.Operation, error) {
+	request := map[string]any{"lease_id": leaseID, "result": result}
+	if safeCode != "" {
+		request["safe_code"] = safeCode
+	}
+	var operation edge.Operation
+	status, err := t.do(ctx, http.MethodPost, "/edge/v1/operations/"+operationID+"/complete", request, &operation)
+	if err != nil {
+		return edge.Operation{}, err
+	}
+	if status != http.StatusOK {
+		return edge.Operation{}, fmt.Errorf("edge operation completion rejected with HTTP %d", status)
+	}
+	return operation, nil
+}
+
 func (t *Transport) do(ctx context.Context, method, path string, input, output any) (int, error) {
 	return t.doLimited(ctx, method, path, input, output, maxEdgeResponse)
 }

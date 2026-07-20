@@ -17,7 +17,12 @@ pass. Step 02 adds the reproducible signed Debian package, signed stable channel
 restricted updater, atomic activation/rollback, repair, legacy-state migration,
 single-action onboarding and systemd path activation. Portable tests and Linux
 vet/build pass; Linux transaction tests still require exact-head CI. Step 03
-(automatic lab prepare/retarget) is active. See `docs/edge-bundles.md` and
+(automatic lab prepare/retarget) is implemented locally: closed public operations
+are leased over the signed outbound Edge channel, create/reuse the lab workspace,
+persist its private contract/inventory, rotate authorization on retarget, and keep
+all operational HTB actions outside the exterior catalog. Exact-head Linux CI is
+still required before the step can be considered remotely verified. Step 04
+(durable local autopilot) is active. See `docs/edge-bundles.md` and
 `docs/install-edge-parrot-p15.md`.
 
 Production and Parrot remain on the previous verified deployment until all P15 local

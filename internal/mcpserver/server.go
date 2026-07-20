@@ -41,6 +41,7 @@ type Server struct {
 	modelTurns     *modelturn.Store
 	edgeDevices    edgeDeviceRegistry
 	edgeWorkspaces edgeWorkspaceRegistry
+	edgeOperations edgeOperationRegistry
 	stateRoot      string
 	auditPath      string
 	modelWaitMu    sync.Mutex

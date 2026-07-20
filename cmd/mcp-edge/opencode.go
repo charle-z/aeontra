@@ -198,6 +198,7 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go runControlOperationLoop(ctx, *state, transport, stderr)
 	for {
 		workspaces, registryErr := registry.List()
 		if registryErr == nil {

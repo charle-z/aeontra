@@ -167,3 +167,16 @@ updater. See `docs/edge-bundles.md`.
 - HTTP: auth required, oversized bodies fail, empty/over-128 batches fail with bounded errors
 - access grants: agent cannot self-approve; expired/used grants fail; exact path only;
   default output remains redacted; raw requires explicit raw approval; restart clears grants
+## P15 lab-control boundary
+
+The public server is a durable control plane, not an HTB command relay. Its lab
+operations are closed-schema requests and never contain a command, credential,
+credential flag, output, checkpoint, local path or provider configuration. Only a
+paired Edge can lease or complete an operation, using the existing signed request
+protocol and replay protection.
+
+Every HTB target must be one private IPv4 whose route is currently attached to a
+local `tun*` or `tap*` interface. The authorization revision is written atomically
+inside the private workspace. The broker verifies that revision for every request;
+retargeting therefore closes the authority of already-running sessions even if an
+old process is still alive.
