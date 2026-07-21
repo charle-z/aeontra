@@ -4,197 +4,168 @@ Security **is the product**. These are invariants, not options.
 
 ## Threat model
 
-1. **Prompt injection from repo files** — a README/issue/log/test fixture may
-   contain instructions trying to make the agent read secrets or run commands.
-   → File contents are **data, never commands.**
-2. **Secret access** — `.env`, `.ssh`, keys, tokens, credentials, browser profiles,
-   OS stores. → **Denied by default.** A local human can approve a narrow,
-   in-memory, single-use grant for one exact resolved path; raw unredacted output
-   requires a separate explicit raw grant.
-3. **Destructive / arbitrary commands** — `rm -rf`, `format`, `curl|bash`, `sudo`…
-   → **Allowlist only; no free terminal.**
-4. **Exfiltration** — agent sends code/secrets to an external endpoint.
-   → **Egress control (Layer 3): default-deny outbound.**
-5. **Workspace escape** — operations outside configured project paths, including
-   via terminal. → **Path jail covering both filesystem AND commands.**
-6. **Public exposure of the daemon** — the tunnel must require auth + TLS.
-7. **HTTP resource exhaustion** — request bodies are capped at 4 MiB; JSON-RPC
-   batches are parsed incrementally, reject empty arrays, and stop after 128 items.
+1. **Prompt injection from repository data.** README files, issues, logs and fixtures
+   are data, never instructions.
+2. **Secret access.** `.env`, `.ssh`, private keys, tokens, credentials, browser
+   profiles and operating-system stores are denied by default. Exact-path local-human
+   grants are narrow, in-memory, single-use and TTL-bound; raw output requires a
+   separate explicit raw grant.
+3. **Destructive or arbitrary execution.** The public control plane exposes a closed
+   command allowlist, no free terminal and no caller-supplied shell.
+4. **Exfiltration.** Content redaction and narrow schemas reduce leakage, but general
+   egress control is profile-specific rather than universal.
+5. **Workspace escape.** Filesystem and Layer-1 command operations remain inside
+   configured roots with traversal, symlink and executable-resolution defenses.
+6. **Public control-plane exposure.** OAuth/TLS and bounded recovery authentication
+   are mandatory; query-string credentials return 401.
+7. **Resource exhaustion.** HTTP bodies are capped at 4 MiB; JSON-RPC batches reject
+   empty arrays and stop after 128 items; large tool output is redacted and moved to a
+   bounded result store.
+8. **Edge compromise or downgrade.** P15 runtimes accept only complete
+   Ed25519-signed, component-hashed bundles whose release, commit, protocol,
+   architecture and catalog identity agree.
+9. **Unauthorized security activity.** HTB/CTF actions exist only for a registered
+   `htb-linux` workspace bound locally to one Edge identity, private target, VPN
+   interface and authorization revision.
 
-## Secure-by-default invariants (Layer 1)
+## Secure-by-default Layer-1 invariants
 
 ```text
 read-only: true          # writes require explicit enable
 write: ask               # risky actions prompt for approval
-commands: allowlist-only # per-project; no free terminal
+commands: allowlist-only # no free terminal
 package_install: deny
-secrets: deny            # .env, .ssh, keys, tokens, credentials
-outside_workspace: deny  # applies to fs AND command execution
-write_model: patch-first # validate with `git apply --check` before applying
-audit: on                # log who/what/when/files/duration
+secrets: deny            # paths and returned content
+outside_workspace: deny  # filesystem and Layer-1 command execution
+write_model: patch-first # git apply --check before applying
+audit: on                # content-free, secret-scrubbed evidence
 ```
 
-### Always-blocked paths
-`.env`, `.env.*`, `.ssh`, private keys, tokens, credentials, browser profiles,
-OS credential stores, `node_modules`, `vendor`, `.git` internals (except
-controlled `git status`/`git diff`).
+### Always-blocked paths and commands
 
-### Ephemeral human access grants
+Secret paths include `.env`, `.env.*`, `.ssh`, private keys, tokens, credentials,
+browser profiles and operating-system credential stores. Dependency trees and Git
+internals are skipped except for controlled status/diff workflows.
 
-Secret paths stay denied by default. When `read_file` or `read_many_files` touches
-a secret path inside the jail, the tool returns a structured `access-required`
-payload with a request id, exact resolved path, reason, and whether raw output was
-requested. This is not an approval.
+Always-blocked command forms include destructive filesystem tools, shell pipelines
+such as `curl|bash` or `wget|bash`, general `sudo`, unsafe recursive permission
+changes, arbitrary refspecs, force publication and caller-provided executable paths.
 
-Approval is only through the daemon's local loopback admin channel, protected by a
-random per-process admin token printed to the daemon console:
+## Ephemeral human access grants
+
+A denied secret read returns an `access-required` request. Only the local human may
+approve it through the loopback admin channel; no MCP tool can self-approve.
 
 ```bash
-mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> --ttl 5m <REQUEST_ID>
+mcp-devbox grant --admin http://127.0.0.1:<PORT> \
+  --admin-token <TOKEN> --ttl 5m <REQUEST_ID>
 ```
 
-The MCP tool list does not expose any grant/approval tool. Remote ChatGPT over HTTP
-can see the request id and retry the read with `access_request_id`, but it cannot
-approve that id. The local human operating the daemon must copy the console command
-or otherwise run the CLI locally.
-
-Grant properties:
-
-- In-memory only; nothing is written to config or disk, and daemon restart clears it.
-- Exact resolved path only; no wildcards, parent directories, sibling files, or jail
-  expansion.
-- Single-use and TTL-bounded; default TTL is 5 minutes, maximum accepted TTL is 1 hour.
-- Pending requests expire after 15 minutes, are capped at 256, and exact duplicate
-  path/raw requests reuse one id so an agent cannot create unbounded approval spam.
-- Normal grants still run content redaction before returning data.
-- Raw unredacted output requires `--raw --confirm-raw`; `--raw` alone is rejected.
-- Requests and approvals are audit logged with request id, path, TTL, raw flag, and
-  decision. Args, errors, and every file/path entry are independently secret-scrubbed
-  before JSONL persistence.
-
-### Always-blocked commands
-`rm -rf`, `del /s`, `format`, `mkfs`, `curl|bash`, `wget|bash`,
-`powershell Invoke-Expression`, `sudo`, `chmod -R 777`.
+Grants are exact-path, single-use, bounded by TTL, cleared on restart and audited.
+Normal grants still redact. Raw output requires both `--raw` and `--confirm-raw`.
+Pending requests expire, are bounded and deduplicate identical path/raw requests.
 
 ## Planned consequential actions
 
-Repository fast-forward, GitHub creation, remote updates, publication, Coolify app
-creation/deployment, note writes, and privileged profiles use a shared in-memory
-plan mechanism. IDs use cryptographic randomness; plans hold an operation and exact
-normalized non-secret arguments, creation/expiry timestamps, and single-use state.
-Execution consumes the plan, rechecks policy and current state, and audits creation,
-execution, expiry, replay, and rejection.
+Repository synchronization, GitHub changes, publication, Coolify operations, notes,
+privileged profiles and similar writes use cryptographically named, short-lived,
+single-use plans. Execution revalidates the exact repository, branch, commit, remote,
+application or other bound state and still requires approval in `ask` mode.
 
-Preview is not approval. In `ask` mode execution still requires `approve=true`. A
-plan cannot authorize a different repository, owner, remote, branch, commit,
-application, service, command, or note body. Daemon restart clears every plan.
+Preview is not approval. Plans cannot authorize a different target, command, URL,
+repository, owner, branch, commit, application, note body or credential. Daemon
+restart clears in-memory plans. Compatibility aliases share the exact same handler,
+policy, approval and audit path.
 
-Git publication has no force/mirror/tag/refspec surface. GitHub operations are fixed
-to `GITHUB_OWNER`; Coolify repositories use that owner and domains obey
-`COOLIFY_ALLOWED_DOMAINS`. Tokens and env values never appear in output or audit.
-Compatibility aliases invoke identical handlers and cannot weaken policy.
+Git publication has no force, mirror, tag, arbitrary refspec, caller URL or embedded
+credential surface. Coolify repositories and domains remain owner/allowlist-bound.
+Tokens and environment values are never returned.
 
-The development Edge has a separate local Git transport authority. Its PAT is a
-0600 Edge-state file and is never mounted into the workcell or offered in a model
-schema. The broker constructs an HTTPS URL only from the configured owner plus a
-simple repository name, validates both fetch and push URLs, disables Git credential
-helpers, hooks, fsmonitor commands and the file protocol, and supplies askpass only
-to a bounded Git child. Publication requires a five-minute single-use plan bound to
-workspace, directory, branch, HEAD, remote HEAD and remote URL; it has no force,
-tags, caller URL or caller refspec surface.
+## Isolation profiles
 
-## Isolation layers
-
-| Layer | Mechanism | When |
+| Surface | Isolation and network posture | Honest limit |
 |---|---|---|
-| 1. App policy | Go: path validation, denylist, allowlist, read-only, audit | MVP |
-| 2. OS isolation | **Wrap** gVisor / nsjail / Docker (Linux/WSL2) so commands can't escape | v0.3 |
-| 3. Egress | default-deny outbound; block 169.254.169.254 + RFC1918; allowlist endpoints | v0.3 |
+| Public Layer-1 command path | Jailed allowlist executed as the daemon user | Not an OS sandbox; a permitted child can access what that account can access |
+| Edge `sandbox` profile | Mandatory networkless Bubblewrap, no direct-execution fallback, network and DNS blocked, host-private paths hidden | Linux/WSL2 only; protects the OpenCode runtime, not every control-plane child process |
+| Trusted `linux-workcell` | Bounded Bubblewrap layout with user-owned workspace and approved rootless resources | Deliberately `trusted_host_shared_network`; not universal egress or target isolation |
+| Authorized `htb-linux` session | Structured Unix-socket broker bound to one registered private target and live VPN route | Restricts the authorized action path; does not firewall every host process |
 
-> App-level policy is **necessary but not sufficient**: if command execution
-> exists, a command can read files regardless of policy unless the process itself
-> is OS-sandboxed. That is why Layer 2 matters — and why it must **wrap** proven
-> tech, not be hand-rolled.
+App policy remains necessary even where Bubblewrap exists. Bubblewrap and target
+binding are specific controls, not a claim that the complete platform is formally
+verified or universally isolated.
 
-## Tunnel security (ChatGPT bridge)
+## Remote HTTP and console boundary
 
-The daemon is on a local PC behind NAT. To let ChatGPT (cloud) reach it:
+OAuth is the preferred ChatGPT authentication path. A static bearer is a header-only
+recovery mechanism; query-string credentials are rejected. Safe liveness and
+build/catalog identity endpoints remain bounded. MCP, console and Edge control routes
+reuse the same authority, redaction and audit foundations rather than implementing
+parallel security shortcuts.
 
-- **Cloudflare Tunnel** — outbound-only connection; no inbound ports opened.
-- **Cloudflare Access (Zero Trust free tier)** — auth gate in front (only you).
-- **TLS** — automatic via Cloudflare.
-- **Bearer/OAuth on the daemon** — defense in depth even behind Access.
-- Never expose the raw daemon to the public internet.
-
-A reverse proxy (nginx/Traefik) is the *server-with-public-IP* pattern (e.g. on a
-VPS) — it does **not** solve the NAT problem for a local PC. The tunnel does.
-
-## Beyond path-blocking: content-level secret scanning
-
-Blocking `.env`/`.ssh` by **path** is not enough — secrets also live in source code,
-config files, logs, and git history. Before returning ANY file content, **scan for
-secret patterns** (API keys, tokens, `BEGIN ... PRIVATE KEY` headers, common
-credential formats) and **redact**. Desktop Commander does NOT do this — it is both
-a real need and a genuine differentiator.
-
-## Adversarial self-testing (red-team the tool itself)
-
-For a security product, tests must **attempt to bypass** the controls, not just
-confirm happy paths:
-- path traversal (`../`, absolute paths, UNC), symlink escape
-- command injection via tool arguments
-- allowlist bypass (chained/quoted commands, path-qualified names, hostile workspace PATH)
-- secret exfiltration through a *permitted* command
-- prompt-injection from a repo file trying to elicit a forbidden action
-> This is exactly the owner's red-team domain — the security testing of mcp-devbox
-> is the dogfooding of their actual skill.
-
-## The "secure" claim is a liability
-
-Calling the tool "secure" raises the bar: a bypass here is worse than in a
-permissive tool. **Under-promise.** Ship `SECURITY.md` + a vulnerability disclosure
-policy. Keep the MIT "as is" disclaimer. Never claim guarantees that can't be held.
+Public exposure increases risk even behind TLS or a reverse proxy. Use long random
+credentials, rotate them after suspected leakage, keep the local grant admin channel
+loopback-only and review content-free audit/observability evidence.
 
 ## Signed Edge release boundary
 
-P15 Edge workers accept new local jobs only when the complete versioned release
-manifest has a valid Ed25519 signature and every fixed component matches its SHA-256.
-The compiled release, commit, protocol, architecture and exterior catalog identity
-must agree. Provider and driver mismatches fail before runtime creation with closed,
-content-free codes. The installed Edge contains no signing private key, and neither
-the chat nor a public tool may supply a URL, path, hash, script or command to the
-updater. See `docs/edge-bundles.md`.
+P15 defines one versioned manifest for the Edge binary, model-turn driver, OpenCode
+provider and fixed helper files. Every component must be a regular non-symlink file
+under the signed release root and match its SHA-256. The restricted updater accepts
+only the official stable bundle, verifies signature and identity, stages atomically,
+health-checks activation and can roll back or repair conservatively.
 
-## Required security tests (Layer 1)
+The installed Edge contains no signing private key. Neither chat nor a public tool
+may provide the updater with a URL, path, hash, script or command. Provider, driver,
+protocol or catalog mismatch fails closed before a new runtime starts.
 
-- path traversal blocked · access outside workspace blocked · `.env`/`.ssh` blocked
-- destructive commands blocked · non-allowlist commands blocked
-- `apply_patch` validates before applying · allowed read/search work
-- audit log records actions and redacts args/errors/file paths · repo-file instructions are NOT executed
-- **content secret-scan redacts keys/tokens in returned files**
-- **bypass attempts (traversal/symlink/arg-injection/allowlist) all fail**
-- HTTP: auth required, oversized bodies fail, empty/over-128 batches fail with bounded errors
-- access grants: agent cannot self-approve; expired/used grants fail; exact path only;
-  default output remains redacted; raw requires explicit raw approval; restart clears grants
-## P15 lab-control boundary
+## P14/P15 authorized-lab boundary
 
-The public server is a durable control plane, not an HTB command relay. Its lab
-operations are closed-schema requests and never contain a command, credential,
-credential flag, output, checkpoint, local path or provider configuration. Only a
-paired Edge can lease or complete an operation, using the existing signed request
-protocol and replay protection.
+The public server is a durable control plane, not an HTB command relay. Lab-control
+requests use closed schemas and do not contain arbitrary commands, credentials,
+credential flags, raw output, checkpoints, local paths or provider configuration.
+Only a paired Edge may lease and complete signed operations.
 
-Control delivery is authenticated in both directions. Edge signs every polling and
-completion request with its device key. The server signs each leased operation over
-the operation/device/kind/request digest, lease ID and exact expiry using a private
-control key persisted with mode `0600`; Edge verifies that signature before any local
-operation, including updater/rollback/repair. New pairing records only the public
-control key. A preserved schema-v1 P14 identity obtains that public key once over its
-already authenticated HTTPS/device-signed channel, upgrades only identity metadata,
-and preserves the device ID and private device key.
+First-class HTB actions are injected only into a registered `htb-linux` runtime. The
+local workspace registry binds one Edge identity, private IPv4 target, VPN interface
+and authorization revision. Every broker request revalidates that state. Credential
+values are extracted and consumed locally; the model and VPS receive opaque session
+handles or safe metadata. Sensitive stdout may be saved under approved local evidence
+directories and represented remotely only by path-relative metadata, size, digest and
+permissions. Retargeting increments the authorization revision and invalidates prior
+session authority.
 
-Every HTB target must be one private IPv4 whose route is currently attached to a
-local `tun*` or `tap*` interface. The authorization revision is written atomically
-inside the private workspace. The broker verifies that revision for every request;
-retargeting therefore closes the authority of already-running sessions even if an
-old process is still alive.
+These actions must never be used against systems without explicit authorization.
+
+## Development Edge Git boundary
+
+The development Edge has a separate local Git transport authority. Its credential is
+stored in private mode-0600 Edge state and is never mounted into the workcell or
+included in model schemas. The broker constructs only configured-owner HTTPS URLs,
+validates fetch and push destinations, disables credential helpers, hooks, fsmonitor
+commands and the file protocol, and supplies askpass only to one bounded Git child.
+
+Publication requires a short-lived single-use plan bound to workspace, repository,
+branch, clean tree, local HEAD, remote HEAD and remote URL. Force, tags, caller URLs,
+arbitrary refspecs and caller commands are not expressible.
+
+## Adversarial testing requirements
+
+Security tests must attempt bypasses, not only happy paths:
+
+- traversal, sibling-prefix, UNC and symlink escape;
+- command/argument injection and hostile workspace `PATH`;
+- secret exfiltration through otherwise allowed reads or commands;
+- repo-file prompt injection;
+- expired, replayed or state-mismatched plans and grants;
+- HTTP oversized/malformed batches and authentication bypass;
+- Bubblewrap network, DNS, mount and private-path escape;
+- signed-bundle tampering, downgrade, bad permissions and failed rollback;
+- HTB target/VPN/session/revision mismatch;
+- private Git owner, URL, helper, hook, refspec and credential leakage attempts.
+
+## The "secure" claim is a liability
+
+Call the project **secure-by-default**, not secure. Under-promise, preserve exact
+limitations and never turn a passing test into a universal guarantee. `SECURITY.md`
+contains the public disclosure policy. This repository has no open-source `LICENSE`;
+do not claim an MIT disclaimer or usage rights that do not exist.

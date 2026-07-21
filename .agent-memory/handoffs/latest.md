@@ -1,80 +1,49 @@
-# Handoff — P15 development Edge Git closure
+# Handoff — P15 documentation truth
 
-Branch `codex/p15-dev-edge-git` starts from deployed `main` `3a91fb7`. Step 21 is
-active. A real GPT web run proved p15.0.4 reaches six model turns; a later new chat
-replayed the same terminal runtime because transport JSON-RPC IDs were treated as
-durable idempotency identity. The candidate now requires a fresh caller-generated
-`idempotency_key`; focused tests pass on Parrot Go 1.26.5.
+Branch `docs/p15-documentation-truth` starts from `origin/main`
+`5048a5aa0e0d57d67df3680112aee0d47c954543` (`p15.0.5`).
 
-Step 22 now implements private Git clone/publish on the local Edge without `gh`, a
-credential helper, or SSH agent. `mcp-edge github configure` reads a PAT from stdin;
-the dev provider exposes three closed internal actions; the owner-bound Unix broker
-clones and publishes only through a short-lived single-use plan while keeping the PAT
-outside the sandbox. The complete local Parrot gates pass: full Go suite, vet, build,
-provider Node tests, packaging shell syntax and diff check. The signed manifest is
-version 2 for the new provider file while version-1 verification remains supported
-for rollback. Next commit, publish the PR/release, update Parrot, and have the operator
-enter the PAT locally without pasting it in chat.
+The remote review proved that the prior local P14 checkout was stale. PR #29 and PR
+#38 are merged with all checks green; the source catalog is 98 tools at
+`sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`;
+the configured Coolify application tracks `main` and reports healthy.
 
-Historical P15 handoff follows.
+Evidence boundary: the latest repository-recorded real-host Parrot installation proof
+is `p15.0.4`. Do not infer from the `p15.0.5` tag that Parrot installed it, that a
+local Git credential was entered, or that a real private-repository smoke passed.
+Those require a separate structured update and validation.
 
-Branch: `p15-zero-touch-local-autopilot`
-Base: P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.
+Historical deployed anchors required by documentation consistency tests remain
+explicit: P8.1 is closed and deployed at
+`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`, with its historical
+67 tools milestone and `not_paired` Edge state. P9 Brain is the deployed successor;
+later phases are additive and do not rewrite those baselines.
 
-Historical verified foundation: P8.1 is closed and deployed at
-`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`, with the verified
-67 tools milestone and safe `not_paired` Edge state. P15 is additive.
+Documentation changes:
 
-Current P15 status: Steps 01-06 are committed. Exact-head Linux CI, PR merge,
-automatic deployment and structured Parrot migration remain pending and are not
-claimed by this handoff.
+- README identifies the current source/release state, P13 continuation, P14
+  first-class authorized HTB actions and the P15 signed Edge line while preserving
+  historical P1–P12 markers required by tests.
+- `SECURITY.md` and `docs/security.md` now describe profile-specific isolation:
+  Layer-1 public commands are not an OS sandbox; ordinary Edge sandbox runtimes use
+  mandatory networkless Bubblewrap; trusted Linux workcells share host networking;
+  HTB sessions are target/VPN-bound but are not universal egress control.
+- `AGENTS.md`, `docs/context-capsule.md`, `docs/documentation-map.md` and
+  `.agent-memory/current-task.md` now separate source release, VPS deployment and
+  real Edge installation facts.
+- `docs/p15_documentation_truth_test.go` locks the current catalog/release and security
+  wording while rejecting stale current-state claims.
 
-## Completed Step 01
+Verification completed:
 
-- `internal/bundle` defines a strict version-1 Ed25519 manifest and fixed release
-  layout for Edge, model driver, autopilot worker, provider, HTB actions and systemd.
-- Verification binds release, exact commit, protocol, catalog hash and architecture;
-  all components must be regular non-symlink files below the release root.
-- Closed safe errors are `bundle_mismatch`, `provider_outdated`, `driver_outdated`
-  and `manifest_invalid`.
-- `mcp-bundle-manifest` hashes a staged release and creates new manifest/signature
-  files using an external raw Ed25519 private key. It never overwrites files.
-- Packaged `mcp-edge opencode` verifies the compiled bundle identity before polling
-  for a new runtime. Unstamped local builds fail closed.
-- The systemd unit and onboarding preflight require `/opt/mcp-devbox/current`, its
-  manifest/signature and the autopilot worker.
-- Architecture, security, operations and context documentation are updated.
+- `go test ./docs -count=1` — pass after the final handoff refresh.
+- aggregate `go test ./... -count=1` passed every package shown through
+  `internal/mcpserver/catalog` before the command runner killed the long process;
+  the remaining package batch from `internal/modelturn` through `profiles` passed.
+- `go vet ./...` — pass.
+- `go build ./...` — pass.
+- `git diff --check` — pass after the final handoff refresh.
 
-## Verification
-
-- `go test ./internal/bundle ./cmd/mcp-bundle-manifest -count=1` -> pass.
-- `go test ./internal/bundle ./packaging/parrot -count=1` with Git Bash -> pass.
-- Linux cross `go vet ./...` -> pass.
-- Linux cross `go build ./...` -> pass.
-- `git diff --check` -> pass.
-- Full executable suite is not claimed locally: this Windows host cannot execute the
-  repository's Linux-only `syscall.Statfs`/Bubblewrap packages. Exact-head CI Linux
-  remains mandatory.
-
-## Completed Step 02
-
-- reproducible Debian content builder plus detached GPG signature and SHA-256;
-- deterministic signed update archive/channel publisher;
-- official-only bounded downloader with strict tar extraction;
-- flock-serialized staging, signed verification, atomic `current`/`previous`, exact
-  unit install, Edge-only restart, health rollback and conservative signed cleanup;
-- root-only updater accepting only `status`, `update stable`, `rollback`, `repair`;
-- repair of exact official modes/links/unit/service, with P14 backups;
-- package `postinst` rollback, preferred/legacy state preservation and no ID rewrite;
-- one `mcp-edge onboard --server` action plus a systemd path unit that starts Edge
-  when identity appears.
-
-Portable bundle/Debian/Parrot tests, shell syntax, Linux vet/build and diff checks
-pass. Linux-only updater transaction tests compile but need exact-head CI execution.
-
-## Active Step 03
-
-Implement closed control-plane lab preparation and retarget tasks. All target/VPN/
-LHOST/path/Git/contract/inventory work happens on Edge. Reuse machine workspaces and
-IDs, preserve evidence/checkpoints, invalidate sessions and increment authorization
-revision on retarget.
+This documentation step is committed locally on the current branch; use `HEAD` as
+the exact commit authority. Do not push, open a PR, deploy or update Parrot unless a
+later explicit task requests it.

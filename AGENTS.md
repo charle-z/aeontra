@@ -9,14 +9,15 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P15 signed zero-touch Edge** is deployed as `p15.0.4` at
-  `3a91fb703ca8543869098ba0aa8c80f69e8233a1`. Branch
-  `codex/p15-dev-edge-git` is a development follow-up: explicit caller-generated
-  continuation idempotency plus an Edge-only owner-bound Git broker for private
-  development repositories. Its public catalog remains 98 tools with hash
+- Current phase: **P15 signed zero-touch Edge** is merged through `p15.0.5` on
+  `main` at `5048a5aa0e0d57d67df3680112aee0d47c954543`. Explicit
+  caller-generated continuation idempotency and the Edge-only owner-bound Git broker
+  for private development repositories are merged. The public catalog contains 98
+  tools with hash
   `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
-  The follow-up is not deployed until exact-head gates, merge commit, signed release,
-  structured Parrot update, local credential entry and a real private-repo smoke pass.
+  Coolify tracks `main` and is healthy. The last repository-recorded Parrot install
+  proof is `p15.0.4`; a `p15.0.5` device update and real private-repository smoke must
+  be verified separately before claiming them complete.
   Historical closure evidence remains explicit: P8.1 Console 2.0 deployed and tagged
   at d343264bffdc0ae1bc045a9d723e913be977090c; P8.1 Console 2.0 is deployed;
   P9 Brain is deployed; its successor retained the 67 tools milestone before later
@@ -24,13 +25,15 @@ Operating rules for any AI agent working in this repo. Read this first, then
   under /state/tasks. See docs/baselines/2026-07-14-p8_1.md.
   The project has stdio and HTTP/OAuth transports, policy core, 98 annotated MCP
   tools, action plans, audit, persistent notes, Brain and adversarial tests.
-  The cheap-model worker plan is
-  superseded. Complete OS sandbox/egress coverage remains unfinished; see
-  `docs/context-capsule.md` and `docs/tools.md`. Tool implementations are split into
-  focused capability services over one shared policy/audit/root/runner/plan core;
-  `Service` is only the backwards-compatible composition and configuration facade.
-  The executable is also a strict composition root: `cmd/mcp-devbox/main.go` delegates
-  to focused process-orchestration modules under `internal/app`.
+  The cheap-model worker plan is superseded. Universal OS sandbox/egress coverage
+  remains unfinished; ordinary Edge sandbox runtimes are networkless Bubblewrap,
+  while trusted Linux workcells intentionally share host networking. See
+  `docs/context-capsule.md`, `docs/security.md` and `docs/tools.md`.
+  Tool implementations are split into focused capability services over one shared
+  policy/audit/root/runner/plan core; `Service` is only the backwards-compatible
+  composition and configuration facade. The executable has a strict composition root:
+  `cmd/mcp-devbox/main.go` delegates to focused process-orchestration modules
+  under `internal/app`.
 
 ## Source Of Truth
 

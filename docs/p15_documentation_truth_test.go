@@ -1,0 +1,138 @@
+package docs_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestP15CurrentDocumentationSeparatesSourceDeploymentAndDeviceEvidence(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return string(body)
+	}
+
+	const (
+		mainCommit  = "5048a5aa0e0d57d67df3680112aee0d47c954543"
+		catalogHash = "sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12"
+	)
+
+	readme := read("../README.md")
+	for _, required := range []string{
+		"p15.0.5",
+		"98 deliberately",
+		catalogHash,
+		"P13 opaque workspace continuation is deployed",
+		"P14 first-class authorized HTB actions are deployed",
+		"P15 signed zero-touch Edge is the current release line",
+		"last repository-recorded real-host",
+		"Parrot `p15.0.4`",
+	} {
+		if !strings.Contains(readme, required) {
+			t.Errorf("README missing current P15 marker %q", required)
+		}
+	}
+	for _, stale := range []string{
+		"current production exposes 85 deliberately annotated",
+		"## Console durable live state candidate",
+		"Add Layers 2–3 (OS isolation, egress) only in v0.3",
+	} {
+		if strings.Contains(readme, stale) {
+			t.Errorf("README retains stale current-state claim %q", stale)
+		}
+	}
+
+	agents := read("../AGENTS.md")
+	for _, required := range []string{mainCommit, "p15.0.5", "98 annotated MCP", catalogHash, "composition root", "internal/app"} {
+		if !strings.Contains(agents, required) {
+			t.Errorf("AGENTS missing %q", required)
+		}
+	}
+	if !strings.Contains(agents, "last repository-recorded Parrot install") || !strings.Contains(agents, "p15.0.4") {
+		t.Error("AGENTS does not preserve the last proven Parrot installation boundary")
+	}
+
+	capsule := read("context-capsule.md")
+	for _, required := range []string{
+		"Current source truth",
+		mainCommit,
+		"p15.0.5",
+		catalogHash,
+		"last repository-recorded real-host Parrot installation",
+		"ordinary Edge sandbox runtimes use mandatory networkless Bubblewrap",
+		"trusted Linux workcells deliberately share host networking",
+	} {
+		if !strings.Contains(capsule, required) {
+			t.Errorf("context capsule missing %q", required)
+		}
+	}
+
+	docMap := read("documentation-map.md")
+	for _, required := range []string{
+		"P14 target-locked runtime actions",
+		"P15 historical release-candidate evidence remains",
+		"Source/release,",
+		"VPS deployment and real Edge installation must be reported as separate facts",
+	} {
+		if !strings.Contains(docMap, required) {
+			t.Errorf("documentation map missing %q", required)
+		}
+	}
+}
+
+func TestP15SecurityDocumentationIsProfileSpecific(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return string(body)
+	}
+
+	policy := read("../SECURITY.md")
+	model := read("security.md")
+
+	for name, content := range map[string]string{
+		"SECURITY.md":      policy,
+		"docs/security.md": model,
+	} {
+		for _, required := range []string{
+			"networkless",
+			"Bubblewrap",
+			"trusted_host_shared_network",
+			"target",
+			"VPN",
+			"not",
+		} {
+			if !strings.Contains(content, required) {
+				t.Errorf("%s missing security-boundary marker %q", name, required)
+			}
+		}
+	}
+
+	for _, stale := range []string{
+		"does **not** yet provide\nOS-level isolation or egress control",
+		"No OS sandbox (Layer 2)",
+		"Keep the MIT \"as is\" disclaimer",
+	} {
+		if strings.Contains(policy, stale) || strings.Contains(model, stale) {
+			t.Errorf("security documentation retains stale claim %q", stale)
+		}
+	}
+
+	for _, required := range []string{
+		"header-only recovery",
+		"Ed25519-signed",
+		"P14/P15 authorized HTB actions",
+		"Development Edge Git boundary",
+	} {
+		if !strings.Contains(policy+"\n"+model, required) {
+			t.Errorf("security documentation missing %q", required)
+		}
+	}
+}
