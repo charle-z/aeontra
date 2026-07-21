@@ -31,6 +31,7 @@ func TestConsoleDurableLiveStateDocumentationContract(t *testing.T) {
 		"20,000",
 		"256 MiB",
 		"presentation-only",
+		"60-year practical persistence horizon",
 		"sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941",
 	} {
 		if !strings.Contains(console, required) && !strings.Contains(baseline, required) {
