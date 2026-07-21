@@ -78,6 +78,8 @@ func TestNormalizeClassifiesRootlessLifecycleFailures(t *testing.T) {
 		"rootless pod resources inherited by runtime cycle":                "P12 rootless category=inherited_state",
 		"PostgreSQL healthcheck timed out":                                 "P12 rootless category=postgresql_health",
 		"podman-compose cleanup failed":                                    "P12 rootless category=compose_cleanup",
+		"Error: no such network p12-net-deadbeef":                          "P12 rootless category=postgres_network",
+		"Error: no such image localhost/p12-postgres-fixture:17-alpine":    "P12 rootless category=postgres_image",
 	}
 	for input, expected := range tests {
 		if got := normalize(input); got != expected {

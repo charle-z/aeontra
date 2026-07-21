@@ -202,7 +202,7 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 	stage = "compose"
 	composeRan := p12ComposeCycleE2E(t, endpoint, image, runtimeID, suffix)
 	stage = "postgres"
-	postgresHealthy, postgresReady := p12PostgreSQLCycleE2E(t, endpoint, network, runtimeID, suffix)
+	postgresHealthy, postgresReady := p12PostgreSQLCycleE2E(t, endpoint, runtimeID, suffix)
 	stage = "chromium"
 	chromiumReady := p12ChromiumE2E(t)
 	if !chromiumReady {
@@ -326,10 +326,33 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 	return true
 }
 
-func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, network, runtimeID, suffix string) (bool, bool) {
+func p12PostgresImage(t *testing.T) string {
+	t.Helper()
+	value := strings.TrimSpace(os.Getenv("P12_POSTGRES_IMAGE"))
+	const prefix = "sha256:"
+	if len(value) != len(prefix)+64 || !strings.HasPrefix(value, prefix) {
+		t.Fatal("PostgreSQL fixture image identity is invalid")
+	}
+	for _, character := range value[len(prefix):] {
+		if character >= '0' && character <= '9' {
+			continue
+		}
+		if character >= 'a' && character <= 'f' {
+			continue
+		}
+		t.Fatal("PostgreSQL fixture image identity is invalid")
+	}
+	return value
+}
+
+func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, runtimeID, suffix string) (bool, bool) {
 	t.Helper()
 	prefix := rootlessEnginePrefix(endpoint)
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
+	image := p12PostgresImage(t)
+	p12Engine(t, endpoint, append(prefix, "image", "exists", image)...)
+	network := "p12-pg-net-" + suffix
+	p12Engine(t, endpoint, append(prefix, "network", "create", "--label", label, network)...)
 	volume := "p12-pg-vol-" + suffix
 	p12Engine(t, endpoint, append(prefix, "volume", "create", "--label", label, volume)...)
 	name := "p12-postgres-" + suffix
@@ -338,7 +361,7 @@ func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, ne
 		"--volume", volume+":/var/lib/postgresql/data",
 		"--env", "POSTGRES_PASSWORD=***REDACTED-SECRET***", "--env", "POSTGRES_DB=fixture",
 		"--health-cmd", "pg_isready -U postgres -d fixture", "--health-interval", "1s", "--health-timeout", "2s", "--health-retries", "60",
-		"docker.io/library/postgres:17-alpine",
+		image,
 	)...)
 
 	deadline := time.Now().Add(60 * time.Second)
