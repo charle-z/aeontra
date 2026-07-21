@@ -74,7 +74,7 @@ func renderLogin(w http.ResponseWriter, params *authorizeParams, status string) 
 }
 
 func renderLoginStatus(w http.ResponseWriter, params *authorizeParams, status string, code int) {
-	authfirmware.Harden(w, authfirmware.CSP)
+	authfirmware.HardenOAuth(w, authfirmware.CSP)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	stateLabel := "[ READY ] Awaiting owner authorization"
 	stateTone := "ready"
