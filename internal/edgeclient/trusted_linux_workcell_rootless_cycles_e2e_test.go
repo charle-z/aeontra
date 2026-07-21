@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+const p12PostgresFixtureImage = "localhost/p12-postgres-fixture:17-alpine"
+
 type p12RootlessCycleReport struct {
 	SchemaVersion             int  `json:"schema_version"`
 	Cycle                     int  `json:"cycle"`
@@ -202,7 +204,7 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 	stage = "compose"
 	composeRan := p12ComposeCycleE2E(t, endpoint, image, runtimeID, suffix)
 	stage = "postgres"
-	postgresHealthy, postgresReady := p12PostgreSQLCycleE2E(t, endpoint, network, runtimeID, suffix)
+	postgresHealthy, postgresReady := p12PostgreSQLCycleE2E(t, endpoint, runtimeID, suffix)
 	stage = "chromium"
 	chromiumReady := p12ChromiumE2E(t)
 	if !chromiumReady {
@@ -326,10 +328,13 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 	return true
 }
 
-func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, network, runtimeID, suffix string) (bool, bool) {
+func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, runtimeID, suffix string) (bool, bool) {
 	t.Helper()
 	prefix := rootlessEnginePrefix(endpoint)
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
+	p12Engine(t, endpoint, append(prefix, "image", "exists", p12PostgresFixtureImage)...)
+	network := "p12-pg-net-" + suffix
+	p12Engine(t, endpoint, append(prefix, "network", "create", "--label", label, network)...)
 	volume := "p12-pg-vol-" + suffix
 	p12Engine(t, endpoint, append(prefix, "volume", "create", "--label", label, volume)...)
 	name := "p12-postgres-" + suffix
@@ -338,7 +343,7 @@ func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, ne
 		"--volume", volume+":/var/lib/postgresql/data",
 		"--env", "POSTGRES_PASSWORD=***REDACTED-SECRET***", "--env", "POSTGRES_DB=fixture",
 		"--health-cmd", "pg_isready -U postgres -d fixture", "--health-interval", "1s", "--health-timeout", "2s", "--health-retries", "60",
-		"docker.io/library/postgres:17-alpine",
+		p12PostgresFixtureImage,
 	)...)
 
 	deadline := time.Now().Add(60 * time.Second)
