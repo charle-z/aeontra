@@ -384,9 +384,10 @@ jobs:
           if len(manifest) != 1:
               raise SystemExit("P12 rootless category=postgres_image_manifest")
           config = manifest[0].get("Config", "")
-          if re.fullmatch(r"[0-9a-f]{64}\.json", config) is None:
+          match = re.fullmatch(r"(?:blobs/sha256/)?([0-9a-f]{64})(?:\.json)?", config)
+          if match is None:
               raise SystemExit("P12 rootless category=postgres_image_manifest")
-          print("sha256:" + config[:-5])
+          print("sha256:" + match.group(1))
           PY
           )"
           podman --url "unix://$socket" image exists "$postgres_image_id"
