@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/charle-z/mcp-devbox/internal/authfirmware"
 )
 
 // regTestClient registers a client directly in the store and returns its id + redirect.
@@ -59,6 +61,9 @@ func TestAuthorizeGET_RendersLogin(t *testing.T) {
 	rec := getAuthorize(t, p, validAuthorizeParams(p, id, redirect))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Cross-Origin-Opener-Policy"); got != authfirmware.OAuthCOOP {
+		t.Fatalf("COOP = %q, want %q", got, authfirmware.OAuthCOOP)
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, `name="passphrase"`) {
@@ -120,6 +125,9 @@ func TestAuthorizePOST_CorrectPassphrase_IssuesCode(t *testing.T) {
 	rec := postAuthorize(t, p, form)
 	if rec.Code != http.StatusFound {
 		t.Fatalf("status = %d, want 302; body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Cross-Origin-Opener-Policy"); got != authfirmware.OAuthCOOP {
+		t.Fatalf("COOP = %q, want %q", got, authfirmware.OAuthCOOP)
 	}
 	loc := rec.Header().Get("Location")
 	u, err := url.Parse(loc)
