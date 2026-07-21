@@ -17,8 +17,6 @@ import (
 	"time"
 )
 
-const p12PostgresFixtureImage = "localhost/p12-postgres-fixture:17-alpine"
-
 type p12RootlessCycleReport struct {
 	SchemaVersion             int  `json:"schema_version"`
 	Cycle                     int  `json:"cycle"`
@@ -328,11 +326,31 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 	return true
 }
 
+func p12PostgresImage(t *testing.T) string {
+	t.Helper()
+	value := strings.TrimSpace(os.Getenv("P12_POSTGRES_IMAGE"))
+	const prefix = "sha256:"
+	if len(value) != len(prefix)+64 || !strings.HasPrefix(value, prefix) {
+		t.Fatal("PostgreSQL fixture image identity is invalid")
+	}
+	for _, character := range value[len(prefix):] {
+		if character >= '0' && character <= '9' {
+			continue
+		}
+		if character >= 'a' && character <= 'f' {
+			continue
+		}
+		t.Fatal("PostgreSQL fixture image identity is invalid")
+	}
+	return value
+}
+
 func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, runtimeID, suffix string) (bool, bool) {
 	t.Helper()
 	prefix := rootlessEnginePrefix(endpoint)
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
-	p12Engine(t, endpoint, append(prefix, "image", "exists", p12PostgresFixtureImage)...)
+	image := p12PostgresImage(t)
+	p12Engine(t, endpoint, append(prefix, "image", "exists", image)...)
 	network := "p12-pg-net-" + suffix
 	p12Engine(t, endpoint, append(prefix, "network", "create", "--label", label, network)...)
 	volume := "p12-pg-vol-" + suffix
@@ -343,7 +361,7 @@ func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, ru
 		"--volume", volume+":/var/lib/postgresql/data",
 		"--env", "POSTGRES_PASSWORD=***REDACTED-SECRET***", "--env", "POSTGRES_DB=fixture",
 		"--health-cmd", "pg_isready -U postgres -d fixture", "--health-interval", "1s", "--health-timeout", "2s", "--health-retries", "60",
-		p12PostgresFixtureImage,
+		image,
 	)...)
 
 	deadline := time.Now().Add(60 * time.Second)

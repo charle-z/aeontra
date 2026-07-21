@@ -367,12 +367,31 @@ jobs:
           PY
 
           start_service
-          podman --url "unix://$socket" load --input "$RUNNER_TEMP/p12-postgres-17-alpine.tar" >/dev/null
-          podman --url "unix://$socket" tag \
-            docker.io/library/postgres:17-alpine \
-            localhost/p12-postgres-fixture:17-alpine
-          podman --url "unix://$socket" image exists localhost/p12-postgres-fixture:17-alpine
-          rm -f "$RUNNER_TEMP/p12-postgres-17-alpine.tar"
+          archive="$RUNNER_TEMP/p12-postgres-17-alpine.tar"
+          podman --url "unix://$socket" load --input "$archive" >/dev/null
+          postgres_image_id="$(python3 - "$archive" <<'PY'
+          import json
+          import re
+          import sys
+          import tarfile
+
+          archive = sys.argv[1]
+          with tarfile.open(archive, "r") as bundle:
+              source = bundle.extractfile("manifest.json")
+              if source is None:
+                  raise SystemExit("P12 rootless category=postgres_image_manifest")
+              manifest = json.load(source)
+          if len(manifest) != 1:
+              raise SystemExit("P12 rootless category=postgres_image_manifest")
+          config = manifest[0].get("Config", "")
+          if re.fullmatch(r"[0-9a-f]{64}\.json", config) is None:
+              raise SystemExit("P12 rootless category=postgres_image_manifest")
+          print("sha256:" + config[:-5])
+          PY
+          )"
+          podman --url "unix://$socket" image exists "$postgres_image_id"
+          export P12_POSTGRES_IMAGE="$postgres_image_id"
+          rm -f "$archive"
           P12_ROOTLESS_CLEANUP_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
             -test.run=^TestTrustedLinuxWorkcellRootlessCleanupE2E$ -test.count=1 >/dev/null 2>&1
 
