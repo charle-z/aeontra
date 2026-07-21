@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -40,8 +41,12 @@ func continuationStore(workspaceID, profile, mode string) fixedWorkspaceEdgeStor
 }
 
 func continueCall(id any, workspaceID string, timeout int, extra string) string {
+	return continueCallWithKey(id, workspaceID, timeout, "continue-"+fmt.Sprint(id), extra)
+}
+
+func continueCallWithKey(id any, workspaceID string, timeout int, idempotencyKey, extra string) string {
 	encodedID, _ := json.Marshal(id)
-	payload := map[string]any{"workspace_id": workspaceID, "timeout_seconds": timeout}
+	payload := map[string]any{"workspace_id": workspaceID, "timeout_seconds": timeout, "idempotency_key": idempotencyKey}
 	if extra != "" {
 		payload[extra] = "caller-controlled-sensitive-value"
 	}
@@ -68,7 +73,7 @@ func TestWorkspaceRuntimeContinueContractHasNoInstructionSurface(t *testing.T) {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	if !reflect.DeepEqual(keys, []string{"timeout_seconds", "workspace_id"}) {
+	if !reflect.DeepEqual(keys, []string{"idempotency_key", "timeout_seconds", "workspace_id"}) {
 		t.Fatalf("properties=%v", keys)
 	}
 	for _, forbidden := range []string{"objective", "prompt", "instructions", "command", "target", "host", "ip", "username", "password", "secret", "credential", "flag", "machine", "platform", "options"} {
@@ -178,6 +183,27 @@ func TestWorkspaceRuntimeContinueIsReplaySafeAndCreatesLaterExplicitRuntime(t *t
 	}
 	if oldReplay.RuntimeID != firstView.RuntimeID {
 		t.Fatalf("same request id was not idempotent: %s", sameOldRequest)
+	}
+}
+
+func TestWorkspaceRuntimeContinueDoesNotTreatReusedJSONRPCIDAsANewChatReplay(t *testing.T) {
+	server, store := modelTurnServer(t)
+	server.WithEdgeStore(continuationStore(testWorkspaceID, "linux-workcell", "dev"))
+	first := toolText(t, call(t, server, continueCallWithKey("request-reused", testWorkspaceID, 300, "explicit-request-a", "")))
+	var firstView workspaceRuntimeContinueView
+	if err := json.Unmarshal([]byte(first), &firstView); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompleteRuntime(context.Background(), firstView.RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	second := toolText(t, call(t, server, continueCallWithKey("request-reused", testWorkspaceID, 300, "explicit-request-b", "")))
+	var secondView workspaceRuntimeContinueView
+	if err := json.Unmarshal([]byte(second), &secondView); err != nil {
+		t.Fatal(err)
+	}
+	if secondView.RuntimeID == firstView.RuntimeID {
+		t.Fatalf("fresh idempotency key reused terminal runtime: first=%s second=%s", first, second)
 	}
 }
 

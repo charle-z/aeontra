@@ -1,4 +1,14 @@
-# Current task — P15 zero-touch local autopilot
+# Current task — P15 development Edge Git closure
+
+Branch: `codex/p15-dev-edge-git` from deployed `main` `3a91fb7`.
+
+Active Step 21: prevent cross-chat continuation collisions with an explicit fresh
+idempotency key, then add private GitHub acquisition/publication for the authenticated
+local development Edge without exposing its token to the model or workspace.
+
+Verified so far: focused workspace continuation tests pass under Go 1.26.5 in Parrot.
+
+Historical P15 task follows.
 
 Branch: `p15-zero-touch-local-autopilot`
 Base: `origin/main` at P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.
