@@ -36,3 +36,25 @@ func TestFirmwareStylesheetRejectsWrites(t *testing.T) {
 		t.Fatalf("status=%d allow=%q", recorder.Code, recorder.Header().Get("Allow"))
 	}
 }
+
+func TestHardenKeepsOrdinaryPagesOpenerIsolated(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	Harden(recorder, CSP)
+	if got := recorder.Header().Get("Cross-Origin-Opener-Policy"); got != DefaultCOOP {
+		t.Fatalf("COOP=%q", got)
+	}
+}
+
+func TestHardenOAuthPreservesPopupOpener(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	HardenOAuth(recorder, CSP)
+	if got := recorder.Header().Get("Cross-Origin-Opener-Policy"); got != OAuthCOOP {
+		t.Fatalf("COOP=%q", got)
+	}
+	if got := recorder.Header().Get("Content-Security-Policy"); got != CSP {
+		t.Fatalf("CSP=%q", got)
+	}
+	if got := recorder.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("X-Frame-Options=%q", got)
+	}
+}
