@@ -4,12 +4,15 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
-Current source truth: `main` is at
-`5048a5aa0e0d57d67df3680112aee0d47c954543`, tagged `p15.0.5`, after PR #38.
+Current release baseline: `p15.0.5` is anchored at
+`5048a5aa0e0d57d67df3680112aee0d47c954543` after PR #38.
 The public catalog contains 98 tools with hash
 `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
 Explicit continuation idempotency and the owner-bound private development Edge Git
-broker are merged. The Coolify application tracks `main` and is healthy.
+broker are merged. PR #39 synchronized the documentation and was deployed at
+`f9577f791e1a566845fbbac59571cd72aa85a47f`. The Coolify application tracks
+`main`; the exact live commit must be read from `system_runtime_info` rather than
+hardcoded into a document that changes on every merge.
 
 Current evidence boundary: the last repository-recorded real-host Parrot installation
 proof is `p15.0.4`. Do not claim that Parrot runs `p15.0.5`, that its local Git
@@ -43,13 +46,13 @@ validating the provider and driver, and normalizes mixed HTB/ordinary model resp
 by executing the structured HTB calls first and deferring ordinary calls instead of
 terminating the runtime for a recoverable model mistake.
 
-The development-only follow-up on `codex/p15-dev-edge-git` replaces transport
+The follow-up merged through PR #38 and release `p15.0.5` replaces transport
 JSON-RPC IDs as durable continuation identity with an explicit caller-generated
 idempotency key and adds an Edge-only Git broker for private development repositories.
 The public MCP token remains responsible for GitHub workflow/check/PR APIs; a separate
 0600 local copy authorizes owner-bound clone and single-use planned publication without
-entering the model sandbox. Implementation and focused tests pass, but exact-head
-gates, merge, signed release and Parrot update are not yet claimed.
+entering the model sandbox. Exact-head gates, merge and signed release are complete;
+the separate Parrot `p15.0.5` update and real private-repository smoke remain unclaimed.
 
 Real P14 migration exposed a packaging defect not covered by the original isolated
 package test: `ln -sfn` cannot replace the existing P14
@@ -515,12 +518,14 @@ The admin channel is loopback-only and must stay that way.
 
 ## Last Verified
 
-Date: 2026-07-20. `origin/main` is
-`5048a5aa0e0d57d67df3680112aee0d47c954543`, tagged `p15.0.5`, with 98 tools and
-catalog hash `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
-PR #38 merged after all 15 checks passed. The configured Coolify application tracks
-`main` and reports healthy. The last repository-recorded real-host Parrot installation
-proof remains `p15.0.4`; no later device installation is claimed here.
+Date: 2026-07-21. Release `p15.0.5` remains anchored at
+`5048a5aa0e0d57d67df3680112aee0d47c954543` with 98 tools and catalog hash
+`sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
+PR #39 passed all 15 checks, merged, and production runtime verification returned
+commit `f9577f791e1a566845fbbac59571cd72aa85a47f` with the same catalog identity.
+Production continues to track `main`; use `system_runtime_info` for the exact live
+commit. The last repository-recorded real-host Parrot installation proof remains
+`p15.0.4`; no later device installation is claimed here.
 
 ## Historical console durable live state release candidate
 

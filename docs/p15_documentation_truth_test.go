@@ -17,8 +17,8 @@ func TestP15CurrentDocumentationSeparatesSourceDeploymentAndDeviceEvidence(t *te
 	}
 
 	const (
-		mainCommit  = "5048a5aa0e0d57d67df3680112aee0d47c954543"
-		catalogHash = "sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12"
+		releaseCommit = "5048a5aa0e0d57d67df3680112aee0d47c954543"
+		catalogHash   = "sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12"
 	)
 
 	readme := read("../README.md")
@@ -47,7 +47,7 @@ func TestP15CurrentDocumentationSeparatesSourceDeploymentAndDeviceEvidence(t *te
 	}
 
 	agents := read("../AGENTS.md")
-	for _, required := range []string{mainCommit, "p15.0.5", "98 annotated MCP", catalogHash, "composition root", "internal/app"} {
+	for _, required := range []string{releaseCommit, "p15.0.5", "98 annotated MCP", catalogHash, "system_runtime_info", "composition root", "internal/app"} {
 		if !strings.Contains(agents, required) {
 			t.Errorf("AGENTS missing %q", required)
 		}
@@ -58,10 +58,11 @@ func TestP15CurrentDocumentationSeparatesSourceDeploymentAndDeviceEvidence(t *te
 
 	capsule := read("context-capsule.md")
 	for _, required := range []string{
-		"Current source truth",
-		mainCommit,
+		"Current release baseline",
+		releaseCommit,
 		"p15.0.5",
 		catalogHash,
+		"system_runtime_info",
 		"last repository-recorded real-host Parrot installation",
 		"ordinary Edge sandbox runtimes use mandatory networkless Bubblewrap",
 		"trusted Linux workcells deliberately share host networking",
