@@ -9,13 +9,16 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P15 signed zero-touch Edge** is merged through `p15.0.5` on
-  `main` at `5048a5aa0e0d57d67df3680112aee0d47c954543`. Explicit
+- Current phase: **P15 signed zero-touch Edge** release `p15.0.5` is anchored at
+  `5048a5aa0e0d57d67df3680112aee0d47c954543`. Explicit
   caller-generated continuation idempotency and the Edge-only owner-bound Git broker
   for private development repositories are merged. The public catalog contains 98
   tools with hash
   `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
-  Coolify tracks `main` and is healthy. The last repository-recorded Parrot install
+  PR #39 synchronized the documentation and was deployed at merge commit
+  `f9577f791e1a566845fbbac59571cd72aa85a47f`. Coolify tracks `main`; use
+  `system_runtime_info` as the authority for the exact currently deployed commit
+  rather than hardcoding the moving branch SHA. The last repository-recorded Parrot install
   proof is `p15.0.4`; a `p15.0.5` device update and real private-repository smoke must
   be verified separately before claiming them complete.
   Historical closure evidence remains explicit: P8.1 Console 2.0 deployed and tagged
