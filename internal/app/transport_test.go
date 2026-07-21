@@ -1,6 +1,7 @@
 package app
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -8,7 +9,7 @@ import (
 func clearTransportEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		tokenEnv, publicURLEnv, oauthPassphraseEnv, oauthClientStorePathEnv, oauthRefreshStorePathEnv,
+		tokenEnv, publicURLEnv, oauthPassphraseEnv, oauthClientStorePathEnv, oauthRefreshStorePathEnv, stateRootEnv,
 	} {
 		t.Setenv(name, "")
 	}
@@ -85,5 +86,38 @@ func TestResolveTransportPreservesOAuthContract(t *testing.T) {
 	}
 	if !strings.Contains(cfg.AuthDescription, "OAuth") {
 		t.Fatalf("auth description = %q", cfg.AuthDescription)
+	}
+}
+
+func TestResolveOAuthStorePathsDefaultsToConfiguredStateRoot(t *testing.T) {
+	clearTransportEnv(t)
+	root := filepath.Join(t.TempDir(), "state")
+	client, refresh := resolveOAuthStorePaths(root)
+	if want := filepath.Join(root, "oauth-clients.json"); client != want {
+		t.Fatalf("client store = %q, want %q", client, want)
+	}
+	if want := filepath.Join(root, "oauth-refresh.json"); refresh != want {
+		t.Fatalf("refresh store = %q, want %q", refresh, want)
+	}
+}
+
+func TestResolveOAuthStorePathsPreservesExplicitOverrides(t *testing.T) {
+	clearTransportEnv(t)
+	root := filepath.Join(t.TempDir(), "state")
+	explicitClient := filepath.Join(t.TempDir(), "clients.json")
+	explicitRefresh := filepath.Join(t.TempDir(), "refresh.json")
+	t.Setenv(oauthClientStorePathEnv, explicitClient)
+	t.Setenv(oauthRefreshStorePathEnv, explicitRefresh)
+	client, refresh := resolveOAuthStorePaths(root)
+	if client != explicitClient || refresh != explicitRefresh {
+		t.Fatalf("stores = (%q, %q), want (%q, %q)", client, refresh, explicitClient, explicitRefresh)
+	}
+}
+
+func TestResolveOAuthStorePathsKeepsLocalMemoryOnlyWithoutStateRoot(t *testing.T) {
+	clearTransportEnv(t)
+	client, refresh := resolveOAuthStorePaths("")
+	if client != "" || refresh != "" {
+		t.Fatalf("memory-only stores = (%q, %q), want empty", client, refresh)
 	}
 }
