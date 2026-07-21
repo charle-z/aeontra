@@ -16,7 +16,7 @@ OAuth remains the normal path. `GET /console/auth/start` creates bounded one-use
 
 Recovery bearer authentication remains separate from OAuth and is accepted only through the `Authorization` header or the HTTPS form body. Query-string credentials remain rejected.
 
-Browser sessions persist in `/state/console/sessions.db`. The database stores only SHA-256 digests, creation/expiry timestamps, revocation state and version. The raw cookie and bearer token are never persisted. Session files are private, SQLite corruption or unsafe permissions fail closed, logout revocation survives restart, and OAuth/recovery sessions remain valid across a process replacement until expiry or revocation. A deployment from the old memory-only implementation requires one final login because there is no safe material to migrate.
+Browser sessions persist in `/state/console/sessions.db`. The database stores only SHA-256 digests, creation/expiry timestamps, revocation state and version. The raw cookie and bearer token are never persisted. The production default uses a 60-year practical persistence horizon instead of a short inactivity timeout, so OAuth/recovery sessions survive process replacement without routine token entry. Sessions still end on logout, explicit revocation, browser cookie deletion, loss of the persistent `/state` volume, or oldest-session eviction after the bounded 128-session cap. Session files are private and SQLite corruption or unsafe permissions fail closed. A deployment from the old memory-only implementation requires one final login because there is no safe material to migrate.
 
 ## Safe routes
 
@@ -117,7 +117,7 @@ Rollback by deploying the previous known-good binary while keeping `/state` and 
 
 ## Historical P8/P8.1 compatibility markers
 
-This milestone remains inside the existing application: there is **no new Coolify application**. The existing session defaults remain an **eight-hour expiry** and **128 sessions** maximum, now backed by durable SQLite instead of process memory. Cookies remain **HttpOnly**, `SameSite=Strict` and Secure. Authentication and console pages use an explicit **Content-Security-Policy**. Edge renders **Not paired** when the real registry contains no active device.
+P8 originally shipped an **eight-hour expiry** and **128 sessions** maximum backed by durable SQLite instead of process memory. The current production default supersedes only the short TTL with a **60-year practical persistence horizon**; the bounded session cap, explicit logout/revocation, **HttpOnly**, `SameSite=Strict`, Secure cookies and **Content-Security-Policy** remain. This milestone remains inside the existing application: there is **no new Coolify application**. Edge renders **Not paired** when the real registry contains no active device.
 
 ## Troubleshooting
 

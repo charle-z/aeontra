@@ -42,6 +42,31 @@ func TestSessionStoreCreatesDigestOnlySession(t *testing.T) {
 	}
 }
 
+func TestSessionStoreDefaultIsPracticallyPersistent(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	createdAt := now
+	store, err := NewSessionStore(SessionConfig{
+		MaxSessions: 4,
+		Now:         func() time.Time { return now },
+		Rand:        bytes.NewReader(bytes.Repeat([]byte{0x43}, sessionBytes)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := store.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expires, ok := store.Expiry(raw)
+	if !ok || !expires.Equal(createdAt.Add(defaultSessionTTL)) {
+		t.Fatalf("expiry=%v ok=%v want=%v", expires, ok, createdAt.Add(defaultSessionTTL))
+	}
+	now = createdAt.Add(30 * 365 * 24 * time.Hour)
+	if !store.Valid(raw) {
+		t.Fatal("default session should remain valid decades after creation")
+	}
+}
+
 func TestSessionStoreExpiryAndRevoke(t *testing.T) {
 	now := time.Date(2026, 7, 13, 21, 0, 0, 0, time.UTC)
 	store, err := NewSessionStore(SessionConfig{
