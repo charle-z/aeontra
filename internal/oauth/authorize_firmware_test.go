@@ -29,8 +29,30 @@ func TestAuthorizeUsesSharedFirmwareAndStrictCSP(t *testing.T) {
 			t.Fatalf("authorize page missing %q", required)
 		}
 	}
-	if got := response.Header().Get("Content-Security-Policy"); got != authfirmware.CSP {
-		t.Fatalf("CSP=%q", got)
+	wantCSP := authorizationCSP(&authorizeParams{redirectURI: redirect})
+	if got := response.Header().Get("Content-Security-Policy"); got != wantCSP {
+		t.Fatalf("CSP=%q want=%q", got, wantCSP)
+	}
+}
+
+func TestAuthorizationCSPAllowsOnlyRegisteredRedirectOrigin(t *testing.T) {
+	params := &authorizeParams{redirectURI: "https://chatgpt.com/connector/oauth/callback-id?source=test"}
+	got := authorizationCSP(params)
+	want := "default-src 'none'; style-src 'self'; form-action 'self' https://chatgpt.com; frame-ancestors 'none'; base-uri 'none'"
+	if got != want {
+		t.Fatalf("CSP=%q want=%q", got, want)
+	}
+	for _, forbidden := range []string{"callback-id", "source=test", "*"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("CSP leaked or widened redirect detail %q: %s", forbidden, got)
+		}
+	}
+}
+
+func TestAuthorizationCSPFailsClosedForUnsafeRedirect(t *testing.T) {
+	got := authorizationCSP(&authorizeParams{redirectURI: "https://user@chatgpt.com/callback"})
+	if got != authfirmware.CSP {
+		t.Fatalf("CSP=%q want fail-closed %q", got, authfirmware.CSP)
 	}
 }
 
@@ -55,8 +77,9 @@ func TestAuthorizeThrottleRendersLockedFirmware(t *testing.T) {
 		response := postAuthorize(t, provider, form)
 		if response.Code == http.StatusTooManyRequests {
 			body = strings.ToLower(response.Body.String())
-			if response.Header().Get("Content-Security-Policy") != authfirmware.CSP {
-				t.Fatalf("CSP=%q", response.Header().Get("Content-Security-Policy"))
+			wantCSP := authorizationCSP(&authorizeParams{redirectURI: redirect})
+			if got := response.Header().Get("Content-Security-Policy"); got != wantCSP {
+				t.Fatalf("CSP=%q want=%q", got, wantCSP)
 			}
 			break
 		}
