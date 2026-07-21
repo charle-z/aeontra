@@ -136,5 +136,8 @@ func redirectWithCode(w http.ResponseWriter, r *http.Request, params *authorizeP
 		q.Set("state", params.state)
 	}
 	u.RawQuery = q.Encode()
+	// Chrome and WebView enforce form-action across redirects. Keep the POST target
+	// same-origin while allowing navigation only to this registered callback origin.
+	authfirmware.HardenOAuth(w, authorizationCSP(params))
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
