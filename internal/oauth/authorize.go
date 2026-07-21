@@ -72,7 +72,7 @@ func registeredRedirect(c clientReg, uri string) bool {
 
 // handleAuthorize renders the owner login page (GET) and processes the login (POST).
 func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
-	authfirmware.Harden(w, authfirmware.CSP)
+	authfirmware.HardenOAuth(w, authfirmware.CSP)
 	switch r.Method {
 	case http.MethodGet:
 		params, err := p.validateAuthorizeRequest(r.URL.Query())
