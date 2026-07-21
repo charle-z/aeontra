@@ -65,6 +65,9 @@ func TestAuthorizeGET_RendersLogin(t *testing.T) {
 	if got := rec.Header().Get("Cross-Origin-Opener-Policy"); got != authfirmware.OAuthCOOP {
 		t.Fatalf("COOP = %q, want %q", got, authfirmware.OAuthCOOP)
 	}
+	if got, want := rec.Header().Get("Content-Security-Policy"), authorizationCSP(&authorizeParams{redirectURI: redirect}); got != want {
+		t.Fatalf("CSP = %q, want %q", got, want)
+	}
 	body := rec.Body.String()
 	if !strings.Contains(body, `name="passphrase"`) {
 		t.Error("login page must contain a passphrase field")
@@ -128,6 +131,9 @@ func TestAuthorizePOST_CorrectPassphrase_IssuesCode(t *testing.T) {
 	}
 	if got := rec.Header().Get("Cross-Origin-Opener-Policy"); got != authfirmware.OAuthCOOP {
 		t.Fatalf("COOP = %q, want %q", got, authfirmware.OAuthCOOP)
+	}
+	if got, want := rec.Header().Get("Content-Security-Policy"), authorizationCSP(&authorizeParams{redirectURI: redirect}); got != want {
+		t.Fatalf("CSP = %q, want %q", got, want)
 	}
 	loc := rec.Header().Get("Location")
 	u, err := url.Parse(loc)
