@@ -331,7 +331,7 @@ func (broker *devGitBroker) validRemoteURL(remote string) bool {
 func (runner execDevGitCommandRunner) Run(ctx context.Context, dir string, args []string, credential GitHubCredential) (string, error) {
 	gitPath, ok := findSafeLinuxTool("git", runner.toolPath)
 	if !ok {
-		return "", errors.New("Git is unavailable")
+		return "", errors.New("git is unavailable")
 	}
 	secretRoot := filepath.Join(runner.stateRoot, "github-runtime")
 	if err := preparePrivateRoot(secretRoot); err != nil {
