@@ -50,6 +50,7 @@ install -m 0755 "$NODE_BIN" "$OUTPUT/libexec/node"
 install -m 0644 "$OPENCODE_LOCK" "$OUTPUT/opencode/package-lock.json"
 install -m 0644 integrations/opencode/provider/index.js "$OUTPUT/opencode-provider/index.js"
 install -m 0644 integrations/opencode/provider/htb-actions.js "$OUTPUT/opencode-provider/htb-actions.js"
+install -m 0644 integrations/opencode/provider/dev-actions.js "$OUTPUT/opencode-provider/dev-actions.js"
 install -m 0644 integrations/opencode/provider/package.json "$OUTPUT/opencode-provider/package.json"
 install -m 0644 packaging/systemd/mcp-devbox-opencode-edge@.service "$OUTPUT/systemd/mcp-devbox-opencode-edge@.service"
 

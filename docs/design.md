@@ -186,3 +186,14 @@ broker, invalidating every older session without deleting evidence or checkpoint
 
 The six `workspace_htb_*` actions remain available to the local runtime provider,
 but are intentionally absent from the exterior MCP catalog and dispatcher.
+
+## P15 development Git broker
+
+Private repository transport follows the same authority split without treating the
+model sandbox as a secret holder. The public MCP uses its Coolify GitHub token for
+API reads and planned PR operations. A development-mode Edge may separately hold the
+same PAT under private local state. For that mode only, the provider offers three
+closed internal actions over a per-runtime Unix socket: owner-bound clone, publication
+preview, and single-use planned publication. Editing and validation remain inside the
+workcell; authenticated Git runs in the broker with no arbitrary URL, command, force,
+tag, or refspec input. See `docs/development-edge-git.md`.

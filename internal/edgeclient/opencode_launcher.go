@@ -332,12 +332,14 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	socketPath := filepath.Join(runtimeDir, openCodeDriverSocketName)
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second)
 	defer cancel()
-	var labBrokerDone <-chan error
-	var labBrokerCancel context.CancelFunc
+	var internalBrokerDone <-chan error
+	var internalBrokerCancel context.CancelFunc
+	internalBrokerName := ""
 	if preparation != nil && workspaceRecord.Mode == WorkspaceModeHTBLinux {
 		brokerCtx, brokerCancel := context.WithCancel(runCtx)
-		labBrokerCancel = brokerCancel
-		labBrokerDone, err = StartHTBLabBroker(brokerCtx, HTBLabBrokerConfig{
+		internalBrokerCancel = brokerCancel
+		internalBrokerName = "HTB lab"
+		internalBrokerDone, err = StartHTBLabBroker(brokerCtx, HTBLabBrokerConfig{
 			SocketPath: filepath.Join(runtimeDir, HTBLabBrokerSocketName),
 			StateRoot:  l.config.StateRoot, Workspace: workspaceRecord, RuntimeID: lease.RuntimeID,
 			ExpiresAt: time.Now().UTC().Add(time.Duration(lease.TimeoutSeconds) * time.Second), ToolPath: l.config.ToolPath,
@@ -348,15 +350,38 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 			_, _ = remote.Failed(context.Background(), "")
 			return result, err
 		}
-		defer func() {
-			if labBrokerCancel != nil {
-				labBrokerCancel()
-			}
-			if labBrokerDone != nil {
-				<-labBrokerDone
-			}
-		}()
 	}
+	if preparation != nil && workspaceRecord.Mode == WorkspaceModeDev {
+		credential, credentialErr := LoadGitHubCredential(l.config.StateRoot)
+		if credentialErr == nil {
+			brokerCtx, brokerCancel := context.WithCancel(runCtx)
+			internalBrokerCancel = brokerCancel
+			internalBrokerName = "development Git"
+			internalBrokerDone, err = StartDevGitBroker(brokerCtx, DevGitBrokerConfig{
+				SocketPath: filepath.Join(runtimeDir, DevGitBrokerSocketName), StateRoot: l.config.StateRoot,
+				Workspace: workspaceRecord, RuntimeID: lease.RuntimeID,
+				ExpiresAt: time.Now().UTC().Add(time.Duration(lease.TimeoutSeconds) * time.Second), ToolPath: l.config.ToolPath, Credential: credential,
+			})
+			if err != nil {
+				brokerCancel()
+				failLocal(OpenCodeLocalFailed, -1, false)
+				_, _ = remote.Failed(context.Background(), "")
+				return result, err
+			}
+		} else if !errors.Is(credentialErr, ErrGitHubNotConfigured) {
+			failLocal(OpenCodeLocalFailed, -1, false)
+			_, _ = remote.Failed(context.Background(), "")
+			return result, credentialErr
+		}
+	}
+	defer func() {
+		if internalBrokerCancel != nil {
+			internalBrokerCancel()
+		}
+		if internalBrokerDone != nil {
+			<-internalBrokerDone
+		}
+	}()
 	driverDone, err := l.startDriver(runCtx, socketPath, lease, remote)
 	if err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
@@ -399,26 +424,26 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	go l.monitorRuntime(runCtx, cancel, remote, heartbeatDone, heartbeatErr)
 
 	processResult := openCodeProcessResult{}
-	var labBrokerErr error
-	if labBrokerDone == nil {
+	var internalBrokerErr error
+	if internalBrokerDone == nil {
 		processResult = <-processDone
 	} else {
 		select {
 		case processResult = <-processDone:
-		case labBrokerErr = <-labBrokerDone:
-			labBrokerDone = nil
+		case internalBrokerErr = <-internalBrokerDone:
+			internalBrokerDone = nil
 			cancel()
 			processResult = <-processDone
 		}
 	}
 	runContextErr := runCtx.Err()
 	cancel()
-	if labBrokerCancel != nil {
-		labBrokerCancel()
+	if internalBrokerCancel != nil {
+		internalBrokerCancel()
 	}
-	if labBrokerDone != nil {
-		labBrokerErr = <-labBrokerDone
-		labBrokerDone = nil
+	if internalBrokerDone != nil {
+		internalBrokerErr = <-internalBrokerDone
+		internalBrokerDone = nil
 	}
 	driverErr := <-driverDone
 	terminalRuntime := modelturn.Runtime{}
@@ -441,10 +466,10 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 			_ = RecordLinuxWorkcellTerminalState(preparation, terminalCheckpoint, cleanupState)
 		}()
 	}
-	if labBrokerErr != nil && !errors.Is(labBrokerErr, context.Canceled) {
+	if internalBrokerErr != nil && !errors.Is(internalBrokerErr, context.Canceled) {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
 		_, _ = remote.Failed(context.Background(), "")
-		return result, errors.New("HTB lab broker terminated unexpectedly")
+		return result, fmt.Errorf("%s broker terminated unexpectedly", internalBrokerName)
 	}
 	if cleanupErr != nil {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
@@ -871,7 +896,8 @@ func validateOpenCodeSandboxConfig(configJSON string, lease ModelRuntimeLease) e
 	options, ok := bridge["options"].(map[string]any)
 	baseOptions := ok && hasExactJSONKeys(options, "socketPath", "runtimeID", "ttlMs", "timeoutMs")
 	htbOptions := ok && hasExactJSONKeys(options, "socketPath", "runtimeID", "ttlMs", "timeoutMs", "htbSocketPath", "htbWorkspaceID", "htbTools")
-	if !ok || (!baseOptions && !htbOptions) || options["socketPath"] != openCodeSandboxSocket {
+	devGitOptions := ok && hasExactJSONKeys(options, "socketPath", "runtimeID", "ttlMs", "timeoutMs", "devGitSocketPath", "devGitWorkspaceID", "devGitTools")
+	if !ok || (!baseOptions && !htbOptions && !devGitOptions) || options["socketPath"] != openCodeSandboxSocket {
 		return errors.New("OpenCode sandbox provider options are unsafe")
 	}
 	runtimeID, runtimeOK := options["runtimeID"].(string)

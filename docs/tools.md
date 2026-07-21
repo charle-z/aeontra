@@ -90,6 +90,13 @@ do not replace server-side enforcement.
 | `git_push` | 0/0/0/1 | Compatibility name for planned `repo_publish`. |
 | `repo_publish` | 0/0/0/1 | Revalidate and push one branch; no force/tags/mirror/refspecs. |
 
+The public catalog GitHub tools use the VPS/Coolify `GITHUB_TOKEN` for API operations
+such as repository metadata, exact-head PR/check status and merge. A configured local
+development Edge separately injects `workspace_dev_git_clone`,
+`workspace_dev_publish_preview`, and `workspace_dev_publish` into its private OpenCode
+provider. Those owner-bound transport actions are intentionally absent from the
+exterior MCP catalog; see `docs/development-edge-git.md`.
+
 ## Coolify platform
 
 | Tool | R/D/I/O | Effect |

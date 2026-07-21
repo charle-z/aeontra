@@ -260,6 +260,11 @@ The socket is powerful within the rootless user's namespace. Rootless does not m
 
 OpenCode must read `instructions.md` and an existing `current-state.md` before acting. It validates actual repository, process, service, and test state instead of blindly trusting the checkpoint.
 
+When a local GitHub authority is explicitly configured, `dev` also receives the
+private owner-bound clone and planned publication actions described in
+`docs/development-edge-git.md`. The credential remains outside the namespace. GitHub
+Actions, PR and check inspection use the public MCP GitHub API tools instead.
+
 ## HTB Linux context
 
 Before starting `htb-linux`, Edge validates locally:

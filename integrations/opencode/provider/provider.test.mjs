@@ -73,6 +73,10 @@ function createModel(driver, extra = {}) {
     htbWorkspaceID: extra.htbWorkspaceID,
     htbTools: extra.htbTools,
     htbRequestImpl: extra.htbRequestImpl,
+    devGitSocketPath: extra.devGitSocketPath,
+    devGitWorkspaceID: extra.devGitWorkspaceID,
+    devGitTools: extra.devGitTools,
+    devGitRequestImpl: extra.devGitRequestImpl,
   }).languageModel("external-model");
 }
 
@@ -232,7 +236,7 @@ test("reported usage is explicitly unverified and missing usage stays unknown", 
 });
 
 test("provider source has no provider fallback, browser automation, API key, or TCP model client", async () => {
-  const source = (await readFile(new URL("./index.js", import.meta.url), "utf8")) + (await readFile(new URL("./htb-actions.js", import.meta.url), "utf8"));
+  const source = (await readFile(new URL("./index.js", import.meta.url), "utf8")) + (await readFile(new URL("./htb-actions.js", import.meta.url), "utf8")) + (await readFile(new URL("./dev-actions.js", import.meta.url), "utf8"));
   for (const forbidden of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "openrouter", "api.openai.com", "api.anthropic.com", "playwright", "puppeteer", "responses.create", "fetch(", "https.request", "net.connect"]) {
     assert.equal(source.toLowerCase().includes(forbidden.toLowerCase()), false, `forbidden source marker: ${forbidden}`);
   }
@@ -339,5 +343,63 @@ test("HTB action workspace mismatch fails before the broker requester", async ()
     htbTools: htbDefinitions(),
     htbRequestImpl: async () => { brokerCalled = true; return {}; },
   }).doGenerate(modelOptions()), /workspace does not match/);
+  assert.equal(brokerCalled, false);
+});
+
+function devGitDefinitions() {
+  const workspace = { type: "string", pattern: "^ws_[a-f0-9]{32}$" };
+  const simple = { type: "string" };
+  const closed = (properties, required) => ({ type: "object", properties, required, additionalProperties: false });
+  return [
+    { name: "workspace_dev_git_clone", description: "Clone a Git repository with Edge-only authentication", input_schema: closed({ workspace_id: workspace, repository: simple, branch: simple, directory: simple }, ["workspace_id", "repository", "branch", "directory"]) },
+    { name: "workspace_dev_publish_preview", description: "Preview a Git publication plan", input_schema: closed({ workspace_id: workspace, directory: simple, branch: simple }, ["workspace_id", "directory", "branch"]) },
+    { name: "workspace_dev_publish", description: "Execute a Git publication plan", input_schema: closed({ workspace_id: workspace, plan_id: simple }, ["workspace_id", "plan_id"]) },
+  ];
+}
+
+test("development Git actions clone and publish through the private broker without exposing credentials", async () => {
+  const workspaceID = "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const planID = "dp_44444444444444444444444444444444";
+  const brokerCalls = [];
+  let responseIndex = 0;
+  const driver = fakeDriver((created) => {
+    const name = responseIndex === 0 ? "workspace_dev_git_clone" : responseIndex === 1 ? "workspace_dev_publish_preview" : responseIndex === 2 ? "workspace_dev_publish" : undefined;
+    responseIndex += 1;
+    if (!name) return { text: "private repository published", tool_calls: [], finish_reason: "stop" };
+    const tool = created.offered_tools.find((item) => item.name === name);
+    const argumentsByName = {
+      workspace_dev_git_clone: { workspace_id: workspaceID, repository: "ekoparty-trip-agent", branch: "mvp-flight-first-telegram-agent", directory: "ekoparty-trip-agent" },
+      workspace_dev_publish_preview: { workspace_id: workspaceID, directory: "ekoparty-trip-agent", branch: "mvp-flight-first-telegram-agent" },
+      workspace_dev_publish: { workspace_id: workspaceID, plan_id: planID },
+    };
+    return { finish_reason: "tool_calls", tool_calls: [{ call_id: `dev-${responseIndex}`, tool_id: tool.id, arguments: argumentsByName[name] }] };
+  });
+  const result = await createModel(driver, {
+    devGitSocketPath: "/runtime/dev-git-broker.sock",
+    devGitWorkspaceID: workspaceID,
+    devGitTools: devGitDefinitions(),
+    devGitRequestImpl: async (request) => {
+      brokerCalls.push(request);
+      if (request.path === "/v1/publish-preview") return { status: "ok", plan_id: planID };
+      return { status: "ok", published: request.path === "/v1/publish" };
+    },
+  }).doGenerate(modelOptions());
+  assert.equal(result.content[0].text, "private repository published");
+  assert.deepEqual(brokerCalls.map((call) => call.path), ["/v1/clone", "/v1/publish-preview", "/v1/publish"]);
+  assert.equal(JSON.stringify(brokerCalls).includes("token"), false);
+  assert.equal(driver.createdTurns.length, 4);
+});
+
+test("development Git action rejects injected authority fields before reaching the broker", async () => {
+  const workspaceID = "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  let brokerCalled = false;
+  const driver = fakeDriver((created) => {
+    const tool = created.offered_tools.find((item) => item.name === "workspace_dev_git_clone");
+    return { finish_reason: "tool_calls", tool_calls: [{ call_id: "bad-dev", tool_id: tool.id, arguments: { workspace_id: workspaceID, repository: "repo", branch: "main", directory: "repo", token: "forbidden" } }] };
+  });
+  await assert.rejects(() => createModel(driver, {
+    devGitSocketPath: "/runtime/dev-git-broker.sock", devGitWorkspaceID: workspaceID, devGitTools: devGitDefinitions(),
+    devGitRequestImpl: async () => { brokerCalled = true; return {}; },
+  }).doGenerate(modelOptions()), /forbidden field/);
   assert.equal(brokerCalled, false);
 });

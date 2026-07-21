@@ -6,11 +6,15 @@ replayed the same terminal runtime because transport JSON-RPC IDs were treated a
 durable idempotency identity. The candidate now requires a fresh caller-generated
 `idempotency_key`; focused tests pass on Parrot Go 1.26.5.
 
-The remaining requested development gap is private Git clone/publish on the local
-Edge. Parrot currently has no `gh`, credential helper or SSH agent, and only the
-registered dev workspace `ws_7c4686f5d9244bbad30ae705d4b660c5`. Never mount or
-return a PAT to the sandbox. Implement a structured local broker with planned push,
-keeping credentials under private Edge state.
+Step 22 now implements private Git clone/publish on the local Edge without `gh`, a
+credential helper, or SSH agent. `mcp-edge github configure` reads a PAT from stdin;
+the dev provider exposes three closed internal actions; the owner-bound Unix broker
+clones and publishes only through a short-lived single-use plan while keeping the PAT
+outside the sandbox. The complete local Parrot gates pass: full Go suite, vet, build,
+provider Node tests, packaging shell syntax and diff check. The signed manifest is
+version 2 for the new provider file while version-1 verification remains supported
+for rollback. Next commit, publish the PR/release, update Parrot, and have the operator
+enter the PAT locally without pasting it in chat.
 
 Historical P15 handoff follows.
 

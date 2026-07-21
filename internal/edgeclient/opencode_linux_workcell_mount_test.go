@@ -25,7 +25,7 @@ func TestLinuxWorkcellValidatorRejectsUnexpectedReadonlyHostMount(t *testing.T) 
 	}
 	bad := spec.Sandbox
 	bad.Mounts = append(append([]openCodeSandboxMount(nil), bad.Mounts...), openCodeSandboxMount{Source: leak, Target: "/leak", Kind: "bind"})
-	if err := validateLinuxWorkcellSandboxSpec(bad, fixture.state, runtimeDir, workspace, fixture.provider, resolved, openCodeDefaultToolPath, lease, nil); err == nil {
+	if err := validateLinuxWorkcellSandboxSpec(bad, fixture.state, runtimeDir, workspace, fixture.provider, resolved, openCodeDefaultToolPath, lease, nil, false); err == nil {
 		t.Fatal("unexpected readonly host mount was accepted")
 	}
 }

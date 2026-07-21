@@ -99,6 +99,24 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 		}
 		replacements["OPENCODE_CONFIG_CONTENT"] = configJSON
 	}
+	devGitConfigured := false
+	if workspace.Mode == WorkspaceModeDev {
+		_, credentialErr := LoadGitHubCredential(l.config.StateRoot)
+		if credentialErr == nil {
+			devGitConfigured = true
+			configJSON, ok := openCodeSetEnvValue(args, "OPENCODE_CONFIG_CONTENT")
+			if !ok {
+				return openCodeProcessSpec{}, errors.New("OpenCode provider configuration is missing")
+			}
+			configJSON, err = augmentOpenCodeConfigForDevGit(configJSON, workspace)
+			if err != nil {
+				return openCodeProcessSpec{}, err
+			}
+			replacements["OPENCODE_CONFIG_CONTENT"] = configJSON
+		} else if !errors.Is(credentialErr, ErrGitHubNotConfigured) {
+			return openCodeProcessSpec{}, credentialErr
+		}
+	}
 	for key, value := range replacements {
 		var replaced bool
 		args, replaced = replaceOpenCodeSetEnv(args, key, value)
@@ -122,7 +140,7 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 	if err != nil {
 		return openCodeProcessSpec{}, errors.New("pinned OpenCode executable is unavailable")
 	}
-	if err := validateLinuxWorkcellSandboxSpec(parsed, l.config.StateRoot, runtimeDir, workspace, l.config.ProviderPath, resolvedOpenCode, l.config.ToolPath, lease, replacements); err != nil {
+	if err := validateLinuxWorkcellSandboxSpec(parsed, l.config.StateRoot, runtimeDir, workspace, l.config.ProviderPath, resolvedOpenCode, l.config.ToolPath, lease, replacements, devGitConfigured); err != nil {
 		return openCodeProcessSpec{}, err
 	}
 	base.Args = args
@@ -175,7 +193,7 @@ func safeLinuxWorkcellSystemFile(path string) (string, bool) {
 	return filepath.Clean(resolved), true
 }
 
-func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runtimeDir string, workspace Workspace, providerPath, openCodePath, toolPath string, lease ModelRuntimeLease, expectedEnv map[string]string) error {
+func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runtimeDir string, workspace Workspace, providerPath, openCodePath, toolPath string, lease ModelRuntimeLease, expectedEnv map[string]string, devGitConfigured bool) error {
 	if !spec.DieWithParent || !spec.NewSession || !spec.UnshareAll || !spec.ShareNetwork || !spec.ClearEnv {
 		return errors.New("linux workcell namespace posture is incomplete")
 	}
@@ -192,6 +210,9 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 		return err
 	}
 	if err := validateOpenCodeHTBConfig(spec.Environment["OPENCODE_CONFIG_CONTENT"], workspace, lease); err != nil {
+		return err
+	}
+	if err := validateOpenCodeDevGitConfig(spec.Environment["OPENCODE_CONFIG_CONTENT"], workspace, lease, devGitConfigured); err != nil {
 		return err
 	}
 	mounts := make(map[string]openCodeSandboxMount)

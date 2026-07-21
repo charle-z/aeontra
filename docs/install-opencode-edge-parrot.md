@@ -113,7 +113,7 @@ The provider has no dependency lockfile and no npm test script. Its correct test
 cd /tmp/mcp-devbox-reviewed/integrations/opencode/provider
 node --test provider.test.mjs
 sudo install -d -o root -g root -m 0755 /opt/mcp-devbox/opencode-provider
-sudo install -o root -g root -m 0644 package.json index.js \
+sudo install -o root -g root -m 0644 package.json index.js htb-actions.js dev-actions.js \
   /opt/mcp-devbox/opencode-provider/
 ```
 
@@ -254,7 +254,8 @@ opaque workspace ID and a bounded timeout:
 ```text
 workspace_runtime_continue(
   workspace_id="ws_...",
-  timeout_seconds=3600
+  timeout_seconds=3600,
+  idempotency_key="new-random-key-for-this-request"
 )
 ```
 
@@ -264,6 +265,11 @@ runtime for that workspace. The Edge reads `.mcp-devbox/instructions.md` and
 `.mcp-devbox/current-state.md` locally. The call carries no target, IP, machine,
 credential, flag, command, checkpoint, path, or free-form instruction and is never
 retried automatically. See `docs/workspace-runtime-continuation.md`.
+
+For private development repositories, configure the Edge GitHub authority from stdin
+after installation and keep the public GitHub API copy in Coolify. The exact commands,
+permissions, broker boundary, and ready-to-use ChatGPT prompt are in
+`docs/development-edge-git.md`.
 
 ## 11. Diagnostics and recovery
 

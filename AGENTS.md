@@ -9,22 +9,20 @@ Operating rules for any AI agent working in this repo. Read this first, then
 - Purpose: let ChatGPT/other agents work on local repos safely (no full PC access).
 - Core language: **Go** (cross-platform daemon). Memory: Markdown.
 - Secure mode / hard isolation: **Linux-first, via WSL2 on Windows.**
-- Current phase: **P14 first-class authorized HTB actions** on branch
-  `p14-first-class-authorized-htb-actions`, based on production merge
-  `b604fa4ad75ca4d36d04115c9f09977baf52093a`. P13 opaque workspace
-  continuation is merged and deployed. P14 adds six explicit Hack The Box / CTF
-  runtime actions, target-locked Edge sessions, local credential handles, local-only
-  output saving and an OpenCode provider loop that executes structured Unix-socket
-  requests without Bash. The candidate catalog contains 92 tools with hash
-  `sha256:ea9cc3749c68fcc12b608efbddc259b01eb7868c98bbc1ab35c75f456e118a98`.
-  P14 is not merged, deployed or installed on Parrot until its exact-head gates,
-  merge commit, automatic deployment and post-merge Edge validation complete.
+- Current phase: **P15 signed zero-touch Edge** is deployed as `p15.0.4` at
+  `3a91fb703ca8543869098ba0aa8c80f69e8233a1`. Branch
+  `codex/p15-dev-edge-git` is a development follow-up: explicit caller-generated
+  continuation idempotency plus an Edge-only owner-bound Git broker for private
+  development repositories. Its public catalog remains 98 tools with hash
+  `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
+  The follow-up is not deployed until exact-head gates, merge commit, signed release,
+  structured Parrot update, local credential entry and a real private-repo smoke pass.
   Historical closure evidence remains explicit: P8.1 Console 2.0 deployed and tagged
   at d343264bffdc0ae1bc045a9d723e913be977090c; P8.1 Console 2.0 is deployed;
   P9 Brain is deployed; its successor retained the 67 tools milestone before later
   catalog expansions. Query-string credentials return 401 and durable tasks remain
   under /state/tasks. See docs/baselines/2026-07-14-p8_1.md.
-  The project has stdio and HTTP/OAuth transports, policy core, 92 annotated MCP
+  The project has stdio and HTTP/OAuth transports, policy core, 98 annotated MCP
   tools, action plans, audit, persistent notes, Brain and adversarial tests.
   The cheap-model worker plan is
   superseded. Complete OS sandbox/egress coverage remains unfinished; see

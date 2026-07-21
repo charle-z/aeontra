@@ -49,6 +49,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = labCommand(args[1:], stdout, stderr)
 	case "bundle":
 		err = bundleCommand(args[1:], stdout)
+	case "github":
+		err = githubCommand(args[1:], stdin, stdout, stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -225,6 +227,8 @@ Usage:
   mcp-edge lab retarget --workspace-id <OPAQUE_ID> --target <IP> [--state <ABS_PATH>]
   mcp-edge lab ssh-exec --username <USER> --source <FILE> --extract-after <PREFIX> --command <COMMAND> [--save-output <FILE>]
   mcp-edge bundle verify
+  mcp-edge github configure --owner <GITHUB_OWNER> [--state <ABS_PATH>]  # token on stdin
+  mcp-edge github status [--state <ABS_PATH>]
 
 The pairing code is read from stdin and is never accepted as a command-line flag.
 Create the local STOP file to activate the kill switch.

@@ -30,6 +30,7 @@ const (
 	ComponentNode            = "runtime-node"
 	ComponentProvider        = "provider-index"
 	ComponentHTBActions      = "provider-htb-actions"
+	ComponentDevActions      = "provider-dev-actions"
 	ComponentProviderPackage = "provider-package"
 	ComponentOpenCode        = "opencode"
 	ComponentOpenCodeLock    = "opencode-lock"
@@ -89,7 +90,22 @@ type VerificationError struct {
 func (e *VerificationError) Error() string { return string(e.Code) }
 
 func RequiredComponents() []string {
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+}
+
+func legacyRequiredComponents() []string {
 	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+}
+
+func requiredComponentsForVersion(version int) ([]string, bool) {
+	switch version {
+	case 1:
+		return legacyRequiredComponents(), true
+	case 2:
+		return RequiredComponents(), true
+	default:
+		return nil, false
+	}
 }
 
 func DefaultLayout() map[string]string {
@@ -101,6 +117,7 @@ func DefaultLayout() map[string]string {
 		ComponentNode:            "libexec/node",
 		ComponentProvider:        "opencode-provider/index.js",
 		ComponentHTBActions:      "opencode-provider/htb-actions.js",
+		ComponentDevActions:      "opencode-provider/dev-actions.js",
 		ComponentProviderPackage: "opencode-provider/package.json",
 		ComponentOpenCode:        "opencode/opencode",
 		ComponentOpenCodeLock:    "opencode/package-lock.json",
@@ -108,9 +125,21 @@ func DefaultLayout() map[string]string {
 	}
 }
 
+func layoutForVersion(version int) (map[string]string, bool) {
+	layout := DefaultLayout()
+	if version == 1 {
+		delete(layout, ComponentDevActions)
+		return layout, true
+	}
+	if version == 2 {
+		return layout, true
+	}
+	return nil, false
+}
+
 func Build(root string, metadata Metadata) (Manifest, error) {
 	manifest := Manifest{
-		Version: 1, Release: metadata.Release, Commit: metadata.Commit,
+		Version: 2, Release: metadata.Release, Commit: metadata.Commit,
 		ProtocolVersion: metadata.ProtocolVersion, CatalogHash: metadata.CatalogHash,
 		Architecture: metadata.Architecture, Components: map[string]string{},
 	}
@@ -136,7 +165,11 @@ func LoadAndVerify(root string, publicKey ed25519.PublicKey, expected Compatibil
 	if err != nil {
 		return Verified{}, err
 	}
-	return Verify(root, manifest, signature, publicKey, DefaultLayout(), expected)
+	layout, ok := layoutForVersion(manifest.Version)
+	if !ok {
+		return Verified{}, &VerificationError{Code: ManifestInvalid}
+	}
+	return Verify(root, manifest, signature, publicKey, layout, expected)
 }
 
 func LoadTrusted(root string, publicKey ed25519.PublicKey) (Verified, error) {
@@ -144,7 +177,11 @@ func LoadTrusted(root string, publicKey ed25519.PublicKey) (Verified, error) {
 	if err != nil {
 		return Verified{}, err
 	}
-	return Verify(root, manifest, signature, publicKey, DefaultLayout(), Compatibility{
+	layout, ok := layoutForVersion(manifest.Version)
+	if !ok {
+		return Verified{}, &VerificationError{Code: ManifestInvalid}
+	}
+	return Verify(root, manifest, signature, publicKey, layout, Compatibility{
 		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
 		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
 	})
@@ -195,7 +232,11 @@ func Verify(root string, manifest Manifest, signature []byte, publicKey ed25519.
 		expected.Architecture == "" || manifest.Architecture != expected.Architecture {
 		return Verified{}, &VerificationError{Code: BundleMismatch}
 	}
-	for _, component := range RequiredComponents() {
+	required, ok := requiredComponentsForVersion(manifest.Version)
+	if !ok {
+		return Verified{}, &VerificationError{Code: ManifestInvalid}
+	}
+	for _, component := range required {
 		relative, ok := paths[component]
 		if !ok || strings.TrimSpace(relative) == "" {
 			return Verified{}, componentError(component)
@@ -213,12 +254,12 @@ func Verify(root string, manifest Manifest, signature []byte, publicKey ed25519.
 }
 
 func canonicalManifest(manifest Manifest) ([]byte, error) {
-	if manifest.Version != 1 || !releasePattern.MatchString(manifest.Release) || !commitPattern.MatchString(manifest.Commit) ||
+	required, supported := requiredComponentsForVersion(manifest.Version)
+	if !supported || !releasePattern.MatchString(manifest.Release) || !commitPattern.MatchString(manifest.Commit) ||
 		strings.TrimSpace(manifest.ProtocolVersion) == "" || !digestPattern.MatchString(manifest.CatalogHash) ||
-		(manifest.Architecture != "amd64" && manifest.Architecture != "arm64") || len(manifest.Components) != len(RequiredComponents()) {
+		(manifest.Architecture != "amd64" && manifest.Architecture != "arm64") || len(manifest.Components) != len(required) {
 		return nil, &VerificationError{Code: ManifestInvalid}
 	}
-	required := RequiredComponents()
 	sort.Strings(required)
 	for _, component := range required {
 		if !digestPattern.MatchString(manifest.Components[component]) {
@@ -285,7 +326,7 @@ func HashFile(path string) (string, error) {
 
 func componentError(component string) error {
 	switch component {
-	case ComponentProvider, ComponentHTBActions, ComponentProviderPackage:
+	case ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage:
 		return &VerificationError{Code: ProviderOutdated}
 	case ComponentDriver:
 		return &VerificationError{Code: DriverOutdated}

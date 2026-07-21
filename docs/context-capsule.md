@@ -24,11 +24,13 @@ validating the provider and driver, and normalizes mixed HTB/ordinary model resp
 by executing the structured HTB calls first and deferring ordinary calls instead of
 terminating the runtime for a recoverable model mistake.
 
-The next development-only follow-up replaces transport JSON-RPC IDs as durable
-continuation identity with an explicit caller-generated idempotency key. This prevents
-a new ChatGPT conversation from replaying an unrelated terminal runtime when the MCP
-client reuses request IDs. It is in progress on `codex/p15-dev-edge-git` and is not yet
-released.
+The development-only follow-up on `codex/p15-dev-edge-git` replaces transport
+JSON-RPC IDs as durable continuation identity with an explicit caller-generated
+idempotency key and adds an Edge-only Git broker for private development repositories.
+The public MCP token remains responsible for GitHub workflow/check/PR APIs; a separate
+0600 local copy authorizes owner-bound clone and single-use planned publication without
+entering the model sandbox. Implementation and focused tests pass, but exact-head
+gates, merge, signed release and Parrot update are not yet claimed.
 
 Real P14 migration exposed a packaging defect not covered by the original isolated
 package test: `ln -sfn` cannot replace the existing P14

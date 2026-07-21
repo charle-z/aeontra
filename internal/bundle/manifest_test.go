@@ -22,7 +22,7 @@ func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 		}
 	}
 	manifest := Manifest{
-		Version: 1, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}
@@ -55,13 +55,50 @@ func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 	}
 }
 
+func TestLegacyVersionOneBundleRemainsVerifiableForRollback(t *testing.T) {
+	root := t.TempDir()
+	paths, ok := layoutForVersion(1)
+	if !ok {
+		t.Fatal("legacy layout unavailable")
+	}
+	manifest := Manifest{
+		Version: 1, Release: "p15.0.4", Commit: "3a91fb703ca8543869098ba0aa8c80f69e8233a1",
+		ProtocolVersion: "mcp-devbox.edge-bundle.v1", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Architecture: "amd64", Components: map[string]string{},
+	}
+	for component, relative := range paths {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		manifest.Components[component], _ = HashFile(path)
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := Sign(manifest, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, paths, Compatibility{
+		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBundleVerificationFailsBeforeRuntimeWithPreciseSafeCodes(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	base := Manifest{
-		Version: 1, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}
@@ -117,7 +154,7 @@ func TestBundleVerificationRejectsTamperingAndIncompatibleCatalog(t *testing.T) 
 		t.Fatal(err)
 	}
 	manifest := Manifest{
-		Version: 1, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}

@@ -94,6 +94,15 @@ to `GITHUB_OWNER`; Coolify repositories use that owner and domains obey
 `COOLIFY_ALLOWED_DOMAINS`. Tokens and env values never appear in output or audit.
 Compatibility aliases invoke identical handlers and cannot weaken policy.
 
+The development Edge has a separate local Git transport authority. Its PAT is a
+0600 Edge-state file and is never mounted into the workcell or offered in a model
+schema. The broker constructs an HTTPS URL only from the configured owner plus a
+simple repository name, validates both fetch and push URLs, disables Git credential
+helpers, hooks, fsmonitor commands and the file protocol, and supplies askpass only
+to a bounded Git child. Publication requires a five-minute single-use plan bound to
+workspace, directory, branch, HEAD, remote HEAD and remote URL; it has no force,
+tags, caller URL or caller refspec surface.
+
 ## Isolation layers
 
 | Layer | Mechanism | When |

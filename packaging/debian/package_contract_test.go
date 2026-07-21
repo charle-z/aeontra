@@ -26,7 +26,7 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	build := repoFile(t, "packaging/debian/build-edge-deb.sh")
 	for _, required := range []string{
 		"SOURCE_DATE_EPOCH", "dpkg-deb --root-owner-group", "gpg --batch", "sha256sum",
-		"mcp-autopilot-worker", "model-turn-driver", "opencode-provider/htb-actions.js",
+		"mcp-autopilot-worker", "model-turn-driver", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js",
 		"libexec/node", "golang-go", "podman",
 		"mcp-bundle-updater", "mcp-devbox-bundle-updater.service",
 		"mcp-devbox-edge-onboard@.path",
@@ -96,7 +96,7 @@ func TestPrivilegedUpdaterAuthorityIsLimitedToFixedUnits(t *testing.T) {
 
 func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 	stage := repoFile(t, "packaging/parrot/stage-edge-bundle.sh")
-	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "--node-bin", "libexec/node"} {
+	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js", "--node-bin", "libexec/node"} {
 		if !strings.Contains(stage, required) {
 			t.Fatalf("bundle staging missing %q", required)
 		}
