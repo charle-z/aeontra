@@ -4,6 +4,25 @@ Compact handoff for any AI session. Keep this file short and current.
 
 ## Current Goal
 
+Current source truth: `main` is at
+`5048a5aa0e0d57d67df3680112aee0d47c954543`, tagged `p15.0.5`, after PR #38.
+The public catalog contains 98 tools with hash
+`sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
+Explicit continuation idempotency and the owner-bound private development Edge Git
+broker are merged. The Coolify application tracks `main` and is healthy.
+
+Current evidence boundary: the last repository-recorded real-host Parrot installation
+proof is `p15.0.4`. Do not claim that Parrot runs `p15.0.5`, that its local Git
+credential has been entered, or that a real private-repository smoke passed until a
+separate structured update and validation records those facts.
+
+Current isolation posture is profile-specific: the public Layer-1 command path is not
+an OS sandbox; ordinary Edge sandbox runtimes use mandatory networkless Bubblewrap;
+trusted Linux workcells deliberately share host networking; HTB sessions are
+target/VPN-bound but are not universal egress control.
+
+### Historical P15 progression
+
 P15 merged through PR #32 on `main` at merge commit
 `2b72df3625f6f223f8a0d974a94ebf1052bea117`; all required exact-head checks passed.
 The protected release workflow published the signed P15 line, and Parrot now runs
@@ -475,19 +494,15 @@ The admin channel is loopback-only and must stay that way.
 
 ## Next Steps
 
-1. Measure the repeated-call and output-volume cost of the standard inspect/patch/
-   validate/commit, PR-check and deployment-observation workflows.
-2. Add only the compact, read-only or fixed-profile orchestration primitives proven
-   necessary by those measurements; preserve existing tools and policy paths.
-3. Review and publish the implemented outbound-only WSL `development` workcell,
-   deploy the matching VPS Edge protocol, then follow `docs/install-edge-wsl.md` for
-   the first human-controlled installation and pairing. Do not pair automatically,
-   expose a remote shell, or weaken Bubblewrap/identity boundaries.
-4. Keep Parrot, HTB, autonomous-agent and privileged-workcell authority out of scope
-   until the Edge foundation is independently bounded and reviewed.
-
-Publication now exists only through the planned `repo_publish_preview` /
-`repo_publish` flow; `git_push` is the identical compatibility handler.
+1. Keep README, SECURITY, AGENTS, capsule and documentation-map state synchronized with
+   the 98-tool `p15.0.5` source release.
+2. Preserve historical baselines and their required markers; add new dated evidence
+   rather than rewriting previous phase truth.
+3. Before claiming Parrot `p15.0.5`, perform the structured signed update and verify
+   bundle identity, active service, preserved device/workspace identity and a real
+   private-repository smoke.
+4. Keep universal OS isolation and egress control explicitly incomplete; do not
+   generalize the networkless sandbox posture to trusted shared-network workcells.
 
 ## Known Risks / Debt
 
@@ -500,16 +515,13 @@ Publication now exists only through the planned `repo_publish_preview` /
 
 ## Last Verified
 
-Date: 2026-07-14. P8.1 production merge
-`d343264bffdc0ae1bc045a9d723e913be977090c` is deployed healthy through existing
-Coolify application `jqf7qz5ensoqtvl1tb197gcv` and tagged `p8.1`. Production reports
-67 tools and catalog hash
-`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
-catalog, Brain and console smokes are green. Query-string credentials return 401,
-header bearer recovery remains valid, the console cookie is strict and opaque,
-`/state/tasks` and SSE are operational, and Edge honestly reports `not_paired`.
+Date: 2026-07-20. `origin/main` is
+`5048a5aa0e0d57d67df3680112aee0d47c954543`, tagged `p15.0.5`, with 98 tools and
+catalog hash `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
+PR #38 merged after all 15 checks passed. The configured Coolify application tracks
+`main` and reports healthy. The last repository-recorded real-host Parrot installation
+proof remains `p15.0.4`; no later device installation is claimed here.
 
-
-## Console durable live state release candidate
+## Historical console durable live state release candidate
 
 Branch `console-durable-live-state` was initially based on `399d7ac` and now includes main through `77a93ad` via normal merge `ec0753d`. It preserves the deployed P8.1/P9 foundations and keeps exactly 85 tools with hash `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`. New private state is additive under `/state/tasks/tasks.db`, `/state/console/sessions.db` and `/state/brain/console-node.key`. The browser Event Log is server-persisted, SSE replays by Last-Event-ID, and selectors expose only generic labels plus opaque IDs. The branch is a release candidate only; PR gates, merge and deployment remain pending.

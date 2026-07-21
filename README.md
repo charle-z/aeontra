@@ -39,9 +39,16 @@ remain unfinished.
 
 ## Platform
 
-- **Core (Go): cross-platform.** Layer-1 policy works on Windows/Linux/macOS.
-- **Hard isolation (Layer 2): Linux-only** (namespaces/seccomp/gVisor). On Windows,
-  run under **WSL2** (real Linux kernel). Develop and run secure mode in WSL2.
+- **Core control plane (Go): cross-platform.** Layer-1 policy works on
+  Windows/Linux/macOS, but its allowlisted command path is not a universal OS
+  sandbox.
+- **Edge runtime isolation: Linux/WSL2.** The ordinary `sandbox` profile runs
+  OpenCode inside mandatory Bubblewrap with no direct-execution fallback and no
+  network. The trusted `linux-workcell` profile also uses a bounded runtime layout,
+  but deliberately declares `trusted_host_shared_network`; it is not target or
+  egress isolation.
+- **Signed Edge distribution:** P15 packages the Edge, driver, provider and helper
+  files as one Ed25519-verified release with atomic activation, repair and rollback.
 
 ## Licensing status
 
@@ -63,13 +70,19 @@ adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
 **OAuth-first authentication with header-only bearer recovery**, designed to be exposed to ChatGPT web through a
 self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
 
-**Secure builder evolution:** current production exposes 85 deliberately annotated
-tools, including rich repository status, narrow synchronization, planned GitHub
+**Secure builder evolution:** `main` and release `p15.0.5` contain 98 deliberately
+annotated tools with catalog hash `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`,
+including rich repository status, narrow synchronization, planned GitHub
 creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
-private validation profiles, bounded Coolify logs, and disabled-by-default
+private validation profiles, bounded Coolify logs, Edge control operations and disabled-by-default
 privileged profiles. Consequential operations use
 cryptographically named, expiring, single-use plans and revalidate state before
 execution. See [docs/tools.md](docs/tools.md).
+
+The Coolify application tracks `main` and is healthy. Treat `/version` and the
+catalog smoke as the authority for the exact deployed commit after each automatic
+deployment; a Git tag by itself does not prove that a particular Edge device has
+installed that release.
 
 The added `workspace_checkpoint` read-only primitive reconstructs branch, commit,
 upstream, tree counts, diff statistics and a bounded redacted task summary in one
@@ -99,7 +112,8 @@ human steps; see [the P11.2 baseline](docs/baselines/2026-07-16-p11_2.md) and th
 
 **P12 Trusted Linux Workcell is merged, deployed, paired, and validated on Parrot
 WSL2:** one explicit `linux-workcell` profile adds default development behavior and
-an optional local `htb-linux` context without changing the 85-tool MCP catalog. The
+an optional local `htb-linux` context. P12's historical closure had 85 tools; later
+phases expanded the catalog without rewriting that evidence. The
 existing `sandbox` remains networkless; the trusted workcell honestly declares
 `trusted_host_shared_network`, keeps authority and HTB metadata local to Edge, and
 permits only user-owned rootless Docker or Podman sockets. The first real remote
@@ -115,6 +129,28 @@ For normal development, an explicitly configured
 [private Edge Git authority](docs/development-edge-git.md) lets the same active
 ChatGPT session clone and safely publish an owner-bound private repository while the
 public MCP token handles workflow/check and PR APIs; neither token enters the workcell.
+
+**P13 opaque workspace continuation is deployed:** `workspace_runtime_continue`
+accepts only an opaque workspace ID, a bounded timeout and explicit caller-generated
+idempotency. The trusted local contract and checkpoint remain the source of truth;
+the control plane does not reconstruct the objective or retry automatically.
+
+**P14 first-class authorized HTB actions are deployed:** six explicit tools replace
+model-generated Bash wrappers for target authentication and remote commands. They
+exist only for registered `htb-linux` runtimes, bind sessions to one locally
+registered VPN target, consume local credential handles without copying values to
+the VPS/model, and can save sensitive output locally as metadata-only results. See
+[authorized HTB actions](docs/authorized-htb-actions.md).
+
+**P15 signed zero-touch Edge is the current release line:** signed bundles, a
+restricted updater, atomic activation/rollback/repair, automatic lab preparation and
+retargeting, durable local autopilot state, and interactive GPT-web continuation are
+implemented. Release `p15.0.5` additionally contains the owner-bound private Edge Git
+broker and explicit continuation idempotency. The last repository-recorded real-host
+installation proof is Parrot `p15.0.4`; claiming `p15.0.5` installed requires a
+separate structured update and smoke. See [Edge bundles](docs/edge-bundles.md),
+[autopilot](docs/autopilot.md), and
+[development Edge Git](docs/development-edge-git.md).
 
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused
@@ -219,8 +255,9 @@ writes require explicit approval in ask mode; aliases never weaken policy.
 2. Feed Spec Kit's constitution from this repo's principles + `AGENTS.md`.
 3. Read `docs/design.md` and `docs/security.md` before any code.
 4. Build **Layer 1 (MVP)** first — already more secure than Desktop Commander.
-5. Add Layers 2–3 (OS isolation, egress) only in v0.3, **wrapping** proven
-   sandbox tech (gVisor/nsjail/Docker), never reinventing security primitives.
+5. Preserve the implemented Bubblewrap profiles and their distinct network posture.
+   Do not describe the trusted workcell as universal Layer-2/3 isolation, and wrap
+   proven isolation primitives rather than inventing replacements.
 
 ## Pointers
 
@@ -239,10 +276,11 @@ writes require explicit approval in ask mode; aliases never weaken policy.
   privilege challenges, and infrastructure/security boundaries.
 - `docs/linux-workcell.md` — exact P12 trusted-workcell architecture, local CLI,
   rootless containers, HTB context, residual risks, tests, and Parrot setup steps.
+- `docs/authorized-htb-actions.md` — P14 runtime-only HTB tools and target/credential
+  boundaries.
+- `docs/edge-bundles.md` and `docs/autopilot.md` — P15 signed release, updater, repair,
+  lab control and local autopilot behavior.
+- `docs/development-edge-git.md` — P15.0.5 owner-bound local Git authority for
+  private development workcells.
 - `docs/open-source-release.md` — proposed public/private boundary, license options,
   and release-readiness checklist.
-
-
-## Console durable live state candidate
-
-The `console-durable-live-state` branch upgrades the presentation-only console without changing the 78-tool MCP catalog. It adds durable digest-only sessions, SQLite task/event history, recoverable SSE, stable safe Brain metadata, real opaque Project/Edge selectors and combined DB/WAL/log budget reporting. The release-candidate contract is documented in `docs/console.md` and `docs/baselines/2026-07-17-console-durable-live-state.md`. It is not merged or deployed.

@@ -1,73 +1,37 @@
-# Current task — P15 development Edge Git closure
+# Current task — P15 documentation truth closed
 
-Branch: `codex/p15-dev-edge-git` from deployed `main` `3a91fb7`.
+Branch: `docs/p15-documentation-truth` from `origin/main` at `5048a5aa0e0d57d67df3680112aee0d47c954543` (`p15.0.5`). The documentation-only closure is committed locally; use the branch `HEAD` as the exact commit authority.
 
-Step 21 committed at `c179ea2`: cross-chat continuation now requires an explicit fresh
-idempotency key; focused server/docs tests pass under Go 1.26.5 in Parrot.
+Goal completed: synchronize public and operator-facing documentation with repository and deployment evidence after P13–P15 without rewriting historical baselines.
 
-Active Step 22: private GitHub acquisition/publication for an authenticated local
-development Edge. CLI stdin credential configuration, three closed provider actions,
-owner-bound Unix broker, five-minute single-use publish plans, and focused Go/Node
-tests are implemented. Local Parrot Go 1.26.5 verification is green: `go test ./...
--count=1`, `go vet ./...`, `go build ./...`, provider Node tests (19/19), shell
-syntax, and `git diff --check`. Commit, PR, release and Parrot update remain pending.
+Verified source state:
 
-Historical P15 task follows.
+- PR #29 (P14) is merged and all 13 checks passed.
+- PR #38 (P15 development Edge Git) is merged and all 15 checks passed.
+- `main` and `p15.0.5` contain 98 tools with catalog hash `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
+- The configured Coolify application tracks `main` and reports `running:healthy`.
+- The last repository-recorded real-host Parrot installation proof is `p15.0.4`; a `p15.0.5` device update and real private-repository smoke are not claimed by this documentation task.
 
-Branch: `p15-zero-touch-local-autopilot`
-Base: `origin/main` at P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.
+Historical deployed foundation required by documentation tests:
 
-Historical verified foundation: P8.1 is closed and deployed at
-`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`, with the verified
-67 tools milestone and safe `not_paired` Edge state. P15 work is additive.
+- P8.1 Console 2.0 is closed, deployed and tagged at `d343264bffdc0ae1bc045a9d723e913be977090c`.
+- P9 Brain is deployed as the successor milestone; its historical 67 tools and `not_paired` evidence remain preserved.
+- P13 opaque workspace continuation, P14 first-class authorized HTB actions and the P15 signed Edge line are additive successors.
 
-Current P15 status: Steps 01-06 are committed. Exact-head Linux CI, PR merge,
-automatic deployment and structured Parrot migration remain pending and are not
-claimed by this local handoff.
+Documentation result:
 
-P14 is the preserved foundation: target-locked local HTB actions, opaque sessions,
-local credential handles, local-only sensitive results, OpenCode integration, and
-registered VPN/target metadata. P15 must close the operator workflow without weakening
-those boundaries.
+1. README distinguishes source release, VPS deployment and real Edge installation evidence; records P13–P15; preserves historical tool milestones; removes the stale console candidate footer.
+2. `SECURITY.md` and `docs/security.md` describe profile-specific isolation, signed Edge bundles, target/VPN-bound HTB authority and private Edge Git without claiming universal OS isolation or egress control.
+3. `AGENTS.md`, `docs/context-capsule.md`, `docs/documentation-map.md` and the handoff identify `p15.0.5`, 98 tools and the current evidence boundary.
+4. `docs/p15_documentation_truth_test.go` prevents stale 85-tool/current-candidate and obsolete security claims from returning.
 
-Completed Step 01 — signed indivisible Edge bundles:
+Verification:
 
-1. Define one versioned manifest covering Edge, model driver, autopilot worker,
-   provider files, HTB actions, systemd unit, protocol, catalog, commit and architecture.
-2. Sign and verify the canonical manifest with Ed25519.
-3. Hash every required regular non-symlink component inside the release root.
-4. Fail before a runtime starts with only the safe precise codes `bundle_mismatch`,
-   `provider_outdated`, `driver_outdated`, or `manifest_invalid`.
-5. Add the release builder and wire verification into the persistent Edge service.
+- `go test ./docs -count=1` — pass.
+- Aggregate `go test ./... -count=1` — the command runner terminated the long process with `signal: killed` after all displayed packages passed; no test failure was reported.
+- The remaining package batch from `internal/modelturn` through `profiles` — pass, completing package coverage when combined with the aggregate output.
+- `go vet ./...` — pass.
+- `go build ./...` — pass.
+- `git diff --check` — pass.
 
-Verification executed with an official temporary Go 1.26.5 SDK and private temporary
-caches: bundle and Parrot packaging tests pass; Linux `go vet ./...`, Linux
-`go build ./...`, and `git diff --check` pass. The Windows host cannot execute the
-Linux-only full suite (`syscall.Statfs` and Bubblewrap paths); exact-head CI Linux
-remains mandatory and no local pass is claimed for that suite.
-
-Completed Step 02 — atomic Parrot installer and updater:
-
-1. Build the reproducible Debian filesystem/package layout around a pre-signed bundle.
-2. Add the root-owned closed updater with staging, atomic `current`, health check,
-   previous-release rollback and conservative cleanup.
-3. Add repair and P12–P14 migration that preserve identity, keys, workspaces,
-   contracts, checkpoints, artifacts, target authorization and opaque IDs.
-4. Add clean-install, migration, repeat-install, atomicity, rollback and restricted
-   authority tests before exposing update controls.
-
-Verification: portable bundle/Debian/Parrot contract tests and every shell syntax
-check pass; Linux cross `go vet ./...`, `go build ./...`, and `git diff --check`
-pass. Linux-only updater transaction tests compile and remain mandatory in exact-head
-CI, because this Windows host cannot execute Unix symlink/flock tests.
-
-Active Step 03 — automatic lab preparation and retargeting:
-
-1. Add closed durable Edge task kinds for HTB prepare and retarget metadata only.
-2. Execute preparation locally: private target validation, VPN route/LHOST discovery,
-   private Git workspace/README/directories, idempotent registry/profile/inventory and
-   same machine workspace ID reuse across IP changes.
-3. Retarget in place while preserving evidence/checkpoint, invalidating sessions and
-   incrementing a durable authorization revision.
-4. Expose only `workspace_lab_prepare` and `workspace_lab_retarget` through the remote
-   control plane and return opaque safe status/IDs.
+No push, pull request, deployment or Parrot update has been performed. A later explicit task may publish this branch or separately verify/install `p15.0.5` on Parrot.
