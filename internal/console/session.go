@@ -11,9 +11,13 @@ import (
 )
 
 const (
-	sessionBytes        = 32
-	defaultSessionTTL   = 8 * time.Hour
-	maxSessionTTL       = 24 * time.Hour
+	sessionBytes = 32
+	// The production console is single-owner and should not force routine token entry.
+	// Sixty years is a practical persistent horizon while still fitting in a signed
+	// 32-bit cookie Max-Age value. Logout, explicit revocation, state loss, browser
+	// cookie deletion, or bounded-session eviction still terminate a session.
+	defaultSessionTTL   = 60 * 365 * 24 * time.Hour
+	maxSessionTTL       = defaultSessionTTL
 	defaultSessionCount = 128
 	maxSessionCount     = 1024
 )
