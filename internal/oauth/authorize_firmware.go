@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/charle-z/mcp-devbox/internal/authfirmware"
 )
@@ -74,7 +75,7 @@ func renderLogin(w http.ResponseWriter, params *authorizeParams, status string) 
 }
 
 func renderLoginStatus(w http.ResponseWriter, params *authorizeParams, status string, code int) {
-	authfirmware.HardenOAuth(w, authfirmware.CSP)
+	authfirmware.HardenOAuth(w, authorizationCSP(params))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	stateLabel := "[ READY ] Awaiting owner authorization"
 	stateTone := "ready"
@@ -93,6 +94,37 @@ func renderLoginStatus(w http.ResponseWriter, params *authorizeParams, status st
 		ResourceLabel: safeResourceLabel(params.resource), Status: status,
 		StateLabel: stateLabel, StateTone: stateTone,
 	})
+}
+
+// authorizationCSP keeps form submission on this server while allowing the browser to
+// follow the post-authorization redirect only to the exact origin of the already
+// validated client callback. The callback path, query, and fragment are never placed in
+// the policy, and an unparsable origin fails closed to same-origin only.
+func authorizationCSP(params *authorizeParams) string {
+	directives := []string{
+		"default-src 'none'",
+		"style-src 'self'",
+		"form-action 'self'",
+		"frame-ancestors 'none'",
+		"base-uri 'none'",
+	}
+	if params != nil {
+		if origin := safeRedirectOrigin(params.redirectURI); origin != "" {
+			directives[2] += " " + origin
+		}
+	}
+	return strings.Join(directives, "; ")
+}
+
+func safeRedirectOrigin(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.User != nil || parsed.Host == "" {
+		return ""
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return ""
+	}
+	return parsed.Scheme + "://" + parsed.Host
 }
 
 func safeResourceLabel(raw string) string {
