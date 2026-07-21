@@ -1,13 +1,10 @@
 package mcpserver
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
@@ -28,6 +25,7 @@ type edgeWorkspaceRegistry interface {
 type workspaceRuntimeContinueParams struct {
 	WorkspaceID    string `json:"workspace_id"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
+	IdempotencyKey string `json:"idempotency_key"`
 }
 
 type workspaceRuntimeContinueView struct {
@@ -50,11 +48,12 @@ func (s *Server) addWorkspaceRuntimeContinueTool() {
 	hints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
 	s.addRequestTool(toolDef{
 		Name:        "workspace_runtime_continue",
-		Description: "Continue one already registered workspace through the active ChatGPT session using only its local trusted contract. The tool accepts no instructions, creates one runtime, and never retries automatically.",
+		Description: "Continue one already registered workspace through the active ChatGPT session using only its local trusted contract. Generate a fresh idempotency_key for each explicit continuation and reuse it only to retry that same call. The tool accepts no instructions, creates one runtime, and never retries automatically.",
 		InputSchema: closedObject(map[string]any{
 			"workspace_id":    stringSchema("opaque registered workspace id", `^ws_[a-f0-9]{32}$`, 35),
 			"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
-		}, []string{"workspace_id", "timeout_seconds"}),
+			"idempotency_key": stringSchema("fresh caller-generated key for this explicit continuation; reuse only for an exact retry", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`, maxOpenCodeIdempotencyBytes),
+		}, []string{"workspace_id", "timeout_seconds", "idempotency_key"}),
 		Version:     "1",
 		Annotations: hints,
 	}, s.handleWorkspaceRuntimeContinue)
@@ -84,10 +83,10 @@ func (s *Server) handleWorkspaceRuntimeContinue(arguments json.RawMessage, sessi
 	if s.edgeDevices == nil || !s.edgeDevices.DeviceActive(binding.DeviceID) {
 		return "", errors.New("registered active workspace not found")
 	}
-	idempotencyDigest, err := workspaceContinuationIdempotencyDigest(sessionKey, requestID, params.WorkspaceID, params.TimeoutSeconds)
-	if err != nil {
-		return "", err
+	if strings.TrimSpace(params.IdempotencyKey) != params.IdempotencyKey || len(params.IdempotencyKey) < 8 || len(params.IdempotencyKey) > maxOpenCodeIdempotencyBytes {
+		return "", modelturn.ErrInvalidRequest
 	}
+	idempotencyDigest := modelturn.IdempotencyDigest(workspaceContinuationGoalVersion + "\x00" + params.WorkspaceID + "\x00" + params.IdempotencyKey)
 	ttl := time.Duration(params.TimeoutSeconds) * time.Second
 	goal := []byte(workspaceContinuationGoal)
 	body, err := s.modelTurns.StageRuntimeGoal(context.Background(), goal, ttl)
@@ -129,25 +128,4 @@ func validWorkspaceBinding(binding edge.WorkspaceBinding, workspaceID string) bo
 	default:
 		return false
 	}
-}
-
-func workspaceContinuationIdempotencyDigest(sessionKey string, requestID json.RawMessage, workspaceID string, timeoutSeconds int) (string, error) {
-	rawID := bytes.TrimSpace(requestID)
-	if len(rawID) == 0 || len(rawID) > 256 || string(rawID) == "null" {
-		return "", modelturn.ErrInvalidRequest
-	}
-	var scalar any
-	decoder := json.NewDecoder(bytes.NewReader(rawID))
-	decoder.UseNumber()
-	if err := decoder.Decode(&scalar); err != nil {
-		return "", modelturn.ErrInvalidRequest
-	}
-	switch scalar.(type) {
-	case string, json.Number:
-	default:
-		return "", modelturn.ErrInvalidRequest
-	}
-	material := workspaceContinuationGoalVersion + "\x00" + sessionKey + "\x00" + string(rawID) + "\x00" + workspaceID + "\x00" + strconv.Itoa(timeoutSeconds)
-	sum := sha256.Sum256([]byte(material))
-	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }

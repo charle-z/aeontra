@@ -362,6 +362,26 @@ The dated release-candidate baseline and closure consistency test are part of th
 tree. Production remains P8/62 until fresh checks for the closure SHA pass, PR #4
 merges, `/brain` persistence is configured, and deployment smoke completes.
 
+## P15 development Edge Git follow-up
+
+The private development Git boundary is covered at four layers:
+
+- credential tests prove stdin-only atomic 0600 storage, owner validation, invalid
+  token rejection, unsafe-file rejection, and token-free status;
+- broker tests prove owner-bound clone, fetch/push URL validation, clean/ancestor
+  preconditions, short-lived single-use publication plans, replay rejection, traversal
+  rejection, and absence of the token from Git argv;
+- launcher tests prove the private actions appear only for a configured `dev`
+  workcell and that the provider configuration contains no credential;
+- provider tests execute clone, preview and publish over the private requester across
+  four model turns, reject injected authority fields before the requester, and retain
+  the no-API-key/no-TCP-client source invariant.
+
+On 2026-07-20 the candidate passed under Parrot WSL2 Go 1.26.5: `go test ./...
+-count=1`, `go vet ./...`, `go build ./...`, all 19 Node provider tests, packaging
+shell syntax, and `git diff --check`. Exact-head GitHub gates and live signed-release
+installation remain separate closure requirements.
+
 ## Safety rules
 
 - Do not run active DAST against production.

@@ -7,7 +7,7 @@ Compact handoff for any AI session. Keep this file short and current.
 P15 merged through PR #32 on `main` at merge commit
 `2b72df3625f6f223f8a0d974a94ebf1052bea117`; all required exact-head checks passed.
 The protected release workflow published the signed P15 line, and Parrot now runs
-`p15.0.3` at commit `d600eb27052255a8b9827d47d4e1b6ae20953507` with the P14
+`p15.0.4` at commit `3a91fb703ca8543869098ba0aa8c80f69e8233a1` with the P14
 device identity and Cap workspace ID preserved. The
 Edge consumed the queued prepare, retarget and autopilot operations and created a
 durable job. The job is safely blocked with `provider_transient`: the configured
@@ -23,6 +23,14 @@ The follow-up runtime hardening resolves signed-release compatibility symlinks b
 validating the provider and driver, and normalizes mixed HTB/ordinary model responses
 by executing the structured HTB calls first and deferring ordinary calls instead of
 terminating the runtime for a recoverable model mistake.
+
+The development-only follow-up on `codex/p15-dev-edge-git` replaces transport
+JSON-RPC IDs as durable continuation identity with an explicit caller-generated
+idempotency key and adds an Edge-only Git broker for private development repositories.
+The public MCP token remains responsible for GitHub workflow/check/PR APIs; a separate
+0600 local copy authorizes owner-bound clone and single-use planned publication without
+entering the model sandbox. Implementation and focused tests pass, but exact-head
+gates, merge, signed release and Parrot update are not yet claimed.
 
 Real P14 migration exposed a packaging defect not covered by the original isolated
 package test: `ln -sfn` cannot replace the existing P14

@@ -111,6 +111,10 @@ reproducible preflight. See [docs/linux-workcell.md](docs/linux-workcell.md) and
 [`mcp-edge lab init`](docs/htb-lab-workflow.md) reduces machine setup to one command
 after the VPN is connected, while target-locked SSH consumes recovered credentials
 locally without copying them into model turns.
+For normal development, an explicitly configured
+[private Edge Git authority](docs/development-edge-git.md) lets the same active
+ChatGPT session clone and safely publish an owner-bound private repository while the
+public MCP token handles workflow/check and PR APIs; neither token enters the workcell.
 
 **Architecture foundations:** P1 moved the complete public catalog into declarative
 modules under `internal/mcpserver/catalog`. P2 split the implementation into focused

@@ -33,7 +33,7 @@ tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owne
   manifest.json manifest.sig bin/mcp-edge libexec/model-turn-driver libexec/node \
   libexec/mcp-autopilot-worker libexec/mcp-bundle-updater \
   opencode/opencode opencode/package-lock.json opencode-provider/index.js \
-  opencode-provider/htb-actions.js opencode-provider/package.json \
+  opencode-provider/htb-actions.js opencode-provider/dev-actions.js opencode-provider/package.json \
   systemd/mcp-devbox-opencode-edge@.service
 (cd "$(dirname "$ARCHIVE")" && sha256sum "$(basename "$ARCHIVE")") >"$ARCHIVE.sha256"
 

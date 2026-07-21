@@ -45,6 +45,9 @@ is recorded separately in `docs/baselines/2026-07-18-p12-parrot-production.md`.
 The canonical onboarding procedure is `docs/install-opencode-edge-parrot.md`;
 authorized HTB room setup and local credential handles are documented in
 `docs/htb-lab-workflow.md`.
+Private development repository clone/publication through the local Edge and the
+separate VPS/Edge GitHub credential placement are governed by
+`docs/development-edge-git.md`.
 P15 signed release identity, fixed component layout and fail-closed compatibility
 codes are governed by `docs/edge-bundles.md`.
 P15 one-time Debian installation, onboarding, migration, update, repair and rollback

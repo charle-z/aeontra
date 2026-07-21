@@ -1,4 +1,18 @@
-# Current task — P15 zero-touch local autopilot
+# Current task — P15 development Edge Git closure
+
+Branch: `codex/p15-dev-edge-git` from deployed `main` `3a91fb7`.
+
+Step 21 committed at `c179ea2`: cross-chat continuation now requires an explicit fresh
+idempotency key; focused server/docs tests pass under Go 1.26.5 in Parrot.
+
+Active Step 22: private GitHub acquisition/publication for an authenticated local
+development Edge. CLI stdin credential configuration, three closed provider actions,
+owner-bound Unix broker, five-minute single-use publish plans, and focused Go/Node
+tests are implemented. Local Parrot Go 1.26.5 verification is green: `go test ./...
+-count=1`, `go vet ./...`, `go build ./...`, provider Node tests (19/19), shell
+syntax, and `git diff --check`. Commit, PR, release and Parrot update remain pending.
+
+Historical P15 task follows.
 
 Branch: `p15-zero-touch-local-autopilot`
 Base: `origin/main` at P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.

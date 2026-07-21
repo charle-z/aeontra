@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { request as nodeRequest } from "node:http";
 import { appendHTBResults, configureHTBActions, isInternalHTBCall, maxHTBInternalRounds } from "./htb-actions.js";
+import { configureDevGitActions, isInternalDevGitCall } from "./dev-actions.js";
 
 const PROTOCOL_VERSION = "mcp-devbox.model-turn.v1";
 const DRIVER_PROTOCOL_VERSION = "mcp-devbox.model-turn-driver.v1";
@@ -29,10 +30,15 @@ export function createMCPDevboxModelBridge(options = {}) {
     return options.htbRequestImpl;
   });
   const htb = configureHTBActions(options, htbRequesterFactory);
+  const devGitRequesterFactory = options.devGitRequestImpl === undefined ? createUnixRequester : (() => {
+    if (typeof options.devGitRequestImpl !== "function") throw new Error("devGitRequestImpl must be a function");
+    return options.devGitRequestImpl;
+  });
+  const devGit = configureDevGitActions(options, devGitRequesterFactory);
 
   return Object.freeze({
     languageModel(modelID) {
-      return new PullRendezvousLanguageModel({ providerName, modelID, runtimeID, ttlMs, timeoutMs, requestImpl, htb });
+      return new PullRendezvousLanguageModel({ providerName, modelID, runtimeID, ttlMs, timeoutMs, requestImpl, htb, devGit });
     },
   });
 }
@@ -41,7 +47,7 @@ class PullRendezvousLanguageModel {
   specificationVersion = "v3";
   supportedUrls = {};
 
-  constructor({ providerName, modelID, runtimeID, ttlMs, timeoutMs, requestImpl, htb }) {
+  constructor({ providerName, modelID, runtimeID, ttlMs, timeoutMs, requestImpl, htb, devGit }) {
     this.provider = providerName;
     this.modelId = requireIdentifier(modelID, "model id");
     this.runtimeID = runtimeID;
@@ -49,6 +55,7 @@ class PullRendezvousLanguageModel {
     this.timeoutMs = timeoutMs;
     this.requestImpl = requestImpl;
     this.htb = htb;
+    this.devGit = devGit;
     this.queue = Promise.resolve();
   }
 
@@ -134,28 +141,30 @@ class PullRendezvousLanguageModel {
   }
 
   async #runWithInternalTools(options) {
-    if (!this.htb) return this.#runTurn(options);
+    const handlers = [this.htb, this.devGit].filter(Boolean);
+    if (handlers.length === 0) return this.#runTurn(options);
     if (!Array.isArray(options?.prompt)) throw new Error("prompt must be an array");
     let current = {
       ...options,
       prompt: [...options.prompt],
-      tools: this.htb.augmentTools(options.tools ?? []),
+      tools: handlers.reduce((tools, handler) => handler.augmentTools(tools), options.tools ?? []),
     };
     for (let round = 0; round < maxHTBInternalRounds(); round += 1) {
       const completed = await this.#runTurn(current);
       const calls = completed.response.tool_calls.map((call) => ({ ...call, tool: completed.toolsByID.get(call.tool_id) }));
-      const internal = calls.filter((call) => isInternalHTBCall(this.htb, call.tool));
+      const internal = calls.filter((call) => isInternalHTBCall(this.htb, call.tool) || isInternalDevGitCall(this.devGit, call.tool));
       if (internal.length === 0) return completed;
       const results = [];
       for (const call of internal) {
-        results.push(await this.htb.execute(call.tool.name, call.arguments, options.abortSignal));
+        const handler = isInternalHTBCall(this.htb, call.tool) ? this.htb : this.devGit;
+        results.push(await handler.execute(call.tool.name, call.arguments, options.abortSignal));
       }
       current = {
         ...current,
         prompt: appendHTBResults(current.prompt, internal, results),
       };
     }
-    throw new Error("HTB internal tool loop exceeded the bounded round limit");
+    throw new Error("internal tool loop exceeded the bounded round limit");
   }
 
   async #runTurn(options) {

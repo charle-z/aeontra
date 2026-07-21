@@ -13,13 +13,19 @@ the package/updater.
 public trust key, release, commit and expected catalog hash are compiled into packaged
 executables; an unstamped local build cannot validate a production bundle.
 
-The version-1 manifest binds:
+The current version-2 manifest binds:
 
 - release, exact 40-character Git commit, bundle protocol and architecture;
 - the deterministic exterior MCP catalog hash;
 - SHA-256 hashes for `mcp-edge`, `model-turn-driver`, the reviewed Node 24.18.0 runtime,
   `mcp-autopilot-worker`, the privileged updater, OpenCode and its lockfile, provider `index.js`, provider
-  `htb-actions.js`, provider `package.json`, and the packaged Edge systemd unit.
+  `htb-actions.js`, provider `dev-actions.js`, provider `package.json`, and the
+  packaged Edge systemd unit.
+
+The verifier retains the exact signed version-1 component layout so an installed
+version-2 updater can still verify and roll back to p15.0.4 or an earlier signed P15
+release. Version 1 never accepts `dev-actions.js` as an unsigned extra authority;
+version 2 requires and hashes it. Other manifest versions fail closed.
 
 Every component must be a regular non-symlink file below the release root. Unknown,
 missing, extra or malformed manifest fields fail closed. The Edge verifies the bundle

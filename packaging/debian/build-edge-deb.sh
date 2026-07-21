@@ -30,7 +30,7 @@ done
 for path in \
   manifest.json manifest.sig bin/mcp-edge libexec/model-turn-driver libexec/node \
   libexec/mcp-autopilot-worker libexec/mcp-bundle-updater opencode/opencode opencode/package-lock.json \
-  opencode-provider/index.js opencode-provider/htb-actions.js \
+  opencode-provider/index.js opencode-provider/htb-actions.js opencode-provider/dev-actions.js \
   opencode-provider/package.json systemd/mcp-devbox-opencode-edge@.service; do
   [ -f "$BUNDLE/$path" ] && [ ! -L "$BUNDLE/$path" ] || {
     printf 'signed bundle is incomplete: %s\n' "$path" >&2
@@ -63,6 +63,7 @@ install -m 0755 "$BUNDLE/opencode/opencode" "$RELEASE_ROOT/opencode/opencode"
 install -m 0644 "$BUNDLE/opencode/package-lock.json" "$RELEASE_ROOT/opencode/package-lock.json"
 install -m 0644 "$BUNDLE/opencode-provider/index.js" "$RELEASE_ROOT/opencode-provider/index.js"
 install -m 0644 "$BUNDLE/opencode-provider/htb-actions.js" "$RELEASE_ROOT/opencode-provider/htb-actions.js"
+install -m 0644 "$BUNDLE/opencode-provider/dev-actions.js" "$RELEASE_ROOT/opencode-provider/dev-actions.js"
 install -m 0644 "$BUNDLE/opencode-provider/package.json" "$RELEASE_ROOT/opencode-provider/package.json"
 install -m 0644 "$BUNDLE/systemd/mcp-devbox-opencode-edge@.service" "$RELEASE_ROOT/systemd/mcp-devbox-opencode-edge@.service"
 install -m 0644 "$BUNDLE/manifest.json" "$RELEASE_ROOT/manifest.json"

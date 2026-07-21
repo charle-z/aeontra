@@ -16,15 +16,9 @@ type Channel struct {
 }
 
 func CanonicalChannel(channel Channel) ([]byte, error) {
-	manifest := Manifest{
-		Version: channel.Version, Release: channel.Release, Commit: channel.Commit,
-		ProtocolVersion: channel.ProtocolVersion, CatalogHash: channel.CatalogHash,
-		Architecture: channel.Architecture, Components: map[string]string{},
-	}
-	for _, component := range RequiredComponents() {
-		manifest.Components[component] = channel.ArchiveHash
-	}
-	if _, err := canonicalManifest(manifest); err != nil || !digestPattern.MatchString(channel.ArchiveHash) {
+	if channel.Version != 1 || !releasePattern.MatchString(channel.Release) || !commitPattern.MatchString(channel.Commit) ||
+		channel.ProtocolVersion == "" || !digestPattern.MatchString(channel.CatalogHash) ||
+		(channel.Architecture != "amd64" && channel.Architecture != "arm64") || !digestPattern.MatchString(channel.ArchiveHash) {
 		return nil, &VerificationError{Code: ManifestInvalid}
 	}
 	return json.Marshal(channel)

@@ -38,7 +38,8 @@ func TestPromptlessWorkspaceContinuationDocumentationIsSynchronized(t *testing.T
 		`Name:        "workspace_runtime_continue"`,
 		`"workspace_id"`,
 		`"timeout_seconds"`,
-		`[]string{"workspace_id", "timeout_seconds"}`,
+		`"idempotency_key"`,
+		`[]string{"workspace_id", "timeout_seconds", "idempotency_key"}`,
 	} {
 		if !strings.Contains(serverSource, required) {
 			t.Errorf("continuation implementation missing %q", required)

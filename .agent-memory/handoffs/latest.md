@@ -1,4 +1,22 @@
-# Handoff — P15 zero-touch local autopilot
+# Handoff — P15 development Edge Git closure
+
+Branch `codex/p15-dev-edge-git` starts from deployed `main` `3a91fb7`. Step 21 is
+active. A real GPT web run proved p15.0.4 reaches six model turns; a later new chat
+replayed the same terminal runtime because transport JSON-RPC IDs were treated as
+durable idempotency identity. The candidate now requires a fresh caller-generated
+`idempotency_key`; focused tests pass on Parrot Go 1.26.5.
+
+Step 22 now implements private Git clone/publish on the local Edge without `gh`, a
+credential helper, or SSH agent. `mcp-edge github configure` reads a PAT from stdin;
+the dev provider exposes three closed internal actions; the owner-bound Unix broker
+clones and publishes only through a short-lived single-use plan while keeping the PAT
+outside the sandbox. The complete local Parrot gates pass: full Go suite, vet, build,
+provider Node tests, packaging shell syntax and diff check. The signed manifest is
+version 2 for the new provider file while version-1 verification remains supported
+for rollback. Next commit, publish the PR/release, update Parrot, and have the operator
+enter the PAT locally without pasting it in chat.
+
+Historical P15 handoff follows.
 
 Branch: `p15-zero-touch-local-autopilot`
 Base: P14 merge `54891fe7bced14e5eacace754f0072ad4d7996c2`.

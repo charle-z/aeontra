@@ -25,7 +25,7 @@ do not replace server-side enforcement.
 | `mcp_client_capabilities` | 1/0/1/0 | Return only the current session's allowlisted client name/version, protocol and explicitly announced sampling/roots/elicitation flags. |
 | `model_runtime_start` | 0/0/0/0 | Create one durable external-model runtime; it does not start or select a model provider. |
 | `opencode_runtime_start` | 0/0/1/0 | Request one pinned OpenCode runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
-| `workspace_runtime_continue` | 0/0/1/0 | Continue one registered dev or HTB workspace through the active ChatGPT session using its local trusted contract; accepts only the opaque workspace id and timeout, creates one runtime, and does not retry automatically. |
+| `workspace_runtime_continue` | 0/0/1/0 | Continue one registered dev or HTB workspace through the active ChatGPT session using its local trusted contract; accepts the opaque workspace id, timeout and a fresh caller-generated idempotency key, creates one runtime, and does not retry automatically. |
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
 | `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
 | `workspace_autopilot_start` | 0/0/1/0 | Start or reuse one durable local job with `run_until=completed_or_cancelled`; no free-form objective is accepted. |
@@ -89,6 +89,13 @@ do not replace server-side enforcement.
 | `repo_publish_preview` | 1/0/1/1 | Inspect the exact remote branch and plan one safe push. |
 | `git_push` | 0/0/0/1 | Compatibility name for planned `repo_publish`. |
 | `repo_publish` | 0/0/0/1 | Revalidate and push one branch; no force/tags/mirror/refspecs. |
+
+The public catalog GitHub tools use the VPS/Coolify `GITHUB_TOKEN` for API operations
+such as repository metadata, exact-head PR/check status and merge. A configured local
+development Edge separately injects `workspace_dev_git_clone`,
+`workspace_dev_publish_preview`, and `workspace_dev_publish` into its private OpenCode
+provider. Those owner-bound transport actions are intentionally absent from the
+exterior MCP catalog; see `docs/development-edge-git.md`.
 
 ## Coolify platform
 
