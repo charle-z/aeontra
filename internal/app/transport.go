@@ -40,7 +40,7 @@ func resolveTransport(opts serveOptions) (transportConfig, error) {
 	if token == "" {
 		token = os.Getenv(tokenEnv)
 	}
-	oauthProvider, err := buildOAuthProvider()
+	oauthProvider, err := buildOAuthProvider(opts.StateRoot)
 	if err != nil {
 		return transportConfig{}, err
 	}

@@ -9,23 +9,32 @@ dependencies). It is also the resource server that validates access tokens on `/
 
 ## Enabling it
 
-Set both env vars (OAuth stays **off** unless both are present):
+Set both required env vars (OAuth stays **off** unless both are present):
 
 | Env | Meaning | Example |
 |-----|---------|---------|
 | `MCP_DEVBOX_PUBLIC_URL` | Public HTTPS base URL (the OAuth **issuer**). Must be `https://` (only `localhost` may use `http`). | `https://mcp-devbox-charlez.duckdns.org` |
 | `MCP_DEVBOX_OAUTH_PASSPHRASE` | The owner login secret entered on the authorize page. | *(a strong passphrase)* |
-| `MCP_DEVBOX_OAUTH_CLIENT_STORE` | Optional JSON file for persistent Dynamic Client Registration clients. Store it on a persistent volume outside the MCP repo jail when possible. | `/state/oauth-clients.json` |
-| `MCP_DEVBOX_OAUTH_REFRESH_STORE` | Optional JSON file (0600) that persists **only refresh tokens**, so a redeploy/restart does **not** force the passphrase login again — ChatGPT's stored refresh token still works. Access tokens and authorization codes are never persisted. Put it on the same persistent volume. | `/state/oauth-refresh.json` |
+| `MCP_DEVBOX_STATE_ROOT` | Administrator-owned durable state root. When set, missing OAuth store paths default beneath it. The Docker image sets `/state`. | `/state` |
+| `MCP_DEVBOX_OAUTH_CLIENT_STORE` | Optional absolute override for persistent Dynamic Client Registration clients. Defaults to `<STATE_ROOT>/oauth-clients.json` when a state root is configured. | `/state/oauth-clients.json` |
+| `MCP_DEVBOX_OAUTH_REFRESH_STORE` | Optional absolute override for the 0600 refresh-token store. Defaults to `<STATE_ROOT>/oauth-refresh.json` when a state root is configured. | `/state/oauth-refresh.json` |
 
 The token **audience** (canonical resource) is derived as `<PUBLIC_URL>/mcp`.
 
 ### Avoiding re-login on every redeploy
 
-Refresh tokens live in memory unless `MCP_DEVBOX_OAUTH_REFRESH_STORE` points at a file on
-a **persistent volume**. Without it, every redeploy drops all tokens and ChatGPT must
-re-enter the passphrase. With both `..._CLIENT_STORE` and `..._REFRESH_STORE` on a volume,
-a redeploy is seamless: the connector silently refreshes and keeps working.
+The Docker deployment sets `MCP_DEVBOX_STATE_ROOT=/state`, so OAuth client registrations
+and rotating refresh tokens use durable files there by default. Explicit `..._CLIENT_STORE`
+and `..._REFRESH_STORE` values still take precedence when a different administrator-owned
+location is required.
+
+The `/state` path must be a persistent volume. A container-local or newly-created anonymous
+state volume still disappears from the next deployment's point of view. With the same
+persistent `/state` mounted across replacements, ChatGPT can silently refresh and keep the
+connector authorized. Access tokens and authorization codes remain memory-only by design.
+
+When no state root and no explicit store paths are configured, local development preserves
+the previous memory-only behavior and a process restart requires authorization again.
 
 ### Confirming which commit is live
 
@@ -65,22 +74,22 @@ clients can bootstrap the flow.
 - The owner passphrase is compared in **constant time** and is **rate-limited**; DCR is
   capped and rate-limited. A registered client is useless without the human passphrase.
 - Redirect URIs: exact match, `https`-or-`localhost` only, no fragments/wildcards.
-- **Narrow persistence only**: if `MCP_DEVBOX_OAUTH_CLIENT_STORE` is set, DCR public
-  client registrations persist so ChatGPT can reauthenticate after redeploy without
-  deleting the connector. Authorization codes, access tokens, and refresh tokens stay
-  in process memory only; a restart drops sessions and forces a fresh owner login.
-- Keep the client store file on a small persistent volume such as `/state`, not inside
-  the writable repo workspace, so MCP tools cannot edit OAuth server state as data.
+- **Narrow persistence only**: public client registrations and refresh grants may be
+  restored from their administrator-owned 0600 stores. Authorization codes and access
+  tokens stay in process memory and disappear on restart.
+- Keep `/state` outside the writable repo workspace so MCP tools cannot edit OAuth server
+  state as repository data.
 
 ## Connecting ChatGPT
 
-1. Deploy with the two required env vars set (e.g. in Coolify). For stable reconnects
-   after redeploy, also set `MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json`
-   and mount `/state` as a persistent volume.
+1. Deploy with the required public URL and passphrase. Mount the configured state root as
+   one persistent volume; the Docker default is `/state`.
 2. In ChatGPT, add the connector with the MCP URL `https://<host>/mcp` and choose the
    **OAuth** option (no manual client id needed — DCR handles it).
 3. ChatGPT discovers the AS, registers, and opens the authorize page; enter the
    passphrase; it exchanges the code for a token and connects.
+4. Redeploy once and confirm the existing connector reconnects without deleting it or
+   entering the passphrase again.
 
 ## After OAuth is verified
 
