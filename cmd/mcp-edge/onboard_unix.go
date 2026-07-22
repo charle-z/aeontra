@@ -94,7 +94,7 @@ func resolveOnboardingIdentity(server, name, state string, stdin io.Reader) (edg
 			return edgeclient.Identity{}, "", errors.New("existing Edge identity is invalid")
 		}
 		if !errors.Is(err, os.ErrNotExist) {
-			return edgeclient.Identity{}, "", errors.New("Edge state is unavailable")
+			return edgeclient.Identity{}, "", errors.New("edge state is unavailable")
 		}
 	}
 	code, err := readPairingCode(stdin)

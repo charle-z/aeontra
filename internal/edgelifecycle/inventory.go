@@ -167,13 +167,13 @@ func normalizeInventoryConfig(config InventoryConfig) (string, string, []string,
 	home := filepath.Clean(strings.TrimSpace(config.HomeDir))
 	installRoot := filepath.Clean(strings.TrimSpace(config.InstallRoot))
 	if home == "." || !filepath.IsAbs(home) {
-		return "", "", nil, errors.New("Edge home must be an absolute path")
+		return "", "", nil, errors.New("edge home must be an absolute path")
 	}
 	if installRoot == "." || !filepath.IsAbs(installRoot) {
-		return "", "", nil, errors.New("Edge install root must be an absolute path")
+		return "", "", nil, errors.New("edge install root must be an absolute path")
 	}
 	if home == string(os.PathSeparator) {
-		return "", "", nil, errors.New("Edge home must not be filesystem root")
+		return "", "", nil, errors.New("edge home must not be filesystem root")
 	}
 
 	historical := make([]string, 0, len(config.HistoricalPaths))

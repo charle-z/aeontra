@@ -111,7 +111,7 @@ func PlanLegacyStateMigration(config StateMigrationConfig) (StateMigrationPlan, 
 		return StateMigrationPlan{}, migrationErr(MigrationErrorInventoryBlocked, err)
 	}
 	if report.StateMigration == MigrationBlocked {
-		return StateMigrationPlan{}, migrationErr(MigrationErrorInventoryBlocked, errors.New("Edge layout blocks state migration"))
+		return StateMigrationPlan{}, migrationErr(MigrationErrorInventoryBlocked, errors.New("edge layout blocks state migration"))
 	}
 	if report.StateMigration == MigrationNone {
 		return plan, nil

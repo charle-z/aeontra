@@ -28,7 +28,7 @@ func main() {
 	if err := os.Chmod(clean, 0o700); err != nil {
 		fatal("protect fixture root")
 	}
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		fatal("generate fixture device key")
 	}

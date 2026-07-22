@@ -36,7 +36,7 @@ func lifecycleCommand(args []string, stdout, stderr io.Writer) error {
 		}
 		report, err := inspectEdgeLifecycle(config.Inventory)
 		if err != nil {
-			return errors.New("Edge lifecycle inventory failed")
+			return errors.New("edge lifecycle inventory failed")
 		}
 		fmt.Fprint(stdout, formatLifecycleInventory(report))
 		return nil
@@ -106,7 +106,7 @@ func lifecycleCommand(args []string, stdout, stderr io.Writer) error {
 func localLifecycleConfig() (edgelifecycle.StateMigrationConfig, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || !filepath.IsAbs(home) || home == string(os.PathSeparator) {
-		return edgelifecycle.StateMigrationConfig{}, errors.New("Edge home is unavailable")
+		return edgelifecycle.StateMigrationConfig{}, errors.New("edge home is unavailable")
 	}
 	return edgelifecycle.StateMigrationConfig{
 		Inventory: edgelifecycle.InventoryConfig{
