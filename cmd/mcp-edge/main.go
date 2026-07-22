@@ -51,6 +51,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = bundleCommand(args[1:], stdout)
 	case "github":
 		err = githubCommand(args[1:], stdin, stdout, stderr)
+	case "lifecycle":
+		err = lifecycleCommand(args[1:], stdout, stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -216,6 +218,9 @@ func usage(output io.Writer) {
 Usage:
   mcp-edge pair --server https://mcp.example.com [--state <ABS_PATH>] [--name wsl-development]
   mcp-edge onboard --server https://mcp.example.com [--state <ABS_PATH>] [--name parrot-edge]
+  mcp-edge lifecycle inspect
+  mcp-edge lifecycle migrate-state
+  mcp-edge lifecycle recover-state
   mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 1m]
   mcp-edge opencode --opencode <ABS_PATH> --provider <ABS_PATH> --integrity <ABS_PATH> [--bubblewrap <ABS_PATH>] [--state <ABS_PATH>]
   mcp-edge workspace add [--profile sandbox|linux-workcell] <ABS_LINUX_PATH> [--state <ABS_PATH>]

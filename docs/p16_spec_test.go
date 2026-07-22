@@ -23,6 +23,7 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 		"tasks":        "../specs/007-global-work-scheduler/tasks.md",
 		"ADR":          "adr/0004-p16-global-scheduler-separated-execution-pools.md",
 		"baseline":     "baselines/2026-07-22-p16-capacity.md",
+		"migration":    "edge-lifecycle-migration.md",
 	}
 	contents := make(map[string]string, len(files))
 	for name, path := range files {
@@ -113,11 +114,25 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 		}
 	}
 
+	migration := contents["migration"]
+	for _, required := range []string{
+		"mcp-edge lifecycle inspect",
+		"RENAME_NOREPLACE",
+		"recovered_complete",
+		"unknown content is never moved",
+		"package automation remains pending Step 2",
+	} {
+		if !strings.Contains(strings.ToLower(migration), strings.ToLower(required)) {
+			t.Errorf("P16 migration documentation missing %q", required)
+		}
+	}
+
 	docMap := read("documentation-map.md")
 	for _, required := range []string{
 		"specs/007-global-work-scheduler",
 		"0004-p16-global-scheduler-separated-execution-pools.md",
 		"2026-07-22-p16-capacity.md",
+		"edge-lifecycle-migration.md",
 	} {
 		if !strings.Contains(docMap, required) {
 			t.Errorf("documentation map missing %q", required)

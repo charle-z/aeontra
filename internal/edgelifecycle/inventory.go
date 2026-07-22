@@ -51,6 +51,8 @@ const (
 	BlockerCurrentReleaseAncestor     BlockerCode = "current_release_ancestor_symlink"
 	BlockerCurrentReleaseOutsideRoot  BlockerCode = "current_release_outside_root"
 	BlockerCurrentReleaseTargetAbsent BlockerCode = "current_release_target_absent"
+	BlockerSystemdRootSymlink         BlockerCode = "systemd_root_symlink"
+	BlockerSystemdRootNotDirectory    BlockerCode = "systemd_root_not_directory"
 )
 
 type Blocker struct {
@@ -68,12 +70,19 @@ type PathStatus struct {
 	Target                string   `json:"target,omitempty"`
 }
 
+type ServiceStatus struct {
+	Name string   `json:"name"`
+	Kind PathKind `json:"kind"`
+}
+
 type LayoutReport struct {
 	PreferredState  PathStatus           `json:"preferred_state"`
 	LegacyState     PathStatus           `json:"legacy_state"`
 	DevelopmentRoot PathStatus           `json:"development_root"`
 	LabRoot         PathStatus           `json:"lab_root"`
 	CurrentRelease  PathStatus           `json:"current_release"`
+	SystemdRoot     PathStatus           `json:"systemd_root"`
+	Services        []ServiceStatus      `json:"services"`
 	Historical      []PathStatus         `json:"historical"`
 	StateMigration  MigrationDisposition `json:"state_migration"`
 	Blockers        []Blocker            `json:"blockers"`
@@ -82,6 +91,7 @@ type LayoutReport struct {
 type InventoryConfig struct {
 	HomeDir         string
 	InstallRoot     string
+	SystemdRoot     string
 	HistoricalPaths []string
 }
 
@@ -116,6 +126,10 @@ func InspectLayout(config InventoryConfig) (LayoutReport, error) {
 	if err != nil {
 		return LayoutReport{}, err
 	}
+	systemdRoot, services, systemdBlockers, err := inspectKnownServices(config.SystemdRoot)
+	if err != nil {
+		return LayoutReport{}, err
+	}
 
 	report := LayoutReport{
 		PreferredState:  preferred,
@@ -123,9 +137,11 @@ func InspectLayout(config InventoryConfig) (LayoutReport, error) {
 		DevelopmentRoot: development,
 		LabRoot:         lab,
 		CurrentRelease:  current,
+		SystemdRoot:     systemdRoot,
+		Services:        services,
 		Historical:      make([]PathStatus, 0, len(historical)),
 		StateMigration:  MigrationNone,
-		Blockers:        append([]Blocker(nil), currentBlockers...),
+		Blockers:        append(append([]Blocker(nil), currentBlockers...), systemdBlockers...),
 	}
 
 	for _, candidate := range historical {

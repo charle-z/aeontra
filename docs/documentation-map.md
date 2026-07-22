@@ -67,6 +67,9 @@ governed by `specs/007-global-work-scheduler/` and
 planning evidence is `docs/baselines/2026-07-22-p16-capacity.md`. Until implementation,
 exact-head gates and production evidence exist, these documents describe an in-progress
 contract and must not be cited as deployed behavior.
+P16 Step 1 inventory, atomic legacy-state migration, crash recovery, stable blocker
+codes and explicit non-mutation of unknown `p12` directories are documented by
+`docs/edge-lifecycle-migration.md`; package automation remains pending Step 2.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |

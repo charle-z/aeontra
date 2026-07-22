@@ -5,36 +5,40 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 
 ## Step 0 — Contract and documentation
 
-- [ ] Add a docs test that requires the P16 spec, threat model, plan, tasks, ADR, and
+- [x] Add a docs test that requires the P16 spec, threat model, plan, tasks, ADR, and
   dated capacity baseline.
-- [ ] Add assertions for the non-negotiable phrases/concepts: no silent target fallback,
+- [x] Add assertions for the non-negotiable phrases/concepts: no silent target fallback,
   no opaque IDs in normal UX, maximum one initial VPS build, lossless workspace
   recovery, two-command clean Edge install, local Edge revalidation, and cgroup
   enforcement.
-- [ ] Add the P16 entries to `docs/documentation-map.md`.
-- [ ] Run docs tests and `git diff --check`.
-- [ ] Commit as `Step 0: Specify global scheduler and Edge lifecycle`.
+- [x] Add the P16 entries to `docs/documentation-map.md`.
+- [x] Run docs tests and `git diff --check`.
+- [x] Commit as `Step 0: Specify global scheduler and Edge lifecycle`.
 
 ## Step 1 — Migration inventory
 
 ### RED tests
 
-- [ ] Fixture: preferred P15 state with identity/workspaces survives repeat inventory.
-- [ ] Fixture: legacy `~/.config/mcp-devbox-edge` migrates only when preferred identity
+- [x] Fixture: preferred P15 state with identity/workspaces survives repeat inventory.
+- [x] Fixture: legacy `~/.config/mcp-devbox-edge` migrates only when preferred identity
   is absent.
-- [ ] Fixture: directory named `p12` with unknown contents is reported and untouched.
-- [ ] Fixture: known P12 service/release/workspace layout is classified correctly.
-- [ ] Reject symlinked roots/ancestors, unsafe owner/mode, Windows-mounted Linux
-  workspace, and overlapping private/workspace roots.
-- [ ] Inject failure after every migration stage and prove rollback/idempotence.
+- [x] Fixture: directory named `p12` with unknown contents is reported and untouched.
+- [x] Fixture: known P12/P15 service, release, repository, and workspace-state layouts
+  are classified read-only.
+- [x] Reject terminal/ancestor symlinks, symlinked identity markers, conflicting or
+  occupied state, unsafe state owner/mode, and invalid signed-release links.
+- [x] Inject failure after every migration stage and prove rollback/idempotence.
+- [ ] Reject Windows-mounted, overlapping, dirty, mismatched, or ambiguous project
+  workspaces in the Step 3 workspace resolver; Step 1 does not guess mount semantics.
 
 ### Implementation
 
-- [ ] Add typed inventory records and stable blocker codes.
-- [ ] Add schema version and migration journal.
-- [ ] Add dry-run migration report with no raw secrets or unsafe paths.
-- [ ] Add atomic migration/rollback helpers.
-- [ ] Document supported legacy layouts and unknown-directory policy.
+- [x] Add typed inventory records and stable blocker codes.
+- [x] Add schema version and private migration journal.
+- [x] Add a closed safe inventory/migrate/recover CLI with no path or command input.
+- [x] Add atomic no-replace migration, verification, crash recovery, and rollback.
+- [x] Document supported legacy layouts, unknown-directory policy, recovery, and
+  explicit Step 2 limitations.
 
 ## Step 2 — Package, onboard, doctor, repair
 
