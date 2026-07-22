@@ -8,11 +8,30 @@ personal machine.
 
 The Docker image is multi-stage:
 
-- build: official `golang:1.26-alpine`, `go build ./cmd/mcp-devbox`
+- console build: installs pinned dependencies and runs only `console:build`; lint,
+  typecheck and tests remain mandatory CI gates and are not repeated on the VPS
+- Go build: official `golang:1.26-alpine`, persistent BuildKit module/compiler
+  caches, and one-package/one-logical-CPU concurrency by default
 - runtime: pinned Go/Alpine image, non-root user `10001`, includes Go, `git`,
   Node.js, and the BusyBox `wget` applet used only by the healthcheck
 - healthcheck: `GET http://127.0.0.1:8765/healthz`
 - graceful replacement: Docker `SIGTERM` is handled and active requests get up to five seconds to drain before exit.
+
+The conservative build defaults are intentional for the production micro VPS with
+two vCPUs. They leave roughly one logical CPU available to Coolify, Traefik and the
+running application instead of letting compilation occupy both cores. Builds can
+take longer, but normal requests should remain responsive. Dedicated build hosts can
+override these Docker build arguments:
+
+```text
+BUILD_GOMAXPROCS=2
+BUILD_GO_PARALLELISM=2
+BUILD_UV_THREADPOOL_SIZE=2
+```
+
+Do not raise them on the two-vCPU production VPS merely to shorten a deployment.
+The build uses cache mounts, so unchanged Go modules and compiled packages are reused
+across BuildKit builds even though the final binary is stamped with the new commit.
 
 Default container command:
 
