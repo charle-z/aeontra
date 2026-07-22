@@ -60,6 +60,13 @@ P15 historical release-candidate evidence remains in
 `p15.0.5` is recorded by `docs/context-capsule.md`, `AGENTS.md`, README, the 98-tool
 catalog tests and `docs/baselines/2026-07-20-p15-dev-edge-git.md`. Source/release,
 VPS deployment and real Edge installation must be reported as separate facts.
+P16 global scheduling, easy Edge lifecycle, project aliases, workspace recovery,
+separate VPS/Edge pools, resource equations, continuity and image-deploy direction are
+governed by `specs/007-global-work-scheduler/` and
+`docs/adr/0004-p16-global-scheduler-separated-execution-pools.md`. The measured
+planning evidence is `docs/baselines/2026-07-22-p16-capacity.md`. Until implementation,
+exact-head gates and production evidence exist, these documents describe an in-progress
+contract and must not be cited as deployed behavior.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
 | What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |
