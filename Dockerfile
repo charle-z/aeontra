@@ -1,4 +1,12 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:22-alpine3.22 AS console-build
+
+# The production VPS has two vCPUs. Keep image assembly to one logical CPU by
+# default so the live control plane, Coolify and Traefik retain scheduler time.
+# External build hosts can override these args when they have spare capacity.
+ARG BUILD_GOMAXPROCS=1
+ARG BUILD_UV_THREADPOOL_SIZE=1
 
 WORKDIR /src
 RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
@@ -6,7 +14,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/console/package.json web/console/package.json
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY web/console web/console
-RUN pnpm console:check && pnpm console:test && pnpm console:build
+# CI is the test gate. A production image build only assembles the already gated
+# console, avoiding a second CPU-heavy test/typecheck pass on the deployment VPS.
+RUN GOMAXPROCS=${BUILD_GOMAXPROCS} \
+	UV_THREADPOOL_SIZE=${BUILD_UV_THREADPOOL_SIZE} \
+	pnpm console:build
 
 FROM golang:1.26.5-alpine3.24 AS build
 
@@ -17,6 +29,8 @@ FROM golang:1.26.5-alpine3.24 AS build
 # forces a genuine rebuild instead of reusing a stale cached image layer.
 ARG GIT_SHA=unknown
 ARG BUILD_TIME=unknown
+ARG BUILD_GOMAXPROCS=1
+ARG BUILD_GO_PARALLELISM=1
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -24,7 +38,10 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY --from=console-build /src/internal/console/assets ./internal/console/assets
 
-RUN CGO_ENABLED=0 go build -trimpath \
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+	--mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+	CGO_ENABLED=0 GOMAXPROCS=${BUILD_GOMAXPROCS} \
+	go build -p=${BUILD_GO_PARALLELISM} -trimpath \
 	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=${GIT_SHA} -X github.com/charle-z/mcp-devbox/internal/buildinfo.BuiltAt=${BUILD_TIME}" \
 	-o /out/mcp-devbox ./cmd/mcp-devbox
 
