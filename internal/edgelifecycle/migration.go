@@ -29,6 +29,7 @@ type MigrationStatus string
 
 const (
 	MigrationStatusNotNeeded         MigrationStatus = "not_needed"
+	MigrationStatusPrepared          MigrationStatus = "prepared"
 	MigrationStatusMigrated          MigrationStatus = "migrated"
 	MigrationStatusRecoveredComplete MigrationStatus = "recovered_complete"
 	MigrationStatusRecoveredRollback MigrationStatus = "recovered_rollback"
@@ -79,9 +80,10 @@ type StateMigrationPlan struct {
 }
 
 type MigrationHooks struct {
-	AfterJournal func() error
-	AfterRename  func() error
-	AfterVerify  func() error
+	AfterJournal          func() error
+	AfterRename           func() error
+	AfterVerify           func() error
+	RetainVerifiedJournal bool
 }
 
 type StateMigrationResult struct {
@@ -204,6 +206,9 @@ func ApplyLegacyStateMigration(config StateMigrationConfig, plan StateMigrationP
 	}
 
 	rollbackRequired = false
+	if hooks.RetainVerifiedJournal {
+		return StateMigrationResult{Status: MigrationStatusPrepared}, nil
+	}
 	if err := removeMigrationJournal(plan.JournalPath); err != nil {
 		return StateMigrationResult{}, err
 	}

@@ -24,6 +24,7 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 		"ADR":          "adr/0004-p16-global-scheduler-separated-execution-pools.md",
 		"baseline":     "baselines/2026-07-22-p16-capacity.md",
 		"migration":    "edge-lifecycle-migration.md",
+		"installation": "install-edge-parrot-p16.md",
 	}
 	contents := make(map[string]string, len(files))
 	for name, path := range files {
@@ -117,13 +118,29 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 	migration := contents["migration"]
 	for _, required := range []string{
 		"mcp-edge lifecycle inspect",
+		"prepare-state-migration",
+		"rollback-state-migration",
 		"RENAME_NOREPLACE",
 		"recovered_complete",
 		"unknown content is never moved",
-		"package automation remains pending Step 2",
+		"postinst.in` no longer performs a direct shell move",
 	} {
 		if !strings.Contains(strings.ToLower(migration), strings.ToLower(required)) {
 			t.Errorf("P16 migration documentation missing %q", required)
+		}
+	}
+
+	installation := contents["installation"]
+	for _, required := range []string{
+		"at most these two local commands",
+		"pairing=reused",
+		"mcp-edge doctor --repair",
+		"forced service-health failure restores legacy state byte for byte",
+		"must not automatically delete user repositories",
+		"validation pending",
+	} {
+		if !strings.Contains(strings.ToLower(installation), strings.ToLower(required)) {
+			t.Errorf("P16 installation documentation missing %q", required)
 		}
 	}
 
@@ -133,6 +150,7 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 		"0004-p16-global-scheduler-separated-execution-pools.md",
 		"2026-07-22-p16-capacity.md",
 		"edge-lifecycle-migration.md",
+		"install-edge-parrot-p16.md",
 	} {
 		if !strings.Contains(docMap, required) {
 			t.Errorf("documentation map missing %q", required)

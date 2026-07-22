@@ -18,10 +18,12 @@ var inspectEdgeLifecycle = edgelifecycle.InspectLayout
 var planEdgeStateMigration = edgelifecycle.PlanLegacyStateMigration
 var applyEdgeStateMigration = edgelifecycle.ApplyLegacyStateMigration
 var recoverEdgeStateMigration = edgelifecycle.RecoverLegacyStateMigration
+var finalizeEdgeStateMigration = edgelifecycle.FinalizeLegacyStateMigration
+var rollbackEdgeStateMigration = edgelifecycle.RollbackPreparedLegacyStateMigration
 
 func lifecycleCommand(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("lifecycle requires inspect, migrate-state or recover-state")
+		return errors.New("lifecycle requires a closed state operation")
 	}
 	config, err := localLifecycleConfig()
 	if err != nil {
@@ -51,6 +53,40 @@ func lifecycleCommand(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		fmt.Fprintf(stdout, "edge_lifecycle migration=%s\n", result.Status)
+		return nil
+	case "prepare-state-migration":
+		if len(args) != 1 {
+			return errors.New("lifecycle prepare-state-migration accepts no arguments")
+		}
+		plan, err := planEdgeStateMigration(config)
+		if err != nil {
+			return err
+		}
+		result, err := applyEdgeStateMigration(config, plan, edgelifecycle.MigrationHooks{RetainVerifiedJournal: true})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "edge_lifecycle migration=%s\n", result.Status)
+		return nil
+	case "finalize-state-migration":
+		if len(args) != 1 {
+			return errors.New("lifecycle finalize-state-migration accepts no arguments")
+		}
+		result, err := finalizeEdgeStateMigration(config)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "edge_lifecycle finalization=%s\n", result.Status)
+		return nil
+	case "rollback-state-migration":
+		if len(args) != 1 {
+			return errors.New("lifecycle rollback-state-migration accepts no arguments")
+		}
+		result, err := rollbackEdgeStateMigration(config)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "edge_lifecycle rollback=%s\n", result.Status)
 		return nil
 	case "recover-state":
 		if len(args) != 1 {

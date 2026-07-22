@@ -1,18 +1,17 @@
 # Edge lifecycle inventory and state migration
 
-Status: **P16 Step 1 implemented library and local closed CLI; installer integration is
-pending Step 2**.
-
-Package automation remains pending Step 2.
+Status: **P16 Step 1 migration primitive implemented and integrated into the Step 2
+package transaction on branch `p16-global-work-scheduler`**. Local tests pass; exact-head
+remote package/race gates and real Parrot evidence remain validation pending.
 
 This document is the repository truth for discovering and migrating historical P12/P15
 Edge state. The Brain may index this page but does not replace it.
 
 ## User-facing objective
 
-Normal installation and update must not require the operator to find, rename, copy, or
-re-register Edge state manually. After Step 2, the signed package/onboarding flow will
-invoke the closed lifecycle operations automatically.
+Normal installation and update do not require the operator to find, rename, copy, or
+re-register Edge state manually. The signed package invokes the closed lifecycle
+operations automatically as the Edge user.
 
 The current Step 1 local commands exist for package integration, tests, and emergency
 local diagnosis:
@@ -21,6 +20,9 @@ local diagnosis:
 mcp-edge lifecycle inspect
 mcp-edge lifecycle migrate-state
 mcp-edge lifecycle recover-state
+mcp-edge lifecycle prepare-state-migration
+mcp-edge lifecycle finalize-state-migration
+mcp-edge lifecycle rollback-state-migration
 ```
 
 They accept no paths, commands, URLs, IDs, or free-form parameters. They are not the
@@ -82,8 +84,8 @@ mcp-devbox-edge-onboard@.path
 mcp-devbox-edge-repair.service
 ```
 
-This distinguishes historical P12 units from the current P15 template before Step 2
-performs any package cleanup or activation.
+This distinguishes historical P12 units from the current P15 template before package
+cleanup or activation.
 
 Stable blockers include:
 
@@ -225,19 +227,35 @@ rollback_failed
 recovery_ambiguous
 ```
 
-## What Step 1 does not yet do
+## Package integration
 
-- It does not change `packaging/debian/postinst.in`.
-- It does not run against the real Parrot Edge.
+`packaging/debian/postinst.in` no longer performs a direct shell move/chown of private
+state. Its fixed transaction is:
+
+```text
+recover-state
+-> prepare-state-migration
+-> verify preflight/service health
+-> finalize-state-migration
+```
+
+If installation fails after prepare, the package trap runs
+`rollback-state-migration` before restoring the previous signed release. The migration
+is executed through `runuser` as the configured Edge user. The package declares
+`util-linux` so this authority boundary is an explicit dependency.
+
+The remote package fixture creates a valid Ed25519 identity/key, forces one service
+health failure, proves byte-preserving rollback to the legacy path, then proves one
+successful migration and a repeat idempotent `postinst`.
+
+## Remaining limitations
+
+- The transaction has not yet run against the real Parrot Edge.
+- Exact-head remote package and CGO race gates remain blocking.
 - It does not migrate arbitrary directories or repositories.
-- It does not repair permissions automatically.
-- It does not skip pairing in `mcp-edge onboard` yet.
+- It does not repair arbitrary permissions automatically.
 - It does not discover/create project aliases or workspaces yet.
 - It does not install the P16 scheduler or worker.
-
-Step 2 must replace the historical direct shell `mv` in `postinst` with the closed
-recover/plan/apply lifecycle, invoke it as the Edge user, reuse a valid identity, and
-prove package rollback from representative P12/P15 fixtures.
 
 ## Verification
 

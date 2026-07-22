@@ -44,23 +44,28 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 
 ### RED tests
 
-- [ ] Clean package install followed by one guided onboard.
-- [ ] Repeat package install is byte/invariant idempotent for identity/workspaces/jobs.
-- [ ] Existing valid identity skips pairing.
-- [ ] Rootless socket missing/unsafe blocks readiness without partial activation.
-- [ ] Failed service health restores previous signed release.
-- [ ] `doctor --repair` repairs only fixed owned resources.
-- [ ] Repair cannot accept command, URL, arbitrary path, script, hash, or repository
+- [x] Clean package install contract followed by one guided onboard; remote container
+  execution remains an exact-head gate.
+- [x] Repeat package transaction is byte/invariant idempotent for identity, key,
+  workspaces, and checkpoint fixtures.
+- [x] Existing valid identity skips pairing and stdin consumption.
+- [x] Rootless socket missing/unsafe blocks readiness without partial activation.
+- [x] Failed service health rolls state back before the previous signed release is
+  restored; remote container execution remains an exact-head gate.
+- [x] `doctor --repair` repairs only fixed owned resources.
+- [x] Repair cannot accept command, URL, arbitrary path, script, hash, or repository
   mutation.
 - [ ] WSL/systemd restart returns Edge to healthy without commands.
 
 ### Implementation
 
-- [ ] Finish package postinst/preflight around the migration inventory.
-- [ ] Add human alias to onboarding and persisted identity metadata.
-- [ ] Add closed doctor status codes and repair profiles.
-- [ ] Add update receipt/migration compatibility and rollback.
-- [ ] Add install/update/uninstall docs; uninstall preserves repos by default.
+- [x] Finish package postinst/preflight around the migration inventory.
+- [x] Reuse the persisted human identity name as the normal onboarding alias and omit
+  opaque device IDs from normal output.
+- [x] Add closed doctor status codes and the fixed signed-installation repair profile.
+- [x] Add package migration compatibility and rollback around existing signed update
+  behavior.
+- [x] Add install/update/uninstall docs; uninstall preserves repos/state by default.
 
 ## Step 3 — Project aliases and workspace resolver
 
