@@ -1,0 +1,105 @@
+//go:build !windows
+
+package edgeclient
+
+import (
+	"context"
+	"errors"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+)
+
+type localProjectCheckoutInspector struct{}
+
+func newProjectCheckoutInspector() ProjectCheckoutInspector {
+	return localProjectCheckoutInspector{}
+}
+
+func (localProjectCheckoutInspector) Inspect(ctx context.Context, path, owner, repository string) (ProjectCheckoutState, error) {
+	validated, err := ValidateRegisteredWorkspace(path)
+	if err != nil {
+		return ProjectCheckoutUnsafe, err
+	}
+	metadata, err := os.Lstat(filepath.Join(validated, ".git"))
+	if err != nil || !metadata.IsDir() || metadata.Mode()&os.ModeSymlink != 0 {
+		return ProjectCheckoutUnsafe, errors.New("project Git metadata is unavailable or unsafe")
+	}
+	gitPath, ok := findSafeLinuxTool("git", openCodeDefaultToolPath)
+	if !ok {
+		return ProjectCheckoutUnsafe, errors.New("git is unavailable")
+	}
+	runner := projectGitRunner{gitPath: gitPath}
+	top, err := runner.run(ctx, validated, "rev-parse", "--show-toplevel")
+	if err != nil || filepath.Clean(strings.TrimSpace(top)) != validated {
+		return ProjectCheckoutUnsafe, errors.New("project checkout root is invalid")
+	}
+	remote, err := runner.run(ctx, validated, "remote", "get-url", "origin")
+	if err != nil || !projectRemoteMatches(strings.TrimSpace(remote), owner, repository) {
+		return ProjectCheckoutRemoteMismatch, nil
+	}
+	pushRemote, err := runner.run(ctx, validated, "remote", "get-url", "--push", "origin")
+	if err != nil || !projectRemoteMatches(strings.TrimSpace(pushRemote), owner, repository) {
+		return ProjectCheckoutRemoteMismatch, nil
+	}
+	status, err := runner.run(ctx, validated, "status", "--porcelain=v1", "--untracked-files=all")
+	if err != nil {
+		return ProjectCheckoutUnsafe, errors.New("project checkout status is unavailable")
+	}
+	if strings.TrimSpace(status) != "" {
+		return ProjectCheckoutDirty, nil
+	}
+	return ProjectCheckoutReady, nil
+}
+
+type projectGitRunner struct {
+	gitPath string
+}
+
+func (r projectGitRunner) run(ctx context.Context, directory string, args ...string) (string, error) {
+	commandCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(commandCtx, r.gitPath, args...)
+	command.Dir = directory
+	command.Env = []string{
+		"PATH=" + openCodeDefaultToolPath,
+		"HOME=/nonexistent",
+		"LANG=C.UTF-8",
+		"LC_ALL=C.UTF-8",
+		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_COUNT=3",
+		"GIT_CONFIG_KEY_0=core.hooksPath",
+		"GIT_CONFIG_VALUE_0=/dev/null",
+		"GIT_CONFIG_KEY_1=core.fsmonitor",
+		"GIT_CONFIG_VALUE_1=false",
+		"GIT_CONFIG_KEY_2=protocol.file.allow",
+		"GIT_CONFIG_VALUE_2=never",
+		"GIT_TERMINAL_PROMPT=0",
+	}
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	capture := &boundedHTBLabCapture{limit: 64 << 10}
+	command.Stdout = capture
+	command.Stderr = capture
+	if err := command.Run(); err != nil {
+		return "", err
+	}
+	return capture.buffer.String(), nil
+}
+
+func projectRemoteMatches(raw, owner, repository string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "github.com") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.RawPath != "" {
+		return false
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(parts) != 2 || !strings.HasSuffix(strings.ToLower(parts[1]), ".git") {
+		return false
+	}
+	remoteOwner, remoteRepository, err := NormalizeProjectRepository(parts[0], parts[1][:len(parts[1])-4])
+	return err == nil && remoteOwner == owner && remoteRepository == repository
+}

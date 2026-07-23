@@ -2,10 +2,10 @@
 
 Historical deployed baseline preserved for documentation guards: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`.
 
-Branch: `p16-global-work-scheduler`.
+Branch: `p16-global-work-scheduler`. Pull request: `#48`.
 
-P16 Step 2 is implemented locally but not deployed. The package now uses closed recover, prepare, health-check, finalize, and rollback state operations as the Edge user. Onboarding reuses a valid identity without another pairing code or opaque ID output. `mcp-edge doctor` and `doctor --repair` use bounded status and the fixed repair service. Documentation is in `docs/install-edge-parrot-p16.md` and `docs/edge-lifecycle-migration.md`.
+P16 Step 3 first cut is implemented locally but not deployed. It adds a private versioned `projects.db`, human alias and owner/repository canonicalization, durable target/workspace bindings, profile enforcement, real read-only Git checkout revalidation, stable blocker codes, and `mcp-edge project status|resolve --alias <name> [--target <alias>]`. Normal output omits paths and device/workspace/runtime/job identifiers. Registration remains internal; discovery, ambiguity handling, safe association, clone and public MCP tools remain unfinished.
 
-Verification: `go test ./... -count=1`, `go vet ./...`, component builds, package/onboarding tests, documentation tests, and `git diff --check` pass. The local race test cannot run because CGO is disabled; remote exact-head CI remains required.
+Verification: all Go packages pass when run in bounded groups; `go vet ./...`, Staticcheck v0.7.0, component builds, documentation guards and `git diff --check` pass. The single `go test ./...` process was killed by the workcell limit after passing its reported packages, so coverage was completed by explicit package groups. Local `-race` cannot run because CGO is disabled; exact-head CI remains required.
 
-Next: commit Step 2, publish the branch without force push, inspect exact-head PR checks, then continue Step 3. Do not alter the real Parrot Edge before remote package/race validation.
+Next: commit this first Step 3 cut, publish the same branch without force push, inspect PR #48 exact-head checks, then continue test-first with unbound checkout discovery, ambiguity classification and lossless association preview. Do not alter the real Parrot Edge or production.

@@ -45,6 +45,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = runOpenCodeRelay(args[1:], stderr)
 	case "workspace":
 		err = workspaceCommand(args[1:], stdout, stderr)
+	case "project":
+		err = projectCommand(args[1:], stdout, stderr)
 	case "lab":
 		err = labCommand(args[1:], stdout, stderr)
 	case "bundle":
@@ -227,6 +229,8 @@ Usage:
   mcp-edge lifecycle finalize-state-migration
   mcp-edge lifecycle rollback-state-migration
   mcp-edge doctor [--repair]
+  mcp-edge project status --alias <PROJECT> [--target <ALIAS>]
+  mcp-edge project resolve --alias <PROJECT> [--target <ALIAS>]
   mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 1m]
   mcp-edge opencode --opencode <ABS_PATH> --provider <ABS_PATH> --integrity <ABS_PATH> [--bubblewrap <ABS_PATH>] [--state <ABS_PATH>]
   mcp-edge workspace add [--profile sandbox|linux-workcell] <ABS_LINUX_PATH> [--state <ABS_PATH>]

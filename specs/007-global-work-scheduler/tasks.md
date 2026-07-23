@@ -71,24 +71,27 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 
 ### RED tests
 
-- [ ] Resolve one registered project using alias only.
-- [ ] Infer canonical checkout name from owner/repository.
-- [ ] Reuse existing matching checkout.
+- [x] Resolve one registered project using alias only, with no opaque ID or path in the
+  safe result.
+- [x] Infer the canonical checkout name from owner/repository without mutating the
+  filesystem.
+- [x] Reuse and revalidate one explicitly bound matching checkout.
 - [ ] Associate safe legacy path without moving it.
 - [ ] Clone missing repo into approved root with fixed Git authority.
-- [ ] Dirty, mismatched, ambiguous, symlinked, escaped, or Windows-mounted checkout
-  blocks safely.
-- [ ] Alias collision, case folding, Unicode confusable, traversal, and oversized input
+- [x] Dirty, mismatched, symlinked, escaped, or Windows-mounted bound checkout blocks
+  safely.
+- [ ] Multiple unbound matching checkouts produce an explicit ambiguous result.
+- [x] Alias collision, case folding, Unicode confusable, traversal, and oversized input
   fail.
-- [ ] Restart/reopen preserves aliases and bindings.
+- [x] Restart/reopen preserves aliases and bindings.
 
 ### Implementation
 
-- [ ] Add project registry schema and migration.
-- [ ] Add owner-bound repository canonicalization.
-- [ ] Add local workspace discovery/classification.
+- [x] Add private versioned `projects.db` schema and fail-closed schema validation.
+- [x] Add owner-bound repository canonicalization.
+- [ ] Add unbound local workspace discovery/classification.
 - [ ] Add lossless recovery decision engine and stable reasons.
-- [ ] Add read-only project resolve/status tools first.
+- [x] Add read-only project resolve/status tools first.
 - [ ] Add approved create/associate flow without exposing internal IDs.
 
 ## Step 4 — Edge durable job journal
