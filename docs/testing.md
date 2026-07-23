@@ -394,13 +394,17 @@ localhost/p12-postgres-fixture:<64 lowercase hexadecimal characters>
 ```
 
 Before saving the archive, Docker applies the digest-derived local tag and verifies that
-it resolves to the pulled image ID. Rootless Podman then loads that tagged archive,
-verifies through `podman image inspect` that the preserved local tag resolves to the
-same normalized config digest, and only then exports it as `P12_POSTGRES_IMAGE`. The E2E parser rejects registry names,
-mutable tags, raw `sha256:` references, uppercase digests and traversal. This avoids
-the rootless remote-client `image exists` path, which returned failure even after a
-successful load. Both workflow setup and the PostgreSQL cycle use `image inspect` and
-compare the exact normalized ID, without permitting a network pull or arbitrary image reference.
+it resolves to the pulled image ID. Rootless Podman then loads the archive and writes a
+bounded `images --no-trunc` inventory. A strict parser accepts only full image IDs,
+requires exactly one match for the archive config digest, and rejects malformed or
+ambiguous output. The service then creates the closed local tag from that exact loaded
+ID and verifies it through `podman image inspect` before exporting
+`P12_POSTGRES_IMAGE`.
+
+This does not assume that a Docker archive tag survives a remote Podman load. It also
+avoids the remote-client `image exists` path, which returned failure after a successful
+load. The parser rejects registry names, mutable tags, raw public inputs, uppercase
+digests and traversal. The flow remains closed without permitting a network pull or arbitrary image reference.
 
 ## Safety rules
 

@@ -285,6 +285,7 @@ jobs:
             original_status=$?
             trap - EXIT
             set +e
+            rm -f "$RUNNER_TEMP/p12-podman-images.txt"
             resource_cleanup_failed=0
             stop_failed=0
             restore_failed=0
@@ -399,11 +400,60 @@ jobs:
           PY
           )"
           postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"
-          if ! loaded_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"; then
+          images_file="$RUNNER_TEMP/p12-podman-images.txt"
+          if ! podman --url "unix://$socket" images --no-trunc --format '{{.ID}}' >"$images_file"; then
+            echo "P12 rootless category=postgres_image_inventory"
+            exit 1
+          fi
+
+          if ! loaded_postgres_image_id="$(python3 - "$postgres_image_id" "$images_file" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          target = sys.argv[1]
+          match = re.fullmatch(r"sha256:([0-9a-f]{64})", target)
+          if match is None:
+              raise SystemExit(1)
+          target = match.group(1)
+          path = Path(sys.argv[2])
+          if path.stat().st_size > (64 << 10):
+              raise SystemExit(1)
+          matches = set()
+          for line in path.read_text(errors="strict").splitlines():
+              line = line.strip()
+              if not line:
+                  continue
+              image = re.fullmatch(r"(?:sha256:)?([0-9a-f]{64})", line)
+              if image is None:
+                  raise SystemExit(1)
+              if image.group(1) == target:
+                  matches.add(image.group(1))
+          if matches != {target}:
+              raise SystemExit(1)
+          print("sha256:" + target)
+          PY
+          )"; then
+            echo "P12 rootless category=postgres_image_loaded_id"
+            exit 1
+          fi
+          rm -f "$images_file"
+
+          if existing_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image" 2>/dev/null)"; then
+            if [ "${existing_postgres_image_id#sha256:}" != "${postgres_image_id#sha256:}" ]; then
+              echo "P12 rootless category=postgres_image_conflict"
+              exit 1
+            fi
+          elif ! podman --url "unix://$socket" tag "$loaded_postgres_image_id" "$postgres_image"; then
+            echo "P12 rootless category=postgres_image_tag"
+            exit 1
+          fi
+
+          if ! inspected_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"; then
             echo "P12 rootless category=postgres_image_inspect"
             exit 1
           fi
-          if [ "${loaded_postgres_image_id#sha256:}" != "${postgres_image_id#sha256:}" ]; then
+          if [ "${inspected_postgres_image_id#sha256:}" != "${postgres_image_id#sha256:}" ]; then
             echo "P12 rootless category=postgres_image_identity"
             exit 1
           fi

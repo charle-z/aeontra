@@ -34,10 +34,19 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`blobs/sha256/`,
 		`print("sha256:" + match.group(1))`,
 		`postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"`,
-		`loaded_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"`,
+		`images_file="$RUNNER_TEMP/p12-podman-images.txt"`,
+		`podman --url "unix://$socket" images --no-trunc --format '{{.ID}}'`,
+		`loaded_postgres_image_id="$(python3 - "$postgres_image_id" "$images_file"`,
+		`matches != {target}`,
+		`podman --url "unix://$socket" tag "$loaded_postgres_image_id" "$postgres_image"`,
+		`inspected_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"`,
+		`P12 rootless category=postgres_image_inventory`,
+		`P12 rootless category=postgres_image_loaded_id`,
+		`P12 rootless category=postgres_image_conflict`,
+		`P12 rootless category=postgres_image_tag`,
 		`P12 rootless category=postgres_image_inspect`,
 		`P12 rootless category=postgres_image_identity`,
-		`if [ "${loaded_postgres_image_id#sha256:}" != "${postgres_image_id#sha256:}" ]; then`,
+		`if [ "${inspected_postgres_image_id#sha256:}" != "${postgres_image_id#sha256:}" ]; then`,
 		`export P12_POSTGRES_IMAGE="$postgres_image"`,
 		"rootless-cycle-1-report.json",
 		"rootless-cycle-2-report.json",
@@ -56,14 +65,16 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 	loadRootless := strings.Index(text, `podman --url "unix://$socket" load --input`)
 	deriveImage := strings.Index(text, `postgres_image_id="$(python3 - "$archive"`)
 	localImage := strings.LastIndex(text, `postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"`)
-	verifyTag := strings.Index(text, `loaded_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"`)
+	inventoryImage := strings.Index(text, `podman --url "unix://$socket" images --no-trunc --format '{{.ID}}'`)
+	tagImage := strings.Index(text, `podman --url "unix://$socket" tag "$loaded_postgres_image_id" "$postgres_image"`)
+	verifyTag := strings.Index(text, `inspected_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"`)
 	exportImage := strings.Index(text, `export P12_POSTGRES_IMAGE="$postgres_image"`)
 	runCycles := strings.Index(text, "P12_ROOTLESS_E2E=1")
 	if stageImage < 0 || disableRootful < 0 || stageImage >= disableRootful {
 		t.Error("PostgreSQL fixture image must be staged before rootful socket isolation")
 	}
-	if startRootless < 0 || loadRootless < 0 || deriveImage < 0 || localImage < 0 || verifyTag < 0 || exportImage < 0 || runCycles < 0 || startRootless >= loadRootless || loadRootless >= deriveImage || deriveImage >= localImage || localImage >= verifyTag || verifyTag >= exportImage || exportImage >= runCycles {
-		t.Errorf("PostgreSQL fixture ordering invalid: start=%d load=%d derive=%d local=%d inspect=%d export=%d run=%d", startRootless, loadRootless, deriveImage, localImage, verifyTag, exportImage, runCycles)
+	if startRootless < 0 || loadRootless < 0 || deriveImage < 0 || localImage < 0 || inventoryImage < 0 || tagImage < 0 || verifyTag < 0 || exportImage < 0 || runCycles < 0 || startRootless >= loadRootless || loadRootless >= deriveImage || deriveImage >= localImage || localImage >= inventoryImage || inventoryImage >= tagImage || tagImage >= verifyTag || verifyTag >= exportImage || exportImage >= runCycles {
+		t.Errorf("PostgreSQL fixture ordering invalid: start=%d load=%d derive=%d local=%d inventory=%d tag=%d inspect=%d export=%d run=%d", startRootless, loadRootless, deriveImage, localImage, inventoryImage, tagImage, verifyTag, exportImage, runCycles)
 	}
 	for _, forbidden := range []string{
 		"tail -n 30 artifacts/p12-rootless-test.log",

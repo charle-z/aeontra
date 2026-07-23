@@ -123,6 +123,7 @@ jobs:
               /usr/local/bin/mcp-edge bundle verify
               useradd -m charles
               command -v runuser
+              install -d -o charles -g charles -m 0700 /home/charles/.config
               install -d -o charles -g charles -m 0700 /home/charles/.config/mcp-devbox-edge
               cp -a /fixtures/legacy-state/. /home/charles/.config/mcp-devbox-edge/
               chown -R charles:charles /home/charles/.config/mcp-devbox-edge

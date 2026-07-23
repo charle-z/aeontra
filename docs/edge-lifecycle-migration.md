@@ -255,9 +255,11 @@ If installation fails after prepare, the package trap runs
 is executed through `runuser` as the configured Edge user. The package declares
 `util-linux` so this authority boundary is an explicit dependency.
 
-The remote package fixture creates a valid Ed25519 identity/key, forces one service
-health failure, proves byte-preserving rollback to the legacy path, then proves one
-successful migration and a repeat idempotent `postinst`.
+The remote package fixture creates the historical `.config` parent and state directory
+as the Edge user, creates a valid Ed25519 identity/key, forces one service health
+failure, proves byte-preserving rollback to the legacy path, then proves one successful
+migration and a repeat idempotent `postinst`. A root-owned synthetic parent is rejected
+as a permission error rather than being silently repaired.
 
 ## Remaining limitations
 
