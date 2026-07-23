@@ -393,9 +393,10 @@ config digest is then converted into exactly one local immutable-looking referen
 localhost/p12-postgres-fixture:<64 lowercase hexadecimal characters>
 ```
 
-The workflow tags the already loaded image, verifies through `podman image inspect` that
-the local tag resolves to the original config digest, verifies the tag exists, and only
-then exports it as `P12_POSTGRES_IMAGE`. The E2E parser rejects registry names,
+Before saving the archive, Docker applies the digest-derived local tag and verifies that
+it resolves to the pulled image ID. Rootless Podman then loads that tagged archive,
+verifies through `podman image inspect` that the preserved local tag resolves to the
+same normalized config digest, and only then exports it as `P12_POSTGRES_IMAGE`. The E2E parser rejects registry names,
 mutable tags, raw `sha256:` references, uppercase digests and traversal. This avoids
 Podman inconsistencies when a config digest passes `image exists` but is not resolved
 reliably by `run`, without permitting a network pull or arbitrary image reference.

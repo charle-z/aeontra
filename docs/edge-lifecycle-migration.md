@@ -167,14 +167,23 @@ Execution order:
 3. Create/validate the private destination parent.
 4. Persist and fsync `prepared`.
 5. Move the entire directory with Linux `renameat2(..., RENAME_NOREPLACE)`.
+   If the filesystem reports that this directory flag is unsupported, create one
+   private empty destination placeholder exclusively, atomically exchange source and
+   placeholder with `RENAME_EXCHANGE`, verify the placeholder inode moved back to the
+   legacy path, and remove only that verified empty placeholder.
 6. Persist and fsync `renamed`.
 7. Load and validate the migrated identity/key at the destination.
 8. Confirm the legacy source is absent.
 9. Persist and fsync `verified`.
 10. Remove/fsync the journal and report success.
 
-`RENAME_NOREPLACE` prevents an appeared destination from being overwritten. A
-cross-filesystem move fails securely; Step 1 does not copy state file by file.
+`RENAME_NOREPLACE` prevents an appeared destination from being overwritten. The
+exchange fallback preserves the same no-overwrite property on filesystems that support
+atomic exchange but not directory no-replace: a pre-existing destination makes the
+exclusive placeholder creation fail, and a modified/non-empty placeholder stops the
+operation. There is no fallback to a blind `os.Rename`, recursive copy, or deletion of
+an unverified path. A cross-filesystem move and a filesystem that supports neither
+atomic primitive fail securely; Step 1 does not copy state file by file.
 
 ## Failure and rollback
 
@@ -210,7 +219,9 @@ without performing a second migration or regenerating identity.
 ## Stable error codes
 
 Migration errors expose a bounded code, not raw paths or secret-bearing underlying
-messages:
+messages. Filesystem failures may append one safe category—`cross_device`, `permission`,
+`unsupported`, `destination_conflict`, `path_missing`, or `busy`—without exposing a
+path, syscall text, or raw errno:
 
 ```text
 inventory_blocked

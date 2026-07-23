@@ -121,6 +121,7 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 		"prepare-state-migration",
 		"rollback-state-migration",
 		"RENAME_NOREPLACE",
+		"RENAME_EXCHANGE",
 		"recovered_complete",
 		"unknown content is never moved",
 		"postinst.in` no longer performs a direct shell move",

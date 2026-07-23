@@ -58,7 +58,11 @@ type MigrationError struct {
 }
 
 func (e *MigrationError) Error() string {
-	return "edge state migration failed: " + string(e.Code)
+	message := "edge state migration failed: " + string(e.Code)
+	if category := migrationSystemErrorCategory(e.Err); category != "" {
+		message += " (" + category + ")"
+	}
+	return message
 }
 
 func (e *MigrationError) Unwrap() error { return e.Err }

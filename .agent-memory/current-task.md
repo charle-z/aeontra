@@ -2,18 +2,26 @@
 
 Historical deployed baseline preserved for documentation guards: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`.
 
-Branch: `p16-global-work-scheduler`. Pull request: `#48`. Published head is `67b535e7cd8c47da3fa591adaec8d60554961bdb`; a rootless E2E correction is local and not yet published.
+Branch: `p16-global-work-scheduler`. Pull request: `#48`. Published head before this local cut is `1e987a23b362ead9a0923493e298a9e96fb416c2`; the working tree contains two exact-head CI fixes ready to commit and publish.
 
-P16 Step 3 includes durable project aliases, bounded checkout discovery, canonical precedence, explicit ambiguity, and an internal five-minute preview/apply association transaction. It can reuse a canonical checkout or associate one unique clean legacy checkout without moving it, compensates a newly registered workspace if project binding fails, and rejects drift, dirty state, remote mismatch, symlink replacement, root escape and stale/future plans. Clone and public project approval tools remain unfinished.
+P16 Step 3 currently includes durable project aliases, bounded checkout discovery, canonical precedence, explicit ambiguity, internal preview/apply association, and GitHub Actions diagnostics using the existing Coolify GitHub authority. `source_pull_request_failure_diagnostics` returns failed step, annotations and bounded context. `source_pull_request_job_log` returns the redacted full job log in chunks with `next_offset`, without requiring `gh`, another token, job IDs or signed URLs.
 
-GitHub Actions diagnostics reuse the VPS/Coolify `GITHUB_TOKEN`, `GITHUB_OWNER`, and `GITHUB_OWNER_TYPE`. `source_pull_request_failure_diagnostics` resolves failed jobs on the exact PR head/latest workflow attempt and returns failed steps, annotations and line-numbered log context. `source_pull_request_job_log` returns a redacted full job log in chunks with `next_offset`, up to 1 MiB per call and a 16 MiB window. Authorization is sent only to the GitHub API; the signed download receives none. No `gh`, new token, Edge credential, job ID or signed URL is required or exposed.
+Exact-head CI at `1e987a2` exposed two real failures and both were diagnosed through the existing `GITHUB_TOKEN`, `GITHUB_OWNER`, and `GITHUB_OWNER_TYPE` authority:
 
-The candidate catalog remains 100 tools with hash `sha256:370a309ba1b63a500dd4d2abae77a11e60e49b35cdbfdc3adf4e692e78772ea2`. Historical P15/production documentation remains correctly fixed at 98 tools until merge and deployment.
+1. Debian package migration failed with `rename_failed`. The journal was created successfully, but the container filesystem rejected `RENAME_NOREPLACE` for the directory move. The local fix keeps `RENAME_NOREPLACE` as the primary operation and, only for unsupported directory flags, creates a private exclusive empty placeholder and performs atomic `RENAME_EXCHANGE`. It verifies the placeholder inode and emptiness before removing it. Files do not use the fallback. Existing destinations are never overwritten, cross-filesystem moves remain rejected, and no file-by-file copy occurs. Safe error categories now distinguish `unsupported`, `cross_device`, `permission`, `destination_conflict`, `path_missing`, and `busy` without exposing paths.
 
-Exact-head CI for `67b535e` exposed a real rootless E2E failure: `Rootless Podman, PostgreSQL and Chromium` failed at `stage_postgres` with `not_found`. A temporary token-backed probe using the existing Coolify authority successfully read the exact job, annotations and bounded log without `gh`, proving the new design. Root cause: the workflow exported a raw Docker config digest (`sha256:...`) after loading the archive into Podman; `image exists` accepted it, but `podman run` did not resolve it reliably.
+2. Rootless PostgreSQL failed before E2E cycles because the archive was saved under the normal Docker name and Podman was later asked to reconstruct/tag from a raw config digest. The local fix obtains the immutable config digest in Docker, creates the closed local reference `localhost/p12-postgres-fixture:<64 lowercase hex>`, verifies it resolves to the same ID, saves the archive with that reference, loads it into Podman, verifies the preserved local tag and normalized ID, and exports only that reference. No runtime pull or arbitrary image reference is enabled.
 
-The local correction derives exactly `localhost/p12-postgres-fixture:<64 lowercase hex>` from that verified config digest, tags the already loaded image, verifies with `podman image inspect` that the tag resolves to the same ID, verifies existence, and exports only that closed local reference. The E2E parser rejects registry names, mutable tags, raw digests, uppercase hex and traversal. No network pull or arbitrary image reference is enabled.
+Local verification after both fixes:
+- all Go packages pass in bounded groups;
+- `internal/edge`, `internal/edgeclient`, `internal/edgelifecycle`, package, workflow-policy, docs and MCP tests pass;
+- P12 tagged rootless tests pass;
+- `go vet ./...` passes;
+- Staticcheck `v0.7.0` passes with a writable temporary cache;
+- all main binaries build;
+- `actionlint@v1.7.12` passes;
+- `git diff --check` passes.
 
-Verification after the correction: tagged unit tests, normal `internal/edgeclient`, workflow policy, redactor and docs pass; `go vet ./...`, Staticcheck v0.7.0 and `git diff --check` pass. Local race remains unavailable because CGO is disabled; exact-head CI is required.
+Local race remains unavailable because CGO is disabled. Exact-head CI race and the real Debian/rootless jobs remain mandatory.
 
-Next: update handoff, commit and publish the rootless fixture correction, then inspect PR #48 exact-head gates. Do not touch the real Parrot Edge or production before all gates are green.
+Next: commit the two fixes as an isolated Step 3 stabilization commit, publish the branch, require all PR #48 checks green, diagnose any remaining failure through the new GitHub log path, and only then continue Step 3 clone/public project tools. Do not touch the real Parrot Edge, Coolify production, or `main` directly before green exact-head gates.

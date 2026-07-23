@@ -182,7 +182,15 @@ jobs:
               sleep "$delay"
             fi
             if docker pull docker.io/library/postgres:17-alpine; then
-              docker image save --output "$archive" docker.io/library/postgres:17-alpine
+              postgres_image_id="$(docker image inspect --format '{{.Id}}' docker.io/library/postgres:17-alpine)"
+              case "$postgres_image_id" in
+                sha256:????????????????????????????????????????????????????????????????) ;;
+                *) echo "P12 rootless category=postgres_image_identity"; exit 1 ;;
+              esac
+              postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"
+              docker image tag docker.io/library/postgres:17-alpine "$postgres_image"
+              test "$(docker image inspect --format '{{.Id}}' "$postgres_image")" = "$postgres_image_id"
+              docker image save --output "$archive" "$postgres_image"
               test -s "$archive"
               exit 0
             fi
@@ -390,11 +398,10 @@ jobs:
           print("sha256:" + match.group(1))
           PY
           )"
-          podman --url "unix://$socket" image exists "$postgres_image_id"
           postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"
-          podman --url "unix://$socket" tag "$postgres_image_id" "$postgres_image"
-          test "$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")" = "$postgres_image_id"
           podman --url "unix://$socket" image exists "$postgres_image"
+          loaded_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"
+          test "${loaded_postgres_image_id#sha256:}" = "${postgres_image_id#sha256:}"
           export P12_POSTGRES_IMAGE="$postgres_image"
           rm -f "$archive"
           P12_ROOTLESS_CLEANUP_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \

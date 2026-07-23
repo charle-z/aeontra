@@ -15,3 +15,5 @@ func requireOwnedPath(string, int, int) error {
 func renameNoReplace(string, string) error {
 	return errors.New("Edge state migration is supported only on Linux")
 }
+
+func migrationSystemErrorCategory(error) string { return "unsupported_platform" }
