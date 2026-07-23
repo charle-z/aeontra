@@ -359,7 +359,12 @@ func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, ru
 	prefix := rootlessEnginePrefix(endpoint)
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
 	image := p12PostgresImage(t)
-	p12Engine(t, endpoint, append(prefix, "image", "exists", image)...)
+	actualImageID := strings.TrimSpace(p12Engine(t, endpoint, append(prefix, "image", "inspect", "--format", "{{.Id}}", image)...))
+	actualImageID = strings.TrimPrefix(actualImageID, "sha256:")
+	expectedImageID := strings.TrimPrefix(image, p12PostgresFixtureImagePrefix)
+	if actualImageID != expectedImageID {
+		t.Fatal("PostgreSQL fixture image identity changed after rootless load")
+	}
 	network := "p12-pg-net-" + suffix
 	p12Engine(t, endpoint, append(prefix, "network", "create", "--label", label, network)...)
 	volume := "p12-pg-vol-" + suffix

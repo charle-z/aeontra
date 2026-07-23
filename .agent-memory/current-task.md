@@ -2,26 +2,31 @@
 
 Historical deployed baseline preserved for documentation guards: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`.
 
-Branch: `p16-global-work-scheduler`. Pull request: `#48`. Published head before this local cut is `1e987a23b362ead9a0923493e298a9e96fb416c2`; the working tree contains two exact-head CI fixes ready to commit and publish.
+Branch: `p16-global-work-scheduler`. Pull request: `#48`. Current published head is `0929c784a378a898ff6106c3d32c703a3027a2b3`; one additional rootless correction is local and validated.
 
-P16 Step 3 currently includes durable project aliases, bounded checkout discovery, canonical precedence, explicit ambiguity, internal preview/apply association, and GitHub Actions diagnostics using the existing Coolify GitHub authority. `source_pull_request_failure_diagnostics` returns failed step, annotations and bounded context. `source_pull_request_job_log` returns the redacted full job log in chunks with `next_offset`, without requiring `gh`, another token, job IDs or signed URLs.
+P16 Step 3 includes durable project aliases, bounded checkout discovery, preview/apply association, and GitHub Actions diagnostics using the existing Coolify `GITHUB_TOKEN`, `GITHUB_OWNER`, and `GITHUB_OWNER_TYPE`. `source_pull_request_failure_diagnostics` returns failed steps, annotations and context; `source_pull_request_job_log` returns the redacted full log in chunks without `gh`, another token, job IDs or signed URLs.
 
-Exact-head CI at `1e987a2` exposed two real failures and both were diagnosed through the existing `GITHUB_TOKEN`, `GITHUB_OWNER`, and `GITHUB_OWNER_TYPE` authority:
+Exact-head CI at `0929c78` proved the Debian migration fix: `Edge, autopilot, updater, and migration` passed, and the signed Debian package progressed without the prior `rename_failed`. The remaining Rootless failure was read through the newly implemented log path using the existing GitHub authority.
 
-1. Debian package migration failed with `rename_failed`. The journal was created successfully, but the container filesystem rejected `RENAME_NOREPLACE` for the directory move. The local fix keeps `RENAME_NOREPLACE` as the primary operation and, only for unsupported directory flags, creates a private exclusive empty placeholder and performs atomic `RENAME_EXCHANGE`. It verifies the placeholder inode and emptiness before removing it. Files do not use the fallback. Existing destinations are never overwritten, cross-filesystem moves remain rejected, and no file-by-file copy occurs. Safe error categories now distinguish `unsupported`, `cross_device`, `permission`, `destination_conflict`, `path_missing`, and `busy` without exposing paths.
+The full Rootless log proves:
+- `podman load` completed and stored the PostgreSQL image;
+- manifest parsing completed;
+- the job exited at the first command after local-reference derivation: remote `podman --url ... image exists`;
+- it never reached `image inspect` or the E2E cycles.
 
-2. Rootless PostgreSQL failed before E2E cycles because the archive was saved under the normal Docker name and Podman was later asked to reconstruct/tag from a raw config digest. The local fix obtains the immutable config digest in Docker, creates the closed local reference `localhost/p12-postgres-fixture:<64 lowercase hex>`, verifies it resolves to the same ID, saves the archive with that reference, loads it into Podman, verifies the preserved local tag and normalized ID, and exports only that reference. No runtime pull or arbitrary image reference is enabled.
+Root cause: `image exists` is not reliable through the rootless Podman service/remote client used by this gate. The local correction removes that command everywhere. Workflow setup now calls `image inspect --format {{.Id}}`, emits stable `postgres_image_inspect` or `postgres_image_identity` categories, and compares the normalized ID with the archive config digest. Each PostgreSQL E2E cycle also calls `image inspect` and requires the exact digest encoded in the closed local reference before creating resources or running a container.
 
-Local verification after both fixes:
-- all Go packages pass in bounded groups;
-- `internal/edge`, `internal/edgeclient`, `internal/edgelifecycle`, package, workflow-policy, docs and MCP tests pass;
-- P12 tagged rootless tests pass;
+Local verification for this correction:
+- focused rootless/workflow/docs tests pass;
+- tagged P12 Edge-client tests pass;
+- full `go test ./... -count=1` passes;
 - `go vet ./...` passes;
-- Staticcheck `v0.7.0` passes with a writable temporary cache;
-- all main binaries build;
-- `actionlint@v1.7.12` passes;
-- `git diff --check` passes.
+- Staticcheck v0.7.0 passes with a temporary writable cache;
+- `go build ./...` passes;
+- actionlint v1.7.12 passes;
+- `git diff --check` passes;
+- no temporary probes remain.
 
-Local race remains unavailable because CGO is disabled. Exact-head CI race and the real Debian/rootless jobs remain mandatory.
+Local race remains unavailable because CGO is disabled. Exact-head CI remains mandatory.
 
-Next: commit the two fixes as an isolated Step 3 stabilization commit, publish the branch, require all PR #48 checks green, diagnose any remaining failure through the new GitHub log path, and only then continue Step 3 clone/public project tools. Do not touch the real Parrot Edge, Coolify production, or `main` directly before green exact-head gates.
+Next: commit this rootless remote-inspection correction, publish it, hold the new SHA stable, and require all PR #48 checks green. Diagnose any further failure through the Actions diagnostics tools. Do not touch the real Parrot Edge, Coolify production, or main directly before green exact-head gates.

@@ -399,9 +399,14 @@ jobs:
           PY
           )"
           postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"
-          podman --url "unix://$socket" image exists "$postgres_image"
-          loaded_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"
-          test "${loaded_postgres_image_id#sha256:}" = "${postgres_image_id#sha256:}"
+          if ! loaded_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"; then
+            echo "P12 rootless category=postgres_image_inspect"
+            exit 1
+          fi
+          if [ "${loaded_postgres_image_id#sha256:}" != "${postgres_image_id#sha256:}" ]; then
+            echo "P12 rootless category=postgres_image_identity"
+            exit 1
+          fi
           export P12_POSTGRES_IMAGE="$postgres_image"
           rm -f "$archive"
           P12_ROOTLESS_CLEANUP_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
