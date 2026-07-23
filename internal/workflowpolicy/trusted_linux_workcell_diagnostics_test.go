@@ -32,7 +32,10 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`blobs/sha256/`,
 		`print("sha256:" + match.group(1))`,
 		`podman --url "unix://$socket" image exists "$postgres_image_id"`,
-		`export P12_POSTGRES_IMAGE="$postgres_image_id"`,
+		`postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"`,
+		`podman --url "unix://$socket" tag "$postgres_image_id" "$postgres_image"`,
+		`image inspect --format '{{.Id}}' "$postgres_image"`,
+		`export P12_POSTGRES_IMAGE="$postgres_image"`,
 		"rootless-cycle-1-report.json",
 		"rootless-cycle-2-report.json",
 		"Annotate rootless E2E failure",
@@ -50,13 +53,15 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 	loadRootless := strings.Index(text, `podman --url "unix://$socket" load --input`)
 	deriveImage := strings.Index(text, `postgres_image_id="$(python3 - "$archive"`)
 	verifyRootless := strings.Index(text, `podman --url "unix://$socket" image exists "$postgres_image_id"`)
-	exportImage := strings.Index(text, `export P12_POSTGRES_IMAGE="$postgres_image_id"`)
+	tagImage := strings.Index(text, `podman --url "unix://$socket" tag "$postgres_image_id" "$postgres_image"`)
+	verifyTag := strings.Index(text, `image inspect --format '{{.Id}}' "$postgres_image"`)
+	exportImage := strings.Index(text, `export P12_POSTGRES_IMAGE="$postgres_image"`)
 	runCycles := strings.Index(text, "P12_ROOTLESS_E2E=1")
 	if stageImage < 0 || disableRootful < 0 || stageImage >= disableRootful {
 		t.Error("PostgreSQL fixture image must be staged before rootful socket isolation")
 	}
-	if startRootless < 0 || loadRootless < 0 || deriveImage < 0 || verifyRootless < 0 || exportImage < 0 || runCycles < 0 || startRootless >= loadRootless || loadRootless >= deriveImage || deriveImage >= verifyRootless || verifyRootless >= exportImage || exportImage >= runCycles {
-		t.Error("PostgreSQL fixture image must load, derive its immutable ID, verify it, and export it before the E2E cycles")
+	if startRootless < 0 || loadRootless < 0 || deriveImage < 0 || verifyRootless < 0 || tagImage < 0 || verifyTag < 0 || exportImage < 0 || runCycles < 0 || startRootless >= loadRootless || loadRootless >= deriveImage || deriveImage >= verifyRootless || verifyRootless >= tagImage || tagImage >= verifyTag || verifyTag >= exportImage || exportImage >= runCycles {
+		t.Error("PostgreSQL fixture image must load, derive its immutable ID, bind a digest-derived local tag, verify that tag, and export it before the E2E cycles")
 	}
 	for _, forbidden := range []string{
 		"tail -n 30 artifacts/p12-rootless-test.log",

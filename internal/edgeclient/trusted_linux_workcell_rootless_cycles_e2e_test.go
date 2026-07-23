@@ -326,20 +326,29 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 	return true
 }
 
-func p12PostgresImage(t *testing.T) string {
-	t.Helper()
-	value := strings.TrimSpace(os.Getenv("P12_POSTGRES_IMAGE"))
-	const prefix = "sha256:"
-	if len(value) != len(prefix)+64 || !strings.HasPrefix(value, prefix) {
-		t.Fatal("PostgreSQL fixture image identity is invalid")
+const p12PostgresFixtureImagePrefix = "localhost/p12-postgres-fixture:"
+
+func validP12PostgresImageReference(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != len(p12PostgresFixtureImagePrefix)+64 || !strings.HasPrefix(value, p12PostgresFixtureImagePrefix) {
+		return false
 	}
-	for _, character := range value[len(prefix):] {
+	for _, character := range value[len(p12PostgresFixtureImagePrefix):] {
 		if character >= '0' && character <= '9' {
 			continue
 		}
 		if character >= 'a' && character <= 'f' {
 			continue
 		}
+		return false
+	}
+	return true
+}
+
+func p12PostgresImage(t *testing.T) string {
+	t.Helper()
+	value := strings.TrimSpace(os.Getenv("P12_POSTGRES_IMAGE"))
+	if !validP12PostgresImageReference(value) {
 		t.Fatal("PostgreSQL fixture image identity is invalid")
 	}
 	return value

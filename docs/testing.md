@@ -382,6 +382,24 @@ On 2026-07-20 the candidate passed under Parrot WSL2 Go 1.26.5: `go test ./...
 shell syntax, and `git diff --check`. Exact-head GitHub gates and live signed-release
 installation remain separate closure requirements.
 
+## Rootless PostgreSQL fixture identity
+
+The `Rootless Podman, PostgreSQL and Chromium` gate stages the pinned PostgreSQL
+image with the runner's rootful Docker daemon before rootful socket isolation, saves it
+as an archive, and loads that archive into the user-owned Podman service. The manifest
+config digest is then converted into exactly one local immutable-looking reference:
+
+```text
+localhost/p12-postgres-fixture:<64 lowercase hexadecimal characters>
+```
+
+The workflow tags the already loaded image, verifies through `podman image inspect` that
+the local tag resolves to the original config digest, verifies the tag exists, and only
+then exports it as `P12_POSTGRES_IMAGE`. The E2E parser rejects registry names,
+mutable tags, raw `sha256:` references, uppercase digests and traversal. This avoids
+Podman inconsistencies when a config digest passes `image exists` but is not resolved
+reliably by `run`, without permitting a network pull or arbitrary image reference.
+
 ## Safety rules
 
 - Do not run active DAST against production.
