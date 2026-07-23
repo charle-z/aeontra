@@ -48,6 +48,12 @@ const (
 	ProjectErrorCheckoutDirty       ProjectErrorCode = "checkout_dirty"
 	ProjectErrorRepositoryMismatch  ProjectErrorCode = "repository_mismatch"
 	ProjectErrorCheckoutUnsafe      ProjectErrorCode = "checkout_unsafe"
+	ProjectErrorCheckoutMissing     ProjectErrorCode = "checkout_missing"
+	ProjectErrorAmbiguousCheckout   ProjectErrorCode = "ambiguous_checkout"
+	ProjectErrorDiscoveryLimit      ProjectErrorCode = "discovery_limit"
+	ProjectErrorDiscoveryTimeout    ProjectErrorCode = "discovery_timeout"
+	ProjectErrorPlanChanged         ProjectErrorCode = "plan_changed"
+	ProjectErrorPlanExpired         ProjectErrorCode = "plan_expired"
 	ProjectErrorRegistryUnavailable ProjectErrorCode = "registry_unavailable"
 )
 

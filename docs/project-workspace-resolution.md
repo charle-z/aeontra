@@ -1,8 +1,9 @@
 # P16 project aliases and workspace resolution
 
-Status: **P16 Step 3 first cut implemented on `p16-global-work-scheduler`; validation
-pending until exact-head CI is green. Automatic discovery, association and clone remain
-unfinished.**
+Status: **P16 Step 3 registry plus recovery cut implemented on
+`p16-global-work-scheduler`; validation pending until exact-head CI is green. Bounded
+discovery and internal preview/apply association are implemented. Clone and public
+approval-tool integration remain unfinished.**
 
 This document is the repository source of truth for the durable project registry and
 its local read-only alias interface. The Brain may index it but does not replace it.
@@ -15,13 +16,16 @@ runtime, job or idempotency identifiers.
 The current local interface is:
 
 ```text
+mcp-edge project discover --alias ekoparty --repository ekoparty-trip-agent
 mcp-edge project status --alias ekoparty [--target parrot]
 mcp-edge project resolve --alias ekoparty [--target parrot]
 ```
 
 These commands accept no state path, workspace ID, device ID, runtime ID, command, URL
-or repository mutation. `status` reports a safe ready/blocked result. `resolve` returns
-the same safe result but fails when the project cannot be safely resolved.
+or repository mutation. `discover` scans only bounded direct children of the approved
+development root and returns a safe recovery decision without a candidate path. `status`
+reports a safe ready/blocked result. `resolve` returns the same safe result but fails when
+the project cannot be safely resolved.
 
 The normal JSON result contains only:
 
@@ -148,12 +152,64 @@ target_not_found
 workspace_unavailable
 workspace_conflict
 checkout_dirty
+checkout_missing
+ambiguous_checkout
 repository_mismatch
 checkout_unsafe
+discovery_limit
+discovery_timeout
+plan_changed
+plan_expired
 registry_unavailable
 ```
 
 Errors do not include paths, remote URLs, Git output or internal IDs.
+
+## Discovery and recovery decisions
+
+Discovery validates the development root and reads at most 128 direct children by
+default, with a hard maximum of 512 and one 30-second total deadline. It never recurses,
+follows a symlink, creates a
+directory, registers a workspace or changes Git state.
+
+The canonical checkout has priority. If it exists but is unsafe, dirty or points to a
+different repository, discovery blocks instead of silently choosing another directory.
+When the canonical path is absent, only checkouts whose fetch/push identity matches the
+expected owner/repository count as candidates.
+
+Stable recovery states are:
+
+```text
+reuse_existing
+associate_existing
+clone_required
+blocked
+```
+
+One clean legacy match yields `associate_existing`. More than one matching checkout yields
+`ambiguous_checkout`; no path is guessed. A dirty unique match remains blocked. No match
+yields `clone_required`, but this cut does not clone it.
+
+The safe discovery JSON contains alias, owner/repository, recovery state, candidate count
+and a stable reason. It omits all candidate paths and internal identifiers.
+
+## Association preview/apply transaction
+
+The core exposes an internal typed preview/apply operation for a clean canonical or unique
+legacy checkout. It can associate one unique safe legacy path without moving it. The safe
+preview reports `approval_required`, alias, owner/repository,
+target, profile and action; the reviewed plan keeps the candidate path internal and expires
+after five minutes.
+
+Apply re-runs discovery and requires the same action and exact candidate. A new match, dirty
+checkout, remote change, symlink replacement, root escape or expired plan returns
+`plan_changed` or `plan_expired` before mutation.
+
+After revalidation, apply registers the existing path in `workspaces.db` and binds the
+project. It never renames, copies or deletes the checkout. If project binding fails after a
+new workspace registration, that registration is removed; the checkout remains untouched.
+An already registered compatible workspace is reused. One workspace cannot be bound
+silently to two projects.
 
 ## Canonical checkout inference
 
@@ -161,8 +217,8 @@ The pure inference helper maps repository `charle-z/ekoparty-trip-agent` to chec
 name `ekoparty-trip-agent` below the configured development root. It validates that the
 result is one direct child and does not create or modify the filesystem.
 
-Actual discovery, association and clone are deliberately separate later operations.
-Inferring a path is not authority to create it.
+Inferring a path is not authority to create it. Discovery and association use separate
+read-only and consequential phases; clone remains a later closed operation.
 
 ## Persistence and rollback
 
@@ -170,24 +226,24 @@ Alias, repository, target, profile and binding metadata survive close/reopen. Th
 registry is additive: existing low-level workspace tools and `workspaces.db` retain
 their current behavior.
 
-Rollback for this cut is to stop using/removing the read-only project command and leave
-`projects.db` untouched for a compatible future reader. It does not rewrite or delete
-workspaces or repositories.
+Rollback for registry/discovery is to stop using the project commands and leave
+`projects.db` untouched for a compatible future reader. Association compensates a newly
+created workspace registration if project binding fails. It never rewrites, moves or
+deletes a repository.
 
 ## Current limitations
 
-This first Step 3 cut does not yet:
+This Step 3 recovery cut does not yet:
 
-- discover unbound existing checkouts;
-- detect multiple matching checkouts as ambiguous;
-- associate a safe legacy path through preview/approval;
+- expose association apply as a public/server approval tool;
 - clone a missing repository;
+- discover recursively or outside direct children of the approved development root;
 - create server-side project tools for ChatGPT;
 - map target aliases to scheduler pools/devices;
 - continue or build a project.
 
-Those operations remain blocked until their test-first preview, local revalidation,
-rollback and no-data-loss contracts are implemented.
+Those operations remain blocked until their test-first authority, credential, rollback and
+no-data-loss contracts are implemented.
 
 ## Verification
 

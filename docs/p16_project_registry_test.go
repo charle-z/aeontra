@@ -19,14 +19,20 @@ func TestP16ProjectAliasRegistryContractIsDocumented(t *testing.T) {
 	for _, required := range []string{
 		"projects.db",
 		"There is intentionally no user-facing",
+		"mcp-edge project discover --alias ekoparty",
 		"mcp-edge project status --alias ekoparty",
 		"reject traversal, underscores, Unicode and visually confusable characters",
 		"fetch and push remotes are owner-bound HTTPS GitHub URLs",
 		"workspace_conflict",
+		"ambiguous_checkout",
+		"discovery_timeout",
+		"30-second total deadline",
+		"approval_required",
+		"compensates a newly",
 		"checkout_dirty",
 		"repository_mismatch",
 		"does not yet",
-		"associate a safe legacy path",
+		"associate one unique safe legacy path",
 		"clone a missing repository",
 	} {
 		if !strings.Contains(strings.ToLower(document), strings.ToLower(required)) {
@@ -41,7 +47,8 @@ func TestP16ProjectAliasRegistryContractIsDocumented(t *testing.T) {
 	for _, required := range []string{
 		"Resolve one registered project using alias only",
 		"Add private versioned `projects.db` schema",
-		"Add read-only project resolve/status tools first",
+		"Add read-only project discover/resolve/status tools first",
+		"Add bounded unbound local workspace discovery/classification",
 	} {
 		if !strings.Contains(tasks, required) {
 			t.Errorf("P16 tasks missing project registry checkpoint %q", required)

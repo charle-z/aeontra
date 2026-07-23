@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -29,6 +30,16 @@ func (f *fakeSourcePullRequestService) SourcePullRequestStatus(repo string, numb
 		f.calls = append(f.calls, "status-number")
 	}
 	return "status-result", nil
+}
+
+func (f *fakeSourcePullRequestService) SourcePullRequestFailureDiagnostics(repo string, number int, workflowName, jobName string, maxLines int) (string, error) {
+	f.calls = append(f.calls, fmt.Sprintf("diagnostics:%s:%d:%s:%s:%d", repo, number, workflowName, jobName, maxLines))
+	return "diagnostics-result", nil
+}
+
+func (f *fakeSourcePullRequestService) SourcePullRequestJobLog(repo string, number int, workflowName, jobName string, offsetBytes, maxBytes int) (string, error) {
+	f.calls = append(f.calls, fmt.Sprintf("job-log:%s:%d:%s:%s:%d:%d", repo, number, workflowName, jobName, offsetBytes, maxBytes))
+	return "job-log-result", nil
 }
 
 func (f *fakeSourcePullRequestService) SourcePullRequestMergePreview(repo string, number int) (string, error) {
@@ -71,6 +82,8 @@ func TestRegisterSourcePullRequestsRoutesEveryHandler(t *testing.T) {
 		"source_pull_request_create_preview",
 		"source_pull_request_create",
 		"source_pull_request_status",
+		"source_pull_request_failure_diagnostics",
+		"source_pull_request_job_log",
 		"source_pull_request_merge_preview",
 		"source_pull_request_merge",
 		"source_default_branch_update_preview",
@@ -99,6 +112,8 @@ func TestRegisterSourcePullRequestsRoutesEveryHandler(t *testing.T) {
 		{"source_pull_request_create_preview", `{"repo":"mcp-devbox","head":"feature","base":"main","title":"Title","description":"Body"}`, "create-preview-result"},
 		{"source_pull_request_create", `{"plan_id":"create-plan","approve":true}`, "create-result"},
 		{"source_pull_request_status", `{"repo":"mcp-devbox","number":17}`, "status-result"},
+		{"source_pull_request_failure_diagnostics", `{"repo":"mcp-devbox","number":17,"workflow_name":"P15","job_name":"Package","max_lines":200}`, "diagnostics-result"},
+		{"source_pull_request_job_log", `{"repo":"mcp-devbox","number":17,"workflow_name":"P15","job_name":"Package","offset_bytes":1024,"max_bytes":4096}`, "job-log-result"},
 		{"source_pull_request_merge_preview", `{"repo":"mcp-devbox","number":17}`, "merge-preview-result"},
 		{"source_pull_request_merge", `{"plan_id":"merge-plan","approve":true}`, "merge-result"},
 		{"source_default_branch_update_preview", `{"repo":"mcp-devbox","branch":"main"}`, "default-preview-result"},
@@ -118,6 +133,8 @@ func TestRegisterSourcePullRequestsRoutesEveryHandler(t *testing.T) {
 		"create-preview:mcp-devbox:feature:main:Title:Body",
 		"create:create-plan", "create-approved",
 		"status:mcp-devbox", "status-number",
+		"diagnostics:mcp-devbox:17:P15:Package:200",
+		"job-log:mcp-devbox:17:P15:Package:1024:4096",
 		"merge-preview:mcp-devbox", "merge-number",
 		"merge:merge-plan", "merge-approved",
 		"default-preview:mcp-devbox:main",

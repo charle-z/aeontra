@@ -76,11 +76,12 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 - [x] Infer the canonical checkout name from owner/repository without mutating the
   filesystem.
 - [x] Reuse and revalidate one explicitly bound matching checkout.
-- [ ] Associate safe legacy path without moving it.
+- [x] Associate one unique safe legacy path without moving it through internal
+  preview/revalidation/apply.
 - [ ] Clone missing repo into approved root with fixed Git authority.
-- [x] Dirty, mismatched, symlinked, escaped, or Windows-mounted bound checkout blocks
-  safely.
-- [ ] Multiple unbound matching checkouts produce an explicit ambiguous result.
+- [x] Dirty, mismatched, ambiguous, symlinked, escaped, or Windows-mounted checkout
+  blocks safely.
+- [x] Multiple unbound matching checkouts produce an explicit ambiguous result.
 - [x] Alias collision, case folding, Unicode confusable, traversal, and oversized input
   fail.
 - [x] Restart/reopen preserves aliases and bindings.
@@ -89,10 +90,11 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 
 - [x] Add private versioned `projects.db` schema and fail-closed schema validation.
 - [x] Add owner-bound repository canonicalization.
-- [ ] Add unbound local workspace discovery/classification.
-- [ ] Add lossless recovery decision engine and stable reasons.
-- [x] Add read-only project resolve/status tools first.
-- [ ] Add approved create/associate flow without exposing internal IDs.
+- [x] Add bounded unbound local workspace discovery/classification.
+- [x] Add lossless recovery decision engine and stable reasons.
+- [x] Add read-only project discover/resolve/status tools first.
+- [x] Add internal association preview/apply with revalidation and compensating rollback.
+- [ ] Expose approved create/associate tools without internal IDs.
 
 ## Step 4 — Edge durable job journal
 

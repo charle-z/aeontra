@@ -80,6 +80,8 @@ do not replace server-side enforcement.
 | `source_pull_request_create_preview` | 1/0/1/1 | Bind head/base SHAs and plan one non-draft pull request. |
 | `source_pull_request_create` | 0/0/0/1 | Revalidate branch SHAs and create the planned pull request. |
 | `source_pull_request_status` | 1/0/1/1 | Read PR state and every check/status context for the exact head SHA. |
+| `source_pull_request_failure_diagnostics` | 1/0/1/1 | Read failed jobs on the exact PR head and return failed steps, annotations and line-numbered redacted log context. |
+| `source_pull_request_job_log` | 1/0/1/1 | Read one exact job log in redacted byte chunks with `next_offset`; no job ID, token or signed URL is exposed. |
 | `source_pull_request_merge_preview` | 1/0/1/1 | Require mergeable state and completely green checks, then plan a merge commit. |
 | `source_pull_request_merge` | 0/1/0/1 | Revalidate head, mergeability and checks, then merge with `merge_method=merge`. |
 | `source_default_branch_update_preview` | 1/0/1/1 | Bind the existing target branch SHA and plan a default-branch update. |
@@ -91,7 +93,11 @@ do not replace server-side enforcement.
 | `repo_publish` | 0/0/0/1 | Revalidate and push one branch; no force/tags/mirror/refspecs. |
 
 The public catalog GitHub tools use the VPS/Coolify `GITHUB_TOKEN` for API operations
-such as repository metadata, exact-head PR/check status and merge. A configured local
+such as repository metadata, exact-head PR/check status, Actions diagnostics and merge.
+Actions runs/jobs/logs require `Actions: Read`; check-run annotations require
+`Checks: Read`. Job-log downloads follow exactly one GitHub-issued redirect, omit the
+Authorization header on the signed download request, redact returned content and expose
+at most 1 MiB per call within a 16 MiB per-job read window. A configured local
 development Edge separately injects `workspace_dev_git_clone`,
 `workspace_dev_publish_preview`, and `workspace_dev_publish` into its private OpenCode
 provider. Those owner-bound transport actions are intentionally absent from the

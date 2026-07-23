@@ -73,7 +73,9 @@ codes and explicit non-mutation of unknown `p12` directories are documented by
 doctor/closed repair, update rollback, and conservative uninstall posture are governed
 by `docs/install-edge-parrot-p16.md`. The Step 3 private alias registry, owner-bound
 checkout validation and read-only no-ID local UX are governed by
-`docs/project-workspace-resolution.md`. These remain validation pending until exact-head
+`docs/project-workspace-resolution.md`. GitHub Actions failure diagnosis and bounded
+full-job log retrieval through the existing VPS GitHub authority are governed by
+`docs/github-actions-diagnostics.md`. These remain validation pending until exact-head
 remote gates and real Parrot evidence are complete.
 | What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
 | How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |

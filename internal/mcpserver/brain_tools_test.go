@@ -44,8 +44,8 @@ func isP15Control(name string) bool {
 
 func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 98 {
-		t.Fatalf("tool order length=%d want=98", len(server.order))
+	if len(server.order) != 100 {
+		t.Fatalf("tool order length=%d want=100", len(server.order))
 	}
 	if server.order[22] != "workspace_checkpoint" {
 		t.Fatalf("workspace checkpoint position=%v", server.order[:24])
@@ -62,8 +62,8 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[93:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[93:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[95:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[95:], brainToolOrder)
 	}
 
 	snapshot, err := server.CatalogInfo()
@@ -148,7 +148,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("historical Step 4 catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 98 || snapshot.Hash != "sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12" {
+	if snapshot.ToolCount != 100 || snapshot.Hash != "sha256:370a309ba1b63a500dd4d2abae77a11e60e49b35cdbfdc3adf4e692e78772ea2" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
