@@ -1,9 +1,9 @@
 # P16 project aliases and workspace resolution
 
-Status: **P16 Step 3 registry plus recovery cut implemented on
-`p16-global-work-scheduler`; validation pending until exact-head CI is green. Bounded
-discovery and internal preview/apply association are implemented. Clone and public
-approval-tool integration remain unfinished.**
+Status: **P16 Step 3 alias registry, bounded recovery, approved prepare/status tools
+and owner-bound clone implemented on `p16-global-work-scheduler`. Validation is pending
+for the new exact PR head and a real Parrot execution; the previous Step 3 head passed
+all 15 remote gates.**
 
 This document is the repository source of truth for the durable project registry and
 its local read-only alias interface. The Brain may index it but does not replace it.
@@ -13,13 +13,27 @@ its local read-only alias interface. The Brain may index it but does not replace
 A normal project lookup uses a human alias rather than copied device, workspace,
 runtime, job or idempotency identifiers.
 
-The current local interface is:
+The local diagnostic interface is:
 
 ```text
 mcp-edge project discover --alias ekoparty --repository ekoparty-trip-agent
 mcp-edge project status --alias ekoparty [--target parrot]
 mcp-edge project resolve --alias ekoparty [--target parrot]
 ```
+
+The normal chat-facing interface is:
+
+```text
+project_prepare(alias=ekoparty, repository=ekoparty-trip-agent, target=parrot)
+project_status(alias=ekoparty, target=parrot)
+```
+
+These public tools accept human names only. They do not accept or return device,
+workspace, operation, runtime, job or plan IDs. The server resolves `parrot` to exactly
+one active paired Edge; a missing or duplicate active alias blocks rather than choosing
+silently. The consequential `project_prepare` tool is the approval boundary. Its Edge
+implementation still creates a short-lived internal plan, re-runs discovery and applies
+only the reviewed action, but the user never handles a plan ID.
 
 These commands accept no state path, workspace ID, device ID, runtime ID, command, URL
 or repository mutation. `discover` scans only bounded direct children of the approved
@@ -98,9 +112,11 @@ repository, target alias, profile and registered workspace.
 
 ## Registration and idempotence
 
-The Step 3 core exposes an internal typed registration operation for future approved
-preview/execute tools. There is no public or local free-form `project register` command
-in this cut.
+The Step 3 core exposes typed registration and preparation operations. There is no
+public or local free-form `project register` command. `project_prepare` can only
+reuse the canonical checkout, associate one unique safe legacy path, or clone the
+owner-bound repository into its inferred canonical direct child. The action is selected
+and revalidated locally by the Edge, not supplied by the caller.
 
 Initial registration requires:
 
@@ -161,6 +177,9 @@ discovery_timeout
 plan_changed
 plan_expired
 registry_unavailable
+credential_unavailable
+clone_failed
+cleanup_required
 ```
 
 Errors do not include paths, remote URLs, Git output or internal IDs.
@@ -188,28 +207,44 @@ blocked
 
 One clean legacy match yields `associate_existing`. More than one matching checkout yields
 `ambiguous_checkout`; no path is guessed. A dirty unique match remains blocked. No match
-yields `clone_required`, but this cut does not clone it.
+yields `clone_required`. An approved `project_prepare` may then clone only the
+canonical owner-bound repository using the Edge credential already configured for
+development Git.
 
 The safe discovery JSON contains alias, owner/repository, recovery state, candidate count
 and a stable reason. It omits all candidate paths and internal identifiers.
 
-## Association preview/apply transaction
+## Preparation preview/apply transaction
 
-The core exposes an internal typed preview/apply operation for a clean canonical or unique
-legacy checkout. It can associate one unique safe legacy path without moving it. The safe
-preview reports `approval_required`, alias, owner/repository,
-target, profile and action; the reviewed plan keeps the candidate path internal and expires
-after five minutes.
+The core exposes an internal typed preview/apply operation for a clean canonical checkout,
+one unique legacy checkout or one missing canonical checkout. It can associate a unique
+safe legacy path without moving it or clone a missing project after public tool approval.
+The safe preview reports `approval_required`, alias, owner/repository, target, profile
+and action; the reviewed plan keeps the candidate path internal and expires after five
+minutes. There is intentionally no user-facing plan ID.
 
 Apply re-runs discovery and requires the same action and exact candidate. A new match, dirty
 checkout, remote change, symlink replacement, root escape or expired plan returns
 `plan_changed` or `plan_expired` before mutation.
 
-After revalidation, apply registers the existing path in `workspaces.db` and binds the
-project. It never renames, copies or deletes the checkout. If project binding fails after a
-new workspace registration, that registration is removed; the checkout remains untouched.
-An already registered compatible workspace is reused. One workspace cannot be bound
-silently to two projects.
+For reuse/association, apply registers the existing path in `workspaces.db` and binds
+the project. It never renames, copies or deletes an existing checkout. If project binding
+fails after a new workspace registration, that registration is removed; the checkout
+remains untouched. An already registered compatible workspace is reused. One workspace
+cannot be bound silently to two projects.
+
+For clone, the Edge creates the canonical directory exclusively with mode `0700` and
+holds an open directory descriptor for the whole operation. The fixed Git runner receives
+only the generated owner-bound HTTPS URL and executes `git clone --single-branch -- URL .`.
+It uses the existing private Edge GitHub credential, disables prompts, hooks, system Git
+configuration and file-protocol access, and bounds time/output. After clone, the normal
+checkout inspector revalidates root, `.git`, fetch/push remotes and cleanliness before
+any registry mutation.
+
+A normal clone failure removes only the exact reserved directory. If the path or inode was
+replaced, cleanup stops with `cleanup_required` and preserves the replacement for review.
+A crash after a successful clone but before registration converges on the next discovery as
+`reuse_existing`; it does not blindly clone again.
 
 ## Canonical checkout inference
 
@@ -217,8 +252,9 @@ The pure inference helper maps repository `charle-z/ekoparty-trip-agent` to chec
 name `ekoparty-trip-agent` below the configured development root. It validates that the
 result is one direct child and does not create or modify the filesystem.
 
-Inferring a path is not authority to create it. Discovery and association use separate
-read-only and consequential phases; clone remains a later closed operation.
+Inferring a path is not authority to create it. Discovery and preparation use separate
+read-only and consequential phases. Only approved `project_prepare`, after local
+revalidation and credential checks, can reserve and populate the canonical path.
 
 ## Persistence and rollback
 
@@ -228,22 +264,21 @@ their current behavior.
 
 Rollback for registry/discovery is to stop using the project commands and leave
 `projects.db` untouched for a compatible future reader. Association compensates a newly
-created workspace registration if project binding fails. It never rewrites, moves or
-deletes a repository.
+created workspace registration if project binding fails. Clone additionally removes only
+its exact reserved directory on an ordinary failure; a replaced path is preserved for
+manual review. Existing repositories are never rewritten, moved or deleted.
 
 ## Current limitations
 
-This Step 3 recovery cut does not yet:
+This Step 3 cut does not yet:
 
-- expose association apply as a public/server approval tool;
-- clone a missing repository;
 - discover recursively or outside direct children of the approved development root;
-- create server-side project tools for ChatGPT;
-- map target aliases to scheduler pools/devices;
-- continue or build a project.
+- continue, test, build or deploy a project through the scheduler;
+- calibrate or allocate per-Edge resource pools;
+- prove the new prepare flow on the real Parrot Edge.
 
-Those operations remain blocked until their test-first authority, credential, rollback and
-no-data-loss contracts are implemented.
+Those later operations remain blocked until their durable-job, scheduler, resource and
+real-device contracts are implemented.
 
 ## Verification
 

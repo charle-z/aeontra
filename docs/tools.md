@@ -27,6 +27,8 @@ do not replace server-side enforcement.
 | `opencode_runtime_start` | 0/0/1/0 | Request one pinned OpenCode runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
 | `workspace_runtime_continue` | 0/0/1/0 | Continue one registered dev or HTB workspace through the active ChatGPT session using its local trusted contract; accepts the opaque workspace id, timeout and a fresh caller-generated idempotency key, creates one runtime, and does not retry automatically. |
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
+| `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |
+| `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning only safe repository, profile, mode, readiness or blocker metadata. |
 | `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
 | `workspace_autopilot_start` | 0/0/1/0 | Start or reuse one durable local job with `run_until=completed_or_cancelled`; no free-form objective is accepted. |
 | `workspace_autopilot_status` | 1/0/1/0 | Return signed, content-free job state, progress revision, cycle count and safe blocker code. |

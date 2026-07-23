@@ -1,28 +1,53 @@
 # Current task
 
-Historical deployed baseline preserved for documentation guards: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`.
+Historical deployed baseline remains unchanged: VPS `main`/production truth is preserved separately; no production, Coolify, Parrot or `main` mutation occurred in this cut.
 
-Branch: `p16-global-work-scheduler`. Pull request: `#48`. Published head before this local cut is `e088a884f032efce59066b2bcc54eda49838ffaf`.
+Branch: `p16-global-work-scheduler`. Pull request: `#48`. Published exact head before this local cut: `2bb4cf5ccbe387272dc5ec16d16dca5168ac259d`, which passed 15/15 checks.
 
-P16 Step 3 includes durable project aliases, bounded checkout discovery and association, plus GitHub Actions diagnostics using the existing Coolify `GITHUB_TOKEN`, `GITHUB_OWNER`, and `GITHUB_OWNER_TYPE`. No `gh`, extra token, job ID or signed URL is required from the operator.
+## P16 Step 3 candidate implemented locally
 
-Exact-head `e088a88` produced two failures. Both were read through the new diagnostics/full-log path:
+Alias-first public tools:
 
-1. Signed Debian package: migration reported `rename_failed (permission)`. The fixture created `/home/charles/.config/mcp-devbox-edge` with the final directory owned by `charles`, but the intermediate `.config` directory was created by root. Migration correctly runs as `charles` and cannot remove an entry from a root-owned parent. This was a faulty fixture, not a reason to weaken migration. The workflow now creates `.config` first as `charles`, then the state directory. A test locks ownership and ordering. Documentation states that a root-owned synthetic parent remains a permission failure rather than being silently repaired.
+- `project_prepare(alias, repository, target)`
+- `project_status(alias, target)`
 
-2. Rootless PostgreSQL: the log proved `podman load` completed, but the expected Docker archive tag was not present in the remote Podman service. Both `image exists` and direct `image inspect` of the assumed tag therefore failed. The workflow now lists rootless images with `images --no-trunc`, writes a bounded temporary inventory, strictly accepts only full lowercase image IDs, requires exactly one match for the archive config digest, and tags only that matched loaded ID with the closed local reference. Existing correct tags are reused; conflicting tags fail. The final tag is inspected and its normalized ID must equal the archive digest. Stable categories cover inventory, loaded ID, conflict, tag, inspect and identity failures. Cleanup removes the temporary inventory. No network pull or arbitrary image reference is enabled.
+The public schemas accept no path, URL, owner, branch, credential, device/workspace/operation/runtime/job/plan ID. A human target such as `parrot` must resolve to exactly one active paired Edge; absence or duplicate active names fail closed.
 
-Validation after both changes:
-- focused Debian/workflow/Edge-client/docs tests pass;
-- tagged P12 Edge-client tests pass;
-- full suite passed through `internal/edge`, then remaining packages passed in bounded groups after the global process hit the workcell time limit;
-- `go vet ./...` passes;
-- Staticcheck v0.7.0 passes with a temporary writable cache;
-- `go build ./...` passes;
-- actionlint v1.7.12 passes;
-- `git diff --check` passes;
-- no temporary probes remain.
+`project_prepare` executes one signed closed Edge operation and locally plans/revalidates one of:
 
-Local race remains unavailable because CGO is disabled; exact-head CI remains mandatory.
+- `reuse_existing`;
+- `associate_existing` for exactly one clean owner-bound legacy checkout;
+- `clone` into the inferred canonical direct child.
 
-Next: commit this fixture correction, publish it, hold the new SHA stable, and require PR #48 Debian and Rootless gates to pass. Diagnose any remaining failure with the implemented log tools. Do not touch the real Parrot Edge, Coolify production or `main` before exact-head gates are green.
+Clone uses only the existing private Edge GitHub credential and fixed runner. It creates the canonical directory exclusively with mode 0700, keeps an open descriptor for the reservation, runs a closed owner-bound `git clone --single-branch -- URL .`, verifies `.git`, fetch/push remotes and clean state, then registers the workspace/project. Ordinary failure removes only the exact reserved directory. A replaced path/inode is preserved with `cleanup_required`. Crash after successful clone converges through later discovery instead of blind reclone.
+
+Stable new project codes: `credential_unavailable`, `clone_failed`, `cleanup_required`.
+
+The signed operation result contains an internal workspace ID only for control-plane workspace synchronization. The public project view returns only alias, owner/repository, target, state, profile, mode and safe reason.
+
+## Final review hardening
+
+Two real issues found during final review were fixed and covered by tests:
+
+1. `project_prepare` may contact GitHub for clone, so its MCP annotation is now honestly `openWorldHint=true` (`0/0/1/1`).
+2. Project operation completions now reject any unrelated mixed metadata. Validation strips only the expected project/workspace fields and requires every remaining `OperationResult` field to be empty.
+
+Current deterministic catalog: 102 tools, hash `sha256:5a2091d85585d13eb7efbc22d942b2dfbd71fc7d547581803eb7633cac64d68b`. Historical catalog evidence remains filtered and unchanged.
+
+## Local validation
+
+Green:
+
+- all Go packages, run in bounded groups;
+- focused `internal/edgeclient`, `internal/edge`, `cmd/mcp-edge`, `internal/mcpserver`, app/integration/docs/catalog packages;
+- tagged compile gates for `p12_e2e` and `opencode_e2e`;
+- `go vet ./...`;
+- Staticcheck v0.7.0 with a temporary writable cache;
+- `go build ./...`;
+- Actionlint v1.7.12;
+- `git diff --check`;
+- no temporary helper/probe files remain.
+
+Local race remains unavailable because CGO is disabled; exact-head CI is authoritative.
+
+Next: write handoff, commit this isolated Step 3 cut, publish the same branch/PR, hold the new SHA stable, and require every PR #48 gate green. Diagnose failures from exact-head Actions logs. Do not touch real Parrot, Coolify production or `main` before the matrix is green.

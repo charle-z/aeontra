@@ -9,6 +9,26 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/edge"
 )
 
+type projectOperationParams struct {
+	Alias      string `json:"alias"`
+	Repository string `json:"repository,omitempty"`
+	Target     string `json:"target"`
+}
+
+type projectOperationPublicView struct {
+	Alias      string `json:"alias"`
+	Repository string `json:"repository,omitempty"`
+	Target     string `json:"target"`
+	State      string `json:"state"`
+	Profile    string `json:"profile,omitempty"`
+	Mode       string `json:"mode,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+type edgeDeviceAliasRegistry interface {
+	ResolveActiveDeviceName(string) (edge.Device, error)
+}
+
 type labPrepareParams struct {
 	DeviceID        string `json:"device_id"`
 	Platform        string `json:"platform"`
@@ -52,6 +72,25 @@ type edgeOperationPublicView struct {
 
 func (s *Server) addEdgeControlTools() {
 	writeHints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
+	projectPrepareHints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}
+	projectSchema := map[string]any{
+		"alias":      stringSchema("human project alias", `^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`, 63),
+		"repository": stringSchema("repository name under the Edge local GitHub owner", `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`, 100),
+		"target":     stringSchema("human paired Edge alias", `^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$`, 32),
+	}
+	s.addDirectTool(toolDef{
+		Name: "project_prepare", Description: "Create, recover, or associate one development project on a paired Edge using only alias, repository name, and human target alias. The Edge revalidates local Git authority and checkout state; paths and opaque IDs are not accepted or returned.",
+		InputSchema: closedObject(projectSchema, []string{"alias", "repository", "target"}), Version: "1", Annotations: projectPrepareHints,
+	}, func(arguments json.RawMessage) (string, error) {
+		return s.handleProjectOperation(arguments, edge.OperationProjectPrepare)
+	})
+	s.addDirectTool(toolDef{
+		Name: "project_status", Description: "Resolve one registered Edge project by human alias and target alias, returning only safe repository and readiness metadata.",
+		InputSchema: closedObject(map[string]any{"alias": projectSchema["alias"], "target": projectSchema["target"]}, []string{"alias", "target"}), Version: "1",
+		Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+	}, func(arguments json.RawMessage) (string, error) {
+		return s.handleProjectOperation(arguments, edge.OperationProjectStatus)
+	})
 	s.addDirectTool(toolDef{
 		Name: "workspace_lab_prepare", Description: "Create or reuse one authorized HTB Linux workspace on a paired Edge using only closed lab metadata; execution remains local.",
 		InputSchema: closedObject(map[string]any{
@@ -107,6 +146,44 @@ func (s *Server) addEdgeControlTools() {
 	s.addDirectTool(toolDef{Name: "edge_onboarding_status", Description: "Return safe paired, service, bundle, provider, driver, Bubblewrap, rootless, workspace-count and blocker metadata.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
 		return s.handleDeviceOperation(arguments, edge.OperationOnboardingStatus, false)
 	})
+}
+
+func (s *Server) handleProjectOperation(arguments json.RawMessage, kind edge.OperationKind) (string, error) {
+	if s.edgeOperations == nil || s.edgeDevices == nil {
+		return "", errEdgeStoreUnavailable
+	}
+	resolver, ok := s.edgeDevices.(edgeDeviceAliasRegistry)
+	if !ok {
+		return "", errors.New("edge target alias resolution is unavailable")
+	}
+	var params projectOperationParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	if kind == edge.OperationProjectStatus && params.Repository != "" {
+		return "", errors.New("repository is not accepted for project status")
+	}
+	device, err := resolver.ResolveActiveDeviceName(params.Target)
+	if err != nil {
+		return "", err
+	}
+	request := edge.OperationRequest{Alias: params.Alias, Repository: params.Repository, TargetAlias: params.Target, Profile: "linux-workcell"}
+	op, _, err := s.edgeOperations.CreateOperation(device.ID, kind, request)
+	if err == nil {
+		op, err = s.edgeOperations.WaitOperation(context.Background(), op.ID, 180*time.Second)
+	}
+	view := projectOperationPublicView{Alias: params.Alias, Target: params.Target, State: string(op.State)}
+	if op.State == edge.OperationSucceeded {
+		view.Alias = op.Result.ProjectAlias
+		view.Repository = op.Result.ProjectOwner + "/" + op.Result.ProjectRepository
+		view.Target = op.Result.ProjectTarget
+		view.State = op.Result.ProjectState
+		view.Profile = op.Result.ProjectProfile
+		view.Mode = op.Result.ProjectMode
+	} else if op.State == edge.OperationFailed {
+		view.Reason = op.SafeCode
+	}
+	return marshalToolValue(view, err)
 }
 
 type deviceOperationParams struct {

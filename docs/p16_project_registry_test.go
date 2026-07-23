@@ -31,9 +31,15 @@ func TestP16ProjectAliasRegistryContractIsDocumented(t *testing.T) {
 		"compensates a newly",
 		"checkout_dirty",
 		"repository_mismatch",
-		"does not yet",
+		"project_prepare(alias=ekoparty",
+		"project_status(alias=ekoparty",
+		"There is intentionally no user-facing plan ID",
+		"holds an open directory descriptor",
+		"git clone --single-branch -- URL .",
+		"credential_unavailable",
+		"clone_failed",
+		"cleanup_required",
 		"associate one unique safe legacy path",
-		"clone a missing repository",
 	} {
 		if !strings.Contains(strings.ToLower(document), strings.ToLower(required)) {
 			t.Errorf("project resolution documentation missing %q", required)
@@ -49,6 +55,8 @@ func TestP16ProjectAliasRegistryContractIsDocumented(t *testing.T) {
 		"Add private versioned `projects.db` schema",
 		"Add read-only project discover/resolve/status tools first",
 		"Add bounded unbound local workspace discovery/classification",
+		"Clone missing repo into approved root with fixed Git authority",
+		"Expose approved create/associate tools without internal IDs",
 	} {
 		if !strings.Contains(tasks, required) {
 			t.Errorf("P16 tasks missing project registry checkpoint %q", required)

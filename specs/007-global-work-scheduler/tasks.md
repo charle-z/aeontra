@@ -28,7 +28,7 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 - [x] Reject terminal/ancestor symlinks, symlinked identity markers, conflicting or
   occupied state, unsafe state owner/mode, and invalid signed-release links.
 - [x] Inject failure after every migration stage and prove rollback/idempotence.
-- [ ] Reject Windows-mounted, overlapping, dirty, mismatched, or ambiguous project
+- [x] Reject Windows-mounted, overlapping, dirty, mismatched, or ambiguous project
   workspaces in the Step 3 workspace resolver; Step 1 does not guess mount semantics.
 
 ### Implementation
@@ -78,7 +78,7 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 - [x] Reuse and revalidate one explicitly bound matching checkout.
 - [x] Associate one unique safe legacy path without moving it through internal
   preview/revalidation/apply.
-- [ ] Clone missing repo into approved root with fixed Git authority.
+- [x] Clone missing repo into approved root with fixed Git authority.
 - [x] Dirty, mismatched, ambiguous, symlinked, escaped, or Windows-mounted checkout
   blocks safely.
 - [x] Multiple unbound matching checkouts produce an explicit ambiguous result.
@@ -94,7 +94,7 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 - [x] Add lossless recovery decision engine and stable reasons.
 - [x] Add read-only project discover/resolve/status tools first.
 - [x] Add internal association preview/apply with revalidation and compensating rollback.
-- [ ] Expose approved create/associate tools without internal IDs.
+- [x] Expose approved create/associate tools without internal IDs.
 
 ## Step 4 — Edge durable job journal
 

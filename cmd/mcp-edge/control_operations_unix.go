@@ -90,6 +90,10 @@ func executeControlOperation(ctx context.Context, stateRoot string, operation ed
 		return resolveOperationWorkspace(stateRoot, operation.Request.WorkspaceID)
 	case edge.OperationAutopilotStart, edge.OperationAutopilotPause, edge.OperationAutopilotResume, edge.OperationAutopilotCancel:
 		return executeAutopilotControl(stateRoot, operation)
+	case edge.OperationProjectPrepare:
+		return executeProjectPrepare(ctx, stateRoot, operation.Request)
+	case edge.OperationProjectStatus:
+		return executeProjectStatus(ctx, stateRoot, operation.Request)
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectEdgeDiagnostic(stateRoot, true)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:
@@ -97,6 +101,94 @@ func executeControlOperation(ctx context.Context, stateRoot string, operation ed
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}
+}
+
+func executeProjectPrepare(ctx context.Context, stateRoot string, request edge.OperationRequest) (edge.OperationResult, string) {
+	credential, workspaces, projects, roots, code := openProjectControlState(stateRoot)
+	if code != "" {
+		return edge.OperationResult{}, code
+	}
+	defer workspaces.Close()
+	defer projects.Close()
+	config := edgeclient.ProjectPreparationConfig{
+		StateRoot: stateRoot, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: credential, Runner: edgeclient.NewDevGitCommandRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin"),
+	}
+	plan, err := edgeclient.PlanProjectPreparation(ctx, config, edgeclient.ProjectPreparationRequest{
+		Alias: request.Alias, Repository: request.Repository, TargetAlias: request.TargetAlias,
+		Profile: edgeclient.WorkspaceProfile(request.Profile),
+	})
+	if err != nil {
+		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	if _, err := edgeclient.ApplyProjectPreparation(ctx, config, plan); err != nil {
+		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	return projectControlResult(ctx, projects, request.Alias, request.TargetAlias)
+}
+
+func executeProjectStatus(ctx context.Context, stateRoot string, request edge.OperationRequest) (edge.OperationResult, string) {
+	_, workspaces, projects, _, code := openProjectControlState(stateRoot)
+	if code != "" {
+		return edge.OperationResult{}, code
+	}
+	defer workspaces.Close()
+	defer projects.Close()
+	return projectControlResult(ctx, projects, request.Alias, request.TargetAlias)
+}
+
+func openProjectControlState(stateRoot string) (edgeclient.GitHubCredential, *edgeclient.WorkspaceRegistry, *edgeclient.ProjectRegistry, edgeclient.WorkspaceRoots, string) {
+	credential, err := edgeclient.LoadGitHubCredential(stateRoot)
+	if err != nil {
+		return edgeclient.GitHubCredential{}, nil, nil, edgeclient.WorkspaceRoots{}, "project_credential_unavailable"
+	}
+	roots, err := edgeclient.DefaultWorkspaceRoots()
+	if err != nil {
+		return edgeclient.GitHubCredential{}, nil, nil, edgeclient.WorkspaceRoots{}, "project_roots_unavailable"
+	}
+	workspaces, err := edgeclient.OpenWorkspaceRegistryWithRoots(stateRoot, roots)
+	if err != nil {
+		return edgeclient.GitHubCredential{}, nil, nil, edgeclient.WorkspaceRoots{}, "project_registry_unavailable"
+	}
+	projects, err := edgeclient.OpenProjectRegistry(edgeclient.ProjectRegistryConfig{
+		StateRoot: stateRoot, AllowedOwner: credential.Owner, Workspaces: workspaces,
+	})
+	if err != nil {
+		_ = workspaces.Close()
+		return edgeclient.GitHubCredential{}, nil, nil, edgeclient.WorkspaceRoots{}, "project_registry_unavailable"
+	}
+	return credential, workspaces, projects, roots, ""
+}
+
+func projectControlResult(ctx context.Context, projects *edgeclient.ProjectRegistry, alias, target string) (edge.OperationResult, string) {
+	resolved, err := projects.Resolve(ctx, alias, target)
+	if err != nil {
+		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	return edge.OperationResult{
+		WorkspaceID:       resolved.Workspace.ID,
+		ProjectAlias:      resolved.Project.Alias,
+		ProjectOwner:      resolved.Project.Owner,
+		ProjectRepository: resolved.Project.Repository,
+		ProjectTarget:     resolved.TargetAlias,
+		ProjectState:      "ready",
+		ProjectProfile:    string(resolved.Workspace.Profile),
+		ProjectMode:       string(resolved.Workspace.Mode),
+	}, ""
+}
+
+func safeProjectControlFailure(err error) string {
+	var projectFailure *edgeclient.ProjectError
+	if errors.As(err, &projectFailure) {
+		code := string(projectFailure.Code)
+		if regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(code) {
+			return "project_" + code
+		}
+	}
+	if errors.Is(err, context.Canceled) {
+		return "cancelled"
+	}
+	return "project_operation_failed"
 }
 
 type bundleOperationReceipt struct {
