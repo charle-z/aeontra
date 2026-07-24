@@ -32,11 +32,12 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"Build the same commit twice and prove cache reuse",
 		"Verify stop kills the complete service cgroup",
 		"Verify conservative removal",
-		"cache-inventory.txt",
-		"sudo runuser -u mcp-build -- python3",
-		"follow_symlinks=False",
-		"10_000",
-		"4_294_967_296",
+		"cache-usage.txt",
+		"cache-policy.txt",
+		"buildctl",
+		"du -v",
+		"maxUsedSpace = \"4GB\"",
+		"1048576",
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Fatalf("builder spike workflow lost %q", required)
@@ -58,6 +59,10 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"restores `CPUQuota=65%`",
 		"real VPS execution and dated baseline are still validation pending",
 		"Step 8 must not begin",
+		"bootstrap-vps.sh",
+		"mcp-devbox-builder-bootstrap.service",
+		"work survives an SSH disconnect",
+		"existing different or partial installation fails closed",
 	} {
 		if !strings.Contains(calibration, required) {
 			t.Fatalf("VPS calibration documentation lost %q", required)

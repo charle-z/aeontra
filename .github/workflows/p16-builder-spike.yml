@@ -120,46 +120,16 @@ jobs:
           test -s "$first"
           test -s "$second"
           grep -Eq 'CACHED|cached' "$RUNNER_TEMP/second-build.log"
-          sudo runuser -u mcp-build -- python3 - "$cache" > "$RUNNER_TEMP/cache-inventory.txt" <<'PY'
-          import os
-          import stat
-          import sys
-
-          root = os.path.realpath(sys.argv[1])
-          root_stat = os.lstat(root)
-          if not stat.S_ISDIR(root_stat.st_mode):
-              raise SystemExit("cache root is not a directory")
-          total = 0
-          entries = 0
-          stack = [root]
-          while stack:
-              directory = stack.pop()
-              with os.scandir(directory) as iterator:
-                  for entry in iterator:
-                      metadata = entry.stat(follow_symlinks=False)
-                      entries += 1
-                      if entries > 10_000:
-                          raise SystemExit("cache inventory exceeded the entry bound")
-                      if metadata.st_dev != root_stat.st_dev:
-                          raise SystemExit("cache inventory crossed a filesystem boundary")
-                      if stat.S_ISLNK(metadata.st_mode):
-                          raise SystemExit("cache inventory contains a symlink")
-                      if stat.S_ISDIR(metadata.st_mode):
-                          stack.append(entry.path)
-                      elif stat.S_ISREG(metadata.st_mode):
-                          total += metadata.st_size
-                          if total > 4_294_967_296:
-                              raise SystemExit("cache byte evidence exceeded the reviewed bound")
-                      else:
-                          raise SystemExit("cache inventory contains a special file")
-          if entries == 0 or total == 0:
-              raise SystemExit("cache inventory is empty")
-          print(f"entries={entries}")
-          print(f"bytes={total}")
-          PY
-          test -s "$RUNNER_TEMP/cache-inventory.txt"
-          grep -Eq '^entries=[1-9][0-9]*$' "$RUNNER_TEMP/cache-inventory.txt"
-          grep -Eq '^bytes=[1-9][0-9]*$' "$RUNNER_TEMP/cache-inventory.txt"
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" du -v \
+            2>&1 | tee "$RUNNER_TEMP/cache-usage.txt"
+          test -s "$RUNNER_TEMP/cache-usage.txt"
+          cache_usage_output_bytes="$(stat -c '%s' "$RUNNER_TEMP/cache-usage.txt")"
+          test "$cache_usage_output_bytes" -gt 0
+          test "$cache_usage_output_bytes" -le 1048576
+          sudo grep -F 'maxUsedSpace = "4GB"' /etc/mcp-devbox-builder/buildkitd.toml \
+            | tee "$RUNNER_TEMP/cache-policy.txt"
+          test -s "$RUNNER_TEMP/cache-policy.txt"
 
       - name: Verify stop kills the complete service cgroup
         run: |
@@ -194,7 +164,8 @@ jobs:
             ${{ runner.temp }}/builder-processes.txt
             ${{ runner.temp }}/first-build.log
             ${{ runner.temp }}/second-build.log
-            ${{ runner.temp }}/cache-inventory.txt
+            ${{ runner.temp }}/cache-usage.txt
+            ${{ runner.temp }}/cache-policy.txt
           if-no-files-found: warn
           retention-days: 14
 

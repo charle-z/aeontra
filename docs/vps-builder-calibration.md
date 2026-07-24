@@ -27,6 +27,47 @@ sudo /usr/share/mcp-devbox-builder-candidate/calibrate-vps.sh <EXACT_40_CHARACTE
 
 This is intentionally not a free shell profile. A future MCP wrapper, if added, must bind the exact commit and invoke only this fixed script.
 
+## Durable host bootstrap
+
+The deployed MCP container cannot perform this host mutation: it runs as non-root UID
+10001 inside an Alpine container, has no host systemd and intentionally has no host
+filesystem or Docker socket. Installing the rootless builder is therefore a real host
+administrator boundary, not something that should be hidden behind the public MCP.
+
+`packaging/builder/bootstrap-vps.sh` reduces that boundary to one reviewed root
+invocation with the exact green commit:
+
+```bash
+sudo /root/mcp-devbox-builder-bootstrap.sh <EXACT_40_CHARACTER_COMMIT>
+```
+
+The downloaded entrypoint must be a regular, executable, root-owned file that is not
+writable by group or other. The bootstrap reexecutes itself as the fixed transient
+`mcp-devbox-builder-bootstrap.service` unit with a four-hour maximum runtime.
+The work survives an SSH disconnect and its progress is available through:
+
+```bash
+systemctl status mcp-devbox-builder-bootstrap.service --no-pager
+journalctl -u mcp-devbox-builder-bootstrap.service --no-pager
+```
+
+Inside the transient unit, the bootstrap:
+
+1. takes a private host lock;
+2. fetches only the exact commit from the fixed public owner repository using an empty
+   Git environment and no credential helper;
+3. verifies a clean detached checkout and the fixed scripts' ownership/mode;
+4. stages the pinned BuildKit release and checksum/SBOM/Sigstore evidence;
+5. installs a new candidate, or reuses an existing candidate only when binaries,
+   configuration and unit match byte-for-byte and the service is active;
+6. runs the fixed calibrator for that same commit;
+7. removes only a candidate created by that attempt when calibration fails;
+8. preserves private calibration evidence and the preverified staging directory.
+
+An existing different or partial installation fails closed and is never overwritten.
+The bootstrap accepts no repository, URL, branch, command, credential, path or resource
+limit from the caller.
+
 ## Measurement sequence
 
 The calibrator serializes itself with a private lock and runs six builds against the same exact commit:
