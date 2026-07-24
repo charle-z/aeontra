@@ -49,7 +49,6 @@ ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
 ProtectProc=invisible
-ProcSubset=pid
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictNamespaces=~cgroup ipc uts

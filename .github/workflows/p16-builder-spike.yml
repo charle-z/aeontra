@@ -87,6 +87,7 @@ jobs:
 
       - name: Build the same commit twice and prove cache reuse
         run: |
+          set -Eeuo pipefail
           fixture=/var/lib/mcp-devbox-builder-fixture
           context="$fixture/context"
           output="$fixture/output"

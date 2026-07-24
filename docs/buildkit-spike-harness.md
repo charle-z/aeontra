@@ -41,6 +41,9 @@ spike. It is not a public tool and is not installed by the MCP container.
   `KillMode=control-group`;
 - `buildkitd.toml` is checked against the generated rootless configuration and fixes
   one OCI worker, one parallel build and bounded GC/cache thresholds;
+- the service keeps `ProtectProc=invisible` but must not set `ProcSubset=pid` because
+  BuildKit reads `/proc/stat` during a solve; cgroup and process-subtree isolation
+  remain the enforcement boundary;
 - `install-preverified.sh` accepts no arguments or URLs, consumes only a private
   root-owned staging directory containing `buildkitd`, `buildctl`, `buildkit-runc`
   and an exact three-entry SHA-256 manifest, creates the system identity with

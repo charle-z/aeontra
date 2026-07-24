@@ -31,6 +31,7 @@ func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 		"--disable-host-loopback",
 		"ProtectSystem=strict",
 		"ProtectControlGroups=yes",
+		"ProtectProc=invisible",
 		"ReadWritePaths=/run/mcp-devbox-buildkit /var/lib/mcp-devbox-buildkit /var/cache/mcp-devbox-buildkit",
 	} {
 		if !strings.Contains(unit, required) {
@@ -40,7 +41,7 @@ func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 	for _, forbidden := range []string{
 		"/var/run/docker.sock", "/run/docker.sock", "tcp://", "--privileged",
 		"--oci-worker-no-process-sandbox", "network.host", "security.insecure",
-		"ProtectControlGroups=no", "KillMode=process",
+		"ProtectControlGroups=no", "KillMode=process", "ProcSubset=pid",
 	} {
 		if strings.Contains(unit, forbidden) {
 			t.Fatalf("unit contains forbidden %q", forbidden)
