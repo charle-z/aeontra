@@ -99,7 +99,7 @@ func runWorkcell(args []string, stderr io.Writer) error {
 	state := fs.String("state", defaultStateRoot(), "private Edge state root")
 	root := fs.String("root", "", "dedicated Linux workspace root")
 	poll := fs.Duration("poll", 5*time.Second, "empty queue polling interval")
-	leaseTTL := fs.Duration("lease", time.Minute, "task lease duration")
+	leaseTTL := fs.Duration("lease", 10*time.Minute, "task lease duration")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -232,7 +232,7 @@ Usage:
   mcp-edge project discover --alias <PROJECT> --repository <REPOSITORY>
   mcp-edge project status --alias <PROJECT> [--target <ALIAS>]
   mcp-edge project resolve --alias <PROJECT> [--target <ALIAS>]
-  mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 1m]
+  mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 10m]
   mcp-edge opencode --opencode <ABS_PATH> --provider <ABS_PATH> --integrity <ABS_PATH> [--bubblewrap <ABS_PATH>] [--state <ABS_PATH>]
   mcp-edge workspace add [--profile sandbox|linux-workcell] <ABS_LINUX_PATH> [--state <ABS_PATH>]
   mcp-edge workspace configure <OPAQUE_ID> --mode dev|htb-linux [local metadata] [--state <ABS_PATH>]

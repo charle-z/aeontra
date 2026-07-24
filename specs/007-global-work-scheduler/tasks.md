@@ -100,22 +100,22 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 
 ### RED tests
 
-- [ ] Persist `started` before executor invocation.
-- [ ] Persist `completed` before result delivery.
-- [ ] Lost completion delivery replays one result without execution.
-- [ ] Crash after start enters reconciliation/manual-review, not blind rerun.
-- [ ] Network disconnect during bounded stage completes locally and reconnects.
-- [ ] Disconnect beyond grace blocks new stages.
-- [ ] Revocation/cancellation is observed and no new stage starts.
-- [ ] WSL/process restart preserves job/result state.
+- [x] Persist `started` before executor invocation.
+- [x] Persist `completed` before result delivery.
+- [x] Lost completion delivery replays one result without execution.
+- [x] Crash after start enters reconciliation/manual-review, not blind rerun.
+- [x] Network disconnect during bounded stage completes locally and reconnects.
+- [x] Disconnect beyond grace blocks new stages.
+- [x] Revocation/cancellation is observed and no new stage starts.
+- [x] WSL/process restart preserves job/result state.
 
 ### Implementation
 
-- [ ] Add local journal schema/state machine.
-- [ ] Add offline grace/deadline/reconnect loop.
-- [ ] Add stable attempt and result identity.
-- [ ] Add pending-result retention/cleanup bounds.
-- [ ] Add local doctor checks for journal integrity.
+- [x] Add local journal schema/state machine.
+- [x] Add offline grace/deadline/reconnect loop.
+- [x] Add stable attempt and result identity.
+- [x] Add pending-result retention/cleanup bounds.
+- [x] Add local doctor checks for journal integrity.
 
 ## Step 5 — Scheduler store
 

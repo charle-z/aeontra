@@ -24,6 +24,7 @@ const doctorToolPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:
 var doctorVerifyBundle = verifyInstalledEdgeBundle
 var doctorInspectLayout = edgelifecycle.InspectLayout
 var doctorLoadIdentity = edgeclient.LoadIdentity
+var doctorInspectJournal = edgeclient.InspectJournal
 var doctorCurrentUser = user.Current
 var doctorDiscoverRootless = func(uid int) (*edgeclient.RootlessContainerEndpoint, error) {
 	return edgeclient.DiscoverRootlessContainerEndpoint(uid, doctorToolPath)
@@ -115,22 +116,30 @@ func inspectEdgeHealth() (string, bool, error) {
 		rootless = endpoint.Engine
 	}
 
-	identity, _, identityErr := doctorLoadIdentity(filepath.Join(config.Inventory.HomeDir, ".local", "state", "mcp-edge"))
+	stateRoot := filepath.Join(config.Inventory.HomeDir, ".local", "state", "mcp-edge")
+	journal, journalErr := doctorInspectJournal(stateRoot)
+	if journalErr != nil {
+		return fmt.Sprintf("edge_doctor status=blocked bundle=valid layout=valid identity=unknown service=unknown rootless=%s journal=blocked", rootless), false, errors.New("edge doctor found an unsafe journal")
+	}
+	journalState := string(journal.State)
+	journalReady := journal.State == edgeclient.JournalHealthEmpty || journal.State == edgeclient.JournalHealthReady
+
+	identity, _, identityErr := doctorLoadIdentity(stateRoot)
 	if identityErr != nil {
 		identityPath := filepath.Join(config.Inventory.HomeDir, ".local", "state", "mcp-edge", "identity.json")
 		if _, statErr := os.Lstat(identityPath); errors.Is(statErr, os.ErrNotExist) {
-			return fmt.Sprintf("edge_doctor status=setup_required bundle=valid layout=valid identity=missing service=inactive rootless=%s", rootless), true, nil
+			return fmt.Sprintf("edge_doctor status=setup_required bundle=valid layout=valid identity=missing service=inactive rootless=%s journal=%s", rootless, journalState), journalReady, nil
 		}
-		return fmt.Sprintf("edge_doctor status=blocked bundle=valid layout=valid identity=invalid service=unknown rootless=%s", rootless), false, errors.New("edge doctor found an invalid identity")
+		return fmt.Sprintf("edge_doctor status=blocked bundle=valid layout=valid identity=invalid service=unknown rootless=%s journal=%s", rootless, journalState), false, errors.New("edge doctor found an invalid identity")
 	}
 	service := "mcp-devbox-opencode-edge@" + currentUser.Username + ".service"
 	active := doctorServiceActive(service)
 	status := "degraded"
 	serviceState := "inactive"
-	healthy := endpoint != nil && active
+	healthy := endpoint != nil && active && journalReady
 	if healthy {
 		status = "ready"
 		serviceState = "active"
 	}
-	return fmt.Sprintf("edge_doctor status=%s bundle=valid layout=valid identity=valid alias=%s service=%s rootless=%s", status, identity.Name, serviceState, rootless), healthy, nil
+	return fmt.Sprintf("edge_doctor status=%s bundle=valid layout=valid identity=valid alias=%s service=%s rootless=%s journal=%s", status, identity.Name, serviceState, rootless, journalState), healthy, nil
 }

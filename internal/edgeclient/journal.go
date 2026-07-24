@@ -21,25 +21,41 @@ const (
 )
 
 type JournalEntry struct {
-	State  JournalState
-	Result edge.TaskResult
-	New    bool
+	Key         string
+	TaskID      string
+	LeaseID     string
+	State       JournalState
+	Result      edge.TaskResult
+	New         bool
+	Attempt     int
+	ResultID    string
+	Delivered   bool
+	StartedAt   time.Time
+	CompletedAt time.Time
 }
 
 type Journal struct {
-	db *sql.DB
+	db         *sql.DB
+	now        func() time.Time
+	maxEntries int
 }
 
 var journalKeyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`)
 var journalTaskPattern = regexp.MustCompile(`^et_[a-f0-9]{32}$`)
+
+const MaxJournalEntries = 4096
 
 func OpenJournal(stateRoot string) (*Journal, error) {
 	if err := preparePrivateRoot(stateRoot); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(stateRoot, "journal.db")
-	if info, err := os.Lstat(path); err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
-		return nil, errors.New("edge journal is unsafe")
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) || info.Size() <= 0 || info.Size() > 32<<20 {
+			return nil, errors.New("edge journal is unsafe")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, errors.New("edge journal unavailable")
 	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -51,64 +67,31 @@ func OpenJournal(stateRoot string) (*Journal, error) {
 		`PRAGMA synchronous=FULL`,
 		`PRAGMA busy_timeout=5000`,
 		`PRAGMA max_page_count=4096`,
-		`CREATE TABLE IF NOT EXISTS executions(idempotency_key TEXT PRIMARY KEY, task_id TEXT NOT NULL, state TEXT NOT NULL, outcome TEXT, summary TEXT, result_ref TEXT, started_at INTEGER NOT NULL, completed_at INTEGER) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS executions(idempotency_key TEXT PRIMARY KEY, task_id TEXT NOT NULL, state TEXT NOT NULL, outcome TEXT, summary TEXT, result_ref TEXT, started_at INTEGER NOT NULL, completed_at INTEGER, attempt INTEGER NOT NULL DEFAULT 1, result_id TEXT, lease_id TEXT, delivered_at INTEGER, updated_at INTEGER NOT NULL DEFAULT 0) WITHOUT ROWID`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			_ = db.Close()
 			return nil, errors.New("edge journal initialization failed")
 		}
 	}
+	if err := migrateJournalV2(db); err != nil {
+		_ = db.Close()
+		return nil, errors.New("edge journal migration failed")
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = db.Close()
 		return nil, errors.New("edge journal permissions failed")
 	}
-	return &Journal{db: db}, nil
+	return &Journal{db: db, now: time.Now, maxEntries: MaxJournalEntries}, nil
 }
 
 func (j *Journal) Begin(key, taskID string) (JournalEntry, error) {
-	if !journalKeyPattern.MatchString(key) || !journalTaskPattern.MatchString(taskID) {
-		return JournalEntry{}, errors.New("journal identity is invalid")
-	}
-	result, err := j.db.Exec(`INSERT OR IGNORE INTO executions(idempotency_key,task_id,state,started_at) VALUES(?,?,?,?)`, key, taskID, JournalStarted, time.Now().UTC().Unix())
-	if err != nil {
-		return JournalEntry{}, errors.New("edge journal unavailable")
-	}
-	rows, _ := result.RowsAffected()
-	var storedTask string
-	var state JournalState
-	var outcome, summary, resultRef sql.NullString
-	if err := j.db.QueryRow(`SELECT task_id,state,outcome,summary,result_ref FROM executions WHERE idempotency_key=?`, key).Scan(&storedTask, &state, &outcome, &summary, &resultRef); err != nil {
-		return JournalEntry{}, errors.New("edge journal unavailable")
-	}
-	if storedTask != taskID {
-		return JournalEntry{}, errors.New("journal idempotency conflict")
-	}
-	return JournalEntry{State: state, Result: edge.TaskResult{Outcome: edge.Outcome(outcome.String), Summary: summary.String, ResultRef: resultRef.String}, New: rows == 1}, nil
+	return j.BeginAttempt(key, taskID, 1)
 }
 
 func (j *Journal) Finish(key, taskID string, result edge.TaskResult) error {
-	if !journalKeyPattern.MatchString(key) || !journalTaskPattern.MatchString(taskID) || result.Outcome == "" || result.Summary == "" {
-		return errors.New("journal completion is invalid")
-	}
-	existing, err := j.Begin(key, taskID)
-	if err != nil {
-		return err
-	}
-	if existing.State == JournalCompleted {
-		if existing.Result == result {
-			return nil
-		}
-		return errors.New("journal completion conflicts")
-	}
-	update, err := j.db.Exec(`UPDATE executions SET state=?,outcome=?,summary=?,result_ref=?,completed_at=? WHERE idempotency_key=? AND task_id=? AND state=?`, JournalCompleted, result.Outcome, result.Summary, nullableJournalString(result.ResultRef), time.Now().UTC().Unix(), key, taskID, JournalStarted)
-	if err != nil {
-		return errors.New("edge journal unavailable")
-	}
-	rows, _ := update.RowsAffected()
-	if rows != 1 {
-		return errors.New("journal completion failed")
-	}
-	return nil
+	_, err := j.FinishEntry(key, taskID, result)
+	return err
 }
 
 func (j *Journal) Close() error {

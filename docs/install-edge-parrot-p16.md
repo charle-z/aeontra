@@ -225,3 +225,7 @@ git diff --check
 
 The remote `.github/workflows/p15-edge.yml` package transaction and CGO race gates are
 blocking; local success is not a substitute.
+
+## Durable job journal
+
+The development workcell persists execution state in the private `journal.db`. `mcp-edge doctor` reports `journal=empty|ready|pending|reconciliation|migration_required|blocked` without exposing task or result identifiers. A transient disconnect may continue locally for the fixed ten-minute offline grace. Completed pending results replay after reconnection without re-execution. Do not delete or edit `journal.db`; use the local `STOP` file before manual reconciliation. Delivered results become eligible for bounded cleanup after seven days, while pending evidence is retained. See `docs/edge-job-journal.md`.

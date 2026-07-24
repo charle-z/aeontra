@@ -23,7 +23,7 @@ func TestDoctorReportsReadyWithoutOpaqueIdentifiers(t *testing.T) {
 	if err := doctorCommand(nil, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	want := "edge_doctor status=ready bundle=valid layout=valid identity=valid alias=parrot service=active rootless=podman\n"
+	want := "edge_doctor status=ready bundle=valid layout=valid identity=valid alias=parrot service=active rootless=podman journal=empty\n"
 	if stdout.String() != want {
 		t.Fatalf("output=%q want=%q", stdout.String(), want)
 	}
@@ -56,7 +56,7 @@ func TestDoctorReportsSetupRequiredWithoutPairingOrRepair(t *testing.T) {
 	if err := doctorCommand(nil, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	if stdout.String() != "edge_doctor status=setup_required bundle=valid layout=valid identity=missing service=inactive rootless=missing\n" {
+	if stdout.String() != "edge_doctor status=setup_required bundle=valid layout=valid identity=missing service=inactive rootless=missing journal=empty\n" {
 		t.Fatalf("output=%q", stdout.String())
 	}
 }
@@ -168,6 +168,7 @@ func restoreDoctorHooks(t *testing.T) {
 	oldVerify := doctorVerifyBundle
 	oldInspect := doctorInspectLayout
 	oldLoad := doctorLoadIdentity
+	oldJournal := doctorInspectJournal
 	oldUser := doctorCurrentUser
 	oldRootless := doctorDiscoverRootless
 	oldActive := doctorServiceActive
@@ -179,6 +180,7 @@ func restoreDoctorHooks(t *testing.T) {
 		doctorVerifyBundle = oldVerify
 		doctorInspectLayout = oldInspect
 		doctorLoadIdentity = oldLoad
+		doctorInspectJournal = oldJournal
 		doctorCurrentUser = oldUser
 		doctorDiscoverRootless = oldRootless
 		doctorServiceActive = oldActive
