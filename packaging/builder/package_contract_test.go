@@ -68,6 +68,7 @@ func TestBuilderInstallIsOfflineFixedInputAndRollbackCapable(t *testing.T) {
 		"/var/lib/mcp-devbox-builder-staging",
 		"sha256sum --check --strict SHA256SUMS",
 		"useradd --system --user-group --create-home --add-subids-for-system",
+		"cut -d: -f3",
 		"grep -Eq '^mcp-build:[0-9]+:[0-9]+$' /etc/subuid",
 		"grep -Eq '^mcp-build:[0-9]+:[0-9]+$' /etc/subgid",
 		"trap rollback EXIT HUP INT TERM",
@@ -87,6 +88,7 @@ func TestBuilderInstallIsOfflineFixedInputAndRollbackCapable(t *testing.T) {
 			t.Fatalf("installer contains forbidden %q", forbidden)
 		}
 	}
+	assertExecutable(t, "install-preverified.sh")
 	assertShellSyntax(t, "install-preverified.sh")
 }
 
@@ -109,7 +111,19 @@ func TestBuilderRemovePreservesStateCacheIdentityAndStaging(t *testing.T) {
 			t.Fatalf("remove script contains forbidden %q", forbidden)
 		}
 	}
+	assertExecutable(t, "remove.sh")
 	assertShellSyntax(t, "remove.sh")
+}
+
+func assertExecutable(t *testing.T, name string) {
+	t.Helper()
+	info, err := os.Stat(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("%s is not executable: %s", name, info.Mode())
+	}
 }
 
 func assertShellSyntax(t *testing.T, name string) {
