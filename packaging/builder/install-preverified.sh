@@ -66,7 +66,7 @@ rollback() {
 
 [ "$(id -u)" -eq 0 ] || fail "root is required"
 [ "$#" -eq 0 ] || fail "arguments are not accepted"
-for tool in stat sha256sum install systemctl useradd getent runuser; do
+for tool in stat sha256sum install systemctl useradd getent runuser cut; do
   command -v "$tool" >/dev/null 2>&1 || fail "required host tool is missing"
 done
 for tool in /usr/bin/rootlesskit /usr/bin/newuidmap /usr/bin/newgidmap /usr/bin/slirp4netns; do
@@ -89,10 +89,13 @@ grep -Eq '^[a-f0-9]{64}  buildctl$' "$STAGING/SHA256SUMS" || fail "buildctl chec
 ) || fail "preverified staging checksum failed"
 
 if getent passwd mcp-build >/dev/null 2>&1; then
-  set -- $(getent passwd mcp-build | tr ':' ' ')
-  [ "$3" -ne 0 ] || fail "builder account must not be root"
-  [ "$6" = /var/lib/mcp-devbox-buildkit ] || fail "builder account home is invalid"
-  [ "$7" = /usr/sbin/nologin ] || fail "builder account shell is invalid"
+  account=$(getent passwd mcp-build)
+  account_uid=$(printf '%s\n' "$account" | cut -d: -f3)
+  account_home=$(printf '%s\n' "$account" | cut -d: -f6)
+  account_shell=$(printf '%s\n' "$account" | cut -d: -f7)
+  [ "$account_uid" -ne 0 ] || fail "builder account must not be root"
+  [ "$account_home" = /var/lib/mcp-devbox-buildkit ] || fail "builder account home is invalid"
+  [ "$account_shell" = /usr/sbin/nologin ] || fail "builder account shell is invalid"
 else
   useradd --system --user-group --create-home --add-subids-for-system \
     --home-dir /var/lib/mcp-devbox-buildkit --shell /usr/sbin/nologin mcp-build
