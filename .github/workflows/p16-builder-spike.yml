@@ -120,25 +120,46 @@ jobs:
           test -s "$first"
           test -s "$second"
           grep -Eq 'CACHED|cached' "$RUNNER_TEMP/second-build.log"
-          sudo du -sb "$cache" > "$RUNNER_TEMP/cache-du.txt"
-          python3 - "$RUNNER_TEMP/cache-du.txt" "$RUNNER_TEMP/cache-bytes.txt" <<'PY'
-          import re
+          sudo runuser -u mcp-build -- python3 - "$cache" > "$RUNNER_TEMP/cache-inventory.txt" <<'PY'
+          import os
+          import stat
           import sys
-          from pathlib import Path
 
-          source = Path(sys.argv[1])
-          destination = Path(sys.argv[2])
-          raw = source.read_text(errors="strict")
-          match = re.fullmatch(r"([0-9]+)\s+.+\n?", raw)
-          if match is None:
-              raise SystemExit("invalid cache byte evidence")
-          value = int(match.group(1))
-          if not 0 < value <= 4_294_967_296:
-              raise SystemExit("cache byte evidence exceeded the reviewed bound")
-          destination.write_text(f"{value}\n")
+          root = os.path.realpath(sys.argv[1])
+          root_stat = os.lstat(root)
+          if not stat.S_ISDIR(root_stat.st_mode):
+              raise SystemExit("cache root is not a directory")
+          total = 0
+          entries = 0
+          stack = [root]
+          while stack:
+              directory = stack.pop()
+              with os.scandir(directory) as iterator:
+                  for entry in iterator:
+                      metadata = entry.stat(follow_symlinks=False)
+                      entries += 1
+                      if entries > 10_000:
+                          raise SystemExit("cache inventory exceeded the entry bound")
+                      if metadata.st_dev != root_stat.st_dev:
+                          raise SystemExit("cache inventory crossed a filesystem boundary")
+                      if stat.S_ISLNK(metadata.st_mode):
+                          raise SystemExit("cache inventory contains a symlink")
+                      if stat.S_ISDIR(metadata.st_mode):
+                          stack.append(entry.path)
+                      elif stat.S_ISREG(metadata.st_mode):
+                          total += metadata.st_size
+                          if total > 4_294_967_296:
+                              raise SystemExit("cache byte evidence exceeded the reviewed bound")
+                      else:
+                          raise SystemExit("cache inventory contains a special file")
+          if entries == 0 or total == 0:
+              raise SystemExit("cache inventory is empty")
+          print(f"entries={entries}")
+          print(f"bytes={total}")
           PY
-          test -s "$RUNNER_TEMP/cache-du.txt"
-          test -s "$RUNNER_TEMP/cache-bytes.txt"
+          test -s "$RUNNER_TEMP/cache-inventory.txt"
+          grep -Eq '^entries=[1-9][0-9]*$' "$RUNNER_TEMP/cache-inventory.txt"
+          grep -Eq '^bytes=[1-9][0-9]*$' "$RUNNER_TEMP/cache-inventory.txt"
 
       - name: Verify stop kills the complete service cgroup
         run: |
@@ -173,8 +194,7 @@ jobs:
             ${{ runner.temp }}/builder-processes.txt
             ${{ runner.temp }}/first-build.log
             ${{ runner.temp }}/second-build.log
-            ${{ runner.temp }}/cache-du.txt
-            ${{ runner.temp }}/cache-bytes.txt
+            ${{ runner.temp }}/cache-inventory.txt
           if-no-files-found: warn
           retention-days: 14
 
