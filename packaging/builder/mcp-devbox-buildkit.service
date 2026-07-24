@@ -38,7 +38,6 @@ TasksMax=512
 IOAccounting=yes
 IOWeight=25
 NoNewPrivileges=no
-CapabilityBoundingSet=
 AmbientCapabilities=
 PrivateTmp=yes
 ProtectSystem=strict
