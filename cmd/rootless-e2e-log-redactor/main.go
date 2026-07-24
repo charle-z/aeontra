@@ -15,8 +15,9 @@ const (
 )
 
 var (
-	safeTestLine  = regexp.MustCompile(`^(=== RUN   TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E)|--- (?:PASS|FAIL): TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E) \([0-9.]+s\)|PASS|FAIL)$`)
-	safeStageLine = regexp.MustCompile(`^P12 rootless category=stage_(?:clean_start|image_build|pod_create|network_volume_create|workspace_bind|compose|postgres|chromium|cancellation|cleanup)$`)
+	safeTestLine              = regexp.MustCompile(`^(=== RUN   TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E)|--- (?:PASS|FAIL): TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E) \([0-9.]+s\)|PASS|FAIL)$`)
+	safeStageLine             = regexp.MustCompile(`^P12 rootless category=stage_(?:clean_start|image_build|pod_create|network_volume_create|workspace_bind|compose|postgres|chromium|cancellation|cleanup)$`)
+	safePostgresOperationLine = regexp.MustCompile(`^P12 rootless category=postgres_(?:image_inspect|network_create|volume_create|container_run|readiness_query)$`)
 )
 
 func category(line string) string {
@@ -88,7 +89,7 @@ func category(line string) string {
 
 func normalize(line string) string {
 	line = strings.TrimSpace(line)
-	if safeTestLine.MatchString(line) || safeStageLine.MatchString(line) {
+	if safeTestLine.MatchString(line) || safeStageLine.MatchString(line) || safePostgresOperationLine.MatchString(line) {
 		return line
 	}
 	if code := category(line); code != "" {

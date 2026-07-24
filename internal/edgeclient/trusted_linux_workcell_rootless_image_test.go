@@ -29,3 +29,38 @@ func TestP12PostgresImageRejectsMutableOrRemoteReferences(t *testing.T) {
 		})
 	}
 }
+
+func TestP12RootlessResourceSnapshotRequiresExactConvergence(t *testing.T) {
+	baseline := map[string][]string{
+		"container": {"container-a"},
+		"pod":       {"pod-a"},
+		"network":   {"network-a"},
+		"volume":    {"volume-a"},
+	}
+	matching := map[string][]string{
+		"container": {"container-a"},
+		"pod":       {"pod-a"},
+		"network":   {"network-a"},
+		"volume":    {"volume-a"},
+	}
+	if !p12SameRootlessResourceSnapshot(baseline, matching) {
+		t.Fatal("matching snapshot was rejected")
+	}
+	for resource, extra := range map[string]string{
+		"container": "container-b",
+		"pod":       "pod-b",
+		"network":   "network-b",
+		"volume":    "volume-b",
+	} {
+		changed := map[string][]string{
+			"container": append([]string(nil), matching["container"]...),
+			"pod":       append([]string(nil), matching["pod"]...),
+			"network":   append([]string(nil), matching["network"]...),
+			"volume":    append([]string(nil), matching["volume"]...),
+		}
+		changed[resource] = append(changed[resource], extra)
+		if p12SameRootlessResourceSnapshot(baseline, changed) {
+			t.Fatalf("snapshot accepted residual %s resource", resource)
+		}
+	}
+}

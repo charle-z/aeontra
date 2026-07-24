@@ -43,6 +43,20 @@ func TestRedactKeepsOnlyBoundedAllowlistedSignals(t *testing.T) {
 	}
 }
 
+func TestNormalizeKeepsClosedPostgreSQLOperationCategories(t *testing.T) {
+	for _, operation := range []string{"image_inspect", "network_create", "volume_create", "container_run", "readiness_query"} {
+		input := "P12 rootless category=postgres_" + operation
+		if got := normalize(input); got != input {
+			t.Fatalf("input=%q normalized=%q", input, got)
+		}
+	}
+	for _, forbidden := range []string{"shell", "private_path", "arbitrary"} {
+		if got := normalize("P12 rootless category=postgres_" + forbidden); got != "" {
+			t.Fatalf("unsafe operation %q normalized=%q", forbidden, got)
+		}
+	}
+}
+
 func TestNormalizeDropsUnknownAndSensitiveContent(t *testing.T) {
 	for _, input := range []string{
 		"Authorization: Bearer token",

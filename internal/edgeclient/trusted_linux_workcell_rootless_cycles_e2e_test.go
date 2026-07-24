@@ -239,7 +239,10 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 		t.Fatal("podman-compose is required")
 	}
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
-	before := p12ResourceIDs(t, endpoint, "container", label)
+	before, err := p12RootlessResourceSnapshot(t.Context(), endpoint, label)
+	if err != nil {
+		t.Fatal("podman-compose baseline inventory failed")
+	}
 	root := t.TempDir()
 	body := fmt.Sprintf("services:\n  fixture:\n    image: %s\n    command: [\"/bin/sh\", \"-c\", \"echo compose-ready >/data/result; sleep 300\"]\n    labels:\n      %s: %s\n    volumes:\n      - data:/data\nnetworks:\n  default:\n    labels:\n      %s: %s\nvolumes:\n  data:\n    labels:\n      %s: %s\n", image, rootlessRuntimeLabelKey, runtimeID, rootlessRuntimeLabelKey, runtimeID, rootlessRuntimeLabelKey, runtimeID)
 	path := filepath.Join(root, "compose.yml")
@@ -278,7 +281,7 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 	for time.Now().Before(containerDeadline) {
 		after := p12ResourceIDs(t, endpoint, "container", label)
 		for _, id := range after {
-			if !slices.Contains(before, id) {
+			if !slices.Contains(before["container"], id) {
 				composeContainer = id
 				break
 			}
@@ -322,7 +325,45 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 	if err := down(); err != nil {
 		t.Fatal("podman-compose cleanup failed")
 	}
+	cleanupDeadline := time.Now().Add(15 * time.Second)
+	for {
+		after, inventoryErr := p12RootlessResourceSnapshot(t.Context(), endpoint, label)
+		if inventoryErr == nil && p12SameRootlessResourceSnapshot(before, after) {
+			break
+		}
+		if !time.Now().Before(cleanupDeadline) {
+			t.Fatal("podman-compose cleanup did not converge")
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-t.Context().Done():
+			timer.Stop()
+			t.Fatal("podman-compose cleanup cancelled")
+		case <-timer.C:
+		}
+	}
 	downComplete = true
+	return true
+}
+
+func p12RootlessResourceSnapshot(ctx context.Context, endpoint *RootlessContainerEndpoint, label string) (map[string][]string, error) {
+	snapshot := make(map[string][]string, 4)
+	for _, resource := range []string{"container", "pod", "network", "volume"} {
+		ids, err := listRootlessContainerResources(ctx, endpoint, resource, label, p12RootlessEnv(endpoint), execContainerCommandRunner{})
+		if err != nil {
+			return nil, err
+		}
+		snapshot[resource] = ids
+	}
+	return snapshot, nil
+}
+
+func p12SameRootlessResourceSnapshot(left, right map[string][]string) bool {
+	for _, resource := range []string{"container", "pod", "network", "volume"} {
+		if !slices.Equal(left[resource], right[resource]) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -354,23 +395,56 @@ func p12PostgresImage(t *testing.T) string {
 	return value
 }
 
+func p12WaitForRootlessService(t *testing.T, endpoint *RootlessContainerEndpoint) {
+	t.Helper()
+	prefix := rootlessEnginePrefix(endpoint)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		_, commandErr := execContainerCommandRunner{}.Run(ctx, endpoint.Executable, append(prefix, "info"), p12RootlessEnv(endpoint))
+		cancel()
+		if commandErr == nil {
+			return
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-t.Context().Done():
+			timer.Stop()
+			t.Fatal("rootless Podman service readiness cancelled")
+		case <-timer.C:
+		}
+	}
+	t.Fatal("rootless Podman service did not become ready after compose cleanup")
+}
+
+func p12PostgresEngine(t *testing.T, endpoint *RootlessContainerEndpoint, operation string, args ...string) string {
+	t.Helper()
+	output, err := execContainerCommandRunner{}.Run(t.Context(), endpoint.Executable, args, p12RootlessEnv(endpoint))
+	if err != nil {
+		fmt.Printf("P12 rootless category=postgres_%s\n", operation)
+		t.Fatalf("PostgreSQL %s command failed: %v output=%s", operation, err, p12BoundedDiagnostic(string(output)))
+	}
+	return strings.TrimSpace(string(output))
+}
+
 func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, runtimeID, suffix string) (bool, bool) {
 	t.Helper()
 	prefix := rootlessEnginePrefix(endpoint)
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
 	image := p12PostgresImage(t)
-	actualImageID := strings.TrimSpace(p12Engine(t, endpoint, append(prefix, "image", "inspect", "--format", "{{.Id}}", image)...))
+	p12WaitForRootlessService(t, endpoint)
+	actualImageID := strings.TrimSpace(p12PostgresEngine(t, endpoint, "image_inspect", append(prefix, "image", "inspect", "--format", "{{.Id}}", image)...))
 	actualImageID = strings.TrimPrefix(actualImageID, "sha256:")
 	expectedImageID := strings.TrimPrefix(image, p12PostgresFixtureImagePrefix)
 	if actualImageID != expectedImageID {
 		t.Fatal("PostgreSQL fixture image identity changed after rootless load")
 	}
 	network := "p12-pg-net-" + suffix
-	p12Engine(t, endpoint, append(prefix, "network", "create", "--label", label, network)...)
+	p12PostgresEngine(t, endpoint, "network_create", append(prefix, "network", "create", "--label", label, network)...)
 	volume := "p12-pg-vol-" + suffix
-	p12Engine(t, endpoint, append(prefix, "volume", "create", "--label", label, volume)...)
+	p12PostgresEngine(t, endpoint, "volume_create", append(prefix, "volume", "create", "--label", label, volume)...)
 	name := "p12-postgres-" + suffix
-	p12Engine(t, endpoint, append(prefix,
+	p12PostgresEngine(t, endpoint, "container_run", append(prefix,
 		"run", "-d", "--name", name, "--label", label, "--network", network,
 		"--volume", volume+":/var/lib/postgresql/data",
 		"--env", "POSTGRES_PASSWORD=***REDACTED-SECRET***", "--env", "POSTGRES_DB=fixture",
@@ -384,7 +458,7 @@ func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, ru
 		_, healthErr := execContainerCommandRunner{}.Run(healthCtx, endpoint.Executable, append(prefix, "healthcheck", "run", name), p12RootlessEnv(endpoint))
 		cancel()
 		if healthErr == nil {
-			value := p12Engine(t, endpoint, append(prefix, "exec", name, "psql", "-U", "postgres", "-d", "fixture", "-tAc", "SELECT 1")...)
+			value := p12PostgresEngine(t, endpoint, "readiness_query", append(prefix, "exec", name, "psql", "-U", "postgres", "-d", "fixture", "-tAc", "SELECT 1")...)
 			if strings.TrimSpace(value) != "1" {
 				t.Fatal("PostgreSQL readiness query failed")
 			}
