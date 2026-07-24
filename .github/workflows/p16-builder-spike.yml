@@ -117,8 +117,14 @@ jobs:
             --export-cache "type=local,dest=$cache,mode=max,reset=true" \
             --output "type=oci,dest=$second" \
             2>&1 | tee "$RUNNER_TEMP/second-build.log"
-          test -s "$first"
-          test -s "$second"
+          for artifact in "$first" "$second"; do
+            sudo runuser -u mcp-build -- test -f "$artifact"
+            sudo runuser -u mcp-build -- test ! -L "$artifact"
+            sudo runuser -u mcp-build -- test -s "$artifact"
+            artifact_bytes="$(sudo runuser -u mcp-build -- stat -c '%s' "$artifact")"
+            test "$artifact_bytes" -gt 0
+            test "$artifact_bytes" -le 67108864
+          done
           grep -Eq 'CACHED|cached' "$RUNNER_TEMP/second-build.log"
           sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
             --addr "unix://$socket" du -v \
