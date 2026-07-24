@@ -22,7 +22,8 @@ func ValidateProcessEvidence(expectedUID int, expectedCgroup string, evidence []
 	}
 	seen := make(map[int]ProcessEvidence, len(evidence))
 	for _, process := range evidence {
-		if process.PID <= 1 || process.PPID < 1 || process.UID != expectedUID || process.Cgroup != expectedCgroup || process.Command == "" || len(process.Command) > 128 {
+		insideCgroup := process.Cgroup == expectedCgroup || strings.HasPrefix(process.Cgroup, expectedCgroup+"/")
+		if process.PID <= 1 || process.PPID < 1 || process.UID != expectedUID || !insideCgroup || path.Clean(process.Cgroup) != process.Cgroup || process.Command == "" || len(process.Command) > 128 {
 			return errors.New("buildspike: process escaped builder boundary")
 		}
 		if _, exists := seen[process.PID]; exists {

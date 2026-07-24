@@ -69,20 +69,21 @@ rollback() {
 for tool in stat sha256sum install systemctl useradd getent runuser cut; do
   command -v "$tool" >/dev/null 2>&1 || fail "required host tool is missing"
 done
-for tool in /usr/bin/rootlesskit /usr/bin/newuidmap /usr/bin/newgidmap /usr/bin/slirp4netns; do
+for tool in /usr/bin/rootlesskit /usr/bin/newuidmap /usr/bin/newgidmap /usr/bin/slirp4netns /usr/bin/fuse-overlayfs; do
   [ -x "$tool" ] && [ ! -L "$tool" ] || fail "rootless prerequisite is missing or unsafe"
 done
 [ -d "$STAGING" ] && [ ! -L "$STAGING" ] || fail "preverified staging directory is missing"
 set -- $(stat -c '%u %a' "$STAGING")
 [ "$1" = 0 ] && [ $((0$2 & 0077)) -eq 0 ] || fail "preverified staging directory is not private root-owned state"
-for file in buildkitd buildctl SHA256SUMS; do
+for file in buildkitd buildctl buildkit-runc SHA256SUMS; do
   is_root_owned_private_file "$STAGING/$file" || fail "preverified staging file is unsafe"
 done
 is_root_owned_private_file "$UNIT_SOURCE" || fail "service source is unsafe"
 is_root_owned_private_file "$CONFIG_SOURCE" || fail "configuration source is unsafe"
-[ "$(wc -l < "$STAGING/SHA256SUMS" | tr -d ' ')" -eq 2 ] || fail "checksum manifest must contain exactly two entries"
+[ "$(wc -l < "$STAGING/SHA256SUMS" | tr -d ' ')" -eq 3 ] || fail "checksum manifest must contain exactly three entries"
 grep -Eq '^[a-f0-9]{64}  buildkitd$' "$STAGING/SHA256SUMS" || fail "buildkitd checksum entry is invalid"
 grep -Eq '^[a-f0-9]{64}  buildctl$' "$STAGING/SHA256SUMS" || fail "buildctl checksum entry is invalid"
+grep -Eq '^[a-f0-9]{64}  buildkit-runc$' "$STAGING/SHA256SUMS" || fail "buildkit-runc checksum entry is invalid"
 (
   cd "$STAGING"
   sha256sum --check --strict SHA256SUMS >/dev/null
@@ -106,7 +107,7 @@ grep -Eq '^mcp-build:[0-9]+:[0-9]+$' /etc/subgid || fail "builder subgid allocat
 install -d -o root -g root -m 0755 "$INSTALL_ROOT" "$CONFIG_ROOT"
 ROLLBACK=$(mktemp -d /var/lib/mcp-devbox-builder-rollback.XXXXXX)
 chmod 0700 "$ROLLBACK"
-for name in buildkitd buildctl; do
+for name in buildkitd buildctl buildkit-runc; do
   if [ -f "$INSTALL_ROOT/$name" ] && [ ! -L "$INSTALL_ROOT/$name" ]; then
     cp -p "$INSTALL_ROOT/$name" "$ROLLBACK/$name"
   fi
@@ -124,8 +125,10 @@ trap rollback EXIT HUP INT TERM
 
 install -o root -g root -m 0755 "$STAGING/buildkitd" "$INSTALL_ROOT/.buildkitd.new"
 install -o root -g root -m 0755 "$STAGING/buildctl" "$INSTALL_ROOT/.buildctl.new"
+install -o root -g root -m 0755 "$STAGING/buildkit-runc" "$INSTALL_ROOT/.buildkit-runc.new"
 mv -f "$INSTALL_ROOT/.buildkitd.new" "$INSTALL_ROOT/buildkitd"
 mv -f "$INSTALL_ROOT/.buildctl.new" "$INSTALL_ROOT/buildctl"
+mv -f "$INSTALL_ROOT/.buildkit-runc.new" "$INSTALL_ROOT/buildkit-runc"
 install -o root -g root -m 0644 "$CONFIG_SOURCE" "$CONFIG_ROOT/buildkitd.toml"
 install -o root -g root -m 0644 "$UNIT_SOURCE" "$UNIT_DIR/$UNIT_NAME"
 systemctl daemon-reload

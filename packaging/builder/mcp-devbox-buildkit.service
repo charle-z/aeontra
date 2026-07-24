@@ -14,6 +14,7 @@ Group=mcp-build
 UMask=0077
 Environment=HOME=/var/lib/mcp-devbox-buildkit
 Environment=XDG_RUNTIME_DIR=/run/mcp-devbox-buildkit
+Environment=PATH=/usr/local/lib/mcp-devbox-builder:/usr/bin:/bin
 RuntimeDirectory=mcp-devbox-buildkit
 RuntimeDirectoryMode=0700
 StateDirectory=mcp-devbox-buildkit

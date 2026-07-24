@@ -8,8 +8,8 @@ func TestValidateProcessEvidenceRequiresDedicatedUIDAndSingleCgroup(t *testing.T
 	evidence := []ProcessEvidence{
 		{PID: 100, PPID: 1, UID: 1001, Cgroup: "/mcp-devbox-builder.service", Command: "rootlesskit"},
 		{PID: 101, PPID: 100, UID: 1001, Cgroup: "/mcp-devbox-builder.service", Command: "buildkitd"},
-		{PID: 102, PPID: 101, UID: 1001, Cgroup: "/mcp-devbox-builder.service", Command: "buildkit-runc"},
-		{PID: 103, PPID: 102, UID: 1001, Cgroup: "/mcp-devbox-builder.service", Command: "compile"},
+		{PID: 102, PPID: 101, UID: 1001, Cgroup: "/mcp-devbox-builder.service/buildkit/worker", Command: "buildkit-runc"},
+		{PID: 103, PPID: 102, UID: 1001, Cgroup: "/mcp-devbox-builder.service/buildkit/worker/step", Command: "compile"},
 	}
 	if err := ValidateProcessEvidence(1001, "/mcp-devbox-builder.service", evidence); err != nil {
 		t.Fatal(err)

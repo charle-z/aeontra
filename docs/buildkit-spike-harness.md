@@ -26,7 +26,7 @@ The context must be a private real directory under an approved workspace root. T
 The harness provides:
 
 - exact cgroup-v2 parsing;
-- proof that rootlesskit, buildkitd, runtime helpers and compiler children share one service cgroup and UID;
+- proof that rootlesskit, buildkitd, runtime helpers and compiler children remain under one delegated service cgroup subtree and UID;
 - bounded ANSI/NUL/path/secret-redacted output;
 - regular-file, no-symlink artifact verification with maximum size and SHA-256 identity;
 - systemd properties that kill the complete control group on cancellation.
@@ -42,8 +42,9 @@ spike. It is not a public tool and is not installed by the MCP container.
 - `buildkitd.toml` is checked against the generated rootless configuration and fixes
   one OCI worker, one parallel build and bounded GC/cache thresholds;
 - `install-preverified.sh` accepts no arguments or URLs, consumes only a private
-  root-owned staging directory containing `buildkitd`, `buildctl` and an exact
-  two-entry SHA-256 manifest, creates the system identity with subuid/subgid ranges,
+  root-owned staging directory containing `buildkitd`, `buildctl`, `buildkit-runc`
+  and an exact three-entry SHA-256 manifest, creates the system identity with
+  subuid/subgid ranges,
   activates the unit, verifies `debug workers`, and restores previous files if
   health fails;
 - `remove.sh` disables the candidate and removes only its binaries, configuration and
@@ -51,6 +52,17 @@ spike. It is not a public tool and is not installed by the MCP container.
 
 The candidate scripts remain inactive until a separately staged VPS spike supplies
 preverified BuildKit binaries and records rollback evidence.
+
+`stage-official-v0.31.2.sh` is the only networked preparation step. It accepts no
+arguments, pins the official Linux amd64 release archive, SBOM and Sigstore bundle by
+SHA-256, extracts only `buildkitd`, `buildctl` and `buildkit-runc`, and publishes a
+private staging directory atomically without replacing different existing content.
+
+`.github/workflows/p16-builder-spike.yml` exercises this package on Ubuntu 24.04:
+it installs rootless prerequisites, stages v0.31.2, starts the systemd service, proves
+all observed processes remain in the delegated subtree as `mcp-build`, builds the same
+commit twice with cache reuse, stops the complete control group and verifies the
+conservative removal path. This is disposable CI evidence, not VPS calibration.
 
 ## Remaining evidence
 

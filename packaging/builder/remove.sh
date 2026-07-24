@@ -16,13 +16,13 @@ CONFIG_ROOT=/etc/mcp-devbox-builder
 }
 
 systemctl disable --now "$UNIT_NAME" >/dev/null 2>&1 || true
-for path in "$UNIT" "$CONFIG_ROOT/buildkitd.toml" "$INSTALL_ROOT/buildkitd" "$INSTALL_ROOT/buildctl"; do
+for path in "$UNIT" "$CONFIG_ROOT/buildkitd.toml" "$INSTALL_ROOT/buildkitd" "$INSTALL_ROOT/buildctl" "$INSTALL_ROOT/buildkit-runc"; do
   if [ -L "$path" ]; then
     echo "mcp-devbox-builder remove: refusing symlinked managed path" >&2
     exit 1
   fi
 done
-rm -f "$UNIT" "$CONFIG_ROOT/buildkitd.toml" "$INSTALL_ROOT/buildkitd" "$INSTALL_ROOT/buildctl"
+rm -f "$UNIT" "$CONFIG_ROOT/buildkitd.toml" "$INSTALL_ROOT/buildkitd" "$INSTALL_ROOT/buildctl" "$INSTALL_ROOT/buildkit-runc"
 rmdir "$CONFIG_ROOT" "$INSTALL_ROOT" 2>/dev/null || true
 systemctl daemon-reload
 

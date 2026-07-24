@@ -25,6 +25,7 @@ func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 		"IOWeight=25",
 		"KillMode=control-group",
 		"Delegate=yes",
+		"Environment=PATH=/usr/local/lib/mcp-devbox-builder:/usr/bin:/bin",
 		"ExecStart=/usr/bin/rootlesskit",
 		"--net=slirp4netns",
 		"--disable-host-loopback",
@@ -61,6 +62,38 @@ func TestBuildkitConfigMatchesReviewedGenerator(t *testing.T) {
 	}
 }
 
+func TestOfficialBuildkitStageIsPinnedAtomicAndNonInteractive(t *testing.T) {
+	script := readFixture(t, "stage-official-v0.31.2.sh")
+	for _, required := range []string{
+		"VERSION=v0.31.2",
+		"BASE_URL=https://github.com/moby/buildkit/releases/download/$VERSION",
+		"ARCHIVE_SHA256=fbabdb72433a35f5bb646e4cd424bf8567e5d055710cf55840f7af2020640791",
+		"SBOM_SHA256=affbda658a8a8e9ee3bc1d8280ba538d1522adc8a3eb7daaf964904c94628a4f",
+		"SIGSTORE_SHA256=b22dca34df188f484547a57758bfc90c658a96cf49c1c09548b435d46d259e90",
+		"[ \"$#\" -eq 0 ]",
+		"--proto '=https'",
+		"--tlsv1.2",
+		"bin/buildkitd bin/buildctl bin/buildkit-runc",
+		"sha256sum buildkitd buildctl buildkit-runc > SHA256SUMS",
+		"cmp -s \"$TARGET/SHA256SUMS\" \"$NEXT/SHA256SUMS\"",
+		"mv \"$NEXT\" \"$TARGET\"",
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("official stage script missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"eval ", "sh -c", "bash -c", "latest", "${1", "$1/", "docker.sock",
+		"--strip-components", "tar --extract $", "chmod 777",
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("official stage script contains forbidden %q", forbidden)
+		}
+	}
+	assertExecutable(t, "stage-official-v0.31.2.sh")
+	assertShellSyntax(t, "stage-official-v0.31.2.sh")
+}
+
 func TestBuilderInstallIsOfflineFixedInputAndRollbackCapable(t *testing.T) {
 	script := readFixture(t, "install-preverified.sh")
 	for _, required := range []string{
@@ -69,6 +102,10 @@ func TestBuilderInstallIsOfflineFixedInputAndRollbackCapable(t *testing.T) {
 		"sha256sum --check --strict SHA256SUMS",
 		"useradd --system --user-group --create-home --add-subids-for-system",
 		"cut -d: -f3",
+		"/usr/bin/fuse-overlayfs",
+		"for file in buildkitd buildctl buildkit-runc SHA256SUMS",
+		"exactly three entries",
+		"buildkit-runc checksum entry is invalid",
 		"grep -Eq '^mcp-build:[0-9]+:[0-9]+$' /etc/subuid",
 		"grep -Eq '^mcp-build:[0-9]+:[0-9]+$' /etc/subgid",
 		"trap rollback EXIT HUP INT TERM",
@@ -97,6 +134,7 @@ func TestBuilderRemovePreservesStateCacheIdentityAndStaging(t *testing.T) {
 	for _, required := range []string{
 		"[ \"$#\" -eq 0 ]",
 		"systemctl disable --now",
+		"$INSTALL_ROOT/buildkit-runc",
 		"state, cache, user and preverified staging were preserved",
 	} {
 		if !strings.Contains(script, required) {
