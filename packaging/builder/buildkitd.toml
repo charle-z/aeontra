@@ -1,0 +1,17 @@
+root = "/var/lib/mcp-devbox-buildkit"
+
+[grpc]
+  address = ["unix:///run/mcp-devbox-buildkit/buildkit/buildkitd.sock"]
+
+[worker.oci]
+  enabled = true
+  rootless = true
+  noProcessSandbox = false
+  gc = true
+  max-parallelism = 1
+  reservedSpace = "1GB"
+  maxUsedSpace = "4GB"
+  minFreeSpace = "8GB"
+
+[worker.containerd]
+  enabled = false
