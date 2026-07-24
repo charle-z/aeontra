@@ -105,7 +105,8 @@ misleading global percentage:
 | `internal/tools` | 70% | 73.9% |
 | `internal/app` | 65% | 71.3% |
 | `internal/grantadmin` | 55% | 59.6% |
-| `internal/workqueue` | 70% | 74.3% |
+| `internal/workqueue` | 70% | 77.4% |
+| `internal/buildspike` | 75% | 82.0% |
 
 The gate fails with an explicit missing package error when a threshold package is
 absent, when a profile is malformed, or when a package drops below its minimum.

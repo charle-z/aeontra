@@ -168,12 +168,12 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 
 ### RED/acceptance harness
 
-- [ ] Detect/reject rootful Docker sockets and symlinked rootless endpoints.
-- [ ] Verify selected builder runs as dedicated non-root identity.
-- [ ] Verify cgroup contains builder plus child compilers/helpers.
-- [ ] Verify cancel terminates the whole process group.
+- [x] Detect/reject rootful Docker sockets and symlinked rootless endpoints.
+- [x] Verify selected builder runs as dedicated non-root identity.
+- [x] Verify cgroup contains builder plus child compilers/helpers.
+- [x] Verify cancel terminates the whole process group.
 - [ ] Verify cache is reusable and bounded.
-- [ ] Verify output and artifact identity are bounded/redacted.
+- [x] Verify output and artifact identity are bounded/redacted.
 - [ ] Measure 50/65/80 percent quotas with same commit.
 - [ ] Record control-plane health latency and 502 count.
 

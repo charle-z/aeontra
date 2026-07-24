@@ -122,6 +122,7 @@ func TestDefaultThresholdsCoverSecurityCriticalPackages(t *testing.T) {
 		"github.com/charle-z/mcp-devbox/internal/app":               65,
 		"github.com/charle-z/mcp-devbox/internal/grantadmin":        55,
 		"github.com/charle-z/mcp-devbox/internal/workqueue":         70,
+		"github.com/charle-z/mcp-devbox/internal/buildspike":        75,
 	}
 	got := DefaultThresholds()
 	if len(got) != len(want) {

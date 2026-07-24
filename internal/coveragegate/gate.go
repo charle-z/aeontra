@@ -60,6 +60,7 @@ func DefaultThresholds() []Threshold {
 		{Package: "github.com/charle-z/mcp-devbox/internal/app", Minimum: 65},
 		{Package: "github.com/charle-z/mcp-devbox/internal/grantadmin", Minimum: 55},
 		{Package: "github.com/charle-z/mcp-devbox/internal/workqueue", Minimum: 70},
+		{Package: "github.com/charle-z/mcp-devbox/internal/buildspike", Minimum: 75},
 	}
 }
 
