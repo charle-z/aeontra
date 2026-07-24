@@ -121,25 +121,25 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 
 ### RED tests
 
-- [ ] Validate all legal and illegal job transitions.
-- [ ] Concurrent equal enqueue returns one job.
-- [ ] Concurrent different enqueue respects global/per-workspace bounds.
-- [ ] One active lease per job/pool and fencing token.
-- [ ] Expired lease recovery and stale completion rejection.
-- [ ] Dependency success/failure/block propagation.
-- [ ] Cancel queued/running behavior.
-- [ ] Crash/reopen consistency and integrity check.
-- [ ] Database/page/row/output bounds.
-- [ ] Unsupported multi-control-plane writer configuration fails closed.
-- [ ] Race detector and fuzz targets.
+- [x] Validate all legal and illegal job transitions.
+- [x] Concurrent equal enqueue returns one job.
+- [x] Concurrent different enqueue respects global/per-workspace bounds.
+- [x] One active lease per job/pool and fencing token.
+- [x] Expired lease recovery and stale completion rejection.
+- [x] Dependency success/failure/block propagation.
+- [x] Cancel queued/running behavior.
+- [x] Crash/reopen consistency and integrity check.
+- [x] Database/page/row/output bounds.
+- [x] Unsupported multi-control-plane writer configuration fails closed.
+- [x] Race detector and fuzz targets.
 
 ### Implementation
 
-- [ ] Add `internal/workqueue` store and migrations.
-- [ ] Add typed IDs, states, reasons, leases, attempts, dependencies, results.
-- [ ] Add dedup unique identity.
-- [ ] Add private configuration/path validation.
-- [ ] Add backup/restore fixture and operational docs.
+- [x] Add `internal/workqueue` store and migrations.
+- [x] Add typed IDs, states, reasons, leases, attempts, dependencies, results.
+- [x] Add dedup unique identity.
+- [x] Add private configuration/path validation.
+- [x] Add backup/restore fixture and operational docs.
 
 ## Step 6 — Admission and fairness
 

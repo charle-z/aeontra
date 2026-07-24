@@ -76,7 +76,9 @@ checkout validation and read-only no-ID local UX are governed by
 `docs/project-workspace-resolution.md`, including `project_prepare` / `project_status`,
 owner-bound clone, human Edge target resolution and no-ID output. Step 4 local execution
 durability, offline grace, result replay, cleanup bounds and read-only journal doctor
-states are governed by `docs/edge-job-journal.md`. GitHub Actions failure diagnosis and
+states are governed by `docs/edge-job-journal.md`. Step 5 durable coordination jobs,
+deduplication, fencing, dependencies, bounds and backup/restore are governed by
+`docs/workqueue-store.md`. GitHub Actions failure diagnosis and
 bounded
 full-job log retrieval through the existing VPS GitHub authority are governed by
 `docs/github-actions-diagnostics.md`. These remain validation pending until exact-head
