@@ -32,8 +32,11 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"Build the same commit twice and prove cache reuse",
 		"Verify stop kills the complete service cgroup",
 		"Verify conservative removal",
+		"cache-du.txt",
 		"cache-bytes.txt",
 		"sudo du -sb",
+		"invalid cache byte evidence",
+		"4_294_967_296",
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Fatalf("builder spike workflow lost %q", required)

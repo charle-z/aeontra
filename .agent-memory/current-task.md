@@ -4,31 +4,24 @@ Historical deployed baseline remains unchanged: VPS `main`/production truth is p
 
 Historical deployed successor truth remains explicit: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`, and P9 Brain is deployed as its successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-Branch: `p16-global-work-scheduler`. Pull request: `#48`. Published head before this local cut: `3bed257005c6b403fa95603eacab5784aa4090de`; 14 checks are green and the old head has two fixture failures: `Rootless BuildKit candidate fixture` and `Rootless Podman, PostgreSQL and Chromium`.
+Branch: `p16-global-work-scheduler`. Pull request: `#48`. Published head: `64b6fe96975a753e43c7fc45b89efc3096a5dd5a`.
 
-## P16 Step 7 local candidate
+## Exact-head evidence
 
-The exact logs from the existing VPS GitHub authority proved both failures were fixture defects rather than structural builder failures:
+The published head completed 15/16 checks green. `Rootless Podman, PostgreSQL and Chromium` is now green, confirming the bounded PostgreSQL readiness retry. The only red check is `Rootless BuildKit candidate fixture`.
 
-- BuildKit installed and ran rootless under the dedicated service cgroup, built the same commit twice and showed `CACHED`; only the final cache-size pipeline failed. The workflow now records a numeric `du -sb` cache byte count, enforces `0 < bytes <= 4 GiB`, and uploads `cache-bytes.txt`.
-- PostgreSQL reached its healthcheck, but the immediate direct `psql` exec returned `not_found`. The fixture now uses a fixed `/bin/sh -ec` command, retries the bounded readiness query until the existing 60-second deadline, and emits the closed `postgres_readiness_query` category only after exhaustion.
+The exact BuildKit log proves:
 
-`packaging/builder/calibrate-vps.sh` is now a closed root-only candidate for the real 50/65/80 percent matrix. It accepts one exact lowercase 40-character commit from the fixed owner repository, verifies the applied cgroup `cpu.max`, runs no-cache and cached builds with a 30-minute process-group timeout, samples the fixed `/healthz`, records CPU/throttling/memory/OOM/PSI/PID/cache/artifact identity and HTTP 502 evidence, bounds logs, archives private evidence and restores the conservative 65 percent quota on every exit.
+- pinned rootless BuildKit installed and became healthy;
+- rootlesskit/buildkitd/slirp4netns remained under the dedicated non-root service cgroup;
+- both OCI builds succeeded;
+- the second solve emitted `CACHED`;
+- failure occurred only after both builds, inside the cache-byte evidence check.
 
-The calibrator separates root-owned evidence from builder-writable source/output/cache roots. Git, curl and buildctl run with fixed empty environments; the host token, Coolify authority, proxy variables and Git global configuration are not inherited. It registers no public tool and has not run on the real VPS. `docs/vps-builder-calibration.md` is the source of truth; Step 8 remains blocked until exact-head CI and dated real-VPS evidence select an engine/quota or record a structural stop.
+## Local follow-up ready to publish
 
-## Validation completed locally
+The workflow no longer relies on shell integer parsing for `du`. It stores the raw `sudo du -sb` line in `cache-du.txt`, parses it with a strict Python full match, enforces `0 < bytes <= 4_294_967_296`, writes the normalized value to `cache-bytes.txt`, and uploads both artifacts. Actionlint v1.7.12, workflow/docs tests and `git diff --check` are green.
 
-Green on the exact local tree:
+The closed `packaging/builder/calibrate-vps.sh` candidate remains unchanged from `64b6fe9`: exact commit and fixed repository/health endpoint, 50/65/80 no-cache+cached matrix, exact `cpu.max` verification, bounded process group, cgroup/health/502/cache/artifact evidence, fixed empty environments, private archive and rollback to 65 percent. It has not run on the real VPS.
 
-- focused BuildKit/package/rootless/docs tests;
-- all Go packages in bounded groups;
-- tagged `p12_e2e` compile gate;
-- `go vet ./...`;
-- Staticcheck v0.7.0, including the final builder package change;
-- `go build ./...`;
-- Actionlint v1.7.12 after workflow changes;
-- `git diff --check`;
-- no temporary helper/probe files remain.
-
-Next: commit as `Step 7: Add bounded VPS builder calibration`, publish to PR #48, hold the SHA stable, require every exact-head gate green, diagnose any remaining fixture failure through the existing GitHub authority, then execute the real VPS calibration through a closed privileged path before beginning Step 8.
+Next: commit the cache-evidence parser fix, publish one stable head, require all exact-head gates green, then establish the only safe path for real VPS installation/calibration. Step 8 remains blocked until a dated real-host baseline selects the engine/quota or records a structural stop.

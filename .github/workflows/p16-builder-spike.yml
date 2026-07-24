@@ -120,13 +120,24 @@ jobs:
           test -s "$first"
           test -s "$second"
           grep -Eq 'CACHED|cached' "$RUNNER_TEMP/second-build.log"
-          cache_bytes="$(sudo du -sb "$cache" | awk 'NR == 1 {print $1}')"
-          case "$cache_bytes" in
-            ''|*[!0-9]*) echo "invalid cache byte count" >&2; exit 1 ;;
-          esac
-          test "$cache_bytes" -gt 0
-          test "$cache_bytes" -le 4294967296
-          printf '%s\n' "$cache_bytes" > "$RUNNER_TEMP/cache-bytes.txt"
+          sudo du -sb "$cache" > "$RUNNER_TEMP/cache-du.txt"
+          python3 - "$RUNNER_TEMP/cache-du.txt" "$RUNNER_TEMP/cache-bytes.txt" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1])
+          destination = Path(sys.argv[2])
+          raw = source.read_text(errors="strict")
+          match = re.fullmatch(r"([0-9]+)\s+.+\n?", raw)
+          if match is None:
+              raise SystemExit("invalid cache byte evidence")
+          value = int(match.group(1))
+          if not 0 < value <= 4_294_967_296:
+              raise SystemExit("cache byte evidence exceeded the reviewed bound")
+          destination.write_text(f"{value}\n")
+          PY
+          test -s "$RUNNER_TEMP/cache-du.txt"
           test -s "$RUNNER_TEMP/cache-bytes.txt"
 
       - name: Verify stop kills the complete service cgroup
@@ -162,6 +173,7 @@ jobs:
             ${{ runner.temp }}/builder-processes.txt
             ${{ runner.temp }}/first-build.log
             ${{ runner.temp }}/second-build.log
+            ${{ runner.temp }}/cache-du.txt
             ${{ runner.temp }}/cache-bytes.txt
           if-no-files-found: warn
           retention-days: 14
