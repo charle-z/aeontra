@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - p16-global-work-scheduler
   pull_request:
   workflow_dispatch:
 
@@ -51,12 +50,12 @@ jobs:
           sudo /usr/share/mcp-devbox-builder-candidate/install-preverified.sh
           sudo systemctl is-active --quiet mcp-devbox-buildkit.service
           socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
-          test -S "$socket"
+          sudo test -S "$socket"
           sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl --addr "unix://$socket" debug workers
           sudo systemctl show mcp-devbox-buildkit.service \
             --property=User --property=Group --property=KillMode \
             --property=MemoryHigh --property=MemoryMax --property=TasksMax \
-            > "$RUNNER_TEMP/builder-properties.txt"
+            | tee "$RUNNER_TEMP/builder-properties.txt" >/dev/null
           grep -Fx 'User=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'Group=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'KillMode=control-group' "$RUNNER_TEMP/builder-properties.txt"
