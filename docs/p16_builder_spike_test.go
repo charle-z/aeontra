@@ -18,6 +18,7 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"disposable CI evidence, not VPS calibration",
 		"50/65/80 quota measurements",
 		"final BuildKit-versus-Podman engine selection",
+		"calibrate-vps.sh",
 	} {
 		if !strings.Contains(document, required) {
 			t.Fatalf("builder spike documentation lost %q", required)
@@ -31,6 +32,8 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"Build the same commit twice and prove cache reuse",
 		"Verify stop kills the complete service cgroup",
 		"Verify conservative removal",
+		"cache-bytes.txt",
+		"sudo du -sb",
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Fatalf("builder spike workflow lost %q", required)
@@ -39,6 +42,22 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 	for _, forbidden := range []string{"/var/run/docker.sock:/var/run/docker.sock", "--privileged", "continue-on-error"} {
 		if strings.Contains(workflow, forbidden) {
 			t.Fatalf("builder spike workflow contains forbidden %q", forbidden)
+		}
+	}
+
+	calibration := readP16BuilderDoc(t, "vps-builder-calibration.md")
+	for _, required := range []string{
+		"closed Step 7 operator candidate",
+		"50/65/80 percent calibration",
+		"exact value from cgroup `cpu.max`",
+		"30-minute hard timeout",
+		"HTTP 502",
+		"restores `CPUQuota=65%`",
+		"real VPS execution and dated baseline are still validation pending",
+		"Step 8 must not begin",
+	} {
+		if !strings.Contains(calibration, required) {
+			t.Fatalf("VPS calibration documentation lost %q", required)
 		}
 	}
 }

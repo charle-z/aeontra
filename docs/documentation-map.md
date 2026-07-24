@@ -78,8 +78,10 @@ owner-bound clone, human Edge target resolution and no-ID output. Step 4 local e
 durability, offline grace, result replay, cleanup bounds and read-only journal doctor
 states are governed by `docs/edge-job-journal.md`. Step 5 durable coordination jobs,
 deduplication, fencing, dependencies, bounds and backup/restore are governed by
-`docs/workqueue-store.md`. GitHub Actions failure diagnosis and
-bounded
+`docs/workqueue-store.md`. Step 7 private rootless BuildKit packaging and disposable
+fixture evidence are governed by `docs/buildkit-spike-harness.md`; the fixed real-VPS
+50/65/80 operator contract and its validation-pending boundary are governed by
+`docs/vps-builder-calibration.md`. GitHub Actions failure diagnosis and bounded
 full-job log retrieval through the existing VPS GitHub authority are governed by
 `docs/github-actions-diagnostics.md`. These remain validation pending until exact-head
 remote gates and real Parrot evidence are complete.

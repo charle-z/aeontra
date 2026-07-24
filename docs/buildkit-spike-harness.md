@@ -80,3 +80,13 @@ The following are deliberately not claimed yet:
 - final BuildKit-versus-Podman engine selection.
 
 Those require the separate private spike deployment and dated measurement. If BuildKit fails a structural requirement, Podman may be evaluated without weakening the rootless/cgroup boundary.
+
+## VPS calibration candidate
+
+The fixed `packaging/builder/calibrate-vps.sh` operator candidate performs the real
+50/65/80 quota matrix only after the private service is installed on the target VPS.
+It accepts one exact commit, verifies the applied cgroup quota, records no-cache and
+cached duration, cgroup pressure and control-plane health/502 evidence, restores the
+65 percent conservative value and archives private evidence. Its complete authority,
+rollback and interpretation contract is `docs/vps-builder-calibration.md`. Repository
+presence is not VPS calibration evidence.

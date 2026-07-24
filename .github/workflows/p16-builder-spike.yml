@@ -120,7 +120,14 @@ jobs:
           test -s "$first"
           test -s "$second"
           grep -Eq 'CACHED|cached' "$RUNNER_TEMP/second-build.log"
-          sudo find "$cache" -xdev -type f -printf '%s\n' | awk '{sum += $1} END {exit !(sum > 0 && sum <= 4294967296)}'
+          cache_bytes="$(sudo du -sb "$cache" | awk 'NR == 1 {print $1}')"
+          case "$cache_bytes" in
+            ''|*[!0-9]*) echo "invalid cache byte count" >&2; exit 1 ;;
+          esac
+          test "$cache_bytes" -gt 0
+          test "$cache_bytes" -le 4294967296
+          printf '%s\n' "$cache_bytes" > "$RUNNER_TEMP/cache-bytes.txt"
+          test -s "$RUNNER_TEMP/cache-bytes.txt"
 
       - name: Verify stop kills the complete service cgroup
         run: |
@@ -155,6 +162,7 @@ jobs:
             ${{ runner.temp }}/builder-processes.txt
             ${{ runner.temp }}/first-build.log
             ${{ runner.temp }}/second-build.log
+            ${{ runner.temp }}/cache-bytes.txt
           if-no-files-found: warn
           retention-days: 14
 

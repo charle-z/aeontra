@@ -1,36 +1,34 @@
 # Current task
 
-Historical deployed baseline remains unchanged: P16 has not modified `main`, Coolify, production or real Parrot.
+Historical deployed baseline remains unchanged: VPS `main`/production truth is preserved separately; no production, Coolify, Parrot or `main` mutation occurred in this cut.
 
 Historical deployed successor truth remains explicit: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`, and P9 Brain is deployed as its successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-Branch: `p16-global-work-scheduler`. Pull request: `#48`.
+Branch: `p16-global-work-scheduler`. Pull request: `#48`. Published head before this local cut: `3bed257005c6b403fa95603eacab5784aa4090de`; 14 checks are green and the old head has two fixture failures: `Rootless BuildKit candidate fixture` and `Rootless Podman, PostgreSQL and Chromium`.
 
-## Step 7 rootless BuildKit candidate
+## P16 Step 7 local candidate
 
-Step 6 head `37c02f0067d7aa0023bd87f204a37a6ab91f1ec8` passed 15/15 exact-head checks. Step 7 harness/package head is now `e3a8f39` (`Step 7: Add pinned rootless builder fixture`) on top of prior Step 7 commits through `66df274`.
+The exact logs from the existing VPS GitHub authority proved both failures were fixture defects rather than structural builder failures:
 
-Implemented privately with no public MCP tool or production install:
+- BuildKit installed and ran rootless under the dedicated service cgroup, built the same commit twice and showed `CACHED`; only the final cache-size pipeline failed. The workflow now records a numeric `du -sb` cache byte count, enforces `0 < bytes <= 4 GiB`, and uploads `cache-bytes.txt`.
+- PostgreSQL reached its healthcheck, but the immediate direct `psql` exec returned `not_found`. The fixture now uses a fixed `/bin/sh -ec` command, retries the bounded readiness query until the existing 60-second deadline, and emits the closed `postgres_readiness_query` category only after exhaustion.
 
-- `internal/buildspike`: closed rootless BuildKit config/build plan, 50/65/80 CPU candidates, memory/PID/I/O bounds, rootful/symlink endpoint rejection, delegated cgroup-subtree evidence, whole-process-group cancellation, bounded environment/output/artifact/cgroup metrics, and reusable bounded cache;
-- `packaging/builder`: rootless systemd candidate, generated BuildKit config, offline rollback-capable installer, conservative remover, and official v0.31.2 staging script;
-- the official Linux amd64 release archive, SBOM and Sigstore bundle are pinned by SHA-256; staging extracts only `buildkitd`, `buildctl` and `buildkit-runc` and publishes private root-owned state atomically;
-- `.github/workflows/p16-builder-spike.yml`: Ubuntu 24.04 fixture that installs rootless prerequisites, stages the pinned release, starts systemd, verifies worker/cgroup ownership, builds the same commit twice with cache reuse, stops the full cgroup and exercises conservative removal;
-- documentation and guard tests distinguish disposable CI evidence from real VPS calibration.
+`packaging/builder/calibrate-vps.sh` is now a closed root-only candidate for the real 50/65/80 percent matrix. It accepts one exact lowercase 40-character commit from the fixed owner repository, verifies the applied cgroup `cpu.max`, runs no-cache and cached builds with a 30-minute process-group timeout, samples the fixed `/healthz`, records CPU/throttling/memory/OOM/PSI/PID/cache/artifact identity and HTTP 502 evidence, bounds logs, archives private evidence and restores the conservative 65 percent quota on every exit.
 
-Local validation green before commit:
+The calibrator separates root-owned evidence from builder-writable source/output/cache roots. Git, curl and buildctl run with fixed empty environments; the host token, Coolify authority, proxy variables and Git global configuration are not inherited. It registers no public tool and has not run on the real VPS. `docs/vps-builder-calibration.md` is the source of truth; Step 8 remains blocked until exact-head CI and dated real-VPS evidence select an engine/quota or record a structural stop.
 
-- `go test ./... -count=1`;
+## Validation completed locally
+
+Green on the exact local tree:
+
+- focused BuildKit/package/rootless/docs tests;
+- all Go packages in bounded groups;
+- tagged `p12_e2e` compile gate;
 - `go vet ./...`;
-- Staticcheck v0.7.0;
+- Staticcheck v0.7.0, including the final builder package change;
 - `go build ./...`;
-- Actionlint v1.7.12;
+- Actionlint v1.7.12 after workflow changes;
 - `git diff --check`;
-- `internal/buildspike` coverage remains above its blocking 75% threshold.
+- no temporary helper/probe files remain.
 
-Next:
-
-1. Commit this current-task/handoff update and publish the branch once.
-2. Hold the exact published SHA until all checks are terminal, including the new `Rootless BuildKit candidate fixture`.
-3. Use Actions diagnostics/log chunks for any failure; do not guess or weaken rootless/cgroup controls.
-4. If the disposable fixture passes, prepare the real VPS 50/65/80 calibration bundle and exact operator action. Do not begin Step 8 until Step 7 selects an engine/quota from dated VPS evidence or records a structural stop.
+Next: commit as `Step 7: Add bounded VPS builder calibration`, publish to PR #48, hold the SHA stable, require every exact-head gate green, diagnose any remaining fixture failure through the existing GitHub authority, then execute the real VPS calibration through a closed privileged path before beginning Step 8.

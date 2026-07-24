@@ -453,16 +453,22 @@ func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, ru
 	)...)
 
 	deadline := time.Now().Add(60 * time.Second)
+	var lastQueryErr error
 	for time.Now().Before(deadline) {
 		healthCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		_, healthErr := execContainerCommandRunner{}.Run(healthCtx, endpoint.Executable, append(prefix, "healthcheck", "run", name), p12RootlessEnv(endpoint))
 		cancel()
 		if healthErr == nil {
-			value := p12PostgresEngine(t, endpoint, "readiness_query", append(prefix, "exec", name, "psql", "-U", "postgres", "-d", "fixture", "-tAc", "SELECT 1")...)
-			if strings.TrimSpace(value) != "1" {
-				t.Fatal("PostgreSQL readiness query failed")
+			queryCtx, queryCancel := context.WithTimeout(t.Context(), 5*time.Second)
+			value, queryErr := execContainerCommandRunner{}.Run(queryCtx, endpoint.Executable, append(prefix,
+				"exec", name, "/bin/sh", "-ec",
+				"command -v psql >/dev/null; exec psql -U postgres -d fixture -tAc 'SELECT 1'",
+			), p12RootlessEnv(endpoint))
+			queryCancel()
+			if queryErr == nil && strings.TrimSpace(string(value)) == "1" {
+				return true, true
 			}
-			return true, true
+			lastQueryErr = queryErr
 		}
 		timer := time.NewTimer(250 * time.Millisecond)
 		select {
@@ -471,6 +477,10 @@ func p12PostgreSQLCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, ru
 			t.Fatal("PostgreSQL healthcheck cancelled")
 		case <-timer.C:
 		}
+	}
+	if lastQueryErr != nil {
+		fmt.Printf("P12 rootless category=postgres_readiness_query\n")
+		t.Fatalf("PostgreSQL readiness query did not succeed: %v", lastQueryErr)
 	}
 	t.Fatal("PostgreSQL healthcheck timed out")
 	return false, false
