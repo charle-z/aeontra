@@ -1,41 +1,41 @@
 # Current task
 
+Historical deployed baseline remains unchanged: VPS `main`/production truth is preserved separately; no production, Coolify, Parrot or `main` mutation occurred in this cut.
+
+Historical deployed successor truth remains explicit: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`, and P9 Brain is deployed as its successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+
 Branch: `p16-global-work-scheduler`. Pull request: `#48`.
 
-Published head before this local fix: `e1bdb5a7468a7385d8cc4b0ee6ce613b4c00154b`.
+Published head before this documentation-only correction: `0aaeca2c469bab96f71d31a760f6f7a3cb6b20d2`.
 
 ## Exact-head evidence
 
-`Verify` is green on `e1bdb5a`. `Rootless BuildKit candidate fixture` is the only observed failure so far. Its exact job log proves:
+`Rootless BuildKit candidate fixture` is green on `0aaeca2`. The exact job proves:
 
 - the private rootless service started under `mcp-build`;
-- the complete rootlesskit/buildkitd process subtree stayed in the reviewed cgroup;
+- the complete rootlesskit/buildkitd process subtree remained in the reviewed cgroup;
 - both OCI builds completed;
 - the second build emitted `CACHED`;
-- failure happened immediately after the second build, before `cache-usage.txt` or `cache-policy.txt` existed.
+- artifact verification, `buildctl du -v`, the 4 GiB cache policy, stop behavior and conservative removal passed.
 
-The cause is the fixture verifying OCI files from the runner identity even though the output directory is private `0700` state owned by `mcp-build`.
+`Verify` failed only in documentation closure tests because the previous current-task rewrite omitted historical P8.1/P9 markers. No source, runtime or workflow test failed.
 
-## Local fix
+## Current correction
 
-The fixture now verifies each OCI artifact as `mcp-build`:
+This file restores the mandatory deployed-history statements for:
 
-- regular file;
-- not a symlink;
-- non-empty;
-- size greater than zero and no more than 64 MiB.
+- P8.1 at `d343264bffdc0ae1bc045a9d723e913be977090c`;
+- P9 Brain as its deployed successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-Only after those checks does it validate `CACHED`, run `buildctl du -v`, and retain the reviewed `maxUsedSpace = "4GB"` policy evidence.
+No production, Coolify, Parrot, `main`, security boundary or builder behavior changes in this correction.
 
-No cache, output, service or isolation bound was weakened.
+## Step 7 state
 
-## Local validation
+The branch contains:
 
-Green on the exact local tree:
+- the private rootless BuildKit package and disposable CI fixture;
+- cache reuse and bounded cache-policy evidence;
+- the fixed 50/65/80 VPS calibrator;
+- a durable exact-commit root bootstrap that survives SSH disconnects, inherits no credentials, rejects different/partial installations and preserves private evidence.
 
-- `go test ./packaging/builder ./docs ./internal/workflowpolicy -count=1`;
-- Actionlint v1.7.12;
-- `git diff --check`;
-- no temporary diagnostic files remain.
-
-Next: commit and publish the isolated identity correction, hold the new SHA stable, require every exact-head check green, then merge only through the reviewed PR path. Real VPS 50/65/80 calibration remains a host-root boundary and must use the committed durable bootstrap for the exact green commit before Step 8.
+Next: publish this documentation-only correction, hold the exact SHA stable, require every PR check green, then merge only through the reviewed green PR path. Real VPS calibration remains a host-root boundary and must use the committed bootstrap for the exact green commit before Step 8.
