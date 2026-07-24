@@ -68,6 +68,13 @@ func Open(config Config) (*Store, error) {
 		_ = db.Close()
 		return nil, errors.New("workqueue: schema is unsupported")
 	}
+	if existingVersion == 0 {
+		var existingTables int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`).Scan(&existingTables); err != nil || existingTables != 0 {
+			_ = db.Close()
+			return nil, errors.New("workqueue: schema is unsupported")
+		}
+	}
 	store := &Store{root: root, path: path, config: validated, db: db, lockFile: lockFile, now: time.Now}
 	if err := store.initialize(); err != nil {
 		_ = db.Close()
@@ -294,6 +301,9 @@ func (s *Store) LeaseNext(pool, holder string, ttl time.Duration) (Lease, error)
 	var jobID string
 	if err := tx.QueryRow(`SELECT job_id FROM jobs WHERE pool=? AND state=? AND cancel_requested=0 ORDER BY created_at,job_id LIMIT 1`, pool, StateQueued).Scan(&jobID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if err := tx.Commit(); err != nil {
+				return Lease{}, errors.New("workqueue: lease recovery commit failed")
+			}
 			return Lease{}, ErrNoJobAvailable
 		}
 		return Lease{}, errors.New("workqueue: lease selection failed")
@@ -347,12 +357,14 @@ func recoverExpired(tx *sql.Tx, now time.Time) error {
 		state := StateQueued
 		reason := ReasonLeaseExpired
 		outcome := any(nil)
+		summary := any(nil)
 		if item.cancelled {
 			state = StateCancelled
 			reason = ReasonCancelled
 			outcome = StateCancelled
+			summary = "cancelled"
 		}
-		if _, err := tx.Exec(`UPDATE jobs SET state=?,reason=?,lease_id=NULL,lease_holder=NULL,lease_until=NULL,outcome=?,updated_at=? WHERE job_id=? AND state=?`, state, reason, outcome, now.UnixNano(), item.id, StateLeased); err != nil {
+		if _, err := tx.Exec(`UPDATE jobs SET state=?,reason=?,lease_id=NULL,lease_holder=NULL,lease_until=NULL,outcome=?,summary=?,updated_at=? WHERE job_id=? AND state=?`, state, reason, outcome, summary, now.UnixNano(), item.id, StateLeased); err != nil {
 			return errors.New("workqueue: expired lease recovery failed")
 		}
 		if terminal(state) {
@@ -459,7 +471,7 @@ func (s *Store) Cancel(jobID string) (Job, error) {
 		if !legalTransition(job.State, StateCancelled) {
 			return Job{}, errors.New("workqueue: cancellation transition is illegal")
 		}
-		if _, err := tx.Exec(`UPDATE jobs SET state=?,reason=?,cancel_requested=1,outcome=?,updated_at=? WHERE job_id=? AND state=?`, StateCancelled, ReasonCancelled, StateCancelled, now.UnixNano(), jobID, job.State); err != nil {
+		if _, err := tx.Exec(`UPDATE jobs SET state=?,reason=?,cancel_requested=1,outcome=?,summary=?,updated_at=? WHERE job_id=? AND state=?`, StateCancelled, ReasonCancelled, StateCancelled, "cancelled", now.UnixNano(), jobID, job.State); err != nil {
 			return Job{}, errors.New("workqueue: cancellation failed")
 		}
 		if err := propagate(tx, jobID, now); err != nil {
@@ -712,11 +724,11 @@ func validateStoredJob(job Job) error {
 	}
 	switch job.State {
 	case StateBlocked:
-		if job.Reason != ReasonDependencyPending || job.LeaseID != "" || job.LeaseHolder != "" || !job.LeaseExpiresAt.IsZero() || job.Outcome != "" {
+		if job.Reason != ReasonDependencyPending || job.CancelRequested || job.LeaseID != "" || job.LeaseHolder != "" || !job.LeaseExpiresAt.IsZero() || job.Outcome != "" {
 			return errors.New("workqueue: stored blocked job is invalid")
 		}
 	case StateQueued:
-		if job.Reason != ReasonNone && job.Reason != ReasonLeaseExpired || job.LeaseID != "" || job.LeaseHolder != "" || !job.LeaseExpiresAt.IsZero() || job.Outcome != "" {
+		if job.Reason != ReasonNone && job.Reason != ReasonLeaseExpired || job.CancelRequested || job.LeaseID != "" || job.LeaseHolder != "" || !job.LeaseExpiresAt.IsZero() || job.Outcome != "" {
 			return errors.New("workqueue: stored queued job is invalid")
 		}
 	case StateLeased:
@@ -727,12 +739,15 @@ func validateStoredJob(job Job) error {
 			return errors.New("workqueue: stored lease cancellation is invalid")
 		}
 	case StateSucceeded, StateFailed, StateCancelled:
-		if job.Outcome != job.State || len(job.Summary) > 2048 || job.Summary == "" && job.State != StateCancelled || job.ResultRef != "" && !resultRefPattern.MatchString(job.ResultRef) {
+		if job.Outcome != job.State || validateResult(Result{Outcome: job.Outcome, Summary: job.Summary, ResultRef: job.ResultRef}) != nil {
 			return errors.New("workqueue: stored terminal job is invalid")
 		}
-		hasLease := job.LeaseID != "" || job.LeaseHolder != "" || !job.LeaseExpiresAt.IsZero() || job.Fence != 0
-		if hasLease && (!leaseIDPattern.MatchString(job.LeaseID) || !holderPattern.MatchString(job.LeaseHolder) || job.LeaseExpiresAt.IsZero() || job.Fence == 0) {
+		hasLeaseIdentity := job.LeaseID != "" || job.LeaseHolder != "" || !job.LeaseExpiresAt.IsZero()
+		if hasLeaseIdentity && (!leaseIDPattern.MatchString(job.LeaseID) || !holderPattern.MatchString(job.LeaseHolder) || job.LeaseExpiresAt.IsZero() || job.Fence == 0) {
 			return errors.New("workqueue: stored terminal lease is invalid")
+		}
+		if job.State != StateCancelled && job.CancelRequested {
+			return errors.New("workqueue: stored terminal cancellation flag is invalid")
 		}
 		switch job.State {
 		case StateSucceeded:

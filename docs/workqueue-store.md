@@ -62,6 +62,6 @@ A job with unfinished dependencies remains `blocked`. Successful completion of e
 
 ## Verification
 
-Tests cover legal/illegal transitions, equal and different concurrent enqueue, global/per-workspace bounds, idempotency conflict and dependency-order normalization, one active fenced lease, expiry recovery, stale completion rejection, dependency success/failure propagation, queued/running cancellation, reopen/integrity, automatic advisory-lock release, unsupported multi-writer configuration, backup/restore, unsafe layout and future schema, list/output bounds, race execution and fuzz input validation.
+Tests cover legal/illegal transitions, equal and different concurrent enqueue, global/per-workspace bounds, idempotency conflict and dependency-order normalization, one active fenced lease, expiry recovery, stale completion rejection, dependency success/failure propagation, queued/running cancellation, reopen/integrity, automatic advisory-lock release after a real process exit, unsupported multi-writer configuration, backup/restore, unsafe layout, unknown schema-zero databases and future schemas, list/output bounds, race execution and fuzz input validation. Existing database and lock ownership is validated; terminal summaries that resemble secrets fail closed. The package is enforced by the atomic coverage gate at a 70% minimum.
 
 Step 6 will add resource vectors and fairness. Step 7+ will add executors. This store alone grants no authority to execute work.
