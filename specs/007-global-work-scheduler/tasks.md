@@ -145,24 +145,24 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 
 ### RED tests
 
-- [ ] Resource-vector parser rejects negative, NaN, infinity, overflow, and unknown
+- [x] Resource-vector parser rejects negative, NaN, infinity, overflow, and unknown
   dimensions.
-- [ ] Hard admission never exceeds CPU/RAM/I/O/PIDs/slot budgets.
-- [ ] Deficit Round Robin prevents one workspace monopoly.
-- [ ] Aging prevents starvation within configured bounds.
-- [ ] Deterministic scheduling under equal timestamps/costs.
-- [ ] Queue backpressure and TTL cleanup.
-- [ ] EWMA update clamps outliers and requires minimum samples.
-- [ ] Estimates remain separate per device/pool/profile.
-- [ ] Shadow score never changes authorization/target/maxima.
+- [x] Hard admission never exceeds CPU/RAM/I/O/PIDs/slot budgets.
+- [x] Deficit Round Robin prevents one workspace monopoly.
+- [x] Aging prevents starvation within configured bounds.
+- [x] Deterministic scheduling under equal timestamps/costs.
+- [x] Queue backpressure and TTL cleanup.
+- [x] EWMA update clamps outliers and requires minimum samples.
+- [x] Estimates remain separate per device/pool/profile.
+- [x] Shadow score never changes authorization/target/maxima.
 
 ### Implementation
 
-- [ ] Add administrator-owned resource profiles and pool registry.
-- [ ] Add DRR deficit accounting and bounded aging.
-- [ ] Add wait estimate and safe queue metrics.
-- [ ] Add EWMA history and shadow score.
-- [ ] Add disable/reset controls and docs.
+- [x] Add administrator-owned resource profiles and pool registry.
+- [x] Add DRR deficit accounting and bounded aging.
+- [x] Add wait estimate and safe queue metrics.
+- [x] Add EWMA history and shadow score.
+- [x] Add disable/reset controls and docs.
 
 ## Step 7 — VPS builder spike
 
