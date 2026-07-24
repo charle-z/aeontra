@@ -31,6 +31,27 @@ The harness provides:
 - regular-file, no-symlink artifact verification with maximum size and SHA-256 identity;
 - systemd properties that kill the complete control group on cancellation.
 
+## Private candidate packaging
+
+`packaging/builder/` contains an offline, fixed-input candidate package for the real
+spike. It is not a public tool and is not installed by the MCP container.
+
+- `mcp-devbox-buildkit.service` runs as the dedicated `mcp-build` user with the
+  reviewed 65 percent candidate quota, memory/PID/I/O bounds, delegated cgroup and
+  `KillMode=control-group`;
+- `buildkitd.toml` is checked against the generated rootless configuration and fixes
+  one OCI worker, one parallel build and bounded GC/cache thresholds;
+- `install-preverified.sh` accepts no arguments or URLs, consumes only a private
+  root-owned staging directory containing `buildkitd`, `buildctl` and an exact
+  two-entry SHA-256 manifest, creates the system identity with subuid/subgid ranges,
+  activates the unit, verifies `debug workers`, and restores previous files if
+  health fails;
+- `remove.sh` disables the candidate and removes only its binaries, configuration and
+  unit. State, cache, identity and preverified staging are preserved by default.
+
+The candidate scripts remain inactive until a separately staged VPS spike supplies
+preverified BuildKit binaries and records rollback evidence.
+
 ## Remaining evidence
 
 The following are deliberately not claimed yet:
@@ -40,7 +61,7 @@ The following are deliberately not claimed yet:
 - 50/65/80 quota measurements;
 - per-cgroup CPU throttling, PSI, memory, I/O and PID samples;
 - control-plane health latency and observed 502 count;
-- bounded cache cleanup and uninstall scripts;
+- real cache reuse/GC behavior and uninstall execution on the VPS;
 - final BuildKit-versus-Podman engine selection.
 
 Those require the separate private spike deployment and dated measurement. If BuildKit fails a structural requirement, Podman may be evaluated without weakening the rootless/cgroup boundary.

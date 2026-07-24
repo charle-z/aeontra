@@ -25,7 +25,7 @@ Implemented and tested:
 - bounded closed environment and output capture with ANSI/NUL/path/secret redaction;
 - bounded regular-file OCI artifact identity using SHA-256;
 - cgroup CPU, throttling, memory, PSI and event parsing with malformed/oversized rejection;
-- blocking package coverage threshold: `internal/buildspike` >=75%, measured 82.0%.
+- blocking package coverage threshold: `internal/buildspike` >=75%, measured 82.3%.
 
 Documentation:
 
