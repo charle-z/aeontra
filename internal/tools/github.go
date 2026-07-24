@@ -23,6 +23,9 @@ const (
 	githubCheckRunsResponseLimit    int64 = 1 << 20
 	githubActionsResponseLimit      int64 = 1 << 20
 	githubCommitStatusResponseLimit int64 = 1 << 20
+	githubAnnotationsResponseLimit  int64 = 1 << 20
+	githubJobLogChunkMaxBytes             = 1 << 20
+	githubJobLogTotalMaxBytes             = 16 << 20
 )
 
 // GitHubClient is a narrow, token-backed GitHub API client for global-builder
@@ -34,6 +37,8 @@ type GitHubClient struct {
 	ownerType         string // user|org
 	defaultVisibility string // private|public
 	do                func(*http.Request) (*http.Response, error)
+	doNoRedirect      func(*http.Request) (*http.Response, error)
+	doSigned          func(*http.Request) (*http.Response, error)
 }
 
 func NewGitHubClient(baseURL, token, owner, ownerType, defaultVisibility string) *GitHubClient {
@@ -45,13 +50,22 @@ func NewGitHubClient(baseURL, token, owner, ownerType, defaultVisibility string)
 		ownerType = "user"
 	}
 	defaultVisibility = normalizeRepoVisibility(defaultVisibility)
+	defaultClient := &http.Client{Timeout: 30 * time.Second}
+	noRedirectClient := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	return &GitHubClient{
 		baseURL:           strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		token:             strings.TrimSpace(token),
 		owner:             strings.TrimSpace(owner),
 		ownerType:         ownerType,
 		defaultVisibility: defaultVisibility,
-		do:                (&http.Client{Timeout: 30 * time.Second}).Do,
+		do:                defaultClient.Do,
+		doNoRedirect:      noRedirectClient.Do,
+		doSigned:          noRedirectClient.Do,
 	}
 }
 

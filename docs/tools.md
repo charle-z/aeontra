@@ -27,6 +27,8 @@ do not replace server-side enforcement.
 | `opencode_runtime_start` | 0/0/1/0 | Request one pinned OpenCode runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
 | `workspace_runtime_continue` | 0/0/1/0 | Continue one registered dev or HTB workspace through the active ChatGPT session using its local trusted contract; accepts the opaque workspace id, timeout and a fresh caller-generated idempotency key, creates one runtime, and does not retry automatically. |
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
+| `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |
+| `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning only safe repository, profile, mode, readiness or blocker metadata. |
 | `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
 | `workspace_autopilot_start` | 0/0/1/0 | Start or reuse one durable local job with `run_until=completed_or_cancelled`; no free-form objective is accepted. |
 | `workspace_autopilot_status` | 1/0/1/0 | Return signed, content-free job state, progress revision, cycle count and safe blocker code. |
@@ -80,6 +82,8 @@ do not replace server-side enforcement.
 | `source_pull_request_create_preview` | 1/0/1/1 | Bind head/base SHAs and plan one non-draft pull request. |
 | `source_pull_request_create` | 0/0/0/1 | Revalidate branch SHAs and create the planned pull request. |
 | `source_pull_request_status` | 1/0/1/1 | Read PR state and every check/status context for the exact head SHA. |
+| `source_pull_request_failure_diagnostics` | 1/0/1/1 | Read failed jobs on the exact PR head and return failed steps, annotations and line-numbered redacted log context. |
+| `source_pull_request_job_log` | 1/0/1/1 | Read one exact job log in redacted byte chunks with `next_offset`; no job ID, token or signed URL is exposed. |
 | `source_pull_request_merge_preview` | 1/0/1/1 | Require mergeable state and completely green checks, then plan a merge commit. |
 | `source_pull_request_merge` | 0/1/0/1 | Revalidate head, mergeability and checks, then merge with `merge_method=merge`. |
 | `source_default_branch_update_preview` | 1/0/1/1 | Bind the existing target branch SHA and plan a default-branch update. |
@@ -91,7 +95,11 @@ do not replace server-side enforcement.
 | `repo_publish` | 0/0/0/1 | Revalidate and push one branch; no force/tags/mirror/refspecs. |
 
 The public catalog GitHub tools use the VPS/Coolify `GITHUB_TOKEN` for API operations
-such as repository metadata, exact-head PR/check status and merge. A configured local
+such as repository metadata, exact-head PR/check status, Actions diagnostics and merge.
+Actions runs/jobs/logs require `Actions: Read`; check-run annotations require
+`Checks: Read`. Job-log downloads follow exactly one GitHub-issued redirect, omit the
+Authorization header on the signed download request, redact returned content and expose
+at most 1 MiB per call within a 16 MiB per-job read window. A configured local
 development Edge separately injects `workspace_dev_git_clone`,
 `workspace_dev_publish_preview`, and `workspace_dev_publish` into its private OpenCode
 provider. Those owner-bound transport actions are intentionally absent from the

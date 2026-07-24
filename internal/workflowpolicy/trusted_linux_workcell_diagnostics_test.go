@@ -25,14 +25,29 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		"setsid podman system service",
 		"Stage PostgreSQL fixture image",
 		`archive="$RUNNER_TEMP/p12-postgres-17-alpine.tar"`,
-		`docker image save --output "$archive"`,
+		`docker image inspect --format '{{.Id}}' docker.io/library/postgres:17-alpine`,
+		`docker image tag docker.io/library/postgres:17-alpine "$postgres_image"`,
+		`docker image save --output "$archive" "$postgres_image"`,
 		`podman --url "unix://$socket" load --input "$archive"`,
 		`postgres_image_id="$(python3 - "$archive"`,
 		`bundle.extractfile("manifest.json")`,
 		`blobs/sha256/`,
 		`print("sha256:" + match.group(1))`,
-		`podman --url "unix://$socket" image exists "$postgres_image_id"`,
-		`export P12_POSTGRES_IMAGE="$postgres_image_id"`,
+		`postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"`,
+		`images_file="$RUNNER_TEMP/p12-podman-images.txt"`,
+		`podman --url "unix://$socket" images --no-trunc --format '{{.ID}}'`,
+		`loaded_postgres_image_id="$(python3 - "$postgres_image_id" "$images_file"`,
+		`matches != {target}`,
+		`podman --url "unix://$socket" tag "$loaded_postgres_image_id" "$postgres_image"`,
+		`inspected_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"`,
+		`P12 rootless category=postgres_image_inventory`,
+		`P12 rootless category=postgres_image_loaded_id`,
+		`P12 rootless category=postgres_image_conflict`,
+		`P12 rootless category=postgres_image_tag`,
+		`P12 rootless category=postgres_image_inspect`,
+		`P12 rootless category=postgres_image_identity`,
+		`if [ "${inspected_postgres_image_id#sha256:}" != "${postgres_image_id#sha256:}" ]; then`,
+		`export P12_POSTGRES_IMAGE="$postgres_image"`,
 		"rootless-cycle-1-report.json",
 		"rootless-cycle-2-report.json",
 		"Annotate rootless E2E failure",
@@ -49,14 +64,17 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 	startRootless := strings.Index(text, "start_service\n")
 	loadRootless := strings.Index(text, `podman --url "unix://$socket" load --input`)
 	deriveImage := strings.Index(text, `postgres_image_id="$(python3 - "$archive"`)
-	verifyRootless := strings.Index(text, `podman --url "unix://$socket" image exists "$postgres_image_id"`)
-	exportImage := strings.Index(text, `export P12_POSTGRES_IMAGE="$postgres_image_id"`)
+	localImage := strings.LastIndex(text, `postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"`)
+	inventoryImage := strings.Index(text, `podman --url "unix://$socket" images --no-trunc --format '{{.ID}}'`)
+	tagImage := strings.Index(text, `podman --url "unix://$socket" tag "$loaded_postgres_image_id" "$postgres_image"`)
+	verifyTag := strings.Index(text, `inspected_postgres_image_id="$(podman --url "unix://$socket" image inspect --format '{{.Id}}' "$postgres_image")"`)
+	exportImage := strings.Index(text, `export P12_POSTGRES_IMAGE="$postgres_image"`)
 	runCycles := strings.Index(text, "P12_ROOTLESS_E2E=1")
 	if stageImage < 0 || disableRootful < 0 || stageImage >= disableRootful {
 		t.Error("PostgreSQL fixture image must be staged before rootful socket isolation")
 	}
-	if startRootless < 0 || loadRootless < 0 || deriveImage < 0 || verifyRootless < 0 || exportImage < 0 || runCycles < 0 || startRootless >= loadRootless || loadRootless >= deriveImage || deriveImage >= verifyRootless || verifyRootless >= exportImage || exportImage >= runCycles {
-		t.Error("PostgreSQL fixture image must load, derive its immutable ID, verify it, and export it before the E2E cycles")
+	if startRootless < 0 || loadRootless < 0 || deriveImage < 0 || localImage < 0 || inventoryImage < 0 || tagImage < 0 || verifyTag < 0 || exportImage < 0 || runCycles < 0 || startRootless >= loadRootless || loadRootless >= deriveImage || deriveImage >= localImage || localImage >= inventoryImage || inventoryImage >= tagImage || tagImage >= verifyTag || verifyTag >= exportImage || exportImage >= runCycles {
+		t.Errorf("PostgreSQL fixture ordering invalid: start=%d load=%d derive=%d local=%d inventory=%d tag=%d inspect=%d export=%d run=%d", startRootless, loadRootless, deriveImage, localImage, inventoryImage, tagImage, verifyTag, exportImage, runCycles)
 	}
 	for _, forbidden := range []string{
 		"tail -n 30 artifacts/p12-rootless-test.log",
@@ -72,7 +90,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		t.Fatal(err)
 	}
 	e2e := string(e2eBody)
-	for _, required := range []string{"--health-cmd", `[]string{"container", "pod", "network", "volume"}`, "p12RootlessRuntimeIDs", "P12_POSTGRES_IMAGE", "p12PostgresImage", `append(prefix, "image", "exists", image)`, `network := "p12-pg-net-" + suffix`} {
+	for _, required := range []string{"--health-cmd", `[]string{"container", "pod", "network", "volume"}`, "p12RootlessRuntimeIDs", "P12_POSTGRES_IMAGE", "p12PostgresImage", `append(prefix, "image", "inspect", "--format", "{{.Id}}", image)`, "PostgreSQL fixture image identity changed after rootless load", `network := "p12-pg-net-" + suffix`} {
 		if !strings.Contains(e2e, required) {
 			t.Errorf("rootless lifecycle E2E missing %q", required)
 		}

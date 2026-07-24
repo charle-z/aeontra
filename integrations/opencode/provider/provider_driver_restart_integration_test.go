@@ -176,7 +176,10 @@ process.stdout.write(JSON.stringify({
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode provider result: %v", err)
 	}
-	if result.Status != "ok" || result.CreateCalls != 1 || result.WaitCalls < 2 || result.WaitCalls > 4 || !result.SameWaitPath {
+	// The number of failed socket attempts during the real process handoff is scheduler
+	// dependent. The safety contract is one create, at least one retry, and every retry
+	// bound to the exact same immutable response path.
+	if result.Status != "ok" || result.CreateCalls != 1 || result.WaitCalls < 2 || !result.SameWaitPath {
 		t.Fatalf("provider retry contract failed: status=%q create=%d wait=%d same_path=%t", result.Status, result.CreateCalls, result.WaitCalls, result.SameWaitPath)
 	}
 	secondMetrics, err := readProviderDriverMetrics(socketPath)

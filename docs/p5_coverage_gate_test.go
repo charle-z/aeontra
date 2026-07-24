@@ -22,6 +22,7 @@ func TestP5CoverageGateIsDocumentedAndReproducible(t *testing.T) {
 		"internal/tools",
 		"internal/app",
 		"internal/grantadmin",
+		"internal/workqueue",
 		"package-specific",
 		"missing package",
 	} {

@@ -1,0 +1,59 @@
+[Unit]
+Description=MCP Devbox private rootless BuildKit candidate
+Documentation=file:/usr/share/doc/mcp-devbox-builder/rootless-buildkit-spike.md
+After=network-online.target
+Wants=network-online.target
+ConditionPathIsExecutable=/usr/local/lib/mcp-devbox-builder/buildkitd
+ConditionPathIsExecutable=/usr/local/lib/mcp-devbox-builder/buildctl
+ConditionPathIsExecutable=/usr/bin/rootlesskit
+
+[Service]
+Type=simple
+User=mcp-build
+Group=mcp-build
+UMask=0077
+Environment=HOME=/var/lib/mcp-devbox-buildkit
+Environment=XDG_RUNTIME_DIR=/run/mcp-devbox-buildkit
+Environment=PATH=/usr/local/lib/mcp-devbox-builder:/usr/bin:/bin
+RuntimeDirectory=mcp-devbox-buildkit
+RuntimeDirectoryMode=0700
+StateDirectory=mcp-devbox-buildkit
+StateDirectoryMode=0700
+CacheDirectory=mcp-devbox-buildkit
+CacheDirectoryMode=0700
+ExecStartPre=/usr/bin/install -d -o mcp-build -g mcp-build -m 0700 /run/mcp-devbox-buildkit/buildkit
+ExecStart=/usr/bin/rootlesskit --net=slirp4netns --copy-up=/etc --disable-host-loopback /usr/local/lib/mcp-devbox-builder/buildkitd --config /etc/mcp-devbox-builder/buildkitd.toml
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=90s
+TimeoutStopSec=30s
+KillMode=control-group
+Delegate=yes
+CPUAccounting=yes
+CPUQuota=65%
+MemoryAccounting=yes
+MemoryHigh=1280M
+MemoryMax=1792M
+TasksAccounting=yes
+TasksMax=512
+IOAccounting=yes
+IOWeight=25
+NoNewPrivileges=no
+AmbientCapabilities=
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=~cgroup ipc uts
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths=/run/mcp-devbox-buildkit /var/lib/mcp-devbox-buildkit /var/cache/mcp-devbox-buildkit
+
+[Install]
+WantedBy=multi-user.target

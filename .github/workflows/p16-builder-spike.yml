@@ -1,0 +1,189 @@
+name: P16 private rootless builder candidate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rootless-buildkit-candidate:
+    name: Rootless BuildKit candidate fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify private builder contracts
+        run: go test ./internal/buildspike ./packaging/builder ./internal/coveragegate -count=1
+
+      - name: Install rootless host prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rootlesskit uidmap slirp4netns fuse-overlayfs
+
+      - name: Install reviewed package resources
+        run: |
+          sudo install -d -o root -g root -m 0755 /usr/share/mcp-devbox-builder-candidate
+          sudo install -o root -g root -m 0755 packaging/builder/stage-official-v0.31.2.sh /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
+          sudo install -o root -g root -m 0755 packaging/builder/install-preverified.sh /usr/share/mcp-devbox-builder-candidate/install-preverified.sh
+          sudo install -o root -g root -m 0755 packaging/builder/remove.sh /usr/share/mcp-devbox-builder-candidate/remove.sh
+          sudo install -o root -g root -m 0644 packaging/builder/buildkitd.toml /usr/share/mcp-devbox-builder-candidate/buildkitd.toml
+          sudo install -o root -g root -m 0644 packaging/builder/mcp-devbox-buildkit.service /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit.service
+
+      - name: Stage pinned official BuildKit release
+        run: sudo /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
+
+      - name: Install and verify rootless service
+        run: |
+          sudo /usr/share/mcp-devbox-builder-candidate/install-preverified.sh
+          sudo systemctl is-active --quiet mcp-devbox-buildkit.service
+          socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
+          sudo test -S "$socket"
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl --addr "unix://$socket" debug workers
+          sudo systemctl show mcp-devbox-buildkit.service \
+            --property=User --property=Group --property=KillMode \
+            --property=MemoryHigh --property=MemoryMax --property=TasksMax \
+            | tee "$RUNNER_TEMP/builder-properties.txt" >/dev/null
+          grep -Fx 'User=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'Group=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'KillMode=control-group' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'MemoryHigh=1342177280' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'MemoryMax=1879048192' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'TasksMax=512' "$RUNNER_TEMP/builder-properties.txt"
+
+      - name: Prove service cgroup ownership and subtree
+        run: |
+          main_pid="$(sudo systemctl show mcp-devbox-buildkit.service --property=MainPID --value)"
+          test "$main_pid" -gt 1
+          cgroup="$(sudo awk -F: '$1 == "0" {print $3}' "/proc/$main_pid/cgroup")"
+          case "$cgroup" in
+            */mcp-devbox-buildkit.service) ;;
+            *) echo "unexpected builder cgroup: $cgroup" >&2; exit 1 ;;
+          esac
+          builder_uid="$(id -u mcp-build)"
+          processes="$RUNNER_TEMP/builder-processes.txt"
+          : > "$processes"
+          sudo find "/sys/fs/cgroup$cgroup" -name cgroup.procs -type f -exec cat {} + | sort -nu | while read -r pid; do
+            test -r "/proc/$pid/status" || continue
+            uid="$(sudo awk '/^Uid:/ {print $2}' "/proc/$pid/status")"
+            test "$uid" = "$builder_uid"
+            command="$(sudo cat "/proc/$pid/comm")"
+            printf '%s %s %s\n' "$pid" "$uid" "$command" | tee -a "$processes"
+          done
+          grep -Eq ' rootlesskit$' "$processes"
+          grep -Eq ' buildkitd$' "$processes"
+
+      - name: Build the same commit twice and prove cache reuse
+        run: |
+          set -Eeuo pipefail
+          fixture=/var/lib/mcp-devbox-builder-fixture
+          context="$fixture/context"
+          output="$fixture/output"
+          cache=/var/cache/mcp-devbox-buildkit/fixture
+          sudo install -d -o mcp-build -g mcp-build -m 0700 "$context" "$output" "$cache"
+          printf 'FROM scratch\nCOPY hello /hello\n' | sudo tee "$context/Dockerfile" >/dev/null
+          printf 'p16-builder-fixture\n' | sudo tee "$context/hello" >/dev/null
+          sudo chown -R mcp-build:mcp-build "$fixture" "$cache"
+          commit="$(git rev-parse HEAD)"
+          socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
+          first="$output/$commit-first.oci.tar"
+          second="$output/$commit-second.oci.tar"
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" build --progress plain \
+            --frontend dockerfile.v0 \
+            --local "context=$context" --local "dockerfile=$context" \
+            --opt filename=Dockerfile \
+            --export-cache "type=local,dest=$cache,mode=max,reset=true" \
+            --output "type=oci,dest=$first" \
+            2>&1 | tee "$RUNNER_TEMP/first-build.log"
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" build --progress plain \
+            --frontend dockerfile.v0 \
+            --local "context=$context" --local "dockerfile=$context" \
+            --opt filename=Dockerfile \
+            --import-cache "type=local,src=$cache" \
+            --export-cache "type=local,dest=$cache,mode=max,reset=true" \
+            --output "type=oci,dest=$second" \
+            2>&1 | tee "$RUNNER_TEMP/second-build.log"
+          for artifact in "$first" "$second"; do
+            sudo runuser -u mcp-build -- test -f "$artifact"
+            sudo runuser -u mcp-build -- test ! -L "$artifact"
+            sudo runuser -u mcp-build -- test -s "$artifact"
+            artifact_bytes="$(sudo runuser -u mcp-build -- stat -c '%s' "$artifact")"
+            test "$artifact_bytes" -gt 0
+            test "$artifact_bytes" -le 67108864
+          done
+          grep -Eq 'CACHED|cached' "$RUNNER_TEMP/second-build.log"
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" du -v \
+            2>&1 | tee "$RUNNER_TEMP/cache-usage.txt"
+          test -s "$RUNNER_TEMP/cache-usage.txt"
+          cache_usage_output_bytes="$(stat -c '%s' "$RUNNER_TEMP/cache-usage.txt")"
+          test "$cache_usage_output_bytes" -gt 0
+          test "$cache_usage_output_bytes" -le 1048576
+          sudo grep -F 'maxUsedSpace = "4GB"' /etc/mcp-devbox-builder/buildkitd.toml \
+            | tee "$RUNNER_TEMP/cache-policy.txt"
+          test -s "$RUNNER_TEMP/cache-policy.txt"
+
+      - name: Verify stop kills the complete service cgroup
+        run: |
+          main_pid="$(sudo systemctl show mcp-devbox-buildkit.service --property=MainPID --value)"
+          sudo systemctl stop mcp-devbox-buildkit.service
+          for _ in $(seq 1 30); do
+            if ! sudo kill -0 "$main_pid" 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "builder process survived service stop" >&2
+          exit 1
+
+      - name: Verify conservative removal
+        run: |
+          sudo /usr/share/mcp-devbox-builder-candidate/remove.sh
+          test ! -e /etc/systemd/system/mcp-devbox-buildkit.service
+          test ! -e /usr/local/lib/mcp-devbox-builder/buildkitd
+          test -d /var/lib/mcp-devbox-buildkit
+          test -d /var/cache/mcp-devbox-buildkit
+          id mcp-build
+          test -d /var/lib/mcp-devbox-builder-staging
+
+      - name: Upload bounded fixture evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p16-rootless-buildkit-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/builder-properties.txt
+            ${{ runner.temp }}/builder-processes.txt
+            ${{ runner.temp }}/first-build.log
+            ${{ runner.temp }}/second-build.log
+            ${{ runner.temp }}/cache-usage.txt
+            ${{ runner.temp }}/cache-policy.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup fixture state
+        if: always()
+        run: |
+          sudo systemctl disable --now mcp-devbox-buildkit.service >/dev/null 2>&1 || true
+          sudo rm -rf \
+            /usr/share/mcp-devbox-builder-candidate \
+            /var/lib/mcp-devbox-builder-staging \
+            /var/lib/mcp-devbox-builder-fixture \
+            /var/lib/mcp-devbox-buildkit \
+            /var/cache/mcp-devbox-buildkit \
+            /run/mcp-devbox-buildkit
+          sudo userdel mcp-build >/dev/null 2>&1 || true

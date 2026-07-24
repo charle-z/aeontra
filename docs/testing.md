@@ -105,6 +105,8 @@ misleading global percentage:
 | `internal/tools` | 70% | 73.9% |
 | `internal/app` | 65% | 71.3% |
 | `internal/grantadmin` | 55% | 59.6% |
+| `internal/workqueue` | 70% | 77.4% |
+| `internal/buildspike` | 75% | 82.3% |
 
 The gate fails with an explicit missing package error when a threshold package is
 absent, when a profile is malformed, or when a package drops below its minimum.
@@ -381,6 +383,30 @@ On 2026-07-20 the candidate passed under Parrot WSL2 Go 1.26.5: `go test ./...
 -count=1`, `go vet ./...`, `go build ./...`, all 19 Node provider tests, packaging
 shell syntax, and `git diff --check`. Exact-head GitHub gates and live signed-release
 installation remain separate closure requirements.
+
+## Rootless PostgreSQL fixture identity
+
+The `Rootless Podman, PostgreSQL and Chromium` gate stages the pinned PostgreSQL
+image with the runner's rootful Docker daemon before rootful socket isolation, saves it
+as an archive, and loads that archive into the user-owned Podman service. The manifest
+config digest is then converted into exactly one local immutable-looking reference:
+
+```text
+localhost/p12-postgres-fixture:<64 lowercase hexadecimal characters>
+```
+
+Before saving the archive, Docker applies the digest-derived local tag and verifies that
+it resolves to the pulled image ID. Rootless Podman then loads the archive and writes a
+bounded `images --no-trunc` inventory. A strict parser accepts only full image IDs,
+requires exactly one match for the archive config digest, and rejects malformed or
+ambiguous output. The service then creates the closed local tag from that exact loaded
+ID and verifies it through `podman image inspect` before exporting
+`P12_POSTGRES_IMAGE`.
+
+This does not assume that a Docker archive tag survives a remote Podman load. It also
+avoids the remote-client `image exists` path, which returned failure after a successful
+load. The parser rejects registry names, mutable tags, raw public inputs, uppercase
+digests and traversal. The flow remains closed without permitting a network pull or arbitrary image reference.
 
 ## Safety rules
 

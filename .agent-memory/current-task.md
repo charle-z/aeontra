@@ -1,35 +1,41 @@
-# Current task — main synchronized and production verified
+# Current task
 
-`main`, the canonical VPS checkout and the live Coolify runtime are synchronized at
-`0daeb5df0d5e61c1b33aeb363c10aeb0ea91ddf0`.
+Historical deployed baseline remains unchanged: VPS `main`/production truth is preserved separately; no production, Coolify, Parrot or `main` mutation occurred in this cut.
 
-Current verified state:
+Historical deployed successor truth remains explicit: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`, and P9 Brain is deployed as its successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-- PR #39 synchronized README, SECURITY, AGENTS and current documentation truth.
-- PR #40 removed self-invalidating mutable `main` SHA claims from current-state docs.
-- PRs #41–#44 completed OAuth popup compatibility, cross-origin callback CSP,
-  durable OAuth store defaults and practically persistent console sessions.
-- PR #44 passed all 15 checks and merged into `main`.
-- Coolify reports `running:healthy` on branch `main`.
-- `system_runtime_info` reports commit
-  `0daeb5df0d5e61c1b33aeb363c10aeb0ea91ddf0`, 98 tools and catalog hash
-  `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
-- The canonical `main` worktree is clean, 0 ahead and 0 behind `origin/main`.
+Branch: `p16-global-work-scheduler`. Pull request: `#48`.
 
-Historical deployed anchors remain explicit because later work is additive:
+Published head before this documentation-only correction: `0aaeca2c469bab96f71d31a760f6f7a3cb6b20d2`.
 
-- P8.1 Console 2.0 is closed and deployed at
-  `d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`, with its historical
-  67-tool milestone and `not_paired` Edge state preserved as closure evidence.
-- P9 Brain is deployed as the successor to P8.1.
-- P13 opaque continuation, P14 authorized HTB actions and P15 signed Edge are later
-  deployed successors.
+## Exact-head evidence
 
-Current evidence boundary: the latest repository-recorded real-host Parrot
-installation proof remains `p15.0.4`. Do not claim a Parrot `p15.0.5` update, local
-Git credential entry or real private-repository smoke without separate structured
-device evidence.
+`Rootless BuildKit candidate fixture` is green on `0aaeca2`. The exact job proves:
 
-No code or deployment work is pending from the documentation/session closure. Future
-work should start from current `main`, preserve historical baselines and use
-`system_runtime_info` as the authority for the exact live commit.
+- the private rootless service started under `mcp-build`;
+- the complete rootlesskit/buildkitd process subtree remained in the reviewed cgroup;
+- both OCI builds completed;
+- the second build emitted `CACHED`;
+- artifact verification, `buildctl du -v`, the 4 GiB cache policy, stop behavior and conservative removal passed.
+
+`Verify` failed only in documentation closure tests because the previous current-task rewrite omitted historical P8.1/P9 markers. No source, runtime or workflow test failed.
+
+## Current correction
+
+This file restores the mandatory deployed-history statements for:
+
+- P8.1 at `d343264bffdc0ae1bc045a9d723e913be977090c`;
+- P9 Brain as its deployed successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+
+No production, Coolify, Parrot, `main`, security boundary or builder behavior changes in this correction.
+
+## Step 7 state
+
+The branch contains:
+
+- the private rootless BuildKit package and disposable CI fixture;
+- cache reuse and bounded cache-policy evidence;
+- the fixed 50/65/80 VPS calibrator;
+- a durable exact-commit root bootstrap that survives SSH disconnects, inherits no credentials, rejects different/partial installations and preserves private evidence.
+
+Next: publish this documentation-only correction, hold the exact SHA stable, require every PR check green, then merge only through the reviewed green PR path. Real VPS calibration remains a host-root boundary and must use the committed bootstrap for the exact green commit before Step 8.

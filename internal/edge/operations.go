@@ -30,6 +30,8 @@ const (
 	OperationBundleRollback   OperationKind = "bundle_rollback"
 	OperationEdgeRepair       OperationKind = "edge_repair"
 	OperationOnboardingStatus OperationKind = "onboarding_status"
+	OperationProjectPrepare   OperationKind = "project_prepare"
+	OperationProjectStatus    OperationKind = "project_status"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -38,6 +40,9 @@ const (
 )
 
 var operationIDPattern = regexp.MustCompile(`^eo_[a-f0-9]{32}$`)
+var projectOperationAliasPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+var projectOperationTargetPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$`)
+var projectOperationRepositoryPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 
 type OperationRequest struct {
 	Platform        string `json:"platform,omitempty"`
@@ -48,6 +53,10 @@ type OperationRequest struct {
 	WorkspaceID     string `json:"workspace_id,omitempty"`
 	RunUntil        string `json:"run_until,omitempty"`
 	Release         string `json:"release,omitempty"`
+	Alias           string `json:"alias,omitempty"`
+	Repository      string `json:"repository,omitempty"`
+	TargetAlias     string `json:"target_alias,omitempty"`
+	Profile         string `json:"profile,omitempty"`
 }
 
 type OperationResult struct {
@@ -71,6 +80,13 @@ type OperationResult struct {
 	ProviderValid         bool     `json:"provider_valid,omitempty"`
 	DriverValid           bool     `json:"driver_valid,omitempty"`
 	Blockers              []string `json:"blockers,omitempty"`
+	ProjectAlias          string   `json:"project_alias,omitempty"`
+	ProjectOwner          string   `json:"project_owner,omitempty"`
+	ProjectRepository     string   `json:"project_repository,omitempty"`
+	ProjectTarget         string   `json:"project_target,omitempty"`
+	ProjectState          string   `json:"project_state,omitempty"`
+	ProjectProfile        string   `json:"project_profile,omitempty"`
+	ProjectMode           string   `json:"project_mode,omitempty"`
 }
 
 type Operation struct {
@@ -268,6 +284,22 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 		if !workspaceIDPattern.MatchString(request.WorkspaceID) || request.RunUntil != "" || request.Target != "" || request.Platform != "" || request.Machine != "" || request.Difficulty != "" || request.OperatingSystem != "" {
 			return OperationRequest{}, errors.New("autopilot control request is invalid")
 		}
+	case OperationProjectPrepare:
+		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
+		request.Repository = strings.TrimSpace(request.Repository)
+		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
+		request.Profile = strings.TrimSpace(request.Profile)
+		if !validProjectOperationRequestCommon(request) || !projectOperationRepositoryPattern.MatchString(request.Repository) ||
+			strings.ContainsAny(request.Repository, `/\\`) || strings.HasPrefix(request.Repository, ".") {
+			return OperationRequest{}, errors.New("project prepare request is invalid")
+		}
+	case OperationProjectStatus:
+		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
+		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
+		request.Profile = strings.TrimSpace(request.Profile)
+		if !validProjectOperationRequestCommon(request) || request.Repository != "" {
+			return OperationRequest{}, errors.New("project status request is invalid")
+		}
 	case OperationBundleStatus, OperationBundleRollback, OperationEdgeRepair, OperationOnboardingStatus:
 		if request != (OperationRequest{}) {
 			return OperationRequest{}, errors.New("edge diagnostic request is invalid")
@@ -282,9 +314,18 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 	return request, nil
 }
 
+func validProjectOperationRequestCommon(request OperationRequest) bool {
+	return projectOperationAliasPattern.MatchString(request.Alias) && projectOperationTargetPattern.MatchString(request.TargetAlias) &&
+		request.Profile == "linux-workcell" && request.Platform == "" && request.Machine == "" && request.Target == "" &&
+		request.Difficulty == "" && request.OperatingSystem == "" && request.WorkspaceID == "" && request.RunUntil == "" && request.Release == ""
+}
+
 func validOperationCompletion(result OperationResult, code string) bool {
 	if code != "" {
 		return regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(code) && emptyOperationResult(result)
+	}
+	if validProjectOperationResult(result) {
+		return true
 	}
 	if !workspaceIDPattern.MatchString(result.WorkspaceID) {
 		validBundle := regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`).MatchString(result.Release) && regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(result.Commit) && result.ManifestStatus == "valid" && result.ComponentsCompatible && result.ProviderValid && result.DriverValid
@@ -298,6 +339,28 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	return result.AuthorizationRevision > 0
 }
 
+func validProjectOperationResult(result OperationResult) bool {
+	if !workspaceIDPattern.MatchString(result.WorkspaceID) ||
+		!projectOperationAliasPattern.MatchString(result.ProjectAlias) || !githubOwnerOperationPattern.MatchString(result.ProjectOwner) ||
+		!projectOperationRepositoryPattern.MatchString(result.ProjectRepository) || strings.ContainsAny(result.ProjectRepository, `/\\`) ||
+		!projectOperationTargetPattern.MatchString(result.ProjectTarget) || result.ProjectState != "ready" ||
+		result.ProjectProfile != "linux-workcell" || result.ProjectMode != "dev" {
+		return false
+	}
+	metadata := result
+	metadata.WorkspaceID = ""
+	metadata.ProjectAlias = ""
+	metadata.ProjectOwner = ""
+	metadata.ProjectRepository = ""
+	metadata.ProjectTarget = ""
+	metadata.ProjectState = ""
+	metadata.ProjectProfile = ""
+	metadata.ProjectMode = ""
+	return emptyOperationResult(metadata)
+}
+
+var githubOwnerOperationPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
+
 func validDiagnosticBlockers(blockers []string) bool {
 	if len(blockers) > 16 {
 		return false
@@ -310,7 +373,7 @@ func validDiagnosticBlockers(blockers []string) bool {
 	return true
 }
 func emptyOperationResult(result OperationResult) bool {
-	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0
+	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == ""
 }
 
 func (s *Store) AutopilotStatus(workspaceID string) (OperationResult, error) {

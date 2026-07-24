@@ -27,7 +27,7 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	for _, required := range []string{
 		"SOURCE_DATE_EPOCH", "dpkg-deb --root-owner-group", "gpg --batch", "sha256sum",
 		"mcp-autopilot-worker", "model-turn-driver", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js",
-		"libexec/node", "golang-go", "podman",
+		"libexec/node", "golang-go", "podman", "util-linux",
 		"mcp-bundle-updater", "mcp-devbox-bundle-updater.service",
 		"mcp-devbox-edge-onboard@.path",
 		"autopilot-model.json", "DEBIAN/conffiles",
@@ -44,7 +44,8 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 		"mv -Tf", "/opt/mcp-devbox", "/usr/local/bin/mcp-edge",
 		"/usr/local/libexec/mcp-devbox/mcp-autopilot-worker", "systemctl enable",
 		"mcp-edge bundle verify", "rollback_install", "onboarding-preflight",
-		"LEGACY_STATE", "mv \"$LEGACY_STATE\" \"$PREFERRED_STATE\"",
+		"edge_lifecycle recover-state", "edge_lifecycle prepare-state-migration",
+		"edge_lifecycle finalize-state-migration", "edge_lifecycle rollback-state-migration",
 		"49-mcp-devbox-updater.rules", "@EDGE_USER@",
 		"loginctl enable-linger", "podman.socket",
 		"stage_legacy_directory", "restore_legacy_directory",
@@ -113,7 +114,7 @@ func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 		}
 	}
 	evidence := repoFile(t, ".github/workflows/p15-edge.yml")
-	for _, required := range []string{"Reproducible signed Debian package", "cmp ", "dpkg --force-depends -i", "mcp-edge bundle verify", "preserved-identity", "ws_593c26b24ba6dc583c9aa1da5e9e0152", "p14-provider", "test -L /opt/mcp-devbox/opencode-provider", "test -L /opt/mcp-devbox/opencode-1.18.1"} {
+	for _, required := range []string{"Reproducible signed Debian package", "cmp ", "dpkg --force-depends -i", "mcp-edge bundle verify", "edge-state-fixture", "cmp /fixtures/legacy-state/identity.json", "p14-provider", "test -L /opt/mcp-devbox/opencode-provider", "test -L /opt/mcp-devbox/opencode-1.18.1"} {
 		if !strings.Contains(evidence, required) {
 			t.Fatalf("P15 evidence workflow missing %q", required)
 		}

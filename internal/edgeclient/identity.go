@@ -160,6 +160,10 @@ func persistIdentity(root string, identity Identity, privateKey ed25519.PrivateK
 	return nil
 }
 
+func NormalizeServerURL(raw string) (string, error) {
+	return validateServerURL(raw)
+}
+
 func validateServerURL(raw string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {

@@ -31,12 +31,20 @@ type githubActionsRunsResponse struct {
 	WorkflowRuns []githubActionsRun `json:"workflow_runs"`
 }
 
-type githubActionsJob struct {
-	ID         int64  `json:"id"`
+type githubActionsStep struct {
+	Number     int    `json:"number"`
 	Name       string `json:"name"`
 	Status     string `json:"status"`
 	Conclusion string `json:"conclusion"`
-	HTMLURL    string `json:"html_url"`
+}
+
+type githubActionsJob struct {
+	ID         int64               `json:"id"`
+	Name       string              `json:"name"`
+	Status     string              `json:"status"`
+	Conclusion string              `json:"conclusion"`
+	HTMLURL    string              `json:"html_url"`
+	Steps      []githubActionsStep `json:"steps"`
 }
 
 type githubActionsJobsResponse struct {

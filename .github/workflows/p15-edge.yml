@@ -97,12 +97,16 @@ jobs:
           dpkg-deb --info "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb"
           dpkg-deb --contents "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb" > "$RUNNER_TEMP/package-contents.txt"
 
+      - name: Generate valid legacy Edge state fixture
+        run: go run ./packaging/debian/testdata/edge-state-fixture --root "$RUNNER_TEMP/legacy-state"
+
       - name: Exercise clean package and P14 state migration in isolation
         run: |
           docker run --rm \
             -v "$RUNNER_TEMP/deb-a:/artifacts:ro" \
+            -v "$RUNNER_TEMP/legacy-state:/fixtures/legacy-state:ro" \
             debian:bookworm-slim sh -euxc '
-              printf "#!/bin/sh\nexit 0\n" >/usr/bin/systemctl
+              printf "#!/bin/sh\nif [ -e /tmp/fail-edge-service ] && [ \"\${1:-}\" = is-active ]; then exit 1; fi\nexit 0\n" >/usr/bin/systemctl
               chmod 0755 /usr/bin/systemctl
               printf "#!/bin/sh\nexit 0\n" >/usr/bin/loginctl
               chmod 0755 /usr/bin/loginctl
@@ -118,18 +122,31 @@ jobs:
               test -x /usr/local/bin/mcp-edge
               /usr/local/bin/mcp-edge bundle verify
               useradd -m charles
+              command -v runuser
+              install -d -o charles -g charles -m 0700 /home/charles/.config
               install -d -o charles -g charles -m 0700 /home/charles/.config/mcp-devbox-edge
-              printf "preserved-identity\n" >/home/charles/.config/mcp-devbox-edge/identity.json
-              printf "ws_593c26b24ba6dc583c9aa1da5e9e0152\n" >/home/charles/.config/mcp-devbox-edge/workspaces.db
+              cp -a /fixtures/legacy-state/. /home/charles/.config/mcp-devbox-edge/
               chown -R charles:charles /home/charles/.config/mcp-devbox-edge
               printf "#!/bin/sh\nexit 0\n" >/usr/local/libexec/mcp-devbox/onboarding-preflight
               chmod 0755 /usr/local/libexec/mcp-devbox/onboarding-preflight
+              touch /tmp/fail-edge-service
+              if /var/lib/dpkg/info/mcp-devbox-edge.postinst configure; then exit 1; fi
+              cmp /fixtures/legacy-state/identity.json /home/charles/.config/mcp-devbox-edge/identity.json
+              cmp /fixtures/legacy-state/device.key /home/charles/.config/mcp-devbox-edge/device.key
+              cmp /fixtures/legacy-state/workspaces.db /home/charles/.config/mcp-devbox-edge/workspaces.db
+              test ! -e /home/charles/.local/state/mcp-edge
+              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
+              rm /tmp/fail-edge-service
               /var/lib/dpkg/info/mcp-devbox-edge.postinst configure
-              test "$(cat /home/charles/.local/state/mcp-edge/identity.json)" = preserved-identity
-              test "$(cat /home/charles/.local/state/mcp-edge/workspaces.db)" = ws_593c26b24ba6dc583c9aa1da5e9e0152
+              cmp /fixtures/legacy-state/identity.json /home/charles/.local/state/mcp-edge/identity.json
+              cmp /fixtures/legacy-state/device.key /home/charles/.local/state/mcp-edge/device.key
+              cmp /fixtures/legacy-state/workspaces.db /home/charles/.local/state/mcp-edge/workspaces.db
+              cmp /fixtures/legacy-state/checkpoint.md /home/charles/.local/state/mcp-edge/checkpoint.md
               test ! -e /home/charles/.config/mcp-devbox-edge
+              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
               /var/lib/dpkg/info/mcp-devbox-edge.postinst configure
-              test "$(cat /home/charles/.local/state/mcp-edge/identity.json)" = preserved-identity
+              cmp /fixtures/legacy-state/identity.json /home/charles/.local/state/mcp-edge/identity.json
+              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
             '
 
       - name: Upload package evidence

@@ -186,6 +186,9 @@ func (w *Workcell) Execute(ctx context.Context, task edge.Task) edge.TaskResult 
 	completed := make([]string, 0, len(stages))
 	remainingOutput := task.Restrictions.MaxOutputBytes
 	for _, stage := range stages {
+		if executionContext.Err() != nil {
+			return edge.TaskResult{Outcome: edge.OutcomeCancelled, Summary: "workcell execution cancelled or timed out"}
+		}
 		args, err := BubblewrapArgs(workspace, stage, task.Restrictions.NetworkPolicy)
 		if err != nil {
 			return edge.TaskResult{Outcome: edge.OutcomeFailed, Summary: "workcell could not construct sandbox"}

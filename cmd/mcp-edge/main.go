@@ -45,12 +45,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = runOpenCodeRelay(args[1:], stderr)
 	case "workspace":
 		err = workspaceCommand(args[1:], stdout, stderr)
+	case "project":
+		err = projectCommand(args[1:], stdout, stderr)
 	case "lab":
 		err = labCommand(args[1:], stdout, stderr)
 	case "bundle":
 		err = bundleCommand(args[1:], stdout)
 	case "github":
 		err = githubCommand(args[1:], stdin, stdout, stderr)
+	case "lifecycle":
+		err = lifecycleCommand(args[1:], stdout, stderr)
+	case "doctor":
+		err = doctorCommand(args[1:], stdout, stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -93,7 +99,7 @@ func runWorkcell(args []string, stderr io.Writer) error {
 	state := fs.String("state", defaultStateRoot(), "private Edge state root")
 	root := fs.String("root", "", "dedicated Linux workspace root")
 	poll := fs.Duration("poll", 5*time.Second, "empty queue polling interval")
-	leaseTTL := fs.Duration("lease", time.Minute, "task lease duration")
+	leaseTTL := fs.Duration("lease", 10*time.Minute, "task lease duration")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -216,7 +222,17 @@ func usage(output io.Writer) {
 Usage:
   mcp-edge pair --server https://mcp.example.com [--state <ABS_PATH>] [--name wsl-development]
   mcp-edge onboard --server https://mcp.example.com [--state <ABS_PATH>] [--name parrot-edge]
-  mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 1m]
+  mcp-edge lifecycle inspect
+  mcp-edge lifecycle migrate-state
+  mcp-edge lifecycle recover-state
+  mcp-edge lifecycle prepare-state-migration
+  mcp-edge lifecycle finalize-state-migration
+  mcp-edge lifecycle rollback-state-migration
+  mcp-edge doctor [--repair]
+  mcp-edge project discover --alias <PROJECT> --repository <REPOSITORY>
+  mcp-edge project status --alias <PROJECT> [--target <ALIAS>]
+  mcp-edge project resolve --alias <PROJECT> [--target <ALIAS>]
+  mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 10m]
   mcp-edge opencode --opencode <ABS_PATH> --provider <ABS_PATH> --integrity <ABS_PATH> [--bubblewrap <ABS_PATH>] [--state <ABS_PATH>]
   mcp-edge workspace add [--profile sandbox|linux-workcell] <ABS_LINUX_PATH> [--state <ABS_PATH>]
   mcp-edge workspace configure <OPAQUE_ID> --mode dev|htb-linux [local metadata] [--state <ABS_PATH>]

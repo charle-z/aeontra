@@ -83,7 +83,7 @@ Security evidence added by P6:
 - no registry credentials, push, production DAST, or secret-bearing artifacts.
 
 - race detector with CGO enabled;
-- coverage report and security-package thresholds;
+- coverage report and security-package thresholds, including the P16 `internal/workqueue` scheduler store at 70% and private `internal/buildspike` harness at 75%;
 - `govulncheck`;
 - CodeQL for Go and JavaScript/TypeScript;
 - dependency review;
