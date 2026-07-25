@@ -124,7 +124,7 @@ validate_host() {
 }
 
 prepare_run() {
-  local commit=$1 stamp
+  local commit=$1 stamp fetched_head
   stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
   RUN_ROOT="$EVIDENCE_ROOT/$stamp-$commit"
   RUN_WORK="$WORK_ROOT/$stamp-$commit"
@@ -143,7 +143,8 @@ prepare_run() {
   runuser -u "$BUILDER_USER" -- "${git_env[@]}" git -C "$SOURCE" remote add origin "$SOURCE_URL"
   runuser -u "$BUILDER_USER" -- "${git_env[@]}" git -C "$SOURCE" -c protocol.file.allow=never fetch --quiet --depth=1 origin "$commit"
   runuser -u "$BUILDER_USER" -- "${git_env[@]}" git -C "$SOURCE" checkout --quiet --detach FETCH_HEAD
-  [[ "$(git -C "$SOURCE" rev-parse HEAD)" == "$commit" ]] || fail 'fetched commit did not match approval'
+  fetched_head="$(runuser -u "$BUILDER_USER" -- "${git_env[@]}" git -C "$SOURCE" rev-parse HEAD)"
+  [[ "$fetched_head" == "$commit" ]] || fail 'fetched commit did not match approval'
   [[ -f "$SOURCE/Dockerfile" && ! -L "$SOURCE/Dockerfile" ]] || fail 'Dockerfile is missing or unsafe'
   chown -R "$BUILDER_USER:$BUILDER_USER" "$RUN_WORK" "$RUN_CACHE"
 
