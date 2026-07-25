@@ -234,7 +234,10 @@ bound_log() {
 
 run_build() {
   local commit=$1 quota=$2 mode=$3
-  local run="$EVIDENCE/q${quota}-${mode}" before="$run/before" after="$run/after"
+  local run before after
+  run="$EVIDENCE/q${quota}-${mode}"
+  before="$run/before"
+  after="$run/after"
   local health="$run/health.tsv" log="$run/build.log" cache="$RUN_CACHE/q${quota}"
   local artifact="$OUTPUT/q${quota}-${mode}.oci.tar"
   install -d -o root -g root -m 0700 "$run"
