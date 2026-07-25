@@ -1,41 +1,47 @@
 # Current task
 
-Historical deployed baseline remains unchanged: VPS `main`/production truth is preserved separately; no production, Coolify, Parrot or `main` mutation occurred in this cut.
+Historical deployed baseline remains unchanged: VPS `main`/production truth is preserved separately; no Parrot mutation occurred in this cut.
 
 Historical deployed successor truth remains explicit: P8.1 is deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`, and P9 Brain is deployed as its successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-Branch: `p16-global-work-scheduler`. Pull request: `#48`.
+Current production and canonical `main` are synchronized at merge commit `ee394ca56f0778d029972694ad13e8166ea5b6a0`. The live runtime reports version `0.2.0`, protocol `2024-11-05`, 102 tools and catalog hash `sha256:5a2091d85585d13eb7efbc22d942b2dfbd71fc7d547581803eb7633cac64d68b`.
 
-Published head before this documentation-only correction: `0aaeca2c469bab96f71d31a760f6f7a3cb6b20d2`.
+Branch: `fix/p16-builder-bootstrap-prereqs`.
 
-## Exact-head evidence
+## Trigger
 
-`Rootless BuildKit candidate fixture` is green on `0aaeca2`. The exact job proves:
+PR #48 and the merge commit are fully green and deployed. Before invoking the real VPS bootstrap, review found two clean-host defects:
 
-- the private rootless service started under `mcp-build`;
-- the complete rootlesskit/buildkitd process subtree remained in the reviewed cgroup;
-- both OCI builds completed;
-- the second build emitted `CACHED`;
-- artifact verification, `buildctl du -v`, the 4 GiB cache policy, stop behavior and conservative removal passed.
+- the bootstrap assumed `rootlesskit`, `uidmap`, `slirp4netns` and `fuse-overlayfs` were preinstalled;
+- its empty root environment used only `/usr/bin:/bin`, while the reviewed installer/calibrator need fixed administrator binaries such as `useradd` and `runuser` under `/usr/sbin`.
 
-`Verify` failed only in documentation closure tests because the previous current-task rewrite omitted historical P8.1/P9 markers. No source, runtime or workflow test failed.
+Executing the merged bootstrap as-is could therefore fail before calibration despite the intended one-operation host boundary.
 
-## Current correction
+## Follow-up candidate
 
-This file restores the mandatory deployed-history statements for:
+- adds executable zero-argument `packaging/builder/install-prerequisites.sh`;
+- supports only Debian or Ubuntu and reads `/etc/os-release` without sourcing it;
+- installs only the four literal rootless packages through non-interactive APT when their fixed binaries are missing;
+- verifies `rootlesskit`, `newuidmap`, `newgidmap`, `slirp4netns` and `fuse-overlayfs` as non-symlink executables;
+- verifies installed package records with `dpkg-query`;
+- executes the same prerequisite installer in the disposable BuildKit CI fixture and in the real exact-commit bootstrap;
+- fixes the bootstrap to use the immutable root PATH `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` before and after transient-systemd reexecution;
+- records exact prerequisite package versions in private `host-prerequisites.tsv` calibration evidence;
+- preserves installed host prerequisites on rollback instead of removing system packages.
 
-- P8.1 at `d343264bffdc0ae1bc045a9d723e913be977090c`;
-- P9 Brain as its deployed successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+No caller-controlled package, distribution, URL, command, path or resource value was added. No public tool, Docker socket, root shell or production application behavior changed.
 
-No production, Coolify, Parrot, `main`, security boundary or builder behavior changes in this correction.
+## Validation
 
-## Step 7 state
+Green on the exact local tree:
 
-The branch contains:
+- RED contract tests failed before implementation and pass after it;
+- `go test ./... -count=1`;
+- `go vet ./...`;
+- `go build ./...`;
+- Actionlint v1.7.12;
+- Staticcheck v0.7.0 on changed Go/test packages;
+- POSIX/Bash syntax and executable-mode package tests;
+- `git diff --check`.
 
-- the private rootless BuildKit package and disposable CI fixture;
-- cache reuse and bounded cache-policy evidence;
-- the fixed 50/65/80 VPS calibrator;
-- a durable exact-commit root bootstrap that survives SSH disconnects, inherits no credentials, rejects different/partial installations and preserves private evidence.
-
-Next: publish this documentation-only correction, hold the exact SHA stable, require every PR check green, then merge only through the reviewed green PR path. Real VPS calibration remains a host-root boundary and must use the committed bootstrap for the exact green commit before Step 8.
+Next: commit, publish and open a minimal PR; require every exact-head gate green; merge and deploy; then compute the final bootstrap digest. Real 50/65/80 calibration remains the single host-root action that cannot be performed by the non-root public MCP container.

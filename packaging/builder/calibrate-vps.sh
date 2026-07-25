@@ -16,6 +16,7 @@ readonly DEFAULT_QUOTA=65
 readonly BUILD_TIMEOUT=30m
 readonly LOG_LIMIT_BYTES=33554432
 readonly -a QUOTAS=(50 65 80)
+readonly -a PREREQUISITE_PACKAGES=(rootlesskit uidmap slirp4netns fuse-overlayfs)
 
 RUN_ROOT=
 RUN_WORK=
@@ -91,7 +92,7 @@ validate_host() {
   [[ "$(id -u)" -eq 0 ]] || fail 'root is required'
   [[ "$#" -eq 1 ]] || fail 'exactly one 40-character commit is required'
   [[ "$1" =~ ^[a-f0-9]{40}$ ]] || fail 'commit is invalid'
-  for tool in awk cat chmod chown cp curl date du env find flock git grep id install kill mktemp mv rm runuser sed setsid sha256sum sleep sort stat systemctl tail tar timeout tr uname wc; do
+  for tool in awk cat chmod chown cp curl date dpkg-query du env find flock git grep id install kill mktemp mv rm runuser sed setsid sha256sum sleep sort stat systemctl tail tar timeout tr uname wc; do
     command -v "$tool" >/dev/null 2>&1 || fail "required host tool is missing: $tool"
   done
   [[ -x "$BUILDER_ROOT/buildctl" && ! -L "$BUILDER_ROOT/buildctl" ]] || fail 'reviewed buildctl is unavailable'
@@ -149,6 +150,13 @@ prepare_run() {
   printf '%s\n' "$CONTROL_GROUP" > "$EVIDENCE/control-group"
   uname -srmo > "$EVIDENCE/kernel"
   systemctl show "$SERVICE" --property=User --property=Group --property=ControlGroup --property=CPUQuotaPerSecUSec --property=MemoryHigh --property=MemoryMax --property=TasksMax --property=IOWeight > "$EVIDENCE/service-properties"
+  printf 'package\tversion\n' > "$EVIDENCE/host-prerequisites.tsv"
+  local package version
+  for package in "${PREREQUISITE_PACKAGES[@]}"; do
+    version="$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null)" || fail "required host package is not installed: $package"
+    [[ -n "$version" && "$version" != *$'\n'* && "$version" != *$'\t'* ]] || fail "required host package version is invalid: $package"
+    printf '%s\t%s\n' "$package" "$version" >> "$EVIDENCE/host-prerequisites.tsv"
+  done
   chmod 0600 "$EVIDENCE"/*
 }
 

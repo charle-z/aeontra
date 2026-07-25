@@ -41,6 +41,8 @@ invocation with the exact green commit:
 sudo /root/mcp-devbox-builder-bootstrap.sh <EXACT_40_CHARACTER_COMMIT>
 ```
 
+The host bootstrap supports only Debian or Ubuntu with systemd and cgroup v2. It uses a fixed root PATH and, when needed, installs only `rootlesskit`, `uidmap`, `slirp4netns` and `fuse-overlayfs` through non-interactive APT. Package names and the operating-system allowlist are not caller-controlled.
+
 The downloaded entrypoint must be a regular, executable, root-owned file that is not
 writable by group or other. The bootstrap reexecutes itself as the fixed transient
 `mcp-devbox-builder-bootstrap.service` unit with a four-hour maximum runtime.
@@ -57,12 +59,13 @@ Inside the transient unit, the bootstrap:
 2. fetches only the exact commit from the fixed public owner repository using an empty
    Git environment and no credential helper;
 3. verifies a clean detached checkout and the fixed scripts' ownership/mode;
-4. stages the pinned BuildKit release and checksum/SBOM/Sigstore evidence;
-5. installs a new candidate, or reuses an existing candidate only when binaries,
+4. verifies the Debian/Ubuntu host and installs the four fixed rootless packages only when their reviewed binaries are missing;
+5. stages the pinned BuildKit release and checksum/SBOM/Sigstore evidence;
+6. installs a new candidate, or reuses an existing candidate only when binaries,
    configuration and unit match byte-for-byte and the service is active;
-6. runs the fixed calibrator for that same commit;
-7. removes only a candidate created by that attempt when calibration fails;
-8. preserves private calibration evidence and the preverified staging directory.
+7. runs the fixed calibrator for that same commit and records exact prerequisite package versions in `host-prerequisites.tsv`;
+8. removes only a candidate created by that attempt when calibration fails;
+9. preserves private calibration evidence, installed host prerequisites and the preverified staging directory.
 
 An existing different or partial installation fails closed and is never overwritten.
 The bootstrap accepts no repository, URL, branch, command, credential, path or resource
@@ -101,7 +104,7 @@ On success, failure, timeout or signal, the script:
 5. writes a separate SHA-256 file for the archive;
 6. removes only the generated per-run work and cache directories.
 
-It never removes the BuildKit service, shared service state, the dedicated user, repository data outside its fixed roots, or production application state.
+It never removes the BuildKit service, shared service state, the dedicated user, fixed host prerequisite packages, repository data outside its fixed roots, or production application state.
 
 ## Evidence interpretation
 

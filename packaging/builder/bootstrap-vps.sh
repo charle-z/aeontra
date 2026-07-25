@@ -2,6 +2,9 @@
 set -eu
 umask 077
 
+ROOT_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PATH=$ROOT_PATH
+export PATH
 SOURCE_URL=https://github.com/charle-z/mcp-devbox.git
 WORK_ROOT=/var/lib/mcp-devbox-builder-bootstrap
 LOCK_PATH=/run/lock/mcp-devbox-builder-bootstrap.lock
@@ -32,11 +35,11 @@ safe_remove_work() {
 }
 
 run_fixed() {
-  env -i HOME=/root PATH=/usr/bin:/bin LANG=C LC_ALL=C "$@"
+  env -i HOME=/root PATH="$ROOT_PATH" LANG=C LC_ALL=C "$@"
 }
 
 git_fixed() {
-  env -i HOME=/root PATH=/usr/bin:/bin LANG=C LC_ALL=C \
+  env -i HOME=/root PATH="$ROOT_PATH" LANG=C LC_ALL=C \
     GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 \
     git "$@"
 }
@@ -81,7 +84,7 @@ inside_durable_unit() {
 
 enter_durable_unit() {
   if ! inside_durable_unit; then
-    exec env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C systemd-run \
+    exec env -i PATH="$ROOT_PATH" LANG=C LC_ALL=C systemd-run \
       --unit="$UNIT" \
       --wait \
       --collect \
@@ -115,7 +118,7 @@ prepare_private_checkout() {
   [ "$(git_fixed -C "$REPO" rev-parse HEAD)" = "$COMMIT" ] || fail "fetched commit did not match approval"
   [ -z "$(git_fixed -C "$REPO" status --porcelain=v1 --untracked-files=all)" ] || fail "fetched checkout is not clean"
 
-  for name in stage-official-v0.31.2.sh install-preverified.sh calibrate-vps.sh remove.sh; do
+  for name in install-prerequisites.sh stage-official-v0.31.2.sh install-preverified.sh calibrate-vps.sh remove.sh; do
     path=$REPO/packaging/builder/$name
     [ -f "$path" ] && [ ! -L "$path" ] && [ -x "$path" ] || fail "reviewed builder script is missing or unsafe"
     set -- $(stat -c '%u %a' "$path")
@@ -167,6 +170,7 @@ main() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
   prepare_private_checkout
+  run_fixed "$REPO/packaging/builder/install-prerequisites.sh"
   run_install_and_calibration
   trap - EXIT HUP INT TERM
   safe_remove_work
