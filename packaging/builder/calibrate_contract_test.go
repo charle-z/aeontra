@@ -92,3 +92,15 @@ func TestVPSCalibrationKeepsEvidenceSeparateFromBuilderWritableState(t *testing.
 		t.Fatalf("calibrator mode=%#o want=0755", info.Mode().Perm())
 	}
 }
+
+func TestVPSCalibrationVerifiesCheckoutAsBuilderIdentity(t *testing.T) {
+	script := readFixture(t, "calibrate-vps.sh")
+	required := `fetched_head="$(runuser -u "$BUILDER_USER" -- "${git_env[@]}" git -C "$SOURCE" rev-parse HEAD)"`
+	if !strings.Contains(script, required) {
+		t.Fatalf("calibrator must verify the checkout as the builder identity: missing %q", required)
+	}
+	forbidden := `$(git -C "$SOURCE" rev-parse HEAD)`
+	if strings.Contains(script, forbidden) {
+		t.Fatalf("calibrator must not verify a builder-owned checkout as root: found %q", forbidden)
+	}
+}
