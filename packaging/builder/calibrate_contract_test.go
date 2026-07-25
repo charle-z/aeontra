@@ -121,3 +121,27 @@ func TestVPSCalibrationInitializesRunBeforeDerivedPaths(t *testing.T) {
 		t.Fatal("calibrator must not derive paths from run inside the same local declaration under set -u")
 	}
 }
+
+func TestVPSCalibrationSamplesPortableResourcePeaks(t *testing.T) {
+	script := readFixture(t, "calibrate-vps.sh")
+	for _, required := range []string{
+		`monitor_resources()`,
+		`memory="$(cat "$root/memory.current")"`,
+		`pids="$(cat "$root/pids.current")"`,
+		`resources="$run/resources.tsv"`,
+		`wait "$resource_pid" || fail 'resource monitor failed'`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("calibrator missing portable resource sampling %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		`> "$root/memory.peak"`,
+		`> "$root/pids.peak"`,
+		`reset_peaks`,
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("calibrator contains non-portable peak reset %q", forbidden)
+		}
+	}
+}

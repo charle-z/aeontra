@@ -3,9 +3,9 @@ Description=MCP Devbox private rootless BuildKit candidate
 Documentation=file:/usr/share/doc/mcp-devbox-builder/rootless-buildkit-spike.md
 After=network-online.target
 Wants=network-online.target
-ConditionPathIsExecutable=/usr/local/lib/mcp-devbox-builder/buildkitd
-ConditionPathIsExecutable=/usr/local/lib/mcp-devbox-builder/buildctl
-ConditionPathIsExecutable=/usr/bin/rootlesskit
+ConditionFileIsExecutable=/usr/local/lib/mcp-devbox-builder/buildkitd
+ConditionFileIsExecutable=/usr/local/lib/mcp-devbox-builder/buildctl
+ConditionFileIsExecutable=/usr/bin/rootlesskit
 
 [Service]
 Type=simple
@@ -48,7 +48,7 @@ ProtectKernelModules=yes
 ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
-ProtectProc=invisible
+ProtectProc=default
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictNamespaces=~cgroup ipc uts

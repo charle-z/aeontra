@@ -112,7 +112,7 @@ validate_host() {
   [[ "$CONTROL_GROUP" != *'..'* && "$CONTROL_GROUP" != *$'\n'* ]] || fail 'service cgroup is unsafe'
   local cgroup_root="/sys/fs/cgroup$CONTROL_GROUP"
   [[ -d "$cgroup_root" && ! -L "$cgroup_root" ]] || fail 'service cgroup is unavailable'
-  for metric in cpu.max cpu.stat memory.current memory.peak memory.events cpu.pressure io.pressure pids.current; do
+  for metric in cpu.max cpu.stat memory.current memory.events cpu.pressure io.pressure pids.current; do
     [[ -r "$cgroup_root/$metric" && ! -L "$cgroup_root/$metric" ]] || fail "required cgroup metric is unavailable: $metric"
   done
 
@@ -178,21 +178,10 @@ pressure_total() {
 copy_metrics() {
   local destination=$1 root="/sys/fs/cgroup$CONTROL_GROUP"
   install -d -o root -g root -m 0700 "$destination"
-  for metric in cpu.stat memory.current memory.peak memory.events cpu.pressure io.pressure pids.current; do
+  for metric in cpu.stat memory.current memory.events cpu.pressure io.pressure pids.current; do
     cp --no-dereference "$root/$metric" "$destination/${metric//./-}"
   done
-  if [[ -r "$root/pids.peak" && ! -L "$root/pids.peak" ]]; then
-    cp --no-dereference "$root/pids.peak" "$destination/pids-peak"
-  else
-    printf '%s\n' '-1' > "$destination/pids-peak"
-  fi
   chmod 0600 "$destination"/*
-}
-
-reset_peaks() {
-  local root="/sys/fs/cgroup$CONTROL_GROUP"
-  printf '0\n' > "$root/memory.peak" || true
-  if [[ -w "$root/pids.peak" ]]; then printf '0\n' > "$root/pids.peak" || true; fi
 }
 
 apply_quota() {
@@ -220,6 +209,21 @@ monitor_health() {
   done
 }
 
+monitor_resources() {
+  local output=$1 pid=$2 root="/sys/fs/cgroup$CONTROL_GROUP"
+  : > "$output"
+  chmod 0600 "$output"
+  while :; do
+    local memory pids
+    memory="$(cat "$root/memory.current")"
+    pids="$(cat "$root/pids.current")"
+    [[ "$memory" =~ ^[0-9]+$ && "$pids" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\t%s\n' "$memory" "$pids" >> "$output"
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.1
+  done
+}
+
 bound_log() {
   local log=$1 size temporary
   size="$(stat -c '%s' "$log")"
@@ -238,7 +242,7 @@ run_build() {
   run="$EVIDENCE/q${quota}-${mode}"
   before="$run/before"
   after="$run/after"
-  local health="$run/health.tsv" log="$run/build.log" cache="$RUN_CACHE/q${quota}"
+  local health="$run/health.tsv" resources="$run/resources.tsv" log="$run/build.log" cache="$RUN_CACHE/q${quota}"
   local artifact="$OUTPUT/q${quota}-${mode}.oci.tar"
   install -d -o root -g root -m 0700 "$run"
   if [[ "$mode" == no-cache ]]; then
@@ -247,7 +251,6 @@ run_build() {
   fi
 
   apply_quota "$quota"
-  reset_peaks
   copy_metrics "$before"
 
   local -a args=(--addr "unix://$SOCKET" build --progress plain --frontend dockerfile.v0 --local "context=$SOURCE" --local "dockerfile=$SOURCE" --opt filename=Dockerfile --output "type=oci,dest=$artifact")
@@ -257,15 +260,18 @@ run_build() {
     args+=(--import-cache "type=local,src=$cache" --export-cache "type=local,dest=$cache,mode=max,reset=true")
   fi
 
-  local started ended status monitor_pid
+  local started ended status monitor_pid resource_pid
   started="$(date +%s%N)"
   setsid timeout --signal=TERM --kill-after=30s "$BUILD_TIMEOUT" runuser -u "$BUILDER_USER" -- env -i HOME=/var/lib/mcp-devbox-buildkit XDG_RUNTIME_DIR=/run/mcp-devbox-buildkit PATH=/usr/local/lib/mcp-devbox-builder:/usr/bin:/bin LANG=C LC_ALL=C "$BUILDER_ROOT/buildctl" "${args[@]}" > "$log" 2>&1 &
   BUILD_PID=$!
   monitor_health "$health" "$BUILD_PID" &
   monitor_pid=$!
+  monitor_resources "$resources" "$BUILD_PID" &
+  resource_pid=$!
   if wait "$BUILD_PID"; then status=0; else status=$?; fi
   BUILD_PID=
   wait "$monitor_pid" || true
+  wait "$resource_pid" || fail 'resource monitor failed'
   ended="$(date +%s%N)"
   copy_metrics "$after"
   chmod 0600 "$log"
@@ -276,12 +282,12 @@ run_build() {
   cpu_before="$(metric_value "$before/cpu-stat" usage_usec)"; cpu_after="$(metric_value "$after/cpu-stat" usage_usec)"
   throttle_before="$(metric_value "$before/cpu-stat" throttled_usec)"; throttle_after="$(metric_value "$after/cpu-stat" throttled_usec)"
   nr_before="$(metric_value "$before/cpu-stat" nr_throttled)"; nr_after="$(metric_value "$after/cpu-stat" nr_throttled)"
-  memory_peak="$(cat "$after/memory-peak")"
+  memory_peak="$(awk -F '\t' '$1 > max {max=$1} END {if (max > 0) print max; else exit 1}' "$resources")"
   high_before="$(metric_value "$before/memory-events" high)"; high_after="$(metric_value "$after/memory-events" high)"
   oom_before="$(metric_value "$before/memory-events" oom_kill)"; oom_after="$(metric_value "$after/memory-events" oom_kill)"
   cpu_pressure_before="$(pressure_total "$before/cpu-pressure")"; cpu_pressure_after="$(pressure_total "$after/cpu-pressure")"
   io_pressure_before="$(pressure_total "$before/io-pressure")"; io_pressure_after="$(pressure_total "$after/io-pressure")"
-  pids_peak="$(cat "$after/pids-peak")"
+  pids_peak="$(awk -F '\t' '$2 > max {max=$2} END {if (max > 0) print max; else exit 1}' "$resources")"
 
   local health_samples health_failures http_502 health_max health_avg
   read -r health_samples health_failures http_502 health_max health_avg < <(awk -F '\t' '{n++; if ($2 != 200) fail++; if ($2 == 502) e502++; sum += $3; if ($3 > max) max=$3} END {if (!n) {print "0 0 0 0 0"} else {printf "%d %d %d %.6f %.6f\n", n, fail, e502, max, sum/n}}' "$health")
