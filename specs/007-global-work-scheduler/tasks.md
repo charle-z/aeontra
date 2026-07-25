@@ -172,18 +172,18 @@ regression/adversarial tests, docs, and rollback evidence are all present.
 - [x] Verify selected builder runs as dedicated non-root identity.
 - [x] Verify cgroup contains builder plus child compilers/helpers.
 - [x] Verify cancel terminates the whole process group.
-- [ ] Verify cache is reusable and bounded.
+- [x] Verify cache is reusable and bounded.
 - [x] Verify output and artifact identity are bounded/redacted.
 - [ ] Measure 50/65/80 percent quotas with same commit.
 - [ ] Record control-plane health latency and 502 count.
 
 ### Implementation/spike
 
-- [ ] Prototype rootless BuildKit.
+- [x] Prototype rootless BuildKit.
 - [ ] Prototype rootless Podman only if BuildKit misses a structural requirement.
 - [ ] Select engine in a follow-up ADR amendment/baseline.
-- [ ] Add installation/service/remove scripts for the selected private builder.
-- [ ] Do not register public tools yet.
+- [x] Add installation/service/remove scripts for the selected private builder.
+- [x] Do not register public tools yet.
 
 ## Step 8 — VPS worker
 

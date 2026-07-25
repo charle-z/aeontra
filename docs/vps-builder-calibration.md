@@ -91,6 +91,23 @@ For each run it:
 - bounds retained build output to 32 MiB;
 - removes the temporary OCI archive after recording its identity.
 
+After all six measurements, the fixed `review-vps-calibration.sh` selector validates
+the exact matrix and writes three root-private files into the evidence directory:
+
+- `selection.tsv`, with hard and duration eligibility for every quota;
+- `selected-quota-percent`, containing one of `50`, `65`, `80`, or `none`;
+- `selection-policy`, recording the deterministic reviewed threshold.
+
+A quota is hard-eligible only when both modes complete within the existing 30-minute
+timeout, prove cache reuse from the bounded cached-build log, produce bounded cache
+and artifact evidence, record a valid SHA-256 identity, observe at least one health sample, and report zero build failures, OOM kills,
+non-200 health responses, and HTTP 502 responses. Among hard-eligible quotas, the
+selector chooses the lowest quota whose no-cache duration is at most 135 percent and
+whose cached duration is at most 125 percent of the fastest hard-eligible run in the
+same mode. An incomplete, duplicate, malformed, oversized, or internally inconsistent
+matrix fails closed. If no quota satisfies the policy, the evidence is archived as a
+structural stop and Step 8 remains blocked.
+
 The root-owned evidence directory is separate from the builder-writable source, output and cache roots. Builder-writable per-run directories are private and removed after calibration. Pending or failed evidence remains root-readable only.
 
 ## Failure and rollback
@@ -117,7 +134,9 @@ A quota is not acceptable when any run has:
 - missing artifact identity;
 - invalid or unbounded cache evidence.
 
-Among acceptable quotas, select the lowest quota that preserves reasonable no-cache and cached duration while keeping control-plane health stable. The decision must be recorded in a new dated baseline; the planning baseline from 2026-07-22 must not be rewritten.
+Among acceptable quotas, use the deterministic selector result described above. The
+decision must still be reviewed against the raw evidence and recorded in a new dated
+baseline; the planning baseline from 2026-07-22 must not be rewritten.
 
 The script does not automatically alter the systemd unit's persisted quota. After review, the selected value requires a separate tested configuration commit and deployment. Until then, the runtime rollback value remains 65 percent.
 
