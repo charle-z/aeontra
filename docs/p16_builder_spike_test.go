@@ -66,6 +66,10 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"mcp-devbox-builder-bootstrap.service",
 		"work survives an SSH disconnect",
 		"existing different or partial installation fails closed",
+		"supports only Debian or Ubuntu",
+		"rootlesskit`, `uidmap`, `slirp4netns` and `fuse-overlayfs`",
+		"host-prerequisites.tsv",
+		"fixed host prerequisite packages",
 	} {
 		if !strings.Contains(calibration, required) {
 			t.Fatalf("VPS calibration documentation lost %q", required)

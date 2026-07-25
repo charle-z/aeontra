@@ -28,19 +28,18 @@ jobs:
       - name: Verify private builder contracts
         run: go test ./internal/buildspike ./packaging/builder ./internal/coveragegate -count=1
 
-      - name: Install rootless host prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends rootlesskit uidmap slirp4netns fuse-overlayfs
-
       - name: Install reviewed package resources
         run: |
           sudo install -d -o root -g root -m 0755 /usr/share/mcp-devbox-builder-candidate
+          sudo install -o root -g root -m 0755 packaging/builder/install-prerequisites.sh /usr/share/mcp-devbox-builder-candidate/install-prerequisites.sh
           sudo install -o root -g root -m 0755 packaging/builder/stage-official-v0.31.2.sh /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
           sudo install -o root -g root -m 0755 packaging/builder/install-preverified.sh /usr/share/mcp-devbox-builder-candidate/install-preverified.sh
           sudo install -o root -g root -m 0755 packaging/builder/remove.sh /usr/share/mcp-devbox-builder-candidate/remove.sh
           sudo install -o root -g root -m 0644 packaging/builder/buildkitd.toml /usr/share/mcp-devbox-builder-candidate/buildkitd.toml
           sudo install -o root -g root -m 0644 packaging/builder/mcp-devbox-buildkit.service /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit.service
+
+      - name: Install rootless host prerequisites
+        run: sudo /usr/share/mcp-devbox-builder-candidate/install-prerequisites.sh
 
       - name: Stage pinned official BuildKit release
         run: sudo /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
