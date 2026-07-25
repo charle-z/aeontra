@@ -56,15 +56,30 @@ LABEL org.opencontainers.image.title="mcp-devbox" \
 	org.opencontainers.image.description="Secure-by-default local MCP server for AI coding agents" \
 	org.opencontainers.image.source="https://github.com/charle-z/mcp-devbox"
 
-RUN apk add --no-cache ca-certificates git nodejs npm \
-	&& npm install --global npm@12.0.1 --ignore-scripts \
-	&& npm install --prefix /usr/local/lib/node_modules/npm \
-		--ignore-scripts --no-audit --no-fund --no-save --package-lock=false --omit=dev \
-		brace-expansion@5.0.8 \
+RUN apk add --no-cache ca-certificates git nodejs \
+	&& npm_archive=/tmp/npm-12.0.1.tgz \
+	&& brace_archive=/tmp/brace-expansion-5.0.8.tgz \
+	&& busybox wget -qO "$npm_archive" https://registry.npmjs.org/npm/-/npm-12.0.1.tgz \
+	&& busybox wget -qO "$brace_archive" https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.8.tgz \
+	&& printf '%s  %s\n' 5e02bea4c784df1c3bbea9e55c7d2232329e1d1920c254789833ed9e8b0a5f16 "$npm_archive" \
+		| busybox sha256sum -c - \
+	&& printf '%s  %s\n' a03b06e66d862d0278b1ff45b66427f245f99c665800dc9bd790c0c13d2247fe "$brace_archive" \
+		| busybox sha256sum -c - \
+	&& mkdir -p /tmp/npm-unpack /tmp/brace-unpack /usr/local/lib/node_modules \
+	&& busybox tar -xzf "$npm_archive" -C /tmp/npm-unpack \
+	&& busybox tar -xzf "$brace_archive" -C /tmp/brace-unpack \
+	&& rm -rf /tmp/npm-unpack/package/node_modules/brace-expansion \
+	&& mkdir -p /tmp/npm-unpack/package/node_modules/brace-expansion \
+	&& cp -a /tmp/brace-unpack/package/. /tmp/npm-unpack/package/node_modules/brace-expansion/ \
+	&& mv /tmp/npm-unpack/package /usr/local/lib/node_modules/npm \
+	&& ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+	&& ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+	&& test "$(npm --version)" = 12.0.1 \
 	&& test "$(node -p \
 		"require('/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json').version")" = 5.0.8 \
-	&& npm cache clean --force \
-	&& apk del npm \
+	&& test "$(find /usr/local/lib/node_modules/npm -path '*/brace-expansion/package.json' -type f | wc -l)" -eq 1 \
+	&& test ! -e /usr/lib/node_modules/npm \
+	&& rm -rf "$npm_archive" "$brace_archive" /tmp/npm-unpack /tmp/brace-unpack \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \

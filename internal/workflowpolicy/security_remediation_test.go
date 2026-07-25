@@ -42,12 +42,22 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 	if strings.Contains(dockerfile, "apk add --no-cache ca-certificates git nodejs npm wget") {
 		t.Error("the final image must not install the vulnerable GNU wget package")
 	}
-	for _, required := range []string{
-		"npm install --global npm@12.0.1 --ignore-scripts",
-		"brace-expansion@5.0.8",
-		"/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json",
-		"--no-save --package-lock=false --omit=dev",
+	for _, forbidden := range []string{
+		"apk add --no-cache ca-certificates git nodejs npm",
+		"npm install --global npm@12.0.1",
 		"apk del npm",
+	} {
+		if strings.Contains(dockerfile, forbidden) {
+			t.Errorf("Dockerfile must not introduce a vulnerable npm bootstrap via %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"https://registry.npmjs.org/npm/-/npm-12.0.1.tgz",
+		"5e02bea4c784df1c3bbea9e55c7d2232329e1d1920c254789833ed9e8b0a5f16",
+		"https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.8.tgz",
+		"a03b06e66d862d0278b1ff45b66427f245f99c665800dc9bd790c0c13d2247fe",
+		"/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json",
+		"test ! -e /usr/lib/node_modules/npm",
 		"busybox wget -qO- http://127.0.0.1:8765/healthz",
 	} {
 		if !strings.Contains(dockerfile, required) {
