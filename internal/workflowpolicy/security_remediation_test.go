@@ -44,6 +44,9 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 	}
 	for _, required := range []string{
 		"npm install --global npm@12.0.1 --ignore-scripts",
+		"brace-expansion@5.0.8",
+		"/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json",
+		"--no-save --package-lock=false --omit=dev",
 		"apk del npm",
 		"busybox wget -qO- http://127.0.0.1:8765/healthz",
 	} {

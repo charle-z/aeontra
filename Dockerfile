@@ -58,6 +58,11 @@ LABEL org.opencontainers.image.title="mcp-devbox" \
 
 RUN apk add --no-cache ca-certificates git nodejs npm \
 	&& npm install --global npm@12.0.1 --ignore-scripts \
+	&& npm install --prefix /usr/local/lib/node_modules/npm \
+		--ignore-scripts --no-audit --no-fund --no-save --package-lock=false --omit=dev \
+		brace-expansion@5.0.8 \
+	&& test "$(node -p \
+		"require('/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json').version")" = 5.0.8 \
 	&& npm cache clean --force \
 	&& apk del npm \
 	&& (corepack enable 2>/dev/null || true) \
