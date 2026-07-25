@@ -17,6 +17,9 @@ readonly BUILD_TIMEOUT=30m
 readonly LOG_LIMIT_BYTES=33554432
 readonly -a QUOTAS=(50 65 80)
 readonly -a PREREQUISITE_PACKAGES=(rootlesskit uidmap slirp4netns fuse-overlayfs)
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly SCRIPT_DIR
+readonly REVIEWER="$SCRIPT_DIR/review-vps-calibration.sh"
 
 RUN_ROOT=
 RUN_WORK=
@@ -92,11 +95,12 @@ validate_host() {
   [[ "$(id -u)" -eq 0 ]] || fail 'root is required'
   [[ "$#" -eq 1 ]] || fail 'exactly one 40-character commit is required'
   [[ "$1" =~ ^[a-f0-9]{40}$ ]] || fail 'commit is invalid'
-  for tool in awk cat chmod chown cp curl date dpkg-query du env find flock git grep id install kill mktemp mv rm runuser sed setsid sha256sum sleep sort stat systemctl tail tar timeout tr uname wc; do
+  for tool in awk cat chmod chown cp curl date dirname dpkg-query du env find flock git grep id install kill mktemp mv rm runuser sed setsid sha256sum sleep sort stat systemctl tail tar timeout tr uname wc; do
     command -v "$tool" >/dev/null 2>&1 || fail "required host tool is missing: $tool"
   done
   [[ -x "$BUILDER_ROOT/buildctl" && ! -L "$BUILDER_ROOT/buildctl" ]] || fail 'reviewed buildctl is unavailable'
   [[ -x "$BUILDER_ROOT/buildkit-runc" && ! -L "$BUILDER_ROOT/buildkit-runc" ]] || fail 'reviewed buildkit-runc is unavailable'
+  [[ -f "$REVIEWER" && ! -L "$REVIEWER" && -x "$REVIEWER" ]] || fail 'reviewed calibration selector is unavailable'
   systemctl is-active --quiet "$SERVICE" || fail 'builder service is not active'
   systemctl is-enabled --quiet "$SERVICE" || fail 'builder service is not enabled'
   [[ -S "$SOCKET" && ! -L "$SOCKET" ]] || fail 'private BuildKit socket is unavailable'
@@ -299,6 +303,11 @@ run_build() {
 finalize() {
   local commit=$1 final_status=0
   apply_quota "$DEFAULT_QUOTA"
+  if [[ "$FAILED" -eq 0 ]]; then
+    if ! "$REVIEWER" "$EVIDENCE"; then
+      FAILED=1
+    fi
+  fi
   if [[ "$FAILED" -ne 0 ]]; then final_status=1; fi
   printf '%s\n' "$final_status" > "$EVIDENCE/calibration-exit-status"
   chmod 0600 "$EVIDENCE/calibration-exit-status"

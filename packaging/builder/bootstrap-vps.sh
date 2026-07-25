@@ -118,7 +118,7 @@ prepare_private_checkout() {
   [ "$(git_fixed -C "$REPO" rev-parse HEAD)" = "$COMMIT" ] || fail "fetched commit did not match approval"
   [ -z "$(git_fixed -C "$REPO" status --porcelain=v1 --untracked-files=all)" ] || fail "fetched checkout is not clean"
 
-  for name in install-prerequisites.sh stage-official-v0.31.2.sh install-preverified.sh calibrate-vps.sh remove.sh; do
+  for name in install-prerequisites.sh stage-official-v0.31.2.sh install-preverified.sh calibrate-vps.sh review-vps-calibration.sh remove.sh; do
     path=$REPO/packaging/builder/$name
     [ -f "$path" ] && [ ! -L "$path" ] && [ -x "$path" ] || fail "reviewed builder script is missing or unsafe"
     set -- $(stat -c '%u %a' "$path")
