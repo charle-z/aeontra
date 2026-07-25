@@ -104,3 +104,20 @@ func TestVPSCalibrationVerifiesCheckoutAsBuilderIdentity(t *testing.T) {
 		t.Fatalf("calibrator must not verify a builder-owned checkout as root: found %q", forbidden)
 	}
 }
+
+func TestVPSCalibrationInitializesRunBeforeDerivedPaths(t *testing.T) {
+	script := readFixture(t, "calibrate-vps.sh")
+	for _, required := range []string{
+		`local run before after`,
+		`run="$EVIDENCE/q${quota}-${mode}"`,
+		`before="$run/before"`,
+		`after="$run/after"`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("calibrator missing safe run path initialization %q", required)
+		}
+	}
+	if strings.Contains(script, `local run="$EVIDENCE/q${quota}-${mode}" before="$run/before" after="$run/after"`) {
+		t.Fatal("calibrator must not derive paths from run inside the same local declaration under set -u")
+	}
+}
