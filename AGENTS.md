@@ -64,6 +64,16 @@ The chat session is **not** the source of truth. The repo is.
 
 Do not mark a step done without running its verification.
 
+## Host-Specific Acceptance
+
+When a gate depends on target-host behavior such as the kernel, systemd, AppArmor or
+namespaces and the CI runner cannot reproduce that host faithfully, move acceptance to
+the target host. Record the CI gate as explicitly not reproducible with the concrete
+reason and do not let that classification block closure. Never change the runner OS,
+AppArmor version or security posture merely to obtain a green result. Unexpected CI
+failures still fail closed; only the reviewed host-specific mismatch may be classified
+as non-reproducible.
+
 ## Anti-Hallucination
 
 - Read files before editing. Search before assuming a function/path/config exists.
