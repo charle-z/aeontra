@@ -159,10 +159,14 @@ prepare_run() {
     printf 'unsupported\n' > "$EVIDENCE/apparmor-restrict-unprivileged-userns"
   fi
   uname -srmo > "$EVIDENCE/kernel"
-  systemctl show "$SERVICE" --property=User --property=Group --property=ControlGroup --property=CPUQuotaPerSecUSec --property=MemoryHigh --property=MemoryMax --property=TasksMax --property=IOWeight --property=RestrictNamespaces --property=Delegate --property=ProtectControlGroups > "$EVIDENCE/service-properties"
+  systemctl show "$SERVICE" --property=User --property=Group --property=ControlGroup --property=CPUQuotaPerSecUSec --property=MemoryHigh --property=MemoryMax --property=TasksMax --property=IOWeight --property=RestrictNamespaces --property=ProtectKernelTunables --property=ProtectKernelModules --property=ProtectHostname --property=Delegate --property=ProtectControlGroups > "$EVIDENCE/service-properties"
   printf 'fixture\tstatus\n' > "$EVIDENCE/preflight-status.tsv"
   cat > "$EVIDENCE/confirmed-incident.txt" <<'EOF'
-confirmed_cause=systemd RestrictNamespaces seccomp filter blocked namespaces required by the BuildKit OCI spec
+confirmed_cause=three systemd hardening options were incompatible with rootless BuildKit containers: RestrictNamespaces, ProtectKernelTunables and ProtectHostname
+blocker_1=RestrictNamespaces installed seccomp filters that denied OCI IPC, UTS and cgroup namespaces
+blocker_2=ProtectKernelTunables obscured procfs paths and prevented a nested procfs mount in the user namespace
+blocker_3=ProtectHostname introduced a UTS namespace and was incompatible with the retained ProtectSystem=strict mount posture
+preserved_hardening=ProtectKernelModules=yes and the remaining reviewed service hardening
 discarded_cause=AppArmor
 previous_ci_gap=FROM scratch plus COPY did not invoke runc
 required_preflight=integrated dockerfile RUN then external dockerfile frontend RUN
