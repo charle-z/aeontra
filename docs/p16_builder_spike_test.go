@@ -29,10 +29,13 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 	for _, required := range []string{
 		"Rootless BuildKit candidate fixture",
 		"stage-official-v0.31.2.sh",
-		"Build the same commit twice and prove cache reuse",
-		"sudo runuser -u mcp-build -- test -s",
-		"artifact_bytes",
-		"67108864",
+		"Exercise runc and both Dockerfile frontends with cache reuse",
+		"FROM busybox:1.37.0",
+		"RUN echo p16-runc-ok > /ok",
+		"# syntax=docker/dockerfile:1.7",
+		"p16-external-runc-ok",
+		"integrated-second-build.log",
+		"RestrictNamespaces=~cgroup",
 		"Verify stop kills the complete service cgroup",
 		"Verify conservative removal",
 		"cache-usage.txt",
@@ -46,7 +49,7 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 			t.Fatalf("builder spike workflow lost %q", required)
 		}
 	}
-	for _, forbidden := range []string{"/var/run/docker.sock:/var/run/docker.sock", "--privileged", "continue-on-error"} {
+	for _, forbidden := range []string{"/var/run/docker.sock:/var/run/docker.sock", "--privileged", "continue-on-error", "FROM scratch\nCOPY hello /hello", "RestrictNamespaces=~cgroup ipc uts"} {
 		if strings.Contains(workflow, forbidden) {
 			t.Fatalf("builder spike workflow contains forbidden %q", forbidden)
 		}
@@ -70,6 +73,9 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"rootlesskit`, `uidmap`, `slirp4netns` and `fuse-overlayfs`",
 		"host-prerequisites.tsv",
 		"fixed host prerequisite packages",
+		"integrated Dockerfile frontend preflight",
+		"external Dockerfile frontend preflight",
+		"ProtectControlGroups=yes` and `Delegate=yes",
 	} {
 		if !strings.Contains(calibration, required) {
 			t.Fatalf("VPS calibration documentation lost %q", required)

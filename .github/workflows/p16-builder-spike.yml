@@ -67,13 +67,14 @@ jobs:
           sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl --addr "unix://$socket" debug workers
           sudo systemctl show mcp-devbox-buildkit.service \
             --property=User --property=Group --property=KillMode \
-            --property=ProtectProc \
+            --property=ProtectProc --property=RestrictNamespaces \
             --property=MemoryHigh --property=MemoryMax --property=TasksMax \
             | tee "$RUNNER_TEMP/builder-properties.txt" >/dev/null
           grep -Fx 'User=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'Group=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'KillMode=control-group' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'ProtectProc=default' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'RestrictNamespaces=~cgroup' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'MemoryHigh=1342177280' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'MemoryMax=1879048192' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'TasksMax=512' "$RUNNER_TEMP/builder-properties.txt"
@@ -100,47 +101,57 @@ jobs:
           grep -Eq ' rootlesskit$' "$processes"
           grep -Eq ' buildkitd$' "$processes"
 
-      - name: Build the same commit twice and prove cache reuse
+      - name: Exercise runc and both Dockerfile frontends with cache reuse
         run: |
           set -Eeuo pipefail
           fixture=/var/lib/mcp-devbox-builder-fixture
-          context="$fixture/context"
-          output="$fixture/output"
+          integrated_context="$fixture/integrated-context"
+          external_context="$fixture/external-context"
+          integrated_first="$fixture/integrated-first"
+          integrated_second="$fixture/integrated-second"
+          external_output="$fixture/external-output"
           cache=/var/cache/mcp-devbox-buildkit/fixture
-          sudo install -d -o mcp-build -g mcp-build -m 0700 "$context" "$output" "$cache"
-          printf 'FROM scratch\nCOPY hello /hello\n' | sudo tee "$context/Dockerfile" >/dev/null
-          printf 'p16-builder-fixture\n' | sudo tee "$context/hello" >/dev/null
+          sudo install -d -o mcp-build -g mcp-build -m 0700 \
+            "$integrated_context" "$external_context" \
+            "$integrated_first" "$integrated_second" "$external_output" "$cache"
+          printf 'FROM busybox:1.37.0\nRUN echo p16-runc-ok > /ok\n' \
+            | sudo tee "$integrated_context/Dockerfile" >/dev/null
+          printf '# syntax=docker/dockerfile:1.7\nFROM busybox:1.37.0\nRUN echo p16-external-runc-ok > /ok\n' \
+            | sudo tee "$external_context/Dockerfile" >/dev/null
           sudo chown -R mcp-build:mcp-build "$fixture" "$cache"
-          commit="$(git rev-parse HEAD)"
           socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
-          first="$output/$commit-first.oci.tar"
-          second="$output/$commit-second.oci.tar"
+
           sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
             --addr "unix://$socket" build --progress plain \
             --frontend dockerfile.v0 \
-            --local "context=$context" --local "dockerfile=$context" \
-            --opt filename=Dockerfile \
+            --local "context=$integrated_context" --local "dockerfile=$integrated_context" \
+            --opt filename=Dockerfile --no-cache \
             --export-cache "type=local,dest=$cache,mode=max,reset=true" \
-            --output "type=oci,dest=$first" \
-            2>&1 | tee "$RUNNER_TEMP/first-build.log"
+            --output "type=local,dest=$integrated_first" \
+            2>&1 | tee "$RUNNER_TEMP/integrated-first-build.log"
+          sudo runuser -u mcp-build -- grep -Fx 'p16-runc-ok' "$integrated_first/ok"
+
           sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
             --addr "unix://$socket" build --progress plain \
             --frontend dockerfile.v0 \
-            --local "context=$context" --local "dockerfile=$context" \
+            --local "context=$integrated_context" --local "dockerfile=$integrated_context" \
             --opt filename=Dockerfile \
             --import-cache "type=local,src=$cache" \
             --export-cache "type=local,dest=$cache,mode=max,reset=true" \
-            --output "type=oci,dest=$second" \
-            2>&1 | tee "$RUNNER_TEMP/second-build.log"
-          for artifact in "$first" "$second"; do
-            sudo runuser -u mcp-build -- test -f "$artifact"
-            sudo runuser -u mcp-build -- test ! -L "$artifact"
-            sudo runuser -u mcp-build -- test -s "$artifact"
-            artifact_bytes="$(sudo runuser -u mcp-build -- stat -c '%s' "$artifact")"
-            test "$artifact_bytes" -gt 0
-            test "$artifact_bytes" -le 67108864
-          done
-          grep -Eq 'CACHED|cached' "$RUNNER_TEMP/second-build.log"
+            --output "type=local,dest=$integrated_second" \
+            2>&1 | tee "$RUNNER_TEMP/integrated-second-build.log"
+          sudo runuser -u mcp-build -- grep -Fx 'p16-runc-ok' "$integrated_second/ok"
+          grep -Eq 'CACHED|cached' "$RUNNER_TEMP/integrated-second-build.log"
+
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" build --progress plain \
+            --frontend dockerfile.v0 \
+            --local "context=$external_context" --local "dockerfile=$external_context" \
+            --opt filename=Dockerfile --no-cache \
+            --output "type=local,dest=$external_output" \
+            2>&1 | tee "$RUNNER_TEMP/external-frontend-build.log"
+          sudo runuser -u mcp-build -- grep -Fx 'p16-external-runc-ok' "$external_output/ok"
+
           sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
             --addr "unix://$socket" du -v \
             2>&1 | tee "$RUNNER_TEMP/cache-usage.txt"
@@ -183,8 +194,9 @@ jobs:
           path: |
             ${{ runner.temp }}/builder-properties.txt
             ${{ runner.temp }}/builder-processes.txt
-            ${{ runner.temp }}/first-build.log
-            ${{ runner.temp }}/second-build.log
+            ${{ runner.temp }}/integrated-first-build.log
+            ${{ runner.temp }}/integrated-second-build.log
+            ${{ runner.temp }}/external-frontend-build.log
             ${{ runner.temp }}/cache-usage.txt
             ${{ runner.temp }}/cache-policy.txt
           if-no-files-found: warn

@@ -41,9 +41,9 @@ spike. It is not a public tool and is not installed by the MCP container.
   `KillMode=control-group`;
 - `buildkitd.toml` is checked against the generated rootless configuration and fixes
   one OCI worker, one parallel build and bounded GC/cache thresholds;
-- the service keeps `ProtectProc=invisible` but must not set `ProcSubset=pid` because
-  BuildKit reads `/proc/stat` during a solve; cgroup and process-subtree isolation
-  remain the enforcement boundary;
+- the service keeps `ProtectProc=default`, denies creation of nested cgroup namespaces,
+  and permits the IPC and UTS namespaces required by OCI process execution; cgroup and
+  process-subtree isolation remain the enforcement boundary;
 - `install-preverified.sh` accepts no arguments or URLs, consumes only a private
   root-owned staging directory containing `buildkitd`, `buildctl`, `buildkit-runc`
   and an exact three-entry SHA-256 manifest, creates the system identity with
@@ -63,9 +63,12 @@ private staging directory atomically without replacing different existing conten
 
 `.github/workflows/p16-builder-spike.yml` exercises this package on Ubuntu 24.04:
 it installs rootless prerequisites, stages v0.31.2, starts the systemd service, proves
-all observed processes remain in the delegated subtree as `mcp-build`, builds the same
-commit twice with cache reuse, stops the complete control group and verifies the
-conservative removal path. This is disposable CI evidence, not VPS calibration.
+all observed processes remain in the delegated subtree as `mcp-build`, executes a
+BusyBox `RUN` through the integrated Dockerfile frontend, repeats it with cache reuse,
+then executes a second `RUN` through `docker/dockerfile:1.7` and verifies both output
+files. This proves the fixture invokes `buildkit-runc`; the former `FROM scratch` plus
+`COPY` fixture did not. The workflow then stops the complete control group and verifies
+the conservative removal path. This is disposable CI evidence, not VPS calibration.
 
 ## Remaining evidence
 
@@ -79,7 +82,12 @@ The following are deliberately not claimed yet:
 - real cache reuse/GC behavior and uninstall execution on the VPS;
 - final BuildKit-versus-Podman engine selection.
 
-Those require the separate private spike deployment and dated measurement. If BuildKit fails a structural requirement, Podman may be evaluated without weakening the rootless/cgroup boundary.
+Those require the separate private spike deployment and dated measurement. A known
+future debt remains: `ProtectControlGroups=yes` makes the cgroup filesystem read-only
+while `Delegate=yes` assumes a writable delegated subtree. It does not cause the current
+rootless worker failure because container cgroup management is disabled, but it must be
+resolved before enabling cgroups inside build containers. If BuildKit fails a structural
+requirement, Podman may be evaluated without weakening the rootless/cgroup boundary.
 
 ## VPS calibration candidate
 

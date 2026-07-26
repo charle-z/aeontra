@@ -44,6 +44,13 @@ func TestVPSCalibrationIsClosedBoundedAndRollbackCapable(t *testing.T) {
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"runuser -u \"$BUILDER_USER\" -- env -i",
 		"env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C curl",
+		"run_preflight integrated",
+		"run_preflight external",
+		"FROM busybox:1.37.0\\nRUN echo p16-runc-ok > /ok",
+		"# syntax=docker/dockerfile:1.7\\nFROM busybox:1.37.0",
+		"confirmed_cause=systemd RestrictNamespaces seccomp filter blocked OCI IPC and UTS namespaces",
+		"previous_ci_gap=FROM scratch plus COPY did not invoke runc",
+		"--property=RestrictNamespaces",
 	} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("calibrator missing %q", required)

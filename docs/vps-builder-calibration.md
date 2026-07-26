@@ -71,6 +71,21 @@ An existing different or partial installation fails closed and is never overwrit
 The bootstrap accepts no repository, URL, branch, command, credential, path or resource
 limit from the caller.
 
+## Validation before measurement
+
+Before any quota measurement, the calibrator runs two fixed preflights at the conservative
+65 percent quota. The integrated Dockerfile frontend preflight builds `busybox:1.37.0`
+with a `RUN` instruction and verifies `/ok`. Only after that succeeds, the external Dockerfile frontend preflight
+uses `docker/dockerfile:1.7` for its own `RUN` and output verification. A
+preflight failure archives its bounded log and prevents all six measurements from
+starting. This order isolates the OCI runc/namespace path before testing the external
+frontend container.
+
+The evidence includes `preflight-status.tsv`, both preflight logs, the applied
+`RestrictNamespaces` property and `confirmed-incident.txt`. The incident record states
+that the confirmed cause was the systemd namespace seccomp filter, AppArmor was
+discarded, and the former `FROM scratch` plus `COPY` CI fixture never invoked runc.
+
 ## Measurement sequence
 
 The calibrator serializes itself with a private lock and runs six builds against the same exact commit:
@@ -139,6 +154,11 @@ decision must still be reviewed against the raw evidence and recorded in a new d
 baseline; the planning baseline from 2026-07-22 must not be rewritten.
 
 The script does not automatically alter the systemd unit's persisted quota. After review, the selected value requires a separate tested configuration commit and deployment. Until then, the runtime rollback value remains 65 percent.
+
+A documented hardening debt remains intentionally unchanged: `ProtectControlGroups=yes` and `Delegate=yes`
+have conflicting assumptions about cgroup filesystem writability.
+This does not cause the current failure because the rootless OCI worker does not manage
+container cgroups, but it must be revisited before enabling that capability.
 
 ## Current evidence boundary
 
