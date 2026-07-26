@@ -15,23 +15,29 @@ func TestP16WorkqueueStoreContractIsDocumented(t *testing.T) {
 		}
 		return string(body)
 	}
-	document := strings.ToLower(read("workqueue-store.md"))
+	document := read("workqueue-store.md")
 	for _, required := range []string{
 		"one active control-plane writer",
-		"redis",
 		"fencing counter",
 		"stale completion",
-		"dependency_failed",
-		"1024 jobs",
-		"64 per workspace",
-		"64 mib",
-		"backup",
-		"restorebackup",
 		"contains no source",
 		"grants no authority",
 	} {
-		if !strings.Contains(document, strings.ToLower(required)) {
+		if !containsNormalizedProse(document, required) {
 			t.Errorf("workqueue documentation missing %q", required)
+		}
+	}
+	for _, literal := range []string{
+		"Redis",
+		"dependency_failed",
+		"1024 jobs",
+		"64 per workspace",
+		"64 MiB",
+		"Backup",
+		"RestoreBackup",
+	} {
+		if !strings.Contains(document, literal) {
+			t.Errorf("workqueue documentation missing literal %q", literal)
 		}
 	}
 	mapDocument := read("documentation-map.md")

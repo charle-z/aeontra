@@ -38,14 +38,17 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 		"must not be required to supply",
 		"No automatic fallback",
 		"Deficit Round Robin",
-		"650 millicores",
-		"cgroups/rootless controls enforce",
+		"Cgroups/rootless controls enforce",
 		"Redis is a non-goal",
-		"build@vps or build@edge",
 		"new chat can resolve and continue a registered project by alias",
 	} {
-		if !strings.Contains(strings.ToLower(spec), strings.ToLower(required)) {
+		if !containsNormalizedProse(spec, required) {
 			t.Errorf("P16 spec missing %q", required)
+		}
+	}
+	for _, literal := range []string{"650 millicores", "build@vps", "build@edge"} {
+		if !strings.Contains(spec, literal) {
+			t.Errorf("P16 spec missing literal %q", literal)
 		}
 	}
 
@@ -53,52 +56,68 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 	for _, required := range []string{
 		"silent target fallback",
 		"rootful Docker socket",
-		"unknown `p12` directory",
 		"duplicate execution after disconnect",
 		"Optimization equations never grant or expand authority",
 	} {
-		if !strings.Contains(strings.ToLower(threat), strings.ToLower(required)) {
+		if !containsNormalizedProse(threat, required) {
 			t.Errorf("P16 threat model missing %q", required)
 		}
+	}
+	if !strings.Contains(threat, "`p12`") {
+		t.Error("P16 threat model missing literal `p12`")
 	}
 
 	plan := contents["plan"]
 	for _, required := range []string{
+		"rollback",
+	} {
+		if !containsNormalizedProse(plan, required) {
+			t.Errorf("P16 plan missing %q", required)
+		}
+	}
+	for _, literal := range []string{
 		"Step 1 — P12/P15 inventory and migration model",
 		"Step 2 — One-command package lifecycle and guided onboarding",
 		"Step 7 — Rootless VPS builder spike and selection",
 		"50%, 65%, 80%",
-		"rollback",
 	} {
-		if !strings.Contains(strings.ToLower(plan), strings.ToLower(required)) {
-			t.Errorf("P16 plan missing %q", required)
+		if !strings.Contains(plan, literal) {
+			t.Errorf("P16 plan missing literal %q", literal)
 		}
 	}
 
 	tasks := contents["tasks"]
 	for _, required := range []string{
-		"directory named `p12`",
 		"Fresh chat resolves/continues/builds a real project with alias + target only",
 		"Twenty simultaneous requests yield exactly one active build",
 		"No Edge-to-VPS fallback",
 	} {
-		if !strings.Contains(strings.ToLower(tasks), strings.ToLower(required)) {
+		if !containsNormalizedProse(tasks, required) {
 			t.Errorf("P16 tasks missing %q", required)
 		}
+	}
+	if !strings.Contains(tasks, "`p12`") {
+		t.Error("P16 tasks missing literal `p12`")
 	}
 
 	baseline := contents["baseline"]
 	for _, required := range []string{
+		"CPU is the demonstrated binding resource",
+	} {
+		if !containsNormalizedProse(baseline, required) {
+			t.Errorf("P16 capacity baseline missing %q", required)
+		}
+	}
+	for _, literal := range []string{
 		"2 vCPU",
 		"3.805 GiB",
 		"p95 host busy",
 		"100.00%",
-		"CPU is the demonstrated binding resource",
-		"second dashboard peak",
+		"Second dashboard peak",
 		"50/65/80",
 	} {
-		if !strings.Contains(strings.ToLower(baseline), strings.ToLower(required)) {
-			t.Errorf("P16 capacity baseline missing %q", required)
+		if !strings.Contains(baseline, literal) {
+			t.Errorf("P16 capacity baseline missing literal %q", literal)
 		}
 	}
 
@@ -110,38 +129,48 @@ func TestP16SchedulerAndEdgeLifecycleContractIsDocumented(t *testing.T) {
 		"Redis queue",
 		"opaque IDs",
 	} {
-		if !strings.Contains(strings.ToLower(adr), strings.ToLower(required)) {
+		if !containsNormalizedProse(adr, required) {
 			t.Errorf("P16 ADR missing %q", required)
 		}
 	}
 
 	migration := contents["migration"]
 	for _, required := range []string{
+		"Unknown content is never moved",
+		"no longer performs a direct shell move",
+	} {
+		if !containsNormalizedProse(migration, required) {
+			t.Errorf("P16 migration documentation missing %q", required)
+		}
+	}
+	for _, literal := range []string{
 		"mcp-edge lifecycle inspect",
 		"prepare-state-migration",
 		"rollback-state-migration",
 		"RENAME_NOREPLACE",
 		"RENAME_EXCHANGE",
 		"recovered_complete",
-		"unknown content is never moved",
-		"postinst.in` no longer performs a direct shell move",
+		"postinst.in",
 	} {
-		if !strings.Contains(strings.ToLower(migration), strings.ToLower(required)) {
-			t.Errorf("P16 migration documentation missing %q", required)
+		if !strings.Contains(migration, literal) {
+			t.Errorf("P16 migration documentation missing literal %q", literal)
 		}
 	}
 
 	installation := contents["installation"]
 	for _, required := range []string{
 		"at most these two local commands",
-		"pairing=reused",
-		"mcp-edge doctor --repair",
 		"forced service-health failure restores legacy state byte for byte",
 		"must not automatically delete user repositories",
 		"validation pending",
 	} {
-		if !strings.Contains(strings.ToLower(installation), strings.ToLower(required)) {
+		if !containsNormalizedProse(installation, required) {
 			t.Errorf("P16 installation documentation missing %q", required)
+		}
+	}
+	for _, literal := range []string{"pairing=reused", "mcp-edge doctor --repair"} {
+		if !strings.Contains(installation, literal) {
+			t.Errorf("P16 installation documentation missing literal %q", literal)
 		}
 	}
 

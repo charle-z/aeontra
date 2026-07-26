@@ -48,13 +48,12 @@ func TestAgentCatalogRequiresCanonicalToolLookupBeforeHelpers(t *testing.T) {
 	doc := readDoc(t, "../AGENTS.md")
 
 	for _, required := range []string{
-		"Before writing a script, HTTP client, Go program, or",
-		"temporary helper, search the catalog",
+		"Before writing a script, HTTP client, Go program, or temporary helper",
 		"search the catalog for a canonical tool",
-		"create a helper when no existing tool covers the operation",
+		"Only create a helper when no existing tool covers the operation",
 		"record briefly why",
 	} {
-		if !strings.Contains(doc, required) {
+		if !containsNormalizedProse(doc, required) {
 			t.Errorf("AGENTS.md helper rule missing %q", required)
 		}
 	}
@@ -64,14 +63,20 @@ func TestAgentCatalogDocumentsIntentSearchDecision(t *testing.T) {
 	doc := readDoc(t, "../AGENTS.md")
 
 	for _, required := range []string{
+		"No new catalog-search tool is justified yet",
+	} {
+		if !containsNormalizedProse(doc, required) {
+			t.Errorf("AGENTS.md intent-search decision missing %q", required)
+		}
+	}
+	for _, literal := range []string{
 		"### Intent-search tool decision",
 		"`tools/list`",
 		"`api_tool.list_resources`",
-		"No new catalog-search tool is justified yet",
 		"bounded top-k",
 	} {
-		if !strings.Contains(doc, required) {
-			t.Errorf("AGENTS.md intent-search decision missing %q", required)
+		if !strings.Contains(doc, literal) {
+			t.Errorf("AGENTS.md intent-search decision missing literal %q", literal)
 		}
 	}
 }
