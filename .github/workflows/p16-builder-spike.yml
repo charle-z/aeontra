@@ -47,7 +47,20 @@ jobs:
 
       - name: Install and verify rootless service
         run: |
-          sudo /usr/share/mcp-devbox-builder-candidate/install-preverified.sh
+          set -Eeuo pipefail
+          install_log="$RUNNER_TEMP/install-preverified.log"
+          set +e
+          sudo /usr/share/mcp-devbox-builder-candidate/install-preverified.sh 2>&1 | tee "$install_log"
+          install_status=${PIPESTATUS[0]}
+          set -e
+          if test "$install_status" -ne 0; then
+            message="$(tail -n 24 "$install_log")"
+            message=${message//'%'/'%25'}
+            message=${message//$'\r'/'%0D'}
+            message=${message//$'\n'/' | '}
+            printf '::error title=Rootless service installation failed::%s\n' "$message"
+            exit "$install_status"
+          fi
           sudo systemd-analyze verify /etc/systemd/system/mcp-devbox-buildkit.service
           sudo test -f /etc/apparmor.d/mcp-devbox-buildkit-runc
           sudo cmp -s /etc/apparmor.d/mcp-devbox-buildkit-runc /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit-runc.apparmor
@@ -216,6 +229,7 @@ jobs:
         with:
           name: p16-rootless-buildkit-candidate-${{ github.sha }}
           path: |
+            ${{ runner.temp }}/install-preverified.log
             ${{ runner.temp }}/builder-properties.txt
             ${{ runner.temp }}/builder-processes.txt
             ${{ runner.temp }}/integrated-first-build.log
