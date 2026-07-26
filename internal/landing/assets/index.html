@@ -5,93 +5,98 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0000A8">
-  <meta name="description" content="MCP Devbox is a narrow, auditable control plane that lets AI agents work on real software without receiving a free shell.">
-  <meta property="og:title" content="MCP Devbox — Secure Agent Firmware">
-  <meta property="og:description" content="Real repository and deployment work through explicit, bounded authority.">
+  <meta name="description" content="MCP Devbox is a narrow, auditable control plane that lets AI agents work on real software without receiving a free shell." data-es="MCP Devbox es un plano de control acotado y auditable que permite a agentes de IA trabajar sobre software real sin recibir un shell libre." data-en="MCP Devbox is a narrow, auditable control plane that lets AI agents work on real software without receiving a free shell." data-i18n-attr="content">
+  <meta property="og:title" content="MCP Devbox — Secure Agent Firmware" data-es="MCP Devbox — Firmware seguro para agentes" data-en="MCP Devbox — Secure Agent Firmware" data-i18n-attr="content">
+  <meta property="og:description" content="Real repository and deployment work through explicit, bounded authority." data-es="Trabajo real sobre repositorios y despliegues mediante autoridad explícita y acotada." data-en="Real repository and deployment work through explicit, bounded authority." data-i18n-attr="content">
   <meta property="og:type" content="website">
   <meta property="og:image" content="/landing/assets/social-card.svg">
   <meta name="twitter:card" content="summary_large_image">
-  <title>MCP Devbox — Secure Agent Firmware</title>
+  <title data-es="MCP Devbox — Firmware seguro para agentes" data-en="MCP Devbox — Secure Agent Firmware">MCP Devbox — Secure Agent Firmware</title>
   <link rel="stylesheet" href="/landing/assets/app.css">
   <script src="/landing/assets/app.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#content">Skip to content</a>
+  <a class="skip-link" href="#content" data-es="Saltar al contenido" data-en="Skip to content">Skip to content</a>
 
-  <div class="boot" id="boot" aria-label="MCP Devbox startup summary">
+  <div class="boot" id="boot" aria-label="MCP Devbox startup summary" data-es="Resumen de arranque de MCP Devbox" data-en="MCP Devbox startup summary" data-i18n-attr="aria-label">
     <div class="boot-window">
       <p class="boot-title">MCP DEVBOX OPERATIONS FIRMWARE</p>
-      <p>PUBLIC SHOWCASE POST</p>
-      <p>authority boundary ........ presentation-only <span class="ok">[ENFORCED]</span></p>
-      <p>control-plane access ...... absent <span class="ok">[ENFORCED]</span></p>
-      <p>runtime identity .......... /version <span class="ok">[PUBLIC]</span></p>
-      <p>policy explorer ........... local simulation <span class="ok">[NO SERVER CALL]</span></p>
-      <p>host ...................... CubePath / Coolify <span class="ok">[ONLINE]</span></p>
-      <button type="button" id="skipBoot">[ Press any key to continue ]</button>
+      <p data-es="SUPERFICIE PÚBLICA DE PRESENTACIÓN" data-en="PUBLIC SHOWCASE POST">PUBLIC SHOWCASE POST</p>
+      <p><span data-es="límite de autoridad ........ presentation-only " data-en="authority boundary ........ presentation-only ">authority boundary ........ presentation-only </span><span class="ok">[ENFORCED]</span></p>
+      <p><span data-es="acceso al control plane ..... ausente " data-en="control-plane access ...... absent ">control-plane access ...... absent </span><span class="ok">[ENFORCED]</span></p>
+      <p><span data-es="identidad del runtime ....... /version " data-en="runtime identity .......... /version ">runtime identity .......... /version </span><span class="ok">[PUBLIC]</span></p>
+      <p><span data-es="explorador de políticas .... local simulation " data-en="policy explorer ........... local simulation ">policy explorer ........... local simulation </span><span class="ok">[NO SERVER CALL]</span></p>
+      <p><span data-es="host ....................... CubePath / Coolify " data-en="host ...................... CubePath / Coolify ">host ...................... CubePath / Coolify </span><span class="ok">[ONLINE]</span></p>
+      <button type="button" id="skipBoot" data-es="[ Pulsa cualquier tecla para continuar ]" data-en="[ Press any key to continue ]">[ Press any key to continue ]</button>
     </div>
   </div>
 
   <div class="machine">
     <header class="topbar">
       <a class="brand" href="#thesis">MCP DEVBOX</a>
-      <nav aria-label="Primary">
-        <a href="#authority">Authority</a>
-        <a href="#policy">Policy</a>
-        <a href="#path">Path</a>
-        <a href="#evidence">Evidence</a>
+      <nav aria-label="Primary" data-es="Principal" data-en="Primary" data-i18n-attr="aria-label">
+        <a href="#authority" data-es="Autoridad" data-en="Authority">Authority</a>
+        <a href="#policy" data-es="Política" data-en="Policy">Policy</a>
+        <a href="#path" data-es="Flujo" data-en="Path">Path</a>
+        <a href="#evidence" data-es="Evidencia" data-en="Evidence">Evidence</a>
         <a href="#runtime">Runtime</a>
-        <a href="#limits">Limits</a>
+        <a href="#limits" data-es="Límites" data-en="Limits">Limits</a>
       </nav>
-      <p class="runtime-chip"><span id="topStatus" class="warn">checking</span> · <span id="topCommit">runtime</span></p>
+      <div class="topbar-tools">
+        <div class="language-toggle" id="languageToggle" role="group" aria-label="Language" data-es="Idioma" data-en="Language" data-i18n-attr="aria-label">
+          <span aria-hidden="true">[</span><button type="button" data-language="es" aria-pressed="false">ES</button><span aria-hidden="true">|</span><button type="button" data-language="en" aria-pressed="false">EN</button><span aria-hidden="true">]</span>
+        </div>
+        <p class="runtime-chip"><span id="topStatus" class="warn">checking</span> · <span id="topCommit">runtime</span></p>
+      </div>
     </header>
 
     <main class="document-pane" id="content" tabindex="-1">
       <div class="wrap">
-        <section id="thesis" data-hint="Scroll to inspect the authority model">
-          <p class="eyebrow">00 · THESIS</p>
-          <h1>An AI agent that ships real software without receiving a free shell.</h1>
-          <p class="lede">MCP Devbox gives an agent narrow capabilities for repository work, validation, pull requests and deployment. The model reasons; the control plane constrains, records and revalidates the effect.</p>
-          <p class="sub">It is single-owner infrastructure built around one premise: capability is useful, custody is not. Much of the project was developed through its own MCP surface, including sessions driven from a phone, while blocking gates remained authoritative.</p>
-          <div class="status-grid" aria-label="Capability status">
+        <section id="thesis" data-es="Desplázate para inspeccionar el modelo de autoridad" data-en="Scroll to inspect the authority model" data-label-es="TESIS" data-label-en="THESIS" data-i18n-role="hint">
+          <p class="eyebrow" data-es="00 · TESIS" data-en="00 · THESIS">00 · THESIS</p>
+          <h1 data-es="Un agente de IA que entrega software real sin recibir un shell libre." data-en="An AI agent that ships real software without receiving a free shell.">An AI agent that ships real software without receiving a free shell.</h1>
+          <p class="lede prose" data-es="MCP Devbox ofrece a un agente capacidades acotadas para trabajar con repositorios, validar, crear pull requests y desplegar. El modelo razona; el control plane limita, registra y revalida el efecto." data-en="MCP Devbox gives an agent narrow capabilities for repository work, validation, pull requests and deployment. The model reasons; the control plane constrains, records and revalidates the effect.">MCP Devbox gives an agent narrow capabilities for repository work, validation, pull requests and deployment. The model reasons; the control plane constrains, records and revalidates the effect.</p>
+          <p class="sub prose" data-es="Es infraestructura de un solo propietario construida sobre una premisa: la capacidad es útil; la custodia, no. Gran parte del proyecto se desarrolló mediante su propia superficie MCP, incluso desde un teléfono, mientras los gates bloqueantes siguieron siendo autoritativos." data-en="It is single-owner infrastructure built around one premise: capability is useful, custody is not. Much of the project was developed through its own MCP surface, including sessions driven from a phone, while blocking gates remained authoritative.">It is single-owner infrastructure built around one premise: capability is useful, custody is not. Much of the project was developed through its own MCP surface, including sessions driven from a phone, while blocking gates remained authoritative.</p>
+          <div class="status-grid" aria-label="Capability status" data-es="Estado de capacidades" data-en="Capability status" data-i18n-attr="aria-label">
             <article data-status="implemented">
-              <h2>IMPLEMENTED</h2>
-              <p>Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.</p>
+              <h2 data-es="IMPLEMENTADO" data-en="IMPLEMENTED">IMPLEMENTED</h2>
+              <p data-es="Operaciones de repositorio, pull requests y diagnósticos de GitHub, despliegue con Coolify, memoria Brain, resultados acotados, consola autenticada y workcells Edge salientes." data-en="Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.">Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.</p>
             </article>
             <article data-status="experimental">
-              <h2>EXPERIMENTAL</h2>
-              <p>Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.</p>
+              <h2 data-es="EXPERIMENTAL" data-en="EXPERIMENTAL">EXPERIMENTAL</h2>
+              <p data-es="Los perfiles de ejecución más amplios y los workcells locales avanzados siguen guiados por evidencia; no se asumen universales." data-en="Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.">Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.</p>
             </article>
             <article data-status="planned">
-              <h2>PLANNED</h2>
-              <p>Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.</p>
+              <h2 data-es="PLANEADO" data-en="PLANNED">PLANNED</h2>
+              <p data-es="No se afirma operación multi-tenant ni aislamiento universal. Toda expansión futura debe preservar el mismo límite de autoridad." data-en="Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.">Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.</p>
             </article>
           </div>
         </section>
 
-        <section id="authority" data-hint="The product is the boundary, not the tool count">
-          <p class="eyebrow">01 · AUTHORITY MODEL</p>
-          <h2>THE DIFFERENCE IS AUTHORITY, NOT ACCESS</h2>
-          <p class="sub">A terminal wrapper is easy. MCP Devbox deliberately exposes less:</p>
+        <section id="authority" data-es="El producto es el límite, no el número de herramientas" data-en="The product is the boundary, not the tool count" data-label-es="AUTORIDAD" data-label-en="AUTHORITY" data-i18n-role="hint">
+          <p class="eyebrow" data-es="01 · MODELO DE AUTORIDAD" data-en="01 · AUTHORITY MODEL">01 · AUTHORITY MODEL</p>
+          <h2 data-es="LA DIFERENCIA ES LA AUTORIDAD, NO EL ACCESO" data-en="THE DIFFERENCE IS AUTHORITY, NOT ACCESS">THE DIFFERENCE IS AUTHORITY, NOT ACCESS</h2>
+          <p class="sub prose" data-es="Crear un wrapper de terminal es fácil. MCP Devbox expone menos de forma deliberada:" data-en="A terminal wrapper is easy. MCP Devbox deliberately exposes less:">A terminal wrapper is easy. MCP Devbox deliberately exposes less:</p>
           <ul class="checks">
-            <li>A directory jail covers file operations and command execution.</li>
-            <li>Secret denial checks both path and returned content, then redacts bounded output.</li>
-            <li>Commands come from a closed allowlist. There is no general shell tool.</li>
-            <li>Existing files are changed patch-first and validated before application.</li>
-            <li>Consequential actions use expiring, single-use plans and revalidate state at execution.</li>
-            <li>Credentials are used by trusted adapters and never returned to a model turn.</li>
+            <li data-es="Una jaula de directorios cubre las operaciones de archivos y la ejecución de comandos." data-en="A directory jail covers file operations and command execution.">A directory jail covers file operations and command execution.</li>
+            <li data-es="La denegación de secretos comprueba la ruta y el contenido devuelto; después redacta la salida acotada." data-en="Secret denial checks both path and returned content, then redacts bounded output.">Secret denial checks both path and returned content, then redacts bounded output.</li>
+            <li data-es="Los comandos provienen de una allowlist cerrada. No existe una herramienta de shell general." data-en="Commands come from a closed allowlist. There is no general shell tool.">Commands come from a closed allowlist. There is no general shell tool.</li>
+            <li data-es="Los archivos existentes se modifican patch-first y se validan antes de aplicar el cambio." data-en="Existing files are changed patch-first and validated before application.">Existing files are changed patch-first and validated before application.</li>
+            <li data-es="Las acciones consecuentes usan planes expirables y de un solo uso, y revalidan el estado al ejecutar." data-en="Consequential actions use expiring, single-use plans and revalidate state at execution.">Consequential actions use expiring, single-use plans and revalidate state at execution.</li>
+            <li data-es="Los adaptadores confiables usan las credenciales y nunca las devuelven a un turno del modelo." data-en="Credentials are used by trusted adapters and never returned to a model turn.">Credentials are used by trusted adapters and never returned to a model turn.</li>
           </ul>
           <div class="firmware-note">
             <p><strong>ABSENT BY CONSTRUCTION</strong></p>
-            <p>Force push, arbitrary host paths, public plan approval and unauthenticated tool execution are not hidden switches. They are not part of this surface.</p>
+            <p data-es="Force push, rutas arbitrarias del host, aprobación pública de planes y ejecución no autenticada de herramientas no son interruptores ocultos. No forman parte de esta superficie." data-en="Force push, arbitrary host paths, public plan approval and unauthenticated tool execution are not hidden switches. They are not part of this surface.">Force push, arbitrary host paths, public plan approval and unauthenticated tool execution are not hidden switches. They are not part of this surface.</p>
           </div>
         </section>
 
-        <section id="policy" data-hint="Eight local cases; no request reaches the control plane">
-          <p class="eyebrow">02 · POLICY EXPLORER</p>
-          <h2>ASK THE AGENT TO MISBEHAVE</h2>
-          <p class="sub">Choose a request. This is a <strong>local simulation</strong> of documented policy outcomes. It sends no request to MCP Devbox and grants no authority.</p>
+        <section id="policy" data-es="Ocho casos locales; ninguna solicitud llega al control plane" data-en="Eight local cases; no request reaches the control plane" data-label-es="POLÍTICA" data-label-en="POLICY" data-i18n-role="hint">
+          <p class="eyebrow" data-es="02 · EXPLORADOR DE POLÍTICAS" data-en="02 · POLICY EXPLORER">02 · POLICY EXPLORER</p>
+          <h2 data-es="PÍDELE AL AGENTE QUE SE PORTE MAL" data-en="ASK THE AGENT TO MISBEHAVE">ASK THE AGENT TO MISBEHAVE</h2>
+          <p class="sub prose"><span data-es="Elige una solicitud. Esta es una " data-en="Choose a request. This is a ">Choose a request. This is a </span><strong data-es="simulación local" data-en="local simulation">local simulation</strong><span data-es=" de los resultados documentados de la política. No envía ninguna solicitud a MCP Devbox ni concede autoridad." data-en=" of documented policy outcomes. It sends no request to MCP Devbox and grants no authority."> of documented policy outcomes. It sends no request to MCP Devbox and grants no authority.</span></p>
           <div class="policy-grid">
-            <div class="policy-requests" role="group" aria-label="Simulated requests">
+            <div class="policy-requests" role="group" aria-label="Simulated requests" data-es="Solicitudes simuladas" data-en="Simulated requests" data-i18n-attr="aria-label">
               <button type="button" data-policy-id="secret" aria-pressed="false">cat .env</button>
               <button type="button" data-policy-id="force" aria-pressed="false">git push --force origin main</button>
               <button type="button" data-policy-id="outside" aria-pressed="false">rm -rf /etc</button>
@@ -102,100 +107,100 @@
               <button type="button" data-policy-id="tests" aria-pressed="false">run the test suite</button>
             </div>
             <div class="verdict" aria-live="polite" aria-atomic="true">
-              <p class="stamp pending" id="policyStamp">SELECT A REQUEST</p>
-              <pre id="policyOutput">policy&gt; awaiting local input</pre>
-              <p class="rule" id="policyRule">Every verdict names the invariant that produces it.</p>
+              <p class="stamp pending" id="policyStamp" data-es="SELECCIONA UNA SOLICITUD" data-en="SELECT A REQUEST">SELECT A REQUEST</p>
+              <pre id="policyOutput" data-es="policy&gt; esperando entrada local" data-en="policy&gt; awaiting local input">policy&gt; awaiting local input</pre>
+              <p class="rule" id="policyRule" data-es="Cada veredicto nombra la invariante que lo produce." data-en="Every verdict names the invariant that produces it.">Every verdict names the invariant that produces it.</p>
             </div>
           </div>
         </section>
 
-        <section id="path" data-hint="The Edge connects outbound only">
-          <p class="eyebrow">03 · REQUEST PATH</p>
-          <h2>HOW A REQUEST TRAVELS</h2>
+        <section id="path" data-es="Edge solo se conecta hacia afuera" data-en="The Edge connects outbound only" data-label-es="FLUJO" data-label-en="PATH" data-i18n-role="hint">
+          <p class="eyebrow" data-es="03 · FLUJO DE SOLICITUD" data-en="03 · REQUEST PATH">03 · REQUEST PATH</p>
+          <h2 data-es="CÓMO VIAJA UNA SOLICITUD" data-en="HOW A REQUEST TRAVELS">HOW A REQUEST TRAVELS</h2>
           <figure class="diagram">
-            <img src="/landing/assets/request-path.svg" alt="Request path from an AI client through MCP Devbox policy, owner approval and bounded adapters to GitHub, Coolify, Brain, validation and an outbound-only Edge.">
-            <figcaption>The public landing is outside this path. It cannot submit a request, approve a plan or reach a private adapter.</figcaption>
+            <img src="/landing/assets/request-path.svg" alt="Request path with a direct policy route for reads and allowlisted commands, and an approval route for consequential actions." data-es="Flujo de solicitud con una ruta directa bajo policy para lecturas y comandos allowlisted, y una ruta de aprobación para acciones consecuentes." data-en="Request path with a direct policy route for reads and allowlisted commands, and an approval route for consequential actions." data-i18n-attr="alt">
+            <figcaption data-es="La landing pública está fuera de este flujo. No puede enviar solicitudes, aprobar planes ni alcanzar un adaptador privado." data-en="The public landing is outside this path. It cannot submit a request, approve a plan or reach a private adapter.">The public landing is outside this path. It cannot submit a request, approve a plan or reach a private adapter.</figcaption>
           </figure>
         </section>
 
-        <section id="host" data-hint="Capacity is measured; CPU is the binding resource">
-          <p class="eyebrow">04 · HOST &amp; ADMISSION</p>
-          <h2>A MICRO VPS, MEASURED INSTEAD OF GUESSED</h2>
-          <p class="sub">The control plane runs on a 2 vCPU, 3.805 GiB KVM guest. The dated 2026-07-22 baseline measured idle and a real no-cache deployment. CPU, not memory, was the demonstrated binding resource.</p>
-          <div class="table-scroll" tabindex="0" aria-label="Measured host capacity">
+        <section id="host" data-es="La capacidad está medida; CPU es el recurso limitante" data-en="Capacity is measured; CPU is the binding resource" data-label-es="HOST" data-label-en="HOST" data-i18n-role="hint">
+          <p class="eyebrow" data-es="04 · HOST Y ADMISIÓN" data-en="04 · HOST &amp; ADMISSION">04 · HOST &amp; ADMISSION</p>
+          <h2 data-es="UNA MICRO VPS, MEDIDA EN VEZ DE SUPUESTA" data-en="A MICRO VPS, MEASURED INSTEAD OF GUESSED">A MICRO VPS, MEASURED INSTEAD OF GUESSED</h2>
+          <p class="sub prose" data-es="El control plane corre en una máquina KVM de 2 vCPU y 3.805 GiB. La línea base fechada 2026-07-22 midió reposo y un despliegue real sin caché. CPU, no memoria, fue el recurso limitante demostrado." data-en="The control plane runs on a 2 vCPU, 3.805 GiB KVM guest. The dated 2026-07-22 baseline measured idle and a real no-cache deployment. CPU, not memory, was the demonstrated binding resource.">The control plane runs on a 2 vCPU, 3.805 GiB KVM guest. The dated 2026-07-22 baseline measured idle and a real no-cache deployment. CPU, not memory, was the demonstrated binding resource.</p>
+          <div class="table-scroll" tabindex="0" aria-label="Measured host capacity" data-es="Capacidad medida del host" data-en="Measured host capacity" data-i18n-attr="aria-label">
             <table>
-              <thead><tr><th>MEASURE</th><th>RESULT</th><th>INTERPRETATION</th></tr></thead>
+              <thead><tr><th data-es="MEDIDA" data-en="MEASURE">MEASURE</th><th data-es="RESULTADO" data-en="RESULT">RESULT</th><th data-es="INTERPRETACIÓN" data-en="INTERPRETATION">INTERPRETATION</th></tr></thead>
               <tbody>
-                <tr><td>idle CPU p95</td><td class="value">41.10%</td><td>control-plane baseline</td></tr>
-                <tr><td>intensive build CPU p95</td><td class="danger">93.20%</td><td>serialized heavy work</td></tr>
-                <tr><td>host memory peak</td><td class="value">2.33 GiB</td><td>no OOM observed</td></tr>
-                <tr><td>CPU steal</td><td class="ok">negligible</td><td>guest workload contention</td></tr>
+                <tr><td data-es="CPU p95 en reposo" data-en="idle CPU p95">idle CPU p95</td><td class="value">41.10%</td><td data-es="línea base del control plane" data-en="control-plane baseline">control-plane baseline</td></tr>
+                <tr><td data-es="CPU p95 durante build intensivo" data-en="intensive build CPU p95">intensive build CPU p95</td><td class="danger">93.20%</td><td data-es="trabajo pesado serializado" data-en="serialized heavy work">serialized heavy work</td></tr>
+                <tr><td data-es="pico de memoria del host" data-en="host memory peak">host memory peak</td><td class="value">2.33 GiB</td><td data-es="sin OOM observado" data-en="no OOM observed">no OOM observed</td></tr>
+                <tr><td>CPU steal</td><td class="ok" data-es="insignificante" data-en="negligible">negligible</td><td data-es="contención dentro del guest" data-en="guest workload contention">guest workload contention</td></tr>
               </tbody>
             </table>
           </div>
           <div class="acceptance-panel">
-            <h3>P16 TARGET-VPS ACCEPTANCE · CLOSED</h3>
-            <p>Both preflights returned 0. All six calibration runs completed with exit status 0 and zero OOM. The deterministic selector chose <strong>65%</strong>; 50% was rejected by duration regression.</p>
+            <h3 data-es="ACEPTACIÓN P16 EN LA VPS OBJETIVO · CERRADA" data-en="P16 TARGET-VPS ACCEPTANCE · CLOSED">P16 TARGET-VPS ACCEPTANCE · CLOSED</h3>
+            <p><span data-es="Ambos preflights devolvieron 0. Las seis ejecuciones de calibración terminaron con exit status 0 y cero OOM. El selector determinista eligió " data-en="Both preflights returned 0. All six calibration runs completed with exit status 0 and zero OOM. The deterministic selector chose ">Both preflights returned 0. All six calibration runs completed with exit status 0 and zero OOM. The deterministic selector chose </span><strong>65%</strong><span data-es="; 50% fue descartado por regresión de duración." data-en="; 50% was rejected by duration regression.">; 50% was rejected by duration regression.</span></p>
             <dl class="kv">
-              <dt>CPU quota</dt><dd>650 ms per second</dd>
-              <dt>memory high</dt><dd>1280 MiB</dd>
-              <dt>memory max</dt><dd>1792 MiB</dd>
-              <dt>task limit</dt><dd>512</dd>
-              <dt>service</dt><dd class="ok">active and enabled</dd>
+              <dt data-es="cuota de CPU" data-en="CPU quota">CPU quota</dt><dd data-es="650 ms por segundo" data-en="650 ms per second">650 ms per second</dd>
+              <dt>MemoryHigh</dt><dd>1280 MiB</dd>
+              <dt>MemoryMax</dt><dd>1792 MiB</dd>
+              <dt>TasksMax</dt><dd>512</dd>
+              <dt data-es="servicio" data-en="service">service</dt><dd class="ok" data-es="activo y habilitado" data-en="active and enabled">active and enabled</dd>
             </dl>
           </div>
         </section>
 
-        <section id="evidence" data-hint="Failures are evidence only when the gate can stop the merge">
-          <p class="eyebrow">05 · EVIDENCE</p>
-          <h2>REAL GATES, INCLUDING THE FAILURES</h2>
-          <div class="evidence-log" aria-label="Dated project evidence">
-            <p><time datetime="2026-07-13">2026-07-13</time> <span class="label fail">FAIL</span> five High container findings and one reachable Go vulnerability blocked closure.</p>
-            <p><time datetime="2026-07-13">2026-07-13</time> <span class="label pass">FIXED</span> affected packages were upgraded or removed; the final image gate proved zero High/Critical findings.</p>
-            <p><time datetime="2026-07-16">2026-07-16</time> <span class="label pass">CLOSED</span> CodeQL path and cookie findings were remediated at source with adversarial regression tests.</p>
-            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">SEALED</span> PR #57 made the catalog discoverable and passed 16 exact-head checks.</p>
-            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">SEALED</span> PR #58 normalized documentary whitespace without weakening literal contracts; 16 checks passed.</p>
-            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">ACCEPTED</span> P16 target-VPS calibration selected 65% after two preflights and six successful runs.</p>
+        <section id="evidence" data-es="Los fallos solo son evidencia cuando el gate puede detener el merge" data-en="Failures are evidence only when the gate can stop the merge" data-label-es="EVIDENCIA" data-label-en="EVIDENCE" data-i18n-role="hint">
+          <p class="eyebrow" data-es="05 · EVIDENCIA" data-en="05 · EVIDENCE">05 · EVIDENCE</p>
+          <h2 data-es="GATES REALES, INCLUIDOS LOS FALLOS" data-en="REAL GATES, INCLUDING THE FAILURES">REAL GATES, INCLUDING THE FAILURES</h2>
+          <div class="evidence-log" aria-label="Dated project evidence" data-es="Evidencia fechada del proyecto" data-en="Dated project evidence" data-i18n-attr="aria-label">
+            <p><time datetime="2026-07-13">2026-07-13</time> <span class="label fail">FAIL</span><span data-es=" cinco hallazgos High del contenedor y una vulnerabilidad Go alcanzable bloquearon el cierre." data-en=" five High container findings and one reachable Go vulnerability blocked closure."> five High container findings and one reachable Go vulnerability blocked closure.</span></p>
+            <p><time datetime="2026-07-13">2026-07-13</time> <span class="label pass">FIXED</span><span data-es=" los paquetes afectados se actualizaron o eliminaron; el gate final de imagen demostró cero hallazgos High/Critical." data-en=" affected packages were upgraded or removed; the final image gate proved zero High/Critical findings."> affected packages were upgraded or removed; the final image gate proved zero High/Critical findings.</span></p>
+            <p><time datetime="2026-07-16">2026-07-16</time> <span class="label pass">CLOSED</span><span data-es=" los hallazgos de CodeQL sobre rutas y cookies se corrigieron en el código fuente con regresiones adversariales." data-en=" CodeQL path and cookie findings were remediated at source with adversarial regression tests."> CodeQL path and cookie findings were remediated at source with adversarial regression tests.</span></p>
+            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">SEALED</span><span data-es=" PR #57 hizo descubrible el catálogo y pasó 16 checks sobre el HEAD exacto." data-en=" PR #57 made the catalog discoverable and passed 16 exact-head checks."> PR #57 made the catalog discoverable and passed 16 exact-head checks.</span></p>
+            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">SEALED</span><span data-es=" PR #58 normalizó el whitespace documental sin debilitar contratos literales; pasaron 16 checks." data-en=" PR #58 normalized documentary whitespace without weakening literal contracts; 16 checks passed."> PR #58 normalized documentary whitespace without weakening literal contracts; 16 checks passed.</span></p>
+            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">ACCEPTED</span><span data-es=" la calibración P16 de la VPS objetivo seleccionó 65% después de dos preflights y seis ejecuciones exitosas." data-en=" P16 target-VPS calibration selected 65% after two preflights and six successful runs."> P16 target-VPS calibration selected 65% after two preflights and six successful runs.</span></p>
           </div>
-          <p class="sub">A threshold is not edited to obtain green. A failure is diagnosed, a bounded change is made, and the full exact-head gate set runs again.</p>
+          <p class="sub prose" data-es="No se edita un umbral para obtener verde. Se diagnostica el fallo, se realiza un cambio acotado y se vuelve a ejecutar el conjunto completo de gates sobre el HEAD exacto." data-en="A threshold is not edited to obtain green. A failure is diagnosed, a bounded change is made, and the full exact-head gate set runs again.">A threshold is not edited to obtain green. A failure is diagnosed, a bounded change is made, and the full exact-head gate set runs again.</p>
         </section>
 
-        <section id="vulnerabilities" data-hint="Findings were fixed, not hidden">
-          <p class="eyebrow">06 · VULNERABILITY LEDGER</p>
-          <h2>DETECTED, REMEDIATED, REGRESSION-TESTED</h2>
+        <section id="vulnerabilities" data-es="Los hallazgos se corrigieron; no se ocultaron" data-en="Findings were fixed, not hidden" data-label-es="VULNERABILIDADES" data-label-en="VULNERABILITIES" data-i18n-role="hint">
+          <p class="eyebrow" data-es="06 · REGISTRO DE VULNERABILIDADES" data-en="06 · VULNERABILITY LEDGER">06 · VULNERABILITY LEDGER</p>
+          <h2 data-es="DETECTADAS, CORREGIDAS Y CUBIERTAS POR REGRESIÓN" data-en="DETECTED, REMEDIATED, REGRESSION-TESTED">DETECTED, REMEDIATED, REGRESSION-TESTED</h2>
           <div class="cards">
             <article class="card">
-              <h3>REACHABLE GO TLS FINDING <span>CLOSED</span></h3>
-              <p class="finding">GO-2026-5856 was reachable through repository call paths.</p>
-              <dl><dt>detected</dt><dd>Govulncheck blocking job</dd><dt>fixed</dt><dd>Go advanced to the patched release across builds and workflows</dd></dl>
+              <h3><span data-es="HALLAZGO GO TLS ALCANZABLE" data-en="REACHABLE GO TLS FINDING">REACHABLE GO TLS FINDING</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
+              <p class="finding" data-es="GO-2026-5856 era alcanzable mediante rutas de llamada del repositorio." data-en="GO-2026-5856 was reachable through repository call paths.">GO-2026-5856 was reachable through repository call paths.</p>
+              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd data-es="job bloqueante de Govulncheck" data-en="Govulncheck blocking job">Govulncheck blocking job</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="Go avanzó a la versión corregida en builds y workflows" data-en="Go advanced to the patched release across builds and workflows">Go advanced to the patched release across builds and workflows</dd></dl>
             </article>
             <article class="card">
-              <h3>GNU WGET FINDINGS <span>CLOSED</span></h3>
-              <p class="finding">Three High findings existed in the final runtime image.</p>
-              <dl><dt>detected</dt><dd>SBOM plus Grype gate</dd><dt>fixed</dt><dd>standalone Wget removed; BusyBox applet used for health checks</dd></dl>
+              <h3><span data-es="HALLAZGOS GNU WGET" data-en="GNU WGET FINDINGS">GNU WGET FINDINGS</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
+              <p class="finding" data-es="Existían tres hallazgos High en la imagen final del runtime." data-en="Three High findings existed in the final runtime image.">Three High findings existed in the final runtime image.</p>
+              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd data-es="SBOM más gate de Grype" data-en="SBOM plus Grype gate">SBOM plus Grype gate</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="se eliminó Wget independiente; el applet de BusyBox se usa en health checks" data-en="standalone Wget removed; BusyBox applet used for health checks">standalone Wget removed; BusyBox applet used for health checks</dd></dl>
             </article>
             <article class="card">
-              <h3>NPM BUNDLED TREE <span>CLOSED</span></h3>
-              <p class="finding">Affected sigstore and picomatch copies remained after the first attempted upgrade.</p>
-              <dl><dt>detected</dt><dd>second image scan</dd><dt>fixed</dt><dd>patched npm installed and the vulnerable bootstrap tree removed entirely</dd></dl>
+              <h3><span data-es="ÁRBOL EMPAQUETADO DE NPM" data-en="NPM BUNDLED TREE">NPM BUNDLED TREE</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
+              <p class="finding" data-es="Las copias afectadas de sigstore y picomatch permanecieron después del primer intento de actualización." data-en="Affected sigstore and picomatch copies remained after the first attempted upgrade.">Affected sigstore and picomatch copies remained after the first attempted upgrade.</p>
+              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd data-es="segundo escaneo de imagen" data-en="second image scan">second image scan</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="se instaló npm corregido y se eliminó por completo el árbol bootstrap vulnerable" data-en="patched npm installed and the vulnerable bootstrap tree removed entirely">patched npm installed and the vulnerable bootstrap tree removed entirely</dd></dl>
             </article>
             <article class="card">
-              <h3>PATH INJECTION FLOW <span>CLOSED</span></h3>
-              <p class="finding">Remote repository input previously participated in validation-runner paths.</p>
-              <dl><dt>detected</dt><dd>CodeQL</dd><dt>fixed</dt><dd>server-owned registry entries and Linux descriptor revalidation before execution</dd></dl>
+              <h3><span data-es="FLUJO DE PATH INJECTION" data-en="PATH INJECTION FLOW">PATH INJECTION FLOW</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
+              <p class="finding" data-es="La entrada remota del repositorio participaba antes en rutas del validation-runner." data-en="Remote repository input previously participated in validation-runner paths.">Remote repository input previously participated in validation-runner paths.</p>
+              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd>CodeQL</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="entradas de registro propiedad del servidor y revalidación de descriptores Linux antes de ejecutar" data-en="server-owned registry entries and Linux descriptor revalidation before execution">server-owned registry entries and Linux descriptor revalidation before execution</dd></dl>
             </article>
             <article class="card">
-              <h3>SESSION COOKIE POSTURE <span>CLOSED</span></h3>
-              <p class="finding">Dynamic cookie security could not be proven on every path.</p>
-              <dl><dt>detected</dt><dd>CodeQL</dd><dt>fixed</dt><dd>creation and deletion always use Secure, HttpOnly and SameSite Strict</dd></dl>
+              <h3><span data-es="POSTURA DE LA COOKIE DE SESIÓN" data-en="SESSION COOKIE POSTURE">SESSION COOKIE POSTURE</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
+              <p class="finding" data-es="La seguridad dinámica de la cookie no podía demostrarse en todas las rutas." data-en="Dynamic cookie security could not be proven on every path.">Dynamic cookie security could not be proven on every path.</p>
+              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd>CodeQL</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="la creación y eliminación siempre usan Secure, HttpOnly y SameSite Strict" data-en="creation and deletion always use Secure, HttpOnly and SameSite Strict">creation and deletion always use Secure, HttpOnly and SameSite Strict</dd></dl>
             </article>
           </div>
         </section>
 
-        <section id="runtime" data-hint="Live values come only from the public /version contract">
-          <p class="eyebrow">07 · LIVE RUNTIME IDENTITY</p>
-          <h2>VERIFY THE DEPLOYED PROCESS</h2>
-          <p class="sub">This panel reads the same safe public identity exposed by <a href="/version">/version</a>. No credential is sent and no private state is requested.</p>
+        <section id="runtime" data-es="Los valores vivos provienen únicamente del contrato público /version" data-en="Live values come only from the public /version contract" data-label-es="RUNTIME" data-label-en="RUNTIME" data-i18n-role="hint">
+          <p class="eyebrow" data-es="07 · IDENTIDAD VIVA DEL RUNTIME" data-en="07 · LIVE RUNTIME IDENTITY">07 · LIVE RUNTIME IDENTITY</p>
+          <h2 data-es="VERIFICA EL PROCESO DESPLEGADO" data-en="VERIFY THE DEPLOYED PROCESS">VERIFY THE DEPLOYED PROCESS</h2>
+          <p class="sub prose"><span data-es="Este panel lee la misma identidad pública segura expuesta por " data-en="This panel reads the same safe public identity exposed by ">This panel reads the same safe public identity exposed by </span><a href="/version">/version</a><span data-es=". No se envía ninguna credencial ni se solicita estado privado." data-en=". No credential is sent and no private state is requested.">. No credential is sent and no private state is requested.</span></p>
           <dl class="kv runtime-values" id="runtimeValues">
             <dt>status</dt><dd id="runtimeStatus" class="warn">checking</dd>
             <dt>version</dt><dd id="runtimeVersion">—</dd>
@@ -205,34 +210,34 @@
             <dt>tool count</dt><dd id="runtimeToolCount">—</dd>
             <dt>catalog hash</dt><dd id="runtimeCatalogHash">—</dd>
           </dl>
-          <p class="runtime-error" id="runtimeMessage" role="status">Loading public runtime identity.</p>
-          <p class="sub">Independent checks: <a href="/healthz">liveness</a> · <a href="/version">JSON identity</a> · <a href="/console">authenticated operator console</a>.</p>
+          <p class="runtime-error" id="runtimeMessage" role="status" data-es="Cargando la identidad pública del runtime." data-en="Loading public runtime identity.">Loading public runtime identity.</p>
+          <p class="sub prose"><span data-es="Comprobaciones independientes: " data-en="Independent checks: ">Independent checks: </span><a href="/healthz" data-es="disponibilidad" data-en="liveness">liveness</a> · <a href="/version" data-es="identidad JSON" data-en="JSON identity">JSON identity</a> · <a href="/console" data-es="consola autenticada del operador" data-en="authenticated operator console">authenticated operator console</a>.</p>
         </section>
 
-        <section id="limits" data-hint="Narrow authority reduces risk; it does not abolish trust">
-          <p class="eyebrow">08 · HONEST LIMITS</p>
-          <h2>WHAT THIS IS NOT</h2>
+        <section id="limits" data-es="La autoridad acotada reduce el riesgo; no elimina la confianza" data-en="Narrow authority reduces risk; it does not abolish trust" data-label-es="LÍMITES" data-label-en="LIMITS" data-i18n-role="hint">
+          <p class="eyebrow" data-es="08 · LÍMITES HONESTOS" data-en="08 · HONEST LIMITS">08 · HONEST LIMITS</p>
+          <h2 data-es="LO QUE ESTO NO ES" data-en="WHAT THIS IS NOT">WHAT THIS IS NOT</h2>
           <ul class="limits">
-            <li>Not a public control panel. This landing cannot call tools, approve plans or inspect private state.</li>
-            <li>Not multi-tenant. The system is single-owner by design.</li>
-            <li>Not a universal terminal. Arbitrary shell access is deliberately absent.</li>
-            <li>Not universal OS isolation. Hard local containment is Linux-oriented; Windows use runs through WSL.</li>
-            <li>Not proof against stolen owner credentials. Narrow authority reduces blast radius but cannot remove trust.</li>
-            <li>Not a claim that every planned profile or orchestrator is implemented.</li>
+            <li data-es="No es un panel de control público. Esta landing no puede llamar tools, aprobar planes ni inspeccionar estado privado." data-en="Not a public control panel. This landing cannot call tools, approve plans or inspect private state.">Not a public control panel. This landing cannot call tools, approve plans or inspect private state.</li>
+            <li data-es="No es multi-tenant. El sistema está diseñado para un solo propietario." data-en="Not multi-tenant. The system is single-owner by design.">Not multi-tenant. The system is single-owner by design.</li>
+            <li data-es="No es una terminal universal. El acceso arbitrario a un shell está ausente deliberadamente." data-en="Not a universal terminal. Arbitrary shell access is deliberately absent.">Not a universal terminal. Arbitrary shell access is deliberately absent.</li>
+            <li data-es="No es aislamiento universal del sistema operativo. La contención local fuerte está orientada a Linux; Windows usa WSL." data-en="Not universal OS isolation. Hard local containment is Linux-oriented; Windows use runs through WSL.">Not universal OS isolation. Hard local containment is Linux-oriented; Windows use runs through WSL.</li>
+            <li data-es="No es prueba contra credenciales robadas del propietario. La autoridad acotada reduce el radio de impacto, pero no elimina la confianza." data-en="Not proof against stolen owner credentials. Narrow authority reduces blast radius but cannot remove trust.">Not proof against stolen owner credentials. Narrow authority reduces blast radius but cannot remove trust.</li>
+            <li data-es="No afirma que todos los perfiles u orquestadores planeados estén implementados." data-en="Not a claim that every planned profile or orchestrator is implemented.">Not a claim that every planned profile or orchestrator is implemented.</li>
           </ul>
           <div class="closing">
-            <p><strong>Any agent. Any stack. Explicit guardrails. Auditable delivery.</strong></p>
-            <p><a href="https://github.com/charle-z/mcp-devbox" rel="noreferrer noopener">Public source and documentation</a></p>
+            <p><strong data-es="Cualquier agente. Cualquier stack. Guardrails explícitos. Entrega auditable." data-en="Any agent. Any stack. Explicit guardrails. Auditable delivery.">Any agent. Any stack. Explicit guardrails. Auditable delivery.</strong></p>
+            <p><a href="https://github.com/charle-z/mcp-devbox" rel="noreferrer noopener" data-es="Código fuente y documentación públicos" data-en="Public source and documentation">Public source and documentation</a></p>
           </div>
         </section>
       </div>
     </main>
 
     <footer class="keybar">
-      <span class="section-label" id="sectionLabel">THESIS</span>
-      <span id="sectionHint">Scroll to inspect the authority model</span>
+      <span class="section-label" id="sectionLabel" data-es="TESIS" data-en="THESIS">THESIS</span>
+      <span id="sectionHint" data-es="Desplázate para inspeccionar el modelo de autoridad" data-en="Scroll to inspect the authority model">Scroll to inspect the authority model</span>
       <span class="spacer"></span>
-      <span>Hosted on CubePath · deployed with Coolify</span>
+      <span data-es="Alojado en CubePath · desplegado con Coolify" data-en="Hosted on CubePath · deployed with Coolify">Hosted on CubePath · deployed with Coolify</span>
     </footer>
   </div>
 </body>
