@@ -153,6 +153,11 @@ prepare_run() {
   printf '%s\n' "$SOURCE_URL" > "$EVIDENCE/source-url"
   printf '%s\n' "$HEALTH_URL" > "$EVIDENCE/health-url"
   printf '%s\n' "$CONTROL_GROUP" > "$EVIDENCE/control-group"
+  if [[ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+    cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns > "$EVIDENCE/apparmor-restrict-unprivileged-userns"
+  else
+    printf 'unsupported\n' > "$EVIDENCE/apparmor-restrict-unprivileged-userns"
+  fi
   uname -srmo > "$EVIDENCE/kernel"
   systemctl show "$SERVICE" --property=User --property=Group --property=ControlGroup --property=CPUQuotaPerSecUSec --property=MemoryHigh --property=MemoryMax --property=TasksMax --property=IOWeight > "$EVIDENCE/service-properties"
   printf 'package\tversion\n' > "$EVIDENCE/host-prerequisites.tsv"

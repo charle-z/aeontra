@@ -9,6 +9,10 @@ UNIT_NAME=mcp-devbox-buildkit.service
 SCRIPT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 UNIT_SOURCE=$SCRIPT_ROOT/$UNIT_NAME
 CONFIG_SOURCE=$SCRIPT_ROOT/buildkitd.toml
+APPARMOR_PROFILE_SOURCE=$SCRIPT_ROOT/mcp-devbox-buildkit-runc.apparmor
+APPARMOR_PROFILE=/etc/apparmor.d/mcp-devbox-buildkit-runc
+APPARMOR_ENABLED=/sys/module/apparmor/parameters/enabled
+APPARMOR_PARSER=/usr/sbin/apparmor_parser
 SOCKET=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
 ROLLBACK=
 WAS_ACTIVE=0
@@ -26,6 +30,23 @@ is_root_owned_private_file() {
   [ "$1" = 0 ] || return 1
   mode=$2
   [ $((0$mode & 0022)) -eq 0 ] || return 1
+}
+
+apparmor_enabled() {
+  [ -r "$APPARMOR_ENABLED" ] && [ "$(cat "$APPARMOR_ENABLED")" = Y ]
+}
+
+load_apparmor_profile() {
+  if apparmor_enabled; then
+    [ -x "$APPARMOR_PARSER" ] && [ ! -L "$APPARMOR_PARSER" ] || fail "AppArmor parser is missing or unsafe"
+    "$APPARMOR_PARSER" -r "$APPARMOR_PROFILE"
+  fi
+}
+
+unload_apparmor_profile() {
+  if apparmor_enabled && [ -f "$APPARMOR_PROFILE" ] && [ ! -L "$APPARMOR_PROFILE" ]; then
+    "$APPARMOR_PARSER" -R "$APPARMOR_PROFILE" >/dev/null 2>&1 || true
+  fi
 }
 
 restore_file() {
@@ -55,6 +76,13 @@ rollback() {
     else
       rm -f "$UNIT_DIR/$UNIT_NAME"
     fi
+    unload_apparmor_profile
+    if [ -f "$ROLLBACK/mcp-devbox-buildkit-runc.apparmor" ]; then
+      install -o root -g root -m 0644 "$ROLLBACK/mcp-devbox-buildkit-runc.apparmor" "$APPARMOR_PROFILE"
+      load_apparmor_profile >/dev/null 2>&1 || true
+    else
+      rm -f "$APPARMOR_PROFILE"
+    fi
     systemctl daemon-reload >/dev/null 2>&1 || true
     if [ "$WAS_ACTIVE" -eq 1 ]; then
       systemctl enable --now "$UNIT_NAME" >/dev/null 2>&1 || true
@@ -66,7 +94,7 @@ rollback() {
 
 [ "$(id -u)" -eq 0 ] || fail "root is required"
 [ "$#" -eq 0 ] || fail "arguments are not accepted"
-for tool in stat sha256sum install systemctl useradd getent runuser cut; do
+for tool in cat stat sha256sum install systemctl useradd getent runuser cut; do
   command -v "$tool" >/dev/null 2>&1 || fail "required host tool is missing"
 done
 for tool in /usr/bin/rootlesskit /usr/bin/newuidmap /usr/bin/newgidmap /usr/bin/slirp4netns /usr/bin/fuse-overlayfs; do
@@ -80,6 +108,10 @@ for file in buildkitd buildctl buildkit-runc SHA256SUMS; do
 done
 is_root_owned_private_file "$UNIT_SOURCE" || fail "service source is unsafe"
 is_root_owned_private_file "$CONFIG_SOURCE" || fail "configuration source is unsafe"
+is_root_owned_private_file "$APPARMOR_PROFILE_SOURCE" || fail "AppArmor profile source is unsafe"
+if apparmor_enabled; then
+  [ -x "$APPARMOR_PARSER" ] && [ ! -L "$APPARMOR_PARSER" ] || fail "AppArmor parser is missing or unsafe"
+fi
 [ "$(wc -l < "$STAGING/SHA256SUMS" | tr -d ' ')" -eq 3 ] || fail "checksum manifest must contain exactly three entries"
 grep -Eq '^[a-f0-9]{64}  buildkitd$' "$STAGING/SHA256SUMS" || fail "buildkitd checksum entry is invalid"
 grep -Eq '^[a-f0-9]{64}  buildctl$' "$STAGING/SHA256SUMS" || fail "buildctl checksum entry is invalid"
@@ -118,6 +150,9 @@ fi
 if [ -f "$UNIT_DIR/$UNIT_NAME" ] && [ ! -L "$UNIT_DIR/$UNIT_NAME" ]; then
   cp -p "$UNIT_DIR/$UNIT_NAME" "$ROLLBACK/$UNIT_NAME"
 fi
+if [ -f "$APPARMOR_PROFILE" ] && [ ! -L "$APPARMOR_PROFILE" ]; then
+  cp -p "$APPARMOR_PROFILE" "$ROLLBACK/mcp-devbox-buildkit-runc.apparmor"
+fi
 if systemctl is-active --quiet "$UNIT_NAME"; then
   WAS_ACTIVE=1
 fi
@@ -131,6 +166,8 @@ mv -f "$INSTALL_ROOT/.buildctl.new" "$INSTALL_ROOT/buildctl"
 mv -f "$INSTALL_ROOT/.buildkit-runc.new" "$INSTALL_ROOT/buildkit-runc"
 install -o root -g root -m 0644 "$CONFIG_SOURCE" "$CONFIG_ROOT/buildkitd.toml"
 install -o root -g root -m 0644 "$UNIT_SOURCE" "$UNIT_DIR/$UNIT_NAME"
+install -o root -g root -m 0644 "$APPARMOR_PROFILE_SOURCE" "$APPARMOR_PROFILE"
+load_apparmor_profile
 systemctl daemon-reload
 systemctl enable --now "$UNIT_NAME"
 

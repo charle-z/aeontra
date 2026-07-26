@@ -13,6 +13,27 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/buildspike"
 )
 
+func TestBuilderAppArmorProfileScopesUserNamespaceGrantToReviewedRunc(t *testing.T) {
+	profile := readFixture(t, "mcp-devbox-buildkit-runc.apparmor")
+	for _, required := range []string{
+		"abi <abi/4.0>,",
+		"profile mcp-devbox-buildkit-runc /usr/local/lib/mcp-devbox-builder/buildkit-runc flags=(unconfined)",
+		"userns,",
+		"include if exists <local/mcp-devbox-buildkit-runc>",
+	} {
+		if !strings.Contains(profile, required) {
+			t.Fatalf("AppArmor profile missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"apparmor_restrict_unprivileged_userns=0", "/** flags=(unconfined)", "/usr/bin/rootlesskit",
+	} {
+		if strings.Contains(profile, forbidden) {
+			t.Fatalf("AppArmor profile contains forbidden %q", forbidden)
+		}
+	}
+}
+
 func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 	unit := readFixture(t, "mcp-devbox-buildkit.service")
 	for _, required := range []string{
@@ -115,6 +136,9 @@ func TestBuilderInstallIsOfflineFixedInputAndRollbackCapable(t *testing.T) {
 		"systemctl enable --now \"$UNIT_NAME\"",
 		"runuser -u mcp-build -- \"$INSTALL_ROOT/buildctl\"",
 		"debug workers",
+		"mcp-devbox-buildkit-runc.apparmor",
+		"/etc/apparmor.d/mcp-devbox-buildkit-runc",
+		"\"$APPARMOR_PARSER\" -r",
 	} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("installer missing %q", required)
@@ -123,6 +147,7 @@ func TestBuilderInstallIsOfflineFixedInputAndRollbackCapable(t *testing.T) {
 	for _, forbidden := range []string{
 		"curl ", "wget ", "git clone", "docker.sock", "eval ", "sh -c", "bash -c",
 		"chmod 777", "--privileged", "http://", "https://",
+		"apparmor_restrict_unprivileged_userns=0", "sysctl -w",
 	} {
 		if strings.Contains(script, forbidden) {
 			t.Fatalf("installer contains forbidden %q", forbidden)
@@ -138,6 +163,8 @@ func TestBuilderRemovePreservesStateCacheIdentityAndStaging(t *testing.T) {
 		"[ \"$#\" -eq 0 ]",
 		"systemctl disable --now",
 		"$INSTALL_ROOT/buildkit-runc",
+		"/etc/apparmor.d/mcp-devbox-buildkit-runc",
+		"AppArmor profile and unit removed",
 		"state, cache, user and preverified staging were preserved",
 	} {
 		if !strings.Contains(script, required) {

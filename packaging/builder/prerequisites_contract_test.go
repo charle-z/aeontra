@@ -20,7 +20,10 @@ func TestBuilderPrerequisitesAreClosedDebianUbuntuAndNonInteractive(t *testing.T
 		"unsupported host operating system",
 		"DEBIAN_FRONTEND=noninteractive",
 		"apt-get update",
-		"apt-get install -y --no-install-recommends rootlesskit uidmap slirp4netns fuse-overlayfs",
+		"packages=\"rootlesskit uidmap slirp4netns fuse-overlayfs\"",
+		"packages=\"$packages apparmor\"",
+		"/sys/module/apparmor/parameters/enabled",
+		"/usr/sbin/apparmor_parser",
 		"/usr/bin/rootlesskit",
 		"/usr/bin/newuidmap",
 		"/usr/bin/newgidmap",
@@ -37,6 +40,7 @@ func TestBuilderPrerequisitesAreClosedDebianUbuntuAndNonInteractive(t *testing.T
 		"eval ", "sh -c", "bash -c", "source /etc/os-release", ". /etc/os-release",
 		"docker.sock", "--privileged", "GITHUB_TOKEN", "COOLIFY_API_TOKEN",
 		"Authorization:", "curl ", "wget ", "latest", "${1", "$1/",
+		"apparmor_restrict_unprivileged_userns=0", "sysctl -w",
 	} {
 		if strings.Contains(script, forbidden) {
 			t.Fatalf("prerequisite installer contains forbidden %q", forbidden)
