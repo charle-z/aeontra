@@ -29,6 +29,8 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 	for _, required := range []string{
 		"Rootless BuildKit candidate fixture",
 		"runs-on: ubuntu-22.04",
+		"Seed Ubuntu 22.04 builder identity",
+		"mcp-build:200000:65536",
 		"stage-official-v0.31.2.sh",
 		"Exercise runc and both Dockerfile frontends with cache reuse",
 		"FROM busybox:1.37.0",

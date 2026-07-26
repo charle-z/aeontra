@@ -42,6 +42,15 @@ jobs:
       - name: Install rootless host prerequisites
         run: sudo /usr/share/mcp-devbox-builder-candidate/install-prerequisites.sh
 
+      - name: Seed Ubuntu 22.04 builder identity
+        run: |
+          sudo useradd --system --user-group --create-home \
+            --home-dir /var/lib/mcp-devbox-buildkit --shell /usr/sbin/nologin mcp-build
+          sudo usermod --add-subuids 200000-265535 --add-subgids 200000-265535 mcp-build
+          getent passwd mcp-build | grep -F ':/var/lib/mcp-devbox-buildkit:/usr/sbin/nologin'
+          grep -Fx 'mcp-build:200000:65536' /etc/subuid
+          grep -Fx 'mcp-build:200000:65536' /etc/subgid
+
       - name: Stage pinned official BuildKit release
         run: sudo /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
 

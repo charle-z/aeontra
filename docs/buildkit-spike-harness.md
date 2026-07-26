@@ -67,8 +67,11 @@ on Ubuntu 22.04. GitHub's hosted Ubuntu 24.04 image denies the nested rootless `
 mount even after its exposed AppArmor sysctls match the confirmed VPS, so it cannot be
 used as evidence for this fixture without weakening a separate host policy. The actual
 Ubuntu 24.04 acceptance gate remains the two VPS preflights followed by the six-run
-calibration. The packaged AppArmor profile is unchanged. The workflow installs rootless
-prerequisites, stages v0.31.2, starts the systemd service, proves
+calibration. Ubuntu 22.04's `useradd` lacks `--add-subids-for-system`, so the fixture
+preseeds the same closed account shape and fixed subordinate ID ranges before exercising
+the installer's existing-account validation path. The packaged AppArmor profile is
+unchanged. The workflow installs rootless prerequisites, stages v0.31.2, starts the
+systemd service, proves
 all observed processes remain in the delegated subtree as `mcp-build`, executes a
 BusyBox `RUN` through the integrated Dockerfile frontend, repeats it with cache reuse,
 then executes a second `RUN` through `docker/dockerfile:1.7` and verifies both output
