@@ -48,7 +48,7 @@ func TestVPSCalibrationIsClosedBoundedAndRollbackCapable(t *testing.T) {
 		"run_preflight external",
 		"FROM busybox:1.37.0\\nRUN echo p16-runc-ok > /ok",
 		"# syntax=docker/dockerfile:1.7\\nFROM busybox:1.37.0",
-		"confirmed_cause=systemd RestrictNamespaces seccomp filter blocked OCI IPC and UTS namespaces",
+		"confirmed_cause=systemd RestrictNamespaces seccomp filter blocked namespaces required by the BuildKit OCI spec",
 		"previous_ci_gap=FROM scratch plus COPY did not invoke runc",
 		"--property=RestrictNamespaces",
 	} {

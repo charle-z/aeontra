@@ -35,7 +35,7 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"# syntax=docker/dockerfile:1.7",
 		"p16-external-runc-ok",
 		"integrated-second-build.log",
-		"RestrictNamespaces=~cgroup",
+		"unexpected systemd namespace filter in builder unit",
 		"Verify stop kills the complete service cgroup",
 		"Verify conservative removal",
 		"cache-usage.txt",

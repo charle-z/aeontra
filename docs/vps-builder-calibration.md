@@ -81,7 +81,7 @@ preflight failure archives its bounded log and prevents all six measurements fro
 starting. This order isolates the OCI runc/namespace path before testing the external
 frontend container.
 
-The evidence includes `preflight-status.tsv`, both preflight logs, the applied
+The evidence includes `preflight-status.tsv`, both preflight logs, the effective
 `RestrictNamespaces` property and `confirmed-incident.txt`. The incident record states
 that the confirmed cause was the systemd namespace seccomp filter, AppArmor was
 discarded, and the former `FROM scratch` plus `COPY` CI fixture never invoked runc.

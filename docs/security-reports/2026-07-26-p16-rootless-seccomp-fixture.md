@@ -2,9 +2,9 @@
 
 ## Cause
 
-The VPS failure was caused by the systemd namespace restriction in `mcp-devbox-buildkit.service`. Denying IPC and UTS namespace creation prevented the OCI runtime child from starting and produced the otherwise opaque final-child PID error.
+The VPS failure was caused by the systemd namespace restriction in `mcp-devbox-buildkit.service`. The direct host control proved IPC and UTS were blocked; the real CI `RUN` and the pinned BuildKit source then proved that cgroup namespace creation is also required on cgroup v2 hosts. Blocking any of those required namespaces prevented the OCI runtime child from starting and produced the otherwise opaque final-child PID error.
 
-The approved correction changes only the namespace restriction from denying cgroup, IPC and UTS namespaces to denying only nested cgroup namespaces. All other service hardening, identity boundaries and CPU, memory, task and I/O controls remain unchanged.
+The first correction removed IPC and UTS from the deny-list, but the new real `RUN` fixture demonstrated that this remained insufficient. BuildKit v0.31.2 appends a cgroup namespace to the OCI specification when cgroup v2 namespace support is present. The final correction therefore removes only the `RestrictNamespaces` directive. All other service hardening, identity boundaries and CPU, memory, task and I/O controls remain unchanged.
 
 AppArmor was ruled out by the VPS evidence and its existing path-scoped profile remains unchanged.
 

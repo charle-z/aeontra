@@ -70,7 +70,10 @@ jobs:
             --property=ProtectProc \
             --property=MemoryHigh --property=MemoryMax --property=TasksMax \
             | tee "$RUNNER_TEMP/builder-properties.txt" >/dev/null
-          sudo grep -Fx 'RestrictNamespaces=~cgroup' /etc/systemd/system/mcp-devbox-buildkit.service
+          if sudo grep -Eq '^RestrictNamespaces=' /etc/systemd/system/mcp-devbox-buildkit.service; then
+            echo 'unexpected systemd namespace filter in builder unit' >&2
+            exit 1
+          fi
           grep -Fx 'User=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'Group=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'KillMode=control-group' "$RUNNER_TEMP/builder-properties.txt"

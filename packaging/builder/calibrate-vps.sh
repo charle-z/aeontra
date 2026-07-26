@@ -162,7 +162,7 @@ prepare_run() {
   systemctl show "$SERVICE" --property=User --property=Group --property=ControlGroup --property=CPUQuotaPerSecUSec --property=MemoryHigh --property=MemoryMax --property=TasksMax --property=IOWeight --property=RestrictNamespaces --property=Delegate --property=ProtectControlGroups > "$EVIDENCE/service-properties"
   printf 'fixture\tstatus\n' > "$EVIDENCE/preflight-status.tsv"
   cat > "$EVIDENCE/confirmed-incident.txt" <<'EOF'
-confirmed_cause=systemd RestrictNamespaces seccomp filter blocked OCI IPC and UTS namespaces
+confirmed_cause=systemd RestrictNamespaces seccomp filter blocked namespaces required by the BuildKit OCI spec
 discarded_cause=AppArmor
 previous_ci_gap=FROM scratch plus COPY did not invoke runc
 required_preflight=integrated dockerfile RUN then external dockerfile frontend RUN

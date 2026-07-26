@@ -51,7 +51,6 @@ ProtectHostname=yes
 ProtectProc=default
 LockPersonality=yes
 RestrictRealtime=yes
-RestrictNamespaces=~cgroup
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadWritePaths=/run/mcp-devbox-buildkit /var/lib/mcp-devbox-buildkit /var/cache/mcp-devbox-buildkit
 

@@ -41,9 +41,10 @@ spike. It is not a public tool and is not installed by the MCP container.
   `KillMode=control-group`;
 - `buildkitd.toml` is checked against the generated rootless configuration and fixes
   one OCI worker, one parallel build and bounded GC/cache thresholds;
-- the service keeps `ProtectProc=default`, denies creation of nested cgroup namespaces,
-  and permits the IPC and UTS namespaces required by OCI process execution; cgroup and
-  process-subtree isolation remain the enforcement boundary;
+- the service keeps `ProtectProc=default` and does not install a systemd namespace
+  seccomp filter. BuildKit v0.31.2 requests IPC, UTS and, on cgroup v2 hosts, cgroup
+  namespaces for OCI process execution; rootless user namespaces plus the service
+  cgroup and process-subtree controls remain the enforcement boundary;
 - `install-preverified.sh` accepts no arguments or URLs, consumes only a private
   root-owned staging directory containing `buildkitd`, `buildctl`, `buildkit-runc`
   and an exact three-entry SHA-256 manifest, creates the system identity with
