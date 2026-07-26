@@ -13,6 +13,9 @@ BUILDER_UNIT=mcp-devbox-buildkit.service
 INSTALL_ROOT=/usr/local/lib/mcp-devbox-builder
 CONFIG_PATH=/etc/mcp-devbox-builder/buildkitd.toml
 UNIT_PATH=/etc/systemd/system/mcp-devbox-buildkit.service
+APPARMOR_PROFILE_PATH=/etc/apparmor.d/mcp-devbox-buildkit-runc
+APPARMOR_ENABLED=/sys/module/apparmor/parameters/enabled
+APPARMOR_PARSER=/usr/sbin/apparmor_parser
 STAGING=/var/lib/mcp-devbox-builder-staging
 WORK=
 REPO=
@@ -63,7 +66,7 @@ validate_invocation() {
   COMMIT=$1
   [ "${#COMMIT}" -eq 40 ] || fail "commit must be one lowercase 40-character SHA"
   printf '%s\n' "$COMMIT" | grep -Eq '^[a-f0-9]{40}$' || fail "commit must be one lowercase 40-character SHA"
-  for tool in awk chmod cmp env flock git grep id install mktemp readlink rm stat systemctl systemd-run; do
+  for tool in awk cat chmod cmp env flock git grep id install mktemp readlink rm stat systemctl systemd-run; do
     command -v "$tool" >/dev/null 2>&1 || fail "required host tool is missing: $tool"
   done
   [ ! -L "$0" ] || fail "bootstrap entrypoint must not be a symlink"
@@ -124,6 +127,10 @@ prepare_private_checkout() {
     set -- $(stat -c '%u %a' "$path")
     [ "$1" -eq 0 ] && [ $((0$2 & 0022)) -eq 0 ] || fail "reviewed builder script metadata changed"
   done
+  path=$REPO/packaging/builder/mcp-devbox-buildkit-runc.apparmor
+  [ -f "$path" ] && [ ! -L "$path" ] || fail "reviewed AppArmor profile is missing or unsafe"
+  set -- $(stat -c '%u %a' "$path")
+  [ "$1" -eq 0 ] && [ $((0$2 & 0022)) -eq 0 ] || fail "reviewed AppArmor profile metadata changed"
 }
 
 verify_existing_candidate() {
@@ -136,13 +143,19 @@ verify_existing_candidate() {
   done
   [ -f "$CONFIG_PATH" ] && [ ! -L "$CONFIG_PATH" ] || fail "existing builder candidate differs from the reviewed configuration"
   [ -f "$UNIT_PATH" ] && [ ! -L "$UNIT_PATH" ] || fail "existing builder candidate differs from the reviewed unit"
+  [ -f "$APPARMOR_PROFILE_PATH" ] && [ ! -L "$APPARMOR_PROFILE_PATH" ] || fail "existing builder candidate differs from the reviewed AppArmor profile"
   cmp -s "$CONFIG_PATH" "$REPO/packaging/builder/buildkitd.toml" || fail "existing builder candidate differs from the reviewed configuration"
   cmp -s "$UNIT_PATH" "$REPO/packaging/builder/mcp-devbox-buildkit.service" || fail "existing builder candidate differs from the reviewed unit"
+  cmp -s "$APPARMOR_PROFILE_PATH" "$REPO/packaging/builder/mcp-devbox-buildkit-runc.apparmor" || fail "existing builder candidate differs from the reviewed AppArmor profile"
+  if [ -r "$APPARMOR_ENABLED" ] && [ "$(cat "$APPARMOR_ENABLED")" = Y ]; then
+    [ -x "$APPARMOR_PARSER" ] && [ ! -L "$APPARMOR_PARSER" ] || fail "AppArmor parser is missing or unsafe"
+    "$APPARMOR_PARSER" -r "$APPARMOR_PROFILE_PATH"
+  fi
   systemctl is-active --quiet "$BUILDER_UNIT" || fail "existing reviewed builder candidate is not active"
 }
 
 reject_partial_installation() {
-  for path in "$UNIT_PATH" "$CONFIG_PATH" "$INSTALL_ROOT/buildkitd" "$INSTALL_ROOT/buildctl" "$INSTALL_ROOT/buildkit-runc"; do
+  for path in "$UNIT_PATH" "$CONFIG_PATH" "$APPARMOR_PROFILE_PATH" "$INSTALL_ROOT/buildkitd" "$INSTALL_ROOT/buildctl" "$INSTALL_ROOT/buildkit-runc"; do
     [ ! -e "$path" ] && [ ! -L "$path" ] || fail "partial or unmanaged builder installation exists"
   done
 }

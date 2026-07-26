@@ -37,6 +37,7 @@ jobs:
           sudo install -o root -g root -m 0755 packaging/builder/remove.sh /usr/share/mcp-devbox-builder-candidate/remove.sh
           sudo install -o root -g root -m 0644 packaging/builder/buildkitd.toml /usr/share/mcp-devbox-builder-candidate/buildkitd.toml
           sudo install -o root -g root -m 0644 packaging/builder/mcp-devbox-buildkit.service /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit.service
+          sudo install -o root -g root -m 0644 packaging/builder/mcp-devbox-buildkit-runc.apparmor /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit-runc.apparmor
 
       - name: Install rootless host prerequisites
         run: sudo /usr/share/mcp-devbox-builder-candidate/install-prerequisites.sh
@@ -44,10 +45,22 @@ jobs:
       - name: Stage pinned official BuildKit release
         run: sudo /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
 
+      - name: Enforce Ubuntu AppArmor user namespace mediation
+        run: |
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+            test "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)" = 1
+          fi
+
       - name: Install and verify rootless service
         run: |
           sudo /usr/share/mcp-devbox-builder-candidate/install-preverified.sh
           sudo systemd-analyze verify /etc/systemd/system/mcp-devbox-buildkit.service
+          sudo test -f /etc/apparmor.d/mcp-devbox-buildkit-runc
+          sudo cmp -s /etc/apparmor.d/mcp-devbox-buildkit-runc /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit-runc.apparmor
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            test "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)" = 1
+          fi
           sudo systemctl is-active --quiet mcp-devbox-buildkit.service
           socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
           sudo test -S "$socket"
@@ -183,6 +196,7 @@ jobs:
           sudo systemctl disable --now mcp-devbox-buildkit.service >/dev/null 2>&1 || true
           sudo rm -rf \
             /usr/share/mcp-devbox-builder-candidate \
+            /etc/apparmor.d/mcp-devbox-buildkit-runc \
             /var/lib/mcp-devbox-builder-staging \
             /var/lib/mcp-devbox-builder-fixture \
             /var/lib/mcp-devbox-buildkit \

@@ -25,6 +25,7 @@ func TestVPSCalibrationIsClosedBoundedAndRollbackCapable(t *testing.T) {
 		"reviewed calibration selector is unavailable",
 		"dpkg-query",
 		"host-prerequisites.tsv",
+		"apparmor-restrict-unprivileged-userns",
 		"exactly one 40-character commit is required",
 		"[[ \"$1\" =~ ^[a-f0-9]{40}$ ]]",
 		"flock -n 9",
