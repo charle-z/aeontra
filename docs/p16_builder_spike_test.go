@@ -28,6 +28,7 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 	workflow := readP16BuilderDoc(t, "../.github/workflows/p16-builder-spike.yml")
 	for _, required := range []string{
 		"Rootless BuildKit candidate fixture",
+		"runs-on: ubuntu-22.04",
 		"stage-official-v0.31.2.sh",
 		"Exercise runc and both Dockerfile frontends with cache reuse",
 		"FROM busybox:1.37.0",
