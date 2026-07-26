@@ -51,8 +51,17 @@ func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 		"--net=slirp4netns",
 		"--disable-host-loopback",
 		"ProtectSystem=strict",
+		"ProtectHome=yes",
+		"ProtectKernelModules=yes",
 		"ProtectControlGroups=yes",
+		"ProtectClock=yes",
 		"ProtectProc=default",
+		"PrivateTmp=yes",
+		"LockPersonality=yes",
+		"RestrictRealtime=yes",
+		"NoNewPrivileges=no",
+		"AmbientCapabilities=",
+		"RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
 		"ConditionFileIsExecutable=/usr/local/lib/mcp-devbox-builder/buildkitd",
 		"ReadWritePaths=/run/mcp-devbox-buildkit /var/lib/mcp-devbox-buildkit /var/cache/mcp-devbox-buildkit",
 	} {
@@ -65,6 +74,7 @@ func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 		"--oci-worker-no-process-sandbox", "network.host", "security.insecure",
 		"ProtectControlGroups=no", "ProtectProc=invisible", "ProtectProc=noaccess", "KillMode=process", "ProcSubset=pid",
 		"ConditionPathIsExecutable=", "RestrictNamespaces=",
+		"ProtectKernelTunables=", "ProtectHostname=",
 	} {
 		if strings.Contains(unit, forbidden) {
 			t.Fatalf("unit contains forbidden %q", forbidden)

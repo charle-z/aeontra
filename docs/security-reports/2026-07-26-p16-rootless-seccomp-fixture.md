@@ -2,9 +2,11 @@
 
 ## Cause
 
-The VPS failure was caused by the systemd namespace restriction in `mcp-devbox-buildkit.service`. The direct host control proved IPC and UTS were blocked; the real CI `RUN` and the pinned BuildKit source then proved that cgroup namespace creation is also required on cgroup v2 hosts. Blocking any of those required namespaces prevented the OCI runtime child from starting and produced the otherwise opaque final-child PID error.
+The VPS failure was one incident with three confirmed systemd hardening blockers in `mcp-devbox-buildkit.service`. First, `RestrictNamespaces` installed seccomp filters that denied IPC, UTS and cgroup namespaces required by the BuildKit v0.31.2 OCI specification on cgroup v2 hosts. That killed the OCI runtime child before it could report its PID.
 
-The first correction removed IPC and UTS from the deny-list, but the new real `RUN` fixture demonstrated that this remained insufficient. BuildKit v0.31.2 appends a cgroup namespace to the OCI specification when cgroup v2 namespace support is present. The final correction therefore removes only the `RestrictNamespaces` directive. All other service hardening, identity boundaries and CPU, memory, task and I/O controls remain unchanged.
+After the namespace filter was removed, the target-host preflight reached the real BusyBox `RUN` and exposed the remaining nested-procfs failure. `ProtectKernelTunables=yes` made `/proc/sys` read-only and blocked the mount by itself. `ProtectHostname=yes` introduced a UTS namespace and became incompatible when combined with the retained `ProtectSystem=strict` mount posture. Removing those two options allowed `unshare --mount-proc` and the real BuildKit preflight to complete.
+
+The final service therefore omits exactly `RestrictNamespaces`, `ProtectKernelTunables` and `ProtectHostname`. `ProtectKernelModules=yes` was tested separately and remains enabled, together with the remaining identity, filesystem, process, address-family, CPU, memory, task and I/O controls. The practical risk of removing the two procfs-related options is negligible because the service runs as the non-root `mcp-build` identity with no ambient capabilities; changing initial-namespace tunables or the host name still requires initial-namespace `CAP_SYS_ADMIN`.
 
 AppArmor was ruled out by the VPS evidence and its existing path-scoped profile remains unchanged. The GitHub-hosted Ubuntu 24.04 runner has a different host policy and denies runc's nested rootless `/proc` mount. CI records only that exact denial as `not-reproducible`; it does not change AppArmor, the operating system or the runner security posture. The target VPS is the runtime acceptance environment.
 

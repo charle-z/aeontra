@@ -1,6 +1,6 @@
 # P16 VPS rootless builder calibration
 
-Status: **implemented as a closed Step 7 operator candidate; real VPS execution and dated baseline are still validation pending.**
+Status: **target-VPS rootless runtime preflight accepted; the dated six-run 50/65/80 quota baseline remains validation pending.**
 
 This runbook governs the one-time 50/65/80 percent calibration of the private rootless BuildKit service. It does not register a public MCP tool, accept a command or URL, expose a Docker socket, change Coolify configuration, or select the final production quota without measured evidence.
 
@@ -82,9 +82,12 @@ starting. This order isolates the OCI runc/namespace path before testing the ext
 frontend container.
 
 The evidence includes `preflight-status.tsv`, both preflight logs, the effective
-`RestrictNamespaces` property and `confirmed-incident.txt`. The incident record states
-that the confirmed cause was the systemd namespace seccomp filter, AppArmor was
-discarded, and the former `FROM scratch` plus `COPY` CI fixture never invoked runc.
+`RestrictNamespaces`, `ProtectKernelTunables`, `ProtectKernelModules` and
+`ProtectHostname` properties, and `confirmed-incident.txt`. The incident record treats
+the namespace filter and the two procfs-obscuring systemd options as one rootless
+container incident, records that `ProtectKernelModules=yes` remains safe and enabled,
+notes that AppArmor was discarded with direct host evidence, and preserves the former
+`FROM scratch` plus `COPY` CI gap.
 
 ## Measurement sequence
 

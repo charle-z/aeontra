@@ -62,13 +62,13 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 
 	calibration := readP16BuilderDoc(t, "vps-builder-calibration.md")
 	for _, required := range []string{
-		"closed Step 7 operator candidate",
 		"50/65/80 percent calibration",
 		"exact value from cgroup `cpu.max`",
 		"30-minute hard timeout",
 		"HTTP 502",
 		"restores `CPUQuota=65%`",
-		"real VPS execution and dated baseline are still validation pending",
+		"target-VPS rootless runtime preflight accepted",
+		"six-run 50/65/80 quota baseline remains validation pending",
 		"Step 8 must not begin",
 		"bootstrap-vps.sh",
 		"mcp-devbox-builder-bootstrap.service",
@@ -81,6 +81,9 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"integrated Dockerfile frontend preflight",
 		"external Dockerfile frontend preflight",
 		"ProtectControlGroups=yes` and `Delegate=yes",
+		"ProtectKernelTunables",
+		"ProtectKernelModules",
+		"ProtectHostname",
 	} {
 		if !strings.Contains(calibration, required) {
 			t.Fatalf("VPS calibration documentation lost %q", required)

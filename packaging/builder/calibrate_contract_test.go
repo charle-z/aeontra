@@ -48,9 +48,16 @@ func TestVPSCalibrationIsClosedBoundedAndRollbackCapable(t *testing.T) {
 		"run_preflight external",
 		"FROM busybox:1.37.0\\nRUN echo p16-runc-ok > /ok",
 		"# syntax=docker/dockerfile:1.7\\nFROM busybox:1.37.0",
-		"confirmed_cause=systemd RestrictNamespaces seccomp filter blocked namespaces required by the BuildKit OCI spec",
+		"confirmed_cause=three systemd hardening options were incompatible with rootless BuildKit containers: RestrictNamespaces, ProtectKernelTunables and ProtectHostname",
+		"blocker_1=RestrictNamespaces installed seccomp filters that denied OCI IPC, UTS and cgroup namespaces",
+		"blocker_2=ProtectKernelTunables obscured procfs paths and prevented a nested procfs mount in the user namespace",
+		"blocker_3=ProtectHostname introduced a UTS namespace and was incompatible with the retained ProtectSystem=strict mount posture",
+		"preserved_hardening=ProtectKernelModules=yes",
 		"previous_ci_gap=FROM scratch plus COPY did not invoke runc",
 		"--property=RestrictNamespaces",
+		"--property=ProtectKernelTunables",
+		"--property=ProtectKernelModules",
+		"--property=ProtectHostname",
 	} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("calibrator missing %q", required)
