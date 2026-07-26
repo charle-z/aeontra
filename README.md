@@ -6,6 +6,11 @@
 Production control plane and authenticated console are hosted on CubePath at
 `https://mcp-devbox-charlez.duckdns.org`.
 
+The same origin serves a public presentation landing at `/`; `/console` remains
+authenticated and `/mcp` remains credential-gated. Its presentation-only boundary,
+assets, responsive behavior and deployment acceptance are documented in
+[`docs/landing/public-showcase.md`](docs/landing/public-showcase.md).
+
 A **secure-by-default**, local-first MCP server that lets ChatGPT and other AI
 agents work on your local repositories — read code, search, apply patches, run
 allowed tests/commands, and keep agent-agnostic project memory — **without giving

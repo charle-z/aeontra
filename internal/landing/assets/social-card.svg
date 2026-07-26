@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">MCP Devbox secure agent firmware</title>
+  <desc id="desc">A blue VGA firmware card describing MCP Devbox as real software delivery through explicit guardrails and bounded authority.</desc>
+  <rect width="1200" height="630" fill="#0000A8"/>
+  <rect x="36" y="36" width="1128" height="558" fill="#000050" stroke="#D8D8D8" stroke-width="4"/>
+  <rect x="36" y="36" width="1128" height="58" fill="#A8A8A8"/>
+  <text x="70" y="75" fill="#000000" font-family="Cascadia Mono,Consolas,Courier New,monospace" font-size="28" font-weight="700">MCP DEVBOX — SECURE AGENT FIRMWARE</text>
+  <g font-family="Cascadia Mono,Consolas,Courier New,monospace">
+    <text x="80" y="190" fill="#FCFC54" font-size="56" font-weight="700">REAL SOFTWARE.</text>
+    <text x="80" y="262" fill="#FCFC54" font-size="56" font-weight="700">NO FREE SHELL.</text>
+    <text x="82" y="342" fill="#F8F8F8" font-size="28">Repository work · validation · pull requests · deployment</text>
+    <text x="82" y="390" fill="#54FCFC" font-size="28">Explicit authority · bounded output · exact-head gates</text>
+    <rect x="80" y="448" width="1040" height="78" fill="#0000A8" stroke="#54FC54" stroke-width="3"/>
+    <text x="104" y="497" fill="#54FC54" font-size="30" font-weight="700">Any agent. Any stack. Explicit guardrails.</text>
+    <text x="80" y="568" fill="#A8A8A8" font-size="22">Hosted on CubePath · deployed with Coolify</text>
+  </g>
+</svg>

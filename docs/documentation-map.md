@@ -13,6 +13,7 @@ The repository is the source of truth; chat history is not.
 | Where can another session resume? | `.agent-memory/handoffs/latest.md` | Meaningful checkpoint, phase closure, or blocking failure. |
 | What did the original Layer 1 MVP promise? | `specs/001-layer-1/` | Historical corrections only; completed evidence must remain checked. |
 | What is planned versus implemented? | `docs/product-roadmap.md` | Milestone status change or roadmap decision. |
+| What governs the public landing and its security boundary? | `docs/landing/public-showcase.md` | Public content, assets, route, metadata, responsive behavior, or runtime identity change. |
 | Why was an architecture decision made? | `docs/adr/` | Accepted/replaced architecture decision. Do not rewrite accepted history. |
 | What was true at a phase closure? | `docs/baselines/` | Create a new dated baseline; do not rewrite old evidence. |
 

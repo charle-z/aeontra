@@ -17,6 +17,7 @@ criteria below remain future requirements until their status changes with eviden
 | Console/showcase | Deployed | P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8`; the original authenticated console remains historical evidence. |
 | Brain memory | Deployed | P9 merge `4fbe1dda02351c632e67c0f10a5c5b314df745e2` is deployed and tagged `p9`; persistent `/brain`, 67 tools, catalog and Brain smokes are verified. |
 | Console 2.0 / P8.1 | Deployed | `main` at `d343264bffdc0ae1bc045a9d723e913be977090c` is deployed healthy and tagged `p8.1`; React Neo-BIOS UI, console OAuth, strict query-key rejection, durable `/state/tasks`, SSE and exact safe-data contracts passed production smoke. |
+| Public showcase | Implemented in source | The existing Go binary embeds the exact public `GET /` presentation-only landing; deployment is accepted only after all exact-head gates pass and the live commit matches the merge. |
 | P11 bounded state and development Edge | Deployed / superseded by P11.2 and P12 | Historical 71-tool foundation remains in `docs/baselines/2026-07-15-p11.md`; the current production catalog has 85 tools. |
 | P11.2 remote OpenCode relay | Deployed | The four-process relay, pinned OpenCode 1.18.1, restart/resume, Bubblewrap isolation, and zero-duplicate turn contract are deployed and form the P12 runtime foundation. |
 | P12 Trusted Linux Workcell | Deployed and validated on Parrot | PR #25 merged at `3946fd7033f28906deb932298387034e2fa27fe8`; one real outbound Parrot runtime completed six sequences and an exact verified repository edit. Onboarding hardening packages `AF_NETLINK`, safe diagnostics, journal migration, and a reproducible preflight. |
@@ -131,6 +132,9 @@ Ship the authenticated dark console first as embedded, dependency-free assets in
 the existing Go application. A separate unauthenticated public showcase may be built
 later only if a submission or public demo requires it; it must remain presentation-only
 and must never proxy the private MCP control plane.
+
+The current source implementation satisfies that later public-showcase boundary; see
+`docs/landing/public-showcase.md` for the exact route, assets and acceptance contract.
 
 Authenticated console scope:
 

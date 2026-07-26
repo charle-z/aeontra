@@ -17,6 +17,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/console"
+	"github.com/charle-z/mcp-devbox/internal/landing"
 	"github.com/charle-z/mcp-devbox/internal/oauth"
 	"github.com/charle-z/mcp-devbox/internal/observability"
 )
@@ -49,13 +50,19 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 	return s.HTTPHandlerWithOptions(token, oauthProvider, HTTPOptions{})
 }
 
-// HTTPHandlerWithOptions preserves the existing MCP/OAuth routes and adds only the
-// authenticated presentation console configured by opts.
+// HTTPHandlerWithOptions preserves the existing MCP/OAuth routes, mounts the
+// unauthenticated presentation-only landing, and adds the authenticated console
+// configured by opts.
 func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provider, opts HTTPOptions) http.Handler {
 	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
 	sessionID := newHTTPSessionID()
 	catalogNotifier := &oneShotCatalogNotifier{}
+	landingHandler, err := landing.New()
+	if err != nil {
+		panic(fmt.Sprintf("invalid landing configuration: %v", err))
+	}
+	landingHandler.Register(mux)
 
 	if oauthProvider != nil {
 		oauthProvider.RegisterRoutes(mux)
