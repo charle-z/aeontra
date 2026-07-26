@@ -53,6 +53,7 @@ func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 		"ProtectSystem=strict",
 		"ProtectControlGroups=yes",
 		"ProtectProc=default",
+		"RestrictNamespaces=~cgroup",
 		"ConditionFileIsExecutable=/usr/local/lib/mcp-devbox-builder/buildkitd",
 		"ReadWritePaths=/run/mcp-devbox-buildkit /var/lib/mcp-devbox-buildkit /var/cache/mcp-devbox-buildkit",
 	} {
@@ -64,7 +65,7 @@ func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 		"/var/run/docker.sock", "/run/docker.sock", "tcp://", "--privileged",
 		"--oci-worker-no-process-sandbox", "network.host", "security.insecure",
 		"ProtectControlGroups=no", "ProtectProc=invisible", "ProtectProc=noaccess", "KillMode=process", "ProcSubset=pid",
-		"ConditionPathIsExecutable=",
+		"ConditionPathIsExecutable=", "RestrictNamespaces=~cgroup ipc uts",
 	} {
 		if strings.Contains(unit, forbidden) {
 			t.Fatalf("unit contains forbidden %q", forbidden)
