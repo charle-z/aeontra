@@ -6,7 +6,7 @@ The VPS failure was caused by the systemd namespace restriction in `mcp-devbox-b
 
 The first correction removed IPC and UTS from the deny-list, but the new real `RUN` fixture demonstrated that this remained insufficient. BuildKit v0.31.2 appends a cgroup namespace to the OCI specification when cgroup v2 namespace support is present. The final correction therefore removes only the `RestrictNamespaces` directive. All other service hardening, identity boundaries and CPU, memory, task and I/O controls remain unchanged.
 
-AppArmor was ruled out by the VPS evidence and its existing path-scoped profile remains unchanged.
+AppArmor was ruled out by the VPS evidence and its existing path-scoped profile remains unchanged. GitHub's Ubuntu 24.04 runner used a stricter `unprivileged_unconfined` sysctl than the confirmed VPS and denied the fixture's `/proc` mount after the namespace filter was removed. The ephemeral CI runner is therefore aligned to the confirmed VPS sysctl posture before exercising runc; no AppArmor product configuration is changed.
 
 ## CI gap
 

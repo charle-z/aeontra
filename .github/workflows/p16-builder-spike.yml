@@ -45,11 +45,15 @@ jobs:
       - name: Stage pinned official BuildKit release
         run: sudo /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
 
-      - name: Enforce Ubuntu AppArmor user namespace mediation
+      - name: Match confirmed VPS AppArmor posture
         run: |
           if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
             test "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)" = 1
+          fi
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_unconfined; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0
+            test "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_unconfined)" = 0
           fi
 
       - name: Install and verify rootless service
@@ -60,6 +64,9 @@ jobs:
           sudo cmp -s /etc/apparmor.d/mcp-devbox-buildkit-runc /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit-runc.apparmor
           if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
             test "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)" = 1
+          fi
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_unconfined; then
+            test "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_unconfined)" = 0
           fi
           sudo systemctl is-active --quiet mcp-devbox-buildkit.service
           socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock

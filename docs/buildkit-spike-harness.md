@@ -62,8 +62,11 @@ arguments, pins the official Linux amd64 release archive, SBOM and Sigstore bund
 SHA-256, extracts only `buildkitd`, `buildctl` and `buildkit-runc`, and publishes a
 private staging directory atomically without replacing different existing content.
 
-`.github/workflows/p16-builder-spike.yml` exercises this package on Ubuntu 24.04:
-it installs rootless prerequisites, stages v0.31.2, starts the systemd service, proves
+`.github/workflows/p16-builder-spike.yml` exercises this package on Ubuntu 24.04.
+The ephemeral runner is aligned with the confirmed VPS AppArmor sysctl posture: user
+namespace mediation remains enabled while `unprivileged_unconfined` remains disabled;
+the packaged AppArmor profile itself is unchanged. The workflow installs rootless
+prerequisites, stages v0.31.2, starts the systemd service, proves
 all observed processes remain in the delegated subtree as `mcp-build`, executes a
 BusyBox `RUN` through the integrated Dockerfile frontend, repeats it with cache reuse,
 then executes a second `RUN` through `docker/dockerfile:1.7` and verifies both output
