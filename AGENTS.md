@@ -83,6 +83,46 @@ as non-reproducible.
   explain why in the commit.
 - No silent broad `except`/error swallowing — log or propagate.
 
+## Tool Discovery Index
+
+Use this short map before scanning the complete catalog in `docs/tools.md`.
+
+| Intent | Canonical tool |
+|---|---|
+| Get initial repository context | `workspace_checkpoint`, then `build_context_pack` only when file context is needed |
+| Read one or several files | `read_file` / `read_many_files` |
+| Search code or text | `search_code` |
+| Change existing files | `apply_patch` |
+| Create a new file | `create_file` |
+| Run an allowlisted command or project tests | `run_command` / `run_tests` |
+| Inspect Git state or changes | `repo_status` / `repo_diff` |
+| Publish the current branch | `repo_publish_preview`, then `repo_publish` |
+| Create a pull request | `source_pull_request_create_preview`, then `source_pull_request_create` |
+| Read a pull request and its exact-head checks | `source_pull_request_status` |
+| Diagnose GitHub Actions failures | `source_pull_request_failure_diagnostics`; use `source_pull_request_job_log` for an exact bounded job log |
+| Merge a completely green pull request | `source_pull_request_merge_preview`, then `source_pull_request_merge` |
+| Inspect or deploy Coolify applications | `platform_apps_list`; use `platform_deploy_preview`, then `platform_deploy` |
+| Read, search, write, or rebuild Brain | `brain_context`, `brain_read`, `brain_search`, `brain_write`, `brain_index` |
+| Continue a large stored result | `result_read` / `result_stage` with its opaque `result_ref` |
+
+**Mandatory lookup rule:** Before writing a script, HTTP client, Go program, or
+temporary helper, search the catalog for a canonical tool for that intention. Only
+create a helper when no existing tool covers the operation, and record briefly why.
+
+### Intent-search tool decision
+
+No new catalog-search tool is justified yet. Standard MCP `tools/list` already
+returns the authoritative schemas, `docs/tools.md` is the checked complete reference,
+and connected clients can narrow loaded schemas by name or description through
+`api_tool.list_resources`. Adding another public tool now would enlarge the catalog
+it is meant to simplify, duplicate client discovery, and risk ambiguous or excessive
+results without evidence that the short index is insufficient.
+
+Revisit this decision only if measured misses continue after the index. Any future
+tool must be read-only, use a closed intent vocabulary or tightly bounded query,
+return a bounded top-k of canonical names with one-line reasons, and never dump full
+schemas or the complete catalog.
+
 ## Architecture Rule (anti-overengineering)
 
 Default to a **simple modular Go daemon.** Do NOT add DDD, hexagonal, microservices,
