@@ -62,16 +62,14 @@ arguments, pins the official Linux amd64 release archive, SBOM and Sigstore bund
 SHA-256, extracts only `buildkitd`, `buildctl` and `buildkit-runc`, and publishes a
 private staging directory atomically without replacing different existing content.
 
-`.github/workflows/p16-builder-spike.yml` exercises the seccomp and OCI runtime path
-on Ubuntu 22.04. GitHub's hosted Ubuntu 24.04 image denies the nested rootless `/proc`
-mount even after its exposed AppArmor sysctls match the confirmed VPS, so it cannot be
-used as evidence for this fixture without weakening a separate host policy. The actual
-Ubuntu 24.04 acceptance gate remains the two VPS preflights followed by the six-run
-calibration. Ubuntu 22.04's `useradd` lacks `--add-subids-for-system`, so the fixture
-preseeds the same closed account shape and fixed subordinate ID ranges before exercising
-the installer's existing-account validation path. The packaged AppArmor profile is
-unchanged. The workflow installs rootless prerequisites, stages v0.31.2, starts the
-systemd service, proves
+`.github/workflows/p16-builder-spike.yml` separates two mandatory checks. Ubuntu
+24.04 installs and removes the exact package, including the reviewed AppArmor 4.0
+profile. Ubuntu 22.04 exercises the exact staged binaries, configuration and systemd
+unit through real OCI `RUN` operations without loading an incompatible AppArmor ABI.
+Its older `useradd` also requires a fixed preseeded account and subordinate ID ranges.
+The hosted Ubuntu 24.04 image denies nested rootless `/proc` mounts even though the real
+VPS permits them, so Ubuntu 24.04 runtime acceptance remains the two VPS preflights
+followed by the six-run calibration. The workflow proves
 all observed processes remain in the delegated subtree as `mcp-build`, executes a
 BusyBox `RUN` through the integrated Dockerfile frontend, repeats it with cache reuse,
 then executes a second `RUN` through `docker/dockerfile:1.7` and verifies both output

@@ -27,7 +27,9 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 
 	workflow := readP16BuilderDoc(t, "../.github/workflows/p16-builder-spike.yml")
 	for _, required := range []string{
-		"Rootless BuildKit candidate fixture",
+		"Rootless BuildKit package fixture",
+		"Rootless runc execution fixture",
+		"runs-on: ubuntu-24.04",
 		"runs-on: ubuntu-22.04",
 		"Seed Ubuntu 22.04 builder identity",
 		"mcp-build:200000:65536",
@@ -39,8 +41,8 @@ func TestP16BuilderSpikeContractRemainsDiscoverable(t *testing.T) {
 		"p16-external-runc-ok",
 		"integrated-second-build.log",
 		"unexpected systemd namespace filter in builder unit",
-		"Verify stop kills the complete service cgroup",
-		"Verify conservative removal",
+		"Verify package stop and conservative removal",
+		"Verify execution stop and removal",
 		"cache-usage.txt",
 		"cache-policy.txt",
 		"buildctl",
