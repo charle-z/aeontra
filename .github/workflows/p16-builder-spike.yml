@@ -121,36 +121,67 @@ jobs:
           sudo chown -R mcp-build:mcp-build "$fixture" "$cache"
           socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
 
-          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+          run_checked() {
+            label=$1
+            log=$2
+            shift 2
+            set +e
+            "$@" 2>&1 | tee "$log"
+            status=${PIPESTATUS[0]}
+            set -e
+            if test "$status" -ne 0; then
+              message="$(tail -n 24 "$log")"
+              message=${message//'%'/'%25'}
+              message=${message//$'\r'/'%0D'}
+              message=${message//$'\n'/' | '}
+              printf '::error title=%s::%s\n' "$label" "$message"
+              return "$status"
+            fi
+          }
+
+          verify_output() {
+            label=$1
+            expected=$2
+            path=$3
+            if ! sudo runuser -u mcp-build -- grep -Fx "$expected" "$path"; then
+              printf '::error title=%s::expected output %s was not present at %s\n' "$label" "$expected" "$path"
+              return 1
+            fi
+          }
+
+          run_checked "Integrated runc no-cache build failed" "$RUNNER_TEMP/integrated-first-build.log" \
+            sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
             --addr "unix://$socket" build --progress plain \
             --frontend dockerfile.v0 \
             --local "context=$integrated_context" --local "dockerfile=$integrated_context" \
             --opt filename=Dockerfile --no-cache \
             --export-cache "type=local,dest=$cache,mode=max,reset=true" \
-            --output "type=local,dest=$integrated_first" \
-            2>&1 | tee "$RUNNER_TEMP/integrated-first-build.log"
-          sudo runuser -u mcp-build -- grep -Fx 'p16-runc-ok' "$integrated_first/ok"
+            --output "type=local,dest=$integrated_first"
+          verify_output "Integrated runc output verification failed" p16-runc-ok "$integrated_first/ok"
 
-          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+          run_checked "Integrated cached build failed" "$RUNNER_TEMP/integrated-second-build.log" \
+            sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
             --addr "unix://$socket" build --progress plain \
             --frontend dockerfile.v0 \
             --local "context=$integrated_context" --local "dockerfile=$integrated_context" \
             --opt filename=Dockerfile \
             --import-cache "type=local,src=$cache" \
             --export-cache "type=local,dest=$cache,mode=max,reset=true" \
-            --output "type=local,dest=$integrated_second" \
-            2>&1 | tee "$RUNNER_TEMP/integrated-second-build.log"
-          sudo runuser -u mcp-build -- grep -Fx 'p16-runc-ok' "$integrated_second/ok"
-          grep -Eq 'CACHED|cached' "$RUNNER_TEMP/integrated-second-build.log"
+            --output "type=local,dest=$integrated_second"
+          verify_output "Integrated cached output verification failed" p16-runc-ok "$integrated_second/ok"
+          if ! grep -Eq 'CACHED|cached' "$RUNNER_TEMP/integrated-second-build.log"; then
+            echo '::error title=Integrated cache verification failed::second integrated build did not report cached execution'
+            exit 1
+          fi
 
-          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+          run_checked "External Dockerfile frontend build failed" "$RUNNER_TEMP/external-frontend-build.log" \
+            sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
             --addr "unix://$socket" build --progress plain \
             --frontend dockerfile.v0 \
             --local "context=$external_context" --local "dockerfile=$external_context" \
             --opt filename=Dockerfile --no-cache \
-            --output "type=local,dest=$external_output" \
-            2>&1 | tee "$RUNNER_TEMP/external-frontend-build.log"
-          sudo runuser -u mcp-build -- grep -Fx 'p16-external-runc-ok' "$external_output/ok"
+            --output "type=local,dest=$external_output"
+          verify_output "External frontend output verification failed" p16-external-runc-ok "$external_output/ok"
 
           sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
             --addr "unix://$socket" du -v \
