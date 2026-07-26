@@ -67,14 +67,14 @@ jobs:
           sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl --addr "unix://$socket" debug workers
           sudo systemctl show mcp-devbox-buildkit.service \
             --property=User --property=Group --property=KillMode \
-            --property=ProtectProc --property=RestrictNamespaces \
+            --property=ProtectProc \
             --property=MemoryHigh --property=MemoryMax --property=TasksMax \
             | tee "$RUNNER_TEMP/builder-properties.txt" >/dev/null
+          sudo grep -Fx 'RestrictNamespaces=~cgroup' /etc/systemd/system/mcp-devbox-buildkit.service
           grep -Fx 'User=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'Group=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'KillMode=control-group' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'ProtectProc=default' "$RUNNER_TEMP/builder-properties.txt"
-          grep -Fx 'RestrictNamespaces=~cgroup' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'MemoryHigh=1342177280' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'MemoryMax=1879048192' "$RUNNER_TEMP/builder-properties.txt"
           grep -Fx 'TasksMax=512' "$RUNNER_TEMP/builder-properties.txt"
