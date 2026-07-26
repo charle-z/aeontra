@@ -39,8 +39,23 @@ func TestP16DurableEdgeJobJournalContractIsDocumented(t *testing.T) {
 		"read-only",
 		"close/reopen persistence",
 	} {
-		if !strings.Contains(strings.ToLower(document), strings.ToLower(required)) {
+		if !containsNormalizedProse(document, required) {
 			t.Errorf("durable Edge journal documentation missing %q", required)
+		}
+	}
+	for _, literal := range []string{
+		"`2`",
+		"`started`",
+		"`completed`",
+		"jr_<sha256>",
+		"offline grace: 10m",
+		"lease: 10m",
+		"mcp-edge doctor",
+		"migration_required",
+		"read-only",
+	} {
+		if !strings.Contains(document, literal) {
+			t.Errorf("durable Edge journal documentation missing literal %q", literal)
 		}
 	}
 	mapDocument := read("documentation-map.md")

@@ -41,8 +41,29 @@ func TestP16ProjectAliasRegistryContractIsDocumented(t *testing.T) {
 		"cleanup_required",
 		"associate one unique safe legacy path",
 	} {
-		if !strings.Contains(strings.ToLower(document), strings.ToLower(required)) {
+		if !containsNormalizedProse(document, required) {
 			t.Errorf("project resolution documentation missing %q", required)
+		}
+	}
+	for _, literal := range []string{
+		"projects.db",
+		"mcp-edge project discover --alias ekoparty",
+		"mcp-edge project status --alias ekoparty",
+		"workspace_conflict",
+		"ambiguous_checkout",
+		"discovery_timeout",
+		"approval_required",
+		"checkout_dirty",
+		"repository_mismatch",
+		"project_prepare(alias=ekoparty",
+		"project_status(alias=ekoparty",
+		"git clone --single-branch -- URL .",
+		"credential_unavailable",
+		"clone_failed",
+		"cleanup_required",
+	} {
+		if !strings.Contains(document, literal) {
+			t.Errorf("project resolution documentation missing literal %q", literal)
 		}
 	}
 	mapDocument := read("documentation-map.md")
@@ -58,7 +79,7 @@ func TestP16ProjectAliasRegistryContractIsDocumented(t *testing.T) {
 		"Clone missing repo into approved root with fixed Git authority",
 		"Expose approved create/associate tools without internal IDs",
 	} {
-		if !strings.Contains(tasks, required) {
+		if !containsNormalizedProse(tasks, required) {
 			t.Errorf("P16 tasks missing project registry checkpoint %q", required)
 		}
 	}

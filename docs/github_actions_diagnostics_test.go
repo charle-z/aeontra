@@ -12,19 +12,25 @@ func TestGitHubActionsDiagnosticsContractIsDocumented(t *testing.T) {
 		t.Fatal(err)
 	}
 	document := string(content)
-	for _, required := range []string{
+	for _, literal := range []string{
 		"GITHUB_TOKEN",
 		"Actions: Read",
 		"Checks: Read",
 		"source_pull_request_failure_diagnostics",
 		"source_pull_request_job_log",
 		"next_offset",
+	} {
+		if !strings.Contains(document, literal) {
+			t.Errorf("GitHub Actions diagnostics documentation missing literal %q", literal)
+		}
+	}
+	for _, required := range []string{
 		"maximum readable window per job: 16 MiB",
 		"without `Authorization`",
 		"No manual GitHub CLI setup is needed",
 	} {
-		if !strings.Contains(document, required) {
-			t.Errorf("GitHub Actions diagnostics documentation missing %q", required)
+		if !containsNormalizedProse(document, required) {
+			t.Errorf("GitHub Actions diagnostics documentation missing prose %q", required)
 		}
 	}
 	tools, err := os.ReadFile("tools.md")
