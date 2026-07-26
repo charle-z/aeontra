@@ -1,0 +1,546 @@
+<title>MCP Devbox — Secure Agent Firmware</title>
+<style>
+  :root{
+    --blue:#0000A8; --blue-dk:#000050; --gray:#A8A8A8; --gray-hi:#D8D8D8; --gray-lo:#545454;
+    --white:#F8F8F8; --yellow:#FCFC54; --cyan:#54FCFC; --cyan-lo:#00A8A8;
+    --red:#FC5454; --green:#54FC54; --amber:#FCA854; --black:#000;
+    --mono:"Cascadia Mono","IBM Plex Mono",Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;border-radius:0!important}
+  html,body{height:100%}
+  body{
+    font-family:var(--mono);font-size:14px;line-height:1.45;
+    background:var(--blue);color:var(--white);overflow:hidden;
+  }
+  .machine{height:100dvh;display:flex;flex-direction:column;background:var(--blue)}
+
+  /* ---------- POST ---------- */
+  #post{position:fixed;inset:0;z-index:50;background:var(--blue);
+    padding:1.5rem 1.3rem;overflow:auto}
+  #post p{white-space:pre-wrap;opacity:0}
+  #post p.on{opacity:1}
+  #post .t{color:var(--cyan);font-weight:700}
+  #post .ok{color:var(--green)} #post .val{color:var(--yellow)}
+  #post .skip{margin-top:1.3rem}
+  #post button{all:unset;cursor:pointer;color:var(--black);background:var(--gray-hi);
+    padding:.1rem 1.6ch;border:1px solid var(--black);box-shadow:3px 3px 0 var(--black);font-weight:700}
+  #post button:focus-visible{outline:2px dotted var(--white);outline-offset:3px}
+  .cur::after{content:"\2588";color:var(--yellow);animation:bl 1s steps(1) infinite}
+  @keyframes bl{50%{opacity:0}}
+
+  /* ---------- top bar ---------- */
+  .bar{flex:none;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+    padding:.2rem .9rem;background:var(--gray);color:var(--black);font-weight:700;
+    border-bottom:2px solid var(--white)}
+  .bar .rev{font-weight:400}
+
+  /* ---------- scroller ---------- */
+  .doc{flex:1;min-height:0;overflow-y:auto;scroll-behavior:smooth;
+    scrollbar-width:thin;scrollbar-color:var(--gray-lo) transparent}
+  .wrap{max-width:82ch;margin:0 auto;padding:1.3rem 1.1rem 2.5rem}
+  section{padding-top:.4rem;margin-bottom:2.1rem;scroll-margin-top:.5rem}
+  .eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.14em;font-size:12px;
+    border-bottom:1px solid var(--gray-lo);padding-bottom:.2rem;margin-bottom:.7rem}
+  h1{font-size:clamp(1.3rem,3.4vw,1.7rem);line-height:1.18;color:var(--yellow);
+    font-weight:700;margin-bottom:.6rem;text-wrap:balance;max-width:44ch}
+  h2{font-size:14px;color:var(--cyan);font-weight:700;margin:1.15rem 0 .35rem;letter-spacing:.05em}
+  p{max-width:70ch;margin-bottom:.55rem}
+  p.lede{color:var(--white)} p.sub{color:var(--gray)}
+  strong{color:var(--yellow);font-weight:400}
+  .rule{height:1px;background:var(--gray-lo);margin:1.1rem 0}
+
+  dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:.1rem 1.6ch;margin:.35rem 0 .6rem}
+  dl.kv dt{color:var(--gray)}
+  dl.kv dd{color:var(--yellow);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+  .ok{color:var(--green)} .warn{color:var(--amber)} .no{color:var(--red)}
+
+  ul{list-style:none;display:flex;flex-direction:column;gap:.22rem;max-width:74ch;margin-bottom:.6rem}
+  ul li{padding-left:2.6ch;position:relative}
+  ul li::before{content:"\25B8";position:absolute;left:0;color:var(--cyan)}
+  ul.no li::before{content:"\00D7";color:var(--red)}
+
+  .scroll{overflow-x:auto;margin-bottom:.6rem}
+  table{border-collapse:collapse;width:100%;min-width:34rem;font-variant-numeric:tabular-nums}
+  th{color:var(--cyan);text-align:left;padding:.1rem 1.4ch .3rem 0;white-space:nowrap;
+    border-bottom:1px solid var(--gray-lo)}
+  td{padding:.12rem 1.4ch;vertical-align:top;white-space:nowrap}
+  td:first-child,th:first-child{padding-left:0}
+  td.y{color:var(--yellow)} td.g{color:var(--green)} td.r{color:var(--red)} td.d{color:var(--gray)}
+
+  /* ---------- policy explorer ---------- */
+  .probe{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:.9rem;align-items:start}
+  .reqs{display:flex;flex-direction:column;gap:.25rem}
+  .reqs button{all:unset;cursor:pointer;display:block;padding:.22rem .8ch;
+    border:1px solid var(--gray-lo);color:var(--white);background:var(--blue-dk);
+    overflow-wrap:anywhere}
+  .reqs button:hover{background:var(--cyan);color:var(--black);border-color:var(--cyan)}
+  .reqs button:focus-visible{outline:2px dotted var(--white);outline-offset:2px}
+  .reqs button[aria-pressed=true]{background:var(--cyan);color:var(--black);
+    border-color:var(--cyan);font-weight:700}
+  .verdict{border:1px solid var(--cyan-lo);background:var(--blue-dk);padding:.7rem .8rem;min-height:13rem}
+  .verdict .stamp{display:inline-block;padding:0 .8ch;font-weight:700;color:var(--black);margin-bottom:.5rem}
+  .stamp.d{background:var(--red)} .stamp.a{background:var(--green)} .stamp.p{background:var(--amber)}
+  .verdict .out{white-space:pre-wrap;min-height:7rem}
+  .verdict .why{color:var(--gray);margin-top:.5rem;border-top:1px solid var(--gray-lo);padding-top:.5rem}
+  .verdict .why b{color:var(--cyan);font-weight:700}
+
+  /* ---------- mermaid ---------- */
+  .mermaid-box{border:1px solid var(--gray-lo);background:var(--blue-dk);
+    padding:.6rem;margin-bottom:.6rem;overflow-x:auto}
+  pre.mermaid{display:block;min-width:0}
+  pre.mermaid svg{max-width:100%;height:auto}
+
+  /* ---------- evidence ---------- */
+  .ev{background:var(--blue-dk);border:1px solid var(--gray-lo);padding:.65rem .8rem;margin-bottom:.6rem}
+  .ev p{max-width:none;white-space:pre-wrap;margin:0}
+  .ev .d{color:var(--cyan-lo)}
+  .ev .lv{display:inline-block;width:6ch}
+  .ev .lv.g{color:var(--green)} .ev .lv.w{color:var(--amber)} .ev .lv.s{color:var(--red)} .ev .lv.i{color:var(--gray)}
+  code{color:var(--yellow)}
+
+  /* ---------- BIOS panels (vulnerability ledger) ---------- */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(21rem,1fr));
+    gap:.55rem;margin-bottom:.7rem}
+  .card{border:1px solid var(--gray-lo);background:var(--blue-dk);display:flex;flex-direction:column}
+  .card h3{display:flex;justify-content:space-between;gap:1.5ch;font-size:13px;font-weight:700;
+    background:var(--gray);color:var(--black);padding:.05rem .8ch}
+  .card .st{white-space:nowrap}
+  .card .body{padding:.45rem .85ch .55rem}
+  .card p.f{color:var(--yellow);max-width:none;margin-bottom:.35rem}
+  .card dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.05rem 1.3ch;font-size:13px}
+  .card dt{color:var(--gray);white-space:nowrap}
+  .card dd{color:var(--white);overflow-wrap:anywhere}
+
+  a{color:var(--cyan);text-decoration:underline;text-underline-offset:2px}
+  a:hover{background:var(--cyan);color:var(--black);text-decoration:none}
+  a:focus-visible{outline:2px dotted var(--white);outline-offset:2px}
+
+  /* ---------- fixed footer ---------- */
+  .keys{flex:none;display:flex;flex-wrap:wrap;gap:.15rem 1.7ch;align-items:center;
+    padding:.22rem .9rem;background:var(--gray);color:var(--black);
+    border-top:2px solid var(--white)}
+  .keys b{font-weight:700}
+  .keys .sec{font-weight:700;background:var(--blue);color:var(--white);padding:0 .8ch}
+  .keys .grow{flex:1}
+  .keys .host{white-space:nowrap}
+
+  @media (max-width:760px){
+    body{font-size:13px}
+    .probe{grid-template-columns:1fr}
+    table{min-width:26rem}
+    .keys .host{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){.cur::after{animation:none} .doc{scroll-behavior:auto}}
+</style>
+
+<!-- ============ POST ============ -->
+<div id="post">
+  <p class="on t">MCP Devbox Operations Firmware — Secure Agent BIOS v0.2.0</p>
+  <p class="on">Copyright (C) 2026 Carlos Acosta. Single-owner build.</p>
+  <p class="on">&nbsp;</p>
+  <p>Host .......................... CubePath / Coolify <span class="ok">[ONLINE]</span></p>
+  <p>Control plane ................. 2 vCPU, 3.8 GiB measured <span class="ok">[OK]</span></p>
+  <p>Tool catalog .................. <span class="val">102 tools</span>, hash verified <span class="ok">[OK]</span></p>
+  <p>Path jail ..................... covers command execution <span class="ok">[ENFORCED]</span></p>
+  <p>Secret deny ................... path + content, output redaction <span class="ok">[ENFORCED]</span></p>
+  <p>Free shell .................... not implemented <span class="ok">[ABSENT]</span></p>
+  <p>Consequential actions ......... single-use TTL plans <span class="ok">[APPROVAL REQUIRED]</span></p>
+  <p>Brain ......................... markdown + SQLite FTS5 <span class="ok">[0 MB RESIDENT]</span></p>
+  <p>Edge workcell ................. outbound-only, WSL/Parrot <span class="ok">[PAIRED]</span></p>
+  <p>Supply chain .................. Ed25519 signed bundles, SBOM <span class="ok">[VERIFIED]</span></p>
+  <p>&nbsp;</p>
+  <p>Built largely by the agent itself. From a phone.</p>
+  <p>Entering setup utility<span class="cur"></span></p>
+  <p class="skip"><button id="skip">[ Press any key to continue ]</button></p>
+</div>
+
+<!-- ============ MACHINE ============ -->
+<div class="machine">
+  <div class="bar">
+    <span>MCP DEVBOX &mdash; SECURE AGENT FIRMWARE</span>
+    <span class="rev">Hosted on CubePath &middot; rev cfbf1d4 &middot; 102 tools</span>
+  </div>
+
+  <div class="doc" id="doc">
+    <div class="wrap">
+
+      <!-- 1 THESIS -->
+      <section id="thesis" data-hint="&darr; Scroll to read  &middot;  Esc  Boot screen">
+        <h1>An AI agent that builds and ships real software on my own infrastructure &mdash; without a free shell.</h1>
+        <p class="lede">MCP Devbox turns a <strong>ChatGPT subscription I already pay for</strong> into an agent that
+works on real repositories: read, patch, run tests, create repos, deploy. <strong>No API costs.</strong>
+The agent gets capability, not custody of the machine.</p>
+        <p class="sub">It exists because ChatGPT Plus and Codex have limits &mdash; different limits &mdash; and both
+run in environments I do not control. Paired with Coolify on CubePath I get control, persistent memory and
+my own rules. It has since grown an Edge that operates safely on my own WSL machine.</p>
+        <p class="sub">Most of this codebase was written by the agent through its own MCP surface, much of it
+<strong>from the ChatGPT mobile app</strong>, in sessions of roughly 102 minutes. The project deploys,
+validates and signs its own releases.</p>
+      </section>
+
+      <!-- 2 AUTHORITY -->
+      <section id="authority" data-hint="The differentiator is the authority model, not the tool count">
+        <p class="eyebrow">01 &middot; AUTHORITY MODEL</p>
+        <h2>THE DIFFERENCE IS AUTHORITY, NOT ACCESS</h2>
+        <p class="sub">Handing an agent a terminal is easy, and most projects do exactly that. This is the harder version:</p>
+        <ul>
+          <li>Directory jail that <strong>also covers command execution</strong>, not only file reads</li>
+          <li>Secret denial by <strong>path and content</strong>, with output redaction and canary tests</li>
+          <li><strong>Closed allowlist</strong> of commands &mdash; no free shell exists to call</li>
+          <li>Writes are <strong>patch-first</strong>, validated before they apply</li>
+          <li>Consequential actions need a <strong>cryptographically named, expiring, single-use plan</strong> plus owner approval, revalidated at execution</li>
+          <li>Everything is <strong>audited</strong>; credentials are used, never returned to a model turn</li>
+        </ul>
+        <p class="sub">Nothing here is a runtime toggle. The absent capabilities were never built, so there is
+nothing to misconfigure.</p>
+      </section>
+
+      <!-- 3 POLICY EXPLORER -->
+      <section id="policy" data-hint="Click a request  &middot;  8 cases  &middot;  local simulation, no server call">
+        <p class="eyebrow">02 &middot; POLICY EXPLORER</p>
+        <h2>ASK THE AGENT TO MISBEHAVE</h2>
+        <p class="sub">Pick a request. This is a <strong>local simulation</strong> of the real policy shape:
+no server call, no real authority, nothing of mine is reachable from this page.</p>
+        <div class="probe">
+          <div class="reqs" id="reqs" role="group" aria-label="Requests"></div>
+          <div class="verdict" aria-live="polite">
+            <div id="stamp" class="stamp p">SELECT A REQUEST</div>
+            <div class="out" id="out">policy&gt; awaiting request<span class="cur"></span></div>
+            <div class="why" id="why"><b>RULE</b> &mdash; every verdict names the invariant that produced it.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 HOW IT WORKS -->
+      <section id="how" data-hint="Request path  &middot;  the Edge connects outbound only">
+        <p class="eyebrow">03 &middot; REQUEST PATH</p>
+        <h2>HOW A REQUEST TRAVELS</h2>
+        <div class="mermaid-box">
+<pre class="mermaid">
+flowchart TD
+  C["ChatGPT / Claude Code / opencode<br/>my own subscription"]
+  P["MCP DEVBOX — policy<br/>jail · secret deny · allowlist"]
+  N["Plan<br/>single-use · expiring"]
+  H(["Owner approval"])
+  A["Execute + audit + redaction"]
+  G["GitHub<br/>read · patch · PR · publish"]
+  K["Coolify on CubePath<br/>build · deploy · status"]
+  V["Validation runner<br/>isolated container"]
+  B["Brain<br/>markdown + FTS5"]
+  E["EDGE — outbound only<br/>my WSL / Parrot<br/>non-root · Bubblewrap · signed"]
+
+  C -->|"HTTPS · OAuth2 + PKCE"| P
+  P --> N
+  N -.->|"required"| H
+  H -.->|"granted"| A
+  N --> A
+  A --> G
+  A --> K
+  A --> V
+  A --> B
+  A -->|"job queued"| E
+
+  classDef box fill:#000050,stroke:#54FCFC,stroke-width:1px,color:#F8F8F8
+  classDef core fill:#000050,stroke:#FCFC54,stroke-width:2px,color:#FCFC54
+  classDef edge fill:#000050,stroke:#54FC54,stroke-width:2px,color:#54FC54
+  classDef human fill:#0000A8,stroke:#FCA854,stroke-width:2px,color:#FCA854
+  class C,G,K,V,B box
+  class P,N,A core
+  class E edge
+  class H human
+</pre>
+        </div>
+        <h2>WHY THE EDGE MATTERS</h2>
+        <p class="sub">The Edge connects <strong>outbound only</strong>: no inbound port is ever opened on my machine.
+It runs as a dedicated non-root user inside Bubblewrap, with roots exposed as <strong>aliases</strong> so the
+server can never send an arbitrary path. Privileged effects go through a closed helper profile &mdash; never
+<code>sudo</code> with a model-supplied command.</p>
+        <h2>SELF-HOSTABLE</h2>
+        <p class="sub">This is single-owner infrastructure by design, so instead of a shared demo tenancy the whole
+thing is self-hostable: bring your own Coolify instance and connect your own client. See
+<a href="https://github.com/charle-z/mcp-devbox">the repository</a> and its deploy and connect guides.</p>
+      </section>
+
+      <!-- 5 HOST + ADMISSION -->
+      <section id="host" data-hint="Capacity is measured, not assumed  &middot;  CPU is the binding constraint">
+        <p class="eyebrow">04 &middot; HOST &amp; ADMISSION</p>
+        <h2>SQUEEZING A MICRO VPS, HONESTLY</h2>
+        <p class="sub">The control plane runs on a <strong>2 vCPU / 3.8 GiB</strong> KVM guest. Rather than guess,
+the host was profiled at rest and during a real no-cache Coolify redeploy with bounded probes
+(<code>mpstat</code>, <code>iostat</code>, <code>pidstat</code>, <code>sar</code>, <code>/proc/pressure</code>).
+The interpretation is committed as dated evidence in the repository.</p>
+        <div class="scroll"><table>
+          <tr><th>DIMENSION</th><th>IDLE</th><th>UNDER BUILD</th></tr>
+          <tr><td class="d">CPU p95 (of 2 vCPU)</td><td class="y">41%</td><td class="r">94% (max 100%)</td></tr>
+          <tr><td class="d">host memory peak</td><td class="y">&mdash;</td><td class="y">2.33 GiB, no OOM</td></tr>
+          <tr><td class="d">memory pressure (PSI)</td><td class="g">negligible</td><td class="g">negligible</td></tr>
+          <tr><td class="d">CPU steal</td><td class="g">negligible</td><td class="g">negligible</td></tr>
+          <tr><td class="d">no-cache redeploy</td><td class="d">&mdash;</td><td class="y">~133 s sustained</td></tr>
+        </table></div>
+        <p class="sub">The finding overturned the intuitive answer: <strong>memory was never the bottleneck.
+CPU is.</strong> A single no-cache build saturates the box, so admission control has to be arithmetic rather
+than optimism:</p>
+        <div class="ev"><p><span class="d">capacity </span>  2 vCPU                          =  2.00 vCPU-s / s
+<span class="d">baseline </span>  idle control plane, p95         &asymp;  0.82 vCPU   (41%)
+<span class="d">build job</span>  one no-cache image build, p95   &asymp;  1.88 vCPU   (94%)
+<span class="d">headroom </span>  2.00 &minus; 0.82                     =  1.18 vCPU available
+
+<span class="warn">verdict &rarr; 1.88 &gt; 1.18 &nbsp;&mdash;&nbsp; at most ONE build-class job may be admitted,
+          and it must not share the window with another.</span></p></div>
+        <p class="sub">So the scheduler being built (<strong>P16</strong>) treats CPU as the primary admitted
+dimension, keeps <strong>separate VPS and Edge execution pools</strong> &mdash; heavy work belongs on the Edge,
+which has its own capacity and its own authority &mdash; and adds durable queueing, fairness and deduplication
+so that any number of chats can ask for expensive work without starving the control plane.
+Memory, I/O and network stay enforced, just not pretended to be the current limit.</p>
+        <p class="sub">Honest status: the numbers above are a <strong>measured planning baseline</strong>.
+Final worker calibration and queue enforcement are in progress, not claimed as finished.</p>
+      </section>
+
+      <!-- 6 EVIDENCE -->
+      <section id="evidence" data-hint="Dated evidence in-repo  &middot;  gates that cannot be talked out of failing">
+        <p class="eyebrow">05 &middot; EVIDENCE</p>
+        <h2>WHAT IT LOOKS LIKE WHEN THINGS GO WRONG</h2>
+        <p class="sub">The interesting part of an autonomous pipeline is not the successes, it is what happens
+when a gate says no. These are real, checkable moments from the project's own dated evidence and history
+&mdash; not a rehearsed demo:</p>
+        <div class="ev">
+<p><span class="d">2026-07-20</span> <span class="lv g">SEALED</span> signed Edge release <code>p15.0.5</code> published; Ed25519 manifest binds release, exact commit, protocol, catalog hash and architecture
+<span class="d">2026-07-20</span> <span class="lv w">HOLD</span>  coverage gate: brain package <strong>79.6%</strong> against a required 80.0%
+<span class="d">          </span> <span class="lv s">STOP</span>  merge withheld. Threshold not edited, <code>continue-on-error</code> not added, gate not bypassed
+<span class="d">2026-07-21</span> <span class="lv w">FAIL</span>  image scan: <strong>42 fixable HIGH/CRITICAL</strong> in the base layer, 0 secrets
+<span class="d">          </span> <span class="lv g">FIXED</span> base patched and <code>npm</code> removed from the runtime image; 53/53 tests still pass
+<span class="d">2026-07-21</span> <span class="lv w">FAIL</span>  code scanning upload rejected: private repository without GitHub Advanced Security
+<span class="d">          </span> <span class="lv s">STOP</span>  refused to publish a private repository to satisfy a gate; replaced with a scanner that runs on private repos
+<span class="d">2026-07-21</span> <span class="lv w">FAIL</span>  Edge update returned <code>bundle_mismatch</code>: an installed v1 updater cannot verify a v2 signed bundle
+<span class="d">          </span> <span class="lv g">FIXED</span> crossed the boundary with the signed package itself; device identity and workspaces preserved, nothing recreated
+<span class="d">2026-07-22</span> <span class="lv i">MEAS</span>  host profiled at rest and under a real redeploy; capacity baseline committed</p>
+        </div>
+        <p class="sub">Every phase is sealed with <strong>dated evidence and green remote gates</strong>, or it is
+not sealed at all. A gate that can be talked out of failing is not a gate. The record lives in the repository
+under <code>docs/baselines/</code>, next to the specs and threat models that authorized each change.</p>
+      </section>
+
+      <!-- 7 VULNERABILITIES -->
+      <section id="vulns" data-hint="Found and fixed by the agent itself  &middot;  gates block the merge">
+        <p class="eyebrow">06 &middot; VULNERABILITIES</p>
+        <h2>THE AGENT FINDS AND FIXES ITS OWN SUPPLY CHAIN</h2>
+        <p class="sub">Security scanning was not bolted on for appearances. It was wired so the
+<strong>agent itself sees a finding, diagnoses it and remediates it</strong> &mdash; and so a blocking gate
+stops the merge if it does not. These are real advisories handled across the two projects the agent runs:</p>
+        <div class="cards">
+          <article class="card">
+            <h3><span>trip agent</span><span class="st">CLOSED</span></h3>
+            <div class="body">
+              <p class="f">42 fixable HIGH / CRITICAL in the base image</p>
+              <dl><dt>found by</dt><dd>Trivy image gate</dd>
+                  <dt>fixed</dt><dd>base image patched, <code>npm</code> dropped from the runtime layer; 53/53 tests still pass</dd></dl>
+            </div>
+          </article>
+          <article class="card">
+            <h3><span>trip agent</span><span class="st">CLOSED</span></h3>
+            <div class="body">
+              <p class="f">Drizzle SQL injection advisory</p>
+              <dl><dt>found by</dt><dd>OSV lockfile audit</dd>
+                  <dt>fixed</dt><dd>dependency advanced past the advisory before merge</dd></dl>
+            </div>
+          </article>
+          <article class="card">
+            <h3><span>trip agent</span><span class="st">CLOSED</span></h3>
+            <div class="body">
+              <p class="f">GHSA-frvp-7c67-39w9 &middot; CVSS 5.9</p>
+              <dl><dt>package</dt><dd><code>@hono/node-server 1.19.14</code></dd>
+                  <dt>found by</dt><dd>OSV lockfile audit &mdash; a newly published advisory on a previously clean lockfile</dd>
+                  <dt>fixed</dt><dd>forced to a patched release, lockfile regenerated for frozen install</dd></dl>
+            </div>
+          </article>
+          <article class="card">
+            <h3><span>mcp-devbox</span><span class="st">CLOSED</span></h3>
+            <div class="body">
+              <p class="f">Vulnerable bootstrap npm shipped in the image</p>
+              <dl><dt>found by</dt><dd>dependency graph review</dd>
+                  <dt>fixed</dt><dd>removed from the runtime layer entirely</dd></dl>
+            </div>
+          </article>
+          <article class="card">
+            <h3><span>mcp-devbox</span><span class="st">CLOSED</span></h3>
+            <div class="body">
+              <p class="f">npm brace-expansion advisory</p>
+              <dl><dt>found by</dt><dd>dependency scan</dd>
+                  <dt>fixed</dt><dd>runtime staged from verified tarballs</dd></dl>
+            </div>
+          </article>
+          <article class="card">
+            <h3><span>mcp-devbox</span><span class="st">CLOSED</span></h3>
+            <div class="body">
+              <p class="f">CI security findings</p>
+              <dl><dt>found by</dt><dd>CodeQL</dd>
+                  <dt>fixed</dt><dd>remediated at source, not suppressed</dd></dl>
+            </div>
+          </article>
+          <article class="card">
+            <h3><span>both projects</span><span class="st">0 OPEN</span></h3>
+            <div class="body">
+              <p class="f">Standing gate: HIGH / CRITICAL in a shipped image</p>
+              <dl><dt>enforced by</dt><dd>Grype and Trivy image gates</dd>
+                  <dt>rule</dt><dd>the merge is blocked while any finding exists &mdash; there is no override flag</dd></dl>
+            </div>
+          </article>
+        </div>
+        <p class="sub">The loop is the product: <strong>the scanner reports, the agent reads the actual log,
+maps it to a concrete cause, proposes a bounded fix, revalidates the full suite, and only then may the gate
+go green.</strong> When the fix was not available &mdash; a private repository that could not run GitHub
+code scanning &mdash; the agent refused to publish the repository or disable the check, and swapped in an
+equivalent scanner instead.</p>
+        <p class="sub">Standing gates across both projects: CodeQL, staticcheck, govulncheck, Grype, Trivy,
+Syft/CycloneDX SBOM, Gitleaks full-history, dependency and lockfile audits, the Go race detector and bounded
+fuzzing &mdash; all blocking, all pinned by commit SHA.</p>
+      </section>
+
+      <!-- 8 STATUS -->
+      <section id="status" data-hint="Public and verifiable without credentials">
+        <p class="eyebrow">07 &middot; LIVE RUNTIME IDENTITY</p>
+        <h2>VERIFY IT YOURSELF</h2>
+        <dl class="kv">
+          <dt>status</dt><dd class="ok">healthy</dd>
+          <dt>version</dt><dd>0.2.0</dd>
+          <dt>commit</dt><dd>cfbf1d48578f225b6da14f70bf5c4f7f628a22b3</dd>
+          <dt>protocol</dt><dd>MCP 2024-11-05</dd>
+          <dt>tool_count</dt><dd>102</dd>
+          <dt>catalog_hash</dt><dd>sha256:5a2091d85585d13eb7efbc22d942b2dfbd71fc7d547581803eb7633cac64d68b</dd>
+          <dt>host</dt><dd>CubePath &middot; Coolify &middot; Traefik HTTPS</dd>
+        </dl>
+        <p class="sub"><a href="/healthz">/healthz</a> and <a href="/version">/version</a> answer without
+credentials, so the deployed commit and catalog hash can be checked against the public repository at any time.
+The operator console at <a href="/console">/console</a> is authenticated by design &mdash; it is a cockpit,
+not a public control panel.</p>
+      </section>
+
+      <!-- 8 LIMITS -->
+      <section id="limits" data-hint="Secure-by-default, not secure  &middot;  the distinction is the point">
+        <p class="eyebrow">08 &middot; HONEST LIMITS</p>
+        <h2>WHAT THIS IS NOT</h2>
+        <ul class="no">
+          <li>Universal OS isolation and egress control are <strong>not finished</strong>. Hard isolation is Linux-only; on Windows it runs under WSL2</li>
+          <li><strong>Single-owner.</strong> There is no multi-tenancy, and adding it hastily would weaken the authority model that gives the project its value</li>
+          <li>A stolen owner credential is still a stolen owner credential. Narrow authority shrinks the blast radius; it does not abolish trust</li>
+          <li>The durable autonomous mode needs its own model credential. A chat subscription cannot be turned into an unattended agent by wishing</li>
+          <li>Queue enforcement and final scheduler calibration are <strong>in progress</strong>, measured but not yet complete</li>
+          <li>Not a general-purpose terminal, and deliberately never will be</li>
+        </ul>
+        <div class="rule"></div>
+        <p class="sub"><a href="https://github.com/charle-z/mcp-devbox">Source and documentation</a>
+&middot; <a href="/console">operator console</a> &middot; <a href="/version">runtime identity</a></p>
+        <p class="sub">Deployed on CubePath with Coolify. Built for Cubethon 2026 Q3.</p>
+      </section>
+
+    </div>
+  </div>
+
+  <div class="keys">
+    <span class="sec" id="secLabel">THESIS</span>
+    <span id="hint">&darr; Scroll to read</span>
+    <span class="grow"></span>
+    <span class="host">Hosted on CubePath</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var post = document.getElementById('post');
+
+  /* ---------- POST ---------- */
+  function enter(){
+    if(!post || !post.parentNode) return;
+    post.remove();
+    document.getElementById('doc').focus({preventScroll:true});
+  }
+  document.getElementById('skip').addEventListener('click', enter);
+  if(reduced){ enter(); }
+  else{
+    var lines = post.querySelectorAll('p:not(.on)'), i = 0;
+    var t = setInterval(function(){
+      if(i < lines.length){ lines[i++].classList.add('on'); }
+      else{ clearInterval(t); setTimeout(enter, 850); }
+    }, 150);
+    var once = function(){ clearInterval(t); enter(); removeEventListener('keydown', once); };
+    addEventListener('keydown', once);
+  }
+
+  /* ---------- footer follows the visible section ---------- */
+  var doc = document.getElementById('doc'),
+      secLabel = document.getElementById('secLabel'),
+      hint = document.getElementById('hint'),
+      secs = [].slice.call(doc.querySelectorAll('section'));
+
+  function sync(){
+    var top = doc.scrollTop, best = secs[0];
+    secs.forEach(function(s){ if(s.offsetTop - 90 <= top) best = s; });
+    secLabel.textContent = best.id.toUpperCase();
+    hint.innerHTML = best.dataset.hint || '';
+  }
+  doc.addEventListener('scroll', function(){
+    if(sync.q) return; sync.q = true;
+    requestAnimationFrame(function(){ sync.q = false; sync(); });
+  });
+  sync();
+
+  addEventListener('keydown', function(e){
+    if(post && post.parentNode) return;
+    if(e.key === 'Escape'){ doc.scrollTo({top:0}); }
+  });
+
+  /* ---------- policy explorer ---------- */
+  var CASES = [
+    { q:'cat .env', v:'DENIED', k:'d',
+      o:'agent> read file ".env"\npolicy> path matches secret pattern\npolicy> content scan armed\nresult> DENIED  (no bytes returned, no detail leaked)',
+      w:'<b>SECRET DENY</b> &mdash; refused by path AND content. Even an allowed file is redacted if a secret appears inside it, so a secret cannot be smuggled out through ordinary output.' },
+    { q:'git push --force origin main', v:'NO SUCH CAPABILITY', k:'d',
+      o:'agent> force push to main\npolicy> searching tool catalog for a force-push capability\nresult> NOT FOUND  (git_commit exists and does not push)',
+      w:'<b>ABSENT BY CONSTRUCTION</b> &mdash; the capability was never built. There is nothing to misconfigure and nothing to switch off, because it does not exist in the 102-tool catalog.' },
+    { q:'rm -rf /etc   (outside the repo)', v:'DENIED', k:'d',
+      o:'agent> run command "rm -rf /etc"\npolicy> command not in closed allowlist\npolicy> target escapes directory jail\nresult> DENIED  (the jail covers execution, not only reads)',
+      w:'<b>PATH JAIL + ALLOWLIST</b> &mdash; the jail applies to command execution too. This is exactly where most "AI terminal" tools leak: they jail file access, then hand over a shell that can walk out.' },
+    { q:'bash -c "$(anything)"', v:'NO SUCH CAPABILITY', k:'d',
+      o:'agent> obtain an interactive shell\npolicy> no free-shell tool is exposed\nresult> NOT FOUND  (closed allowlist only)',
+      w:'<b>NO FREE SHELL</b> &mdash; commands come from a closed allowlist. An agent cannot compose its way to arbitrary execution.' },
+    { q:'deploy to production now', v:'PLAN REQUIRED', k:'p',
+      o:'agent> deploy application to production\npolicy> consequential action detected\nplan  > issued: cryptographic name, expiring, single-use\nresult> AWAITING OWNER APPROVAL  (state revalidated at execution)',
+      w:'<b>SINGLE-USE TTL PLAN</b> &mdash; consequential actions are proposed, not performed. The plan expires, is valid once, and re-checks reality before it runs, so a stale approval cannot be replayed.' },
+    { q:'print the GitHub token', v:'DENIED', k:'d',
+      o:'agent> return credential value\npolicy> credentials are never returned to a model turn\nresult> DENIED  (redacted; canary tests enforce this)',
+      w:'<b>NO CREDENTIAL EXFIL</b> &mdash; tokens live in the deployment or on the Edge and are used, never echoed. Tests assert with canary values that they cannot appear in output.' },
+    { q:'read src/app.ts', v:'ALLOWED', k:'a',
+      o:'agent> read file "src/app.ts"\npolicy> inside jail, not a secret path\npolicy> output scanned for secret content\nresult> ALLOWED  (bounded, audited)',
+      w:'<b>ALLOWED AND AUDITED</b> &mdash; the point is not to say no. Ordinary work is fast and permitted; every read is bounded and written to the audit log.' },
+    { q:'run the test suite', v:'ALLOWED', k:'a',
+      o:'agent> run tests\npolicy> command is allowlisted for this profile\nrunner> isolated container, bounded output, timeout\nresult> ALLOWED  (executed off the control plane)',
+      w:'<b>ISOLATED EXECUTION</b> &mdash; tests and builds run in a separate container, so a heavy or hostile build cannot starve the control plane. This is also why CPU admission matters.' }
+  ];
+  var reqs = document.getElementById('reqs'),
+      stamp = document.getElementById('stamp'),
+      out = document.getElementById('out'),
+      why = document.getElementById('why'),
+      typer = null;
+
+  CASES.forEach(function(c){
+    var b = document.createElement('button');
+    b.type = 'button'; b.textContent = c.q;
+    b.setAttribute('aria-pressed','false');
+    b.addEventListener('click', function(){
+      reqs.querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-pressed','false'); });
+      b.setAttribute('aria-pressed','true');
+      stamp.className = 'stamp ' + c.k; stamp.textContent = c.v;
+      why.innerHTML = c.w;
+      if(typer) clearInterval(typer);
+      if(reduced){ out.textContent = c.o; return; }
+      out.textContent = ''; var n = 0;
+      typer = setInterval(function(){
+        out.textContent = c.o.slice(0, ++n);
+        if(n >= c.o.length) clearInterval(typer);
+      }, 6);
+    });
+    reqs.appendChild(b);
+  });
+})();
+</script>
