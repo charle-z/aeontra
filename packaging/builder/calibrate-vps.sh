@@ -159,7 +159,15 @@ prepare_run() {
     printf 'unsupported\n' > "$EVIDENCE/apparmor-restrict-unprivileged-userns"
   fi
   uname -srmo > "$EVIDENCE/kernel"
-  systemctl show "$SERVICE" --property=User --property=Group --property=ControlGroup --property=CPUQuotaPerSecUSec --property=MemoryHigh --property=MemoryMax --property=TasksMax --property=IOWeight > "$EVIDENCE/service-properties"
+  systemctl show "$SERVICE" --property=User --property=Group --property=ControlGroup --property=CPUQuotaPerSecUSec --property=MemoryHigh --property=MemoryMax --property=TasksMax --property=IOWeight --property=RestrictNamespaces --property=Delegate --property=ProtectControlGroups > "$EVIDENCE/service-properties"
+  printf 'fixture\tstatus\n' > "$EVIDENCE/preflight-status.tsv"
+  cat > "$EVIDENCE/confirmed-incident.txt" <<'EOF'
+confirmed_cause=systemd RestrictNamespaces seccomp filter blocked namespaces required by the BuildKit OCI spec
+discarded_cause=AppArmor
+previous_ci_gap=FROM scratch plus COPY did not invoke runc
+required_preflight=integrated dockerfile RUN then external dockerfile frontend RUN
+known_debt=ProtectControlGroups=yes conflicts with Delegate=yes if container cgroup management is enabled later
+EOF
   printf 'package\tversion\n' > "$EVIDENCE/host-prerequisites.tsv"
   local package version
   for package in "${PREREQUISITE_PACKAGES[@]}"; do
@@ -239,6 +247,39 @@ bound_log() {
     chmod 0600 "$temporary"
     mv "$temporary" "$log"
   fi
+}
+
+run_preflight() {
+  local name=$1 context output expected log status
+  context="$RUN_WORK/preflight-$name/context"
+  output="$RUN_WORK/preflight-$name/output"
+  log="$EVIDENCE/preflight-$name.log"
+  install -d -o "$BUILDER_USER" -g "$BUILDER_USER" -m 0700 "$context" "$output"
+  case "$name" in
+    integrated)
+      expected=p16-runc-ok
+      printf 'FROM busybox:1.37.0\nRUN echo p16-runc-ok > /ok\n' > "$context/Dockerfile"
+      ;;
+    external)
+      expected=p16-external-runc-ok
+      printf '# syntax=docker/dockerfile:1.7\nFROM busybox:1.37.0\nRUN echo p16-external-runc-ok > /ok\n' > "$context/Dockerfile"
+      ;;
+    *) fail 'unknown preflight fixture' ;;
+  esac
+  chown "$BUILDER_USER:$BUILDER_USER" "$context/Dockerfile"
+  chmod 0600 "$context/Dockerfile"
+  apply_quota "$DEFAULT_QUOTA"
+  local -a args=(--addr "unix://$SOCKET" build --progress plain --frontend dockerfile.v0 --local "context=$context" --local "dockerfile=$context" --opt filename=Dockerfile --no-cache --output "type=local,dest=$output")
+  setsid timeout --signal=TERM --kill-after=30s "$BUILD_TIMEOUT" runuser -u "$BUILDER_USER" -- env -i HOME=/var/lib/mcp-devbox-buildkit XDG_RUNTIME_DIR=/run/mcp-devbox-buildkit PATH=/usr/local/lib/mcp-devbox-builder:/usr/bin:/bin LANG=C LC_ALL=C "$BUILDER_ROOT/buildctl" "${args[@]}" > "$log" 2>&1 &
+  BUILD_PID=$!
+  if wait "$BUILD_PID"; then status=0; else status=$?; fi
+  BUILD_PID=
+  chmod 0600 "$log"
+  bound_log "$log"
+  printf '%s\t%d\n' "$name" "$status" >> "$EVIDENCE/preflight-status.tsv"
+  [[ "$status" -eq 0 ]] || fail "$name preflight build failed"
+  [[ -f "$output/ok" && ! -L "$output/ok" ]] || fail "$name preflight output is missing or unsafe"
+  [[ "$(cat "$output/ok")" == "$expected" ]] || fail "$name preflight output content is invalid"
 }
 
 run_build() {
@@ -339,6 +380,8 @@ main() {
   COMMIT=$1
   trap restore EXIT HUP INT TERM
   prepare_run "$COMMIT"
+  run_preflight integrated
+  run_preflight external
   for quota in "${QUOTAS[@]}"; do
     run_build "$COMMIT" "$quota" no-cache || true
     run_build "$COMMIT" "$quota" cached || true

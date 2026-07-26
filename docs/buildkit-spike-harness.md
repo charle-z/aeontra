@@ -41,9 +41,10 @@ spike. It is not a public tool and is not installed by the MCP container.
   `KillMode=control-group`;
 - `buildkitd.toml` is checked against the generated rootless configuration and fixes
   one OCI worker, one parallel build and bounded GC/cache thresholds;
-- the service keeps `ProtectProc=invisible` but must not set `ProcSubset=pid` because
-  BuildKit reads `/proc/stat` during a solve; cgroup and process-subtree isolation
-  remain the enforcement boundary;
+- the service keeps `ProtectProc=default` and does not install a systemd namespace
+  seccomp filter. BuildKit v0.31.2 requests IPC, UTS and, on cgroup v2 hosts, cgroup
+  namespaces for OCI process execution; rootless user namespaces plus the service
+  cgroup and process-subtree controls remain the enforcement boundary;
 - `install-preverified.sh` accepts no arguments or URLs, consumes only a private
   root-owned staging directory containing `buildkitd`, `buildctl`, `buildkit-runc`
   and an exact three-entry SHA-256 manifest, creates the system identity with
@@ -61,17 +62,21 @@ arguments, pins the official Linux amd64 release archive, SBOM and Sigstore bund
 SHA-256, extracts only `buildkitd`, `buildctl` and `buildkit-runc`, and publishes a
 private staging directory atomically without replacing different existing content.
 
-`.github/workflows/p16-builder-spike.yml` exercises this package on Ubuntu 24.04:
-it installs rootless prerequisites, stages v0.31.2, starts the systemd service, proves
-all observed processes remain in the delegated subtree as `mcp-build`, builds the same
-commit twice with cache reuse, stops the complete control group and verifies the
-conservative removal path. This is disposable CI evidence, not VPS calibration.
+`.github/workflows/p16-builder-spike.yml` keeps one Ubuntu 24.04 package fixture.
+It installs the exact reviewed AppArmor profile and service, proves the delegated
+subtree, and attempts a BusyBox `RUN` so the fixture cannot regress to the former
+`FROM scratch` plus `COPY` false green. GitHub's hosted Ubuntu 24.04 currently denies
+the nested rootless `/proc` mount required by runc. That exact failure is recorded as
+`not-reproducible` with bounded evidence and a visible workflow warning; any different
+failure remains blocking. The workflow never changes the runner OS, AppArmor version
+or security posture to obtain a green result. Runtime acceptance is therefore the two
+preflights and six-run calibration on the target VPS. The workflow still verifies the package lifecycle and conservative removal path. This is disposable CI evidence, not VPS calibration.
 
 ## Remaining evidence
 
 The following are deliberately not claimed yet:
 
-- real rootless BuildKit installation and service lifecycle on the VPS;
+- real rootless BuildKit installation, service lifecycle and OCI execution on the VPS;
 - no-cache and cached builds for the same commit;
 - 50/65/80 quota measurements;
 - per-cgroup CPU throttling, PSI, memory, I/O and PID samples;
@@ -79,7 +84,12 @@ The following are deliberately not claimed yet:
 - real cache reuse/GC behavior and uninstall execution on the VPS;
 - final BuildKit-versus-Podman engine selection.
 
-Those require the separate private spike deployment and dated measurement. If BuildKit fails a structural requirement, Podman may be evaluated without weakening the rootless/cgroup boundary.
+Those require the separate private spike deployment and dated measurement. A known
+future debt remains: `ProtectControlGroups=yes` makes the cgroup filesystem read-only
+while `Delegate=yes` assumes a writable delegated subtree. It does not cause the current
+rootless worker failure because container cgroup management is disabled, but it must be
+resolved before enabling cgroups inside build containers. If BuildKit fails a structural
+requirement, Podman may be evaluated without weakening the rootless/cgroup boundary.
 
 ## VPS calibration candidate
 

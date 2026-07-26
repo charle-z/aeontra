@@ -64,7 +64,7 @@ func TestBuilderServiceEnforcesPrivateRootlessCgroupBoundary(t *testing.T) {
 		"/var/run/docker.sock", "/run/docker.sock", "tcp://", "--privileged",
 		"--oci-worker-no-process-sandbox", "network.host", "security.insecure",
 		"ProtectControlGroups=no", "ProtectProc=invisible", "ProtectProc=noaccess", "KillMode=process", "ProcSubset=pid",
-		"ConditionPathIsExecutable=",
+		"ConditionPathIsExecutable=", "RestrictNamespaces=",
 	} {
 		if strings.Contains(unit, forbidden) {
 			t.Fatalf("unit contains forbidden %q", forbidden)
