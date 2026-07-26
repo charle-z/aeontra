@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0000A8">
+  <meta name="description" content="MCP Devbox is a narrow, auditable control plane that lets AI agents work on real software without receiving a free shell.">
+  <meta property="og:title" content="MCP Devbox — Secure Agent Firmware">
+  <meta property="og:description" content="Real repository and deployment work through explicit, bounded authority.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="/landing/assets/social-card.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>MCP Devbox — Secure Agent Firmware</title>
+  <link rel="stylesheet" href="/landing/assets/app.css">
+  <script src="/landing/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+
+  <div class="boot" id="boot" aria-label="MCP Devbox startup summary">
+    <div class="boot-window">
+      <p class="boot-title">MCP DEVBOX OPERATIONS FIRMWARE</p>
+      <p>PUBLIC SHOWCASE POST</p>
+      <p>authority boundary ........ presentation-only <span class="ok">[ENFORCED]</span></p>
+      <p>control-plane access ...... absent <span class="ok">[ENFORCED]</span></p>
+      <p>runtime identity .......... /version <span class="ok">[PUBLIC]</span></p>
+      <p>policy explorer ........... local simulation <span class="ok">[NO SERVER CALL]</span></p>
+      <p>host ...................... CubePath / Coolify <span class="ok">[ONLINE]</span></p>
+      <button type="button" id="skipBoot">[ Press any key to continue ]</button>
+    </div>
+  </div>
+
+  <div class="machine">
+    <header class="topbar">
+      <a class="brand" href="#thesis">MCP DEVBOX</a>
+      <nav aria-label="Primary">
+        <a href="#authority">Authority</a>
+        <a href="#policy">Policy</a>
+        <a href="#path">Path</a>
+        <a href="#evidence">Evidence</a>
+        <a href="#runtime">Runtime</a>
+        <a href="#limits">Limits</a>
+      </nav>
+      <p class="runtime-chip"><span id="topStatus" class="warn">checking</span> · <span id="topCommit">runtime</span></p>
+    </header>
+
+    <main class="document-pane" id="content" tabindex="-1">
+      <div class="wrap">
+        <section id="thesis" data-hint="Scroll to inspect the authority model">
+          <p class="eyebrow">00 · THESIS</p>
+          <h1>An AI agent that ships real software without receiving a free shell.</h1>
+          <p class="lede">MCP Devbox gives an agent narrow capabilities for repository work, validation, pull requests and deployment. The model reasons; the control plane constrains, records and revalidates the effect.</p>
+          <p class="sub">It is single-owner infrastructure built around one premise: capability is useful, custody is not. Much of the project was developed through its own MCP surface, including sessions driven from a phone, while blocking gates remained authoritative.</p>
+          <div class="status-grid" aria-label="Capability status">
+            <article data-status="implemented">
+              <h2>IMPLEMENTED</h2>
+              <p>Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.</p>
+            </article>
+            <article data-status="experimental">
+              <h2>EXPERIMENTAL</h2>
+              <p>Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.</p>
+            </article>
+            <article data-status="planned">
+              <h2>PLANNED</h2>
+              <p>Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="authority" data-hint="The product is the boundary, not the tool count">
+          <p class="eyebrow">01 · AUTHORITY MODEL</p>
+          <h2>THE DIFFERENCE IS AUTHORITY, NOT ACCESS</h2>
+          <p class="sub">A terminal wrapper is easy. MCP Devbox deliberately exposes less:</p>
+          <ul class="checks">
+            <li>A directory jail covers file operations and command execution.</li>
+            <li>Secret denial checks both path and returned content, then redacts bounded output.</li>
+            <li>Commands come from a closed allowlist. There is no general shell tool.</li>
+            <li>Existing files are changed patch-first and validated before application.</li>
+            <li>Consequential actions use expiring, single-use plans and revalidate state at execution.</li>
+            <li>Credentials are used by trusted adapters and never returned to a model turn.</li>
+          </ul>
+          <div class="firmware-note">
+            <p><strong>ABSENT BY CONSTRUCTION</strong></p>
+            <p>Force push, arbitrary host paths, public plan approval and unauthenticated tool execution are not hidden switches. They are not part of this surface.</p>
+          </div>
+        </section>
+
+        <section id="policy" data-hint="Eight local cases; no request reaches the control plane">
+          <p class="eyebrow">02 · POLICY EXPLORER</p>
+          <h2>ASK THE AGENT TO MISBEHAVE</h2>
+          <p class="sub">Choose a request. This is a <strong>local simulation</strong> of documented policy outcomes. It sends no request to MCP Devbox and grants no authority.</p>
+          <div class="policy-grid">
+            <div class="policy-requests" role="group" aria-label="Simulated requests">
+              <button type="button" data-policy-id="secret" aria-pressed="false">cat .env</button>
+              <button type="button" data-policy-id="force" aria-pressed="false">git push --force origin main</button>
+              <button type="button" data-policy-id="outside" aria-pressed="false">rm -rf /etc</button>
+              <button type="button" data-policy-id="shell" aria-pressed="false">bash -c anything</button>
+              <button type="button" data-policy-id="deploy" aria-pressed="false">deploy production now</button>
+              <button type="button" data-policy-id="credential" aria-pressed="false">print a provider credential</button>
+              <button type="button" data-policy-id="read" aria-pressed="false">read src/app.go</button>
+              <button type="button" data-policy-id="tests" aria-pressed="false">run the test suite</button>
+            </div>
+            <div class="verdict" aria-live="polite" aria-atomic="true">
+              <p class="stamp pending" id="policyStamp">SELECT A REQUEST</p>
+              <pre id="policyOutput">policy&gt; awaiting local input</pre>
+              <p class="rule" id="policyRule">Every verdict names the invariant that produces it.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="path" data-hint="The Edge connects outbound only">
+          <p class="eyebrow">03 · REQUEST PATH</p>
+          <h2>HOW A REQUEST TRAVELS</h2>
+          <figure class="diagram">
+            <img src="/landing/assets/request-path.svg" alt="Request path from an AI client through MCP Devbox policy, owner approval and bounded adapters to GitHub, Coolify, Brain, validation and an outbound-only Edge.">
+            <figcaption>The public landing is outside this path. It cannot submit a request, approve a plan or reach a private adapter.</figcaption>
+          </figure>
+        </section>
+
+        <section id="host" data-hint="Capacity is measured; CPU is the binding resource">
+          <p class="eyebrow">04 · HOST &amp; ADMISSION</p>
+          <h2>A MICRO VPS, MEASURED INSTEAD OF GUESSED</h2>
+          <p class="sub">The control plane runs on a 2 vCPU, 3.805 GiB KVM guest. The dated 2026-07-22 baseline measured idle and a real no-cache deployment. CPU, not memory, was the demonstrated binding resource.</p>
+          <div class="table-scroll" tabindex="0" aria-label="Measured host capacity">
+            <table>
+              <thead><tr><th>MEASURE</th><th>RESULT</th><th>INTERPRETATION</th></tr></thead>
+              <tbody>
+                <tr><td>idle CPU p95</td><td class="value">41.10%</td><td>control-plane baseline</td></tr>
+                <tr><td>intensive build CPU p95</td><td class="danger">93.20%</td><td>serialized heavy work</td></tr>
+                <tr><td>host memory peak</td><td class="value">2.33 GiB</td><td>no OOM observed</td></tr>
+                <tr><td>CPU steal</td><td class="ok">negligible</td><td>guest workload contention</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="acceptance-panel">
+            <h3>P16 TARGET-VPS ACCEPTANCE · CLOSED</h3>
+            <p>Both preflights returned 0. All six calibration runs completed with exit status 0 and zero OOM. The deterministic selector chose <strong>65%</strong>; 50% was rejected by duration regression.</p>
+            <dl class="kv">
+              <dt>CPU quota</dt><dd>650 ms per second</dd>
+              <dt>memory high</dt><dd>1280 MiB</dd>
+              <dt>memory max</dt><dd>1792 MiB</dd>
+              <dt>task limit</dt><dd>512</dd>
+              <dt>service</dt><dd class="ok">active and enabled</dd>
+            </dl>
+          </div>
+        </section>
+
+        <section id="evidence" data-hint="Failures are evidence only when the gate can stop the merge">
+          <p class="eyebrow">05 · EVIDENCE</p>
+          <h2>REAL GATES, INCLUDING THE FAILURES</h2>
+          <div class="evidence-log" aria-label="Dated project evidence">
+            <p><time datetime="2026-07-13">2026-07-13</time> <span class="label fail">FAIL</span> five High container findings and one reachable Go vulnerability blocked closure.</p>
+            <p><time datetime="2026-07-13">2026-07-13</time> <span class="label pass">FIXED</span> affected packages were upgraded or removed; the final image gate proved zero High/Critical findings.</p>
+            <p><time datetime="2026-07-16">2026-07-16</time> <span class="label pass">CLOSED</span> CodeQL path and cookie findings were remediated at source with adversarial regression tests.</p>
+            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">SEALED</span> PR #57 made the catalog discoverable and passed 16 exact-head checks.</p>
+            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">SEALED</span> PR #58 normalized documentary whitespace without weakening literal contracts; 16 checks passed.</p>
+            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">ACCEPTED</span> P16 target-VPS calibration selected 65% after two preflights and six successful runs.</p>
+          </div>
+          <p class="sub">A threshold is not edited to obtain green. A failure is diagnosed, a bounded change is made, and the full exact-head gate set runs again.</p>
+        </section>
+
+        <section id="vulnerabilities" data-hint="Findings were fixed, not hidden">
+          <p class="eyebrow">06 · VULNERABILITY LEDGER</p>
+          <h2>DETECTED, REMEDIATED, REGRESSION-TESTED</h2>
+          <div class="cards">
+            <article class="card">
+              <h3>REACHABLE GO TLS FINDING <span>CLOSED</span></h3>
+              <p class="finding">GO-2026-5856 was reachable through repository call paths.</p>
+              <dl><dt>detected</dt><dd>Govulncheck blocking job</dd><dt>fixed</dt><dd>Go advanced to the patched release across builds and workflows</dd></dl>
+            </article>
+            <article class="card">
+              <h3>GNU WGET FINDINGS <span>CLOSED</span></h3>
+              <p class="finding">Three High findings existed in the final runtime image.</p>
+              <dl><dt>detected</dt><dd>SBOM plus Grype gate</dd><dt>fixed</dt><dd>standalone Wget removed; BusyBox applet used for health checks</dd></dl>
+            </article>
+            <article class="card">
+              <h3>NPM BUNDLED TREE <span>CLOSED</span></h3>
+              <p class="finding">Affected sigstore and picomatch copies remained after the first attempted upgrade.</p>
+              <dl><dt>detected</dt><dd>second image scan</dd><dt>fixed</dt><dd>patched npm installed and the vulnerable bootstrap tree removed entirely</dd></dl>
+            </article>
+            <article class="card">
+              <h3>PATH INJECTION FLOW <span>CLOSED</span></h3>
+              <p class="finding">Remote repository input previously participated in validation-runner paths.</p>
+              <dl><dt>detected</dt><dd>CodeQL</dd><dt>fixed</dt><dd>server-owned registry entries and Linux descriptor revalidation before execution</dd></dl>
+            </article>
+            <article class="card">
+              <h3>SESSION COOKIE POSTURE <span>CLOSED</span></h3>
+              <p class="finding">Dynamic cookie security could not be proven on every path.</p>
+              <dl><dt>detected</dt><dd>CodeQL</dd><dt>fixed</dt><dd>creation and deletion always use Secure, HttpOnly and SameSite Strict</dd></dl>
+            </article>
+          </div>
+        </section>
+
+        <section id="runtime" data-hint="Live values come only from the public /version contract">
+          <p class="eyebrow">07 · LIVE RUNTIME IDENTITY</p>
+          <h2>VERIFY THE DEPLOYED PROCESS</h2>
+          <p class="sub">This panel reads the same safe public identity exposed by <a href="/version">/version</a>. No credential is sent and no private state is requested.</p>
+          <dl class="kv runtime-values" id="runtimeValues">
+            <dt>status</dt><dd id="runtimeStatus" class="warn">checking</dd>
+            <dt>version</dt><dd id="runtimeVersion">—</dd>
+            <dt>commit</dt><dd id="runtimeCommit">—</dd>
+            <dt>built at</dt><dd id="runtimeBuiltAt">—</dd>
+            <dt>protocol</dt><dd id="runtimeProtocol">—</dd>
+            <dt>tool count</dt><dd id="runtimeToolCount">—</dd>
+            <dt>catalog hash</dt><dd id="runtimeCatalogHash">—</dd>
+          </dl>
+          <p class="runtime-error" id="runtimeMessage" role="status">Loading public runtime identity.</p>
+          <p class="sub">Independent checks: <a href="/healthz">liveness</a> · <a href="/version">JSON identity</a> · <a href="/console">authenticated operator console</a>.</p>
+        </section>
+
+        <section id="limits" data-hint="Narrow authority reduces risk; it does not abolish trust">
+          <p class="eyebrow">08 · HONEST LIMITS</p>
+          <h2>WHAT THIS IS NOT</h2>
+          <ul class="limits">
+            <li>Not a public control panel. This landing cannot call tools, approve plans or inspect private state.</li>
+            <li>Not multi-tenant. The system is single-owner by design.</li>
+            <li>Not a universal terminal. Arbitrary shell access is deliberately absent.</li>
+            <li>Not universal OS isolation. Hard local containment is Linux-oriented; Windows use runs through WSL.</li>
+            <li>Not proof against stolen owner credentials. Narrow authority reduces blast radius but cannot remove trust.</li>
+            <li>Not a claim that every planned profile or orchestrator is implemented.</li>
+          </ul>
+          <div class="closing">
+            <p><strong>Any agent. Any stack. Explicit guardrails. Auditable delivery.</strong></p>
+            <p><a href="https://github.com/charle-z/mcp-devbox" rel="noreferrer noopener">Public source and documentation</a></p>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="keybar">
+      <span class="section-label" id="sectionLabel">THESIS</span>
+      <span id="sectionHint">Scroll to inspect the authority model</span>
+      <span class="spacer"></span>
+      <span>Hosted on CubePath · deployed with Coolify</span>
+    </footer>
+  </div>
+</body>
+</html>

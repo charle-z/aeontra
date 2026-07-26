@@ -4,56 +4,50 @@ Historical deployed successor truth remains explicit: P8.1 is deployed at
 `d343264bffdc0ae1bc045a9d723e913be977090c`, and P9 Brain is deployed as its
 successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-Current production and canonical `main` are synchronized at
-`1e418658102645ed45b739a9a84562704cae65ab`. The live runtime reports version
-`0.2.0`, protocol `2024-11-05`, 102 tools and catalog hash
-`sha256:5a2091d85585d13eb7efbc22d942b2dfbd71fc7d547581803eb7633cac64d68b`.
+Current canonical `main` before this branch is synchronized at
+`722e63f58355fe154c95dd4c6ae2f2d8118e07ff`, the merge commit for Step 9.
+Production identity must not be advanced in documentation until the final Step 10 merge
+is deployed and `/version` reports that exact merge.
 
-Branch: `fix/p16-calibration-review`.
-
-## Trigger
-
-PR #49 closed the clean-host prerequisite defects and merged with 16/16 checks green.
-Production is healthy on that merge. The public MCP still cannot execute the host-root
-bootstrap because privileged profiles are administrator-disabled and, more
-fundamentally, the Coolify container has no host systemd or filesystem authority.
-Step 8 therefore remains correctly blocked on real VPS calibration.
-
-The remaining Step 7 weakness was manual interpretation of the 50/65/80 evidence.
-A malformed or incomplete matrix could otherwise lead to an inconsistent quota choice.
+Branch: `step10-public-landing`.
 
 ## Candidate
 
-- adds executable `packaging/builder/review-vps-calibration.sh`;
-- validates exactly six measurements for 50/65/80 no-cache and cached builds;
-- rejects malformed, duplicate, missing, oversized, failed, OOM, unhealthy, 502,
-  missing-artifact and absent-cache-reuse evidence;
-- writes root-private `selection.tsv`, `selected-quota-percent` and
-  `selection-policy`;
-- selects the lowest hard-eligible quota whose no-cache duration is at most 135 percent
-  and cached duration at most 125 percent of the fastest eligible run;
-- records `none` and fails closed when no quota satisfies the policy;
-- integrates the selector into the fixed calibrator and exact-commit bootstrap;
-- documents the deterministic policy and updates only Step 7 tasks already proven by
-  repository/CI evidence.
+Step 10 implements a presentation-only unauthenticated `GET /` in new package
+`internal/landing`. The existing Go binary embeds HTML, CSS, external local JavaScript,
+a static request-path SVG, and an Open Graph SVG. The landing has no console session,
+MCP tool path, plan approval, repository/Brain/audit access, private identifiers,
+credentials, or control-plane proxy. Its only browser request is the existing safe
+public `/version` identity.
 
-No public tool, root shell, Docker socket, production worker, scheduler bypass or Step 8
-execution path is added.
+The read-only design source was remote branch `landing-public-showcase-design`,
+`docs/landing/design-public-showcase.md` and `docs/landing/mockup.html`. Inline
+JavaScript, Mermaid runtime source, stale version/catalog/milestone values, and
+unrelated claims were deliberately not copied.
+
+P16 Step 7 remains closed. No BuildKit, systemd, AppArmor, runner, quota, or host
+posture was changed.
+
+## Deliberate red gates
+
+- `go test ./internal/landing -count=1` failed because `New` and embedded assets did
+  not exist.
+- `go test ./internal/mcpserver -run PublicLanding -count=1` failed with 404 at `/`
+  before registration.
+- `go test ./docs -run PublicShowcase -count=1` failed until README, roadmap,
+  documentation map and the implementation contract described the new public surface.
 
 ## Validation
 
-Green on the exact staged tree:
+- `go test ./internal/landing ./internal/mcpserver ./docs -count=1` passed.
+- A monolithic fresh suite passed every package through `internal/resultstore` before
+  the constrained local process was killed; the explicit remaining group from
+  `internal/taskjournal` through `profiles` passed.
+- `go vet ./...` passed.
+- `go build ./...` passed.
+- `git diff --check` passed.
 
-- `go test ./packaging/builder -count=1`;
-- `go test ./docs -count=1`;
-- `go test ./internal/buildspike ./internal/coveragegate -count=1`;
-- full configured repository test suite;
-- `go vet ./...`;
-- `go build ./...`;
-- `git diff --check`.
-
-Staticcheck is not allowlisted in this local workcell and remains mandatory in exact-head
-CI. Next: commit, publish, open a minimal PR, require every exact-head gate green, merge
-and deploy. Then execute the one reviewed root bootstrap on the VPS for the exact green
-merge commit, review its private selection evidence, freeze the selected quota in a
-separate tested commit, and only then begin Step 8.
+A later complete run exposed that replacing this file had removed historical P8.1/P9
+markers; this version restores them. The subsequent complete `go test ./...` passed.
+Remote exact-head gates remain mandatory before merge. Deployment is forbidden before
+the merge commit and must be verified by live runtime identity.
