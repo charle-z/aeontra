@@ -1,53 +1,32 @@
-# Current task
+# Current task — Step 16 documentation foundation
 
-Historical deployed successor truth remains explicit: P8.1 is deployed at
-`d343264bffdc0ae1bc045a9d723e913be977090c`, and P9 Brain is deployed as its
-successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+Historical closure markers remain evidence, not current operational configuration: P8.1 was deployed at `d343264bffdc0ae1bc045a9d723e913be977090c`, and P9 Brain followed at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-Current canonical `main` before this branch is synchronized at
-`722e63f58355fe154c95dd4c6ae2f2d8118e07ff`, the merge commit for Step 9.
-Production identity must not be advanced in documentation until the final Step 10 merge
-is deployed and `/version` reports that exact merge.
+Branch: `step16-documentation-foundation`, based on clean synchronized `main` at `63825986e0d86d9f8fb623a76a218dbe00bd1969`.
 
-Branch: `step10-public-landing`.
+## Scope
 
-## Candidate
+Step 16 replaces the phase-diary README with a product entry point; creates canonical `docs/configuration.md` and `config/mcp-devbox.env.sample`; separates the technical security model in `docs/security.md` from the public reporting policy in `SECURITY.md`; defines canonical documentation ownership; and updates documentation contracts so mutable counts, hashes, commits, releases, and device state remain in `/version`, `system_runtime_info`, `docs/tools.md`, or dated baselines.
 
-Step 10 implements a presentation-only unauthenticated `GET /` in new package
-`internal/landing`. The existing Go binary embeds HTML, CSS, external local JavaScript,
-a static request-path SVG, and an Open Graph SVG. The landing has no console session,
-MCP tool path, plan approval, repository/Brain/audit access, private identifiers,
-credentials, or control-plane proxy. Its only browser request is the existing safe
-public `/version` identity.
+No runtime behavior, tool schema, catalog, route, OAuth behavior, CSP, Edge package, service, BuildKit, AppArmor, quota, runner, or deployment configuration was changed.
 
-The read-only design source was remote branch `landing-public-showcase-design`,
-`docs/landing/design-public-showcase.md` and `docs/landing/mockup.html`. Inline
-JavaScript, Mermaid runtime source, stale version/catalog/milestone values, and
-unrelated claims were deliberately not copied.
+## Deliberate RED evidence
 
-P16 Step 7 remains closed. No BuildKit, systemd, AppArmor, runner, quota, or host
-posture was changed.
+`go test ./docs -run TestStep16 -count=1` failed before implementation because the old README was a phase diary, `docs/configuration.md` and the safe sample did not exist, and security/documentation ownership was not canonical.
 
-## Deliberate red gates
+## Local validation
 
-- `go test ./internal/landing -count=1` failed because `New` and embedded assets did
-  not exist.
-- `go test ./internal/mcpserver -run PublicLanding -count=1` failed with 404 at `/`
-  before registration.
-- `go test ./docs -run PublicShowcase -count=1` failed until README, roadmap,
-  documentation map and the implementation contract described the new public surface.
+- `go test ./docs -run TestStep16 -count=1`: passed.
+- `go test ./docs -count=1`: passed.
+- `go test ./... -count=1`: passed.
+- `go vet ./...`: passed.
+- `go build ./...`: passed.
+- `git diff --check`: passed before this memory update and must be rerun before commit.
 
-## Validation
+## Remaining Step 16 actions
 
-- `go test ./internal/landing ./internal/mcpserver ./docs -count=1` passed.
-- A monolithic fresh suite passed every package through `internal/resultstore` before
-  the constrained local process was killed; the explicit remaining group from
-  `internal/taskjournal` through `profiles` passed.
-- `go vet ./...` passed.
-- `go build ./...` passed.
-- `git diff --check` passed.
-
-A later complete run exposed that replacing this file had removed historical P8.1/P9
-markers; this version restores them. The subsequent complete `go test ./...` passed.
-Remote exact-head gates remain mandatory before merge. Deployment is forbidden before
-the merge commit and must be verified by live runtime identity.
+1. Review the final diff including this task note.
+2. Rerun all required local gates.
+3. Commit with the required Step 16 prefix and `mcp-devbox-edge <edge@mcp-devbox.local>` identity.
+4. Publish a normal PR, require every exact-head gate green, and merge with a merge commit.
+5. Synchronize clean local `main` before beginning Step 17.

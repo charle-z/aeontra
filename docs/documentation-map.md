@@ -1,129 +1,169 @@
-# Documentation map and update rules
+# Documentation map
 
-This file explains which document answers which question and when it must be updated.
-The repository is the source of truth; chat history is not.
+This file defines which source answers each class of question. The goal is one canonical
+answer per topic, with runbooks linking to it instead of copying mutable tables or live
+state.
 
-## Source hierarchy
+## Canonical product sources
 
-| Question | Primary source | Update trigger |
+| Source | Canonical role | Must not become |
 |---|---|---|
-| What security/build rules may never be weakened? | `.specify/memory/constitution.md` and `AGENTS.md` | Principle, process, or authority-boundary change. |
-| What is deployed and what is active now? | `docs/context-capsule.md` | Every phase release, rollback, production verification, or active-phase change. |
-| What exact step is being worked on? | `.agent-memory/current-task.md` | Before and after every numbered step. |
-| Where can another session resume? | `.agent-memory/handoffs/latest.md` | Meaningful checkpoint, phase closure, or blocking failure. |
-| What did the original Layer 1 MVP promise? | `specs/001-layer-1/` | Historical corrections only; completed evidence must remain checked. |
-| What is planned versus implemented? | `docs/product-roadmap.md` | Milestone status change or roadmap decision. |
-| What governs the public landing and its security boundary? | `docs/landing/public-showcase.md` | Public content, assets, route, metadata, responsive behavior, or runtime identity change. |
-| Why was an architecture decision made? | `docs/adr/` | Accepted/replaced architecture decision. Do not rewrite accepted history. |
-| What was true at a phase closure? | `docs/baselines/` | Create a new dated baseline; do not rewrite old evidence. |
+| `README.md` | Short product introduction, architecture overview, safe quick start, and navigation | a phase diary, full configuration table, tool catalog, or threat model |
+| `docs/configuration.md` | The only canonical inventory of supported profiles, flags, environment variables, build inputs, ports, routes, paths, volumes, permissions, defaults, and secret handling | a deployment-status report or historical baseline |
+| `docs/security.md` | Technical security architecture: trust boundaries, threat model, authority model, profile isolation, persistence, audit, limitations, and evidence | the public vulnerability inbox or a duplicate configuration reference |
+| `SECURITY.md` | Public reporting, scope, supported-version posture, disclosure, and license status | a copy of the full technical threat model |
+| `docs/tools.md` | Canonical public MCP tool catalog, schemas, annotations, aliases, approval posture, and workflows | a hardcoded live deployment claim |
+| `/version` and `system_runtime_info` | Live server version, commit, protocol, tool count, and catalog hash | documentation to be copied into operational prose |
+| `docs/baselines/` | Dated historical evidence, including exact commits, releases, hashes, counts, checks, deployments, and real-host observations | current operational instructions rewritten to match later state |
 
-Current P8 closure evidence: `docs/baselines/2026-07-13-p8.md` plus
-`docs/p8_closure_test.go`. P9 architecture is governed by `specs/006-brain/` and
-`docs/adr/0003-p9-markdown-truth-sqlite-fts5-cache.md`; it must not rewrite P8 evidence.
-P9 release-candidate evidence is `docs/baselines/2026-07-14-p9.md` plus
-`docs/p9_closure_test.go`. It records merge-ready checks honestly while production
-remains P8 until merge, persistent-volume setup, deployment and smoke.
-The P9 resource invariant is no resident service. Runtime setup, curation, backup,
-restore, update, rollback, and troubleshooting are governed by
-`docs/runbooks/brain-operations.md`.
-P8.1 release-candidate evidence is `docs/baselines/2026-07-14-p8_1.md` plus
-`docs/p8_1_closure_test.go`. It records the React Neo-BIOS UI, console OAuth migration,
-query-key removal, durable task journal, SSE and exact safe data schemas while
-production remains the tagged P9 baseline until merge and deploy. P8.1 production closure
-is recorded separately in `docs/baselines/2026-07-14-p8_1-production.md`;
-the historical release-candidate baseline is not rewritten.
-P11 release-candidate evidence is `docs/baselines/2026-07-15-p11.md` plus
-`docs/p11_candidate_test.go`; the focused review is
-`docs/security-reports/2026-07-15-p11-edge-review.md`. These documents preserve the
-historical 67-tool P8.1/P9 and 71-tool P11 evidence. P11.2 relay/isolation evidence
-is `docs/baselines/2026-07-16-p11_2.md` plus `docs/p11_2_closure_test.go`;
-the current release-candidate contract has 85 tools.
-P12 Trusted Linux Workcell candidate behavior and operations are governed by
-`docs/linux-workcell.md`, `docs/edge-workcells.md`, and `profiles/htb-linux-v1.md`.
-P12 is merged, deployed, paired, and validated on Parrot WSL2. Historical candidate
-evidence remains in `docs/baselines/2026-07-18-p12.md`; real-host production evidence
-is recorded separately in `docs/baselines/2026-07-18-p12-parrot-production.md`.
-The canonical onboarding procedure is `docs/install-opencode-edge-parrot.md`;
-authorized HTB room setup and local credential handles are documented in
-`docs/htb-lab-workflow.md`.
-Private development repository clone/publication through the local Edge and the
-separate VPS/Edge GitHub credential placement are governed by
-`docs/development-edge-git.md`.
-P15 signed release identity, fixed component layout and fail-closed compatibility
-codes are governed by `docs/edge-bundles.md`.
-P15 one-time Debian installation, onboarding, migration, update, repair and rollback
-are governed by `docs/install-edge-parrot-p15.md`.
-P13 opaque continuation is governed by the workspace-runtime documentation and
-closed public schema. P14 target-locked runtime actions are governed by
-`docs/authorized-htb-actions.md` and `docs/htb-lab-workflow.md`.
-P15 historical release-candidate evidence remains in
-`docs/baselines/2026-07-19-p15-rc.md`; it is not rewritten. Current source release
-`p15.0.5` is recorded by `docs/context-capsule.md`, `AGENTS.md`, README, the 98-tool
-catalog tests and `docs/baselines/2026-07-20-p15-dev-edge-git.md`. Source/release,
-VPS deployment and real Edge installation must be reported as separate facts.
-P16 global scheduling, easy Edge lifecycle, project aliases, workspace recovery,
-separate VPS/Edge pools, resource equations, continuity and image-deploy direction are
-governed by `specs/007-global-work-scheduler/` and
-`docs/adr/0004-p16-global-scheduler-separated-execution-pools.md`. The measured
-planning evidence is `docs/baselines/2026-07-22-p16-capacity.md`. Until implementation,
-exact-head gates and production evidence exist, these documents describe an in-progress
-contract and must not be cited as deployed behavior.
-P16 Step 1 inventory, atomic legacy-state migration, crash recovery, stable blocker
-codes and explicit non-mutation of unknown `p12` directories are documented by
-`docs/edge-lifecycle-migration.md`. Step 2 package transaction, idempotent onboarding,
-doctor/closed repair, update rollback, and conservative uninstall posture are governed
-by `docs/install-edge-parrot-p16.md`. The Step 3 private alias registry, owner-bound
-checkout validation and read-only no-ID local UX are governed by
-`docs/project-workspace-resolution.md`, including `project_prepare` / `project_status`,
-owner-bound clone, human Edge target resolution and no-ID output. Step 4 local execution
-durability, offline grace, result replay, cleanup bounds and read-only journal doctor
-states are governed by `docs/edge-job-journal.md`. Step 5 durable coordination jobs,
-deduplication, fencing, dependencies, bounds and backup/restore are governed by
-`docs/workqueue-store.md`. Step 7 private rootless BuildKit packaging and disposable
-fixture evidence are governed by `docs/buildkit-spike-harness.md`; the fixed real-VPS
-50/65/80 operator contract and its validation-pending boundary are governed by
-`docs/vps-builder-calibration.md`. GitHub Actions failure diagnosis and bounded
-full-job log retrieval through the existing VPS GitHub authority are governed by
-`docs/github-actions-diagnostics.md`. These remain validation pending until exact-head
-remote gates and real Parrot evidence are complete.
-| What security findings and remediations were verified? | `docs/security-reports/` | New scan finding, remediation, workflow result, or before/after evidence. |
-| How is the system operated or recovered? | `docs/runbooks/`, deployment/OAuth/observability/console/edge guides | Configuration, command, failure mode, update, rollback, or troubleshooting change. |
-| What tools and contracts are public? | `docs/tools.md` plus generated catalog tests | Tool name/schema/description/alias/annotation/workflow change. |
+When these sources disagree, fix the source that owns the topic. Do not create a second
+canonical table in a runbook.
+
+## Other authoritative project sources
+
+- `.specify/memory/constitution.md`: durable engineering and security principles.
+- `AGENTS.md`: concise operating rules for agents working in this repository.
+- `.agent-memory/current-task.md`: current repository-local task state.
+- `.agent-memory/handoffs/latest.md`: bounded continuation state for another agent.
+- `specs/001-layer-1/` and later `specs/`: accepted requirements, plans, and task
+  history for their specific scope.
+- `docs/context-capsule.md`: bounded project context and evidence pointers for resuming
+  work; it may contain dated state but is not the configuration or live identity source.
+- `docs/product-roadmap.md`: product direction and evidence-based status, not setup.
+- `docs/runbooks/`: workflow-specific operations and recovery.
+- `docs/adr/`: architectural decisions and their rationale.
+- Git history and pull requests: exact change provenance.
 
 ## Status vocabulary
 
-Use these terms consistently:
+Use status only when evidence supports it:
 
-- **Deployed:** merged into `main`, deployed, health checked, and runtime identity verified.
-- **Complete / merge-ready:** implementation and closure gates passed, but not yet deployed.
-- **In progress:** active branch has unfinished or unreleased work.
-- **Planned:** accepted roadmap intent with no completion claim.
-- **Not started:** no implementation branch or verified artifact exists.
-- **Validation pending:** implementation/docs may exist, but required environment or
-  device testing has not happened. This is mandatory wording for untested PC/WSL edge
-  flows.
+- **Deployed:** merged, exact deployment identity verified, required health/smoke checks
+  passed, and the result is recorded.
+- **In progress:** active implementation exists but one or more required gates remain.
+- **Planned:** accepted scope exists; implementation has not started.
+- **Not started:** no accepted implementation work exists.
+- **Validation pending:** implementation exists, but a named environment-specific,
+  exact-head, package, deployment, or real-host proof is still missing.
+- **Historical:** retained to explain a past design or release and not an active
+  operational instruction.
+- **Superseded:** replaced by a named source or design; retained only for context.
 
-## Per-step documentation rule
+Never infer “deployed” from a branch, local test, tag, source release, or documentation
+claim alone. Source/release, VPS deployment, and real Edge installation must be reported
+as separate facts.
 
-Every numbered implementation step must:
+## Runbook contract
 
-1. Update `.agent-memory/current-task.md` with the candidate state and verification.
-2. Update behavior/operations docs when the step changes an external or security
-   contract.
-3. Update `.agent-memory/handoffs/latest.md` when the restart point materially changes.
-4. Run documentation consistency tests before commit.
+A runbook owns one workflow. It may state the variables and paths unique to that flow,
+but must link to `docs/configuration.md` for the complete configuration inventory and to
+`docs/security.md` for the technical model.
 
-## Per-phase closure rule
+Every operational runbook should cover, where applicable:
 
-A phase cannot be called merge-ready until it has:
+> setup, configuration, permissions, validation, update, rollback, and troubleshooting
 
-- a dated baseline under `docs/baselines/`;
-- updated capsule, roadmap status, README/AGENTS when architecture changed;
-- current specs/tasks or a new spec for the next product surface;
-- setup, configuration, permissions, validation, update, rollback, and troubleshooting
-  documentation for operational components;
-- full tests, quality gates, diff/commit/file audit, and production smoke against the
-  still-deployed previous baseline.
+Runbooks may include exact application IDs, branches, commits, or releases only when
+those values are intrinsic to a dated closure/evidence procedure. General installation
+and operations must use live lookup or placeholders instead of embedding mutable state.
 
-After deployment, update the capsule and phase closure tests from **merge-ready** to
-**deployed**. Historical baselines remain unchanged.
+## Configuration ownership
+
+`docs/configuration.md` owns:
+
+- supported local, HTTP, VPS, builder, Brain, observability, Edge, privileged, and
+  validation-runner profiles;
+- CLI/environment/default precedence;
+- every administrator-controlled runtime variable and build input;
+- `/repos`, `/state`, `/brain`, OAuth, result, audit, telemetry, console, model-turn,
+  Edge, and local Edge state paths;
+- ports, volumes, ownership, modes, persistence, backup, and disposable data;
+- secret classification and safe examples.
+
+A flow guide such as `docs/connect-remote.md` or `docs/deploy-coolify.md` should list only
+its minimum required variables, then link to the canonical reference. It must not carry
+a competing “complete” environment table.
+
+## Security ownership
+
+`docs/security.md` owns technical claims about:
+
+- application policy versus OS isolation;
+- direct operations versus consequential planned actions;
+- OAuth, recovery bearer, console, and public exposure;
+- secret grants and redaction;
+- GitHub/Coolify/validation boundaries;
+- networkless Edge sandbox, trusted host-shared workcell, target-locked workspace, and
+  Development Edge Git broker;
+- signed releases, persistence, audit, observability, and known limitations.
+
+`SECURITY.md` owns how a reporter contacts the project and coordinates disclosure. The
+README should summarize and link, not reproduce either source.
+
+## Tool and live identity ownership
+
+- Use `docs/tools.md` when a human needs the public tool contract.
+- Use MCP discovery or the server catalog when a client needs callable schemas.
+- Use `/version` or `system_runtime_info` for the live deployment identity.
+- Use a dated file under `docs/baselines/` when discussing historical tool counts,
+  hashes, commits, checks, releases, deployments, or device evidence.
+
+Operational documents must not hardcode a current number of tools, current catalog hash,
+current deployed commit, or current device release. Those values change independently.
+
+## Historical evidence
+
+Files under `docs/baselines/` are immutable historical evidence except for narrowly
+justified factual corrections. A later release must not rewrite an earlier baseline to
+look current. If later evidence supersedes a snapshot, add a new baseline or a clearly
+linked current document.
+
+Historical phase plans may remain in specs, ADRs, roadmap entries, and Git. They must be
+marked Historical or Superseded when a reader could mistake them for active setup or
+current product behavior.
+
+## Evidence and specialized documentation index
+
+These references remain useful, but they do not replace the canonical product sources
+above:
+
+- Public presentation landing contract: `docs/landing/public-showcase.md`.
+- GitHub Actions diagnosis and bounded log retrieval: `docs/github-actions-diagnostics.md`.
+- P8 closure evidence: `docs/baselines/2026-07-13-p8.md`.
+- P8.1 production closure: `docs/baselines/2026-07-14-p8_1-production.md`.
+- P9 release-candidate evidence: `docs/baselines/2026-07-14-p9.md`.
+- P11 historical candidate evidence: `docs/baselines/2026-07-15-p11.md`.
+- P11.2 historical relay evidence: `docs/baselines/2026-07-16-p11_2.md`.
+- P15 historical release-candidate evidence remains under
+  `docs/baselines/2026-07-19-p15-rc.md`; P14 target-locked runtime actions are
+  documented in `docs/authorized-htb-actions.md`.
+- P16 scheduler specification: `specs/007-global-work-scheduler/`.
+- P16 pool architecture decision:
+  `docs/adr/0004-p16-global-scheduler-separated-execution-pools.md`.
+- P16 measured capacity evidence: `docs/baselines/2026-07-22-p16-capacity.md`.
+- Edge lifecycle state migration: `docs/edge-lifecycle-migration.md`.
+- P16 package/install candidate: `docs/install-edge-parrot-p16.md`.
+- Human project aliases and workspace resolution:
+  `docs/project-workspace-resolution.md`.
+- Durable local Edge execution journal: `docs/edge-job-journal.md`.
+- Durable control-plane queue store: `docs/workqueue-store.md`.
+
+Exact commits, releases, hashes, counts, job IDs, deployment observations, and device
+proofs belong in those dated evidence files or in live identity output. Source/release,
+VPS deployment and real Edge installation must be reported as separate facts.
+
+## Change checklist
+
+Before merging a documentation change:
+
+1. Identify the canonical owner for every changed fact.
+2. Verify configuration claims against code, Dockerfiles, entrypoints, workflows, and
+   the live runtime where relevant.
+3. Verify security claims against actual policy and profile implementation.
+4. Replace mutable counts, hashes, releases, and commits with canonical/live references
+   unless the document is dated evidence.
+5. Keep historical baselines intact.
+6. Update focused documentation contracts.
+7. Run `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and
+   `git diff --check`.
+8. Record exact-head CI and merge evidence before claiming completion.

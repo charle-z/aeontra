@@ -16,14 +16,14 @@ func TestP3ClosureDocumentationIsCurrent(t *testing.T) {
 		return string(content)
 	}
 
-	readme := read("../README.md")
-	agents := read("../AGENTS.md")
+	currentDocs := read("context-capsule.md")
+	historical := read("baselines/2026-07-13-p3.md")
 	capsule := read("context-capsule.md")
 	baseline := read("baselines/2026-07-13-p3.md")
 
 	for path, content := range map[string]string{
-		"README.md": readme,
-		"AGENTS.md": agents,
+		"context-capsule.md": currentDocs,
+		"P3 baseline":        historical,
 	} {
 		if !strings.Contains(content, "composition root") || !strings.Contains(content, "internal/app") {
 			t.Errorf("%s does not describe the P3 composition-root architecture", path)
