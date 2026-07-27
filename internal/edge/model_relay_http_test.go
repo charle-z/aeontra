@@ -178,6 +178,47 @@ func TestSignedModelRelayRejectsDigestReplayAndTimeoutExpansion(t *testing.T) {
 	}
 }
 
+func TestSignedModelRelayLeaseKeepsRuntimeRetryableWhenGoalIsUnavailable(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	clock := now
+	devices, device, privateKey := openPairedRelayDevice(t, now, "relay-retryable-goal")
+	turns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: filepath.Join(t.TempDir(), "turns"), Now: func() time.Time { return clock }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = turns.Close() })
+
+	goal := []byte("retry the lease when the goal body is temporarily unavailable")
+	goalBody, err := turns.StageRuntimeGoal(t.Context(), goal, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, created, err := turns.StartBoundRuntime(t.Context(), modelturn.BoundRuntimeRequest{
+		DeviceID: device.ID, WorkspaceID: "ws_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+		Controller: modelturn.ControllerRemoteEdge, GoalSummary: modelturn.GoalSummary(goal),
+		GoalRef: goalBody.BodyRef, GoalDigest: goalBody.ContentDigest,
+		IdempotencyKeyDigest: modelturn.IdempotencyDigest("relay-runtime-retryable-goal"), TTL: 10 * time.Minute,
+	})
+	if err != nil || !created {
+		t.Fatalf("runtime=%+v created=%t err=%v", runtime, created, err)
+	}
+	clock = clock.Add(2 * time.Second)
+	handler := NewHTTPHandler(devices, turns)
+
+	lease := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-retryable-goal", modelRuntimeLeasePath, modelRuntimeLeaseRequest{LeaseID: "el_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", WaitSeconds: 1})
+	if lease.Code != http.StatusServiceUnavailable {
+		t.Fatalf("lease status=%d body=%s", lease.Code, lease.Body.String())
+	}
+	retry := signedRelayRequest(t, handler, device.ID, privateKey, now, "relay-nonce-retryable-goal-retry", modelRuntimeLeasePath, modelRuntimeLeaseRequest{LeaseID: "el_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", WaitSeconds: 1})
+	if retry.Code != http.StatusServiceUnavailable {
+		t.Fatalf("retry status=%d body=%s", retry.Code, retry.Body.String())
+	}
+	after, err := turns.RuntimeForDevice(t.Context(), runtime.RuntimeID, device.ID)
+	if err != nil || after.State != modelturn.RuntimeStateAwaitingEdge || after.Status != modelturn.RuntimeReady {
+		t.Fatalf("runtime after retryable lease=%+v err=%v", after, err)
+	}
+}
+
 func openPairedRelayDevice(t *testing.T, now time.Time, name string) (*Store, Device, ed25519.PrivateKey) {
 	t.Helper()
 	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
