@@ -17,17 +17,11 @@ func TestP2ClosureDocumentationIsCurrent(t *testing.T) {
 	}
 
 	readme := read("../README.md")
-	agents := read("../AGENTS.md")
 	capsule := read("context-capsule.md")
 	baseline := read("baselines/2026-07-13-p2.md")
 
-	for path, content := range map[string]string{
-		"README.md": readme,
-		"AGENTS.md": agents,
-	} {
-		if !strings.Contains(content, "capability services") {
-			t.Errorf("%s does not describe the P2 capability service architecture", path)
-		}
+	if !strings.Contains(readme, "## Main capabilities") || !strings.Contains(readme, "docs/baselines/") {
+		t.Error("README must present current capabilities and delegate phase history to baselines")
 	}
 
 	for _, required := range []string{

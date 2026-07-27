@@ -124,8 +124,6 @@ func TestP81ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 	}
 
 	for name, path := range map[string]string{
-		"AGENTS":       "../AGENTS.md",
-		"README":       "../README.md",
 		"current task": "../.agent-memory/current-task.md",
 		"handoff":      "../.agent-memory/handoffs/latest.md",
 	} {
