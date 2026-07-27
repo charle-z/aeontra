@@ -59,3 +59,8 @@ turn bodies may be evicted oldest-first.
 A runtime interrupted in `awaiting_model` may mark the turn `disconnected`. After a
 process restart, `ResumeRuntime` moves unexpired disconnected turns back to
 `awaiting_model` without changing turn id, sequence, digest, request ref, or body.
+
+For a remote-Edge runtime before its first turn, inability to read the private runtime
+goal is handled as a retryable lease delivery failure. The runtime returns to
+`awaiting_edge` and the Edge repeats the same signed receipt; the control plane must
+not turn that storage/availability condition into a terminal Edge failure.

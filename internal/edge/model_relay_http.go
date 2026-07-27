@@ -95,6 +95,21 @@ func (r *modelRelay) handleLease(w http.ResponseWriter, request *http.Request) {
 			http.Error(w, "runtime lease receipt unavailable", http.StatusConflict)
 			return
 		}
+		if runtime.State == modelturn.RuntimeStateAwaitingEdge {
+			if err := r.turns.SetRuntimeRunning(request.Context(), runtime.RuntimeID); err != nil {
+				http.Error(w, "runtime lease receipt unavailable", http.StatusConflict)
+				return
+			}
+			runtime, runtimeErr = r.turns.RuntimeForDevice(request.Context(), receipt.RuntimeID, device.ID)
+			if runtimeErr != nil {
+				http.Error(w, "runtime lease receipt unavailable", http.StatusConflict)
+				return
+			}
+		}
+		if runtime.State != modelturn.RuntimeStateStarting {
+			http.Error(w, "runtime lease receipt unavailable", http.StatusConflict)
+			return
+		}
 		r.writeLease(w, request, device, runtime)
 		return
 	}
@@ -119,8 +134,11 @@ func (r *modelRelay) handleLease(w http.ResponseWriter, request *http.Request) {
 func (r *modelRelay) writeLease(w http.ResponseWriter, request *http.Request, device Device, runtime modelturn.Runtime) {
 	goal, digest, err := r.turns.RuntimeGoal(request.Context(), runtime.RuntimeID, device.ID)
 	if err != nil || !utf8.Valid(goal) {
-		_ = r.turns.FailRuntime(context.Background(), runtime.RuntimeID)
-		http.Error(w, "runtime goal unavailable", http.StatusConflict)
+		// A missing or temporarily unreadable body is not an Edge failure.  Keep the
+		// runtime eligible for the same signed lease receipt to retry; marking it
+		// failed here would make a transient store fault terminal before a turn exists.
+		_ = r.turns.SetRuntimeState(context.Background(), runtime.RuntimeID, modelturn.RuntimeStateAwaitingEdge, modelturn.RuntimeStateStarting)
+		http.Error(w, "runtime goal unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	remaining := time.Until(runtime.ExpiresAt)

@@ -36,6 +36,16 @@ Each accepted call therefore creates at most one runtime.
 After the runtime reaches a terminal state, a later explicit request may create one
 new runtime. A failed or expired runtime is never retried automatically.
 
+## Lease recovery
+
+Before the first model turn, the control plane serves the server-owned objective to
+the paired Edge through a signed, receipt-bound lease. If that private objective body
+is temporarily unavailable, the server returns a retryable service-unavailable result
+and restores the runtime to `awaiting_edge`; it does not report an Edge failure or
+create a terminal runtime. The Edge retries with the same opaque lease receipt. A
+runtime becomes terminal only through its normal explicit completion, cancellation,
+failure, or expiry transitions.
+
 The safe public response contains only:
 
 ```text
