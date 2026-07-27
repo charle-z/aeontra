@@ -41,17 +41,6 @@ func TestP7ClosureEvidenceIsSynchronized(t *testing.T) {
 		t.Error("roadmap does not mark P7 deployed")
 	}
 
-	capsule := read("context-capsule.md")
-	for _, required := range []string{
-		"P7 structured observability is deployed",
-		"p7-structured-observability",
-		"authenticated dark console",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
-
 	spec := read("../specs/004-structured-observability/spec.md")
 	plan := read("../specs/004-structured-observability/plan.md")
 	tasks := read("../specs/004-structured-observability/tasks.md")

@@ -16,24 +16,10 @@ func TestP4ClosureDocumentationIsCurrent(t *testing.T) {
 		return string(content)
 	}
 
-	capsule := read("context-capsule.md")
 	roadmap := read("product-roadmap.md")
 	tasks := read("../specs/001-layer-1/tasks.md")
 	baseline := read("baselines/2026-07-13-p4.md")
 
-	for _, required := range []string{
-		"P4 targeted Layer-1 hardening is deployed",
-		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
-		"62 tools",
-		"sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("context capsule does not contain %q", required)
-		}
-	}
-	if strings.Contains(capsule, "P4 targeted Layer-1 hardening is active") {
-		t.Error("context capsule still describes deployed P4 as active")
-	}
 	if !strings.Contains(roadmap, "| P4 targeted L1 hardening | Deployed |") {
 		t.Error("roadmap does not mark P4 deployed")
 	}

@@ -18,9 +18,9 @@ func TestP9RuntimeOperationsAreDocumentedAndPackaged(t *testing.T) {
 
 	runbook := read("runbooks/brain-operations.md")
 	deploy := read("deploy-coolify.md")
+	configuration := read("configuration.md")
 	dockerfile := read("../Dockerfile")
 	readme := read("../README.md")
-	capsule := read("context-capsule.md")
 
 	for _, required := range []string{
 		"MCP_DEVBOX_BRAIN_ROOT=/brain",
@@ -55,23 +55,19 @@ func TestP9RuntimeOperationsAreDocumentedAndPackaged(t *testing.T) {
 		}
 	}
 
-	for name, content := range map[string]string{
-		"deploy guide": deploy,
-		"README":       readme,
-		"capsule":      capsule,
-	} {
-		if name == "README" {
-			for _, required := range []string{"docs/configuration.md", "/brain"} {
-				if !strings.Contains(content, required) {
-					t.Errorf("README does not delegate Brain configuration via %q", required)
-				}
-			}
-			continue
+	for _, required := range []string{"configuration.md", "Brain is optional", "/brain"} {
+		if !containsNormalizedProse(deploy, required) {
+			t.Errorf("deploy guide does not delegate Brain configuration via %q", required)
 		}
-		for _, required := range []string{"MCP_DEVBOX_BRAIN_ROOT", "/brain", "brain-smoke", "67"} {
-			if !strings.Contains(content, required) {
-				t.Errorf("%s does not contain %q", name, required)
-			}
+	}
+	for _, required := range []string{"MCP_DEVBOX_BRAIN_ROOT", "/brain", "cmd/brain-smoke", "outside the repository jail"} {
+		if !strings.Contains(configuration, required) {
+			t.Errorf("configuration reference does not contain %q", required)
+		}
+	}
+	for _, required := range []string{"docs/configuration.md", "/brain"} {
+		if !strings.Contains(readme, required) {
+			t.Errorf("README does not delegate Brain configuration via %q", required)
 		}
 	}
 

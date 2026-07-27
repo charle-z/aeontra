@@ -16,24 +16,10 @@ func TestP5ClosureDocumentationIsCurrent(t *testing.T) {
 		return string(content)
 	}
 
-	capsule := read("context-capsule.md")
 	roadmap := read("product-roadmap.md")
 	tasks := read("../specs/002-deeper-testing/tasks.md")
 	baseline := read("baselines/2026-07-13-p5.md")
 
-	for _, required := range []string{
-		"P5 deeper testing is deployed",
-		"4a68ca054a5f077d62a0f887234866673feb7353",
-		"62 tools",
-		"sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("context capsule does not contain %q", required)
-		}
-	}
-	if strings.Contains(capsule, "P5 deeper testing is active") {
-		t.Error("context capsule still describes completed P5 as active")
-	}
 	if !strings.Contains(roadmap, "| P5 deeper testing | Deployed |") {
 		t.Error("roadmap does not mark P5 deployed")
 	}

@@ -19,33 +19,19 @@ func TestConnectRemoteDocumentsCurrentToolSurface(t *testing.T) {
 	doc := readDoc(t, "connect-remote.md")
 
 	for _, want := range []string{
+		"configuration.md",
+		"tools.md",
+		"OAuth",
+		"header-only recovery",
+		"query-string credentials",
+		"/healthz",
+		"/version",
+		"system_runtime_info",
+		"workspace_checkpoint",
 		"build_context_pack",
-		"list_dir",
-		"read_file",
-		"read_many_files",
-		"search_code",
 		"apply_patch",
-		"create_file",
-		"run_command",
-		"git_status",
-		"git_diff",
-		"run_tests",
-		"git_commit",
-		"memory_read",
-		"memory_write",
-		"memory_update_handoff",
-		"sandbox_status",
-		"MCP_DEVBOX_TEST_CMD",
-		"MCP_DEVBOX_ALLOW_CMD",
-		"one-tool-per-message",
-		"git_commit does not push",
-		"repo_fast_forward_preview",
-		"source_repo_create_preview",
-		"repo_publish_preview",
-		"platform_app_create_preview",
-		"notes_write_preview",
-		"privileged_task_preview",
-		"MCP_DEVBOX_PRIVILEGED_TASKS",
+		"preview",
+		"single-use plan",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Fatalf("connect-remote.md does not document %q", want)
@@ -93,13 +79,16 @@ func TestToolReferenceDocumentsAllRegisteredToolsAndInvariants(t *testing.T) {
 }
 
 func TestFeaturesMarksWorkerPlanSuperseded(t *testing.T) {
-	doc := readDoc(t, "features.md")
+	doc := strings.ToLower(readDoc(t, "features.md"))
 	for _, want := range []string{
-		"SUPERSEDED",
+		"historical",
+		"superseded",
 		"cheap-model worker",
-		"docs/context-capsule.md",
+		"configuration.md",
+		"security.md",
+		"tools.md",
 	} {
-		if !strings.Contains(doc, want) {
+		if !strings.Contains(doc, strings.ToLower(want)) {
 			t.Fatalf("features.md does not contain %q", want)
 		}
 	}

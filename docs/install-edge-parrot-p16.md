@@ -1,9 +1,16 @@
-# P16 simple Parrot Edge installation and lifecycle
+# Canonical Parrot Edge installation and lifecycle
 
-Status: **Step 2 implementation candidate** on branch `p16-global-work-scheduler`.
-Local unit/package/onboarding tests pass. Exact-head remote package, race, signed release,
-and real Parrot installation evidence are still required before this workflow is called
-merge-ready or deployed.
+This is the **Canonical** operator procedure for the current source tree. General
+runtime variables, paths, ownership, and security posture remain canonical in
+[`configuration.md`](configuration.md) and [`security.md`](security.md).
+
+Keep four states separate: source release, package artifact, VPS/control-plane
+deployment, and installed Edge. Each requires separate evidence. When any environment-
+specific proof is missing, report that proof as **validation pending** rather than
+inferring it from source, CI, a tag, or another device.
+
+This guide does not identify a moving release or claim which release is installed on a
+real Edge. Use the signed package metadata and supported local doctor/status output.
 
 ## Product contract
 
@@ -185,13 +192,13 @@ preserve:
 - configured resource policy;
 - repositories below `~/workspaces` and `~/htb-machines`.
 
-A failed signed update restores the previous release and service. Step 2 adds state
-transaction rollback so a package failure cannot leave the old release looking in a
-new state path while the previous state disappeared.
+A failed signed update restores the previous release and service. The lifecycle
+transaction also restores migrated state so a package failure cannot leave the old
+release pointing at a state path whose prior contents disappeared.
 
 A normal update does not require another pairing or manual workspace registration.
-This guarantee is local-code/fixture verified but still requires exact-head remote and
-real-device evidence before deployment closure.
+Verify this separately in package CI and on the intended real device. Do not transfer
+proof from one environment to another.
 
 ## Uninstallation posture
 
@@ -203,15 +210,17 @@ and backup review.
 
 ## Normal chat experience after installation
 
-P16 Step 2 only fixes installation, migration, onboarding, diagnosis, and repair. The
-alias-first project resolver is Step 3. Its final normal interaction will be:
+After installation, a registered development project may be addressed by its human
+project and Edge aliases rather than by opaque device/workspace/runtime identifiers.
+For example:
 
 ```text
 Usa Parrot para continuar ekoparty-trip-agent.
 ```
 
-The control plane will resolve the alias, device, project, workspace, job, and runtime
-internally. Step 2 does not yet claim that this high-level project flow is implemented.
+The control plane and Edge resolve private identifiers through their registered
+contracts. Verify readiness with the project/status tools and local doctor output; the
+example itself is not evidence that a particular project or device is ready.
 
 ## Validation commands for maintainers
 

@@ -16,10 +16,7 @@ func TestP15CurrentDocumentationSeparatesSourceDeploymentAndDeviceEvidence(t *te
 		return string(body)
 	}
 
-	const (
-		releaseCommit = "5048a5aa0e0d57d67df3680112aee0d47c954543"
-		catalogHash   = "sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12"
-	)
+	const catalogHash = "sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12"
 
 	readme := read("../README.md")
 	for _, required := range []string{
@@ -43,22 +40,6 @@ func TestP15CurrentDocumentationSeparatesSourceDeploymentAndDeviceEvidence(t *te
 	} {
 		if strings.Contains(readme, forbidden) {
 			t.Errorf("README embeds mutable or historical state %q", forbidden)
-		}
-	}
-
-	capsule := read("context-capsule.md")
-	for _, required := range []string{
-		"Current release baseline",
-		releaseCommit,
-		"p15.0.5",
-		catalogHash,
-		"system_runtime_info",
-		"last repository-recorded real-host Parrot installation",
-		"ordinary Edge sandbox runtimes use mandatory networkless Bubblewrap",
-		"trusted Linux workcells deliberately share host networking",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("context capsule missing %q", required)
 		}
 	}
 

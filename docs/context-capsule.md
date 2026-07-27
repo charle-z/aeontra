@@ -1,532 +1,172 @@
-# Context Capsule - mcp-devbox
+# MCP Devbox context capsule
 
-Compact handoff for any AI session. Keep this file short and current.
+This is a bounded continuation capsule, not a release diary and not live identity. Read
+it after `AGENTS.md` when resuming work. The repository and live runtime remain the
+sources of truth.
 
-## Current Goal
+## Canonical sources
 
-Current release baseline: `p15.0.5` is anchored at
-`5048a5aa0e0d57d67df3680112aee0d47c954543` after PR #38.
-The public catalog contains 98 tools with hash
-`sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
-Explicit continuation idempotency and the owner-bound private development Edge Git
-broker are merged. PR #39 synchronized the documentation and was deployed at
-`f9577f791e1a566845fbbac59571cd72aa85a47f`. The Coolify application tracks
-`main`; the exact live commit must be read from `system_runtime_info` rather than
-hardcoded into a document that changes on every merge.
+- [`../README.md`](../README.md) — current product entry point and navigation.
+- [`docs/configuration.md`](configuration.md) — complete supported configuration, paths,
+  volumes, defaults, permissions, and secret handling.
+- [`docs/security.md`](security.md) — technical threat, trust, authority, isolation, and
+  persistence model.
+- [`docs/tools.md`](tools.md) — canonical public tool catalog and workflows.
+- [`documentation-map.md`](documentation-map.md) — source ownership and status terms.
+- [`product-roadmap.md`](product-roadmap.md) — evidence-based product direction.
+- [`docs/baselines/`](baselines/) — dated historical evidence.
+- `.agent-memory/current-task.md` and `.agent-memory/handoffs/latest.md` — active task
+  and continuation state.
 
-Current evidence boundary: the last repository-recorded real-host Parrot installation
-proof is `p15.0.4`. Do not claim that Parrot runs `p15.0.5`, that its local Git
-credential has been entered, or that a real private-repository smoke passed until a
-separate structured update and validation records those facts.
+Use `/version` or `system_runtime_info` for the live server commit, protocol, tool count,
+and catalog hash. Do not copy those moving values into this capsule.
 
-Current isolation posture is profile-specific: the public Layer-1 command path is not
-an OS sandbox; ordinary Edge sandbox runtimes use mandatory networkless Bubblewrap;
-trusted Linux workcells deliberately share host networking; HTB sessions are
-target/VPN-bound but are not universal egress control.
+## Product in one paragraph
 
-### Historical P15 progression
+MCP Devbox is a secure-by-default MCP server that lets AI clients inspect, change,
+validate, publish, and deploy software through narrow tools without exposing a free host
+shell or unrestricted machine authority. Policy is immutable at startup. Reads and
+bounded status operations execute directly under jail, secret, redaction, schema, and
+audit controls. Consequential effects use exact preview, single-use plan, approval when
+required, state revalidation, narrow execution, bounded result, and audit.
 
-P15 merged through PR #32 on `main` at merge commit
-`2b72df3625f6f223f8a0d974a94ebf1052bea117`; all required exact-head checks passed.
-The protected release workflow published the signed P15 line, and Parrot now runs
-`p15.0.4` at commit `3a91fb703ca8543869098ba0aa8c80f69e8233a1` with the P14
-device identity and Cap workspace ID preserved. The
-Edge consumed the queued prepare, retarget and autopilot operations and created a
-durable job. The job is safely blocked with `provider_transient`: the configured
-loopback endpoint `http://127.0.0.1:4096/v1/next-action` has no resident model
-provider. No credential, flag or completed lab result is claimed.
+## Supported architecture
 
-P15 now restores the already proven P14 interactive continuation for registered
-`htb-linux` workspaces. In that mode ChatGPT web is the
-model and drives `model_turn_next` / `model_turn_respond` while the chat is active;
-the pinned OpenCode process is only the local Edge harness and consumes no model/API
-credits. The loopback P15 autopilot remains optional for unattended continuation.
-The follow-up runtime hardening resolves signed-release compatibility symlinks before
-validating the provider and driver, and normalizes mixed HTB/ordinary model responses
-by executing the structured HTB calls first and deferring ordinary calls instead of
-terminating the runtime for a recoverable model mistake.
+```text
+MCP client
+   │ stdio or authenticated HTTPS
+   ▼
+MCP Devbox control plane
+   ├─ repository jail and immutable policy
+   ├─ direct bounded operations
+   ├─ planned consequential operations
+   ├─ private durable state outside repository roots
+   └─ optional GitHub, Coolify, Brain, validation, and Edge adapters
+          │
+          ▼
+      signed paired Edge with local private workspace contracts
+```
 
-The follow-up merged through PR #38 and release `p15.0.5` replaces transport
-JSON-RPC IDs as durable continuation identity with an explicit caller-generated
-idempotency key and adds an Edge-only Git broker for private development repositories.
-The public MCP token remains responsible for GitHub workflow/check/PR APIs; a separate
-0600 local copy authorizes owner-bound clone and single-use planned publication without
-entering the model sandbox. Exact-head gates, merge and signed release are complete;
-the separate Parrot `p15.0.5` update and real private-repository smoke remain unclaimed.
+Supported deployment shapes:
 
-Real P14 migration exposed a packaging defect not covered by the original isolated
-package test: `ln -sfn` cannot replace the existing P14
-`/opt/mcp-devbox/opencode-provider` and `/opt/mcp-devbox/opencode-1.18.1`
-directories. Parrot was recovered by moving only those compatibility directories,
-finishing package configuration, verifying the signed bundle and service, and then
-removing the obsolete copies. PR #33 merged the follow-up fix and all gates passed;
-signed release `p15.0.2` was published.
+- local stdio in `read-only` or `ask`;
+- local authenticated HTTP;
+- VPS/Coolify HTTP control plane with OAuth;
+- global builder with optional GitHub and Coolify adapters;
+- persistent Brain and observability/state profiles;
+- VPS plus signed Linux/Parrot/WSL Edge;
+- optional fixed privileged and private validation profiles.
 
-The first real structured update to `p15.0.2` exposed a second updater defect: Go's
-`MkdirTemp` left the versioned release root at mode `0700`, so root could verify the
-bundle but the `charles` Edge service could not traverse it. Both update attempts
-rolled back safely to active `p15.0.1`; device key hash remained unchanged. PR #34
-added the missing `0755` staging-root mode and regression test, passed all gates and
-merged. Signed `p15.0.3` was then published. Because the installed `p15.0.1` updater
-still contained the defect, the first `p15.0.3` staging attempt was allowed to fail
-closed; after verifying its exact signed release directory and mode, that one path
-was changed from `0700` to `0755` and the structured updater completed. Final live
-verification reports `p15.0.3`, previous `p15.0.1`, valid bundle, active Edge,
-unchanged device-key hash and preserved workspace
-`ws_593c26b24ba6dc583c9aa1da5e9e0152`. Future updates use the corrected updater.
+## Authority boundaries
 
-P15 implements the indivisible Ed25519-signed bundle, reproducible Debian package,
-restricted updater, atomic activation/rollback, repair, onboarding, signed outbound
-control leases, automatic lab prepare/retarget, durable local autopilot state,
-loopback model interface, Unix-socket HTB broker, circuit breakers, pinned Node,
-rootless Podman checks, release SBOM and protected release automation. RC evidence
-is in `docs/baselines/2026-07-19-p15-rc.md`; operational detail is in
-`docs/autopilot.md`, `docs/edge-bundles.md` and `docs/install-edge-parrot-p15.md`.
+Do not collapse these surfaces into one “sandbox” claim:
 
-Historical deployed milestones remain part of the current evidence chain: P8.1 Console
-2.0 is deployed and tagged from d343264bffdc0ae1bc045a9d723e913be977090c;
-query-string credentials return 401; durable task state remains under /state/tasks;
-P9 Brain is deployed; and the 67 tools milestone is preserved in
-`docs/baselines/2026-07-14-p8_1.md` and the later P9 evidence.
+- **Public control plane:** application-level jail, allowlists, schemas, plans, redaction,
+  audit, and non-root container. It is not universal OS isolation.
+- **Edge sandbox:** mandatory networkless Bubblewrap for the selected workspace.
+- **Trusted Linux workcell:** filesystem/process boundary with
+  `trusted_host_shared_network`; not universal egress isolation.
+- **Authorized target-locked workspace:** closed local actions bound to one private target
+  and validated VPN route; not a host firewall.
+- **Development Edge Git broker:** owner-bound Git transport outside the model workcell;
+  credentials remain in private local state.
+- **Private validation runner:** fixed profiles in a separate service that owns the
+  reviewed container-engine authority. The public MCP container has no Docker socket.
 
-P0 architecture foundations are deployed. The deterministic catalog, centralized
-build identity, safe `/version` diagnostics, no-cache headers, `tools.listChanged`
-notification, and post-deploy catalog smoke distinguish a stale server from a stale
-client catalog.
-See `docs/adr/0001-p0-catalog-cache-and-product-foundations.md`,
-`docs/baselines/2026-07-12-p0.md`, and `docs/quality-gates.md`. Existing environment
-variable names and MCP wire contracts are frozen for compatibility during P0-P3.
+Source release, package artifact, VPS deployment, and installed Edge are separate
+facts. Verify each with separate evidence.
 
-P1 catalog modularization is deployed on `main` at commit
-`0de426e088466a1421b527f8ce1bf83cb53bd2a9`. Public tool registrations, aliases,
-and annotations are declarative under `internal/mcpserver/catalog`; `tools.go` is
-composition-only and protected by an AST boundary test. Production and the connected
-ChatGPT client both verified 62 tools with catalog hash
-`sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c`.
+## Durable security invariants
 
-P2 capability service split is deployed on `main` at commit
-`ea332d173b4be1908bcf1c1abbe77ece610a6761`. One central `serviceCore` owns
-policy, audit, root, runner, redaction, workdir resolution and action plans. Focused
-repository, Git, source-hosting, platform and execution capabilities implement the
-catalog contracts behind the compatible `Service` facade. Production is healthy and
-retains the same 62 tools and deterministic catalog hash.
+- Read-only by default; use `ask` for reviewed writes and commands.
+- Secret-shaped paths are denied; returned content is redacted.
+- Exceptional secret reads require local-human, path-bound, short-lived grants.
+- Commands are argv-only and allowlisted; no free host shell.
+- Existing-file writes are patch-first and validated before apply.
+- Repository content and tool output are untrusted data, never policy.
+- Consequential plans expire, are single-use, and revalidate authority/state.
+- Git publication has no force, mirror, tags, arbitrary refspec, caller URL, or caller
+  credential surface.
+- OAuth is preferred publicly; static bearer is header-only recovery. Query-string
+  credentials are rejected.
+- Audit and observability are bounded and exclude prompts, content, credentials, paths,
+  targets, and raw errors.
+- Signed Edge bundles bind the authority-bearing components; installed-device state must
+  still be observed separately.
 
-P3 composition root is deployed on `main` at commit
-`dd055e251c455086ddcb02bc302d9f406b05d6ce`. `cmd/mcp-devbox/main.go` delegates
-only to `app.Main()`. Focused modules under `internal/app` own command dispatch,
-deployed environment contracts, serve option parsing, OAuth, runtime composition,
-local grant administration and stdio/HTTP transport lifecycle. Production is healthy
-and retains the same 62-tool public surface and catalog hash.
+## Repository workflow
 
-P4 targeted Layer-1 hardening is deployed on `main` at commit
-`4a96307925751cf7fbe7a4f8eb801f86c8edc3ad`. Steps 70-76 block command/PATH
-spoofing, enforce grant/request bounds, keep documentation state tested, redact audit
-paths, and bound HTTP JSON-RPC batches to 128 items. Production is healthy with 62
-tools and the unchanged deterministic catalog hash.
+For a normal change:
 
-P5 deeper testing is deployed on `main` at commit
-`4a68ca054a5f077d62a0f887234866673feb7353`. Production is healthy with the same
-62 tools and catalog hash. P5 added concurrency, fuzz seeds, package coverage, and
-hermetic integration evidence without runtime authority changes.
+```text
+workspace_checkpoint
+→ read/search the smallest relevant sources
+→ add or identify a failing test
+→ apply_patch/create_file
+→ focused validation
+→ go test ./... -count=1
+→ go vet ./...
+→ go build ./...
+→ git diff --check
+→ commit on a feature branch
+→ normal PR
+→ exact-head checks green
+→ merge commit
+→ synchronize clean main
+```
 
-P6 CI/DevSecOps is deployed on `main` at commit
-`539e4d96c95aedd492ac36b428d4159054e183f4`. Pull-request and post-merge CI,
-Race, Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker build, SPDX SBOM,
-and the unchanged High/Critical Grype gate are green. Production is healthy with 62
-tools and the unchanged catalog hash. Exact findings, remediation, restart evidence,
-and closure are recorded in `docs/security-reports/2026-07-13-p6-ci-container-findings.md`
-and `docs/baselines/2026-07-13-p6.md`. P6 closure branch `p6-step92-closure`
-produced commit `ab0cf153fe898784dac6d48a062de78abb4d5f5d`, which is deployed and verified.
+Before creating a script or helper, use the tool-discovery index in `AGENTS.md` and the
+catalog in `tools.md`. Create an auxiliary only when no canonical tool covers the
+operation and record why.
 
-P7 structured observability is deployed on `main` at
-`d1309ed08db0170e5165f78bf406e94cfa56cc11`; branch
-`p7-structured-observability` preserves the milestone history. The separate
-closed-schema JSONL stream covers server, HTTP, JSON-RPC, malformed batch, and known
-public tool completion events while excluding prompts, bodies, params, results,
-source, paths, repositories, commands, targets, URLs, queries, headers, tokens,
-identities, and raw errors. CI, Race, Staticcheck, Govulncheck, CodeQL, SBOM, and the
-container gate are green. Production is healthy with 62 tools and the unchanged
-catalog hash; real logs prove shared opaque request IDs and content-free events.
-Closure evidence is in `docs/baselines/2026-07-13-p7.md`. Closure commit
-`30ae8a7e9d7b73584b34ef3bbbc952407faa5117` is deployed and verified.
+## Operational state
 
-P8 authenticated dark console is deployed on `main` at
-`605a56d48a495f3c8a2ce62471223187ef2f5685`. PR #2 and post-merge runs passed
-Verify, Race, Staticcheck, Govulncheck, CodeQL, Dependency Review, Docker build, SPDX
-SBOM, and the unchanged High/Critical Grype gate. `cmd/console-smoke` passed against
-production with a Secure opaque cookie, exact safe schema, 62 tools, and the unchanged
-catalog hash. Logs show only content-free `route=console` classifications. P8 adds no
-new resident service, Coolify application, listener, database, queue, model, credential,
-or OAuth protocol change. Closure evidence is in
-`docs/baselines/2026-07-13-p8.md`. Formal closure commit
-`2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8` and deployed.
+Do not infer current state from this file. Resolve it as follows:
 
-P9 Brain is deployed on `main` at merge commit
-`4fbe1dda02351c632e67c0f10a5c5b314df745e2` and tagged `p9`. The existing
-Coolify application is healthy with persistent `/brain`, 67 tools and catalog hash
-`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`;
-`cmd/mcp-catalog-smoke` and `cmd/brain-smoke` passed against production.
-The no resident service invariant remains intact.
-
-P8.1 Console 2.0 is deployed on `main` at merge commit
-`d343264bffdc0ae1bc045a9d723e913be977090c` and tagged `p8.1`.
-React/TypeScript/Vite compiles the Neo-BIOS interface into
-same-origin assets embedded by Go. The console OAuth flow uses digest-only state,
-PKCE S256, one-use codes and a strict opaque cookie; query-string credentials return
-401 while header bearer remains recovery-only. Durable content-free task state lives
-under `/state/tasks` and is streamed through SSE with polling fallback. Exact
-allowlisted endpoints expose real container resources, declared `bytes / 4 (estimate)`
-payload accounting, aggregate observability, Brain aggregates and an opaque bounded
-graph. Edge is `Not paired`; no Edge Core, workcell, terminal or autonomous agent
-is claimed. Release-candidate evidence remains in
-`docs/baselines/2026-07-14-p8_1.md`; completed remote gates, merge, deployment and
-production smoke are recorded in `docs/baselines/2026-07-14-p8_1-production.md`.
-
-Product roadmap (2026-07-13): `docs/product-roadmap.md` defines the complete path
-from the Cubethon showcase to universal execution profiles, private PC/WSL/Parrot
-edge agents, provider-neutral MiniMax/OpenCode orchestration, and scope-bound
-authorized security research. The public console is presentation-only; MCP Devbox
-remains the private authority and is not tied to any framework or model provider.
-
-## Vision (updated 2026-06-30)
-
-The agent is ChatGPT itself. ChatGPT drives the loop directly through MCP tools;
-mcp-devbox provides the safe hands: jail, policy, redaction, grants, audit, and
-mode-gated actions.
-
-Do not reintroduce the old L2 cheap-model worker / `delegate_to_worker` plan and do
-not fork opencode or another paid agent loop. The owner wants to use the ChatGPT
-session they already pay for, avoid burning Codex/licensed-agent credits, and fall
-back to Codex/Claude/opencode only for work that proves impossible through MCP.
-
-Revised priorities:
-
-1. Agent-first tool UX: better instructions, memory, safe write/test/commit loops.
-2. Grants hardening: local-human-only, exact-path, single-use/TTL, raw double-gated.
-3. L3 hard isolation: OS sandbox plus egress controls before broad command/disk power.
-4. Install/deploy polish: easy repeatable VPS deployment and safer auth front doors.
-
-`docs/features.md` is explicitly marked SUPERSEDED for the old worker plan. This
-capsule is the current source of truth for direction.
-
-Image policy: keep the runtime capable, not minimal. The Docker image intentionally
-keeps Go + git + Node/npm because the VPS box is meant to run tests/builds and grow
-into a broader, audited builder. Do not shrink it into a bare runtime that cannot do
-useful work.
-
-Security consequence: every new capability must be a deliberate allowlisted and
-audited tool with explicit jail scoping. There is no free terminal before L3.
-
-## Current State
-
-Layer 1, v0.2 HTTP transport, Docker/Coolify deploy, and ephemeral human access
-grants are implemented and live. Module: `github.com/charle-z/mcp-devbox` (Go 1.26).
-Main branch: `main`.
-
-Production:
-
-- Host: `https://mcp-devbox-charlez.duckdns.org`
-- MCP endpoint: `/mcp`
-- Preferred ChatGPT auth: OAuth with DCR, public client, scope `mcp`.
-- Recovery fallback: `Authorization: Bearer <MCP_DEVBOX_TOKEN>` header only. Query-string credentials return 401.
-- Runtime root: `/repos`
-- Default mode: `read-only`; global-builder production should use `ask`
-- Repos live in the persistent `/repos` volume.
-
-Transport:
-
-- stdio for local clients.
-- HTTP `POST /mcp` JSON-RPC requires OAuth or an `Authorization: Bearer` recovery header.
-- `/healthz` for liveness and `/version` for safe build/catalog identity.
-- Dynamic HTTP responses disable caching and include live commit/catalog headers.
-- Authenticated `GET /mcp` returns a minimal SSE stream; unauthenticated `GET /mcp`
-  returns 401.
-- HTTP `initialize` responses include `Mcp-Session-Id`; later POSTs may send that
-  header and are accepted.
-- Same Policy/Service/redaction path for both transports; no duplicated security checks.
-- OAuth 2.1: in-process AS + resource server in `internal/oauth`. Enable with env
-  `MCP_DEVBOX_PUBLIC_URL` + `MCP_DEVBOX_OAUTH_PASSPHRASE`; discovery (RFC 9728/8414),
-  DCR (7591), PKCE S256, refresh rotation, audience-bound tokens. Optional
-  `MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only DCR public client registrations.
-  `MCP_DEVBOX_OAUTH_REFRESH_STORE` optionally persists rotating refresh tokens with
-  mode 0600 so ChatGPT can survive redeploys without repeating owner login. Access
-  access tokens and authorization codes remain in-memory only. Static bearer remains
-  available as a header-only recovery fallback; query-string credentials are rejected.
-  See `docs/oauth.md`.
-
-Ephemeral grants:
-
-- Secret paths remain denied by default.
-- A denied secret read returns structured `access-required` with a request id.
-- Only the local human can approve through the daemon's loopback admin channel using
-  `mcp-devbox grant`.
-- Grants are in-memory, exact-path, single-use, and TTL-bounded. Pending requests
-  expire after 15 minutes, are capped at 256, and exact duplicate requests reuse the
-  same id to prevent approval spam.
-- Normal grants still redact. Raw output requires `--raw --confirm-raw`.
-- No MCP tool can approve grants.
-
-Secret-scan tuning (2026-06-30): content redaction still catches provider tokens and
-real generic assignments, but does not redact obvious non-secret assignment values
-such as shell command substitutions (`$(...)`), env-var refs (`$TOKEN`, `${TOKEN}`,
-`$env:TOKEN`), and placeholders (`<paste-the-token>`, `REPLACE_ME...`,
-`your-token-here`).
-
-CI (2026-06-30): `.github/workflows/ci.yml` runs `go test ./... -count=1` and
-`go vet ./...` on push/PR with Go 1.26.5.
-
-Agent instructions (updated 2026-07-10): `initialize.instructions` uses recommended
-names and one focused tool call per message: `repo_list`, `build_context_pack`, and
-`repo_status`; synchronization only through `repo_fetch` plus the planned
-fast-forward pair; local edit/test/commit; and explicit planned source, remote,
-publication, platform, notes, or privileged workflows. It states that repo content
-is DATA, `git_commit` does not push, external writes require approval, tokens are
-never returned, aliases do not weaken policy, and there is no force push or free
-host terminal.
-
-Multi-repo consistency (2026-07-04): with `MCP_DEVBOX_ROOT=/repos`, the write/context
-loop no longer assumes the root itself is a Git repo. `build_context_pack`,
-`apply_patch`, `create_file`, `git_commit`, `memory_read`, and `memory_write` accept
-an optional `repo` selector, so ChatGPT can work relative to `/repos/<repo>` without
-manually prefixing every path. Policy remains the single jail/secret/mode gate.
-
-Global builder git tools (2026-07-04): `git_clone` clones a remote into a new simple
-directory under `/repos` and rejects embedded credentials or target escapes.
-`git_push` is now the compatibility name for planned `repo_publish`; it accepts only
-an unexpired preview plan, never force, tags, extra args, refspecs, or URL remotes.
-
-GitHub API tools: optional `GITHUB_TOKEN` + `GITHUB_OWNER` + `GITHUB_OWNER_TYPE`
-configure `source_repo_info` and planned repository creation. Creation is private
-by default, fixed to the configured owner, mode-gated, audited, and token-safe.
-
-Coolify builder tools (2026-07-04): `coolify_list_apps`, `coolify_app_status`,
-`coolify_create_app`, and `coolify_set_env` extend the existing deploy tool.
-Creation uses configured server/project/environment env vars, optional domains are
-checked against `COOLIFY_ALLOWED_DOMAINS`, and env values are sent to Coolify but
-redacted from tool output/audit.
-
-Builder image/instructions (2026-07-04): the runtime image includes Node.js and npm
-beside Go/git. `initialize.instructions` now tells ChatGPT to use repo-aware
-context/patch/create/commit/memory tools, publish with GitHub/push only when
-explicitly requested, and deploy with Coolify only when explicitly requested.
-
-Tool metadata compatibility (2026-07-09): every registered MCP tool now publishes
-all four behavior hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, and
-`openWorldHint`). Recommended `repo_*`, `source_*`, and `platform_*` aliases coexist
-with the original names and reuse the exact same schemas, handlers, policy checks,
-and approval posture.
-
-Safe repository synchronization (2026-07-09): `repo_status`/`git_status` return
-branch, HEAD, upstream, ahead/behind and categorized working-tree state.
-`repo_fetch` runs only `git fetch <remote>`. `repo_fast_forward_preview` and
-`repo_fast_forward` use the shared in-memory cryptographic action-plan store; plans
-are short-lived, exact-state-bound and single-use, and execution revalidates the
-jailed repo, attached branch, clean tree, HEAD, upstream target and fast-forward
-relationship before `git merge --ff-only`.
-
-Planned source hosting (2026-07-09): `source_repo_info` returns existence,
-visibility, default branch, credential-free clone URL and viewer permission for the
-fixed configured GitHub owner. Repository creation is now a two-step
-`source_repo_create_preview` -> `source_repo_create` flow with exact expiring plans,
-private-by-default visibility and an existence recheck. `repo_remote_preview` and
-`repo_remote_set` similarly plan and revalidate credential-free GitHub remotes,
-restricted to `GITHUB_OWNER`. The legacy `github_*` names remain registered on the
-same safe handlers.
-
-Planned publication (2026-07-09): `repo_publish_preview` inspects a clean attached
-current branch, a named credential-free GitHub remote, and the exact remote branch
-SHA; it rejects behind/diverged state and creates an expiring single-use plan.
-`repo_publish` revalidates branch, HEAD, tree, remote URL and remote branch before
-running one generated `git push` (with `-u` only for the initial branch). Force,
-mirror, tags, arbitrary refspecs, URL remotes and extra arguments are not expressible.
-Legacy `git_push` invokes the same planned execution handler.
-
-Planned Coolify operations (2026-07-10): `platform_apps_list` and
-`platform_app_status` return safe application summaries. Application creation is
-`platform_app_create_preview` -> `platform_app_create`, validating the configured
-server/project/environment, GitHub owner, domain allowlist, port, build pack,
-healthcheck and required environment-variable names (never values). Deployment is
-`platform_deploy_preview` -> `platform_deploy`, bound to the app repository, branch
-and expected commit. Both write flows use expiring single-use plans and revalidation;
-legacy Coolify names share the same handlers.
-
-No-cache deployments (2026-07-12): `platform_deploy_without_cache_preview` ->
-`platform_deploy_without_cache` uses a separate expiring single-use plan and requests
-Coolify's existing deploy endpoint with `force=true`. It reuses the same application
-allowlist, repository/branch/commit revalidation, approval gate, audit, redaction, and
-token handling as normal deployments; the ordinary flow remains explicitly
-`force=false`.
-
-GitHub publication and private Coolify sources (2026-07-11): `repo_publish` uses
-credential-safe HTTPS authentication for configured owner-bound GitHub remotes
-without persisting a token in the remote URL. `COOLIFY_GITHUB_APP_UUID` selects the
-configured Coolify GitHub App source and routes application creation through
-`/api/v1/applications/private-github-app`; when it is unset, the public repository
-endpoint remains the backwards-compatible default. Production verified this path by
-creating and deploying a private GitHub repository through the Coolify source.
-
-Controlled privileged profiles (2026-07-10): `privileged_task_preview` and
-`privileged_task_execute` expose only server-defined profiles and are disabled by
-default (`MCP_DEVBOX_PRIVILEGED_TASKS=true` enables them). The client cannot provide
-an executable, argv or shell string. Previews show the exact command, jailed cwd,
-network/filesystem scope, effect, risk and a two-minute single-use plan. Execution
-reuses mode approval, audit and timeouts; service names require
-`MCP_DEVBOX_PRIVILEGED_SERVICES`. Docker profiles preview but fail securely in the
-public MCP architecture rather than exposing the Docker socket. Go verification
-profiles require an available sandbox so their no-network posture is enforceable.
-
-Persistent user notes (2026-07-10): free-form Markdown notes are separate from
-structured `memory_write` sections and live at `/repos/.agent-memory/notes` when
-the configured root is `/repos`. `notes_list` and `notes_read` expose safe metadata
-and redacted content. `notes_write_preview` -> `notes_write` supports create or
-append only, with validated slugs, a 64 KiB limit, symlink defense, no overwrite,
-content-hash revalidation, timestamped appends and expiring single-use plans. Notes
-are not automatically committed into child project repositories.
-
-## What Works
-
-- Policy (`internal/policy`): path jail for fs and commands, symlink/traversal/UNC/
-  sibling-prefix protection, secret path deny, content redaction, command allowlist,
-  destructive/injection blocking, in-memory read grants, immutable runtime policy.
-- Audit (`internal/audit`): append-only JSONL, secret-scrubbed, concurrency-safe.
-- Tools (`internal/tools`): every registered tool has a schema, description, four
-  annotations, handler and tests. See `docs/tools.md` for the canonical complete
-  table, compatibility aliases, exact effects, and workflows.
-- Writes: `apply_patch` is patch-first and validates with `git apply --check`;
-  `create_file` refuses overwrite and goes through the same patch pipeline. Both
-  accept an optional `repo` selector for `/repos/<repo>` workspaces.
-- Commands: `run_command` and `run_tests` are allowlist-only, mode-gated, no shell,
-  output redacted. Both accept an optional jailed `cwd`. P4 additionally requires bare
-  executable names and resolves them to canonical absolute paths outside configured
-  workspace roots, preventing `./git` and hostile workspace `PATH` spoofing.
-- L3 status: `sandbox_status` reports the current sandbox backend state. It is
-  diagnostic only; the default is unavailable and `run_command` remains L1
-  allowlist-only.
-- Git: `git_status`, `git_diff`, and `git_commit` accept an optional jailed `repo`
-  selector for `/repos/<repo>` workspaces. `git_commit` stages and commits locally
-  but does not push.
-- Memory: `memory_read` and `memory_write` accept an optional `repo` selector.
-  `memory_write` updates only the structured sections `current-task`, `plan`,
-  `decisions`, and `reflections` under `.agent-memory/`; it uses the Policy write
-  gate, requires approval in `ask`, and redacts before persisting.
-- Deploy: `Dockerfile`, `.dockerignore`, and `docs/deploy-coolify.md` support
-  Coolify/Traefik with `MCP_DEVBOX_TOKEN` supplied only by env/secrets.
-
-## Important Files
-
-| File | Why |
+| Question | Source |
 |---|---|
-| `AGENTS.md` | Operating rules + security invariants. |
-| `.agent-memory/handoffs/latest.md` | Prioritized backlog and per-step handoff. |
-| `docs/security.md` | Threat model and secure-by-default invariants. |
-| `docs/design.md` | Architecture and layer decisions. |
-| `docs/connect-remote.md` | ChatGPT/local client setup and real-world connector notes. |
-| `docs/deploy-coolify.md` | VPS/Coolify deployment guide. |
-| `docs/product-roadmap.md` | Cubethon, universal profiles, edge, orchestrator, and authorized-security roadmap. |
-| `docs/security-engagements.md` | Generic private engagement authority and edge-enforced security workflow. |
-| `docs/open-source-release.md` | Proposed public/private boundary and release-readiness checklist. |
+| What is deployed on the VPS? | `/version`, `system_runtime_info`, and platform application/deployment status |
+| What tools are public? | `tools.md` and live MCP discovery |
+| What source release exists? | source-host release metadata and signed manifest |
+| What package artifact was published? | release/package workflow evidence |
+| What is installed on a real Edge? | supported local doctor/status and signed bundle metadata |
+| What task is active? | `.agent-memory/current-task.md` |
+| What happened historically? | a dated file in `baselines/`, an ADR/spec, PR, and Git history |
 
-## Commands
+Use “validation pending” for a missing environment-specific proof. A green source test,
+tag, or automatic deployment is not evidence of a real-device installation.
 
-```bash
-go test ./... -count=1
-go vet ./...
-go build ./...
-gofmt -l $(git ls-files '*.go')
+## Persistent state
 
-go run ./cmd/mcp-devbox serve --root <ABS_PATH> --mode read-only
-go run ./cmd/mcp-devbox serve --root <ABS_PATH> --mode ask \
-  --test-cmd "go test ./..." --http :8765
+- `/repos`: repository jail and project data.
+- `/state`: OAuth stores, audit, observability, telemetry, tasks, results, console,
+  model-turn, queue, and Edge/control-plane coordination.
+- `/brain`: optional Brain Markdown truth and local Git; search cache is disposable.
+- `~/.local/state/mcp-edge`: private installed Edge identity, registry, journal, results,
+  and optional local Git authority.
 
-mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> \
-  [--ttl 5m] [--raw --confirm-raw] <REQUEST_ID>
-```
+Keep `/state`, `/brain`, OAuth stores, Edge private state, credentials, and engine sockets
+outside the repository jail. Preserve owner-only modes and reviewed backups.
 
-Windows verification when Go is not installed system-wide: use an official
-temporary Go 1.26 SDK or the official `golang:1.26` container. Keep SDKs/caches
-outside the repository and do not commit generated binaries.
+## Known limitations
 
-```powershell
-$env:PATH = "$env:TEMP\mcp-devbox-go-sdk\go\bin;" + $env:PATH
-$env:GOCACHE = "$env:TEMP\mcp-devbox-go-cache"
-```
+- A Layer-1 allowed command inherits the daemon user's ambient OS access.
+- Content secret detection is heuristic.
+- The trusted workcell shares host networking.
+- Rootless container authority remains broad inside that user's namespace.
+- Target-locking is not universal egress enforcement.
+- Signed bundles prove artifact identity, not correctness of every dependency or host.
+- The model can damage data inside its selected writable workspace.
+- No formal verification or universal cross-platform OS sandbox is claimed.
 
-Container/Coolify env:
+## Resuming safely
 
-- `MCP_DEVBOX_TOKEN`
-- `MCP_DEVBOX_BRAIN_ROOT` (production: `/brain`)
-- `MCP_DEVBOX_ROOT`
-- `MCP_DEVBOX_MODE`
-- `MCP_DEVBOX_TEST_CMD`
-- `MCP_DEVBOX_ALLOW_CMD`
-- `MCP_DEVBOX_PUBLIC_URL`
-- `MCP_DEVBOX_OAUTH_PASSPHRASE`
-- `MCP_DEVBOX_OAUTH_CLIENT_STORE` (recommended: `/state/oauth-clients.json` on a
-  persistent `/state` volume outside `/repos`)
-- `MCP_DEVBOX_OAUTH_REFRESH_STORE` (recommended: `/state/oauth-refresh.json`)
-- `MCP_DEVBOX_TASK_ROOT` (production image default: `/state/tasks`; bounded durable task journal)
-- `GITHUB_TOKEN` (optional, for GitHub tools)
-- `GITHUB_OWNER`
-- `GITHUB_OWNER_TYPE` (`user` or `org`)
-- `GITHUB_DEFAULT_VISIBILITY` (`private` default, or `public`)
-- `COOLIFY_URL` (optional, for Coolify tools)
-- `COOLIFY_API_TOKEN`
-- `COOLIFY_ALLOWED_APPS` (optional app uuid allowlist)
-- `COOLIFY_SERVER_UUID`
-- `COOLIFY_PROJECT_UUID`
-- `COOLIFY_ENVIRONMENT_NAME` or `COOLIFY_ENVIRONMENT_UUID`
-- `COOLIFY_ALLOWED_DOMAINS` (optional domain suffix allowlist)
-- `COOLIFY_GITHUB_APP_UUID` (optional Coolify GitHub App source for private repos)
-- `MCP_DEVBOX_VALIDATION_RUNNER_URL` and `MCP_DEVBOX_VALIDATION_RUNNER_TOKEN`
-  (optional private fixed-profile pnpm runner; never publicly routed)
-- `MCP_DEVBOX_PRIVILEGED_TASKS` (`true` explicitly enables fixed profiles; default disabled)
-- `MCP_DEVBOX_PRIVILEGED_SERVICES` (optional approved service names)
-- `MCP_DEVBOX_PRIVILEGED_TIMEOUT` (optional, default `2m`)
+1. Read `AGENTS.md` and this capsule.
+2. Read `.agent-memory/current-task.md` and the latest handoff.
+3. Verify branch, HEAD, upstream, and working tree.
+4. Read the affected canonical source, runbook, implementation, and tests.
+5. Confirm live identity only when the task depends on deployment state.
+6. Preserve historical evidence instead of rewriting it to match the present.
 
-## Production Grant Approval
-
-Secret reads return `access-required` plus a `request_id`. To approve:
-
-1. Coolify app logs: find the printed `ACCESS REQUIRED ... mcp-devbox grant --admin
-   http://127.0.0.1:<port> --admin-token <tok> --ttl 5m <request_id>` command.
-2. Coolify app terminal, inside the container: run that exact command.
-3. Add `--raw --confirm-raw` only when the human explicitly wants unredacted secret
-   output.
-
-The admin channel is loopback-only and must stay that way.
-
-## Next Steps
-
-1. Keep README, SECURITY, AGENTS, capsule and documentation-map state synchronized with
-   the 98-tool `p15.0.5` source release.
-2. Preserve historical baselines and their required markers; add new dated evidence
-   rather than rewriting previous phase truth.
-3. Before claiming Parrot `p15.0.5`, perform the structured signed update and verify
-   bundle identity, active service, preserved device/workspace identity and a real
-   private-repository smoke.
-4. Keep universal OS isolation and egress control explicitly incomplete; do not
-   generalize the networkless sandbox posture to trusted shared-network workcells.
-
-## Known Risks / Debt
-
-- The category exists; the differentiator is security posture, memory, and
-  agent-first tooling.
-- ChatGPT remote access exposes a security tool to the internet path; token/auth,
-  reverse-proxy gates, and policy all matter.
-- Query-string authentication was removed in P8.1. OAuth is the supported ChatGPT path; static bearer is header-only recovery.
-- L3 is the genuinely hard layer. Wrap proven tech; do not invent a sandbox.
-
-## Last Verified
-
-Date: 2026-07-21. Release `p15.0.5` remains anchored at
-`5048a5aa0e0d57d67df3680112aee0d47c954543` with 98 tools and catalog hash
-`sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`.
-PR #39 passed all 15 checks, merged, and production runtime verification returned
-commit `f9577f791e1a566845fbbac59571cd72aa85a47f` with the same catalog identity.
-Production continues to track `main`; use `system_runtime_info` for the exact live
-commit. The last repository-recorded real-host Parrot installation proof remains
-`p15.0.4`; no later device installation is claimed here.
-
-## Historical console durable live state release candidate
-
-Branch `console-durable-live-state` was initially based on `399d7ac` and now includes main through `77a93ad` via normal merge `ec0753d`. It preserves the deployed P8.1/P9 foundations and keeps exactly 85 tools with hash `sha256:c8f83d6aafeaba755fa601861564685a2f6167a9a73aac14034ecc51cd1ff941`. New private state is additive under `/state/tasks/tasks.db`, `/state/console/sessions.db` and `/state/brain/console-node.key`. The browser Event Log is server-persisted, SSE replays by Last-Event-ID, and selectors expose only generic labels plus opaque IDs. The branch is a release candidate only; PR gates, merge and deployment remain pending.
+If documentation conflicts, use `documentation-map.md` to identify the owner and fix the
+canonical source rather than adding another copy.

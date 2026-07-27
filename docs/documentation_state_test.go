@@ -20,9 +20,8 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	plan := read("../specs/001-layer-1/plan.md")
 	tasks := read("../specs/001-layer-1/tasks.md")
 	constitution := read("../.specify/memory/constitution.md")
-	capsule := read("context-capsule.md")
+
 	roadmap := read("product-roadmap.md")
-	handoff := read("../.agent-memory/handoffs/latest.md")
 
 	for path, content := range map[string]string{
 		"spec.md":         spec,
@@ -68,24 +67,6 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"P3 composition root is deployed",
-		"dd055e251c455086ddcb02bc302d9f406b05d6ce",
-		"P4 targeted Layer-1 hardening is deployed",
-		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
-		"P5 deeper testing is deployed",
-		"4a68ca054a5f077d62a0f887234866673feb7353",
-		"P6 CI/DevSecOps is deployed",
-		"p6-step92-closure",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("context capsule does not contain %q", required)
-		}
-	}
-	if strings.Contains(capsule, "Review and merge `p3-composition-root`") {
-		t.Error("context capsule still treats deployed P3 as pending merge")
-	}
-
-	for _, required := range []string{
 		"## Status snapshot — 2026-07-18",
 		"P0-P5 architecture, hardening, and deeper testing",
 		"Deployed",
@@ -109,15 +90,4 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 		}
 	}
 
-	for _, required := range []string{
-		"P8.1 is closed",
-		"d343264bffdc0ae1bc045a9d723e913be977090c",
-		"67 tools",
-		"not_paired",
-		"p8.1",
-	} {
-		if !strings.Contains(handoff, required) {
-			t.Errorf("latest handoff does not contain %q", required)
-		}
-	}
 }

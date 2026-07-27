@@ -40,17 +40,6 @@ func TestP6ClosureEvidenceIsSynchronized(t *testing.T) {
 		t.Error("roadmap does not mark P6 deployed")
 	}
 
-	capsule := read("context-capsule.md")
-	for _, required := range []string{
-		"P6 CI/DevSecOps is deployed",
-		"p6-step92-closure",
-		"P7 structured observability",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
-
 	spec := read("../specs/003-ci-devsecops/spec.md")
 	plan := read("../specs/003-ci-devsecops/plan.md")
 	tasks := read("../specs/003-ci-devsecops/tasks.md")

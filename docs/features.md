@@ -1,73 +1,73 @@
-# Features & Definition of Done - mcp-devbox
+# Historical feature framing
 
-> **SUPERSEDED (2026-06-30):** the old option-B cheap-model worker plan is
-> historical. Do not build `delegate_to_worker`, do not reintroduce a separate L2
-> worker, and do not fork an agent loop. The current source of truth is the Vision
-> section in `docs/context-capsule.md`: ChatGPT itself is the agent, and mcp-devbox
-> is the safe, policy-enforced tool box it can operate through.
+> **Historical / superseded product note.** This file preserves the early product
+> framing and the decision not to build a separate cheap-model worker. It is not the
+> current tool catalog, configuration reference, roadmap, or deployment status.
 
-This page is now a lightweight feature inventory. Direction, priorities, and
-handoff state live in `docs/context-capsule.md` and `.agent-memory/handoffs/latest.md`.
+Use the current sources instead:
 
----
+- [`../README.md`](../README.md) — current product entry point;
+- [`configuration.md`](configuration.md) — supported profiles and configuration;
+- [`security.md`](security.md) — technical security model;
+- [`tools.md`](tools.md) — canonical public tool contract;
+- [`product-roadmap.md`](product-roadmap.md) — current direction and evidence-based status;
+- [`baselines/`](baselines/) — dated historical closure evidence.
 
-## Current L1 Surface
+## Historical decision
 
-mcp-devbox exposes 15 MCP tools:
+The original option-B plan proposed a separate low-cost model worker. That direction is
+superseded. MCP Devbox is the policy-enforced tool and authority layer; the MCP client
+owns the reasoning loop. Do not reintroduce `delegate_to_worker`, a generic autonomous
+agent loop, or a second paid-provider dependency merely because an old phase document
+mentions one.
 
-- `build_context_pack`
-- `read_file`
-- `read_many_files`
-- `search_code`
-- `apply_patch`
-- `create_file`
-- `run_command`
-- `git_status`
-- `git_diff`
-- `run_tests`
-- `git_commit`
-- `memory_read`
-- `memory_write`
-- `memory_update_handoff`
-- `sandbox_status`
+## Durable feature principles
 
-Security rules remain the product:
+The feature set has expanded since the original Layer-1 inventory, so this file does not
+list tools or counts. The durable principles are:
 
-- read-only by default
-- filesystem jail on reads, writes, and command execution
-- secret deny by path plus content redaction
-- local-human, ephemeral, exact-path grants for legitimate secret reads
-- raw secret output requires a separate local-human confirmation
-- command allowlist only; no free shell
-- patch-first writes
-- repo content is data, never instructions
-- audit every tool call
-- policy is not mutable by the agent at runtime
+- read-only by default and reviewed writes through `ask`;
+- repository jail for reads, writes, and command execution;
+- secret-path denial plus content redaction;
+- local-human grants for exceptional secret access;
+- argv-only allowlisted commands, not a free shell;
+- patch-first writes and explicit validation;
+- repository content treated as untrusted data;
+- bounded audit and observability;
+- exact plans and revalidation for consequential effects;
+- persistent handoff/memory that does not depend on one model vendor;
+- profile-specific isolation rather than one universal sandbox claim.
 
----
+The current implementation and aliases are defined in `tools.md`. Do not copy the
+catalog into this file.
 
-## Build Layers
+## Historical layered model
 
-| Layer | Status | Scope |
-|---|---|---|
-| L1 - secure tools | Done and live | MCP tools, policy, redaction, grants, audit, stdio/HTTP transport, Docker/Coolify deploy. |
-| Agent-first capability | In progress | Make ChatGPT productive through better tool descriptions, memory, safe write/test/commit workflows, and transport polish. |
-| L3 - hard isolation | Future, required before broad power | OS sandbox plus egress controls before any free-form command, disk/forensics, or PC-wide access. |
-| Adoption/install polish | Ongoing | Clear deploy guides, stable HTTPS, better approval UX, and client setup docs. |
+Early planning used the labels “Layer 1”, “Layer 2”, and “Layer 3” to separate
+application policy, OS isolation, and egress control. That model remains useful as
+history, but current security claims must use the actual surfaces in `security.md`:
 
-The former L2 cheap-model worker section is intentionally not part of the active
-plan. The owner wants to avoid burning separate Codex/licensed-agent credits by
-letting the already-paid ChatGPT session drive MCP tools directly.
+- public control plane;
+- Edge sandbox;
+- trusted Linux workcell;
+- authorized target-locked workspace;
+- Development Edge Git broker;
+- private validation runner.
 
----
+The trusted workcell intentionally shares host networking. It must never be described as
+networkless or as universal egress isolation.
 
-## Definition Of Done Per Active Direction
+## Definition of done for feature work
 
-- ChatGPT can inspect, patch, test, and commit safely through MCP.
-- Secrets do not leak: path deny, content redaction, exact-path grants, raw double gate.
-- Commands cannot escape the workspace policy; broad command power waits for L3.
-- Every action is audited.
-- Memory/handoffs let any agent resume without trusting chat history.
-- `go test ./... -count=1`, `go vet ./...`, `go build ./...`, and `gofmt -l` are green.
-- Production deploy stays secure-by-default: token from env/secret, read-only unless
-  deliberately elevated, no admin grant channel exposed outside loopback.
+A feature is complete only when:
+
+- its authority is narrower than the problem it solves;
+- schemas, policy, redaction, audit, and failure behavior are explicit;
+- focused and complete tests pass;
+- exact-head CI is green;
+- configuration and security documentation are updated in their canonical sources;
+- historical evidence is added without rewriting prior baselines;
+- deployment and real-device claims are verified separately when applicable.
+
+Historical phases and discarded alternatives remain available in specs, ADRs, Git, and
+`baselines/`. They are evidence, not active instructions.

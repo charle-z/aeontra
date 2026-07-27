@@ -22,10 +22,9 @@ func TestP8AuthenticatedDarkConsoleIsDefinedAndDeployed(t *testing.T) {
 	threat := read("../specs/005-authenticated-dark-console/threat-model.md")
 	operations := read("console.md")
 	adr := read("adr/0002-p8-embedded-authenticated-console.md")
-	capsule := read("context-capsule.md")
+
 	roadmap := read("product-roadmap.md")
 	readme := read("../README.md")
-	agents := read("../AGENTS.md")
 
 	for name, content := range map[string]string{
 		"spec": spec, "plan": plan, "tasks": tasks, "threat model": threat,
@@ -34,26 +33,14 @@ func TestP8AuthenticatedDarkConsoleIsDefinedAndDeployed(t *testing.T) {
 			t.Errorf("%s does not define P8 authenticated dark console", name)
 		}
 	}
-	for _, required := range []string{
-		"P8 authenticated dark console is deployed",
-		"605a56d48a495f3c8a2ce62471223187ef2f5685",
-		"presentation-only",
-		"62 tools",
-		"unchanged catalog hash",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
+
 	if !strings.Contains(roadmap, "| Console/showcase | Deployed |") {
 		t.Error("roadmap does not mark the console deployed")
 	}
 	if !strings.Contains(readme, "/console") || !strings.Contains(readme, "docs/baselines/") {
 		t.Error("README must describe the authenticated console boundary and delegate release evidence")
 	}
-	if !strings.Contains(agents, "P8.1 Console 2.0 deployed and tagged") || !strings.Contains(agents, "d343264bffdc0ae1bc045a9d723e913be977090c") {
-		t.Error("AGENTS does not identify the current post-P8 console phase")
-	}
+
 	for _, required := range []string{
 		"/console/login",
 		"MCP_DEVBOX_TOKEN",
