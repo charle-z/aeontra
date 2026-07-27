@@ -189,7 +189,7 @@
               <p class="finding" data-es="La entrada remota del repositorio participaba antes en rutas del validation-runner." data-en="Remote repository input previously participated in validation-runner paths.">Remote repository input previously participated in validation-runner paths.</p>
               <dl><dt data-es="detectado" data-en="detected">detected</dt><dd>CodeQL</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="entradas de registro propiedad del servidor y revalidación de descriptores Linux antes de ejecutar" data-en="server-owned registry entries and Linux descriptor revalidation before execution">server-owned registry entries and Linux descriptor revalidation before execution</dd></dl>
             </article>
-            <article class="card">
+            <article class="card card-wide">
               <h3><span data-es="POSTURA DE LA COOKIE DE SESIÓN" data-en="SESSION COOKIE POSTURE">SESSION COOKIE POSTURE</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
               <p class="finding" data-es="La seguridad dinámica de la cookie no podía demostrarse en todas las rutas." data-en="Dynamic cookie security could not be proven on every path.">Dynamic cookie security could not be proven on every path.</p>
               <dl><dt data-es="detectado" data-en="detected">detected</dt><dd>CodeQL</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="la creación y eliminación siempre usan Secure, HttpOnly y SameSite Strict" data-en="creation and deletion always use Secure, HttpOnly and SameSite Strict">creation and deletion always use Secure, HttpOnly and SameSite Strict</dd></dl>
@@ -211,7 +211,12 @@
             <dt>catalog hash</dt><dd id="runtimeCatalogHash">—</dd>
           </dl>
           <p class="runtime-error" id="runtimeMessage" role="status" data-es="Cargando la identidad pública del runtime." data-en="Loading public runtime identity.">Loading public runtime identity.</p>
-          <p class="sub prose"><span data-es="Comprobaciones independientes: " data-en="Independent checks: ">Independent checks: </span><a href="/healthz" data-es="disponibilidad" data-en="liveness">liveness</a> · <a href="/version" data-es="identidad JSON" data-en="JSON identity">JSON identity</a> · <a href="/console" data-es="consola autenticada del operador" data-en="authenticated operator console">authenticated operator console</a>.</p>
+          <p class="runtime-checks sub prose">
+            <span data-es="Comprobaciones independientes:" data-en="Independent checks:">Independent checks:</span>
+            <span class="runtime-check"><a href="/healthz" data-es="disponibilidad" data-en="liveness">liveness</a></span>
+            <span class="runtime-check"><a href="/version" data-es="identidad JSON" data-en="JSON identity">JSON identity</a></span>
+            <span class="runtime-check"><a href="/console" data-es="consola autenticada del operador" data-en="authenticated operator console">authenticated operator console</a>.</span>
+          </p>
         </section>
 
         <section id="limits" data-es="La autoridad acotada reduce el riesgo; no elimina la confianza" data-en="Narrow authority reduces risk; it does not abolish trust" data-label-es="LÍMITES" data-label-en="LIMITS" data-i18n-role="hint">

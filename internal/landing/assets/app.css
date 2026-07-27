@@ -626,6 +626,10 @@ tr:last-child td {
   background:var(--blue-dark);
 }
 
+.card-wide {
+  grid-column:1 / -1;
+}
+
 .card h3 {
   display:flex;
   justify-content:space-between;
@@ -674,6 +678,29 @@ tr:last-child td {
 .runtime-error {
   max-width:none;
   color:var(--gray-high);
+}
+
+.runtime-checks {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:.2rem 1ch;
+}
+
+.runtime-checks > span:first-child {
+  flex-basis:auto;
+}
+
+.runtime-check {
+  display:inline-flex;
+  align-items:baseline;
+  white-space:nowrap;
+}
+
+.runtime-check + .runtime-check::before {
+  content:"·";
+  margin-right:1ch;
+  color:var(--gray);
 }
 
 .keybar {
