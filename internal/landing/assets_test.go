@@ -197,6 +197,31 @@ func TestLandingPresentationRetouchesRemainWideFirmwareAndBilingual(t *testing.T
 	}
 }
 
+func TestLandingDensePanelsStayAlignedAndCompact(t *testing.T) {
+	css := string(mustLandingAsset(t, "assets/app.css"))
+	compactCSS := strings.NewReplacer(" ", "", "\n", "", "\t", "", "\r", "").Replace(strings.ToLower(css))
+
+	for _, required := range []string{
+		".policy-requests{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))",
+		".verdict{min-height:0;display:grid;grid-template-rows:autominmax(4rem,1fr)auto",
+		".verdictpre{min-height:4rem",
+		".evidence-logp{display:grid;grid-template-columns:10ch9chminmax(0,1fr)",
+		".evidence-logtime{color:var(--cyan-low);white-space:nowrap",
+		".label{display:block;width:auto;margin:0;font-weight:700;white-space:nowrap",
+	} {
+		if !strings.Contains(compactCSS, required) {
+			t.Errorf("landing dense-panel CSS missing %q", required)
+		}
+	}
+
+	if strings.Contains(compactCSS, ".label{display:inline-block;width:7ch") {
+		t.Fatal("evidence status column still permits ACCEPTED to wrap")
+	}
+	if strings.Contains(compactCSS, ".verdict{min-height:16rem") || strings.Contains(compactCSS, ".verdictpre{min-height:8.5rem") {
+		t.Fatal("policy verdict still reserves the oversized empty panel")
+	}
+}
+
 func assertLandingScriptsAreExternal(t *testing.T, index string) {
 	t.Helper()
 	remaining := index
