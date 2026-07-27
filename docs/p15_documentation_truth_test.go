@@ -23,37 +23,27 @@ func TestP15CurrentDocumentationSeparatesSourceDeploymentAndDeviceEvidence(t *te
 
 	readme := read("../README.md")
 	for _, required := range []string{
+		"docs/tools.md",
+		"/version",
+		"system_runtime_info",
+		"docs/baselines/",
+	} {
+		if !strings.Contains(readme, required) {
+			t.Errorf("README missing canonical/live identity pointer %q", required)
+		}
+	}
+	for _, forbidden := range []string{
 		"p15.0.5",
 		"98 deliberately",
 		catalogHash,
 		"P13 opaque workspace continuation is deployed",
 		"P14 first-class authorized HTB actions are deployed",
 		"P15 signed zero-touch Edge is the current release line",
-		"last repository-recorded real-host",
 		"Parrot `p15.0.4`",
 	} {
-		if !strings.Contains(readme, required) {
-			t.Errorf("README missing current P15 marker %q", required)
+		if strings.Contains(readme, forbidden) {
+			t.Errorf("README embeds mutable or historical state %q", forbidden)
 		}
-	}
-	for _, stale := range []string{
-		"current production exposes 85 deliberately annotated",
-		"## Console durable live state candidate",
-		"Add Layers 2–3 (OS isolation, egress) only in v0.3",
-	} {
-		if strings.Contains(readme, stale) {
-			t.Errorf("README retains stale current-state claim %q", stale)
-		}
-	}
-
-	agents := read("../AGENTS.md")
-	for _, required := range []string{releaseCommit, "p15.0.5", "98 annotated MCP", catalogHash, "system_runtime_info", "composition root", "internal/app"} {
-		if !strings.Contains(agents, required) {
-			t.Errorf("AGENTS missing %q", required)
-		}
-	}
-	if !strings.Contains(agents, "last repository-recorded Parrot install") || !strings.Contains(agents, "p15.0.4") {
-		t.Error("AGENTS does not preserve the last proven Parrot installation boundary")
 	}
 
 	capsule := read("context-capsule.md")
@@ -129,7 +119,7 @@ func TestP15SecurityDocumentationIsProfileSpecific(t *testing.T) {
 	for _, required := range []string{
 		"header-only recovery",
 		"Ed25519-signed",
-		"P14/P15 authorized HTB actions",
+		"Authorized target-locked workspace",
 		"Development Edge Git boundary",
 	} {
 		if !strings.Contains(policy+"\n"+model, required) {

@@ -23,8 +23,6 @@ func TestP9BrainIsDefinedAndReleaseReady(t *testing.T) {
 	adr := read("adr/0003-p9-markdown-truth-sqlite-fts5-cache.md")
 	capsule := read("context-capsule.md")
 	roadmap := read("product-roadmap.md")
-	readme := read("../README.md")
-	agents := read("../AGENTS.md")
 	currentTask := read("../.agent-memory/current-task.md")
 	handoff := read("../.agent-memory/handoffs/latest.md")
 
@@ -93,7 +91,7 @@ func TestP9BrainIsDefinedAndReleaseReady(t *testing.T) {
 		}
 	}
 
-	for _, content := range []string{capsule, readme, agents, currentTask, handoff} {
+	for _, content := range []string{capsule, currentTask, handoff} {
 		for _, required := range []string{
 			"P8.1",
 			"d343264bffdc0ae1bc045a9d723e913be977090c",

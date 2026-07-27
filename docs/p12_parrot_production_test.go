@@ -60,12 +60,13 @@ func TestP12ParrotProductionEvidenceAndOnboardingStaySynchronized(t *testing.T) 
 
 	readme := read("../README.md")
 	for _, expected := range []string{
-		"Hosted on CubePath",
 		"mcp-devbox-charlez.duckdns.org",
-		"merged, deployed, paired, and validated on Parrot",
+		"/version",
+		"system_runtime_info",
+		"docs/baselines/",
 	} {
 		if !strings.Contains(readme, expected) {
-			t.Errorf("README missing production marker %q", expected)
+			t.Errorf("README missing live-or-historical evidence pointer %q", expected)
 		}
 	}
 

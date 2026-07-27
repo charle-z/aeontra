@@ -1,291 +1,271 @@
-# mcp-devbox
+# MCP Devbox
 
-[![Hosted on CubePath](https://img.shields.io/badge/Hosted%20on-CubePath-00C853?style=for-the-badge&logo=cloud&logoColor=white)](https://cubepath.com)
-[![Production](https://img.shields.io/badge/Production-mcp--devbox--charlez.duckdns.org-1565C0?style=for-the-badge)](https://mcp-devbox-charlez.duckdns.org)
+MCP Devbox is a secure-by-default, not secure, MCP server that gives AI clients useful
+hands for software work without handing them an unrestricted machine.
 
-Production control plane and authenticated console are hosted on CubePath at
-`https://mcp-devbox-charlez.duckdns.org`.
+It combines repository-scoped tools, immutable startup policy, explicit approval for
+risky actions, secret redaction, audit, durable state, optional GitHub/Coolify adapters,
+and a signed Linux Edge architecture. The model reasons; MCP Devbox constrains and
+executes.
 
-The same origin serves a public presentation landing at `/`; `/console` remains
-authenticated and `/mcp` remains credential-gated. Its presentation-only boundary,
-assets, responsive behavior and deployment acceptance are documented in
-[`docs/landing/public-showcase.md`](docs/landing/public-showcase.md).
+## What MCP Devbox is
 
-A **secure-by-default**, local-first MCP server that lets ChatGPT and other AI
-agents work on your local repositories — read code, search, apply patches, run
-allowed tests/commands, and keep agent-agnostic project memory — **without giving
-the agent free reign over your machine**.
+MCP Devbox is a Go MCP server for inspecting, changing, validating, publishing, and
+deploying software through narrow tools. It is designed for ChatGPT and other MCP
+clients, but the security boundary lives in the server rather than in a prompt or a
+specific model provider.
 
-## Honest positioning (read this first)
+The public control plane exposes only the registered MCP contract. Local and Edge
+components can add private capabilities without turning the public server into a
+generic proxy.
 
-This is **not a new category.** Local-dev MCP servers already exist — most notably
-[Desktop Commander](https://github.com/wonderwhy-er/DesktopCommanderMCP), which
-also supports web clients through remote MCP. The comparison below reflects its
-official README as reviewed on 2026-07-11; competing projects evolve, so verify the
-linked source rather than treating this table as permanent.
+## The problem it solves
 
-The differentiator is **security posture**, and it is real:
+General filesystem-and-terminal agents are convenient but give untrusted model output
+too much ambient authority. MCP Devbox replaces that ambient authority with explicit
+contracts:
 
-| | Desktop Commander | mcp-devbox |
-|---|---|---|
-| Default access | Broad filesystem and terminal capabilities | **Restrictive** (read-only default) |
-| Secret-path/content denial | Not documented as a built-in invariant | **Built-in deny + output redaction** |
-| Command access | General terminal with a configurable blocklist | **Closed allowlist, no free shell** |
-| Directory jail covers commands | **No**; official README warns terminal commands can leave allowed directories | **Yes** |
-| Write model | Direct writes and block edits | **Patch-first, validated before apply** |
-| Consequential-action control | No equivalent planned single-use workflow documented | **TTL-bound plans, approval, revalidation, audit** |
-| Repository handoff memory | No equivalent repository handoff contract documented | **Yes (`.agent-memory/`)** |
+- repository roots form a filesystem and command jail;
+- secret paths are denied and returned content is redacted;
+- commands are argv-only and allowlisted unless a real isolated profile owns broader
+  execution;
+- writes are patch-first;
+- external and consequential operations are planned and revalidated;
+- every tool call is audited;
+- policy is loaded once and cannot be changed by the agent.
 
-So the differentiator is not terminal access itself. It is the narrower authority
-model: repository jail, secret denial, no free shell, planned consequential actions,
-and agent-agnostic handoff memory. MCP Devbox still describes itself as
-**secure-by-default, not secure** because universal OS isolation and egress control
-remain unfinished.
+This reduces authority. It does not make model-generated actions inherently safe.
+Operators still own configuration, review, credentials, deployment, and recovery.
 
-## Platform
+## Public demo and production status
 
-- **Core control plane (Go): cross-platform.** Layer-1 policy works on
-  Windows/Linux/macOS, but its allowlisted command path is not a universal OS
-  sandbox.
-- **Edge runtime isolation: Linux/WSL2.** The ordinary `sandbox` profile runs
-  OpenCode inside mandatory Bubblewrap with no direct-execution fallback and no
-  network. The trusted `linux-workcell` profile also uses a bounded runtime layout,
-  but deliberately declares `trusted_host_shared_network`; it is not target or
-  egress isolation.
-- **Signed Edge distribution:** P15 packages the Edge, driver, provider and helper
-  files as one Ed25519-verified release with atomic activation, repair and rollback.
-
-## Licensing status
-
-Copyright © 2026 Carlos Acosta. All rights reserved. This repository does not
-contain an open-source `LICENSE`; public visibility does not grant permission to use,
-copy, modify, distribute, sublicense, sell, or create derivative works. See
-`COPYRIGHT` and `docs/open-source-release.md`. A future open-source or dual-license
-release remains an explicit owner decision.
-
-## Status
-
-**Layer 1 (MVP) implemented.** Secure-by-default local MCP server in Go: read/search/
-patch/test a local repo safely over the MCP stdio transport, with secret deny
-(path + content), a path jail that also covers command execution, allowlist-only
-commands, patch-first writes, approval gating, and an audit log. Tests (incl.
-adversarial) + `go vet` + `gofmt` are green. See `docs/context-capsule.md`.
-
-**v0.2 adds remote connectivity:** an HTTP transport (streamable-HTTP subset) with
-**OAuth-first authentication with header-only bearer recovery**, designed to be exposed to ChatGPT web through a
-self-hosted **Cloudflare Tunnel** (no inbound ports). Same Policy/redaction as stdio.
-
-**Secure builder evolution:** `main` and release `p15.0.5` contain 98 deliberately
-annotated tools with catalog hash `sha256:8a9a637f2817e9e2824ac9756c5cf8f5146fee3b6ee5515ea2f72903ed922e12`,
-including rich repository status, narrow synchronization, planned GitHub
-creation/remotes/publication, planned Coolify creation/deployment, persistent notes,
-private validation profiles, bounded Coolify logs, Edge control operations and disabled-by-default
-privileged profiles. Consequential operations use
-cryptographically named, expiring, single-use plans and revalidate state before
-execution. See [docs/tools.md](docs/tools.md).
-
-The Coolify application tracks `main` and is healthy. Treat `/version` and the
-catalog smoke as the authority for the exact deployed commit after each automatic
-deployment; a Git tag by itself does not prove that a particular Edge device has
-installed that release.
-
-The added `workspace_checkpoint` read-only primitive reconstructs branch, commit,
-upstream, tree counts, diff statistics and a bounded redacted task summary in one
-schema-only response. It does not fetch, modify Git, read source bodies or call an
-external service.
-
-The P11 candidate also persists content-free hourly/daily telemetry in embedded
-SQLite and bounds operational JSONL: four 16 MiB observability segments and four
-32 MiB audit segments under the existing `/state` volume. It stores no prompts,
-parameters, results, private paths, identities, credentials or model reasoning.
-
-Large tool output is redacted before persistence and replaced on the MCP boundary by
-seven compact metadata fields plus an opaque `result_ref`. The bounded result store
-uses `/state/results/results.db`, 24-hour success / 7-day failure TTLs, a 256 MiB
-logical quota, exact search, and 16 KiB reads. It exposes no arbitrary paths,
-embeddings, prompts, credentials, or model reasoning.
-
-**P11.2 Edge/OpenCode relay is deployed:** the VPS control plane can pair an independently
-installed WSL device with a one-use, short-lived code and a per-device Ed25519 key.
-The signed model-turn relay keeps the server, `mcp-edge`,
-`model-turn-driver`, and OpenCode 1.18.1 as distinct processes. Only OpenCode enters
-mandatory Bubblewrap; there is no direct-execution fallback. Docker proves the
-relay without elevated capabilities, and an Ubuntu 22.04 host job proves network,
-DNS, mount and private-path isolation. Installation and pairing remain explicit
-human steps; see [the P11.2 baseline](docs/baselines/2026-07-16-p11_2.md) and the
-[Parrot WSL guide](docs/install-opencode-edge-parrot.md).
-
-**P12 Trusted Linux Workcell is merged, deployed, paired, and validated on Parrot
-WSL2:** one explicit `linux-workcell` profile adds default development behavior and
-an optional local `htb-linux` context. P12's historical closure had 85 tools; later
-phases expanded the catalog without rewriting that evidence. The
-existing `sandbox` remains networkless; the trusted workcell honestly declares
-`trusted_host_shared_network`, keeps authority and HTB metadata local to Edge, and
-permits only user-owned rootless Docker or Podman sockets. The first real remote
-Parrot smoke completed with six model-turn sequences and an exact repository edit.
-The onboarding hardening follow-up packages the required systemd `AF_NETLINK`
-allowance, bounded Bubblewrap diagnostics, repeatable terminal objectives, and a
-reproducible preflight. See [docs/linux-workcell.md](docs/linux-workcell.md) and the
-[Parrot onboarding guide](docs/install-opencode-edge-parrot.md). For authorized HTB rooms,
-[`mcp-edge lab init`](docs/htb-lab-workflow.md) reduces machine setup to one command
-after the VPN is connected, while target-locked SSH consumes recovered credentials
-locally without copying them into model turns.
-For normal development, an explicitly configured
-[private Edge Git authority](docs/development-edge-git.md) lets the same active
-ChatGPT session clone and safely publish an owner-bound private repository while the
-public MCP token handles workflow/check and PR APIs; neither token enters the workcell.
-
-**P13 opaque workspace continuation is deployed:** `workspace_runtime_continue`
-accepts only an opaque workspace ID, a bounded timeout and explicit caller-generated
-idempotency. The trusted local contract and checkpoint remain the source of truth;
-the control plane does not reconstruct the objective or retry automatically.
-
-**P14 first-class authorized HTB actions are deployed:** six explicit tools replace
-model-generated Bash wrappers for target authentication and remote commands. They
-exist only for registered `htb-linux` runtimes, bind sessions to one locally
-registered VPN target, consume local credential handles without copying values to
-the VPS/model, and can save sensitive output locally as metadata-only results. See
-[authorized HTB actions](docs/authorized-htb-actions.md).
-
-**P15 signed zero-touch Edge is the current release line:** signed bundles, a
-restricted updater, atomic activation/rollback/repair, automatic lab preparation and
-retargeting, durable local autopilot state, and interactive GPT-web continuation are
-implemented. Release `p15.0.5` additionally contains the owner-bound private Edge Git
-broker and explicit continuation idempotency. The last repository-recorded real-host
-installation proof is Parrot `p15.0.4`; claiming `p15.0.5` installed requires a
-separate structured update and smoke. See [Edge bundles](docs/edge-bundles.md),
-[autopilot](docs/autopilot.md), and
-[development Edge Git](docs/development-edge-git.md).
-
-**Architecture foundations:** P1 moved the complete public catalog into declarative
-modules under `internal/mcpserver/catalog`. P2 split the implementation into focused
-capability services over one shared policy, audit, root, runner, redaction, and
-action-plan core. The public 62-tool wire contract remains unchanged while the
-internal boundaries are easier to test and extend safely. P3 reduces
-`cmd/mcp-devbox/main.go` to a true composition root and moves process orchestration
-into focused modules under `internal/app`, while preserving every deployed command,
-flag, environment variable and wire contract. P4 is deployed at
-`4a68ca054a5f077d62a0f887234866673feb7353`; P5 deeper testing is deployed and
-P6 CI/DevSecOps is deployed at `539e4d96c95aedd492ac36b428d4159054e183f4`
-with the public 62-tool contract unchanged. Blocking CI, race, Staticcheck,
-Govulncheck, CodeQL, Dependency Review, Docker/SBOM, and zero-High/Critical container
-gates are proven in `docs/baselines/2026-07-13-p6.md`.
-
-**P7 structured observability is deployed at
-`d1309ed08db0170e5165f78bf406e94cfa56cc11`:** a separate closed-schema JSONL
-stream for lifecycle, HTTP, JSON-RPC, malformed batches, and known public tool
-completion without prompts, params, results, source, paths, targets, tokens,
-identities, or raw errors. Race, Staticcheck, CodeQL, SBOM, and container gates are
-green; production logs and the unchanged 62-tool catalog are recorded in
-`docs/baselines/2026-07-13-p7.md`. It adds no public tool, endpoint, exporter,
-or application; see `docs/observability.md`.
-
-**P8 authenticated dark console is deployed at
-`605a56d48a495f3c8a2ce62471223187ef2f5685`:** a dependency-free presentation
-surface embedded in the existing Go HTTP application. PR and post-merge gates are
-green; authenticated `cmd/console-smoke` verifies a Secure opaque session, exact
-runtime schema, 62 tools, and the unchanged catalog hash. It cannot execute tools,
-approve plans, list private resources, or read audit/observability history. No new
-resident service, Coolify application, credential, listener, npm bundle, CDN, or OAuth
-protocol change is introduced. See `docs/console.md` and
-`docs/baselines/2026-07-13-p8.md`.
-
-**P9 Brain is deployed and tagged `p9` at
-`4fbe1dda02351c632e67c0f10a5c5b314df745e2`:** persistent Markdown truth,
-local Git, disposable SQLite FTS5, `/brain`, 67 tools, `cmd/mcp-catalog-smoke` and `cmd/brain-smoke` are verified in production. The deterministic catalog hash is
-`sha256:33f2701c9ad992b6da19ffae513fa08b429e38ca2294cc624a46d86db32128ed`.
-
-**P8.1 Console 2.0 is deployed and tagged `p8.1` at
-`d343264bffdc0ae1bc045a9d723e913be977090c`:** the existing
-Go application now embeds a React/TypeScript/Vite Neo-BIOS operations firmware. It
-shows only exact allowlisted real data, durable content-free task state and SSE; Brain
-uses opaque graph IDs. At the historical P8.1 closure Edge was not paired; the current
-P12 status above supersedes that snapshot. Console OAuth completes
-server-side with PKCE/state/single-use codes and an opaque
-`Secure; HttpOnly; SameSite=Strict` cookie. Query-string credentials always return
-401, while an Authorization bearer remains recovery-only. No new MCP tool, listener,
-application, resident service, free shell, autonomous agent or workcell is introduced.
-Release-candidate evidence remains in `docs/baselines/2026-07-14-p8_1.md`; completed
-remote gates, merge, deployment and production smokes are recorded separately in
-`docs/baselines/2026-07-14-p8_1-production.md`.
-
-Optional local Brain startup:
-
-```bash
-export MCP_DEVBOX_BRAIN_ROOT=/absolute/private/brain
-go run ./cmd/mcp-devbox serve --root /abs/path/to/repo
-```
-
-Quick start:
-
-```bash
-go build ./...
-# Local (stdio) — Cursor / Claude Desktop:
-go run ./cmd/mcp-devbox serve --root /abs/path/to/repo            # read-only
-go run ./cmd/mcp-devbox serve --root /abs/path/to/repo --mode ask --test-cmd "go test ./..."
-
-# Remote (HTTP) — ChatGPT via Cloudflare Tunnel (bearer auth required):
-export MCP_DEVBOX_TOKEN="$(openssl rand -base64 32)"
-go run ./cmd/mcp-devbox serve --root /abs/path/to/repo --http :8765
-cloudflared tunnel --url http://127.0.0.1:8765
-```
-
-**Connect from ChatGPT / Cursor / Claude Desktop:** see `docs/connect-remote.md`.
-
-Complete OS isolation and egress control are not yet universal; the old cheap-model
-worker plan is superseded. Honest scope and limitations: `SECURITY.md`.
-
-## Secure builder workflows
+The public landing and MCP endpoint are served from:
 
 ```text
-repo_list -> repo_status -> repo_fetch
--> repo_fast_forward_preview -> repo_fast_forward
--> source_repo_create_preview -> source_repo_create
--> repo_remote_preview -> repo_remote_set
--> repo_publish_preview -> repo_publish
-
-platform_apps_list -> platform_app_create_preview -> platform_app_create
--> platform_deploy_preview -> platform_deploy -> platform_deployment_status
--> platform_app_status -> platform_app_logs
+https://mcp-devbox-charlez.duckdns.org/
+https://mcp-devbox-charlez.duckdns.org/mcp
 ```
 
-Use one tool call per message when that is more reliable for the ChatGPT connector.
-This is workflow advice, not a security bypass. `git_commit` does not push; force
-push and a free host terminal do not exist; tokens are never returned; external
-writes require explicit approval in ask mode; aliases never weaken policy.
+The public presentation landing is presentation-only. It does not grant repository,
+deployment, Edge, or secret authority. `/console` remains authenticated and `/mcp`
+remains credential-gated. See
+[`docs/landing/public-showcase.md`](docs/landing/public-showcase.md).
 
-## How to build
+Do not copy a commit, release, tool count, or catalog hash from this README. Read the
+live deployment identity from [`/version`](https://mcp-devbox-charlez.duckdns.org/version)
+or call `system_runtime_info`. The canonical public tool contract is
+[`docs/tools.md`](docs/tools.md). Historical release evidence remains under
+[`docs/baselines/`](docs/baselines/).
 
-1. `specify init` (GitHub Spec Kit) in this repo, integrated with your agent.
-2. Feed Spec Kit's constitution from this repo's principles + `AGENTS.md`.
-3. Read `docs/design.md` and `docs/security.md` before any code.
-4. Build **Layer 1 (MVP)** first — already more secure than Desktop Commander.
-5. Preserve the implemented Bubblewrap profiles and their distinct network posture.
-   Do not describe the trusted workcell as universal Layer-2/3 isolation, and wrap
-   proven isolation primitives rather than inventing replacements.
+## How it works
 
-## Pointers
+```text
+MCP client
+   │  stdio or authenticated HTTPS
+   ▼
+MCP Devbox control plane
+   ├─ immutable policy: roots, mode, allowlists, secrets
+   ├─ direct read/status operations under policy + audit
+   ├─ preview → single-use plan → approval → revalidation → narrow effect
+   ├─ durable private state outside repository roots
+   └─ optional GitHub, Coolify, Brain, validation runner, and Edge adapters
+          │
+          └─ signed outbound Edge channel to a local Linux/Parrot/WSL device
+```
 
-- `AGENTS.md` — operating rules for any AI working here (read first).
-- `docs/design.md` — architecture, language/platform/tunnel decisions, MVP scope.
-- `docs/security.md` — threat model + secure-by-default invariants (the product).
-- `docs/context-capsule.md` — current state for resuming without re-hydrating chat.
-- `docs/documentation-map.md` — documentation sources, status terms, and update rules.
-- `docs/tools.md` — canonical tool, alias, annotation, workflow, and approval reference.
-- `docs/testing.md` — reproducible race, fuzz, coverage, and integration gates with honest blocked/pass status.
-- `docs/product-roadmap.md` — Cubethon delivery plus universal profiles, edge,
-  orchestration, and authorized-security roadmap.
-- `docs/security-engagements.md` — generic design for private, scope-bound,
-  edge-enforced authorized security workspaces.
-- `docs/edge-workcells.md` — flexible outbound WSL/Parrot workcells, local agents,
-  privilege challenges, and infrastructure/security boundaries.
-- `docs/linux-workcell.md` — exact P12 trusted-workcell architecture, local CLI,
-  rootless containers, HTB context, residual risks, tests, and Parrot setup steps.
-- `docs/authorized-htb-actions.md` — P14 runtime-only HTB tools and target/credential
-  boundaries.
-- `docs/edge-bundles.md` and `docs/autopilot.md` — P15 signed release, updater, repair,
-  lab control and local autopilot behavior.
-- `docs/development-edge-git.md` — P15.0.5 owner-bound local Git authority for
-  private development workcells.
-- `docs/open-source-release.md` — proposed public/private boundary, license options,
-  and release-readiness checklist.
+Repository files, documentation, logs, and tool output are data. They cannot expand
+the server's authority or replace the active policy.
+
+## Authority model
+
+### Direct operations
+
+Read-only and bounded operations can execute directly when policy permits them. Examples
+include repository listing, file reads, searches, Git status/diff, runtime identity,
+application status, and diagnostic metadata. Direct does not mean unchecked: jail,
+secret handling, schema validation, redaction, bounds, and audit still apply.
+
+### Consequential actions
+
+Publication, deployment, application or repository creation, default-branch changes,
+merges, note writes, fixed privileged operations, and similar actions use the complete
+authority sequence when their tool contract defines it:
+
+```text
+preview
+→ exact non-secret single-use plan with TTL
+→ explicit mode approval
+→ state and authority revalidation
+→ one generated narrow operation
+→ bounded redacted result
+→ audit
+```
+
+A preview is not approval. Approval is not a bypass. Plans expire, are single-use, and
+fail if the relevant repository, branch, application, target, or configuration changed.
+
+## Main capabilities
+
+- **Repositories:** list jailed repositories, build compact context, read files, search,
+  patch, create new files, and keep agent-agnostic project memory.
+- **Validation:** run one configured test command, allowlisted argv, a contained L3
+  sandbox when available, or fixed profiles through a private validation runner.
+- **Git and GitHub:** status, diff, commit, safe fetch/fast-forward, owner-bound repository
+  operations, exact-head PR/check diagnostics, planned publication, and green-gated merge.
+- **Coolify:** bounded status/log reads and planned application creation or deployment
+  under configured server, project, application, domain, and repository boundaries.
+- **Brain:** persistent Markdown truth with owner-curated and agent-working trust levels,
+  local Git history, and a disposable search index.
+- **Control plane and Edge:** durable opaque coordination with signed releases and local
+  private workspace contracts on Linux/Parrot/WSL.
+- **Large results:** bounded redacted output can be persisted and continued through an
+  opaque `result_ref` instead of flooding one MCP response.
+
+See [`docs/tools.md`](docs/tools.md) for the complete current catalog and exact effects.
+
+## What it cannot do
+
+MCP Devbox deliberately does not provide:
+
+- a free host shell;
+- automatic self-approval;
+- force push, arbitrary refspecs, mirror publication, or caller-selected Git credentials;
+- unrestricted secret reads or an MCP tool that approves secret grants;
+- unrestricted access to the host filesystem or every repository on a machine;
+- a public Docker socket;
+- an arbitrary control-plane-to-Edge command, URL, path, credential, or proxy channel;
+- universal network isolation for every execution profile.
+
+The trusted Linux workcell intentionally shares the host network. It must not be
+described as equivalent to the networkless Edge sandbox or as universal containment.
+
+## Supported architectures
+
+### Local stdio
+
+Run the server beside the MCP client. This is the smallest setup and should start in
+`read-only` mode.
+
+### HTTP control plane
+
+Run the same policy/service path over authenticated HTTP. Hostless local listeners bind
+to loopback. Public deployments require TLS and OAuth or a protected recovery bearer.
+
+### VPS + Edge
+
+Run the HTTP control plane on a VPS and pair a signed Linux/Parrot/WSL Edge over its
+outbound authenticated channel. The control plane sees opaque device/workspace/runtime
+state; host paths, local credentials, repository content, target details, and large
+runtime evidence stay within their intended local boundary.
+
+Configuration and security differ by profile. Read
+[`docs/configuration.md`](docs/configuration.md) and
+[`docs/security.md`](docs/security.md) before deployment.
+
+## Local quick start
+
+Requirements: Go 1.26 and an absolute repository path.
+
+```bash
+git clone https://github.com/charle-z/mcp-devbox.git
+cd mcp-devbox
+go test ./... -count=1
+go build -o ./bin/mcp-devbox ./cmd/mcp-devbox
+./bin/mcp-devbox serve --root /absolute/path/to/repository --mode read-only
+```
+
+For reviewed local changes:
+
+```bash
+./bin/mcp-devbox serve \
+  --root /absolute/path/to/repository \
+  --mode ask \
+  --test-cmd "go test ./... -count=1" \
+  --allow-cmd git,go
+```
+
+The direct binary requires at least one `--root`. Do not begin with `allow` as a general
+convenience setting.
+
+## Deployment summary
+
+The production image runs non-root, listens internally on port `8765`, and declares
+persistent `/repos`, `/state`, and `/brain` volumes. A normal public deployment should:
+
+1. keep `8765` behind Coolify/Traefik or an equivalent TLS reverse proxy;
+2. persist `/repos` and `/state` outside ephemeral container storage;
+3. enable OAuth with a stable public URL and owner passphrase;
+4. add `/brain` only when persistent Brain is required;
+5. keep all credentials in the platform secret manager;
+6. keep the public MCP container free of a Docker socket;
+7. verify `/healthz`, `/version`, OAuth persistence, and the exact deployed commit.
+
+The operational flow is in [`docs/deploy-coolify.md`](docs/deploy-coolify.md). Remote
+client setup is in [`docs/connect-remote.md`](docs/connect-remote.md).
+
+## Configuration
+
+[`docs/configuration.md`](docs/configuration.md) is the single canonical reference for:
+
+- supported profiles;
+- CLI/environment/default precedence;
+- runtime, OAuth, GitHub, Coolify, Brain, state, observability, validation-runner,
+  privileged-profile, Edge, and build inputs;
+- ports, routes, persistent paths, volumes, permissions, backups, and disposable data;
+- secret handling and safe copyable examples.
+
+The non-populated sample is
+[`config/mcp-devbox.env.sample`](config/mcp-devbox.env.sample). The repository does not
+use `.env.example` because `.env` and `.env.*` are secret-denied paths.
+
+## Security
+
+The technical threat model and architecture are in
+[`docs/security.md`](docs/security.md). The public reporting and disclosure policy is
+[`SECURITY.md`](SECURITY.md).
+
+Core invariants include immutable startup policy, path jail, secret denial and redaction,
+local-human grants, patch-first writes, command allowlists, exact plans, state
+revalidation, non-root containers, private persistent state, signed Edge releases, and
+closed public schemas.
+
+MCP Devbox is secure-by-default, not secure. Known limitations and profile-specific
+trust boundaries are part of the product contract, not fine print.
+
+## Verification
+
+Before publication or deployment:
+
+```bash
+go test ./... -count=1
+go vet ./...
+go build ./...
+git diff --check
+```
+
+For a live server, verify `/healthz` and `/version`, then compare the reported commit
+with the intended source commit. Use `system_runtime_info` for the same live identity
+through MCP. Run profile-specific smokes from the exact source revision; do not treat a
+client-cached tool list or a source release as proof of the deployed or installed state.
+
+## Documentation map
+
+Start with [`docs/documentation-map.md`](docs/documentation-map.md). Canonical roles:
+
+- [`docs/configuration.md`](docs/configuration.md): complete configuration reference;
+- [`docs/security.md`](docs/security.md): technical security architecture;
+- [`SECURITY.md`](SECURITY.md): vulnerability reporting and disclosure;
+- [`docs/tools.md`](docs/tools.md): public tool catalog;
+- `/version` and `system_runtime_info`: live build/catalog identity;
+- [`docs/baselines/`](docs/baselines/): dated historical evidence.
+
+Runbooks explain specific operations and should link back to those sources instead of
+creating competing configuration or security references.
+
+## License and vulnerability reporting
+
+No open-source `LICENSE` file is currently published. Treat the repository as all
+rights reserved unless the owner states otherwise.
+
+Report vulnerabilities privately using [`SECURITY.md`](SECURITY.md). Do not publish
+secrets, exploit details, or unpatched vulnerabilities in a public issue.

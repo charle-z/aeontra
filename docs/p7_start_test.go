@@ -47,8 +47,8 @@ func TestP7StructuredObservabilityIsDefinedAndDeployed(t *testing.T) {
 	if !strings.Contains(roadmap, "| P7 structured observability | Deployed |") {
 		t.Error("roadmap does not mark P7 deployed")
 	}
-	if !strings.Contains(readme, "P7 structured observability") || !strings.Contains(readme, "d1309ed08db0170e5165f78bf406e94cfa56cc11") {
-		t.Error("README does not identify the deployed P7 release")
+	if !strings.Contains(readme, "/version") || !strings.Contains(readme, "docs/baselines/") {
+		t.Error("README must delegate live identity and historical release evidence")
 	}
 	if !strings.Contains(baseline, "P7 closure baseline") || !strings.Contains(baseline, "d1309ed08db0170e5165f78bf406e94cfa56cc11") {
 		t.Error("P7 baseline does not identify the deployed closure")

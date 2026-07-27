@@ -60,6 +60,14 @@ func TestP9RuntimeOperationsAreDocumentedAndPackaged(t *testing.T) {
 		"README":       readme,
 		"capsule":      capsule,
 	} {
+		if name == "README" {
+			for _, required := range []string{"docs/configuration.md", "/brain"} {
+				if !strings.Contains(content, required) {
+					t.Errorf("README does not delegate Brain configuration via %q", required)
+				}
+			}
+			continue
+		}
 		for _, required := range []string{"MCP_DEVBOX_BRAIN_ROOT", "/brain", "brain-smoke", "67"} {
 			if !strings.Contains(content, required) {
 				t.Errorf("%s does not contain %q", name, required)

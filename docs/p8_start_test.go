@@ -48,8 +48,8 @@ func TestP8AuthenticatedDarkConsoleIsDefinedAndDeployed(t *testing.T) {
 	if !strings.Contains(roadmap, "| Console/showcase | Deployed |") {
 		t.Error("roadmap does not mark the console deployed")
 	}
-	if !strings.Contains(readme, "P8 authenticated dark console is deployed") || !strings.Contains(readme, "605a56d48a495f3c8a2ce62471223187ef2f5685") {
-		t.Error("README does not identify the deployed P8 release")
+	if !strings.Contains(readme, "/console") || !strings.Contains(readme, "docs/baselines/") {
+		t.Error("README must describe the authenticated console boundary and delegate release evidence")
 	}
 	if !strings.Contains(agents, "P8.1 Console 2.0 deployed and tagged") || !strings.Contains(agents, "d343264bffdc0ae1bc045a9d723e913be977090c") {
 		t.Error("AGENTS does not identify the current post-P8 console phase")

@@ -17,23 +17,18 @@ func TestP1ClosureDocumentationIsCurrent(t *testing.T) {
 	}
 
 	readme := read("../README.md")
-	agents := read("../AGENTS.md")
 	capsule := read("context-capsule.md")
 	baseline := read("baselines/2026-07-13-p1.md")
 
-	for path, content := range map[string]string{
-		"README.md": readme,
-		"AGENTS.md": agents,
-	} {
-		if !strings.Contains(content, "67") {
-			t.Errorf("%s does not state the current 67-tool catalog", path)
+	for _, required := range []string{"docs/tools.md", "system_runtime_info", "/version"} {
+		if !strings.Contains(readme, required) {
+			t.Errorf("README.md does not point to current catalog identity via %q", required)
 		}
 	}
-	if strings.Contains(readme, "59 deliberately annotated") {
-		t.Error("README.md still claims the pre-P0 59-tool catalog")
-	}
-	if strings.Contains(agents, "51 annotated MCP tools") {
-		t.Error("AGENTS.md still claims the historical 51-tool catalog")
+	for _, forbidden := range []string{"59 deliberately annotated", "current 67-tool catalog"} {
+		if strings.Contains(readme, forbidden) {
+			t.Errorf("README.md embeds historical catalog state %q", forbidden)
+		}
 	}
 
 	for _, required := range []string{
