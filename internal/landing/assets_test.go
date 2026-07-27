@@ -222,6 +222,40 @@ func TestLandingDensePanelsStayAlignedAndCompact(t *testing.T) {
 	}
 }
 
+func TestLandingFinalPolishKeepsPublicSurfaceDetachedAndRowsBalanced(t *testing.T) {
+	index := string(mustLandingAsset(t, "assets/index.html"))
+	css := string(mustLandingAsset(t, "assets/app.css"))
+	requestPath := string(mustLandingAsset(t, "assets/request-path.svg"))
+	compactCSS := strings.NewReplacer(" ", "", "\n", "", "\t", "", "\r", "").Replace(strings.ToLower(css))
+
+	for _, required := range []string{
+		`id="public-landing-outside-request-path"`,
+		"OUTSIDE REQUEST PATH",
+		`class="card card-wide"`,
+		`class="runtime-checks sub prose"`,
+		`class="runtime-check"`,
+	} {
+		if !strings.Contains(index+requestPath, required) {
+			t.Errorf("landing final polish missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		".card-wide{grid-column:1/-1",
+		".runtime-checks{display:flex;flex-wrap:wrap",
+		".runtime-check+.runtime-check::before{content:\"·\"",
+	} {
+		if !strings.Contains(compactCSS, required) {
+			t.Errorf("landing final polish CSS missing %q", required)
+		}
+	}
+	if strings.Contains(requestPath, `M890 130 H1060`) || strings.Contains(requestPath, `1050,120 1075,130 1050,140`) {
+		t.Fatal("public landing is still connected to the MCP Devbox request path")
+	}
+	if got := strings.Count(index, `class="runtime-check"`); got != 3 {
+		t.Fatalf("runtime independent checks must have exactly three wrapped items, got %d", got)
+	}
+}
+
 func assertLandingScriptsAreExternal(t *testing.T, index string) {
 	t.Helper()
 	remaining := index

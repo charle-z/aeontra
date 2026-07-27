@@ -1,11 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 1400 820" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
   <title id="title">MCP Devbox request paths</title>
-  <desc id="desc">An authenticated request reaches MCP Devbox policy. Reads and allowlisted commands execute directly with audit. Consequential actions branch through a single-use plan and owner approval before bounded execution.</desc>
+  <desc id="desc">An authenticated request reaches MCP Devbox policy. Reads and allowlisted commands execute directly with audit. Consequential actions branch through a single-use plan and owner approval before bounded execution. The public landing is shown separately, outside the request path.</desc>
   <rect width="1400" height="820" fill="#000050"/>
 
   <g fill="none" stroke="#54FCFC" stroke-width="4">
     <path d="M340 130 H510"/>
-    <path d="M890 130 H1060"/>
     <path d="M610 230 C520 275 410 300 300 340"/>
     <path d="M300 440 V520"/>
   </g>
@@ -17,7 +16,6 @@
   </g>
   <g fill="#54FCFC">
     <polygon points="500,120 525,130 500,140"/>
-    <polygon points="1050,120 1075,130 1050,140"/>
     <polygon points="292,510 300,535 308,510"/>
   </g>
   <g fill="#FCA854">
@@ -42,11 +40,13 @@
       <text x="700" y="202" fill="#54FC54" font-size="18">authority branches by effect</text>
     </g>
 
-    <g>
-      <rect x="1060" y="55" width="300" height="150" fill="#0000A8" stroke="#FC5454" stroke-width="3"/>
-      <text x="1210" y="105" fill="#FC5454" font-size="25" font-weight="700">PUBLIC LANDING</text>
-      <text x="1210" y="142" fill="#F8F8F8" font-size="19">presentation only</text>
-      <text x="1210" y="174" fill="#54FC54" font-size="17">no path into policy</text>
+    <g id="public-landing-outside-request-path">
+      <rect x="1025" y="20" width="350" height="220" fill="none" stroke="#FC5454" stroke-width="2" stroke-dasharray="10 8"/>
+      <text x="1200" y="50" fill="#FC5454" font-size="17" font-weight="700">OUTSIDE REQUEST PATH</text>
+      <rect x="1055" y="70" width="290" height="145" fill="#0000A8" stroke="#FC5454" stroke-width="3"/>
+      <text x="1200" y="115" fill="#FC5454" font-size="25" font-weight="700">PUBLIC LANDING</text>
+      <text x="1200" y="152" fill="#F8F8F8" font-size="19">presentation only</text>
+      <text x="1200" y="184" fill="#54FC54" font-size="17">no path into policy</text>
     </g>
 
     <g>
