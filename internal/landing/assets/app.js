@@ -167,11 +167,15 @@
   }
 
   function unavailable() {
-    fields.status.textContent = "unavailable";
-    fields.status.className = "warn";
+    Object.keys(fields).forEach(function (key) {
+      fields[key].textContent = "unavailable";
+      fields[key].className = "warn";
+    });
     topStatus.textContent = "unavailable";
     topStatus.className = "warn";
     topCommit.textContent = "identity";
+    message.className = "runtime-error warn";
+    message.setAttribute("data-runtime-state", "unavailable");
     setRuntimeMessage("unavailable");
   }
 
@@ -188,11 +192,13 @@
     if (!valid(payload)) throw new Error("invalid");
     Object.keys(fields).forEach(function (key) {
       fields[key].textContent = String(payload[key]);
+      fields[key].className = key === "status" ? "ok" : "";
     });
-    fields.status.className = "ok";
     topStatus.textContent = payload.status;
     topStatus.className = "ok";
     topCommit.textContent = payload.commit.length > 12 ? payload.commit.slice(0, 12) : payload.commit;
+    message.className = "runtime-error";
+    message.setAttribute("data-runtime-state", "available");
     setRuntimeMessage("available");
   }).catch(unavailable);
 
