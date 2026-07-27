@@ -256,6 +256,21 @@ func TestLandingFinalPolishKeepsPublicSurfaceDetachedAndRowsBalanced(t *testing.
 	}
 }
 
+func TestLandingRuntimeFailureStateIsExplicit(t *testing.T) {
+	js := string(mustLandingAsset(t, "assets/app.js"))
+	for _, required := range []string{
+		`fields[key].textContent = "unavailable"`,
+		`message.className = "runtime-error warn"`,
+		`message.setAttribute("data-runtime-state", "unavailable")`,
+		`message.setAttribute("data-runtime-state", "available")`,
+		`.catch(unavailable)`,
+	} {
+		if !strings.Contains(js, required) {
+			t.Errorf("landing runtime failure state missing %q", required)
+		}
+	}
+}
+
 func assertLandingScriptsAreExternal(t *testing.T, index string) {
 	t.Helper()
 	remaining := index

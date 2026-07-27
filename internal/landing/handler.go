@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 const (
@@ -18,6 +17,8 @@ const (
 	requestPathSVG = "/landing/assets/request-path.svg"
 	socialCardSVG  = "/landing/assets/social-card.svg"
 )
+
+const landingPageCSP = "default-src 'none'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 //go:embed assets/index.html assets/app.css assets/app.js assets/request-path.svg assets/social-card.svg
 var embeddedAssets embed.FS
@@ -102,16 +103,7 @@ func (h *Handler) handleRoot(w http.ResponseWriter, r *http.Request) {
 		landingMethodNotAllowed(w, http.MethodGet)
 		return
 	}
-	hardenLandingResponse(w, strings.Join([]string{
-		"default-src 'none'",
-		"style-src 'self'",
-		"script-src 'self'",
-		"connect-src 'self'",
-		"img-src 'self'",
-		"base-uri 'none'",
-		"form-action 'none'",
-		"frame-ancestors 'none'",
-	}, "; "))
+	hardenLandingResponse(w, landingPageCSP)
 	writeLandingContent(w, "text/html; charset=utf-8", h.indexHTML)
 }
 

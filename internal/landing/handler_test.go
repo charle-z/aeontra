@@ -71,6 +71,32 @@ func TestPublicLandingRoutesAndSecurityHeaders(t *testing.T) {
 	}
 }
 
+func TestPublicLandingCSPAllowsSameOriginRuntimeIdentity(t *testing.T) {
+	const want = "default-src 'none'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+	if landingPageCSP != want {
+		t.Fatalf("landing page CSP=%q want %q", landingPageCSP, want)
+	}
+
+	handler, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	response := serveLanding(mux, http.MethodGet, "/")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET / status=%d body=%s", response.Code, response.Body.String())
+	}
+	csp := response.Header().Get("Content-Security-Policy")
+	if csp != want {
+		t.Fatalf("GET / CSP=%q want %q", csp, want)
+	}
+	if !strings.Contains(csp, "connect-src 'self'") {
+		t.Fatalf("GET / CSP does not permit the same-origin /version request: %s", csp)
+	}
+}
+
 func TestPublicLandingAssetsAreEmbeddedAndHardened(t *testing.T) {
 	handler, err := New()
 	if err != nil {
