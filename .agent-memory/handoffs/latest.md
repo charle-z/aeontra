@@ -1,27 +1,32 @@
-# Handoff — retryable remote runtime lease delivery
+# Handoff — P16 deterministic calibration review
 
-Branch: `codex/runtime-lease-observability`, based on `origin/main`
-`d6f449f93d226d8e16238aabb784ab21f4b1a103`.
+Canonical `main` and production are currently synchronized at
+`1e418658102645ed45b739a9a84562704cae65ab`. Coolify application
+`jqf7qz5ensoqtvl1tb197gcv` is healthy. The live runtime exposes 102 tools with
+catalog hash `sha256:5a2091d85585d13eb7efbc22d942b2dfbd71fc7d547581803eb7633cac64d68b`.
 
-Observed production evidence: runtime `mr_9dbeb91135a6c9c9445e8dc214d34748` was
-created in `awaiting_edge` at `2026-07-27T01:30:59.862Z`, had `last_sequence: 0`, and
-was terminally failed at `2026-07-27T01:31:02.182Z`. The paired Edge id was correct.
-On Parrot, `mcp-edge doctor` and the exact owner systemd service were active and the
-correlated journal window was empty. This is not evidence that OpenCode itself ran or
-failed.
+Historical markers remain explicit: P8.1 is closed and deployed at
+`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`; that historical
+snapshot had 67 tools and Edge state `not_paired`. P9 Brain is its deployed
+successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
 
-The likely server path is `internal/edge/model_relay_http.go`: `writeLease` called
-`FailRuntime` whenever `RuntimeGoal` could not retrieve the private goal body, then
-returned HTTP 409. That made the Edge stop rather than retry before any model turn.
+Branch: `fix/p16-calibration-review`, based on `origin/main`.
 
-Candidate change: return HTTP 503, move `starting` back to `awaiting_edge`, and allow
-the existing receipt to reserve it again. The regression test advances the private
-goal clock beyond its TTL and asserts two lease attempts both receive 503 while the
-runtime remains `ready/awaiting_edge`.
+Implemented locally and staged:
 
-Parrot WSL2 passed the focused regression test, `go test ./internal/edge -count=1`,
-`go test ./... -count=1`, `go vet ./...`, and `go build ./...`; `git diff --check` is
-clean. Before merge: inspect the exact-head CI results, then deploy normally and
-request one fresh dev continuation. Expected recovery signal:
-the runtime advances beyond sequence zero or returns a distinct terminal runtime result;
-do not reuse an old terminal runtime.
+- closed deterministic review of the exact 50/65/80 x cached/no-cache evidence matrix;
+- bounded cached-log proof requiring `CACHED` for each quota;
+- hard rejection of malformed, duplicate, incomplete, failed, unhealthy, OOM,
+  unbounded or identity-missing evidence;
+- root-private selection output and explicit structural-stop result;
+- calibrator/bootstrap integration, tests, docs and accurate Step 7 task state.
+
+Local validation is green: full repository tests, Vet, build, focused builder/docs/
+buildspike/coverage tests and diff checks. Staticcheck remains an exact-head CI gate
+because the local allowlist does not expose it.
+
+Do not begin Step 8. Real VPS calibration is still a genuine host-root boundary. The
+public Coolify MCP has no host systemd/filesystem authority, and privileged profiles are
+disabled. After this branch is merged and deployed, run the reviewed one-command
+bootstrap against the exact green merge commit, preserve its private archive, record a
+new dated baseline, and freeze the selected quota before worker integration.
