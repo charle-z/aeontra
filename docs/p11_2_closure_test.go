@@ -82,8 +82,14 @@ func TestP112ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 	if !strings.Contains(read("product-roadmap.md"), "| P11.2 remote OpenCode relay | Deployed |") {
 		t.Error("roadmap does not identify deployed P11.2")
 	}
-	if !strings.Contains(read("design.md"), "current 78-tool P11.2 candidate") {
-		t.Error("design does not identify the current P11.2 catalog")
+	design := read("design.md")
+	for _, required := range []string{"Historical", "tools.md", "security.md"} {
+		if !strings.Contains(design, required) {
+			t.Errorf("design does not delegate current truth via %q", required)
+		}
+	}
+	if strings.Contains(design, "current 78-tool") {
+		t.Error("design embeds a moving candidate tool count")
 	}
 
 	for _, historical := range []string{

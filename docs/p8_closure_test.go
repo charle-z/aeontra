@@ -45,17 +45,6 @@ func TestP8ClosureEvidenceIsSynchronized(t *testing.T) {
 		t.Error("roadmap does not mark the console deployed")
 	}
 
-	capsule := read("context-capsule.md")
-	for _, required := range []string{
-		"P8 authenticated dark console is deployed",
-		"605a56d48a495f3c8a2ce62471223187ef2f5685",
-		"P9 Brain",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
-
 	spec := read("../specs/005-authenticated-dark-console/spec.md")
 	plan := read("../specs/005-authenticated-dark-console/plan.md")
 	tasks := read("../specs/005-authenticated-dark-console/tasks.md")

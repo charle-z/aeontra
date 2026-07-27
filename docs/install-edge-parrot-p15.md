@@ -1,8 +1,13 @@
-# P15 one-time Parrot installation and onboarding
+# Historical P15 Parrot installation contract
 
-Status: P15 release-candidate workflow. Do not apply it to the real Parrot device
-until exact-head CI, package tests, merge, automatic deployment and the signed release
-publication are complete.
+> **Historical.** This document preserves the P15 package, signing, updater, rollback,
+> and onboarding design. The canonical current operator procedure is
+> [`install-edge-parrot-p16.md`](install-edge-parrot-p16.md).
+
+Do not infer an installed Edge from this source document. A source release, published
+package artifact, and installed Edge require separate evidence. Verify live device
+state with the supported local doctor/status flow rather than a release name copied
+from documentation.
 
 ## Operator workflow
 

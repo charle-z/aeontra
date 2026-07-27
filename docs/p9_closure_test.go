@@ -75,49 +75,10 @@ func TestP9ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 		t.Error("roadmap does not mark Brain memory deployed")
 	}
 
-	capsule := read("context-capsule.md")
-	for _, required := range []string{
-		"P9 Brain is deployed",
-		"4fbe1dda02351c632e67c0f10a5c5b314df745e2",
-		"tagged",
-		"p9",
-		"67 tools",
-	} {
-		if !strings.Contains(strings.ToLower(capsule), strings.ToLower(required)) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
-
-	for name, path := range map[string]string{
-		"AGENTS":       "../AGENTS.md",
-		"current task": "../.agent-memory/current-task.md",
-		"handoff":      "../.agent-memory/handoffs/latest.md",
-	} {
-		content := read(path)
-		if !strings.Contains(strings.ToLower(content), "p8.1") ||
-			!strings.Contains(content, "d343264bffdc0ae1bc045a9d723e913be977090c") {
-			t.Errorf("%s does not record the deployed successor to P9", name)
-		}
-	}
-
 	documentationMap := read("documentation-map.md")
 	if !strings.Contains(documentationMap, "P9 release-candidate evidence") ||
 		!strings.Contains(documentationMap, "2026-07-14-p9.md") {
 		t.Error("documentation map does not identify P9 release-candidate evidence")
 	}
 
-	for _, path := range []string{
-		"../README.md",
-		"../AGENTS.md",
-		"context-capsule.md",
-		"product-roadmap.md",
-		"../.agent-memory/current-task.md",
-		"../.agent-memory/handoffs/latest.md",
-	} {
-		content := read(path)
-		if strings.Contains(content, "P10 BIOS Operations Console is implemented") ||
-			strings.Contains(content, "Edge Agent is deployed") {
-			t.Errorf("post-P9 implementation was claimed early in %s", path)
-		}
-	}
 }

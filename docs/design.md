@@ -1,199 +1,142 @@
-# Design — mcp-devbox
+# Historical design record
 
-## Problem
+> **Historical / conceptual document.** This file preserves the early design rationale
+> and durable architectural decisions. It is not the source for current deployment
+> status, tool counts, releases, configuration, or installation instructions.
 
-Codex/agent credits burn fast. Goal: use ChatGPT (and other MCP clients) as a
-local dev agent over your own repos, **safely**, without paying per-credit and
-without giving the agent free reign over the machine.
+Current sources:
 
-## What already exists (verified, not assumed)
+- [`../README.md`](../README.md) — product and supported architectures;
+- [`configuration.md`](configuration.md) — canonical configuration and profiles;
+- [`security.md`](security.md) — current trust boundaries and authority model;
+- [`tools.md`](tools.md) — canonical public tool catalog;
+- [`documentation-map.md`](documentation-map.md) — source ownership;
+- [`adr/`](adr/) and [`baselines/`](baselines/) — decisions and dated evidence.
 
-- **Desktop Commander MCP** (~5.7k★): local dev MCP, supports ChatGPT via remote
-  MCP — but **permissive by default** (full filesystem + terminal; no secret
-  blocking; no read-only; terminal escapes allowed dirs).
-- **Enterprise MCP gateways** (Cerbos, liteLLM, mcpmanager): policy layers, not a
-  local dev daemon for individuals.
-- **Cloud/container sandboxes** (gVisor, Firecracker, nsjail, Modal): isolate
-  execution; not a local-first individual dev tool.
+## Original problem
 
-**Gap (narrow but real):** a local-first, secure-by-default dev MCP daemon for
-individuals, with agent-agnostic repo memory. No exact match found.
+The project began from a narrow need: let an MCP client inspect and change selected
+repositories without granting it unrestricted filesystem and terminal authority. The
+useful distinction was never “works with every model”—that follows from MCP. The
+product distinction is a deliberately narrower authority model with repository memory.
 
-> "agent-agnostic / works for all providers" is **not** a differentiator — that is
-> inherent to MCP (one server works with any MCP client). The differentiator is
-> **secure-by-default** + **repo memory**.
-
-## Architecture
+## Durable architecture
 
 ```text
-ChatGPT / Claude / Cursor / opencode  (any MCP client)
-  ↓  (Cloudflare Tunnel + Access: TLS, auth, outbound-only)
-mcp-devbox daemon (Go)
-  ↓  policy gate (read-only default, allowlist, secret deny, path jail, audit)
-tools: build_context_pack · list_dir · read_file · read_many_files · search_code ·
-       apply_patch · run_command · git_status · git_diff · run_tests ·
-       memory_read · memory_update_handoff · sandbox_status
-  ↓
-local repositories (only configured paths)
+MCP client
+   │ stdio or authenticated HTTPS
+   ▼
+MCP Devbox control plane
+   ├─ immutable startup policy
+   ├─ repository jail and secret protection
+   ├─ direct bounded operations under policy + audit
+   ├─ planned consequential operations with revalidation
+   ├─ durable private state outside repository roots
+   └─ optional source, deployment, Brain, validation, and Edge adapters
+          │
+          ▼
+      paired Edge profiles with local private contracts
 ```
 
-The current secure-builder surface is larger than this original MVP diagram. The
-canonical tool registry, aliases, annotations, and the current 78-tool P11.2 candidate are in `tools.md`.
-The deployed P8.1/P9 production baseline remains the historical 67-tool contract until
-P11 is merged, deployed and verified; its dated evidence is not rewritten.
-Consequential multi-step operations share one in-memory action-plan store:
+The current tool surface is intentionally omitted. Read `tools.md` or live MCP
+discovery. Read `/version` or `system_runtime_info` for live identity.
+
+## Authority model
+
+Read-only and bounded status operations may execute directly after schema, jail,
+secret, redaction, and policy checks. Publication, deployment, creation, merge, and
+other consequential actions use their documented sequence:
 
 ```text
-read-only preview -> cryptographic plan (exact non-secret args + state + TTL)
-                  -> mode/approval -> single consume -> state revalidation
-                  -> narrow generated effect -> redacted result + audit
+preview
+→ exact single-use plan
+→ approval when required
+→ state revalidation
+→ narrow generated effect
+→ bounded redacted result
+→ audit
 ```
 
-Plans never mutate policy, never contain secret values, and disappear on restart.
+Preview is not approval. Approval cannot widen the plan. Compatibility aliases must use
+the same handler and authority path.
 
-Principle: **the model thinks, the daemon executes, git records, tests validate,
-memory persists, the human approves risky actions.**
+## Durable decisions
 
-## Decisions
+### Go-first modular daemon
 
-- **Language: Go-first.** Cross-platform single binary, great for fs/git/process/HTTP.
-  The MVP bottleneck is MCP roundtrips, not CPU — so optimize `build_context_pack`
-  (one call returns relevant context) over many small `read_file` calls.
-  Rust only later for a low-level module if measured need; **not for "security"**
-  (security is architecture, not language; Go is memory-safe).
-- **Platform: Linux-first via WSL2 on Windows.** Layer-1 policy is cross-platform;
-  hard isolation (Layer 2) is Linux-only → run secure mode in WSL2.
-- **Tunnel: Cloudflare Tunnel + Cloudflare Access (free tier).** Outbound-only,
-  TLS, stable URL, auth in front. No open ports.
-- **Memory: Markdown in the target repo** (`.agent-memory/` + `AGENTS.md`),
-  never in the chat or in a specific vendor.
+Go provides a cross-platform single binary and a straightforward implementation for
+filesystem, Git, process, HTTP, and MCP contracts. Security comes from policy and
+isolation, not from claiming that a language grants security. Keep the composition root
+small and capability services focused.
 
-## MVP tools (Layer 1)
+### Repository-scoped memory
 
-`build_context_pack · list_dir · read_file · read_many_files · search_code · apply_patch ·
-create_file · run_command · git_status · git_diff · run_tests · git_commit ·
-memory_read · memory_write · memory_update_handoff · sandbox_status`
+Structured handoff state belongs in repository-controlled Markdown, not only in chat or
+a vendor-specific memory system. Persistent Brain is a separate administrator-enabled
+profile with its own trust and storage boundary.
 
-Most important: `build_context_pack`, `read_many_files`, `apply_patch` (minimize
-roundtrips, minimize tokens, reviewable changes).
+### Patch-first writes
 
-## Layered build (proportional — do NOT build all at once)
+Existing files change through validated patches. New-file creation refuses overwrite.
+This keeps changes reviewable and avoids a generic full-file-write escape hatch.
 
-- **Layer 1 (MVP, Go, app-level policy):** read-only default, secret deny,
-  command allowlist, path jail (covering terminal), patch-first, audit log.
-  → Already more secure than Desktop Commander. Dogfood it daily.
-- **Layer 2 (v0.3, OS isolation):** wrap gVisor/nsjail/Docker so a permitted
-  command **cannot escape** the policy. Linux/WSL2. **Wrap, don't reinvent.**
-- **Layer 3 (v0.3, egress control):** default-deny outbound; block metadata
-  endpoint (169.254.169.254) and RFC1918; allowlist only needed endpoints.
-- **Tunnel hardening:** Cloudflare Tunnel + Access + bearer/OAuth on the daemon.
+### No free host shell
 
-## What NOT to build (yet)
+Layer-1 commands are argv-only and allowlisted. Broader execution exists only inside a
+real, explicitly configured isolation profile or fixed privileged contract. The public
+control plane must not become a generic terminal or Docker proxy.
 
-Free terminal · full-file write tool · autonomous agent without approval · DB ·
-job queue · UI/dashboard · hosted relay · OpenCode delegation · reinvented sandbox
-primitives. (See `AGENTS.md` architecture rule.)
+### Profile-specific isolation
 
-The disabled-by-default privileged profile mechanism is not a free terminal: every
-command and parameter shape is defined server-side, has a short plan TTL and timeout,
-and Docker profiles fail securely rather than exposing the host Docker socket to the
-public daemon.
+The old “Layer 1/2/3” model was useful planning shorthand, but current claims are made
+per implemented surface:
 
-## Phases
+- application-policy control plane;
+- networkless Edge sandbox;
+- trusted Linux workcell with host-shared networking;
+- authorized target-locked workspace;
+- Development Edge Git broker;
+- private validation runner.
 
-`v0.1 MVP (Layer 1) → v0.2 ChatGPT setup (Cloudflare Tunnel guide) →
-v0.3 security (Layers 2-3, tests) → v0.4 multi-agent config gen → v0.5 production`
+The trusted workcell is not universal egress isolation. Target-locking is not a host
+firewall. Signed releases establish artifact identity, not correctness of the host.
 
-## Why this exists (premise)
+### Outbound Edge control
 
-- **ChatGPT-web-first:** Plus web limits reset in hours vs Codex's weekly cap →
-  when Codex is exhausted you're blocked a week; with web you continue after hours.
-- **Agent-first tools:** compound tools (`build_context_pack`) minimize MCP
-  roundtrips → better for cheap/fast models driven from a chat UI, and **less
-  consumption of the chat's message limit.** mcp-devbox is the **tools**; the agent
-  loop is the **client** (by design — "model thinks, daemon executes").
-- **Multi-provider is free, but bounded:** any MCP-capable client works (MCP is
-  agnostic), but the chat must actually expose MCP connectors — ChatGPT/Claude yes;
-  consumer Gemini/DeepSeek chat = uneven, verify per provider.
+The control plane sends closed operations and opaque identifiers over an authenticated
+outbound channel. It must not accept arbitrary Edge commands, paths, URLs, scripts,
+credentials, hashes, or targets. Local identity, workspace paths, credentials, and
+sensitive evidence remain in local private state.
 
-## Competitive strategy (vs Desktop Commander)
+### Separate Git authority
 
-Out-**secure** the core; do NOT out-**feature** the breadth. Reimplement ideas in
-Go; never copy code (DC is open source — learn, don't lift).
+A development Edge may use an owner-bound local Git broker. Credentials remain outside
+the model workcell and are not exposed in schemas, argv, responses, or logs. Clone and
+publication destinations are constructed from configured authority, not caller URLs.
 
-| DC strength | Our move |
-|---|---|
-| Surgical edit (`edit_block`) | Adopt → `apply_patch` validated (`git apply --check`) |
-| Multi-project | Adopt |
-| Search | Adopt, path-jailed |
-| Process control | Adopt but **allowlist-only** (their strength = their hole) |
-| Reads full files | Differ → `build_context_pack` (relevant, fewer tokens) |
-| Audit/analytics | Adopt (audit log) |
-| `set_config` at runtime | **NOT** for security policy (would be a hole) |
-| Excel/PDF/DOCX, rich previews | **Skip** — scope creep, dilutes the security wedge |
+### No separate cheap-model worker
 
-DC's biggest strength (full power, permissive-by-default) **is** its biggest
-weakness. We win on **security posture, not feature count.**
+The early low-cost delegated-worker proposal is superseded. MCP Devbox is the safe tool
+and authority layer; the client owns the reasoning loop. A future unattended worker
+must be justified as a separate, bounded product surface rather than smuggled into the
+control plane.
 
-## Install fork — DECISION PENDING (decide before v0.2)
+## Historical alternatives
 
-DC made ChatGPT easy by **hosting a relay** (`mcp.desktopcommander.app`): a light
-device on your PC connects out to their cloud relay. Two paths for us:
+Early documents discussed a hosted relay, Cloudflare-only exposure, future versioned
+layers, and a dashboard as undecided or future work. Those alternatives are historical.
+Current transport, deployment, console, and Edge behavior is documented in the
+corresponding runbooks and ADRs. Do not treat an old phase label as an active roadmap.
 
-- **(A) Self-tunnel** (user runs Cloudflare Tunnel): more friction, **zero trust in
-  us**, fits the security narrative. Honest default for a security tool.
-- **(B) We host a relay:** easy install, but we become **the intermediary to
-  everyone's PC** = high-value target + liability.
+## Design acceptance
 
-For a security-first tool, **(A)** is the honest default; **(B)** trades the
-security narrative for adoption. Not decided.
+A design change is acceptable only when it:
 
-## P15 local-autopilot boundary
-
-P15 uses four explicit layers. The remote control plane owns only durable job
-lifecycle and safe metadata. The persistent Parrot Edge owns device identity,
-workspaces, authorization, VPN/target validation and worker supervision. A bounded
-local autopilot worker owns reasoning cycles and invokes only the private structured
-runtime broker; operational HTB commands, credentials, flags and raw results never
-enter the control plane. A separate root-owned updater accepts only official signed
-release identifiers and has no generic shell or sudo interface.
-
-All Edge executables, provider files and systemd definitions are one signed release.
-`/opt/mcp-devbox/current` changes atomically only after staged verification and smoke;
-failure restores the previous signed release. See `docs/edge-bundles.md`.
-
-## Open considerations (contemplate before/during build)
-
-1. **Content-level secret scanning** (not just path-blocking) — see `security.md`.
-2. **Adversarial self-testing** (red-team the tool) — see `security.md`.
-3. **The "secure" claim is a liability** — under-promise; ship `SECURITY.md`.
-4. **Validate the ChatGPT-web premise** with a real session before heavy build.
-5. **Repo location: WSL2 vs Windows FS** — affects path jail + performance (owner
-   is Windows-first; secure mode is Linux/WSL2). Decide where repos live.
-## P15 outbound lab control operations
-
-`workspace_lab_prepare` and `workspace_lab_retarget` persist closed, typed
-operations in the remote Edge store. A paired Edge leases them over its existing
-Ed25519-authenticated outbound channel. The request may contain only the device or
-workspace selector and the lab contract metadata; commands, credentials, flags,
-paths, URLs, scripts and caller-provided hashes have no schema or transport field.
-
-Preparation and retargeting execute on the Edge. They validate a private IPv4 and
-its `tun*`/`tap*` route, derive LHOST locally, atomically persist the local contract
-and sanitized inventory, and return only opaque IDs, authorization revision and a
-closed safe failure code. Retarget increments the revision marker used by the local
-broker, invalidating every older session without deleting evidence or checkpoints.
-
-The six `workspace_htb_*` actions remain available to the local runtime provider,
-but are intentionally absent from the exterior MCP catalog and dispatcher.
-
-## P15 development Git broker
-
-Private repository transport follows the same authority split without treating the
-model sandbox as a secret holder. The public MCP uses its Coolify GitHub token for
-API reads and planned PR operations. A development-mode Edge may separately hold the
-same PAT under private local state. For that mode only, the provider offers three
-closed internal actions over a per-runtime Unix socket: owner-bound clone, publication
-preview, and single-use planned publication. Editing and validation remain inside the
-workcell; authenticated Git runs in the broker with no arbitrary URL, command, force,
-tag, or refspec input. See `docs/development-edge-git.md`.
+1. states the authority required and authority deliberately unavailable;
+2. identifies the trust boundary and honest isolation/network posture;
+3. keeps credentials out of model-visible contracts;
+4. defines failure, cancellation, replay, and recovery behavior;
+5. has focused adversarial tests and exact-head CI evidence;
+6. updates `configuration.md`, `security.md`, and `tools.md` only when their owned
+   contracts actually change;
+7. records historical closure in a new baseline instead of rewriting old evidence.

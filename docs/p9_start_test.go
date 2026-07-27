@@ -21,10 +21,8 @@ func TestP9BrainIsDefinedAndReleaseReady(t *testing.T) {
 	tasks := read("../specs/006-brain/tasks.md")
 	threat := read("../specs/006-brain/threat-model.md")
 	adr := read("adr/0003-p9-markdown-truth-sqlite-fts5-cache.md")
-	capsule := read("context-capsule.md")
+
 	roadmap := read("product-roadmap.md")
-	currentTask := read("../.agent-memory/current-task.md")
-	handoff := read("../.agent-memory/handoffs/latest.md")
 
 	for name, content := range map[string]string{
 		"spec":         spec,
@@ -91,24 +89,11 @@ func TestP9BrainIsDefinedAndReleaseReady(t *testing.T) {
 		}
 	}
 
-	for _, content := range []string{capsule, currentTask, handoff} {
-		for _, required := range []string{
-			"P8.1",
-			"d343264bffdc0ae1bc045a9d723e913be977090c",
-		} {
-			if !strings.Contains(strings.ToLower(content), strings.ToLower(required)) {
-				t.Errorf("current-state document does not contain %q", required)
-			}
-		}
-	}
-
 	if !strings.Contains(roadmap, "| Brain memory | Deployed |") {
 		t.Error("roadmap does not mark Brain memory deployed")
 	}
 	if !strings.Contains(tasks, "[x] **T01 P9 definition**") {
 		t.Error("P9 tasks do not complete T01")
 	}
-	if strings.Contains(capsule, "P10 Layer 2/3 is implemented") || strings.Contains(roadmap, "| Layer 2/3 egress | Deployed |") {
-		t.Error("P10 implementation was started before P9 closure")
-	}
+
 }

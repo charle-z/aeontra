@@ -1,273 +1,238 @@
-# Deploy mcp-devbox on a VPS with Coolify
+# Deploy MCP Devbox on Coolify
 
-Goal: expose mcp-devbox at a stable HTTPS domain for ChatGPT web, while the daemon
-works only on repositories cloned on the VPS under `/repos`. Do not expose a
-personal machine.
+This runbook covers the Coolify flow only. The complete variable, default, path,
+permission, volume, and secret inventory is canonical in
+[`configuration.md`](configuration.md). The technical security model is
+[`security.md`](security.md).
 
-## Image behavior
+The production posture is:
 
-The Docker image is multi-stage:
+- internal HTTP listener on port `8765`;
+- TLS and routing through Coolify/Traefik;
+- OAuth preferred for ChatGPT;
+- optional static bearer as **header-only recovery**;
+- query-string credentials rejected;
+- persistent `/repos` and `/state` volumes;
+- optional persistent `/brain` volume;
+- non-root runtime;
+- no Docker socket in the public MCP application.
 
-- console build: installs pinned dependencies and runs only `console:build`; lint,
-  typecheck and tests remain mandatory CI gates and are not repeated on the VPS
-- Go build: official `golang:1.26-alpine`, persistent BuildKit module/compiler
-  caches, and one-package/one-logical-CPU concurrency by default
-- runtime: pinned Go/Alpine image, non-root user `10001`, includes Go, `git`,
-  Node.js, and the BusyBox `wget` applet used only by the healthcheck
-- healthcheck: `GET http://127.0.0.1:8765/healthz`
-- graceful replacement: Docker `SIGTERM` is handled and active requests get up to five seconds to drain before exit.
+## Prerequisites
 
-The conservative build defaults are intentional for the production micro VPS with
-two vCPUs. They leave roughly one logical CPU available to Coolify, Traefik and the
-running application instead of letting compilation occupy both cores. Builds can
-take longer, but normal requests should remain responsive. Dedicated build hosts can
-override these Docker build arguments:
+- a Coolify server with a working TLS reverse proxy;
+- a Git repository and branch Coolify can build;
+- a stable public HTTPS hostname;
+- persistent storage for repositories and state;
+- an owner-controlled secret manager in Coolify;
+- a reviewed runtime mode, normally `read-only` or `ask`.
+
+GitHub and Coolify integrations are optional. They are needed only when the running MCP
+server itself must perform the corresponding source-host or deployment operations.
+Brain is optional and requires its own `/brain` volume.
+
+## Build configuration
+
+Use the repository Dockerfile. The image:
+
+- builds the console and Go binary;
+- runs as the non-root runtime user;
+- listens on `0.0.0.0:8765` inside the container;
+- declares `/repos`, `/state`, and `/brain` as volume locations;
+- exposes `/healthz` as the container healthcheck;
+- accepts build identity inputs so `/version` can report the exact commit.
+
+Do not publish `8765` directly on the VPS firewall. Let Coolify/Traefik route the HTTPS
+origin to the internal port.
+
+## Persistent storage
+
+Mount:
+
+| Container path | Required | Purpose |
+|---|---:|---|
+| `/repos` | yes | repository jail and project data |
+| `/state` | yes | OAuth client and refresh stores, audit, observability, tasks, results, console, Edge/control-plane coordination, and other durable runtime state |
+| `/brain` | only when Brain is enabled | Brain Markdown truth, local Git, and disposable search cache |
+
+The runtime image expects the non-root application user to own writable data. Preserve
+private directory/file modes described in `configuration.md`.
+
+`/state` and `/brain` must remain outside the `/repos` jail. Never expose OAuth stores,
+Edge identity, signing material, local Git credentials, or private runtime state as an
+agent-writable repository.
+
+## Minimum application settings
+
+Set the application to build the intended branch and expose container port `8765`.
+Configure health checking on:
 
 ```text
-BUILD_GOMAXPROCS=2
-BUILD_GO_PARALLELISM=2
-BUILD_UV_THREADPOOL_SIZE=2
+/healthz
 ```
 
-Do not raise them on the two-vCPU production VPS merely to shorten a deployment.
-The build uses cache mounts, so unchanged Go modules and compiled packages are reused
-across BuildKit builds even though the final binary is stamped with the new commit.
-
-Default container command:
-
-```bash
-mcp-devbox serve --root "${MCP_DEVBOX_ROOT:-/repos/workspace}" \
-  --mode "${MCP_DEVBOX_MODE:-read-only}" \
-  --http 0.0.0.0:8765
-```
-
-Set `MCP_DEVBOX_ROOT=/repos` in Coolify when using the global-builder workflow.
-Repos live as child directories under that volume and tools accept `repo`/`cwd`
-selectors for repo-local work.
-The token must come from Coolify secrets/env as `MCP_DEVBOX_TOKEN`; never hardcode
-it in the image or repo.
-
-P9 Brain is optional at startup. To enable it, mount a dedicated persistent volume at
-`/brain` and set:
+Minimum production environment:
 
 ```text
-MCP_DEVBOX_BRAIN_ROOT=/brain
-MCP_DEVBOX_STATE_ROOT=/state
-MCP_DEVBOX_OBSERVABILITY=file
-```
-
-The Brain path must be absolute and disjoint from `/repos`. A configured but invalid
-Brain fails startup; an unset Brain keeps the five tools registered but disabled.
-The P9 candidate exposes 67 tools while the deployed P8 baseline remains at 62 until
-the release PR, deployment, and smoke verification complete.
-
-## Coolify setup
-
-1. Create a new Coolify application from this repository, using the Dockerfile.
-2. Set the public domain, for example `https://mcp.example.com`, and enable TLS.
-3. Configure environment variables:
-
-```text
-MCP_DEVBOX_TOKEN=<long-random-secret>
 MCP_DEVBOX_ROOT=/repos
-MCP_DEVBOX_MODE=ask
-MCP_DEVBOX_ALLOW_CMD=git,go,node,npm
-MCP_DEVBOX_BRAIN_ROOT=/brain
-```
-
-Use `read-only` for inspection-only deployments. Use `ask` for the global-builder
-workflow so patches, commands, commits, pushes, and deploys require explicit
-approval fields.
-
-If using OAuth for the ChatGPT connector, also set:
-
-```text
+MCP_DEVBOX_MODE=read-only
+MCP_DEVBOX_STATE_ROOT=/state
+MCP_DEVBOX_TASK_ROOT=/state/tasks
+MCP_DEVBOX_OBSERVABILITY=file
 MCP_DEVBOX_PUBLIC_URL=https://mcp.example.com
-MCP_DEVBOX_OAUTH_PASSPHRASE=<long-owner-passphrase>
+MCP_DEVBOX_OAUTH_PASSPHRASE=REPLACE_WITH_LONG_OWNER_PASSPHRASE
 MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json
 MCP_DEVBOX_OAUTH_REFRESH_STORE=/state/oauth-refresh.json
-```
-
-`MCP_DEVBOX_OAUTH_CLIENT_STORE` persists only ChatGPT's public OAuth client
-registration. `MCP_DEVBOX_OAUTH_REFRESH_STORE` (0600) additionally persists **refresh
-tokens** so a redeploy does not force the passphrase login again; access tokens and
-authorization codes are never persisted. Mount both on `/state` (outside the MCP repo
-jail) so agents cannot edit OAuth server state through normal file tools.
-
-### Verify a redeploy actually shipped
-
-`GET https://mcp.example.com/version` returns JSON containing only the live semantic
-version, MCP protocol version, commit, optional build time, registered tool count,
-and deterministic catalog hash. The same commit/hash/count are sent as response
-headers. Compare these values before reconnecting a client: if they match the pushed
-build while the client still shows an older tool surface, the remaining staleness is
-client-side rather than a failed server deployment. Run the repository-native
-smoke check from the expected source commit:
-
-```bash
-go run ./cmd/mcp-catalog-smoke \
-  --url https://mcp.example.com \
-  --expected-commit "$(git rev-parse HEAD)"
-```
-
-When Brain is enabled, run the additional read-only smoke. It prints only runtime
-identity, index readiness/schema, note count, and context byte count:
-
-```bash
-go run ./cmd/brain-smoke \
-  --url https://mcp.example.com \
-  --expected-commit "$(git rev-parse HEAD)"
-```
-
-See `docs/runbooks/brain-operations.md` for permissions, backup, restore, update,
-rollback, and troubleshooting.
-
-See `docs/runbooks/catalog-cache.md` for diagnosis and rollback.
-
-`GET https://mcp.example.com/healthz` returns `ok mcp-devbox <version> <commit>`. Compare
-`<commit>` to `git rev-parse HEAD` on `main`. If it lags, the deploy did not ship the
-latest code — check the webhook fired and that Coolify rebuilt (didn't reuse a cached
-image). To stamp the commit, either let Coolify inject `SOURCE_COMMIT` (read at startup)
-or pass a build argument `GIT_SHA=$(git rev-parse HEAD)` (baked into `internal/buildinfo` via `-ldflags`). Changing
-`GIT_SHA` also busts the Docker build cache, forcing a genuine rebuild per commit.
-
-4. Add persistent volumes:
-
-```text
-/repos
-/state
-/brain
-```
-
-Use `/repos` for cloned repositories and `/state` for OAuth client/refresh state,
-bounded telemetry (`telemetry/metrics.db`) and four-segment operational logs under
-`logs/`. Use the dedicated `/brain` volume for Markdown truth and local Git history. The
-SQLite cache under `/brain/.cache` is disposable. The image prepares `/brain` for
-UID/GID `10001:10001`; host bind mounts must preserve that ownership and private
-`0700`/`0600` modes.
-5. Optional global-builder env:
-
-```text
-GITHUB_TOKEN=<fine-grained-token>
-GITHUB_OWNER=<owner>
-GITHUB_OWNER_TYPE=user
-GITHUB_DEFAULT_VISIBILITY=private
-
-COOLIFY_URL=<your-coolify-url>
-COOLIFY_API_TOKEN=<coolify-api-token>
-COOLIFY_SERVER_UUID=<server-uuid>
-COOLIFY_PROJECT_UUID=<project-uuid>
-COOLIFY_ENVIRONMENT_NAME=production
-COOLIFY_ALLOWED_DOMAINS=example.com
-# Optional: use the configured Coolify GitHub App source for private repositories.
-COOLIFY_GITHUB_APP_UUID=<coolify-github-app-uuid>
-
-# Disabled by default; enable only fixed administrator-approved profiles:
 MCP_DEVBOX_PRIVILEGED_TASKS=false
-MCP_DEVBOX_PRIVILEGED_SERVICES=mcp-devbox
-MCP_DEVBOX_PRIVILEGED_TIMEOUT=2m
 ```
 
-`GITHUB_TOKEN` should have the minimum repo permissions you need. Do not enable
-Coolify `read:sensitive`; mcp-devbox does not need secret-reading API responses for
-builder actions.
+Store the passphrase in Coolify's secret manager. Switch to `ask` only when reviewed
+writes, tests, commits, publication, or deployment are required.
 
-The public MCP container must not mount `/var/run/docker.sock`. Docker privileged
-profiles intentionally fail securely there. Run them only through a separately
-contained administrator runner if that architecture is added later.
-6. Expose only the internal application port `8765` through Coolify/Traefik. Do not
-publish `8765` directly on the VPS host firewall.
-7. Deploy.
+The OAuth client and refresh stores must live on persistent `/state`. A rolling
+replacement should preserve connector registration and refresh continuity.
 
-### Rolling updates without dropping the old container
+## Optional recovery bearer
 
-The repository is prepared for Coolify rolling replacement: Dockerfile deployment, no fixed `container_name`, no host port binding, an internal `/healthz` check with a startup window, and graceful `SIGTERM` handling. Keep `/repos`, `/state`, and `/brain` as persistent volumes. Coolify must keep the previous healthy container serving until the candidate passes its healthcheck, then switch Traefik traffic and stop the old instance. A failed candidate must not replace the healthy instance. During the brief overlap, avoid starting consequential writes from two clients at once; the overlap is for readiness and traffic handoff, not parallel agent execution.
-
-If you manage Traefik labels manually, the service should route HTTPS traffic to
-container port `8765` only. Example labels:
+A static bearer is not required when OAuth is configured. Add it only for a protected
+technical recovery client:
 
 ```text
-traefik.enable=true
-traefik.http.routers.mcp-devbox.rule=Host(`mcp.example.com`)
-traefik.http.routers.mcp-devbox.entrypoints=https
-traefik.http.routers.mcp-devbox.tls=true
-traefik.http.services.mcp-devbox.loadbalancer.server.port=8765
+MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE
 ```
 
-## Clone and update repositories in `/repos`
+It authorizes only through `Authorization: Bearer`. Query-string credentials return
+`401`, even when the value is correct. Do not place the bearer in the application URL,
+Git, logs, screenshots, prompts, or command arguments.
 
-Clone repos into the persistent `/repos` volume from the VPS/Coolify shell:
+## Optional Brain
 
-```bash
-cd /repos
-git clone https://github.com/OWNER/REPO.git <repo>
-```
-
-For private repos, use a deploy key or token available only on the VPS. Do not put
-repo credentials in the mcp-devbox image or in ChatGPT prompts.
-
-To update through MCP, use `repo_fetch`, `repo_fast_forward_preview`, then
-`repo_fast_forward`. This preserves the jailed, audited, exact-plan workflow and
-never uses reset. Reserve direct host Git commands for an administrator operating
-outside the MCP protocol.
-
-For global-builder mode, keep `MCP_DEVBOX_ROOT=/repos`. ChatGPT should use
-`list_dir`, then pass `repo:"<repo>"` or `cwd:"<repo>"` to repo-local tools.
-
-## Connect ChatGPT
-
-Deploy with `MCP_DEVBOX_PUBLIC_URL` and `MCP_DEVBOX_OAUTH_PASSPHRASE`, then configure ChatGPT with:
+Brain is optional. To enable it:
 
 ```text
-https://mcp.example.com/mcp
+MCP_DEVBOX_BRAIN_ROOT=/brain
 ```
 
-Choose OAuth. Persist `MCP_DEVBOX_OAUTH_CLIENT_STORE` and `MCP_DEVBOX_OAUTH_REFRESH_STORE` on `/state` so a container replacement can reconnect without recreating the connector. `MCP_DEVBOX_TOKEN` is optional recovery-only and must travel in an Authorization header, never a URL.
+Attach the dedicated persistent `/brain` volume and verify its ownership before deploy.
+Use the Brain runbook for initialization, smoke, backup, restore, and rollback. Do not
+infer a current catalog count from historical Brain baselines.
 
-P8.1 rejects all `?key=` query credentials with HTTP 401.
+## Optional GitHub authority
 
-## Recommended second gate
+Configure GitHub only when the public control plane must inspect or change repositories,
+pull requests, checks, or owner-bound publication through the GitHub API/transport.
+Use a fine-grained credential with the minimum repositories and permissions needed.
 
-OAuth is necessary but can still be combined with a second public-edge gate. Add one of these in front:
+The exact variables and valid values are in `configuration.md`. The configured owner is
+an authority boundary; callers cannot substitute another owner or credential.
 
-- Cloudflare Access for `mcp.example.com`
-- Traefik `basicAuth` middleware
-- Traefik `forwardAuth` to your identity provider
+## Optional Coolify authority
 
-Keep the daemon token enabled even behind that gate; it is defense in depth.
+Configure the Coolify adapter only when MCP Devbox must read or perform planned changes
+against allowed applications. Keep application/domain/server/project/environment scope
+narrow and store the API credential as a secret.
 
-## Verification against the real domain
+The adapter does not return credential or environment values. Creation and deployment
+use preview, single-use plan, approval, revalidation, narrow execution, and audit.
 
-After deployment, run from your local machine:
+## Optional private validation runner
+
+JavaScript validation that requires a container engine belongs in the separately
+private validation runner. The public MCP application **must not mount
+`/var/run/docker.sock`** or another rootful engine socket.
+
+The runner accepts only fixed profiles and reviewed mounts. Configure it according to
+[`validation-runner.md`](validation-runner.md) and the canonical variable inventory.
+
+## Deploy
+
+1. Save the reviewed environment and secret values.
+2. Confirm `/repos` and `/state` are persistent and writable by the runtime user.
+3. Add `/brain` only when Brain is enabled.
+4. Trigger the normal Coolify deployment from the expected branch/commit.
+5. Wait for the application healthcheck.
+6. Verify the exact commit before accepting the deployment.
+
+Do not trigger a manual no-cache deployment merely because documentation changed unless
+the real platform policy requires it. If Coolify automatically tracks `main`, observe
+the automatic deployment and verify identity instead of creating a second deployment.
+
+## Acceptance smoke
+
+Public liveness and identity:
 
 ```bash
-curl -i https://mcp.example.com/healthz
-curl -i https://mcp.example.com/version
+curl -fsS https://mcp.example.com/healthz
+curl -fsS https://mcp.example.com/version
+```
+
+Authentication boundary:
+
+```bash
 curl -i https://mcp.example.com/mcp
-curl -i -H "Authorization: Bearer <MCP_DEVBOX_TOKEN>" https://mcp.example.com/mcp
-curl -i -X POST https://mcp.example.com/mcp \
-  -H "Authorization: Bearer <MCP_DEVBOX_TOKEN>" \
-  -H "Content-Type: application/json" \
-  --data '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
+curl -i "https://mcp.example.com/mcp?key=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE"
 ```
 
 Expected:
 
-- `/healthz` returns the deployed commit
-- `/version` returns the same commit and catalog headers
-- unauthenticated `GET/POST /mcp` returns `401`
-- OAuth or header bearer authorizes the MCP stream/request
-- `/mcp?key=<even-correct-token>` returns `401`
+- `/healthz` is healthy;
+- `/version` reports the intended exact commit and current catalog identity;
+- unauthenticated `/mcp` returns `401`;
+- query-string credentials return `401`;
+- OAuth discovery and authorization routes are reachable through the same HTTPS origin;
+- the ChatGPT connector completes OAuth and can call `system_runtime_info`.
 
-Security invariants remain enforced by mcp-devbox policy inside the container:
-jail, secret deny plus redaction, command allowlist, patch-first writes, and audit.
+When a recovery bearer is configured, test it only through a protected header.
 
-## Redeploy and reconnect
+## Rolling replacement test
 
-After an authorized push, let the existing Coolify webhook rebuild the branch.
-Verify `/healthz` reports the pushed commit before testing tools. Keep `/repos`,
-`/state`, and `/brain` volumes mounted. With persisted OAuth client and refresh stores, ChatGPT
-should reconnect without connector deletion; if OAuth configuration changed,
-reconnect once through the normal OAuth flow. Then call `tools/list`, confirm the documented tool count in `docs/tools.md` and all four annotations, and run read-only acceptance tests before any write.
+After initial acceptance, perform or observe one normal rolling replacement and verify:
 
-> P8.1 security change: query-string credentials are rejected with HTTP 401. Configure the clean `/mcp` URL with OAuth. Header bearer remains recovery-only.
+1. `/healthz` returns healthy after the replacement;
+2. `/version` reports the intended exact commit;
+3. existing OAuth client registration remains valid;
+4. refresh continuity survives without repeating owner login;
+5. repository and state data remain present;
+6. Brain remains present only when enabled;
+7. no secret values appear in application logs.
+
+This distinguishes a healthy new container from a deployment that silently lost durable
+authority state.
+
+## Rollback
+
+Rollback to a previously reviewed application revision through Coolify's normal rollback
+or branch/commit procedure. After rollback, repeat:
+
+- `/healthz`;
+- `/version` exact-commit verification;
+- OAuth connector and refresh continuity;
+- repository/state/Brain persistence checks;
+- bounded log review.
+
+A rollback of the public control plane does not prove or change an installed Edge
+release. Verify Edge state separately.
+
+## Troubleshooting
+
+| Symptom | Action |
+|---|---|
+| Container unhealthy | Inspect bounded application logs, verify port `8765`, `/healthz`, volume ownership, and required OAuth pair. |
+| OAuth startup fails | Verify public URL/passphrase are both present and stores are writable on `/state`. |
+| OAuth works until redeploy | The client or refresh store is ephemeral or mounted incorrectly. |
+| Connector returns `401` | Complete OAuth; bearer recovery requires the `Authorization` header. Query credentials never authorize. |
+| `/version` reports the wrong commit | The platform built/deployed another revision or is still completing the rolling replacement. Do not accept it. |
+| Repositories disappear | `/repos` is not persistent or is mounted at the wrong path. |
+| Brain tools unavailable | Brain is optional; verify the `/brain` volume and `MCP_DEVBOX_BRAIN_ROOT`. |
+| GitHub/Coolify tools unavailable | Their optional adapter configuration is absent or invalid. Consult `configuration.md`. |
+| Validation requires Docker | Use the private fixed-profile runner; do not add a Docker socket to the public app. |
+
+## Security reminders
+
+- OAuth is preferred; bearer is recovery only.
+- Keep secrets in Coolify's secret manager.
+- Keep `/state` and `/brain` outside the repository jail.
+- Use `read-only` by default and `ask` for reviewed effects.
+- Do not expose the local human grant admin channel outside loopback.
+- Do not relax application/domain/owner boundaries for convenience.
+- Do not describe a healthy VPS deployment as proof of a source release or installed
+  Edge state; each requires separate evidence.

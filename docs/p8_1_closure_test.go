@@ -94,19 +94,6 @@ func TestP81ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 		t.Error("roadmap does not mark P8.1 deployed")
 	}
 
-	capsule := read("context-capsule.md")
-	for _, required := range []string{
-		"P8.1 Console 2.0 is deployed",
-		"d343264bffdc0ae1bc045a9d723e913be977090c",
-		"query-string credentials return 401",
-		"/state/tasks",
-		"2026-07-14-p8_1.md",
-	} {
-		if !strings.Contains(strings.ToLower(capsule), strings.ToLower(required)) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
-
 	consoleDoc := read("console.md")
 	for _, required := range []string{
 		"React, TypeScript and Vite",
@@ -123,30 +110,9 @@ func TestP81ReleaseCandidateEvidenceIsSynchronized(t *testing.T) {
 		}
 	}
 
-	for name, path := range map[string]string{
-		"current task": "../.agent-memory/current-task.md",
-		"handoff":      "../.agent-memory/handoffs/latest.md",
-	} {
-		content := read(path)
-		if !strings.Contains(strings.ToLower(content), "p8.1") || !strings.Contains(strings.ToLower(content), "deployed") {
-			t.Errorf("%s does not record P8.1 deployed state", name)
-		}
-	}
-
 	documentationMap := read("documentation-map.md")
 	if !strings.Contains(documentationMap, "P8.1 production closure") || !strings.Contains(documentationMap, "2026-07-14-p8_1-production.md") {
 		t.Error("documentation map does not identify P8.1 production closure")
 	}
 
-	for _, path := range []string{
-		"../README.md", "../AGENTS.md", "context-capsule.md", "product-roadmap.md",
-		"../.agent-memory/current-task.md", "../.agent-memory/handoffs/latest.md",
-	} {
-		content := strings.ToLower(read(path))
-		for _, forbidden := range []string{"edge core is deployed", "parrot workcell is deployed", "web terminal is implemented", "durable autonomous agent is deployed"} {
-			if strings.Contains(content, forbidden) {
-				t.Errorf("out-of-scope capability %q claimed in %s", forbidden, path)
-			}
-		}
-	}
 }

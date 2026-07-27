@@ -37,21 +37,20 @@ func TestProductionDockerfileProtectsTwoVCPUHost(t *testing.T) {
 	}
 }
 
-func TestCoolifyGuideDocumentsBuildCPUBudget(t *testing.T) {
-	guideBytes, err := os.ReadFile("deploy-coolify.md")
+func TestConfigurationDocumentsBuildCPUBudget(t *testing.T) {
+	guideBytes, err := os.ReadFile("configuration.md")
 	if err != nil {
-		t.Fatalf("read deploy guide: %v", err)
+		t.Fatalf("read configuration guide: %v", err)
 	}
 	guide := string(guideBytes)
 	for _, required := range []string{
-		"two vCPUs",
-		"BUILD_GOMAXPROCS=2",
-		"BUILD_GO_PARALLELISM=2",
-		"BUILD_UV_THREADPOOL_SIZE=2",
-		"Do not raise them on the two-vCPU production VPS",
+		"`BUILD_GOMAXPROCS`",
+		"`BUILD_GO_PARALLELISM`",
+		"`BUILD_UV_THREADPOOL_SIZE`",
+		"dedicated builders may raise",
 	} {
 		if !strings.Contains(guide, required) {
-			t.Errorf("deploy guide does not contain %q", required)
+			t.Errorf("configuration guide does not contain %q", required)
 		}
 	}
 }

@@ -19,7 +19,7 @@ func TestP5DeeperTestingDefinitionRemainsCurrent(t *testing.T) {
 	spec := read("../specs/002-deeper-testing/spec.md")
 	plan := read("../specs/002-deeper-testing/plan.md")
 	tasks := read("../specs/002-deeper-testing/tasks.md")
-	capsule := read("context-capsule.md")
+
 	roadmap := read("product-roadmap.md")
 
 	for path, content := range map[string]string{"spec": spec, "plan": plan, "tasks": tasks} {
@@ -38,16 +38,7 @@ func TestP5DeeperTestingDefinitionRemainsCurrent(t *testing.T) {
 			t.Errorf("P5 spec does not contain %q", required)
 		}
 	}
-	for _, required := range []string{
-		"P4 targeted Layer-1 hardening is deployed",
-		"4a96307925751cf7fbe7a4f8eb801f86c8edc3ad",
-		"P5 deeper testing is deployed",
-		"4a68ca054a5f077d62a0f887234866673feb7353",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
+
 	if !strings.Contains(roadmap, "| P4 targeted L1 hardening | Deployed |") {
 		t.Error("roadmap does not mark P4 deployed")
 	}

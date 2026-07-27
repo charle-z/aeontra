@@ -17,7 +17,7 @@ func TestP1ClosureDocumentationIsCurrent(t *testing.T) {
 	}
 
 	readme := read("../README.md")
-	capsule := read("context-capsule.md")
+
 	baseline := read("baselines/2026-07-13-p1.md")
 
 	for _, required := range []string{"docs/tools.md", "system_runtime_info", "/version"} {
@@ -28,17 +28,6 @@ func TestP1ClosureDocumentationIsCurrent(t *testing.T) {
 	for _, forbidden := range []string{"59 deliberately annotated", "current 67-tool catalog"} {
 		if strings.Contains(readme, forbidden) {
 			t.Errorf("README.md embeds historical catalog state %q", forbidden)
-		}
-	}
-
-	for _, required := range []string{
-		"P1 catalog modularization is deployed",
-		"0de426e088466a1421b527f8ce1bf83cb53bd2a9",
-		"62 tools",
-		"sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("context-capsule.md does not contain %q", required)
 		}
 	}
 

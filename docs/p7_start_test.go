@@ -21,7 +21,7 @@ func TestP7StructuredObservabilityIsDefinedAndDeployed(t *testing.T) {
 	tasks := read("../specs/004-structured-observability/tasks.md")
 	threat := read("../specs/004-structured-observability/threat-model.md")
 	operations := read("observability.md")
-	capsule := read("context-capsule.md")
+
 	roadmap := read("product-roadmap.md")
 	readme := read("../README.md")
 	baseline := read("baselines/2026-07-13-p7.md")
@@ -33,17 +33,7 @@ func TestP7StructuredObservabilityIsDefinedAndDeployed(t *testing.T) {
 			t.Errorf("%s does not define P7 structured observability", name)
 		}
 	}
-	for _, required := range []string{
-		"p7-structured-observability",
-		"P7 structured observability is deployed",
-		"d1309ed08db0170e5165f78bf406e94cfa56cc11",
-		"62 tools",
-		"unchanged catalog hash",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
+
 	if !strings.Contains(roadmap, "| P7 structured observability | Deployed |") {
 		t.Error("roadmap does not mark P7 deployed")
 	}

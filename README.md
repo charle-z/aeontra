@@ -1,5 +1,8 @@
 # MCP Devbox
 
+[![Hosted on CubePath](https://img.shields.io/badge/Hosted%20on-CubePath-00C853?style=for-the-badge&logo=cloud&logoColor=white)](https://cubepath.com)
+[![Cubethon 2026 Q3](https://img.shields.io/badge/Cubethon-2026%20Q3-6A5ACD?style=for-the-badge)](docs/cubethon-2026-q3-submission.md)
+
 MCP Devbox is a secure-by-default, not secure, MCP server that gives AI clients useful
 hands for software work without handing them an unrestricted machine.
 
@@ -50,6 +53,12 @@ The public presentation landing is presentation-only. It does not grant reposito
 deployment, Edge, or secret authority. `/console` remains authenticated and `/mcp`
 remains credential-gated. See
 [`docs/landing/public-showcase.md`](docs/landing/public-showcase.md).
+
+MCP Devbox remains an active **Cubethon 2026 Q3** hackathon entry. Its production
+control plane and authenticated console are hosted on **CubePath** and deployed through
+Coolify. Submission context and remaining event-specific tasks are tracked in
+[`docs/cubethon-2026-q3-submission.md`](docs/cubethon-2026-q3-submission.md); they are
+kept separate from the live runtime identity and historical release baselines.
 
 Do not copy a commit, release, tool count, or catalog hash from this README. Read the
 live deployment identity from [`/version`](https://mcp-devbox-charlez.duckdns.org/version)

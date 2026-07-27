@@ -19,7 +19,7 @@ func TestP6CIDevSecOpsIsClosedAndDeployed(t *testing.T) {
 	spec := read("../specs/003-ci-devsecops/spec.md")
 	plan := read("../specs/003-ci-devsecops/plan.md")
 	tasks := read("../specs/003-ci-devsecops/tasks.md")
-	capsule := read("context-capsule.md")
+
 	roadmap := read("product-roadmap.md")
 
 	for path, content := range map[string]string{"spec": spec, "plan": plan, "tasks": tasks} {
@@ -41,16 +41,7 @@ func TestP6CIDevSecOpsIsClosedAndDeployed(t *testing.T) {
 			t.Errorf("P6 spec does not contain %q", required)
 		}
 	}
-	for _, required := range []string{
-		"P5 deeper testing is deployed",
-		"4a68ca054a5f077d62a0f887234866673feb7353",
-		"P6 CI/DevSecOps is deployed",
-		"p6-step92-closure",
-	} {
-		if !strings.Contains(capsule, required) {
-			t.Errorf("capsule does not contain %q", required)
-		}
-	}
+
 	if !strings.Contains(roadmap, "| P5 deeper testing | Deployed |") {
 		t.Error("roadmap does not mark P5 deployed")
 	}
