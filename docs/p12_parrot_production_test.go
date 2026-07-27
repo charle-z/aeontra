@@ -61,9 +61,7 @@ func TestP12ParrotProductionEvidenceAndOnboardingStaySynchronized(t *testing.T) 
 	readme := read("../README.md")
 	for _, expected := range []string{
 		"Hosted on CubePath",
-		"Cubethon 2026 Q3",
-		"active **Cubethon 2026 Q3** hackathon entry",
-		"docs/cubethon-2026-q3-submission.md",
+		"hosted on **CubePath**",
 		"mcp-devbox-charlez.duckdns.org",
 		"/version",
 		"system_runtime_info",
@@ -71,6 +69,14 @@ func TestP12ParrotProductionEvidenceAndOnboardingStaySynchronized(t *testing.T) 
 	} {
 		if !strings.Contains(readme, expected) {
 			t.Errorf("README missing live-or-historical evidence pointer %q", expected)
+		}
+	}
+	for _, forbidden := range []string{
+		"Cubethon 2026 Q3",
+		"cubethon-2026-q3-submission.md",
+	} {
+		if strings.Contains(readme, forbidden) {
+			t.Errorf("README retains event-specific promotion %q", forbidden)
 		}
 	}
 
