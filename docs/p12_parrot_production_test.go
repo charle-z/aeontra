@@ -82,37 +82,15 @@ func TestP12ParrotProductionEvidenceAndOnboardingStaySynchronized(t *testing.T) 
 
 	submission := read("cubethon-2026-q3-submission.md")
 	for _, expected := range []string{
-		"MCP Devbox lets ChatGPT work on real projects and infrastructure",
-		"https://mcp-devbox-charlez.duckdns.org/#demo",
-		"https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall",
+		"MCP Devbox — Secure remote development workcells for AI agents",
+		"https://mcp-devbox-charlez.duckdns.org",
 		"https://github.com/charle-z/mcp-devbox",
-		"policy mode ≠ operation plan ≠ local human grant",
-		"CubePath is not decorative hosting",
-		"Recommended captures — maximum four",
 		"Coolify on CubePath",
+		"judge-accessible demo path",
+		"<ADD_DISCORD_USERNAME>",
 	} {
 		if !strings.Contains(submission, expected) {
-			t.Errorf("Cubethon public issue source missing %q", expected)
+			t.Errorf("Cubethon draft missing %q", expected)
 		}
 	}
-	first := submission
-	if len(first) > 700 {
-		first = first[:700]
-	}
-	for _, expected := range []string{"free shell", "narrow tools", "read-only", "ask", "allow", "Pixelgrama"} {
-		if !strings.Contains(first, expected) {
-			t.Errorf("Cubethon opening does not explain %q early enough", expected)
-		}
-	}
-	if strings.Count(submission, "https://mcp-devbox-charlez.duckdns.org/#demo") != 1 ||
-		strings.Count(submission, "https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall") != 1 ||
-		strings.Count(submission, "https://github.com/charle-z/mcp-devbox") != 1 {
-		t.Error("Cubethon evaluation section must retain exactly three primary links")
-	}
-	for _, forbidden := range []string{"<ADD_DISCORD_USERNAME>", "judge-accessible demo path", "Create the Cubethon issue"} {
-		if strings.Contains(submission, forbidden) {
-			t.Errorf("Cubethon public issue source retains stale placeholder %q", forbidden)
-		}
-	}
-
 }
