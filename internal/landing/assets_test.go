@@ -28,6 +28,7 @@ func TestEmbeddedLandingAssetsAreSelfContainedAccessibleAndHonest(t *testing.T) 
 	for _, required := range []string{
 		`<header`, `<nav`, `<main`, `<section`, `<footer`,
 		`href="#content"`, `aria-label="Primary"`,
+		`id="boot" role="dialog" aria-modal="true"`, `id="machine"`,
 		`/landing/assets/app.css`, `/landing/assets/app.js`,
 		`/landing/assets/request-path.svg`, `/landing/assets/social-card.svg`,
 		`property="og:title"`, `property="og:description"`, `property="og:type"`, `property="og:image"`,
@@ -66,7 +67,7 @@ func TestEmbeddedLandingAssetsAreSelfContainedAccessibleAndHonest(t *testing.T) 
 	jsLower := strings.ToLower(js)
 	for _, required := range []string{
 		`fetch("/version"`, "prefers-reduced-motion", "textcontent", "aria-pressed", "escape",
-		"public identity temporarily unavailable", "intersectionobserver",
+		"public identity temporarily unavailable", "intersectionobserver", "isolateboot", "inert",
 	} {
 		if !strings.Contains(jsLower, required) {
 			t.Errorf("landing JavaScript missing %q", required)
@@ -282,6 +283,7 @@ func TestLandingGuidedDemoUsesCanonicalReadOnlyEvidence(t *testing.T) {
 
 	for _, required := range []string{
 		`<section id="demo"`,
+		`id="demo" aria-busy="true"`,
 		`href="#demo" data-es="Demo" data-en="Demo"`,
 		`data-en="FROM REQUEST TO PRODUCTION COMMIT"`,
 		`data-es="DE LA SOLICITUD AL COMMIT EN PRODUCCIÓN"`,
@@ -316,6 +318,7 @@ func TestLandingGuidedDemoUsesCanonicalReadOnlyEvidence(t *testing.T) {
 		`pullRequest.url + "/files"`,
 		`The page will not query GitHub or expose private diagnostics.`,
 		`setDemoMessage("available")`,
+		`demoSection.setAttribute("aria-busy", key === "loading" ? "true" : "false")`,
 		`.catch(demoUnavailable)`,
 	} {
 		if !strings.Contains(js, required) {

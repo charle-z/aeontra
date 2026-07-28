@@ -21,7 +21,7 @@ const (
 	evidencePath   = "/showcase/pixelgrama-evidence.json"
 )
 
-const landingPageCSP = "default-src 'none'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+const landingPageCSP = "default-src 'none'; connect-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 //go:embed assets/index.html assets/app.css assets/app.js assets/request-path.svg assets/social-card.svg
 var embeddedAssets embed.FS

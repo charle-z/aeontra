@@ -18,7 +18,7 @@
 <body>
   <a class="skip-link" href="#content" data-es="Saltar al contenido" data-en="Skip to content">Skip to content</a>
 
-  <div class="boot" id="boot" aria-label="MCP Devbox startup summary" data-es="Resumen de arranque de MCP Devbox" data-en="MCP Devbox startup summary" data-i18n-attr="aria-label">
+  <div class="boot" id="boot" role="dialog" aria-modal="true" aria-label="MCP Devbox startup summary" data-es="Resumen de arranque de MCP Devbox" data-en="MCP Devbox startup summary" data-i18n-attr="aria-label">
     <div class="boot-window">
       <p class="boot-title">MCP DEVBOX</p>
       <p class="boot-thesis" data-es="CHATGPT TRABAJANDO SOBRE INFRAESTRUCTURA REAL, SIN ENTREGARLE UNA SHELL LIBRE." data-en="CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.">CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.</p>
@@ -30,7 +30,7 @@
     </div>
   </div>
 
-  <div class="machine">
+  <div class="machine" id="machine">
     <header class="topbar">
       <a class="brand" href="#thesis">MCP DEVBOX</a>
       <nav aria-label="Primary" data-es="Principal" data-en="Primary" data-i18n-attr="aria-label">
@@ -173,7 +173,7 @@
           </div>
         </section>
 
-        <section id="demo" data-es="Recorre la evidencia pública de Pixelgrama en seis pasos" data-en="Walk through Pixelgrama public evidence in six steps" data-label-es="DEMO" data-label-en="DEMO" data-i18n-role="hint">
+        <section id="demo" aria-busy="true" data-es="Recorre la evidencia pública de Pixelgrama en seis pasos" data-en="Walk through Pixelgrama public evidence in six steps" data-label-es="DEMO" data-label-en="DEMO" data-i18n-role="hint">
           <p class="eyebrow" data-es="02 · DEMO GUIADA DE SOLO LECTURA" data-en="02 · READ-ONLY GUIDED DEMO">02 · READ-ONLY GUIDED DEMO</p>
           <h2 data-es="DE LA SOLICITUD AL COMMIT EN PRODUCCIÓN" data-en="FROM REQUEST TO PRODUCTION COMMIT">FROM REQUEST TO PRODUCTION COMMIT</h2>
           <p class="sub prose" data-es="Esta historia se genera desde el manifiesto público y versionado de Pixelgrama. No consulta GitHub durante la carga y no concede autoridad sobre MCP Devbox." data-en="This story is generated from Pixelgrama's public, versioned manifest. It does not query GitHub during page load and grants no authority over MCP Devbox.">This story is generated from Pixelgrama's public, versioned manifest. It does not query GitHub during page load and grants no authority over MCP Devbox.</p>

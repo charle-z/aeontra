@@ -4,19 +4,38 @@
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var currentLanguage = (navigator.language || "").toLowerCase().indexOf("es") === 0 ? "es" : "en";
   var boot = document.getElementById("boot");
+  var machine = document.getElementById("machine");
   var content = document.getElementById("content");
+  var skipBoot = document.getElementById("skipBoot");
   var bootTimer = null;
+
+  function isolateBoot(active) {
+    if (!machine) return;
+    if (active) {
+      machine.setAttribute("inert", "");
+      machine.setAttribute("aria-hidden", "true");
+    } else {
+      machine.removeAttribute("inert");
+      machine.removeAttribute("aria-hidden");
+    }
+  }
 
   function enter() {
     if (!boot || boot.hidden) return;
     boot.hidden = true;
     if (bootTimer !== null) window.clearTimeout(bootTimer);
+    isolateBoot(false);
     if (content) content.focus({ preventScroll: true });
   }
 
-  document.getElementById("skipBoot").addEventListener("click", enter);
-  if (reduced) enter();
-  else bootTimer = window.setTimeout(enter, 1400);
+  if (skipBoot) skipBoot.addEventListener("click", enter);
+  if (reduced) {
+    enter();
+  } else {
+    isolateBoot(true);
+    if (skipBoot) skipBoot.focus({ preventScroll: true });
+    bootTimer = window.setTimeout(enter, 1400);
+  }
 
   document.addEventListener("keydown", function (event) {
     if (boot && !boot.hidden) {
@@ -130,6 +149,7 @@
   });
   if (modeButtons.length && modePanels.length) selectMode("read-only", false);
 
+  var demoSection = document.getElementById("demo");
   var demoStatus = document.getElementById("demoStatus");
   var demoMessageKey = "loading";
   var demoMessages = {
@@ -153,6 +173,7 @@
     demoStatus.textContent = demoMessages[key][currentLanguage];
     demoStatus.className = "demo-status " + (key === "available" ? "ok" : "warn");
     demoStatus.setAttribute("data-demo-state", key);
+    if (demoSection) demoSection.setAttribute("aria-busy", key === "loading" ? "true" : "false");
   }
 
   function demoNode(id) {

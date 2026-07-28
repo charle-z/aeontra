@@ -85,7 +85,8 @@ mockup version, commit, catalog, or milestone state.
 
 - semantic header, navigation, main sections, figures, tables, lists, and footer;
 - skip link and visible `:focus-visible` treatment;
-- keyboard-skippable boot summary;
+- keyboard-skippable boot summary exposed as a modal dialog while visible, with the
+  document surface inert and hidden from assistive technology until dismissal;
 - `Escape` returns the internal document pane to the top;
 - active-section help updates through `IntersectionObserver`;
 - the policy explorer is a local deterministic simulation and performs no server call;
@@ -93,7 +94,7 @@ mockup version, commit, catalog, or milestone state.
   arrow/Home/End keyboard navigation, and never changes real policy;
 - the guided demo reads the embedded manifest once, validates its public schema in the
   browser, builds all records with `textContent` and DOM nodes, and fails to a generic
-  unavailable state;
+  unavailable state; its section reports loading through `aria-busy`;
 - the walkthrough distinguishes historical PR heads from the production commit, keeps
   the exact historical policy mode and tool list marked as unpublished, and links each
   PR's public changed-files view rather than copying file details into a second source;
@@ -114,9 +115,9 @@ The landing cannot:
 - reuse console authentication or browser sessions;
 - return private diagnostic errors.
 
-The document CSP permits only same-origin CSS, JavaScript, images, and the one public
-`/version` connection. It rejects inline script/style execution, framing, forms,
-third-party resources, and base URL mutation. Responses also set `nosniff`, frame
+The document CSP permits only same-origin CSS, JavaScript, images, `/version`, and the
+embedded evidence resource. It explicitly rejects inline script/style attributes,
+objects, framing, forms, third-party resources, and base URL mutation. Responses also set `nosniff`, frame
 denial, no-referrer, restrictive permissions, same-origin isolation headers, and
 `no-store` caching.
 
