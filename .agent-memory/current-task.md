@@ -1,47 +1,53 @@
-# Current task — Presentation optimization Hito 1 complete
+# Current task — Presentation optimization Hito 2 complete
 
 Authoritative plan: Brain note `mcp-devbox-presentation-optimization`.
 
 ## Completion state
 
-Hito 1 — Nueva jerarquía para la landing is complete on branch `showcase/pixelgrama-evidence`.
+Hito 2 — Comparación visual de autoridad is complete on branch `showcase/pixelgrama-evidence`.
 
-Implementation commit: `deb3665e48466b77500f36cf6dbb70a30fd8e4f8` (`Lead landing with bounded autonomy proof`).
+Implementation commit: `4d2ffd185d587903bd5eef870ea8f2aeee9380b9` (`Add visual authority mode comparison`).
 
-Hito 4 remains preserved through commits `69884a2` and `9aefa0e`; its canonical manifest and validator were not modified.
+Hito 1 remains preserved through commits `deb3665e48466b77500f36cf6dbb70a30fd8e4f8` and `388473cc9b515e295416ebaff559ccad23af0070`. Hito 4 remains preserved through commits `69884a2` and `9aefa0e`; its canonical manifest, validator, handler integration and public static resource were not modified.
 
-No branch was published, no pull request was created, nothing was merged, MCP Devbox was not deployed, and Hito 2 has not started.
+No branch was published, no pull request was created, nothing was merged, MCP Devbox was not deployed, and Hito 3 has not started.
 
-## Hito 1 result
+## Hito 2 result
 
-- Replaced the component-first boot summary with a benefit-first summary: real infrastructure, no free shell, narrow tools, configurable autonomy, and Pixelgrama proof.
-- Reworked the first landing section so it explains, in this order, the excessive-authority problem, MCP Devbox's bounded-tool solution, the owner's autonomy choices, and the public Pixelgrama result.
-- Added exactly three primary actions: canonical Pixelgrama evidence, authority model, and MCP Devbox repository.
-- Moved implemented/experimental/planned capability detail below the hero rather than presenting it before the value proposition.
-- Added a public read-only Pixelgrama proof panel linking `/wall` and `/version`, while stating that the page grants no tool, console, or credential authority.
-- Kept the landing bilingual, keyboard accessible, responsive at the existing 760 px and 420 px breakpoints, and aligned with the square VGA/BIOS visual language.
-- Updated metadata and the embedded social card to use the same benefit-first message.
-- Updated `docs/landing/public-showcase.md` and added regression tests for hierarchy, exact bilingual content, exactly three actions, responsive CSS, startup messaging, and valid social SVG.
+- Replaced the prose-only authority introduction with a bilingual two-lane visual comparison.
+- The broad-authority lane shows a general shell, inherited credentials and environmental access, arbitrary commands, effects beyond the task perimeter, and consequences that are difficult to bound before execution.
+- The MCP Devbox lane shows closed-schema tools, pre-authorized repositories/branches/apps/targets, denied paths and secrets, validated commands and parameters, `read-only`/`ask`/`allow`, bound plans, revalidation, bounded output, redaction and audit.
+- Added an accessible local-only conceptual selector with exactly three modes:
+  - `READ-ONLY`: inspect and diagnose without writes or command execution;
+  - `ASK`: work while explicitly approving effects marked reviewable by policy, without claiming every read or safe step stops;
+  - `ALLOW`: autonomous work inside administrator-configured authority, explicitly not a free shell.
+- The selector distinguishes `mode ≠ plan ≠ human grant`, uses tab/tabpanel semantics, updates `aria-selected`, roving `tabindex`, hidden panels, and Arrow/Home/End keyboard navigation.
+- Added the mandatory bilingual warning that reducing authority does not make generated code or every allowed operation inherently safe.
+- The comparison uses headings, ordered step numbers, outcomes, borders and selected markers, so meaning does not depend only on color.
+- Desktop uses two authority columns and three mode tabs; mobile stacks the authority lanes and collapses the tabs to one column.
+- The interaction remains entirely in the browser and adds no server call or authority.
 
 ## Files changed
 
 - `internal/landing/assets/index.html`
 - `internal/landing/assets/app.css`
-- `internal/landing/assets/social-card.svg`
+- `internal/landing/assets/app.js`
 - `internal/landing/assets_test.go`
 - `docs/landing/public-showcase.md`
+- `docs/public_showcase_test.go`
 
 ## Validation results
 
-- Focused `go test ./internal/landing ./docs/showcase ./docs -count=1`: passed.
-- Complete Go test suite executed in three bounded groups: all packages passed, including Edge, MCP server, OAuth, policy, tools, workqueue, packaging, and profiles.
+- Focused `go test ./internal/landing ./docs ./docs/showcase -count=1`: passed.
+- Complete Go test suite executed in three bounded groups: all packages passed, including Edge, MCP server, OAuth, policy, tools, workqueue, packaging and profiles.
 - `go vet ./...`: passed.
 - `go build ./...`: passed.
 - `git diff --check`: passed.
-- Exact diff check confirmed the Hito 4 manifest and validator remained unchanged.
-- A focused race invocation did not start because this execution profile has `CGO_ENABLED=0`; this is an environment limitation, not a test failure. The existing CI race job explicitly enables CGO.
-- Existing MCP server tests covering the public landing and unchanged `/mcp`, `/console`, `/version`, and OAuth routing passed as part of the suite.
+- Existing tests confirmed exactly one public `/version` fetch and no new `/mcp`, console, storage, WebSocket, SSE or control-plane capability.
+- Existing hero regressions passed, preserving Hito 1.
+- A scoped diff confirmed `docs/showcase`, `internal/landing/handler.go` and `internal/landing/handler_test.go` remained unchanged, preserving Hito 4.
+- Local Race remains unavailable in this execution profile because CGO is disabled; the exact-head CI race job explicitly enables CGO and remains mandatory before merge.
 
 ## Pending work
 
-The next exact milestone is Hito 2 — Comparación visual de autoridad. Preserve Hitos 4 and 1 unless a real defect is found. Implement only the broad-shell-versus-MCP-Devbox comparison, the conceptual `read-only` / `ask` / `allow` selector, and the mandatory non-absolute-safety statement. Stop before Hito 3.
+The next exact milestone is Hito 3 — Demo guiada de solo lectura. Preserve Hitos 4, 1 and 2 unless a real defect is found. Implement only the public read-only Pixelgrama walkthrough using the canonical manifest: request, perimeter, change, validation, external operations and result. It must expose no authority, credentials, private identifiers, audit data, console access or grants. Stop before the cross-cutting mobile/accessibility/CSP review and Hito 5.
