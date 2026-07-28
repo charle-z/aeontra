@@ -408,6 +408,7 @@ func collectEdgeDiagnostic(stateRoot string, allowInvalid bool) (edge.OperationR
 }
 
 var installedEdgeUserPattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+var systemdInvocationIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func installedEdgeServiceActive() bool {
 	content, err := os.ReadFile("/etc/mcp-devbox/edge-user")
@@ -421,7 +422,19 @@ func installedEdgeServiceActive() bool {
 	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
-	return command.Run() == nil
+	if command.Run() == nil {
+		return true
+	}
+	return activeSystemdInvocation(os.Getenv("INVOCATION_ID"), os.Getenv("SYSTEMD_EXEC_PID"), os.Getpid())
+}
+
+func activeSystemdInvocation(invocationID, execPID string, pid int) bool {
+	invocationID = strings.TrimSpace(invocationID)
+	if !systemdInvocationIDPattern.MatchString(invocationID) {
+		return false
+	}
+	execPID = strings.TrimSpace(execPID)
+	return execPID == "" || execPID == fmt.Sprint(pid)
 }
 
 func installedModelProviderValid(path string) bool {

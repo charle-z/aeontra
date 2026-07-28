@@ -75,3 +75,28 @@ func TestInstalledModelProviderAcceptsOnlyClosedLoopbackConfiguration(t *testing
 		}
 	}
 }
+
+func TestActiveSystemdInvocationValidatesManagedProcessIdentity(t *testing.T) {
+	const invocationID = "0123456789abcdef0123456789abcdef"
+	if !activeSystemdInvocation(invocationID, "4242", 4242) {
+		t.Fatal("expected matching systemd invocation metadata to prove the managed process is active")
+	}
+	if !activeSystemdInvocation(invocationID, "", 4242) {
+		t.Fatal("expected INVOCATION_ID-only compatibility for older systemd releases")
+	}
+	for _, test := range []struct {
+		name         string
+		invocationID string
+		execPID      string
+	}{
+		{name: "missing invocation", invocationID: "", execPID: "4242"},
+		{name: "invalid invocation", invocationID: "not-an-invocation", execPID: "4242"},
+		{name: "different process", invocationID: invocationID, execPID: "4243"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if activeSystemdInvocation(test.invocationID, test.execPID, 4242) {
+				t.Fatal("accepted invalid systemd invocation metadata")
+			}
+		})
+	}
+}
