@@ -27,6 +27,12 @@ route `GET /` by the existing Go HTTP server. The same binary embeds:
 - `assets/request-path.svg`
 - `assets/social-card.svg`
 
+The canonical Pixelgrama presentation evidence is
+`docs/showcase/pixelgrama-evidence.json`. The build validates and embeds those exact
+bytes, then serves them as the static public resource
+`/showcase/pixelgrama-evidence.json`. Missing or invalid evidence fails closed at
+startup instead of producing a partial presentation.
+
 There is no second application, listener, container, framework runtime, analytics
 provider, CDN, font service, database, session store, or credential. More specific
 existing routes retain their handlers and contracts:
@@ -100,6 +106,7 @@ Tests must fail when the landing is absent or when it loses any of these propert
 - exact unauthenticated `GET /` and hardened safe 404/405 behavior;
 - unchanged authentication of `/mcp` and `/console`;
 - embedded local assets and exact content types;
+- closed, valid, embedded Pixelgrama evidence with safe startup failure;
 - no inline scripts, remote asset loads, browser storage, cookies, WebSockets, SSE, or
   control-plane fetches;
 - metadata and Open Graph fields;

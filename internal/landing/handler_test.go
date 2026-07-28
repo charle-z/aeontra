@@ -106,10 +106,11 @@ func TestPublicLandingAssetsAreEmbeddedAndHardened(t *testing.T) {
 	handler.Register(mux)
 
 	for path, wantType := range map[string]string{
-		"/landing/assets/app.css":          "text/css",
-		"/landing/assets/app.js":           "text/javascript",
-		"/landing/assets/request-path.svg": "image/svg+xml",
-		"/landing/assets/social-card.svg":  "image/svg+xml",
+		"/landing/assets/app.css":            "text/css",
+		"/landing/assets/app.js":             "text/javascript",
+		"/landing/assets/request-path.svg":   "image/svg+xml",
+		"/landing/assets/social-card.svg":    "image/svg+xml",
+		"/showcase/pixelgrama-evidence.json": "application/json",
 	} {
 		response := serveLanding(mux, http.MethodGet, path)
 		if response.Code != http.StatusOK {
@@ -121,6 +122,19 @@ func TestPublicLandingAssetsAreEmbeddedAndHardened(t *testing.T) {
 		}
 		if response.Header().Get("X-Content-Type-Options") != "nosniff" {
 			t.Errorf("GET %s missing nosniff", path)
+		}
+	}
+}
+
+func TestPublicLandingFailsClosedWhenEvidenceIsUnavailable(t *testing.T) {
+	loaders := []func() ([]byte, error){
+		nil,
+		func() ([]byte, error) { return nil, http.ErrAbortHandler },
+		func() ([]byte, error) { return nil, nil },
+	}
+	for index, loader := range loaders {
+		if _, err := newHandler(loader); err == nil || err.Error() != "Pixelgrama evidence is unavailable" {
+			t.Fatalf("loader %d error=%v", index, err)
 		}
 	}
 }

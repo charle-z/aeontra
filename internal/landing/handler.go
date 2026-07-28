@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	showcase "github.com/charle-z/mcp-devbox/docs/showcase"
 )
 
 const (
@@ -16,6 +18,7 @@ const (
 	jsPath         = "/landing/assets/app.js"
 	requestPathSVG = "/landing/assets/request-path.svg"
 	socialCardSVG  = "/landing/assets/social-card.svg"
+	evidencePath   = "/showcase/pixelgrama-evidence.json"
 )
 
 const landingPageCSP = "default-src 'none'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
@@ -30,10 +33,15 @@ type Handler struct {
 	js             []byte
 	requestPathSVG []byte
 	socialCardSVG  []byte
+	evidence       []byte
 }
 
 // New loads the embedded assets once so missing build inputs fail at startup.
 func New() (*Handler, error) {
+	return newHandler(showcase.PixelgramaEvidence)
+}
+
+func newHandler(loadEvidence func() ([]byte, error)) (*Handler, error) {
 	indexHTML, err := readAsset("assets/index.html", "landing index")
 	if err != nil {
 		return nil, err
@@ -54,12 +62,20 @@ func New() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	if loadEvidence == nil {
+		return nil, errors.New("Pixelgrama evidence is unavailable")
+	}
+	evidence, err := loadEvidence()
+	if err != nil || len(evidence) == 0 {
+		return nil, errors.New("Pixelgrama evidence is unavailable")
+	}
 	return &Handler{
 		indexHTML:      indexHTML,
 		css:            css,
 		js:             js,
 		requestPathSVG: requestPath,
 		socialCardSVG:  socialCard,
+		evidence:       evidence,
 	}, nil
 }
 
@@ -89,6 +105,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	})
 	mux.HandleFunc(socialCardSVG, func(w http.ResponseWriter, r *http.Request) {
 		h.handleAsset(w, r, "image/svg+xml; charset=utf-8", h.socialCardSVG)
+	})
+	mux.HandleFunc(evidencePath, func(w http.ResponseWriter, r *http.Request) {
+		h.handleAsset(w, r, "application/json; charset=utf-8", h.evidence)
 	})
 	mux.HandleFunc(rootPath, h.handleRoot)
 }
