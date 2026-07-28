@@ -46,6 +46,7 @@ func TestP9RuntimeOperationsAreDocumentedAndPackaged(t *testing.T) {
 
 	for _, required := range []string{
 		"COPY go.mod go.sum ./",
+		"COPY docs/showcase ./docs/showcase",
 		"mkdir -p /repos /brain",
 		"chown -R mcpdevbox:mcpdevbox /repos /brain",
 		`VOLUME ["/repos", "/brain", "/state"]`,

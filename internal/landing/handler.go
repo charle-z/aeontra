@@ -63,11 +63,11 @@ func newHandler(loadEvidence func() ([]byte, error)) (*Handler, error) {
 		return nil, err
 	}
 	if loadEvidence == nil {
-		return nil, errors.New("Pixelgrama evidence is unavailable")
+		return nil, errors.New("pixelgrama evidence is unavailable")
 	}
 	evidence, err := loadEvidence()
 	if err != nil || len(evidence) == 0 {
-		return nil, errors.New("Pixelgrama evidence is unavailable")
+		return nil, errors.New("pixelgrama evidence is unavailable")
 	}
 	return &Handler{
 		indexHTML:      indexHTML,

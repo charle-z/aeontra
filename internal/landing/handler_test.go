@@ -136,7 +136,7 @@ func TestPublicLandingFailsClosedWhenEvidenceIsUnavailable(t *testing.T) {
 		func() ([]byte, error) { return nil, nil },
 	}
 	for index, loader := range loaders {
-		if _, err := newHandler(loader); err == nil || err.Error() != "Pixelgrama evidence is unavailable" {
+		if _, err := newHandler(loader); err == nil || err.Error() != "pixelgrama evidence is unavailable" {
 			t.Fatalf("loader %d error=%v", index, err)
 		}
 	}
