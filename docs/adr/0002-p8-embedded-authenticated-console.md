@@ -42,7 +42,7 @@ P8 is embedded in the existing Go HTTP application. This creates no new listener
 6. The console has no MCP execution, approval, repository, audit, observability-history,
    deployment, configuration, or generic proxy endpoint.
 7. A later unauthenticated public showcase remains a separate optional product. It may
-   use a frontend framework if concrete submission/demo requirements justify it, but it
+   use a frontend framework if concrete public-presentation requirements justify it, but it
    must not become a proxy to the private control plane.
 
 ## Security consequences

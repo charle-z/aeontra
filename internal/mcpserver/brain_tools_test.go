@@ -46,7 +46,7 @@ func isP16Project(name string) bool {
 	return name == "project_prepare" || name == "project_status"
 }
 
-func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t *testing.T) {
+func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
 	if len(server.order) != 102 {
 		t.Fatalf("tool order length=%d want=102", len(server.order))
@@ -64,12 +64,14 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 		}
 	}
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
-		t.Fatalf("historical P8 tools changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
+		t.Fatalf("P8 compatibility tool order changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
 	if !reflect.DeepEqual(server.order[97:], brainToolOrder) {
 		t.Fatalf("Brain suffix=%v want=%v", server.order[97:], brainToolOrder)
 	}
 
+	// Compatibility slices below are rebuilt from current tool contracts. Dated
+	// historical identities remain immutable evidence under docs/baselines.
 	snapshot, err := server.CatalogInfo()
 	if err != nil {
 		t.Fatal(err)
@@ -86,9 +88,9 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	sum := sha256.Sum256(encoded)
 	legacyHash := "sha256:" + hex.EncodeToString(sum[:])
-	const p8Hash = "sha256:e3f0b46c65d3ff85f6820cfde88d522d8c7a8db52377e7f4a40bce2dd6330b9c"
-	if len(legacy) != 62 || legacyHash != p8Hash {
-		t.Fatalf("legacy catalog changed: count=%d hash=%s", len(legacy), legacyHash)
+	const p8CurrentContractHash = "sha256:019878a58e491a45d0ece39e3fc57a21d7a7fd5ad73b8b07300dca7496f1663f"
+	if len(legacy) != 62 || legacyHash != p8CurrentContractHash {
+		t.Fatalf("P8 compatibility catalog changed: count=%d hash=%s", len(legacy), legacyHash)
 	}
 	previous := make([]CatalogTool, 0, 71)
 	for _, tool := range snapshot.Tools {
@@ -102,9 +104,9 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	previousSum := sha256.Sum256(previousEncoded)
 	previousHash := "sha256:" + hex.EncodeToString(previousSum[:])
-	const resultStoreHash = "sha256:7dfa9bb83c935c7df875740102dafa5572852e5e8cb6c064c89c1e3acb5e30ac"
-	if len(previous) != 71 || previousHash != resultStoreHash {
-		t.Fatalf("historical P11 catalog changed: count=%d hash=%s", len(previous), previousHash)
+	const p11CurrentContractHash = "sha256:adcb88107ac9d06043cb813307273fb9f8961750b5c9eb44fd199e8b14040161"
+	if len(previous) != 71 || previousHash != p11CurrentContractHash {
+		t.Fatalf("P11 compatibility catalog changed: count=%d hash=%s", len(previous), previousHash)
 	}
 	step1 := make([]CatalogTool, 0, 72)
 	for _, tool := range snapshot.Tools {
@@ -119,7 +121,7 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	step1Sum := sha256.Sum256(step1Encoded)
 	step1ComputedHash := "sha256:" + hex.EncodeToString(step1Sum[:])
 
-	const step1Hash = "sha256:6f4a9275e4869e4a8a1846ca88a079d71842cc6a6c206b023b36b3e90635c541"
+	const step1Hash = "sha256:ce97116db30dafdb32b77bc4d6d0c3e3cf37405dc6c715841a3be0063f415d87"
 	if len(step1) != 72 || step1ComputedHash != step1Hash {
 		t.Fatalf("Step 1 catalog identity changed: count=%d hash=%s", len(step1), step1ComputedHash)
 	}
@@ -148,11 +150,11 @@ func TestWorkspaceCheckpointExtendsP9CatalogWithoutChangingHistoricalContracts(t
 	}
 	step4Sum := sha256.Sum256(step4Encoded)
 	step4ComputedHash := "sha256:" + hex.EncodeToString(step4Sum[:])
-	const step4Hash = "sha256:3f4e1812bd72a0508eba108d97dfd353ea9abc4c883cded262abd768f1f94518"
+	const step4Hash = "sha256:d8b6bf39f04e33c26dea45b1440543c97fa7578351720528ac3fda99c12daceb"
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
-		t.Fatalf("historical Step 4 catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
+		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 102 || snapshot.Hash != "sha256:5a2091d85585d13eb7efbc22d942b2dfbd71fc7d547581803eb7633cac64d68b" {
+	if snapshot.ToolCount != 102 || snapshot.Hash != "sha256:477bfd598edec2d8c2e03cea3e13c60cc78f898083138e326e8fed55feb8ca1b" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

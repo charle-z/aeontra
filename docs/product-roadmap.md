@@ -130,8 +130,8 @@ Acceptance:
 
 Ship the authenticated dark console first as embedded, dependency-free assets inside
 the existing Go application. A separate unauthenticated public showcase may be built
-later only if a submission or public demo requires it; it must remain presentation-only
-and must never proxy the private MCP control plane.
+later only when a public product presentation requires it; it must remain
+presentation-only and must never proxy the private MCP control plane.
 
 The current source implementation satisfies that later public-showcase boundary; see
 `docs/landing/public-showcase.md` for the exact route, assets and acceptance contract.
@@ -163,7 +163,7 @@ Acceptance:
 - Accessibility basics, reduced motion, metadata, Open Graph, 404, and HTTPS work.
 - The console stays useful when ChatGPT, GitHub, or Coolify is temporarily down.
 
-### M0.3 Submission package
+### M0.3 Public release package
 
 - Rewrite README positioning and correct the live tool count.
 - Add a dated section listing the work completed during the initial public demonstration phase.
@@ -173,7 +173,8 @@ Acceptance:
 - Capture screenshots of console, ChatGPT plan/approval, validation, Coolify status,
   and the deployed artifact.
 - Create a stable release/tag and freeze architecture before final smoke tests.
-- Register the project issue and verify every link from a clean browser session.
+- Publish owner-approved evaluation material only outside the product repository and
+  verify every public link from a clean browser session.
 
 ## Milestone 1 - Universal execution profiles
 

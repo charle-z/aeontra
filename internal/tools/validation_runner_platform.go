@@ -36,7 +36,7 @@ func (s *PlatformCapability) PlatformValidationRunnerCreatePreview(branch string
 		sp.Finish(audit.Deny, "preview", nil, err)
 		return "", err
 	}
-	branch = defaultGitName(branch, "cubethon-q3")
+	branch = defaultGitName(branch, "main")
 	if !safeGitName(branch) {
 		err := fmt.Errorf("invalid git branch %q", branch)
 		sp.Finish(audit.Deny, "preview", nil, err)
