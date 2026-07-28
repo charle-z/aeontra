@@ -1,54 +1,49 @@
-# Current task — Presentation optimization Hito 3 complete
+# Current task — Presentation optimization ready for publication
 
 Authoritative plan: Brain note `mcp-devbox-presentation-optimization`.
 
 ## Completion state
 
-Hito 3 — Demo guiada de solo lectura is complete on branch `showcase/pixelgrama-evidence`.
+The implementation sequence is complete on branch `showcase/pixelgrama-evidence`:
 
-Implementation commit: `9c661d71722dcf5258a68dbf275b702a9c07edd9` (`Add read-only Pixelgrama walkthrough`).
+- Hito 4 — canonical public Pixelgrama evidence manifest;
+- Hito 1 — benefit-first landing hierarchy;
+- Hito 2 — visual authority comparison and `read-only` / `ask` / `allow` selector;
+- Hito 3 — six-step read-only Pixelgrama walkthrough;
+- cross-cutting mobile, desktop, accessibility and CSP review;
+- Hito 5 — reorganized, versioned public Cubethon issue source.
 
-Hito 2 remains preserved through commits `4d2ffd185d587903bd5eef870ea8f2aeee9380b9` and `e3ffec10ba31703280cfef509e2ad3cc29ded8bd`. Hito 1 remains preserved through `deb3665e48466b77500f36cf6dbb70a30fd8e4f8` and `388473cc9b515e295416ebaff559ccad23af0070`. Hito 4 remains preserved through `69884a2` and `9aefa0e`; its canonical manifest, Go validator, handler integration and public resource were not modified.
+Latest implementation commits:
 
-No branch was published, no pull request was created, nothing was merged, MCP Devbox was not deployed, and Hito 5 has not started.
+- `a12d6601e5df5e0c9a0faa26687e7b8d201e0d16` — Harden landing accessibility and CSP.
+- `00fb250bc5d2b7b5d5869c0223df8204a7eb7890` — Reorganize public Cubethon issue source.
 
-## Hito 3 result
+Earlier milestone commits remain preserved: `69884a2`, `9aefa0e`, `deb3665e`, `388473c`, `4d2ffd1`, `e3ffec1`, `9c661d7`, and `f447106`.
 
-- Added a bilingual six-step public walkthrough: request, perimeter, change, validation, external operations and result.
-- The hero's primary proof action now opens the guided demo; the raw canonical manifest remains linked from the demo.
-- The demo fetches `/showcase/pixelgrama-evidence.json` exactly once from the same origin. `/version` remains the only other browser fetch.
-- The browser validates schema version, exact Pixelgrama repository and branch, HTTPS URLs on the two permitted public hosts, PR SHAs and successful checks, the required `/`, `/wall` and `/version` observations, CubePath/Coolify, the `not_publicly_verified` authority posture, operation evidence and non-empty perimeter entries.
-- Rendering uses `textContent`, `createElement` and validated links; it does not use `innerHTML`, browser storage, cookies, WebSockets, SSE, GitHub API calls or private routes.
-- Request and PR purpose text are shown verbatim from the public manifest. PR links include the public Files changed view so file details are not duplicated into a second source.
-- The exact historical tool list and the historical `read-only` / `ask` / `allow` mode are explicitly marked as unpublished instead of inferred.
-- External-operation evidence distinguishes direct operations from plan-protected operations and explains `ask` versus `allow` without claiming a historical mode.
-- The result step displays production, `/wall`, `/version`, the observed production commit, source-main commit, verification date and CubePath + Coolify; it explicitly distinguishes historical PR heads from current production observation.
-- The demo is presentation-only: no tools, console, plan approval, grants, credentials, repositories, private identifiers or audit data are exposed.
-- Desktop uses a two-column six-step grid; mobile stacks it in source order. Step numbers, headings, boundaries and outcomes keep meaning independent of color.
-- Failure is generic and does not retry GitHub or expose private diagnostics.
+## Cross-cutting review result
 
-## Files changed
+- Desktop and mobile layout contracts remained green; no CSS change was required.
+- The startup summary is now an accessible modal dialog while visible.
+- The document surface is inert and hidden from assistive technology during the startup overlay, then restored before focus moves to main content.
+- The Pixelgrama demo reports loading with `aria-busy` and clears it on success or safe failure.
+- CSP still permits only same-origin public reads and now explicitly denies inline script attributes, inline style attributes and objects.
+- OAuth, `/mcp`, `/console`, the authority model, Edge, workcells and the canonical evidence manifest were not weakened or modified.
 
-- `internal/landing/assets/index.html`
-- `internal/landing/assets/app.css`
-- `internal/landing/assets/app.js`
-- `internal/landing/assets_test.go`
-- `docs/landing/public-showcase.md`
-- `docs/public_showcase_test.go`
+## Hito 5 result
 
-## Validation results
+`docs/cubethon-2026-q3-submission.md` is now the canonical versioned source for the public participation issue. Its first 700 characters explain the excessive-authority problem, narrow-tool solution, `read-only`, `ask`, `allow`, and Pixelgrama proof. It contains exactly three primary evaluation links, explains CubePath as essential infrastructure, distinguishes mode / plan / local human grant, limits recommended captures to four, lists security controls and useful components, and puts the technical stack last.
 
-- Focused `go test ./internal/landing ./docs ./docs/showcase -count=1`: passed.
-- Complete Go test suite passed across bounded groups. One combined Edge group was killed by the executor before returning results; `internal/edge`, `internal/edgeclient`, and all remaining packages from that group were rerun separately and passed.
+The available MCP Devbox catalog does not expose an operation for editing the external public issue. No claim was made that the live issue was updated; the source is ready to copy after the landing is merged and deployed.
+
+## Final validation
+
+- Complete Go suite passed across bounded groups.
+- One large final group was killed by the executor after packages through `internal/resultstore` passed; all remaining packages were rerun separately and passed.
 - `go vet ./...`: passed.
 - `go build ./...`: passed.
 - `git diff --check`: passed.
-- Existing security regressions confirmed exactly two same-origin public fetches, no remote fetch, no new `/mcp` or `/console` capability, and continued CSP compatibility through `connect-src 'self'`.
-- A compatibility regression loads the real embedded manifest and confirms its safe GitHub fragment is accepted by browser URL validation.
-- A scoped diff confirmed `docs/showcase`, `internal/landing/handler.go`, and `internal/landing/handler_test.go` remained unchanged.
-- `node --check` was unavailable through the command allowlist, and the optional L3 sandbox backend is not configured. No validation was claimed from either. JavaScript was reviewed directly and is covered by asset regressions; exact-head CI remains mandatory before merge.
-- Local Race remains unavailable because CGO is disabled in this execution profile; exact-head CI explicitly enables it.
+- Local Race remains unavailable because CGO is disabled; exact-head CI Race remains mandatory.
 
-## Pending work
+## Next action
 
-The next exact stage in the authoritative order is the cross-cutting review of mobile, desktop, accessibility and CSP for Hitos 4, 1, 2 and 3. Preserve the completed milestones, fix only demonstrated presentation defects, execute the relevant regressions and commit locally. Stop before Hito 5 — Reorganización del issue público.
+Publish `showcase/pixelgrama-evidence`, create a pull request into `main`, inspect exact-head checks, and do not merge or deploy while any required check is pending or failed. After green checks: merge with a merge commit, synchronize local `main`, allow or trigger only the authorized MCP Devbox Coolify deployment, verify production reports the exact merge commit, then update Brain and the external public issue from the versioned source.
