@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	showcase "github.com/charle-z/mcp-devbox/docs/showcase"
 )
 
 func TestEmbeddedLandingAssetsAreSelfContainedAccessibleAndHonest(t *testing.T) {
@@ -113,6 +115,7 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 		`data-en="MCP Devbox lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations."`,
 		`data-en="The owner chooses between read-only access, explicit review or autonomy within preconfigured limits."`,
 		`data-en="Pixelgrama was built, tested, published and deployed through MCP Devbox on CubePath."`,
+		`href="#demo"`,
 		`href="/showcase/pixelgrama-evidence.json"`,
 		`href="#authority"`,
 		`href="https://github.com/charle-z/mcp-devbox"`,
@@ -182,7 +185,7 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 		".hero-action:first-child{background:var(--cyan);color:var(--black)",
 		".hero-proof{align-self:center;min-width:0;border:1pxsolidvar(--green)",
 		".hero-boundary{margin:0;padding-top:.65rem;border-top:1pxsolidvar(--gray-low)",
-		".hero-grid,.authority-comparison,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
+		".hero-grid,.authority-comparison,.demo-steps,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
 	} {
 		if !strings.Contains(compactCSS, required) {
 			t.Errorf("landing hero CSS missing %q", required)
@@ -263,11 +266,105 @@ func TestLandingAuthorityComparisonAndModesAreAccurateAccessibleAndResponsive(t 
 		".mode-tabsbutton[aria-selected=\"true\"]::before{content:\">\"",
 		".mode-panel[hidden]{display:none",
 		".safety-statement{margin:1rem0;border:3pxdoublevar(--amber)",
-		".hero-grid,.authority-comparison,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
+		".hero-grid,.authority-comparison,.demo-steps,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
 		".mode-tabs{grid-template-columns:1fr",
 	} {
 		if !strings.Contains(compactCSS, required) {
 			t.Errorf("authority comparison CSS missing %q", required)
+		}
+	}
+}
+
+func TestLandingGuidedDemoUsesCanonicalReadOnlyEvidence(t *testing.T) {
+	index := string(mustLandingAsset(t, "assets/index.html"))
+	css := string(mustLandingAsset(t, "assets/app.css"))
+	js := string(mustLandingAsset(t, "assets/app.js"))
+
+	for _, required := range []string{
+		`<section id="demo"`,
+		`href="#demo" data-es="Demo" data-en="Demo"`,
+		`data-en="FROM REQUEST TO PRODUCTION COMMIT"`,
+		`data-es="DE LA SOLICITUD AL COMMIT EN PRODUCCIÓN"`,
+		`data-en="Public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access repositories."`,
+		`data-es="Pública, sin autenticación y de solo lectura. No puede invocar herramientas, abrir la consola, aprobar planes, pedir grants, leer credenciales ni acceder a repositorios."`,
+		`id="demoRequestSummary"`,
+		`id="demoPullRequests"`,
+		`id="demoChecks"`,
+		`id="demoDirectOperations"`,
+		`id="demoPlanOperations"`,
+		`id="demoProductionMatch"`,
+		`data-en="Not published in the historical evidence."`,
+		`Pixelgrama's exact historical mode is not publicly proven.`,
+		`href="/showcase/pixelgrama-evidence.json"`,
+	} {
+		if !strings.Contains(index, required) {
+			t.Errorf("guided demo missing %q", required)
+		}
+	}
+	if got := strings.Count(index, `data-demo-step="`); got != 6 {
+		t.Fatalf("guided demo has %d steps, want 6", got)
+	}
+
+	for _, required := range []string{
+		`fetch("/showcase/pixelgrama-evidence.json"`,
+		`payload.schema_version !== 1`,
+		`payload.project.repository !== "https://github.com/charle-z/pixelgrama"`,
+		`payload.authority_posture.status !== "not_publicly_verified"`,
+		`production.observed_commit !== production.source_main_commit`,
+		`requiredRoutes = ["/", "/wall", "/version"]`,
+		`document.createElement("li")`,
+		`pullRequest.url + "/files"`,
+		`The page will not query GitHub or expose private diagnostics.`,
+		`setDemoMessage("available")`,
+		`.catch(demoUnavailable)`,
+	} {
+		if !strings.Contains(js, required) {
+			t.Errorf("guided demo JavaScript missing %q", required)
+		}
+	}
+	if got := strings.Count(js, `fetch("/showcase/pixelgrama-evidence.json"`); got != 1 {
+		t.Fatalf("guided demo must fetch the canonical manifest exactly once, got %d", got)
+	}
+	if got := strings.Count(js, "fetch("); got != 2 {
+		t.Fatalf("landing must make exactly two same-origin public requests, got %d", got)
+	}
+	if strings.Contains(js, `fetch("https://`) {
+		t.Fatal("guided demo performs a remote fetch instead of using the embedded manifest")
+	}
+
+	evidence, err := showcase.PixelgramaEvidence()
+	if err != nil {
+		t.Fatalf("load canonical Pixelgrama evidence: %v", err)
+	}
+	manifest, err := showcase.ParsePixelgramaEvidence(evidence)
+	if err != nil {
+		t.Fatalf("parse canonical Pixelgrama evidence: %v", err)
+	}
+	fragmentEvidence := false
+	for _, operation := range manifest.Operations.Direct {
+		if strings.Contains(operation.EvidenceURL, "#") {
+			fragmentEvidence = true
+		}
+	}
+	if !fragmentEvidence {
+		t.Fatal("canonical direct-operation evidence no longer exercises a safe GitHub fragment")
+	}
+	if strings.Contains(js, "parsed.hash") {
+		t.Fatal("browser URL validation rejects the canonical GitHub fragment")
+	}
+
+	compactCSS := strings.NewReplacer(" ", "", "\n", "", "\t", "", "\r", "").Replace(strings.ToLower(css))
+	for _, required := range []string{
+		".demo-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))",
+		".demo-step-head{display:flex;align-items:center",
+		".demo-step-number{align-self:stretch;display:grid;place-items:center",
+		".demo-kv{display:grid;grid-template-columns:max-contentminmax(0,1fr)",
+		".demo-result-match.ok{border-color:var(--green)",
+		".hero-grid,.authority-comparison,.demo-steps,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
+		".demo-kv{grid-template-columns:1fr",
+	} {
+		if !strings.Contains(compactCSS, required) {
+			t.Errorf("guided demo CSS missing %q", required)
 		}
 	}
 }

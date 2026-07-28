@@ -130,6 +130,256 @@
   });
   if (modeButtons.length && modePanels.length) selectMode("read-only", false);
 
+  var demoStatus = document.getElementById("demoStatus");
+  var demoMessageKey = "loading";
+  var demoMessages = {
+    loading: {
+      es: "Cargando el manifiesto público integrado...",
+      en: "Loading the embedded public manifest..."
+    },
+    available: {
+      es: "Evidencia pública cargada. Recorrido de solo lectura listo.",
+      en: "Public evidence loaded. Read-only walkthrough ready."
+    },
+    unavailable: {
+      es: "La evidencia guiada no está disponible temporalmente. La página no intentará consultar GitHub ni mostrar diagnósticos privados.",
+      en: "The guided evidence is temporarily unavailable. The page will not query GitHub or expose private diagnostics."
+    }
+  };
+
+  function setDemoMessage(key) {
+    demoMessageKey = key;
+    if (!demoStatus) return;
+    demoStatus.textContent = demoMessages[key][currentLanguage];
+    demoStatus.className = "demo-status " + (key === "available" ? "ok" : "warn");
+    demoStatus.setAttribute("data-demo-state", key);
+  }
+
+  function demoNode(id) {
+    return document.getElementById(id);
+  }
+
+  function setDemoText(id, value) {
+    var node = demoNode(id);
+    if (node) node.textContent = String(value);
+  }
+
+  function setDemoBilingualText(id, es, en) {
+    var node = demoNode(id);
+    if (!node) return;
+    node.setAttribute("data-es", es);
+    node.setAttribute("data-en", en);
+    node.textContent = currentLanguage === "es" ? es : en;
+  }
+
+  function clearDemoNode(node) {
+    if (!node) return;
+    while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  function setBilingualNode(node, es, en) {
+    node.setAttribute("data-es", es);
+    node.setAttribute("data-en", en);
+    node.textContent = currentLanguage === "es" ? es : en;
+  }
+
+  function safeEvidenceURL(value) {
+    if (typeof value !== "string") return null;
+    try {
+      var parsed = new URL(value);
+      if (parsed.protocol !== "https:" || parsed.username || parsed.password) return null;
+      if (parsed.hostname === "github.com" &&
+          (parsed.pathname === "/charle-z/pixelgrama" || parsed.pathname.indexOf("/charle-z/pixelgrama/") === 0)) return parsed.href;
+      if (parsed.hostname === "pixelgrama.mcp-devbox-charlez.duckdns.org") return parsed.href;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function validEvidenceSHA(value) {
+    return typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
+  }
+
+  function validEvidence(payload) {
+    if (!payload || payload.schema_version !== 1) return false;
+    if (!payload.project || payload.project.name !== "Pixelgrama" ||
+        payload.project.repository !== "https://github.com/charle-z/pixelgrama" ||
+        payload.project.base_branch !== "main" || typeof payload.project.request_summary !== "string") return false;
+    if (!safeEvidenceURL(payload.project.repository) || !safeEvidenceURL(payload.project.production_url) ||
+        !safeEvidenceURL(payload.project.primary_public_route) || !safeEvidenceURL(payload.project.version_url)) return false;
+    if (!payload.historical_execution || !Array.isArray(payload.historical_execution.pull_requests) ||
+        payload.historical_execution.pull_requests.length === 0 || !Array.isArray(payload.historical_execution.source_commits) ||
+        payload.historical_execution.source_commits.length === 0) return false;
+    var pullRequestsValid = payload.historical_execution.pull_requests.every(function (pullRequest) {
+      return pullRequest && Number.isInteger(pullRequest.number) && pullRequest.number > 0 &&
+        safeEvidenceURL(pullRequest.url) && validEvidenceSHA(pullRequest.head_sha) &&
+        typeof pullRequest.purpose === "string" && pullRequest.purpose.length > 0 &&
+        Array.isArray(pullRequest.checks) && pullRequest.checks.length > 0 &&
+        pullRequest.checks.every(function (check) {
+          return check && typeof check.name === "string" && check.conclusion === "success" && safeEvidenceURL(check.url);
+        });
+    });
+    if (!pullRequestsValid) return false;
+    var production = payload.production_observation;
+    if (!production || !validEvidenceSHA(production.observed_commit) || !validEvidenceSHA(production.source_main_commit) ||
+        production.observed_commit !== production.source_main_commit || production.matches_source_main !== true ||
+        typeof production.verified_on !== "string" || !Array.isArray(production.routes)) return false;
+    var requiredRoutes = ["/", "/wall", "/version"];
+    if (!requiredRoutes.every(function (path) {
+      return production.routes.some(function (route) {
+        return route && route.path === path && route.observed_status === 200 && safeEvidenceURL(route.final_url);
+      });
+    })) return false;
+    if (!production.infrastructure || production.infrastructure.provider !== "CubePath" || production.infrastructure.platform !== "Coolify") return false;
+    if (!payload.authority_posture || payload.authority_posture.status !== "not_publicly_verified" ||
+        typeof payload.authority_posture.statement !== "string") return false;
+    if (!payload.operations || !Array.isArray(payload.operations.direct) || !Array.isArray(payload.operations.plan_protected) ||
+        payload.operations.direct.length === 0 || payload.operations.plan_protected.length === 0) return false;
+    var operationsValid = payload.operations.direct.concat(payload.operations.plan_protected).every(function (operation) {
+      return operation && typeof operation.name === "string" && operation.name.length > 0 &&
+        typeof operation.verification === "string" && operation.verification.length > 0 &&
+        safeEvidenceURL(operation.evidence_url);
+    });
+    if (!operationsValid) return false;
+    if (!payload.perimeter || !Array.isArray(payload.perimeter.includes) || !Array.isArray(payload.perimeter.excludes) ||
+        payload.perimeter.includes.length === 0 || payload.perimeter.excludes.length === 0 ||
+        !payload.perimeter.includes.concat(payload.perimeter.excludes).every(function (entry) {
+          return typeof entry === "string" && entry.trim().length > 0;
+        })) return false;
+    return true;
+  }
+
+  function setDemoLink(id, url, label) {
+    var node = demoNode(id);
+    var safe = safeEvidenceURL(url);
+    if (!node || !safe) return;
+    node.setAttribute("href", safe);
+    node.textContent = label;
+  }
+
+  function appendDemoLink(parent, url, es, en) {
+    var safe = safeEvidenceURL(url);
+    if (!safe) return;
+    var link = document.createElement("a");
+    link.setAttribute("href", safe);
+    setBilingualNode(link, es, en);
+    parent.appendChild(link);
+  }
+
+  function renderDemoStringList(id, values) {
+    var list = demoNode(id);
+    clearDemoNode(list);
+    values.forEach(function (value) {
+      var item = document.createElement("li");
+      item.textContent = String(value);
+      list.appendChild(item);
+    });
+  }
+
+  function renderDemoPullRequests(pullRequests) {
+    var list = demoNode("demoPullRequests");
+    clearDemoNode(list);
+    pullRequests.forEach(function (pullRequest) {
+      var item = document.createElement("li");
+      var title = document.createElement("span");
+      title.className = "demo-record-title";
+      title.textContent = "PR #" + pullRequest.number + " — " + pullRequest.purpose;
+      item.appendChild(title);
+
+      var meta = document.createElement("span");
+      meta.className = "demo-record-meta";
+      meta.textContent = "head " + pullRequest.head_sha;
+      item.appendChild(meta);
+
+      var links = document.createElement("span");
+      links.className = "demo-record-links";
+      appendDemoLink(links, pullRequest.url, "Abrir PR", "Open PR");
+      appendDemoLink(links, pullRequest.url + "/files", "Ver archivos modificados", "View changed files");
+      item.appendChild(links);
+      list.appendChild(item);
+    });
+  }
+
+  function renderDemoChecks(pullRequests) {
+    var list = demoNode("demoChecks");
+    clearDemoNode(list);
+    var count = 0;
+    pullRequests.forEach(function (pullRequest) {
+      pullRequest.checks.forEach(function (check) {
+        count += 1;
+        var item = document.createElement("li");
+        var title = document.createElement("span");
+        title.className = "demo-record-title ok";
+        title.textContent = "PR #" + pullRequest.number + " · " + check.name + " · SUCCESS";
+        item.appendChild(title);
+        var links = document.createElement("span");
+        links.className = "demo-record-links";
+        appendDemoLink(links, check.url, "Abrir check", "Open check");
+        item.appendChild(links);
+        list.appendChild(item);
+      });
+    });
+    setDemoBilingualText("demoValidationSummary",
+      pullRequests.length + " PR públicos · " + count + " checks exitosos enlazados.",
+      pullRequests.length + " public PRs · " + count + " successful checks linked.");
+  }
+
+  function renderDemoOperations(id, operations) {
+    var list = demoNode(id);
+    clearDemoNode(list);
+    operations.forEach(function (operation) {
+      var item = document.createElement("li");
+      var title = document.createElement("span");
+      title.className = "demo-record-title";
+      title.textContent = operation.name;
+      item.appendChild(title);
+      var meta = document.createElement("span");
+      meta.className = "demo-record-meta";
+      meta.textContent = operation.verification;
+      item.appendChild(meta);
+      var links = document.createElement("span");
+      links.className = "demo-record-links";
+      appendDemoLink(links, operation.evidence_url, "Abrir resultado público", "Open public result");
+      item.appendChild(links);
+      list.appendChild(item);
+    });
+  }
+
+  function renderDemoEvidence(payload) {
+    setDemoText("demoRequestSummary", payload.project.request_summary);
+    setDemoLink("demoRepository", payload.project.repository, "charle-z/pixelgrama");
+    setDemoText("demoBaseBranch", payload.project.base_branch);
+    setDemoBilingualText("demoAuthorityPosture", "No verificado públicamente", "Not publicly verified");
+    renderDemoStringList("demoPerimeterIncludes", payload.perimeter.includes);
+    renderDemoStringList("demoPerimeterExcludes", payload.perimeter.excludes);
+    renderDemoPullRequests(payload.historical_execution.pull_requests);
+    renderDemoChecks(payload.historical_execution.pull_requests);
+    renderDemoOperations("demoDirectOperations", payload.operations.direct);
+    renderDemoOperations("demoPlanOperations", payload.operations.plan_protected);
+
+    setDemoLink("demoProductionURL", payload.project.production_url, payload.project.production_url);
+    setDemoLink("demoWallURL", payload.project.primary_public_route, "/wall");
+    setDemoLink("demoVersionURL", payload.project.version_url, "/version");
+    setDemoText("demoObservedCommit", payload.production_observation.observed_commit);
+    setDemoText("demoSourceCommit", payload.production_observation.source_main_commit);
+    setDemoText("demoVerifiedOn", payload.production_observation.verified_on);
+    setDemoText("demoInfrastructure", payload.production_observation.infrastructure.provider + " + " + payload.production_observation.infrastructure.platform);
+    setDemoBilingualText("demoProductionMatch",
+      "COINCIDENCIA VERIFICADA: producción y source main reportan el mismo commit.",
+      "VERIFIED MATCH: production and source main report the same commit.");
+    var match = demoNode("demoProductionMatch");
+    if (match) match.className = "demo-result-match ok";
+    setDemoMessage("available");
+  }
+
+  function demoUnavailable() {
+    setDemoMessage("unavailable");
+    setDemoBilingualText("demoProductionMatch", "COMPARACIÓN NO DISPONIBLE", "COMPARISON UNAVAILABLE");
+    var match = demoNode("demoProductionMatch");
+    if (match) match.className = "demo-result-match warn";
+  }
+
   var fields = {
     status: document.getElementById("runtimeStatus"),
     version: document.getElementById("runtimeVersion"),
@@ -181,6 +431,7 @@
     });
     if (activePolicyID) renderPolicy(activePolicyID);
     setRuntimeMessage(runtimeMessageKey);
+    setDemoMessage(demoMessageKey);
     if (activeSection) showSection(activeSection);
   }
 
@@ -235,6 +486,20 @@
     message.setAttribute("data-runtime-state", "available");
     setRuntimeMessage("available");
   }).catch(unavailable);
+
+  fetch("/showcase/pixelgrama-evidence.json", {
+    method: "GET",
+    credentials: "omit",
+    cache: "no-store",
+    redirect: "error",
+    headers: { Accept: "application/json" }
+  }).then(function (response) {
+    if (!response.ok) throw new Error("unavailable");
+    return response.json();
+  }).then(function (payload) {
+    if (!validEvidence(payload)) throw new Error("invalid");
+    renderDemoEvidence(payload);
+  }).catch(demoUnavailable);
 
   var sections = Array.prototype.slice.call(document.querySelectorAll("main section"));
   var sectionLabel = document.getElementById("sectionLabel");

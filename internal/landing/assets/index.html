@@ -35,6 +35,7 @@
       <a class="brand" href="#thesis">MCP DEVBOX</a>
       <nav aria-label="Primary" data-es="Principal" data-en="Primary" data-i18n-attr="aria-label">
         <a href="#authority" data-es="Autoridad" data-en="Authority">Authority</a>
+        <a href="#demo" data-es="Demo" data-en="Demo">Demo</a>
         <a href="#policy" data-es="Política" data-en="Policy">Policy</a>
         <a href="#path" data-es="Flujo" data-en="Path">Path</a>
         <a href="#evidence" data-es="Evidencia" data-en="Evidence">Evidence</a>
@@ -60,7 +61,7 @@
               <p class="lede hero-solution" data-es="MCP Devbox permite que un agente lea, modifique, pruebe, publique y despliegue proyectos mediante herramientas limitadas, políticas inmutables, secretos denegados y operaciones verificables." data-en="MCP Devbox lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations.">MCP Devbox lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations.</p>
               <p class="hero-autonomy" data-es="El propietario elige entre solo lectura, revisión explícita o autonomía dentro de límites previamente configurados." data-en="The owner chooses between read-only access, explicit review or autonomy within preconfigured limits.">The owner chooses between read-only access, explicit review or autonomy within preconfigured limits.</p>
               <nav class="hero-actions" id="hero-actions" aria-label="Primary showcase actions" data-es="Acciones principales de la presentación" data-en="Primary showcase actions" data-i18n-attr="aria-label">
-                <a class="hero-action" href="/showcase/pixelgrama-evidence.json" data-es="Ver la prueba completa" data-en="View the complete proof">View the complete proof</a>
+                <a class="hero-action" href="#demo" data-es="Ver la prueba completa" data-en="View the complete proof">View the complete proof</a>
                 <a class="hero-action" href="#authority" data-es="Explorar el modelo de autoridad" data-en="Explore the authority model">Explore the authority model</a>
                 <a class="hero-action" href="https://github.com/charle-z/mcp-devbox" data-es="Abrir el repositorio" data-en="Open the repository">Open the repository</a>
               </nav>
@@ -172,8 +173,86 @@
           </div>
         </section>
 
+        <section id="demo" data-es="Recorre la evidencia pública de Pixelgrama en seis pasos" data-en="Walk through Pixelgrama public evidence in six steps" data-label-es="DEMO" data-label-en="DEMO" data-i18n-role="hint">
+          <p class="eyebrow" data-es="02 · DEMO GUIADA DE SOLO LECTURA" data-en="02 · READ-ONLY GUIDED DEMO">02 · READ-ONLY GUIDED DEMO</p>
+          <h2 data-es="DE LA SOLICITUD AL COMMIT EN PRODUCCIÓN" data-en="FROM REQUEST TO PRODUCTION COMMIT">FROM REQUEST TO PRODUCTION COMMIT</h2>
+          <p class="sub prose" data-es="Esta historia se genera desde el manifiesto público y versionado de Pixelgrama. No consulta GitHub durante la carga y no concede autoridad sobre MCP Devbox." data-en="This story is generated from Pixelgrama's public, versioned manifest. It does not query GitHub during page load and grants no authority over MCP Devbox.">This story is generated from Pixelgrama's public, versioned manifest. It does not query GitHub during page load and grants no authority over MCP Devbox.</p>
+
+          <div class="demo-boundary" role="note">
+            <p><strong data-es="PERÍMETRO DE LA DEMO" data-en="DEMO BOUNDARY">DEMO BOUNDARY</strong></p>
+            <p data-es="Pública, sin autenticación y de solo lectura. No puede invocar herramientas, abrir la consola, aprobar planes, pedir grants, leer credenciales ni acceder a repositorios." data-en="Public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access repositories.">Public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access repositories.</p>
+          </div>
+
+          <p class="demo-status warn" id="demoStatus" aria-live="polite" data-demo-state="loading" data-es="Cargando el manifiesto público integrado..." data-en="Loading the embedded public manifest...">Loading the embedded public manifest...</p>
+
+          <ol class="demo-steps" aria-label="Pixelgrama evidence walkthrough" data-es="Recorrido de evidencia de Pixelgrama" data-en="Pixelgrama evidence walkthrough" data-i18n-attr="aria-label">
+            <li class="demo-step" data-demo-step="1">
+              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">01</span><h3 data-es="SOLICITUD" data-en="REQUEST">REQUEST</h3></div>
+              <p id="demoRequestSummary" class="demo-primary-value" data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</p>
+              <p class="demo-source-note" data-es="El resumen canónico se muestra textualmente desde el manifiesto público." data-en="The canonical summary is shown verbatim from the public manifest.">The canonical summary is shown verbatim from the public manifest.</p>
+            </li>
+
+            <li class="demo-step" data-demo-step="2">
+              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">02</span><h3 data-es="PERÍMETRO" data-en="PERIMETER">PERIMETER</h3></div>
+              <dl class="demo-kv">
+                <dt data-es="repositorio" data-en="repository">repository</dt><dd><a id="demoRepository" href="/showcase/pixelgrama-evidence.json" data-es="ver manifiesto" data-en="view manifest">view manifest</a></dd>
+                <dt data-es="rama base" data-en="base branch">base branch</dt><dd id="demoBaseBranch">—</dd>
+                <dt data-es="modo histórico" data-en="historical mode">historical mode</dt><dd id="demoAuthorityPosture" class="warn">—</dd>
+                <dt data-es="herramientas exactas" data-en="exact tools">exact tools</dt><dd data-es="No publicadas en la evidencia histórica." data-en="Not published in the historical evidence.">Not published in the historical evidence.</dd>
+              </dl>
+              <p class="demo-subheading" data-es="Incluye" data-en="Includes">Includes</p>
+              <ul class="demo-list" id="demoPerimeterIncludes"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
+              <p class="demo-subheading" data-es="Excluye" data-en="Excludes">Excludes</p>
+              <ul class="demo-list" id="demoPerimeterExcludes"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
+            </li>
+
+            <li class="demo-step" data-demo-step="3">
+              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">03</span><h3 data-es="CAMBIO" data-en="CHANGE">CHANGE</h3></div>
+              <p data-es="Los propósitos y SHAs vienen del manifiesto. La vista pública «Files changed» de cada PR conserva el detalle de archivos sin duplicarlo aquí." data-en="Purposes and SHAs come from the manifest. Each PR's public Files changed view keeps the file-level detail without duplicating it here.">Purposes and SHAs come from the manifest. Each PR's public Files changed view keeps the file-level detail without duplicating it here.</p>
+              <ol class="demo-records" id="demoPullRequests"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ol>
+            </li>
+
+            <li class="demo-step" data-demo-step="4">
+              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">04</span><h3 data-es="VALIDACIÓN" data-en="VALIDATION">VALIDATION</h3></div>
+              <p id="demoValidationSummary" class="demo-primary-value">—</p>
+              <ul class="demo-records" id="demoChecks"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
+            </li>
+
+            <li class="demo-step" data-demo-step="5">
+              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">05</span><h3 data-es="OPERACIONES EXTERNAS" data-en="EXTERNAL OPERATIONS">EXTERNAL OPERATIONS</h3></div>
+              <p data-es="Las clases directas y protegidas por planes están documentadas públicamente; los IDs de planes, aprobaciones y auditoría permanecen privados." data-en="Direct and plan-protected operation classes are documented publicly; plan IDs, approvals and audit remain private.">Direct and plan-protected operation classes are documented publicly; plan IDs, approvals and audit remain private.</p>
+              <p class="demo-subheading" data-es="Operaciones directas documentadas" data-en="Documented direct operations">Documented direct operations</p>
+              <ul class="demo-list" id="demoDirectOperations"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
+              <p class="demo-subheading" data-es="Operaciones protegidas por planes" data-en="Plan-protected operations">Plan-protected operations</p>
+              <ul class="demo-list" id="demoPlanOperations"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
+              <p class="demo-mode-note" data-es="En ask, un efecto revisable espera aprobación. En allow, una operación autorizada puede continuar sin esa pausa. En ambos casos, el plan sigue siendo exacto, temporal, revalidado y de un solo uso. El modo histórico exacto de Pixelgrama no está demostrado públicamente." data-en="In ask, a reviewable effect waits for approval. In allow, an authorized operation may continue without that pause. In both cases, the plan remains exact, temporary, revalidated and single-use. Pixelgrama's exact historical mode is not publicly proven.">In ask, a reviewable effect waits for approval. In allow, an authorized operation may continue without that pause. In both cases, the plan remains exact, temporary, revalidated and single-use. Pixelgrama's exact historical mode is not publicly proven.</p>
+            </li>
+
+            <li class="demo-step demo-step-result" data-demo-step="6">
+              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">06</span><h3 data-es="RESULTADO" data-en="RESULT">RESULT</h3></div>
+              <dl class="demo-kv">
+                <dt data-es="producción" data-en="production">production</dt><dd><a id="demoProductionURL" href="/showcase/pixelgrama-evidence.json">—</a></dd>
+                <dt data-es="muro público" data-en="public wall">public wall</dt><dd><a id="demoWallURL" href="/showcase/pixelgrama-evidence.json">—</a></dd>
+                <dt data-es="identidad" data-en="identity">identity</dt><dd><a id="demoVersionURL" href="/showcase/pixelgrama-evidence.json">—</a></dd>
+                <dt data-es="commit observado" data-en="observed commit">observed commit</dt><dd id="demoObservedCommit">—</dd>
+                <dt data-es="source main" data-en="source main">source main</dt><dd id="demoSourceCommit">—</dd>
+                <dt data-es="verificado" data-en="verified">verified</dt><dd id="demoVerifiedOn">—</dd>
+                <dt data-es="infraestructura" data-en="infrastructure">infrastructure</dt><dd id="demoInfrastructure">—</dd>
+              </dl>
+              <p class="demo-result-match warn" id="demoProductionMatch" data-es="Esperando comparación..." data-en="Awaiting comparison...">Awaiting comparison...</p>
+              <p class="demo-history-note" data-es="Los SHAs de los PR anteriores son evidencia histórica. El commit observado arriba es el estado productivo verificado en la fecha indicada." data-en="Earlier PR SHAs are historical evidence. The observed commit above is the production state verified on the stated date.">Earlier PR SHAs are historical evidence. The observed commit above is the production state verified on the stated date.</p>
+            </li>
+          </ol>
+
+          <div class="demo-links">
+            <a href="/showcase/pixelgrama-evidence.json" data-es="Abrir manifiesto canónico" data-en="Open canonical manifest">Open canonical manifest</a>
+            <a href="https://github.com/charle-z/pixelgrama" data-es="Abrir repositorio público" data-en="Open public repository">Open public repository</a>
+            <a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall" data-es="Abrir Pixelgrama" data-en="Open Pixelgrama">Open Pixelgrama</a>
+          </div>
+        </section>
+
         <section id="policy" data-es="Ocho casos locales; ninguna solicitud llega al control plane" data-en="Eight local cases; no request reaches the control plane" data-label-es="POLÍTICA" data-label-en="POLICY" data-i18n-role="hint">
-          <p class="eyebrow" data-es="02 · EXPLORADOR DE POLÍTICAS" data-en="02 · POLICY EXPLORER">02 · POLICY EXPLORER</p>
+          <p class="eyebrow" data-es="03 · EXPLORADOR DE POLÍTICAS" data-en="03 · POLICY EXPLORER">03 · POLICY EXPLORER</p>
           <h2 data-es="PÍDELE AL AGENTE QUE SE PORTE MAL" data-en="ASK THE AGENT TO MISBEHAVE">ASK THE AGENT TO MISBEHAVE</h2>
           <p class="sub prose"><span data-es="Elige una solicitud. Esta es una " data-en="Choose a request. This is a ">Choose a request. This is a </span><strong data-es="simulación local" data-en="local simulation">local simulation</strong><span data-es=" de los resultados documentados de la política. No envía ninguna solicitud a MCP Devbox ni concede autoridad." data-en=" of documented policy outcomes. It sends no request to MCP Devbox and grants no authority."> of documented policy outcomes. It sends no request to MCP Devbox and grants no authority.</span></p>
           <div class="policy-grid">
@@ -196,7 +275,7 @@
         </section>
 
         <section id="path" data-es="Edge solo se conecta hacia afuera" data-en="The Edge connects outbound only" data-label-es="FLUJO" data-label-en="PATH" data-i18n-role="hint">
-          <p class="eyebrow" data-es="03 · FLUJO DE SOLICITUD" data-en="03 · REQUEST PATH">03 · REQUEST PATH</p>
+          <p class="eyebrow" data-es="04 · FLUJO DE SOLICITUD" data-en="04 · REQUEST PATH">04 · REQUEST PATH</p>
           <h2 data-es="CÓMO VIAJA UNA SOLICITUD" data-en="HOW A REQUEST TRAVELS">HOW A REQUEST TRAVELS</h2>
           <figure class="diagram">
             <img src="/landing/assets/request-path.svg" alt="Request path with a direct policy route for reads and allowlisted commands, and an approval route for consequential actions." data-es="Flujo de solicitud con una ruta directa bajo policy para lecturas y comandos allowlisted, y una ruta de aprobación para acciones consecuentes." data-en="Request path with a direct policy route for reads and allowlisted commands, and an approval route for consequential actions." data-i18n-attr="alt">
@@ -205,7 +284,7 @@
         </section>
 
         <section id="host" data-es="La capacidad está medida; CPU es el recurso limitante" data-en="Capacity is measured; CPU is the binding resource" data-label-es="HOST" data-label-en="HOST" data-i18n-role="hint">
-          <p class="eyebrow" data-es="04 · HOST Y ADMISIÓN" data-en="04 · HOST &amp; ADMISSION">04 · HOST &amp; ADMISSION</p>
+          <p class="eyebrow" data-es="05 · HOST Y ADMISIÓN" data-en="05 · HOST &amp; ADMISSION">05 · HOST &amp; ADMISSION</p>
           <h2 data-es="UNA MICRO VPS, MEDIDA EN VEZ DE SUPUESTA" data-en="A MICRO VPS, MEASURED INSTEAD OF GUESSED">A MICRO VPS, MEASURED INSTEAD OF GUESSED</h2>
           <p class="sub prose" data-es="El control plane corre en una máquina KVM de 2 vCPU y 3.805 GiB. La línea base fechada 2026-07-22 midió reposo y un despliegue real sin caché. CPU, no memoria, fue el recurso limitante demostrado." data-en="The control plane runs on a 2 vCPU, 3.805 GiB KVM guest. The dated 2026-07-22 baseline measured idle and a real no-cache deployment. CPU, not memory, was the demonstrated binding resource.">The control plane runs on a 2 vCPU, 3.805 GiB KVM guest. The dated 2026-07-22 baseline measured idle and a real no-cache deployment. CPU, not memory, was the demonstrated binding resource.</p>
           <div class="table-scroll" tabindex="0" aria-label="Measured host capacity" data-es="Capacidad medida del host" data-en="Measured host capacity" data-i18n-attr="aria-label">
@@ -233,7 +312,7 @@
         </section>
 
         <section id="evidence" data-es="Los fallos solo son evidencia cuando el gate puede detener el merge" data-en="Failures are evidence only when the gate can stop the merge" data-label-es="EVIDENCIA" data-label-en="EVIDENCE" data-i18n-role="hint">
-          <p class="eyebrow" data-es="05 · EVIDENCIA" data-en="05 · EVIDENCE">05 · EVIDENCE</p>
+          <p class="eyebrow" data-es="06 · EVIDENCIA" data-en="06 · EVIDENCE">06 · EVIDENCE</p>
           <h2 data-es="GATES REALES, INCLUIDOS LOS FALLOS" data-en="REAL GATES, INCLUDING THE FAILURES">REAL GATES, INCLUDING THE FAILURES</h2>
           <div class="evidence-log" aria-label="Dated project evidence" data-es="Evidencia fechada del proyecto" data-en="Dated project evidence" data-i18n-attr="aria-label">
             <p><time datetime="2026-07-13">2026-07-13</time> <span class="label fail">FAIL</span><span data-es=" cinco hallazgos High del contenedor y una vulnerabilidad Go alcanzable bloquearon el cierre." data-en=" five High container findings and one reachable Go vulnerability blocked closure."> five High container findings and one reachable Go vulnerability blocked closure.</span></p>
@@ -247,7 +326,7 @@
         </section>
 
         <section id="vulnerabilities" data-es="Los hallazgos se corrigieron; no se ocultaron" data-en="Findings were fixed, not hidden" data-label-es="VULNERABILIDADES" data-label-en="VULNERABILITIES" data-i18n-role="hint">
-          <p class="eyebrow" data-es="06 · REGISTRO DE VULNERABILIDADES" data-en="06 · VULNERABILITY LEDGER">06 · VULNERABILITY LEDGER</p>
+          <p class="eyebrow" data-es="07 · REGISTRO DE VULNERABILIDADES" data-en="07 · VULNERABILITY LEDGER">07 · VULNERABILITY LEDGER</p>
           <h2 data-es="DETECTADAS, CORREGIDAS Y CUBIERTAS POR REGRESIÓN" data-en="DETECTED, REMEDIATED, REGRESSION-TESTED">DETECTED, REMEDIATED, REGRESSION-TESTED</h2>
           <div class="cards">
             <article class="card">
@@ -279,7 +358,7 @@
         </section>
 
         <section id="runtime" data-es="Los valores vivos provienen únicamente del contrato público /version" data-en="Live values come only from the public /version contract" data-label-es="RUNTIME" data-label-en="RUNTIME" data-i18n-role="hint">
-          <p class="eyebrow" data-es="07 · IDENTIDAD VIVA DEL RUNTIME" data-en="07 · LIVE RUNTIME IDENTITY">07 · LIVE RUNTIME IDENTITY</p>
+          <p class="eyebrow" data-es="08 · IDENTIDAD VIVA DEL RUNTIME" data-en="08 · LIVE RUNTIME IDENTITY">08 · LIVE RUNTIME IDENTITY</p>
           <h2 data-es="VERIFICA EL PROCESO DESPLEGADO" data-en="VERIFY THE DEPLOYED PROCESS">VERIFY THE DEPLOYED PROCESS</h2>
           <p class="sub prose"><span data-es="Este panel lee la misma identidad pública segura expuesta por " data-en="This panel reads the same safe public identity exposed by ">This panel reads the same safe public identity exposed by </span><a href="/version">/version</a><span data-es=". No se envía ninguna credencial ni se solicita estado privado." data-en=". No credential is sent and no private state is requested.">. No credential is sent and no private state is requested.</span></p>
           <dl class="kv runtime-values" id="runtimeValues">
@@ -301,7 +380,7 @@
         </section>
 
         <section id="limits" data-es="La autoridad acotada reduce el riesgo; no elimina la confianza" data-en="Narrow authority reduces risk; it does not abolish trust" data-label-es="LÍMITES" data-label-en="LIMITS" data-i18n-role="hint">
-          <p class="eyebrow" data-es="08 · LÍMITES HONESTOS" data-en="08 · HONEST LIMITS">08 · HONEST LIMITS</p>
+          <p class="eyebrow" data-es="09 · LÍMITES HONESTOS" data-en="09 · HONEST LIMITS">09 · HONEST LIMITS</p>
           <h2 data-es="LO QUE ESTO NO ES" data-en="WHAT THIS IS NOT">WHAT THIS IS NOT</h2>
           <ul class="limits">
             <li data-es="No es un panel de control público. Esta landing no puede llamar tools, aprobar planes ni inspeccionar estado privado." data-en="Not a public control panel. This landing cannot call tools, approve plans or inspect private state.">Not a public control panel. This landing cannot call tools, approve plans or inspect private state.</li>

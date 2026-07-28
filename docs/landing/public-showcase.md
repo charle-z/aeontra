@@ -42,10 +42,13 @@ existing routes retain their handlers and contracts:
 - `/oauth/*` and discovery routes remain owned by OAuth;
 - `/healthz` and `/version` remain the only public runtime diagnostics.
 
-The landing JavaScript makes exactly one same-origin request to `/version`. It requests
-only the already allowlisted public runtime identity: availability, version, commit,
-build time, protocol, tool count, and catalog hash. Failure renders a generic unavailable
-state without forwarding raw errors.
+The landing JavaScript makes exactly two same-origin public requests. `/version`
+returns the already allowlisted runtime identity: availability, version, commit, build
+time, protocol, tool count, and catalog hash. The static
+`/showcase/pixelgrama-evidence.json` resource supplies the guided Pixelgrama story from
+the same validated bytes embedded at startup. Neither request reaches GitHub or a
+private control-plane route. Failure renders a generic unavailable state without
+forwarding raw errors.
 
 ## Visual and content structure
 
@@ -64,13 +67,14 @@ The continuous document contains:
 4. a visual comparison between broad ambient authority and MCP Devbox's explicit
    bounded authority, followed by the conceptual `read-only`, `ask`, and `allow`
    selector;
-5. local policy explorer;
-6. static request-path graphic;
-7. measured host capacity and the closed P16 target-VPS acceptance;
-8. dated evidence;
-9. remediated vulnerability ledger;
-10. live public runtime identity;
-11. honest limitations and CubePath attribution.
+5. a six-step, read-only Pixelgrama walkthrough generated from the canonical manifest;
+6. local policy explorer;
+7. static request-path graphic;
+8. measured host capacity and the closed P16 target-VPS acceptance;
+9. dated evidence;
+10. remediated vulnerability ledger;
+11. live public runtime identity;
+12. honest limitations and CubePath attribution.
 
 Implemented, experimental, and planned capabilities are labeled separately. Static
 claims are grounded in repository security reports, dated baselines, exact-head pull
@@ -87,6 +91,12 @@ mockup version, commit, catalog, or milestone state.
 - the policy explorer is a local deterministic simulation and performs no server call;
 - the authority-mode selector is also local-only, uses tabs and panels with
   arrow/Home/End keyboard navigation, and never changes real policy;
+- the guided demo reads the embedded manifest once, validates its public schema in the
+  browser, builds all records with `textContent` and DOM nodes, and fails to a generic
+  unavailable state;
+- the walkthrough distinguishes historical PR heads from the production commit, keeps
+  the exact historical policy mode and tool list marked as unpublished, and links each
+  PR's public changed-files view rather than copying file details into a second source;
 - typewriter output and smooth movement are disabled by `prefers-reduced-motion`;
 - layouts cover 320-pixel mobile width, with wide diagrams and tables scrolling inside
   their own regions instead of forcing body-level horizontal scrolling.
@@ -97,6 +107,8 @@ The landing cannot:
 
 - call MCP tools or proxy `/mcp`;
 - approve or execute plans;
+- turn the guided demo into an operational client, request grants, or infer unpublished
+  policy modes, tool lists, plan IDs, approvals, or audit records;
 - inspect repositories, Brain, audit records, prompts, workspaces, devices, paths,
   targets, identities, or credentials;
 - reuse console authentication or browser sessions;
@@ -121,6 +133,10 @@ Tests must fail when the landing is absent or when it loses any of these propert
 - metadata and Open Graph fields;
 - responsive and reduced-motion CSS;
 - local-only policy simulation;
+- one validated same-origin manifest fetch for a six-step request, perimeter, change,
+  validation, external-operations, and production-result walkthrough;
+- explicit separation of historical PR SHAs from the currently observed production
+  commit, with unavailable historical mode and tool detail left unavailable;
 - safe `/version` identity handling;
 - a bilingual benefit-first hero with problem, solution, autonomy, Pixelgrama
   proof, and exactly three primary actions;
