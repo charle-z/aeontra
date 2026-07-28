@@ -97,18 +97,75 @@
           </div>
         </section>
 
-        <section id="authority" data-es="El producto es el límite, no el número de herramientas" data-en="The product is the boundary, not the tool count" data-label-es="AUTORIDAD" data-label-en="AUTHORITY" data-i18n-role="hint">
-          <p class="eyebrow" data-es="01 · MODELO DE AUTORIDAD" data-en="01 · AUTHORITY MODEL">01 · AUTHORITY MODEL</p>
-          <h2 data-es="LA DIFERENCIA ES LA AUTORIDAD, NO EL ACCESO" data-en="THE DIFFERENCE IS AUTHORITY, NOT ACCESS">THE DIFFERENCE IS AUTHORITY, NOT ACCESS</h2>
-          <p class="sub prose" data-es="Crear un wrapper de terminal es fácil. MCP Devbox expone menos de forma deliberada:" data-en="A terminal wrapper is easy. MCP Devbox deliberately exposes less:">A terminal wrapper is easy. MCP Devbox deliberately exposes less:</p>
-          <ul class="checks">
-            <li data-es="Una jaula de directorios cubre las operaciones de archivos y la ejecución de comandos." data-en="A directory jail covers file operations and command execution.">A directory jail covers file operations and command execution.</li>
-            <li data-es="La denegación de secretos comprueba la ruta y el contenido devuelto; después redacta la salida acotada." data-en="Secret denial checks both path and returned content, then redacts bounded output.">Secret denial checks both path and returned content, then redacts bounded output.</li>
-            <li data-es="Los comandos provienen de una allowlist cerrada. No existe una herramienta de shell general." data-en="Commands come from a closed allowlist. There is no general shell tool.">Commands come from a closed allowlist. There is no general shell tool.</li>
-            <li data-es="Los archivos existentes se modifican patch-first y se validan antes de aplicar el cambio." data-en="Existing files are changed patch-first and validated before application.">Existing files are changed patch-first and validated before application.</li>
-            <li data-es="Las acciones consecuentes usan planes expirables y de un solo uso, y revalidan el estado al ejecutar." data-en="Consequential actions use expiring, single-use plans and revalidate state at execution.">Consequential actions use expiring, single-use plans and revalidate state at execution.</li>
-            <li data-es="Los adaptadores confiables usan las credenciales y nunca las devuelven a un turno del modelo." data-en="Credentials are used by trusted adapters and never returned to a model turn.">Credentials are used by trusted adapters and never returned to a model turn.</li>
-          </ul>
+        <section id="authority" data-es="Compara autoridad ambiental con autoridad acotada" data-en="Compare ambient authority with bounded authority" data-label-es="AUTORIDAD" data-label-en="AUTHORITY" data-i18n-role="hint">
+          <p class="eyebrow" data-es="01 · COMPARACIÓN DE AUTORIDAD" data-en="01 · AUTHORITY COMPARISON">01 · AUTHORITY COMPARISON</p>
+          <h2 data-es="MISMA META. AUTORIDAD RADICALMENTE DISTINTA." data-en="SAME GOAL. RADICALLY DIFFERENT AUTHORITY.">SAME GOAL. RADICALLY DIFFERENT AUTHORITY.</h2>
+          <p class="sub prose" data-es="La diferencia no es si el agente puede producir un cambio. Es cuánta autoridad recibe para intentarlo y cómo se limita cada efecto." data-en="The difference is not whether the agent can produce a change. It is how much authority it receives to attempt it and how each effect is constrained.">The difference is not whether the agent can produce a change. It is how much authority it receives to attempt it and how each effect is constrained.</p>
+
+          <div class="authority-comparison" aria-label="Authority model comparison" data-es="Comparación de modelos de autoridad" data-en="Authority model comparison" data-i18n-attr="aria-label">
+            <article class="authority-lane authority-lane-broad" data-authority="broad">
+              <p class="authority-kicker" data-es="AUTORIDAD AMBIENTAL AMPLIA" data-en="BROAD AMBIENT AUTHORITY">BROAD AMBIENT AUTHORITY</p>
+              <h3 data-es="Agente con shell general" data-en="Agent with a general shell">Agent with a general shell</h3>
+              <ol class="authority-path">
+                <li data-es="El modelo recibe una shell general." data-en="The model receives a general shell.">The model receives a general shell.</li>
+                <li data-es="La shell hereda credenciales y acceso del entorno." data-en="The shell inherits credentials and environmental access.">The shell inherits credentials and environmental access.</li>
+                <li data-es="El modelo compone comandos arbitrarios." data-en="The model composes arbitrary commands.">The model composes arbitrary commands.</li>
+                <li data-es="El efecto puede alcanzar recursos que la tarea no necesitaba." data-en="The effect can reach resources the task did not require.">The effect can reach resources the task did not require.</li>
+                <li data-es="Las consecuencias son difíciles de limitar antes de ejecutar." data-en="Consequences are difficult to bound before execution.">Consequences are difficult to bound before execution.</li>
+              </ol>
+              <p class="authority-outcome" data-es="RESULTADO: la autoridad disponible depende del ambiente." data-en="OUTCOME: available authority depends on the environment.">OUTCOME: available authority depends on the environment.</p>
+            </article>
+
+            <article class="authority-lane authority-lane-bounded" data-authority="bounded">
+              <p class="authority-kicker" data-es="AUTORIDAD EXPLÍCITA Y ACOTADA" data-en="EXPLICIT BOUNDED AUTHORITY">EXPLICIT BOUNDED AUTHORITY</p>
+              <h3>MCP Devbox</h3>
+              <ol class="authority-path">
+                <li data-es="El modelo solo ve herramientas con esquemas cerrados." data-en="The model sees only tools with closed schemas.">The model sees only tools with closed schemas.</li>
+                <li data-es="Repositorios, ramas, aplicaciones y objetivos están autorizados previamente." data-en="Repositories, branches, applications and targets are authorized in advance.">Repositories, branches, applications and targets are authorized in advance.</li>
+                <li data-es="Rutas y secretos se deniegan; comandos y parámetros se validan." data-en="Paths and secrets are denied; commands and parameters are validated.">Paths and secrets are denied; commands and parameters are validated.</li>
+                <li data-es="El modo read-only, ask o allow define cómo avanza el trabajo autorizado." data-en="The read-only, ask or allow mode defines how authorized work proceeds.">The read-only, ask or allow mode defines how authorized work proceeds.</li>
+                <li data-es="Los planes vinculados revalidan el estado antes de un efecto consecuente." data-en="Bound plans revalidate state before a consequential effect.">Bound plans revalidate state before a consequential effect.</li>
+                <li data-es="El resultado queda acotado, redactado y auditado." data-en="The result remains bounded, redacted and audited.">The result remains bounded, redacted and audited.</li>
+              </ol>
+              <p class="authority-outcome" data-es="RESULTADO: el efecto se mantiene dentro de autoridad configurada." data-en="OUTCOME: the effect stays inside configured authority.">OUTCOME: the effect stays inside configured authority.</p>
+            </article>
+          </div>
+
+          <div class="mode-selector">
+            <div class="mode-selector-head">
+              <div>
+                <h3 data-es="ELIGE CÓMO AVANZA EL AGENTE" data-en="CHOOSE HOW THE AGENT PROCEEDS">CHOOSE HOW THE AGENT PROCEEDS</h3>
+                <p class="sub" data-es="El modo cambia el flujo de trabajo, no elimina los límites del servidor." data-en="The mode changes the workflow; it does not remove server boundaries.">The mode changes the workflow; it does not remove server boundaries.</p>
+              </div>
+              <p class="mode-layer" data-es="MODO ≠ PLAN ≠ GRANT HUMANO" data-en="MODE ≠ PLAN ≠ HUMAN GRANT">MODE ≠ PLAN ≠ HUMAN GRANT</p>
+            </div>
+
+            <div class="mode-tabs" role="tablist" aria-label="Conceptual authority modes" data-es="Modos conceptuales de autoridad" data-en="Conceptual authority modes" data-i18n-attr="aria-label">
+              <button type="button" id="mode-tab-read-only" role="tab" aria-selected="true" aria-controls="mode-panel-read-only" tabindex="0" data-mode-id="read-only">READ-ONLY</button>
+              <button type="button" id="mode-tab-ask" role="tab" aria-selected="false" aria-controls="mode-panel-ask" tabindex="-1" data-mode-id="ask">ASK</button>
+              <button type="button" id="mode-tab-allow" role="tab" aria-selected="false" aria-controls="mode-panel-allow" tabindex="-1" data-mode-id="allow">ALLOW</button>
+            </div>
+
+            <div class="mode-panels">
+              <article id="mode-panel-read-only" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-read-only" data-mode-panel="read-only">
+                <p class="mode-summary" data-es="Observa y diagnostica sin modificar archivos ni ejecutar comandos." data-en="Observe and diagnose without changing files or executing commands.">Observe and diagnose without changing files or executing commands.</p>
+                <p data-es="Siguen activos la jaula de rutas, la denegación de secretos, la redacción, los límites de entrada y salida y la auditoría." data-en="The path jail, secret denial, redaction, input and output bounds, and audit remain active.">The path jail, secret denial, redaction, input and output bounds, and audit remain active.</p>
+              </article>
+              <article id="mode-panel-ask" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-ask" data-mode-panel="ask" hidden>
+                <p class="mode-summary" data-es="Trabaja y solicita aprobación explícita para los efectos que la política marca como revisables." data-en="Work and request explicit approval for effects that policy marks as reviewable.">Work and request explicit approval for effects that policy marks as reviewable.</p>
+                <p data-es="No significa que toda lectura o paso seguro se detenga. Los planes siguen siendo exactos, temporales y revalidados." data-en="It does not mean every read or safe step stops. Plans remain exact, temporary and revalidated.">It does not mean every read or safe step stops. Plans remain exact, temporary and revalidated.</p>
+              </article>
+              <article id="mode-panel-allow" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-allow" data-mode-panel="allow" hidden>
+                <p class="mode-summary" data-es="Trabaja autónomamente dentro de la autoridad configurada previamente por el administrador." data-en="Work autonomously inside authority previously configured by the administrator.">Work autonomously inside authority previously configured by the administrator.</p>
+                <p data-es="No es una shell libre: continúan jails, secretos denegados, allowlists, esquemas, validación, redacción, auditoría, planes y revalidación." data-en="It is not a free shell: jails, denied secrets, allowlists, schemas, validation, redaction, audit, plans and revalidation remain active.">It is not a free shell: jails, denied secrets, allowlists, schemas, validation, redaction, audit, plans and revalidation remain active.</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="safety-statement" role="note">
+            <p><strong data-es="ADVERTENCIA" data-en="CAUTION">CAUTION</strong><span aria-hidden="true">: </span><span data-es="MCP Devbox reduce la autoridad disponible. No convierte el código generado ni toda operación permitida en inherentemente segura." data-en="MCP Devbox reduces the authority available. It does not make generated code or every allowed operation inherently safe.">MCP Devbox reduces the authority available. It does not make generated code or every allowed operation inherently safe.</span></p>
+          </div>
+
           <div class="firmware-note">
             <p><strong>ABSENT BY CONSTRUCTION</strong></p>
             <p data-es="Force push, rutas arbitrarias del host, aprobación pública de planes y ejecución no autenticada de herramientas no son interruptores ocultos. No forman parte de esta superficie." data-en="Force push, arbitrary host paths, public plan approval and unauthenticated tool execution are not hidden switches. They are not part of this surface.">Force push, arbitrary host paths, public plan approval and unauthenticated tool execution are not hidden switches. They are not part of this surface.</p>

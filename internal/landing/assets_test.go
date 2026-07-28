@@ -182,10 +182,92 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 		".hero-action:first-child{background:var(--cyan);color:var(--black)",
 		".hero-proof{align-self:center;min-width:0;border:1pxsolidvar(--green)",
 		".hero-boundary{margin:0;padding-top:.65rem;border-top:1pxsolidvar(--gray-low)",
-		".hero-grid,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
+		".hero-grid,.authority-comparison,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
 	} {
 		if !strings.Contains(compactCSS, required) {
 			t.Errorf("landing hero CSS missing %q", required)
+		}
+	}
+}
+
+func TestLandingAuthorityComparisonAndModesAreAccurateAccessibleAndResponsive(t *testing.T) {
+	index := string(mustLandingAsset(t, "assets/index.html"))
+	css := string(mustLandingAsset(t, "assets/app.css"))
+	js := string(mustLandingAsset(t, "assets/app.js"))
+
+	for _, required := range []string{
+		`data-authority="broad"`,
+		`data-authority="bounded"`,
+		`data-en="The model receives a general shell."`,
+		`data-en="The shell inherits credentials and environmental access."`,
+		`data-en="The model sees only tools with closed schemas."`,
+		`data-en="The read-only, ask or allow mode defines how authorized work proceeds."`,
+		`data-es="El modo read-only, ask o allow define cómo avanza el trabajo autorizado."`,
+		`data-en="MODE ≠ PLAN ≠ HUMAN GRANT"`,
+		`data-es="MODO ≠ PLAN ≠ GRANT HUMANO"`,
+		`data-en="CAUTION"`,
+		`data-es="ADVERTENCIA"`,
+		`data-en="MCP Devbox reduces the authority available. It does not make generated code or every allowed operation inherently safe."`,
+		`data-es="MCP Devbox reduce la autoridad disponible. No convierte el código generado ni toda operación permitida en inherentemente segura."`,
+	} {
+		if !strings.Contains(index, required) {
+			t.Errorf("authority comparison missing %q", required)
+		}
+	}
+
+	if got := strings.Count(index, `data-authority="`); got != 2 {
+		t.Fatalf("authority comparison has %d lanes, want 2", got)
+	}
+	if got := strings.Count(index, `data-mode-id="`); got != 3 {
+		t.Fatalf("authority selector has %d tabs, want 3", got)
+	}
+	if got := strings.Count(index, `data-mode-panel="`); got != 3 {
+		t.Fatalf("authority selector has %d panels, want 3", got)
+	}
+
+	for _, required := range []string{
+		`id="mode-tab-read-only" role="tab" aria-selected="true" aria-controls="mode-panel-read-only" tabindex="0"`,
+		`id="mode-tab-ask" role="tab" aria-selected="false" aria-controls="mode-panel-ask" tabindex="-1"`,
+		`id="mode-tab-allow" role="tab" aria-selected="false" aria-controls="mode-panel-allow" tabindex="-1"`,
+		`id="mode-panel-read-only" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-read-only"`,
+		`id="mode-panel-ask" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-ask" data-mode-panel="ask" hidden`,
+		`id="mode-panel-allow" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-allow" data-mode-panel="allow" hidden`,
+		`data-en="It does not mean every read or safe step stops. Plans remain exact, temporary and revalidated."`,
+		`data-en="It is not a free shell: jails, denied secrets, allowlists, schemas, validation, redaction, audit, plans and revalidation remain active."`,
+	} {
+		if !strings.Contains(index, required) {
+			t.Errorf("authority mode contract missing %q", required)
+		}
+	}
+
+	for _, required := range []string{
+		`document.querySelectorAll("[data-mode-id]")`,
+		`document.querySelectorAll("[data-mode-panel]")`,
+		`button.setAttribute("aria-selected", selected ? "true" : "false")`,
+		`panel.hidden = panel.getAttribute("data-mode-panel") !== modeID`,
+		`event.key === "ArrowRight" || event.key === "ArrowDown"`,
+		`event.key === "Home"`,
+		`event.key === "End"`,
+		`selectMode("read-only", false)`,
+	} {
+		if !strings.Contains(js, required) {
+			t.Errorf("authority selector JavaScript missing %q", required)
+		}
+	}
+
+	compactCSS := strings.NewReplacer(" ", "", "\n", "", "\t", "", "\r", "").Replace(strings.ToLower(css))
+	for _, required := range []string{
+		".authority-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))",
+		".authority-pathli::before{position:absolute;left:.45rem;color:var(--cyan);content:counter(authority-step,decimal-leading-zero)\"→\"",
+		".mode-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))",
+		".mode-tabsbutton[aria-selected=\"true\"]::before{content:\">\"",
+		".mode-panel[hidden]{display:none",
+		".safety-statement{margin:1rem0;border:3pxdoublevar(--amber)",
+		".hero-grid,.authority-comparison,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
+		".mode-tabs{grid-template-columns:1fr",
+	} {
+		if !strings.Contains(compactCSS, required) {
+			t.Errorf("authority comparison CSS missing %q", required)
 		}
 	}
 }

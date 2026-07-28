@@ -506,6 +506,222 @@ strong,
   border-color:var(--gray);
 }
 
+.authority-comparison {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.75rem;
+  margin:1rem 0;
+}
+
+.authority-lane {
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  border:2px solid var(--gray);
+  background:var(--blue-dark);
+}
+
+.authority-lane-broad {
+  border-color:var(--amber);
+}
+
+.authority-lane-bounded {
+  border-color:var(--green);
+}
+
+.authority-kicker {
+  margin:0;
+  padding:.18rem .65rem;
+  background:var(--gray);
+  color:var(--black);
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.06em;
+}
+
+.authority-lane-broad .authority-kicker {
+  background:var(--amber);
+}
+
+.authority-lane-bounded .authority-kicker {
+  background:var(--green);
+}
+
+.authority-lane h3 {
+  margin:0;
+  padding:.6rem .7rem .25rem;
+  color:var(--yellow);
+  font-size:1rem;
+}
+
+.authority-path {
+  counter-reset:authority-step;
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  gap:.45rem;
+  margin:.35rem .7rem .7rem;
+  padding:0;
+  list-style:none;
+}
+
+.authority-path li {
+  counter-increment:authority-step;
+  position:relative;
+  min-height:2.2rem;
+  padding:.35rem .45rem .35rem 5.5ch;
+  border-left:1px solid var(--gray-low);
+  background:var(--blue);
+  overflow-wrap:anywhere;
+}
+
+.authority-path li::before {
+  position:absolute;
+  left:.45rem;
+  color:var(--cyan);
+  content:counter(authority-step,decimal-leading-zero) " →";
+  font-weight:700;
+}
+
+.authority-lane-broad .authority-path li::before {
+  color:var(--amber);
+}
+
+.authority-lane-bounded .authority-path li::before {
+  color:var(--green);
+}
+
+.authority-outcome {
+  margin:auto .7rem .7rem;
+  padding:.45rem .55rem;
+  border:1px solid var(--gray-low);
+  color:var(--white);
+  font-weight:700;
+}
+
+.authority-lane-broad .authority-outcome {
+  border-color:var(--amber);
+}
+
+.authority-lane-bounded .authority-outcome {
+  border-color:var(--green);
+}
+
+.mode-selector {
+  margin:1rem 0;
+  border:1px solid var(--cyan-low);
+  padding:.75rem;
+  background:var(--blue-dark);
+}
+
+.mode-selector-head {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:.75rem 1.5ch;
+  margin-bottom:.65rem;
+}
+
+.mode-selector-head h3 {
+  margin:0 0 .2rem;
+  color:var(--cyan);
+  font-size:.95rem;
+}
+
+.mode-selector-head p {
+  margin-bottom:0;
+}
+
+.mode-layer {
+  flex:none;
+  padding:.15rem .55rem;
+  border:1px solid var(--yellow);
+  color:var(--yellow);
+  font-size:12px;
+  font-weight:700;
+  white-space:nowrap;
+}
+
+.mode-tabs {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.35rem;
+}
+
+.mode-tabs button {
+  min-width:0;
+  border:1px solid var(--gray);
+  padding:.45rem .55rem;
+  background:var(--blue);
+  color:var(--white);
+  cursor:pointer;
+  font-weight:700;
+  text-align:left;
+}
+
+.mode-tabs button:hover,
+.mode-tabs button:focus-visible {
+  border-color:var(--cyan);
+  background:var(--cyan);
+  color:var(--black);
+}
+
+.mode-tabs button[aria-selected="true"] {
+  border-color:var(--yellow);
+  background:var(--yellow);
+  color:var(--black);
+}
+
+.mode-tabs button[aria-selected="true"]::before {
+  content:"> ";
+}
+
+.mode-panels {
+  margin-top:.45rem;
+  border:1px solid var(--gray-low);
+  background:var(--blue);
+}
+
+.mode-panel {
+  min-height:7.2rem;
+  padding:.7rem .8rem;
+}
+
+.mode-panel[hidden] {
+  display:none;
+}
+
+.mode-panel p {
+  max-width:76ch;
+}
+
+.mode-panel p:last-child {
+  margin-bottom:0;
+}
+
+.mode-summary {
+  color:var(--yellow);
+  font-weight:700;
+}
+
+.safety-statement {
+  margin:1rem 0;
+  border:3px double var(--amber);
+  padding:.7rem .85rem;
+  background:var(--black);
+}
+
+.safety-statement p {
+  max-width:none;
+  margin:0;
+  color:var(--white);
+  font-weight:700;
+}
+
+.safety-statement strong {
+  color:var(--amber);
+}
+
 .checks,
 .limits {
   display:flex;
@@ -884,6 +1100,7 @@ tr:last-child td {
   }
 
   .hero-grid,
+  .authority-comparison,
   .status-grid,
   .policy-grid,
   .cards {
@@ -898,6 +1115,14 @@ tr:last-child td {
   .hero-proof {
     align-self:stretch;
     box-shadow:3px 3px 0 var(--black);
+  }
+
+  .mode-selector-head {
+    flex-direction:column;
+  }
+
+  .mode-layer {
+    white-space:normal;
   }
 
   .hero-actions {
@@ -939,6 +1164,10 @@ tr:last-child td {
   .hero-proof-facts {
     grid-template-columns:1fr;
     gap:.05rem;
+  }
+
+  .mode-tabs {
+    grid-template-columns:1fr;
   }
 
   .hero-proof-facts dd {

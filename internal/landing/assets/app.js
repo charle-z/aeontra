@@ -96,6 +96,40 @@
     });
   });
 
+  var modeButtons = Array.prototype.slice.call(document.querySelectorAll("[data-mode-id]"));
+  var modePanels = Array.prototype.slice.call(document.querySelectorAll("[data-mode-panel]"));
+
+  function selectMode(modeID, moveFocus) {
+    var selectedButton = null;
+    modeButtons.forEach(function (button) {
+      var selected = button.getAttribute("data-mode-id") === modeID;
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+      button.setAttribute("tabindex", selected ? "0" : "-1");
+      if (selected) selectedButton = button;
+    });
+    modePanels.forEach(function (panel) {
+      panel.hidden = panel.getAttribute("data-mode-panel") !== modeID;
+    });
+    if (moveFocus && selectedButton) selectedButton.focus();
+  }
+
+  modeButtons.forEach(function (button, index) {
+    button.addEventListener("click", function () {
+      selectMode(button.getAttribute("data-mode-id"), false);
+    });
+    button.addEventListener("keydown", function (event) {
+      var next = index;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % modeButtons.length;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index + modeButtons.length - 1) % modeButtons.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = modeButtons.length - 1;
+      else return;
+      event.preventDefault();
+      selectMode(modeButtons[next].getAttribute("data-mode-id"), true);
+    });
+  });
+  if (modeButtons.length && modePanels.length) selectMode("read-only", false);
+
   var fields = {
     status: document.getElementById("runtimeStatus"),
     version: document.getElementById("runtimeVersion"),

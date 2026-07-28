@@ -61,7 +61,9 @@ The continuous document contains:
 2. exactly three primary hero actions: the canonical proof, the authority model,
    and the repository;
 3. capability status below the hero;
-4. authority model;
+4. a visual comparison between broad ambient authority and MCP Devbox's explicit
+   bounded authority, followed by the conceptual `read-only`, `ask`, and `allow`
+   selector;
 5. local policy explorer;
 6. static request-path graphic;
 7. measured host capacity and the closed P16 target-VPS acceptance;
@@ -83,6 +85,8 @@ mockup version, commit, catalog, or milestone state.
 - `Escape` returns the internal document pane to the top;
 - active-section help updates through `IntersectionObserver`;
 - the policy explorer is a local deterministic simulation and performs no server call;
+- the authority-mode selector is also local-only, uses tabs and panels with
+  arrow/Home/End keyboard navigation, and never changes real policy;
 - typewriter output and smooth movement are disabled by `prefers-reduced-motion`;
 - layouts cover 320-pixel mobile width, with wide diagrams and tables scrolling inside
   their own regions instead of forcing body-level horizontal scrolling.
@@ -120,6 +124,11 @@ Tests must fail when the landing is absent or when it loses any of these propert
 - safe `/version` identity handling;
 - a bilingual benefit-first hero with problem, solution, autonomy, Pixelgrama
   proof, and exactly three primary actions;
+- a bilingual, mobile-readable authority comparison that does not depend only on
+  color, describes `allow` as configured autonomy, avoids presenting `ask` as the only
+  safe mode, and states that reduced authority is not absolute safety;
+- an accessible three-tab conceptual mode selector whose interaction remains entirely
+  in the browser;
 - semantic content, capability status distinctions, real P16 acceptance, honest limits,
   and visible CubePath attribution.
 
