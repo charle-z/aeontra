@@ -1,58 +1,47 @@
-# Current task — Presentation optimization Hito 4 complete
+# Current task — Presentation optimization Hito 1 complete
 
 Authoritative plan: Brain note `mcp-devbox-presentation-optimization`.
 
 ## Completion state
 
-Hito 4 — Public evidence manifest is complete on branch `showcase/pixelgrama-evidence`.
+Hito 1 — Nueva jerarquía para la landing is complete on branch `showcase/pixelgrama-evidence`.
 
-Implementation commit: `69884a2` (`Add canonical Pixelgrama showcase evidence`).
-Base and initial HEAD: `main` at `b70efb6c12fe15d7138ea40d033043092c32fc66`.
+Implementation commit: `deb3665e48466b77500f36cf6dbb70a30fd8e4f8` (`Lead landing with bounded autonomy proof`).
 
-Hito 1 has not started. No branch was published, no pull request was created, nothing was merged, and MCP Devbox was not deployed.
+Hito 4 remains preserved through commits `69884a2` and `9aefa0e`; its canonical manifest and validator were not modified.
 
-## Public evidence verified on 2026-07-28
+No branch was published, no pull request was created, nothing was merged, MCP Devbox was not deployed, and Hito 2 has not started.
 
-- Canonical production URL: `https://pixelgrama.mcp-devbox-charlez.duckdns.org`.
-- `/` responds successfully and deliberately resolves to `/wall`.
-- `/wall` responds successfully as the primary public demonstration route.
-- `/version` responds successfully with commit `c6eaeae4561c450459cf31b4dc6b4b560abf7cf2`, repository `https://github.com/charle-z/pixelgrama`, and PR `https://github.com/charle-z/pixelgrama/pull/17`.
-- Pixelgrama `origin/main` is exactly `c6eaeae4561c450459cf31b4dc6b4b560abf7cf2`; production and source main match.
-- Public merged PR/check evidence recorded for PRs 1, 15, 16, and 17.
-- Infrastructure is recorded as CubePath with Coolify.
+## Hito 1 result
 
-## Files changed by the implementation commit
+- Replaced the component-first boot summary with a benefit-first summary: real infrastructure, no free shell, narrow tools, configurable autonomy, and Pixelgrama proof.
+- Reworked the first landing section so it explains, in this order, the excessive-authority problem, MCP Devbox's bounded-tool solution, the owner's autonomy choices, and the public Pixelgrama result.
+- Added exactly three primary actions: canonical Pixelgrama evidence, authority model, and MCP Devbox repository.
+- Moved implemented/experimental/planned capability detail below the hero rather than presenting it before the value proposition.
+- Added a public read-only Pixelgrama proof panel linking `/wall` and `/version`, while stating that the page grants no tool, console, or credential authority.
+- Kept the landing bilingual, keyboard accessible, responsive at the existing 760 px and 420 px breakpoints, and aligned with the square VGA/BIOS visual language.
+- Updated metadata and the embedded social card to use the same benefit-first message.
+- Updated `docs/landing/public-showcase.md` and added regression tests for hierarchy, exact bilingual content, exactly three actions, responsive CSS, startup messaging, and valid social SVG.
 
-- `docs/showcase/pixelgrama-evidence.json`
-- `docs/showcase/evidence.go`
-- `docs/showcase/evidence_test.go`
-- `docs/showcase/README.md`
-- `docs/documentation-map.md`
+## Files changed
+
+- `internal/landing/assets/index.html`
+- `internal/landing/assets/app.css`
+- `internal/landing/assets/social-card.svg`
+- `internal/landing/assets_test.go`
 - `docs/landing/public-showcase.md`
-- `docs/public_showcase_test.go`
-- `internal/landing/handler.go`
-- `internal/landing/handler_test.go`
-
-## Technical decisions
-
-- `docs/showcase/pixelgrama-evidence.json` is the single canonical evidence source.
-- The Go package in `docs/showcase` validates and embeds those exact bytes.
-- The existing landing handler serves the static public resource at `/showcase/pixelgrama-evidence.json`.
-- No browser-time GitHub query or new production dependency was introduced.
-- Missing, empty, malformed, unknown-version, or invalid evidence fails closed during handler construction and CI.
-- Validation covers closed fields, required types, HTTPS URLs, lowercase 40-character SHAs, exact Pixelgrama repository and URLs, CubePath/Coolify, successful public checks, sensitive-pattern rejection, private identifier rejection, and separation of historical execution from observed production.
-- Exact historical `read-only`, `ask`, or `allow` mode is recorded as `not_publicly_verified`; it was not invented.
-- Public results of publication/deployment are separated from private one-time plan artifacts.
 
 ## Validation results
 
-- `go test ./docs/showcase ./internal/landing ./docs -count=1`: passed.
-- Complete `go test ./... -count=1`: the combined process was terminated by the execution environment after green results through `internal/devaction`; every remaining package was then executed in explicit bounded groups and passed.
-- Remaining Edge, lifecycle, integration, MCP server, model turn, OAuth, policy, result store, task journal, telemetry, tools, workflow policy, workqueue, packaging, and profile packages: passed.
+- Focused `go test ./internal/landing ./docs/showcase ./docs -count=1`: passed.
+- Complete Go test suite executed in three bounded groups: all packages passed, including Edge, MCP server, OAuth, policy, tools, workqueue, packaging, and profiles.
 - `go vet ./...`: passed.
 - `go build ./...`: passed.
-- `git diff --check HEAD`: passed before commit.
+- `git diff --check`: passed.
+- Exact diff check confirmed the Hito 4 manifest and validator remained unchanged.
+- A focused race invocation did not start because this execution profile has `CGO_ENABLED=0`; this is an environment limitation, not a test failure. The existing CI race job explicitly enables CGO.
+- Existing MCP server tests covering the public landing and unchanged `/mcp`, `/console`, `/version`, and OAuth routing passed as part of the suite.
 
 ## Pending work
 
-The next exact milestone is Hito 1 — Nueva jerarquía para la landing. Preserve the Hito 4 manifest and validation unchanged unless a real defect is discovered. Revalidate the branch and current source before editing. Do not begin Hitos 2, 3, or 5 during the Hito 1 execution.
+The next exact milestone is Hito 2 — Comparación visual de autoridad. Preserve Hitos 4 and 1 unless a real defect is found. Implement only the broad-shell-versus-MCP-Devbox comparison, the conceptual `read-only` / `ask` / `allow` selector, and the mandatory non-absolute-safety statement. Stop before Hito 3.
