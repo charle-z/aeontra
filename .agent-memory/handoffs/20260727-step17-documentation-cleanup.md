@@ -5,7 +5,7 @@ Branch `step17-documentation-cleanup` is based on the merged Step 16 foundation 
 ## Completed locally
 
 - Current documentation no longer embeds moving releases, commits, catalog hashes or tool counts.
-- README presents the product, live identity sources, CubePath hosting and active Cubethon 2026 Q3 participation.
+- README presents the product, live identity sources and CubePath hosting without event-specific promotion.
 - AGENTS, context capsule, connection guide, Coolify guide, historical design/features and Parrot installation documents have clear canonical roles.
 - Historical proof remains in baselines, specs, ADRs, roadmap, runbooks and Git rather than being duplicated into current operational sources.
 - No runtime or authority-bearing implementation changed.

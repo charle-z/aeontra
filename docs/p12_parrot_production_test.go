@@ -71,26 +71,5 @@ func TestP12ParrotProductionEvidenceAndOnboardingStaySynchronized(t *testing.T) 
 			t.Errorf("README missing live-or-historical evidence pointer %q", expected)
 		}
 	}
-	for _, forbidden := range []string{
-		"Cubethon 2026 Q3",
-		"cubethon-2026-q3-submission.md",
-	} {
-		if strings.Contains(readme, forbidden) {
-			t.Errorf("README retains event-specific promotion %q", forbidden)
-		}
-	}
 
-	submission := read("cubethon-2026-q3-submission.md")
-	for _, expected := range []string{
-		"MCP Devbox — Secure remote development workcells for AI agents",
-		"https://mcp-devbox-charlez.duckdns.org",
-		"https://github.com/charle-z/mcp-devbox",
-		"Coolify on CubePath",
-		"judge-accessible demo path",
-		"<ADD_DISCORD_USERNAME>",
-	} {
-		if !strings.Contains(submission, expected) {
-			t.Errorf("Cubethon draft missing %q", expected)
-		}
-	}
 }

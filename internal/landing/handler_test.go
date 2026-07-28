@@ -40,9 +40,12 @@ func TestPublicLandingRoutesAndSecurityHeaders(t *testing.T) {
 	for _, required := range []string{
 		"default-src 'none'",
 		"style-src 'self'",
+		"style-src-attr 'none'",
 		"script-src 'self'",
+		"script-src-attr 'none'",
 		"connect-src 'self'",
 		"img-src 'self'",
+		"object-src 'none'",
 		"frame-ancestors 'none'",
 		"base-uri 'none'",
 		"form-action 'none'",
@@ -71,8 +74,8 @@ func TestPublicLandingRoutesAndSecurityHeaders(t *testing.T) {
 	}
 }
 
-func TestPublicLandingCSPAllowsSameOriginRuntimeIdentity(t *testing.T) {
-	const want = "default-src 'none'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+func TestPublicLandingCSPAllowsOnlySameOriginPublicReads(t *testing.T) {
+	const want = "default-src 'none'; connect-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 	if landingPageCSP != want {
 		t.Fatalf("landing page CSP=%q want %q", landingPageCSP, want)
 	}
@@ -93,7 +96,7 @@ func TestPublicLandingCSPAllowsSameOriginRuntimeIdentity(t *testing.T) {
 		t.Fatalf("GET / CSP=%q want %q", csp, want)
 	}
 	if !strings.Contains(csp, "connect-src 'self'") {
-		t.Fatalf("GET / CSP does not permit the same-origin /version request: %s", csp)
+		t.Fatalf("GET / CSP does not permit the same-origin public reads: %s", csp)
 	}
 }
 
@@ -106,10 +109,11 @@ func TestPublicLandingAssetsAreEmbeddedAndHardened(t *testing.T) {
 	handler.Register(mux)
 
 	for path, wantType := range map[string]string{
-		"/landing/assets/app.css":          "text/css",
-		"/landing/assets/app.js":           "text/javascript",
-		"/landing/assets/request-path.svg": "image/svg+xml",
-		"/landing/assets/social-card.svg":  "image/svg+xml",
+		"/landing/assets/app.css":            "text/css",
+		"/landing/assets/app.js":             "text/javascript",
+		"/landing/assets/request-path.svg":   "image/svg+xml",
+		"/landing/assets/social-card.svg":    "image/svg+xml",
+		"/showcase/pixelgrama-evidence.json": "application/json",
 	} {
 		response := serveLanding(mux, http.MethodGet, path)
 		if response.Code != http.StatusOK {
@@ -121,6 +125,19 @@ func TestPublicLandingAssetsAreEmbeddedAndHardened(t *testing.T) {
 		}
 		if response.Header().Get("X-Content-Type-Options") != "nosniff" {
 			t.Errorf("GET %s missing nosniff", path)
+		}
+	}
+}
+
+func TestPublicLandingFailsClosedWhenEvidenceIsUnavailable(t *testing.T) {
+	loaders := []func() ([]byte, error){
+		nil,
+		func() ([]byte, error) { return nil, http.ErrAbortHandler },
+		func() ([]byte, error) { return nil, nil },
+	}
+	for index, loader := range loaders {
+		if _, err := newHandler(loader); err == nil || err.Error() != "pixelgrama evidence is unavailable" {
+			t.Fatalf("loader %d error=%v", index, err)
 		}
 	}
 }

@@ -36,6 +36,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
+COPY docs/showcase ./docs/showcase
 COPY --from=console-build /src/internal/console/assets ./internal/console/assets
 
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \

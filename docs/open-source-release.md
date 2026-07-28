@@ -10,8 +10,8 @@ source until the owner intentionally adds an open-source license.
 ## Future licensing options
 
 The owner may later choose AGPL-3.0 plus a separate commercial license, a permissive
-license, or another explicit arrangement. That decision is deferred until after the
-Cubethon and should consider contribution goals, hosted-service reuse, attribution,
+license, or another explicit arrangement. That decision remains deferred and should
+consider contribution goals, hosted-service reuse, attribution, support obligations,
 and commercial strategy.
 
 ## Public repository

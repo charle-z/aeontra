@@ -11,6 +11,20 @@ func TestPublicShowcaseDocumentationContract(t *testing.T) {
 		"exact public route `GET /`",
 		"presentation-only",
 		"`/version`",
+		"docs/showcase/pixelgrama-evidence.json",
+		"/showcase/pixelgrama-evidence.json",
+		"exactly two same-origin public requests",
+		"six-step, read-only Pixelgrama walkthrough",
+		"Neither request reaches GitHub",
+		"historical policy mode and tool list marked as unpublished",
+		"`read-only`, `ask`, and `allow` selector",
+		"does not depend only on color",
+		"reduced authority is not absolute safety",
+		"arrow/Home/End keyboard navigation",
+		"modal dialog while visible",
+		"reports loading through `aria-busy`",
+		"rejects inline script/style attributes",
+		"fails closed",
 		"prefers-reduced-motion",
 		"Hosted on CubePath",
 		"Production closure requires",
@@ -44,7 +58,9 @@ func TestPublicShowcaseDocumentationContract(t *testing.T) {
 	}
 
 	documentationMap := readDoc(t, "documentation-map.md")
-	if !containsNormalizedProse(documentationMap, "docs/landing/public-showcase.md") {
-		t.Error("documentation map does not name the public showcase contract")
+	for _, required := range []string{"docs/landing/public-showcase.md", "docs/showcase/pixelgrama-evidence.json"} {
+		if !containsNormalizedProse(documentationMap, required) {
+			t.Errorf("documentation map does not name %q", required)
+		}
 	}
 }
