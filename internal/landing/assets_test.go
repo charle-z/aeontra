@@ -97,6 +97,99 @@ func TestEmbeddedLandingAssetsAreSelfContainedAccessibleAndHonest(t *testing.T) 
 	}
 }
 
+func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
+	index := string(mustLandingAsset(t, "assets/index.html"))
+	css := string(mustLandingAsset(t, "assets/app.css"))
+	socialCard := string(mustLandingAsset(t, "assets/social-card.svg"))
+
+	for _, required := range []string{
+		`data-es="Una shell general entrega al modelo más autoridad de la que la mayoría de tareas necesita."`,
+		`data-es="ChatGPT trabajando sobre infraestructura real, sin entregarle una shell libre."`,
+		`data-es="MCP Devbox permite que un agente lea, modifique, pruebe, publique y despliegue proyectos mediante herramientas limitadas, políticas inmutables, secretos denegados y operaciones verificables."`,
+		`data-es="El propietario elige entre solo lectura, revisión explícita o autonomía dentro de límites previamente configurados."`,
+		`data-es="Pixelgrama fue construido, probado, publicado y desplegado mediante MCP Devbox sobre CubePath."`,
+		`data-en="A general shell gives the model more authority than most tasks require."`,
+		`data-en="ChatGPT working on real infrastructure without receiving a free shell."`,
+		`data-en="MCP Devbox lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations."`,
+		`data-en="The owner chooses between read-only access, explicit review or autonomy within preconfigured limits."`,
+		`data-en="Pixelgrama was built, tested, published and deployed through MCP Devbox on CubePath."`,
+		`href="/showcase/pixelgrama-evidence.json"`,
+		`href="#authority"`,
+		`href="https://github.com/charle-z/mcp-devbox"`,
+		`data-es="Ver la prueba completa"`,
+		`data-es="Explorar el modelo de autoridad"`,
+		`data-es="Abrir el repositorio"`,
+	} {
+		if !strings.Contains(index, required) {
+			t.Errorf("landing hero missing %q", required)
+		}
+	}
+	var socialSVG struct {
+		XMLName xml.Name
+	}
+	if err := xml.Unmarshal([]byte(socialCard), &socialSVG); err != nil || socialSVG.XMLName.Local != "svg" {
+		t.Fatalf("social card is not a well-formed SVG: name=%q err=%v", socialSVG.XMLName.Local, err)
+	}
+
+	for _, required := range []string{
+		"MCP DEVBOX — BOUNDED AUTONOMY",
+		"REAL INFRASTRUCTURE.",
+		"NO FREE SHELL.",
+		"Pixelgrama built and deployed through MCP Devbox.",
+	} {
+		if !strings.Contains(socialCard, required) {
+			t.Errorf("social card missing benefit-first statement %q", required)
+		}
+	}
+
+	if got := strings.Count(index, `class="hero-action"`); got != 3 {
+		t.Fatalf("landing hero has %d primary actions, want exactly 3", got)
+	}
+
+	heroAt := strings.Index(index, `class="hero-grid"`)
+	statusAt := strings.Index(index, `class="capability-status"`)
+	authorityAt := strings.Index(index, `<section id="authority"`)
+	if heroAt < 0 || statusAt <= heroAt || authorityAt <= statusAt {
+		t.Fatalf("landing hierarchy is not hero then product status then authority: hero=%d status=%d authority=%d", heroAt, statusAt, authorityAt)
+	}
+
+	bootStart := strings.Index(index, `class="boot-window"`)
+	bootEnd := strings.Index(index, `class="machine"`)
+	if bootStart < 0 || bootEnd <= bootStart {
+		t.Fatal("landing boot summary boundaries are invalid")
+	}
+	boot := index[bootStart:bootEnd]
+	for _, required := range []string{
+		"CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.",
+		"narrow tools and verifiable operations",
+		"read-only / review / bounded autonomy",
+		"Pixelgrama, built and deployed on CubePath",
+	} {
+		if !strings.Contains(boot, required) {
+			t.Errorf("boot summary missing benefit-first statement %q", required)
+		}
+	}
+	for _, forbidden := range []string{"policy explorer", "runtime identity", "tool count"} {
+		if strings.Contains(strings.ToLower(boot), forbidden) {
+			t.Errorf("boot summary leads with technical component %q", forbidden)
+		}
+	}
+
+	compactCSS := strings.NewReplacer(" ", "", "\n", "", "\t", "", "\r", "").Replace(strings.ToLower(css))
+	for _, required := range []string{
+		".hero-grid{display:grid;grid-template-columns:minmax(0,1.45fr)minmax(18rem,.55fr)",
+		".hero-actions{display:flex;flex-wrap:wrap",
+		".hero-action:first-child{background:var(--cyan);color:var(--black)",
+		".hero-proof{align-self:center;min-width:0;border:1pxsolidvar(--green)",
+		".hero-boundary{margin:0;padding-top:.65rem;border-top:1pxsolidvar(--gray-low)",
+		".hero-grid,.status-grid,.policy-grid,.cards{grid-template-columns:1fr",
+	} {
+		if !strings.Contains(compactCSS, required) {
+			t.Errorf("landing hero CSS missing %q", required)
+		}
+	}
+}
+
 func TestLandingPresentationRetouchesRemainWideFirmwareAndBilingual(t *testing.T) {
 	index := string(mustLandingAsset(t, "assets/index.html"))
 	css := string(mustLandingAsset(t, "assets/app.css"))

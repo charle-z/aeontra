@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0000A8">
-  <meta name="description" content="MCP Devbox is a narrow, auditable control plane that lets AI agents work on real software without receiving a free shell." data-es="MCP Devbox es un plano de control acotado y auditable que permite a agentes de IA trabajar sobre software real sin recibir un shell libre." data-en="MCP Devbox is a narrow, auditable control plane that lets AI agents work on real software without receiving a free shell." data-i18n-attr="content">
-  <meta property="og:title" content="MCP Devbox — Secure Agent Firmware" data-es="MCP Devbox — Firmware seguro para agentes" data-en="MCP Devbox — Secure Agent Firmware" data-i18n-attr="content">
-  <meta property="og:description" content="Real repository and deployment work through explicit, bounded authority." data-es="Trabajo real sobre repositorios y despliegues mediante autoridad explícita y acotada." data-en="Real repository and deployment work through explicit, bounded authority." data-i18n-attr="content">
+  <meta name="description" content="ChatGPT working on real infrastructure without receiving a free shell. MCP Devbox provides bounded tools, configurable autonomy and verifiable operations." data-es="ChatGPT trabajando sobre infraestructura real, sin recibir una shell libre. MCP Devbox ofrece herramientas acotadas, autonomía configurable y operaciones verificables." data-en="ChatGPT working on real infrastructure without receiving a free shell. MCP Devbox provides bounded tools, configurable autonomy and verifiable operations." data-i18n-attr="content">
+  <meta property="og:title" content="MCP Devbox — Bounded autonomy for real infrastructure" data-es="MCP Devbox — Autonomía acotada sobre infraestructura real" data-en="MCP Devbox — Bounded autonomy for real infrastructure" data-i18n-attr="content">
+  <meta property="og:description" content="Read, change, test, publish and deploy through narrow tools instead of a general shell." data-es="Leer, modificar, probar, publicar y desplegar mediante herramientas limitadas en lugar de una shell general." data-en="Read, change, test, publish and deploy through narrow tools instead of a general shell." data-i18n-attr="content">
   <meta property="og:type" content="website">
   <meta property="og:image" content="/landing/assets/social-card.svg">
   <meta name="twitter:card" content="summary_large_image">
-  <title data-es="MCP Devbox — Firmware seguro para agentes" data-en="MCP Devbox — Secure Agent Firmware">MCP Devbox — Secure Agent Firmware</title>
+  <title data-es="MCP Devbox — Autonomía acotada sobre infraestructura real" data-en="MCP Devbox — Bounded autonomy for real infrastructure">MCP Devbox — Bounded autonomy for real infrastructure</title>
   <link rel="stylesheet" href="/landing/assets/app.css">
   <script src="/landing/assets/app.js" defer></script>
 </head>
@@ -20,13 +20,12 @@
 
   <div class="boot" id="boot" aria-label="MCP Devbox startup summary" data-es="Resumen de arranque de MCP Devbox" data-en="MCP Devbox startup summary" data-i18n-attr="aria-label">
     <div class="boot-window">
-      <p class="boot-title">MCP DEVBOX OPERATIONS FIRMWARE</p>
-      <p data-es="SUPERFICIE PÚBLICA DE PRESENTACIÓN" data-en="PUBLIC SHOWCASE POST">PUBLIC SHOWCASE POST</p>
-      <p><span data-es="límite de autoridad ........ presentation-only " data-en="authority boundary ........ presentation-only ">authority boundary ........ presentation-only </span><span class="ok">[ENFORCED]</span></p>
-      <p><span data-es="acceso al control plane ..... ausente " data-en="control-plane access ...... absent ">control-plane access ...... absent </span><span class="ok">[ENFORCED]</span></p>
-      <p><span data-es="identidad del runtime ....... /version " data-en="runtime identity .......... /version ">runtime identity .......... /version </span><span class="ok">[PUBLIC]</span></p>
-      <p><span data-es="explorador de políticas .... local simulation " data-en="policy explorer ........... local simulation ">policy explorer ........... local simulation </span><span class="ok">[NO SERVER CALL]</span></p>
-      <p><span data-es="host ....................... CubePath / Coolify " data-en="host ...................... CubePath / Coolify ">host ...................... CubePath / Coolify </span><span class="ok">[ONLINE]</span></p>
+      <p class="boot-title">MCP DEVBOX</p>
+      <p class="boot-thesis" data-es="CHATGPT TRABAJANDO SOBRE INFRAESTRUCTURA REAL, SIN ENTREGARLE UNA SHELL LIBRE." data-en="CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.">CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.</p>
+      <p><span data-es="solución ........ herramientas limitadas y operaciones verificables " data-en="solution ........ narrow tools and verifiable operations ">solution ........ narrow tools and verifiable operations </span><span class="ok">[BOUNDED]</span></p>
+      <p><span data-es="autonomía ....... solo lectura / revisión / autonomía acotada " data-en="autonomy ........ read-only / review / bounded autonomy ">autonomy ........ read-only / review / bounded autonomy </span><span class="ok">[CONFIGURED]</span></p>
+      <p><span data-es="prueba ........... Pixelgrama, construido y desplegado sobre CubePath " data-en="proof ............ Pixelgrama, built and deployed on CubePath ">proof ............ Pixelgrama, built and deployed on CubePath </span><span class="ok">[PUBLIC]</span></p>
+      <p><span data-es="esta página ...... presentación pública sin autoridad operativa " data-en="this page ........ public presentation with no operational authority ">this page ........ public presentation with no operational authority </span><span class="ok">[ENFORCED]</span></p>
       <button type="button" id="skipBoot" data-es="[ Pulsa cualquier tecla para continuar ]" data-en="[ Press any key to continue ]">[ Press any key to continue ]</button>
     </div>
   </div>
@@ -52,24 +51,49 @@
 
     <main class="document-pane" id="content" tabindex="-1">
       <div class="wrap">
-        <section id="thesis" data-es="Desplázate para inspeccionar el modelo de autoridad" data-en="Scroll to inspect the authority model" data-label-es="TESIS" data-label-en="THESIS" data-i18n-role="hint">
-          <p class="eyebrow" data-es="00 · TESIS" data-en="00 · THESIS">00 · THESIS</p>
-          <h1 data-es="Un agente de IA que entrega software real sin recibir un shell libre." data-en="An AI agent that ships real software without receiving a free shell.">An AI agent that ships real software without receiving a free shell.</h1>
-          <p class="lede prose" data-es="MCP Devbox ofrece a un agente capacidades acotadas para trabajar con repositorios, validar, crear pull requests y desplegar. El modelo razona; el control plane limita, registra y revalida el efecto." data-en="MCP Devbox gives an agent narrow capabilities for repository work, validation, pull requests and deployment. The model reasons; the control plane constrains, records and revalidates the effect.">MCP Devbox gives an agent narrow capabilities for repository work, validation, pull requests and deployment. The model reasons; the control plane constrains, records and revalidates the effect.</p>
-          <p class="sub prose" data-es="Es infraestructura de un solo propietario construida sobre una premisa: la capacidad es útil; la custodia, no. Gran parte del proyecto se desarrolló mediante su propia superficie MCP, incluso desde un teléfono, mientras los gates bloqueantes siguieron siendo autoritativos." data-en="It is single-owner infrastructure built around one premise: capability is useful, custody is not. Much of the project was developed through its own MCP surface, including sessions driven from a phone, while blocking gates remained authoritative.">It is single-owner infrastructure built around one premise: capability is useful, custody is not. Much of the project was developed through its own MCP surface, including sessions driven from a phone, while blocking gates remained authoritative.</p>
-          <div class="status-grid" aria-label="Capability status" data-es="Estado de capacidades" data-en="Capability status" data-i18n-attr="aria-label">
-            <article data-status="implemented">
-              <h2 data-es="IMPLEMENTADO" data-en="IMPLEMENTED">IMPLEMENTED</h2>
-              <p data-es="Operaciones de repositorio, pull requests y diagnósticos de GitHub, despliegue con Coolify, memoria Brain, resultados acotados, consola autenticada y workcells Edge salientes." data-en="Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.">Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.</p>
-            </article>
-            <article data-status="experimental">
-              <h2 data-es="EXPERIMENTAL" data-en="EXPERIMENTAL">EXPERIMENTAL</h2>
-              <p data-es="Los perfiles de ejecución más amplios y los workcells locales avanzados siguen guiados por evidencia; no se asumen universales." data-en="Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.">Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.</p>
-            </article>
-            <article data-status="planned">
-              <h2 data-es="PLANEADO" data-en="PLANNED">PLANNED</h2>
-              <p data-es="No se afirma operación multi-tenant ni aislamiento universal. Toda expansión futura debe preservar el mismo límite de autoridad." data-en="Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.">Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.</p>
-            </article>
+        <section id="thesis" class="hero-section" data-es="Desplázate para inspeccionar el modelo de autoridad" data-en="Scroll to inspect the authority model" data-label-es="INICIO" data-label-en="START" data-i18n-role="hint">
+          <div class="hero-grid">
+            <div class="hero-main">
+              <p class="eyebrow" data-es="00 · QUÉ RESUELVE" data-en="00 · WHAT IT SOLVES">00 · WHAT IT SOLVES</p>
+              <p class="hero-problem" data-es="Una shell general entrega al modelo más autoridad de la que la mayoría de tareas necesita." data-en="A general shell gives the model more authority than most tasks require.">A general shell gives the model more authority than most tasks require.</p>
+              <h1 data-es="ChatGPT trabajando sobre infraestructura real, sin entregarle una shell libre." data-en="ChatGPT working on real infrastructure without receiving a free shell.">ChatGPT working on real infrastructure without receiving a free shell.</h1>
+              <p class="lede hero-solution" data-es="MCP Devbox permite que un agente lea, modifique, pruebe, publique y despliegue proyectos mediante herramientas limitadas, políticas inmutables, secretos denegados y operaciones verificables." data-en="MCP Devbox lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations.">MCP Devbox lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations.</p>
+              <p class="hero-autonomy" data-es="El propietario elige entre solo lectura, revisión explícita o autonomía dentro de límites previamente configurados." data-en="The owner chooses between read-only access, explicit review or autonomy within preconfigured limits.">The owner chooses between read-only access, explicit review or autonomy within preconfigured limits.</p>
+              <nav class="hero-actions" id="hero-actions" aria-label="Primary showcase actions" data-es="Acciones principales de la presentación" data-en="Primary showcase actions" data-i18n-attr="aria-label">
+                <a class="hero-action" href="/showcase/pixelgrama-evidence.json" data-es="Ver la prueba completa" data-en="View the complete proof">View the complete proof</a>
+                <a class="hero-action" href="#authority" data-es="Explorar el modelo de autoridad" data-en="Explore the authority model">Explore the authority model</a>
+                <a class="hero-action" href="https://github.com/charle-z/mcp-devbox" data-es="Abrir el repositorio" data-en="Open the repository">Open the repository</a>
+              </nav>
+            </div>
+            <aside class="hero-proof" aria-label="Public end-to-end proof" data-es="Prueba pública de punta a punta" data-en="Public end-to-end proof" data-i18n-attr="aria-label">
+              <p class="hero-proof-label" data-es="PRUEBA PÚBLICA" data-en="PUBLIC PROOF">PUBLIC PROOF</p>
+              <h2>Pixelgrama</h2>
+              <p data-es="Pixelgrama fue construido, probado, publicado y desplegado mediante MCP Devbox sobre CubePath." data-en="Pixelgrama was built, tested, published and deployed through MCP Devbox on CubePath.">Pixelgrama was built, tested, published and deployed through MCP Devbox on CubePath.</p>
+              <dl class="hero-proof-facts">
+                <dt data-es="código" data-en="source">source</dt><dd>charle-z/pixelgrama</dd>
+                <dt data-es="producción" data-en="production">production</dt><dd><a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall">/wall</a></dd>
+                <dt data-es="identidad" data-en="identity">identity</dt><dd><a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/version">/version</a></dd>
+                <dt data-es="infraestructura" data-en="infrastructure">infrastructure</dt><dd>CubePath + Coolify</dd>
+              </dl>
+              <p class="hero-boundary" data-es="Esta evidencia es pública, de solo lectura y únicamente de presentación. No concede acceso a herramientas, consola ni credenciales." data-en="This evidence is public, read-only and presentation-only. It grants no access to tools, the console or credentials.">This evidence is public, read-only and presentation-only. It grants no access to tools, the console or credentials.</p>
+            </aside>
+          </div>
+          <div class="capability-status">
+            <p class="eyebrow" data-es="ESTADO DEL PRODUCTO" data-en="PRODUCT STATUS">PRODUCT STATUS</p>
+            <div class="status-grid" aria-label="Capability status" data-es="Estado de capacidades" data-en="Capability status" data-i18n-attr="aria-label">
+              <article data-status="implemented">
+                <h2 data-es="IMPLEMENTADO" data-en="IMPLEMENTED">IMPLEMENTED</h2>
+                <p data-es="Operaciones de repositorio, pull requests y diagnósticos de GitHub, despliegue con Coolify, memoria Brain, resultados acotados, consola autenticada y workcells Edge salientes." data-en="Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.">Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.</p>
+              </article>
+              <article data-status="experimental">
+                <h2 data-es="EXPERIMENTAL" data-en="EXPERIMENTAL">EXPERIMENTAL</h2>
+                <p data-es="Los perfiles de ejecución más amplios y los workcells locales avanzados siguen guiados por evidencia; no se asumen universales." data-en="Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.">Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.</p>
+              </article>
+              <article data-status="planned">
+                <h2 data-es="PLANEADO" data-en="PLANNED">PLANNED</h2>
+                <p data-es="No se afirma operación multi-tenant ni aislamiento universal. Toda expansión futura debe preservar el mismo límite de autoridad." data-en="Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.">Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.</p>
+              </article>
+            </div>
           </div>
         </section>
 

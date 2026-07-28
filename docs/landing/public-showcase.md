@@ -55,15 +55,20 @@ bars, and no gradients or rounded design system.
 
 The continuous document contains:
 
-1. thesis and capability status;
-2. authority model;
-3. local policy explorer;
-4. static request-path graphic;
-5. measured host capacity and the closed P16 target-VPS acceptance;
-6. dated evidence;
-7. remediated vulnerability ledger;
-8. live public runtime identity;
-9. honest limitations and CubePath attribution.
+1. a benefit-first hero that states the excessive-authority problem, the
+   bounded-tool solution, the three autonomy choices, and the public Pixelgrama proof
+   before component detail;
+2. exactly three primary hero actions: the canonical proof, the authority model,
+   and the repository;
+3. capability status below the hero;
+4. authority model;
+5. local policy explorer;
+6. static request-path graphic;
+7. measured host capacity and the closed P16 target-VPS acceptance;
+8. dated evidence;
+9. remediated vulnerability ledger;
+10. live public runtime identity;
+11. honest limitations and CubePath attribution.
 
 Implemented, experimental, and planned capabilities are labeled separately. Static
 claims are grounded in repository security reports, dated baselines, exact-head pull
@@ -113,6 +118,8 @@ Tests must fail when the landing is absent or when it loses any of these propert
 - responsive and reduced-motion CSS;
 - local-only policy simulation;
 - safe `/version` identity handling;
+- a bilingual benefit-first hero with problem, solution, autonomy, Pixelgrama
+  proof, and exactly three primary actions;
 - semantic content, capability status distinctions, real P16 acceptance, honest limits,
   and visible CubePath attribution.
 
