@@ -102,9 +102,9 @@ Devbox directly, which remains the simplest and safest default. Complex local wo
 uses workcells rather than hundreds of rigid one-tool wrappers; see
 `docs/edge-workcells.md`.
 
-## Milestone 0 - Cubethon submission foundation
+## Milestone 0 - Public product demonstration foundation
 
-Target: final submission before the official 2026-07-26 deadline. Finalists and winners are scheduled after the submission window; verify the official Cubethon repository before filing.
+Target: prove the complete product path through a public, read-only demonstration backed by exact source, validation, publication, deployment, and production identity evidence.
 
 ### M0.1 Stabilize the demonstrated path
 
@@ -166,7 +166,7 @@ Acceptance:
 ### M0.3 Submission package
 
 - Rewrite README positioning and correct the live tool count.
-- Add a dated section listing work completed during Cubethon (8-15 July).
+- Add a dated section listing the work completed during the initial public demonstration phase.
 - Add an honest capabilities/limitations matrix and deployment architecture.
 - Add setup, security, validation-runner, backup, upgrade, and rollback instructions.
 - Record a 60-90 second primary demo and a longer technical walkthrough.
@@ -417,8 +417,8 @@ Acceptance:
 
 ## Prioritized implementation order
 
-1. Finish and prove the Cubethon end-to-end path.
-2. Ship the public-safe console and submission package.
+1. Finish and prove the end-to-end product path.
+2. Ship the public-safe console and demonstration package.
 3. Generalize the validation runner into universal execution profiles.
 4. Add the private edge transport and one personal development edge.
 5. Add provider-neutral orchestration, then OpenCode Go and MiniMax adapters.
@@ -427,6 +427,6 @@ Acceptance:
 8. Productize installation, upgrades, profile distribution, diagnostics, and team
    use.
 
-This order keeps the hackathon deliverable focused while preserving the universal
+This order keeps the public demonstration focused while preserving the universal
 architecture required for development, infrastructure, personal edge work,
 multi-model orchestration, and authorized security research.
