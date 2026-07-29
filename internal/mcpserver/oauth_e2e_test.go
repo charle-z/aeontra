@@ -48,7 +48,8 @@ func TestOAuthEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(New(svc).HTTPHandler("", prov))
+	logical := newSwitchingHTTPHandler(New(svc).HTTPHandler("", prov))
+	ts := httptest.NewServer(logical)
 	defer ts.Close()
 
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -126,10 +127,29 @@ func TestOAuthEndToEnd(t *testing.T) {
 		t.Fatalf("token exchange failed: %+v", tok)
 	}
 
-	// 5) An authenticated MCP call succeeds.
-	if code := mcpInitialize(t, client, ts.URL, tok.AccessToken); code == http.StatusUnauthorized {
-		t.Fatal("valid OAuth access token was rejected by /mcp")
+	// 5) An authenticated MCP session succeeds, and the same OAuth credential can
+	// initialize a fresh session after the server instance is replaced.
+	status, oldSession := mcpInitialize(t, client, ts.URL, tok.AccessToken)
+	if status != http.StatusOK || oldSession == "" {
+		t.Fatalf("valid OAuth initialize status=%d session=%q", status, oldSession)
 	}
+	logical.Replace(New(svc).HTTPHandler("", prov))
+	status, newSession := mcpInitialize(t, client, ts.URL, tok.AccessToken)
+	if status != http.StatusOK || newSession == "" || newSession == oldSession {
+		t.Fatalf("OAuth replacement initialize status=%d old=%q new=%q", status, oldSession, newSession)
+	}
+	oldList := mcpOAuthRequest(t, client, ts.URL, tok.AccessToken, oldSession, rpcBody(t, 2, "tools/list", nil))
+	if oldList.StatusCode != http.StatusNotFound {
+		defer oldList.Body.Close()
+		t.Fatalf("old OAuth session status=%d want=%d", oldList.StatusCode, http.StatusNotFound)
+	}
+	oldList.Body.Close()
+	newList := mcpOAuthRequest(t, client, ts.URL, tok.AccessToken, newSession, rpcBody(t, 3, "tools/list", nil))
+	if newList.StatusCode != http.StatusOK {
+		defer newList.Body.Close()
+		t.Fatalf("new OAuth session status=%d want=200", newList.StatusCode)
+	}
+	newList.Body.Close()
 
 	// 6) A bogus token is rejected with a discovery challenge.
 	req, _ := http.NewRequest("POST", ts.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
@@ -148,18 +168,30 @@ func TestOAuthEndToEnd(t *testing.T) {
 	}
 }
 
-func mcpInitialize(t *testing.T, client *http.Client, base, token string) int {
+func mcpInitialize(t *testing.T, client *http.Client, base, token string) (int, string) {
 	t.Helper()
-	req, _ := http.NewRequest("POST", base+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
+	resp := mcpOAuthRequest(t, client, base, token, "", rpcBody(t, 1, "initialize", nil))
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode, resp.Header.Get("Mcp-Session-Id")
+}
+
+func mcpOAuthRequest(t *testing.T, client *http.Client, base, token, sessionID, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, base+DefaultMCPPath, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
+	if sessionID != "" {
+		req.Header.Set("Mcp-Session-Id", sessionID)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	return resp.StatusCode
+	return resp
 }
 
 func decodeJSON(t *testing.T, resp *http.Response, v any) {

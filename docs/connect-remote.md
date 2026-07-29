@@ -3,7 +3,7 @@
 MCP Devbox supports two transports:
 
 - **stdio:** a local MCP client starts the server on the same machine;
-- **HTTP:** authenticated MCP over `GET/POST /mcp` behind a stable HTTPS origin.
+- **HTTP:** authenticated MCP over `GET/POST/DELETE /mcp` behind a stable HTTPS origin.
 
 OAuth is the preferred ChatGPT path. A static bearer remains a **header-only recovery**
 mechanism for clients that can protect an `Authorization` header. Query-string
@@ -85,7 +85,15 @@ Expected:
 - `/version` returns bounded live build/catalog identity;
 - unauthenticated `/mcp` returns `401`;
 - the correct bearer in `Authorization` authorizes the recovery path;
+- a successful `initialize` returns an opaque `Mcp-Session-Id`;
+- later `GET`, `POST`, or `DELETE /mcp` requests must send that session header;
 - query-string credentials return `401`, even when correct.
+
+HTTP sessions exist only in the current server process and expire after bounded idle
+use. A normal container replacement intentionally invalidates the old session. Keep the
+same URL and OAuth credential, call `initialize` again, and continue with the fresh
+session ID. Do not persist the session header as a credential or attempt authority
+fallback when the server returns `404` for an old session.
 
 ## Public HTTPS and OAuth
 
@@ -165,7 +173,7 @@ A local loopback server can be exposed through a reviewed TLS reverse proxy or o
 tunnel. The proxy must preserve:
 
 - OAuth discovery and `/oauth/*` routes;
-- authenticated `GET/POST /mcp`;
+- authenticated `GET/POST/DELETE /mcp` and the `Mcp-Session-Id` header;
 - `/healthz` and `/version`;
 - streaming responses and normal timeout behavior;
 - rejection of query-string credentials.
@@ -189,6 +197,8 @@ recovery header, then call a normal read-only tool and confirm redaction.
 | Symptom | Cause / action |
 |---|---|
 | `401` from `/mcp` | Complete OAuth or send the configured recovery bearer in `Authorization`. Query credentials never authorize. |
+| `400` for missing session | Call `initialize` and send the returned `Mcp-Session-Id` on later MCP requests. |
+| `404` for unknown or expired session | The session ended or belongs to a replaced instance. Reinitialize on the same URL with the same OAuth credential; do not change connector configuration. |
 | Connector cannot send a bearer header | Configure OAuth on the clean URL. |
 | `/healthz` works but connector is stale | Compare `/version` or `system_runtime_info` with the expected exact commit, then refresh the client catalog. |
 | No tools appear | Verify the URL, OAuth completion, reverse-proxy routing to internal port `8765`, and MCP initialization. |

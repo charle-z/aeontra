@@ -74,10 +74,8 @@ func TestHTTPConsoleDoesNotChangeMCPAuthOrCatalog(t *testing.T) {
 		t.Fatalf("unauthorized MCP status=%d", unauthorized.Code)
 	}
 
-	authorizedRequest := httptest.NewRequest(http.MethodPost, DefaultMCPPath, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
-	authorizedRequest.Header.Set("Authorization", "Bearer "+testToken)
-	authorized := httptest.NewRecorder()
-	handler.ServeHTTP(authorized, authorizedRequest)
+	sessionID := initializeHandlerSession(t, handler, "Bearer "+testToken)
+	authorized := doWithSession(t, handler, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, rpcBody(t, 2, "tools/list", nil))
 	if authorized.Code != http.StatusOK {
 		t.Fatalf("authorized MCP status=%d body=%s", authorized.Code, authorized.Body.String())
 	}

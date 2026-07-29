@@ -60,8 +60,10 @@ func TestHTTPSSEClosesWhenDrainBegins(t *testing.T) {
 	server, _ := newHTTPServerObject(t, config.ModeReadOnly)
 	lifecycle := newHTTPServerLifecycle()
 	handler := server.httpHandlerWithLifecycle(testToken, nil, HTTPOptions{}, lifecycle)
+	sessionID := initializeHandlerSession(t, handler, "Bearer "+testToken)
 	request := httptest.NewRequest(http.MethodGet, DefaultMCPPath, nil)
 	request.Header.Set("Authorization", "Bearer "+testToken)
+	request.Header.Set("Mcp-Session-Id", sessionID)
 	response := httptest.NewRecorder()
 	done := make(chan struct{})
 
@@ -236,7 +238,8 @@ func TestHTTPDrainForcesTerminationAtDeadline(t *testing.T) {
 	addBlockingDrainTool(server, toolName, started, release)
 	var invalidated atomic.Bool
 	running := startLifecycleServer(t, server, 40*time.Millisecond, func() { invalidated.Store(true) })
-	requestDone := callToolAsync(running.client, running.baseURL, "", toolName)
+	sessionID := initializeRemote(t, running.client, running.baseURL)
+	requestDone := callToolAsync(running.client, running.baseURL, sessionID, toolName)
 	<-started
 
 	began := time.Now()

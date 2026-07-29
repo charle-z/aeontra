@@ -136,10 +136,9 @@ func TestHTTPObservabilityUsesServerRequestIDAndNeverLogsQueryToken(t *testing.T
 func TestHTTPAndRPCEventsShareServerGeneratedRequestID(t *testing.T) {
 	server, _, events := newObservedServer(t)
 	handler := server.HTTPHandler(testToken, nil)
-	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
-	req.Header.Set("Authorization", "Bearer "+testToken)
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, req)
+	sessionID := initializeHandlerSession(t, handler, "Bearer "+testToken)
+	events.Reset()
+	recorder := doWithSession(t, handler, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, rpcBody(t, 2, "tools/list", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 	}

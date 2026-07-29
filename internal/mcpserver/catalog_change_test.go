@@ -46,9 +46,11 @@ func TestSSEEmitsCatalogChangeNotificationOnce(t *testing.T) {
 
 func recordSSE(t *testing.T, h http.Handler) string {
 	t.Helper()
+	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Mcp-Session-Id", sessionID)
 	recorder := httptest.NewRecorder()
 	done := make(chan struct{})
 	go func() {

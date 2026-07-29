@@ -21,7 +21,7 @@ func TestPayloadCountersMeasureAuthenticatedMCPBodiesOnly(t *testing.T) {
 		t.Fatalf("unauthorized request counted: %+v", got)
 	}
 
-	authorizedBody := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+	authorizedBody := `{"jsonrpc":"2.0","id":1,"method":"initialize"}`
 	request := httptest.NewRequest(http.MethodPost, DefaultMCPPath, strings.NewReader(authorizedBody))
 	request.Header.Set("Authorization", "Bearer "+testToken)
 	request.Header.Set("Content-Type", "application/json")
@@ -29,6 +29,10 @@ func TestPayloadCountersMeasureAuthenticatedMCPBodiesOnly(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("authorized status=%d body=%s", response.Code, response.Body.String())
+	}
+	sessionID := response.Header().Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Fatal("authenticated initialize did not create a session")
 	}
 	got := server.payload.snapshot()
 	if got.RequestCount != 1 || got.InputBytes != uint64(len(authorizedBody)) || got.OutputBytes != uint64(response.Body.Len()) {
@@ -38,6 +42,7 @@ func TestPayloadCountersMeasureAuthenticatedMCPBodiesOnly(t *testing.T) {
 	notificationBody := `{"jsonrpc":"2.0","method":"notifications/initialized"}`
 	notification := httptest.NewRequest(http.MethodPost, DefaultMCPPath, strings.NewReader(notificationBody))
 	notification.Header.Set("Authorization", "Bearer "+testToken)
+	notification.Header.Set("Mcp-Session-Id", sessionID)
 	notificationResponse := httptest.NewRecorder()
 	handler.ServeHTTP(notificationResponse, notification)
 	if notificationResponse.Code != http.StatusAccepted {

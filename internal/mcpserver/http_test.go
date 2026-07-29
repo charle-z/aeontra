@@ -95,9 +95,10 @@ func TestHTTP_OAuthDiscoveryMountedUnauthenticated(t *testing.T) {
 func TestHTTP_LegacyTokenStillWorksWithOAuth(t *testing.T) {
 	// With OAuth enabled AND a static token set, the legacy bearer must still authorize.
 	h := newHTTPServerWithOAuth(t, testToken)
-	rr := do(t, h, "POST", "/mcp", "Bearer "+testToken, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
-	if rr.Code == http.StatusUnauthorized {
-		t.Fatalf("legacy token should authorize even with OAuth on; got 401")
+	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
+	rr := doWithSession(t, h, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, rpcBody(t, 2, "tools/list", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("legacy token session failed with OAuth on: status=%d body=%s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -127,6 +128,29 @@ func doWithHeaders(t *testing.T, h http.Handler, method, path, body string, head
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	return rr
+}
+
+func initializeHandlerSession(t *testing.T, h http.Handler, auth string) string {
+	t.Helper()
+	response := do(t, h, http.MethodPost, DefaultMCPPath, auth, rpcBody(t, 1, "initialize", map[string]any{
+		"protocolVersion": "2024-11-05",
+	}))
+	if response.Code != http.StatusOK {
+		t.Fatalf("initialize status=%d body=%s", response.Code, response.Body.String())
+	}
+	sessionID := response.Header().Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Fatal("initialize did not return Mcp-Session-Id")
+	}
+	return sessionID
+}
+
+func doWithSession(t *testing.T, h http.Handler, method, path, auth, sessionID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return doWithHeaders(t, h, method, path, body, map[string]string{
+		"Authorization":  auth,
+		"Mcp-Session-Id": sessionID,
+	})
 }
 
 func TestHTTP_NoAuth401(t *testing.T) {
@@ -192,8 +216,9 @@ func TestHTTP_ToolsCallReadFileRedacted(t *testing.T) {
 	if err := os.WriteFile(secretFile, []byte("const T = \"gh"+"p_0123456789abcdefghijklmnopqrstuvwxyz\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
 	msg := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"cfg.go"}}}`
-	rr := do(t, h, "POST", "/mcp", "Bearer "+testToken, msg)
+	rr := doWithSession(t, h, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, msg)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("tools/call: got %d", rr.Code)
 	}
@@ -204,7 +229,8 @@ func TestHTTP_ToolsCallReadFileRedacted(t *testing.T) {
 
 func TestHTTP_NotificationReturns202(t *testing.T) {
 	h, _ := newHTTPServer(t, config.ModeReadOnly)
-	rr := do(t, h, "POST", "/mcp", "Bearer "+testToken, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
+	rr := doWithSession(t, h, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("notification: got %d, want 202", rr.Code)
 	}
@@ -218,9 +244,11 @@ func TestHTTP_GetMCPReturnsSSE(t *testing.T) {
 	// it with a cancelable context in a goroutine so the synchronous handler does not
 	// hang the test; cancel to close, then assert the opening comment was flushed.
 	h, _ := newHTTPServer(t, config.ModeReadOnly)
+	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
 	ctx, cancel := context.WithCancel(context.Background())
 	req := httptest.NewRequest("GET", "/mcp", nil).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Mcp-Session-Id", sessionID)
 	rr := httptest.NewRecorder()
 
 	done := make(chan struct{})

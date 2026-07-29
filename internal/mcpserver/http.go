@@ -56,13 +56,16 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 // unauthenticated presentation-only landing, and adds the authenticated console
 // configured by opts.
 func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provider, opts HTTPOptions) http.Handler {
-	return s.httpHandlerWithLifecycle(token, oauthProvider, opts, newHTTPServerLifecycle())
+	return s.httpHandlerWithState(token, oauthProvider, opts, newHTTPServerLifecycle(), newHTTPSessionStore(defaultHTTPSessionTTL))
 }
 
 func (s *Server) httpHandlerWithLifecycle(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle) http.Handler {
+	return s.httpHandlerWithState(token, oauthProvider, opts, lifecycle, newHTTPSessionStore(defaultHTTPSessionTTL))
+}
+
+func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore) http.Handler {
 	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
-	sessionID := newHTTPSessionID()
 	catalogNotifier := &oneShotCatalogNotifier{}
 	landingHandler, err := landing.New()
 	if err != nil {
@@ -161,16 +164,34 @@ func (s *Server) httpHandlerWithLifecycle(token string, oauthProvider *oauth.Pro
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			s.handleHTTPPost(w, r, sessionID, lifecycle)
+			s.handleHTTPPost(w, r, lifecycle, sessions)
 		case http.MethodGet:
 			if !authorized(r) {
 				challenge(w)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
+			if _, ok := validateHTTPSession(w, r, sessions); !ok {
+				return
+			}
 			handleHTTPGetSSE(w, r, catalogNotifier, lifecycle)
+		case http.MethodDelete:
+			if !authorized(r) {
+				challenge(w)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			sessionID, ok := validateHTTPSession(w, r, sessions)
+			if !ok {
+				return
+			}
+			sessions.Delete(sessionID)
+			if s.clients != nil {
+				s.clients.Delete(sessionID)
+			}
+			w.WriteHeader(http.StatusNoContent)
 		default:
-			w.Header().Set("Allow", "GET, POST")
+			w.Header().Set("Allow", "GET, POST, DELETE")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
@@ -384,7 +405,7 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotC
 // handleHTTPPost reads one JSON-RPC message (or a batch array) and replies. A lone
 // notification/response yields 202 Accepted with no body; a request yields 200 with
 // an application/json response; a batch yields a JSON array of the non-empty replies.
-func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionID string, lifecycle *httpServerLifecycle) {
+func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle, sessions *httpSessionStore) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHTTPBody))
 	if err != nil {
 		// MaxBytesReader signals oversize via its error; report 413.
@@ -408,8 +429,17 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 		http.Error(w, "server draining; initialize a new session after replacement", http.StatusServiceUnavailable)
 		return
 	}
+
+	var sessionID string
 	if initializing {
+		sessionID = sessions.Create()
 		w.Header().Set("Mcp-Session-Id", sessionID)
+	} else {
+		var ok bool
+		sessionID, ok = validateHTTPSession(w, r, sessions)
+		if !ok {
+			return
+		}
 	}
 
 	// JSON-RPC batch (array) support.
@@ -537,16 +567,18 @@ func (s *Server) ServeHTTPWithOptions(ctx context.Context, addr, token string, o
 		return errors.New("http transport requires auth: set a bearer token or enable OAuth (refusing to start without auth)")
 	}
 	lifecycle := newHTTPServerLifecycle()
+	sessions := newHTTPSessionStore(defaultHTTPSessionTTL)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("http server listen: %w", err)
 	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.httpHandlerWithLifecycle(token, oauthProvider, opts, lifecycle),
+		Handler:           s.httpHandlerWithState(token, oauthProvider, opts, lifecycle, sessions),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return serveHTTPListener(ctx, srv, listener, lifecycle, defaultHTTPShutdownTimeout, func() {
+		sessions.Reset()
 		if s.clients != nil {
 			s.clients.Reset()
 		}

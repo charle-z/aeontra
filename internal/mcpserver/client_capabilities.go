@@ -48,6 +48,15 @@ func (s *clientCapabilityStore) Snapshot(sessionKey string) ClientCapabilities {
 	return capabilities
 }
 
+func (s *clientCapabilityStore) Delete(sessionKey string) {
+	if s == nil || sessionKey == "" {
+		return
+	}
+	s.mu.Lock()
+	delete(s.bySession, sessionKey)
+	s.mu.Unlock()
+}
+
 func (s *clientCapabilityStore) Reset() {
 	s.mu.Lock()
 	s.bySession = make(map[string]ClientCapabilities)

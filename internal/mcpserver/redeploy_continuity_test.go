@@ -130,7 +130,26 @@ func assertSuccessfulToolSequence(t *testing.T, client *http.Client, baseURL, se
 	}
 }
 
-func TestRedeployContinuityCharacterizesCurrentSameCatalogBehavior(t *testing.T) {
+func assertRejectedSession(t *testing.T, client *http.Client, baseURL, sessionID string) {
+	t.Helper()
+	for _, request := range []string{
+		rpcBody(t, 10, "tools/list", nil),
+		rpcBody(t, 11, "tools/call", map[string]any{"name": "system_runtime_info", "arguments": map[string]any{}}),
+	} {
+		response := callRemoteRPC(t, client, baseURL, sessionID, request)
+		if response.Status != http.StatusNotFound {
+			t.Fatalf("old session status=%d want=%d body=%s", response.Status, http.StatusNotFound, response.Body)
+		}
+		if response.Header.Get("Mcp-Session-Id") != "" {
+			t.Fatalf("old session rejection exposed a replacement session id: %v", response.Header)
+		}
+		if !strings.Contains(response.Body, "call initialize") || strings.Contains(response.Body, `"result"`) {
+			t.Fatalf("old session rejection is ambiguous or returned a tool result: %s", response.Body)
+		}
+	}
+}
+
+func TestRedeployContinuityRejectsOldSessionWithSameCatalog(t *testing.T) {
 	serverA, _ := newHTTPServerObject(t, config.ModeReadOnly)
 	serverB, _ := newHTTPServerObject(t, config.ModeReadOnly)
 	infoA := serverA.mustRuntimeInfo()
@@ -153,13 +172,10 @@ func TestRedeployContinuityCharacterizesCurrentSameCatalogBehavior(t *testing.T)
 	}
 	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, newSession, "system_runtime_info")
 
-	// Characterization of the defect before the lifecycle fix: the replacement
-	// instance ignores the caller's Mcp-Session-Id and accepts the previous
-	// instance's session header for tools/list and tools/call.
-	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, oldSession, "system_runtime_info")
+	assertRejectedSession(t, endpoint.Client(), endpoint.URL, oldSession)
 }
 
-func TestRedeployContinuityCharacterizesCurrentChangedCatalogBehavior(t *testing.T) {
+func TestRedeployContinuityRejectsOldSessionWithChangedCatalog(t *testing.T) {
 	serverA, _ := newHTTPServerObject(t, config.ModeReadOnly)
 	serverB, _ := newHTTPServerObject(t, config.ModeReadOnly)
 	serverB.table["redeploy_contract_probe"] = toolEntry{
@@ -190,7 +206,5 @@ func TestRedeployContinuityCharacterizesCurrentChangedCatalogBehavior(t *testing
 	newSession := initializeRemote(t, endpoint.Client(), endpoint.URL)
 	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, newSession, "redeploy_contract_probe")
 
-	// Current defective behavior also lets the previous session silently observe
-	// and invoke the replacement instance's changed catalog.
-	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, oldSession, "redeploy_contract_probe")
+	assertRejectedSession(t, endpoint.Client(), endpoint.URL, oldSession)
 }

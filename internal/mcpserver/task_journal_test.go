@@ -2,9 +2,7 @@ package mcpserver
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
@@ -18,11 +16,8 @@ func TestKnownToolCallIsJournaledWithoutChangingCatalog(t *testing.T) {
 	}
 	server.WithTaskJournal(journal)
 	handler := server.HTTPHandler(testToken, nil)
-	request := httptest.NewRequest(http.MethodPost, DefaultMCPPath, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sandbox_status","arguments":{}}}`))
-	request.Header.Set("Authorization", "Bearer "+testToken)
-	request.Header.Set("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
+	sessionID := initializeHandlerSession(t, handler, "Bearer "+testToken)
+	response := doWithSession(t, handler, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, rpcBody(t, 2, "tools/call", map[string]any{"name": "sandbox_status", "arguments": map[string]any{}}))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
