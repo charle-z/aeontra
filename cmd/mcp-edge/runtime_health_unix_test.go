@@ -36,6 +36,7 @@ func TestInspectEdgeRuntimeReportsManagedSingleProcess(t *testing.T) {
 func TestInspectEdgeRuntimeUsesAuthoritativeInvocationWhenSystemctlIsUnavailable(t *testing.T) {
 	restoreRuntimeHealthHooks(t)
 	t.Setenv("INVOCATION_ID", "0123456789abcdef0123456789abcdef")
+	t.Setenv("SYSTEMD_EXEC_PID", "")
 	stateRoot := t.TempDir()
 	lock, err := edgeclient.AcquireEdgeInstanceLock(stateRoot, runtimeTestRelease, runtimeTestCommit)
 	if err != nil {
