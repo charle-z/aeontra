@@ -1,7 +1,9 @@
 package modelturn
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -47,6 +49,13 @@ func TestRemoteRuntimeExecutionBudgetStartsAtFirstTurn(t *testing.T) {
 	}
 	if view.ExecutionTimeoutSeconds != int(executionTTL/time.Second) || !view.ExpiresAt.Equal(wantDeadline) {
 		t.Fatalf("runtime=%+v want deadline=%s", view, wantDeadline)
+	}
+	publicJSON, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(publicJSON, []byte("execution_timeout_seconds")) {
+		t.Fatalf("internal execution budget leaked into public runtime JSON: %s", publicJSON)
 	}
 	clock.Add(30 * time.Second)
 	secondRequest := validRequest(2)
