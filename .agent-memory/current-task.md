@@ -5,40 +5,48 @@
 - Authoritative plan: Brain note `mcp-devbox-redeploy-continuity`.
 - Branch: `fix/mcp-redeploy-continuity`.
 - Base: `main` / `origin/main` at `b3d2c160f3179da7966254406587520b735c61ea`.
-- Current HEAD: `124b305076cf378762d94932f47569c218458353`.
-- Tree clean after Hito 4 implementation.
-- Hitos 0–4 completed. Next exact step: Hito 5 only.
+- Current HEAD: `6e2f23a8d2bb4474e226b264c1a8eef297a7c06d`.
+- Tree clean after Hito 5 implementation.
+- Hitos 0–5 completed. Next exact step: Hito 6 only.
 
-## Hito 4 completed
+## Hito 5 completed
 
-Commit: `124b305076cf378762d94932f47569c218458353`.
+Commit: `6e2f23a8d2bb4474e226b264c1a8eef297a7c06d`.
 
-Observability changes:
+E2E replacement guarantee:
 
-- Observability schema incremented to version 2.
-- Every server process receives a random ephemeral `boot_id`; it is not a session id and carries no authority.
-- Added closed event names for `server_drain_start`, `server_drain_end`, `mcp_session_created`, `mcp_session_reinitialized`, and `mcp_session_rejected`.
-- Added closed error classes for authentication failure, missing/unknown/expired session, and draining server.
-- HTTP, RPC, session and lifecycle events carry the same boot id for one process.
-- Session lifecycle events include commit, tool count and current catalog hash.
-- Recognized reinitializations are counted only when `initialize` explicitly carries a prior `Mcp-Session-Id`; the value is never stored or emitted.
-- Drain start/end events include bounded duration and aggregate reconnect count.
-- Authentication failures are distinguishable from transport failures.
-- Unknown sessions are classified honestly; the server does not claim a stale catalog without external deployment evidence.
+- Uses two successive MCP server instances behind one stable logical HTTP endpoint.
+- Server A starts ready, initializes a session, lists tools and reads a safe Brain fixture.
+- A enters drain; `/readyz` changes to 503 and new initialize requests are rejected.
+- Brain A closes cleanly before B reopens the same persistent Brain root.
+- Server B has a distinct ephemeral boot id and is checked ready before becoming the active logical endpoint.
+- The old A session is rejected for both `tools/list` and `tools/call` and receives no replacement authority.
+- A fresh B session is created using the same endpoint and credentials.
+- The new session obtains `tools/list` and executes a safe tool.
+- The Brain note written before replacement is readable through B after reopening the shared store.
+- Same-contract A/B instances preserve the exact catalog hash.
+- A controlled contractual tool addition produces a new deterministic hash and is visible/callable only through the new session.
 
-Security invariants:
+CI integration:
 
-- No session IDs, Authorization headers, cookies, OAuth payloads, IPs, paths, tool payloads or client identities are logged.
-- No new free-form observability field or arbitrary attributes map was added.
-- No authority, OAuth, jail, grant, Edge or workcell behavior changed.
+- Added a focused `Verify MCP instance replacement continuity` step to the existing `.github/workflows/ci.yml` verify job.
+- No duplicate workflow was created.
+- The normal complete `go test ./...` CI gate still runs afterward.
 
 Validation:
 
-- `go test ./internal/observability ./internal/mcpserver ./internal/app ./docs -count=1`: green.
-- `go vet ./internal/observability ./internal/mcpserver ./internal/app`: green.
+- Focused `TestRedeployE2E...` same/changed contract subtests: green.
+- `go test ./internal/mcpserver ./internal/brain ./internal/tools ./internal/integration ./docs -count=1`: green.
+- Affected-package vet: green.
+- Actionlint v1.7.12: green.
 - `git diff --check`: green.
-- Focused tests prove session/reconnect/auth/drain classifications and absence of identifier or credential leakage.
+
+Security and authority:
+
+- The Brain root remains outside repository policy roots.
+- No token, session id, OAuth payload or external infrastructure is persisted by the test.
+- No authority, jail, grant, Edge or workcell behavior changed.
 
 ## Next exact step
 
-Hito 5 — add the full two-instance replacement E2E, including readiness, old/new sessions, safe tool call, durable Brain state, same-contract hash stability and changed-contract hash transition. Integrate it into existing CI without creating a duplicate workflow. Do not begin Hito 6 until Hito 5 has implementation, all focused and affected tests green, diff review, local commit, Brain update, memory update and a clean tree.
+Hito 6 — run all local release gates, update continuity, publish the branch, create the PR, wait for exact-head checks, correct only real failures, update Brain and `.agent-memory` before deployment, merge with a merge commit, synchronize clean `main`, deploy only the registered MCP Devbox production application normally, and verify production routes, exact merge identity, new session, old session fixture and active-conversation behavior.
