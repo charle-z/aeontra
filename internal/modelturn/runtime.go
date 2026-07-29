@@ -56,22 +56,23 @@ var (
 )
 
 type Runtime struct {
-	RuntimeID        string              `json:"runtime_id"`
-	DeviceID         string              `json:"device_id,omitempty"`
-	WorkspaceID      string              `json:"workspace_id,omitempty"`
-	Controller       RuntimeController   `json:"controller"`
-	State            RuntimeState        `json:"state"`
-	Status           RuntimeStatus       `json:"status"`
-	GoalSummary      string              `json:"goal_summary,omitempty"`
-	CreatedAt        time.Time           `json:"created_at"`
-	ExpiresAt        time.Time           `json:"expires_at"`
-	LastHeartbeat    time.Time           `json:"last_heartbeat,omitempty"`
-	LastSequence     uint64              `json:"last_sequence"`
-	ActiveTurnID     TurnID              `json:"active_turn_id,omitempty"`
-	ActiveTurnStatus Status              `json:"active_turn_status,omitempty"`
-	ResultRef        string              `json:"result_ref,omitempty"`
-	UpdatedAt        time.Time           `json:"updated_at"`
-	Phases           []RuntimePhaseEvent `json:"phases,omitempty"`
+	RuntimeID               string              `json:"runtime_id"`
+	DeviceID                string              `json:"device_id,omitempty"`
+	WorkspaceID             string              `json:"workspace_id,omitempty"`
+	Controller              RuntimeController   `json:"controller"`
+	State                   RuntimeState        `json:"state"`
+	Status                  RuntimeStatus       `json:"status"`
+	GoalSummary             string              `json:"goal_summary,omitempty"`
+	CreatedAt               time.Time           `json:"created_at"`
+	ExpiresAt               time.Time           `json:"expires_at"`
+	LastHeartbeat           time.Time           `json:"last_heartbeat,omitempty"`
+	LastSequence            uint64              `json:"last_sequence"`
+	ActiveTurnID            TurnID              `json:"active_turn_id,omitempty"`
+	ActiveTurnStatus        Status              `json:"active_turn_status,omitempty"`
+	ResultRef               string              `json:"result_ref,omitempty"`
+	UpdatedAt               time.Time           `json:"updated_at"`
+	Phases                  []RuntimePhaseEvent `json:"phases,omitempty"`
+	ExecutionTimeoutSeconds int                 `json:"-"`
 
 	goalRef              string
 	goalDigest           string
@@ -87,6 +88,7 @@ type BoundRuntimeRequest struct {
 	GoalDigest           string
 	IdempotencyKeyDigest string
 	TTL                  time.Duration
+	ExecutionTTL         time.Duration
 }
 
 type RuntimeBodyReference struct {
@@ -161,6 +163,12 @@ func (s *Store) StartBoundRuntime(ctx context.Context, request BoundRuntimeReque
 	if request.TTL <= 0 || request.TTL > MaxTurnTTL {
 		return Runtime{}, false, ErrInvalidRequest
 	}
+	if request.ExecutionTTL == 0 {
+		request.ExecutionTTL = request.TTL
+	}
+	if request.ExecutionTTL <= 0 || request.ExecutionTTL > MaxTurnTTL {
+		return Runtime{}, false, ErrInvalidRequest
+	}
 	now := s.now().UTC()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -179,6 +187,9 @@ func (s *Store) StartBoundRuntime(ctx context.Context, request BoundRuntimeReque
 			return Runtime{}, false, readErr
 		}
 		if runtime.WorkspaceID != request.WorkspaceID || runtime.Controller != request.Controller || runtime.GoalSummary != request.GoalSummary || runtime.goalDigest != request.GoalDigest {
+			return Runtime{}, false, ErrTurnConflict
+		}
+		if runtime.ExecutionTimeoutSeconds != int(request.ExecutionTTL/time.Second) {
 			return Runtime{}, false, ErrTurnConflict
 		}
 		return runtime, false, nil
@@ -209,6 +220,10 @@ func (s *Store) startRuntimeLocked(ctx context.Context, request BoundRuntimeRequ
 	if ttl == 0 {
 		ttl = MaxTurnTTL
 	}
+	executionTTL := request.ExecutionTTL
+	if executionTTL == 0 {
+		executionTTL = ttl
+	}
 	state := RuntimeStateRequested
 	if controller == ControllerRemoteEdge {
 		state = RuntimeStateAwaitingEdge
@@ -224,6 +239,9 @@ func (s *Store) startRuntimeLocked(ctx context.Context, request BoundRuntimeRequ
 	if _, err := tx.ExecContext(ctx, `INSERT INTO model_runtimes(runtime_id,status,device_id,workspace_id,controller,state,goal_summary,goal_ref,goal_digest,expires_at,last_heartbeat,last_sequence,active_turn_id,result_ref,idempotency_key_digest,created_at,updated_at) VALUES(?,'ready',?,?,?,?,?,?,?,?,0,0,'','',?,?,?)`,
 		runtimeID, request.DeviceID, request.WorkspaceID, controller, state, request.GoalSummary, request.GoalRef, request.GoalDigest, expires.UnixNano(), request.IdempotencyKeyDigest, now.UnixNano(), now.UnixNano()); err != nil {
 		return Runtime{}, errors.New("model runtime persistence failed")
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET execution_timeout_seconds=? WHERE runtime_id=?`, int(executionTTL/time.Second), runtimeID); err != nil {
+		return Runtime{}, errors.New("model runtime execution budget persistence failed")
 	}
 	if err := s.recordRuntimePhaseLocked(ctx, tx, runtimeID, RuntimePhaseCreated, "", 1, now); err != nil {
 		return Runtime{}, err
@@ -315,6 +333,19 @@ func (s *Store) HeartbeatRuntime(ctx context.Context, runtimeID, deviceID string
 		return Runtime{}, ErrInvalidRequest
 	}
 	now := s.now().UTC()
+	if err := s.Cleanup(ctx); err != nil {
+		return Runtime{}, err
+	}
+	current, err := s.RuntimeForDevice(ctx, runtimeID, deviceID)
+	if err != nil {
+		return Runtime{}, err
+	}
+	switch current.State {
+	case RuntimeStateCompleted, RuntimeStateFailed, RuntimeStateCancelled:
+		return Runtime{}, ErrTurnConflict
+	case RuntimeStateExpired:
+		return current, nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result, err := s.db.ExecContext(ctx, `UPDATE model_runtimes SET last_heartbeat=?,updated_at=? WHERE runtime_id=? AND device_id=? AND state NOT IN ('completed','failed','cancelled','expired') AND expires_at>?`, now.UnixNano(), now.UnixNano(), runtimeID, deviceID, now.UnixNano())
@@ -478,8 +509,14 @@ func (s *Store) runtimeLocked(ctx context.Context, runtimeID string) (Runtime, e
 	if err != nil {
 		return Runtime{}, errors.New("model runtime read failed")
 	}
+	if err := s.db.QueryRowContext(ctx, `SELECT execution_timeout_seconds FROM model_runtimes WHERE runtime_id=?`, runtimeID).Scan(&runtime.ExecutionTimeoutSeconds); err != nil {
+		return Runtime{}, errors.New("model runtime execution budget read failed")
+	}
 	runtime.CreatedAt = time.Unix(0, createdAt).UTC()
 	runtime.UpdatedAt = time.Unix(0, updatedAt).UTC()
+	if runtime.ExecutionTimeoutSeconds <= 0 && expiresAt > createdAt {
+		runtime.ExecutionTimeoutSeconds = int(time.Duration(expiresAt-createdAt).Round(time.Second) / time.Second)
+	}
 	if expiresAt > 0 {
 		runtime.ExpiresAt = time.Unix(0, expiresAt).UTC()
 	}

@@ -122,6 +122,10 @@ func (s *Store) CreateTurnFromReference(ctx context.Context, request ModelReques
 	if request.Sequence != expected {
 		return Turn{}, ErrSequenceMismatch
 	}
+	requestedExpiresAt, err = s.runtimeTurnDeadlineLocked(ctx, tx, request.RuntimeID, request.Sequence, ttl, now)
+	if err != nil {
+		return Turn{}, err
+	}
 
 	var kind string
 	var body []byte

@@ -131,6 +131,9 @@ func TestOpenCodeRuntimeStartIsIdempotentAndPubliclyRedacted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if runtime.ExecutionTimeoutSeconds != 300 || runtime.ExpiresAt.Sub(runtime.CreatedAt) != modelturn.RemoteRuntimeStartupTTL {
+		t.Fatalf("runtime budget=%ds startup=%s", runtime.ExecutionTimeoutSeconds, runtime.ExpiresAt.Sub(runtime.CreatedAt))
+	}
 	storedGoal, digest, err := store.RuntimeGoal(context.Background(), view.RuntimeID, testEdgeDeviceID)
 	if err != nil || string(storedGoal) != goal || digest == "" || runtime.GoalSummary != modelturn.GoalSummary([]byte(goal)) {
 		t.Fatalf("runtime=%+v goal=%q digest=%q err=%v", runtime, storedGoal, digest, err)

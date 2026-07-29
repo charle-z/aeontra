@@ -23,13 +23,14 @@ import (
 )
 
 const (
-	DefaultTurnTTL        = 15 * time.Minute
-	MaxTurnTTL            = time.Hour
-	DefaultTurnQuotaBytes = int64(64 << 20)
-	MaxTurnQuotaBytes     = int64(256 << 20)
-	MaxInlineRequestBytes = int64(64 << 10)
-	MaxRequestBodyBytes   = int64(4 << 20)
-	turnDatabaseFilename  = "model-turns.db"
+	DefaultTurnTTL          = 15 * time.Minute
+	MaxTurnTTL              = time.Hour
+	RemoteRuntimeStartupTTL = 5 * time.Minute
+	DefaultTurnQuotaBytes   = int64(64 << 20)
+	MaxTurnQuotaBytes       = int64(256 << 20)
+	MaxInlineRequestBytes   = int64(64 << 10)
+	MaxRequestBodyBytes     = int64(4 << 20)
+	turnDatabaseFilename    = "model-turns.db"
 )
 
 type Status string
@@ -310,6 +311,10 @@ func (s *Store) CreateTurn(ctx context.Context, request ModelRequest) (Turn, err
 	}
 	if request.Sequence != expected {
 		return Turn{}, ErrSequenceMismatch
+	}
+	expires, err = s.runtimeTurnDeadlineLocked(ctx, tx, request.RuntimeID, request.Sequence, ttl, now)
+	if err != nil {
+		return Turn{}, err
 	}
 	if err := s.makeRoomLocked(ctx, tx, int64(len(payload))); err != nil {
 		return Turn{}, err

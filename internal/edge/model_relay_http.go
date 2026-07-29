@@ -145,11 +145,13 @@ func (r *modelRelay) writeLease(w http.ResponseWriter, request *http.Request, de
 		return
 	}
 	remaining := time.Until(runtime.ExpiresAt)
-	if remaining <= 0 {
+	executionTimeout := runtime.ExecutionTimeoutSeconds
+	if remaining <= 0 || executionTimeout < 1 || time.Duration(executionTimeout)*time.Second > modelturn.MaxTurnTTL {
 		_ = r.turns.FailRuntime(context.Background(), runtime.RuntimeID)
 		http.Error(w, "runtime expired", http.StatusConflict)
 		return
 	}
+	remaining = time.Duration(executionTimeout) * time.Second
 	writeJSON(w, http.StatusOK, modelRuntimeLeaseResponse{
 		RuntimeID: runtime.RuntimeID, DeviceID: device.ID, WorkspaceID: runtime.WorkspaceID,
 		Controller: runtime.Controller, State: runtime.State, Goal: string(goal), GoalDigest: digest,
