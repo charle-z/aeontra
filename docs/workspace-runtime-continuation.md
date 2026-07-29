@@ -50,14 +50,20 @@ The safe public response contains only:
 
 ```text
 runtime_id
-workspace_id
 device_id
+workspace_id
+controller
 state
-created_at
-expires_at
 last_sequence
-failure_category
+updated_at
+result_ref (terminal success only)
+phases (bounded safe startup timeline)
 ```
+
+Each phase contains only a closed phase name, server-owned timestamps, derived
+non-negative durations, and an optional closed retry category and bounded count.
+No objective, prompt, tool body, command, local path, checkpoint, credential, or
+private error text is part of the public timeline.
 
 ## Server-owned objective
 

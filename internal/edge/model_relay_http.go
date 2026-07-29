@@ -46,7 +46,10 @@ type modelRuntimeLeaseResponse struct {
 }
 
 type modelRuntimeLifecycleRequest struct {
-	ResultRef string `json:"result_ref,omitempty"`
+	ResultRef     string                         `json:"result_ref,omitempty"`
+	Phase         modelturn.RuntimePhase         `json:"phase,omitempty"`
+	RetryCategory modelturn.RuntimeRetryCategory `json:"retry_category,omitempty"`
+	Count         uint32                         `json:"count,omitempty"`
 }
 
 type modelTurnCreateRequest struct {
@@ -233,9 +236,20 @@ func (r *modelRelay) handleRuntimeAction(w http.ResponseWriter, request *http.Re
 			return
 		}
 		writeJSON(w, http.StatusOK, updated)
+	case "phase":
+		if input.ResultRef != "" || !modelturn.RuntimeAcceptsEdgePhase(runtime, input.Phase) || (input.Phase == modelturn.RuntimePhaseLeaseRetry && input.RetryCategory == "") {
+			http.Error(w, "runtime phase is invalid", http.StatusBadRequest)
+			return
+		}
+		if err := r.turns.RecordRuntimePhase(request.Context(), runtime.RuntimeID, input.Phase, input.RetryCategory, input.Count); err != nil {
+			http.Error(w, "runtime phase rejected", http.StatusConflict)
+			return
+		}
+		updated, _ := r.turns.RuntimeForDevice(request.Context(), runtime.RuntimeID, device.ID)
+		writeJSON(w, http.StatusOK, updated)
 	case "started":
 		_, _ = r.turns.ResumeRuntime(request.Context(), runtime.RuntimeID)
-		if err := r.turns.SetRuntimeState(request.Context(), runtime.RuntimeID, modelturn.RuntimeStateAwaitingModel, modelturn.RuntimeStateStarting, modelturn.RuntimeStateDisconnected, modelturn.RuntimeStateAwaitingModel); err != nil {
+		if err := r.turns.SetRuntimeStateAndRecordPhase(request.Context(), runtime.RuntimeID, modelturn.RuntimeStateAwaitingModel, modelturn.RuntimePhaseStartedConfirmed, modelturn.RuntimeStateStarting, modelturn.RuntimeStateDisconnected, modelturn.RuntimeStateAwaitingModel); err != nil {
 			http.Error(w, "runtime start rejected", http.StatusConflict)
 			return
 		}
@@ -396,7 +410,7 @@ func (r *modelRelay) handleWaitTurn(w http.ResponseWriter, request *http.Request
 	go r.cancelWhenRevoked(ctx, cancel, device.ID)
 	response, err := r.turns.WaitResponse(ctx, turnID)
 	if err == nil {
-		_ = r.turns.SetRuntimeState(context.Background(), runtime.RuntimeID, modelturn.RuntimeStateExecutingTools, modelturn.RuntimeStateAwaitingModel, modelturn.RuntimeStateDisconnected, modelturn.RuntimeStateExecutingTools)
+		_ = r.turns.SetRuntimeStateAndRecordPhase(context.Background(), runtime.RuntimeID, modelturn.RuntimeStateExecutingTools, modelturn.RuntimePhaseToolExecutionStarted, modelturn.RuntimeStateAwaitingModel, modelturn.RuntimeStateDisconnected, modelturn.RuntimeStateExecutingTools)
 		writeJSON(w, http.StatusOK, response)
 		return
 	}

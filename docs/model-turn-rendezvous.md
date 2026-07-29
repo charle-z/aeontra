@@ -64,3 +64,33 @@ For a remote-Edge runtime before its first turn, inability to read the private r
 goal is handled as a retryable lease delivery failure. The runtime returns to
 `awaiting_edge` and the Edge repeats the same signed receipt; the control plane must
 not turn that storage/availability condition into a terminal Edge failure.
+
+## Runtime startup observability
+
+Remote runtimes persist a bounded, server-owned phase timeline alongside the runtime
+metadata. The public timeline may contain only these closed phase names:
+
+```text
+runtime_created
+lease_assigned
+lease_retry
+local_preflight_completed
+started_confirmed
+driver_socket_ready
+opencode_process_started
+first_model_turn_created
+tool_execution_started
+terminal
+```
+
+Each entry exposes an authoritative server timestamp, the duration since the previous
+entry, the duration since runtime creation, and an optional bounded retry category and
+count. Retry categories are closed to `no_content`, `client_timeout`,
+`transport_error`, `server_busy`, `upstream_unavailable`, and `gateway_timeout`.
+Client timestamps are never accepted. Equal or regressing clocks are normalized so
+public durations cannot become negative.
+
+The timeline survives process restarts in the same private SQLite store. Milestones
+are idempotent, retry counts are aggregated, and the number of rows per runtime is
+bounded. It never stores or emits prompts, messages, private bodies, tool arguments,
+commands, local paths, credentials, checkpoint contents, model reasoning, or error

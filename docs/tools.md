@@ -40,7 +40,7 @@ do not replace server-side enforcement.
 | `edge_bundle_rollback` | 0/1/1/0 | Activate only the previous locally known signed release and verify Edge health. |
 | `edge_repair` | 0/0/1/0 | Restore only reviewed signed components, permissions, fixed symlinks, packaged unit and Edge health. |
 | `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, bundle, provider, driver, Bubblewrap, rootless, workspace count and blocker metadata. |
-| `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, and optional result ref. |
+| `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, optional result ref, and the bounded server-owned startup phase timeline. |
 | `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
 | `model_turn_respond` | 0/0/0/0 | Submit one bounded text/tool-call response after runtime, sequence, digest and offered-tool validation. |
 | `model_runtime_cancel` | 0/1/1/0 | Idempotently cancel a runtime and all active unconsumed turns. |

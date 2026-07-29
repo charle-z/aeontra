@@ -36,14 +36,15 @@ type openCodeRuntimeStartParams struct {
 }
 
 type runtimePublicView struct {
-	RuntimeID    string                      `json:"runtime_id"`
-	State        modelturn.RuntimeState      `json:"state"`
-	DeviceID     string                      `json:"device_id,omitempty"`
-	WorkspaceID  string                      `json:"workspace_id,omitempty"`
-	Controller   modelturn.RuntimeController `json:"controller"`
-	LastSequence uint64                      `json:"last_sequence"`
-	UpdatedAt    time.Time                   `json:"updated_at"`
-	ResultRef    string                      `json:"result_ref,omitempty"`
+	RuntimeID    string                        `json:"runtime_id"`
+	State        modelturn.RuntimeState        `json:"state"`
+	DeviceID     string                        `json:"device_id,omitempty"`
+	WorkspaceID  string                        `json:"workspace_id,omitempty"`
+	Controller   modelturn.RuntimeController   `json:"controller"`
+	LastSequence uint64                        `json:"last_sequence"`
+	UpdatedAt    time.Time                     `json:"updated_at"`
+	ResultRef    string                        `json:"result_ref,omitempty"`
+	Phases       []modelturn.RuntimePhaseEvent `json:"phases,omitempty"`
 }
 
 func (s *Server) WithEdgeStore(store edgeDeviceRegistry) *Server {
@@ -64,6 +65,7 @@ func publicRuntime(runtime modelturn.Runtime) runtimePublicView {
 		RuntimeID: runtime.RuntimeID, State: runtime.State, DeviceID: runtime.DeviceID,
 		WorkspaceID: runtime.WorkspaceID, Controller: runtime.Controller,
 		LastSequence: runtime.LastSequence, UpdatedAt: runtime.UpdatedAt, ResultRef: runtime.ResultRef,
+		Phases: runtime.Phases,
 	}
 }
 

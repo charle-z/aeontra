@@ -46,6 +46,8 @@ type fakeOpenCodeRemote struct {
 	completedCalls int
 	heartbeatState modelturn.RuntimeState
 	heartbeatErr   error
+	phases         []modelturn.RuntimePhase
+	retries        map[modelturn.RuntimeRetryCategory]uint32
 }
 
 func newOpenCodeLauncherFixture(t *testing.T) *openCodeLauncherFixture {
@@ -152,6 +154,18 @@ func (f *fakeOpenCodeRemote) WaitResponse(context.Context, modelturn.TurnID) (mo
 	return modelturn.ModelResponse{}, errors.New("unexpected model wait in launcher unit test")
 }
 func (f *fakeOpenCodeRemote) Cancel(context.Context, modelturn.TurnID) error { return nil }
+func (f *fakeOpenCodeRemote) ReportPhase(_ context.Context, phase modelturn.RuntimePhase, category modelturn.RuntimeRetryCategory, count uint32) (modelturn.Runtime, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.phases = append(f.phases, phase)
+	if category != "" {
+		if f.retries == nil {
+			f.retries = make(map[modelturn.RuntimeRetryCategory]uint32)
+		}
+		f.retries[category] += count
+	}
+	return f.runtime, nil
+}
 func (f *fakeOpenCodeRemote) Started(context.Context) (modelturn.Runtime, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -191,9 +205,16 @@ func (f *fakeOpenCodeRemote) Close() error { return nil }
 
 func TestOpenCodeLauncherUsesOnlyFixedLocalConfiguration(t *testing.T) {
 	fixture := newOpenCodeLauncherFixture(t)
+	fixture.lease.RetryCounts = map[modelturn.RuntimeRetryCategory]uint32{modelturn.RuntimeRetryGatewayTimeout: 2}
 	var captured openCodeProcessSpec
 	fixture.launcher.runProcess = func(_ context.Context, spec openCodeProcessSpec) openCodeProcessResult {
 		captured = spec
+		if spec.Started == nil {
+			t.Fatal("process start observer is missing")
+		}
+		if err := spec.Started(); err != nil {
+			t.Fatal(err)
+		}
 		socketPath := filepath.Join(openCodeRuntimeDir(fixture.launcher.config.SocketRoot, fixture.lease.RuntimeID), openCodeDriverSocketName)
 		info, err := os.Lstat(socketPath)
 		if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0o600 {
@@ -292,6 +313,13 @@ func TestOpenCodeLauncherUsesOnlyFixedLocalConfiguration(t *testing.T) {
 	defer fixture.remote.mu.Unlock()
 	if fixture.remote.startedCalls != 1 || fixture.remote.completedCalls != 1 || fixture.remote.failedCalls != 0 {
 		t.Fatalf("remote calls started=%d completed=%d failed=%d", fixture.remote.startedCalls, fixture.remote.completedCalls, fixture.remote.failedCalls)
+	}
+	wantPhases := []modelturn.RuntimePhase{modelturn.RuntimePhaseLeaseRetry, modelturn.RuntimePhaseLocalPreflightComplete, modelturn.RuntimePhaseDriverSocketReady, modelturn.RuntimePhaseOpenCodeProcessStarted}
+	if !reflect.DeepEqual(fixture.remote.phases, wantPhases) {
+		t.Fatalf("runtime phases=%v want=%v", fixture.remote.phases, wantPhases)
+	}
+	if fixture.remote.retries[modelturn.RuntimeRetryGatewayTimeout] != 2 {
+		t.Fatalf("runtime retries=%v", fixture.remote.retries)
 	}
 	journalInfo, err := os.Stat(filepath.Join(fixture.state, openCodeRuntimeJournalFile))
 	if err != nil || journalInfo.Mode().Perm() != 0o600 {
