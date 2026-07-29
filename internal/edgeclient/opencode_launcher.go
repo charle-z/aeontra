@@ -34,19 +34,29 @@ const (
 	openCodeDriverSocketName      = "d.sock"
 	openCodeDefaultOutputLimit    = int64(1 << 20)
 	openCodeMaxOutputLimit        = int64(4 << 20)
-	openCodeSandboxWorkspace      = "/workspace"
-	openCodeSandboxRuntime        = "/runtime"
-	openCodeSandboxHome           = "/runtime/home"
-	openCodeSandboxSocket         = "/runtime/d.sock"
-	openCodeSandboxProvider       = "/mcp-provider"
-	openCodeSandboxExecutable     = "/mcp-opencode"
-	openCodeDefaultToolPath       = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-	openCodeManagedToolRoot       = "/srv/mcp-devbox-tools"
+	// Local startup must not consume the execution budget the caller asked for. A
+	// healthy driver publishes its private socket in milliseconds, so this budget is
+	// several orders of magnitude above the observed cost and still bounds a stalled
+	// driver to a small, classified failure instead of a silent expiry.
+	openCodeDefaultDriverStartupBudget = 30 * time.Second
+	openCodeMinDriverStartupBudget     = time.Second
+	openCodeMaxDriverStartupBudget     = 2 * time.Minute
+	openCodeSandboxWorkspace           = "/workspace"
+	openCodeSandboxRuntime             = "/runtime"
+	openCodeSandboxHome                = "/runtime/home"
+	openCodeSandboxSocket              = "/runtime/d.sock"
+	openCodeSandboxProvider            = "/mcp-provider"
+	openCodeSandboxExecutable          = "/mcp-opencode"
+	openCodeDefaultToolPath            = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	openCodeManagedToolRoot            = "/srv/mcp-devbox-tools"
 )
 
 var (
 	ErrOpenCodeInterrupted = errors.New("OpenCode runtime was interrupted and will not be executed twice")
 	ErrOpenCodeTerminal    = errors.New("OpenCode runtime is already terminal")
+	// errStartupDriverNotReady is a closed classification: it names the phase that
+	// failed without exposing paths, commands, stderr or model content.
+	errStartupDriverNotReady = errors.New("OpenCode model-turn driver did not become ready within the local startup budget")
 )
 
 type OpenCodeRemoteTransport interface {
@@ -92,9 +102,13 @@ type OpenCodeLauncherConfig struct {
 	ToolPath       string
 	OutputLimit    int64
 	Heartbeat      time.Duration
-	HTTPClient     *http.Client
-	Workspaces     *WorkspaceRegistry
-	Journal        *OpenCodeRuntimeJournal
+	// DriverStartupBudget bounds how long the launcher waits for the model-turn
+	// driver to publish its private socket. It is deliberately separate from the
+	// lease execution budget so a local startup stall fails fast and classified.
+	DriverStartupBudget time.Duration
+	HTTPClient          *http.Client
+	Workspaces          *WorkspaceRegistry
+	Journal             *OpenCodeRuntimeJournal
 }
 
 type OpenCodeLaunchResult struct {
@@ -203,6 +217,12 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 	}
 	if config.Heartbeat < time.Second || config.Heartbeat > 30*time.Second {
 		return nil, errors.New("OpenCode heartbeat interval is invalid")
+	}
+	if config.DriverStartupBudget == 0 {
+		config.DriverStartupBudget = openCodeDefaultDriverStartupBudget
+	}
+	if config.DriverStartupBudget < openCodeMinDriverStartupBudget || config.DriverStartupBudget > openCodeMaxDriverStartupBudget {
+		return nil, errors.New("OpenCode driver startup budget is invalid")
 	}
 	if config.Workspaces == nil || config.Journal == nil {
 		return nil, errors.New("OpenCode launcher requires local workspace and runtime journals")
@@ -436,7 +456,13 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
-	driverExited, err := waitForPrivateDriverSocketOrExit(runCtx, socketPath, l.effectiveUID(), driverDone)
+	startupCtx, startupCancel := context.WithTimeout(runCtx, l.config.DriverStartupBudget)
+	driverExited, err := waitForPrivateDriverSocketOrExit(startupCtx, socketPath, l.effectiveUID(), driverDone)
+	startupExpired := startupCtx.Err() != nil && runCtx.Err() == nil
+	startupCancel()
+	if err != nil && startupExpired {
+		err = errStartupDriverNotReady
+	}
 	if err != nil {
 		cancel()
 		if !driverExited {
