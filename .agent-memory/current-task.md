@@ -2,47 +2,47 @@
 
 Authoritative plan: Brain note `mcp-devbox-redeploy-continuity`.
 
-## Hito 0 — completed
+## Completed milestones
+
+### Hito 0 — controlled reproduction
 
 - Branch: `fix/mcp-redeploy-continuity`.
-- Validated base: `main` / `origin/main` / merge-base `b3d2c160f3179da7966254406587520b735c61ea`.
-- Implementation commit: `6fa43f0bd220bc275e162ae91d242b9642068ea1`.
-- File added: `internal/mcpserver/redeploy_continuity_test.go`.
-- Production baseline: app `jqf7qz5ensoqtvl1tb197gcv` healthy; live commit `b3d2c160f3179da7966254406587520b735c61ea`; 102 tools; catalog `sha256:477bfd598edec2d8c2e03cea3e13c60cc78f898083138e326e8fed55feb8ca1b`.
+- Base: `main` / `origin/main` / merge-base `b3d2c160f3179da7966254406587520b735c61ea`.
+- Reproduction commit: `6fa43f0bd220bc275e162ae91d242b9642068ea1`.
+- Continuity commit: `e16ba02f4cd8c3d7119d6444f403e17e3653c6a7`.
+- Defect: the HTTP transport returns a process session header on `initialize` but ignores the client's later `Mcp-Session-Id`; an old instance session is accepted by a replacement instance, including against a changed test catalog.
+- Tests: focused redeploy characterization and complete `internal/mcpserver` suite passed.
 
-## Reproduced behavior
+### Hito 1 — bounded graceful drain
 
-The automated same-endpoint replacement fixture proves:
+- Implementation commit: `55a4b36e7cccf0376c5d1f87550b8ef5632b209f`.
+- Files changed: `Dockerfile`, `docs/deploy-coolify.md`, `internal/mcpserver/client_capabilities.go`, `internal/mcpserver/http.go`, `internal/mcpserver/http_lifecycle.go`, `internal/mcpserver/http_lifecycle_test.go`, `internal/mcpserver/http_listener.go`, `internal/workflowpolicy/security_remediation_test.go`.
+- Added `/readyz` while preserving `/healthz` as liveness.
+- Docker/Coolify healthcheck now uses `/readyz`.
+- `SIGTERM`/context cancellation marks the instance draining and not-ready before listener shutdown.
+- New `initialize` requests receive `503` with `Retry-After` during drain.
+- Active requests may complete inside an 8-second bounded shutdown window.
+- SSE streams close when drain starts so shutdown is not held open indefinitely.
+- On deadline, active connections are force-closed and the transport returns a clear drain deadline error.
+- Process-local client/session capability metadata is invalidated only after active work completes or the deadline forces closure, so in-flight requests are not deprived of their metadata.
+- `/mcp` remains unauthorized without credentials; `/console/status` remains unauthorized without a console session.
+- Persistent stores were not moved or rewritten.
 
-1. Server A accepts `initialize`, `tools/list`, and safe `system_runtime_info`.
-2. Server B can start on the same logical endpoint and issue a different new session ID.
-3. A new session works after replacement.
-4. The old Server A session header is also accepted by Server B.
-5. With the same contract, both instances expose the same catalog hash.
-6. With a test-only contractual tool added to B, the catalog hash changes.
-7. The old session can silently see and call the changed B catalog.
+## Hito 1 verification
 
-## Confirmed root cause
-
-`internal/mcpserver/http.go` creates one process-wide `Mcp-Session-Id`, returns it on `initialize`, but never validates the client's later `Mcp-Session-Id` header. `tools/list` and `tools/call` do not require a valid initialized HTTP session. Therefore a replacement instance accepts an identifier emitted by the previous instance and grants the current authenticated tool authority through it.
-
-This is a server defect. Separately, ChatGPT may or may not refresh a connector inside an active conversation; that client behavior is not a server guarantee and does not explain the invalid-session acceptance.
-
-## Verification
-
-- `go test ./internal/mcpserver -run TestRedeployContinuityCharacterizesCurrent -count=1` — pass.
-- `go test ./internal/mcpserver -count=1` — pass.
+- `go test ./internal/mcpserver -run TestHTTP -count=1` — pass.
+- `go test ./internal/mcpserver ./internal/app ./internal/workflowpolicy ./docs -count=1` — pass.
 - `git diff --check` — pass.
-- Diff reviewed; no production implementation changed in Hito 0.
-- Tree was clean immediately after implementation commit.
+- Focused race run was attempted but the local executor has CGO disabled; race is not an Hito 1 acceptance gate and remains covered by the existing CI Race job.
+- Diff reviewed after moving metadata invalidation to the end of the drain window.
+- Tree clean after commit.
 
-## Decisions and boundaries
+## Boundaries preserved
 
-- Do not touch the unrelated `h1-edge-runtime-observability` worktree/branch.
-- Do not change URL, domain, OAuth configuration, authority modes, jails, grants, Edge, workcells, or add a general shell.
-- Preserve persistent Brain and state stores.
-- The one-shot SSE catalog notification on every process start is recorded for Hito 3; do not fix it early.
+- No URL, domain, OAuth configuration, authority mode, jail, grant, Edge, workcell, secret handling, or general shell changed.
+- The unrelated `h1-edge-runtime-observability` worktree/branch was not touched.
+- ChatGPT connector refresh inside an active conversation remains a client behavior, not a server guarantee.
 
 ## Exact next step
 
-Hito 1 only: implement bounded graceful draining and readiness. Mark the instance unready before shutdown, reject new MCP initialization during drain, allow active requests to finish within a fixed deadline, close listeners and invalidate in-memory sessions safely, preserve durable state, and keep `/mcp` and `/console` authentication intact. Do not begin Hito 2 session reinitalization semantics until Hito 1 is committed, tested, reviewed, and recorded.
+Hito 2 only: introduce real in-memory HTTP session registration and validation. A successful `initialize` must create a fresh opaque session ID; non-initialize MCP requests must require that current-instance session. Missing, unknown, expired, or previous-instance headers must fail clearly without `tools/list`, `tools/call`, or authority fallback. A new session on the replacement instance must complete `initialize` → `tools/list` → safe `tools/call` with the same URL and OAuth. Do not begin catalog work from Hito 3 until Hito 2 is committed, tested, reviewed, and recorded.
