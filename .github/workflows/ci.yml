@@ -48,6 +48,9 @@ jobs:
           files="$(gofmt -l .)"
           test -z "$files" || { echo "$files"; exit 1; }
 
+      - name: Verify MCP instance replacement continuity
+        run: go test ./internal/mcpserver -run '^TestRedeployE2E' -count=1
+
       - name: Test with atomic coverage
         run: go test ./... -coverprofile=coverage.out -covermode=atomic -count=1
 

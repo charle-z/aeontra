@@ -111,8 +111,12 @@ func run(args []string, output io.Writer, getenv func(string) string, suppliedCl
 	if err := validateVersion(remote, strings.TrimSpace(*expectedCommit), local); err != nil {
 		return err
 	}
+	sessionID, err := initializeSession(client, endpoint, credential)
+	if err != nil {
+		return err
+	}
 
-	statusText, err := callTool(client, endpoint, credential, 1, "brain_index", map[string]any{"action": "status"})
+	statusText, err := callTool(client, endpoint, credential, sessionID, 2, "brain_index", map[string]any{"action": "status"})
 	if err != nil {
 		return err
 	}
@@ -128,7 +132,7 @@ func run(args []string, output io.Writer, getenv func(string) string, suppliedCl
 	if !status.Ready || status.SchemaVersion != brainpkg.IndexSchemaVersion || status.NoteCount < 0 || status.SourceBytes < 0 || status.LinkCount < 0 || status.BrokenLinkCount < 0 {
 		return fmt.Errorf("brain index status is invalid")
 	}
-	contextText, err := callTool(client, endpoint, credential, 2, "brain_context", map[string]any{"limit": brainpkg.MaxContextNotes})
+	contextText, err := callTool(client, endpoint, credential, sessionID, 3, "brain_context", map[string]any{"limit": brainpkg.MaxContextNotes})
 	if err != nil {
 		return err
 	}
@@ -210,7 +214,45 @@ func validateVersion(remote versionResponse, expectedCommit string, local mcpser
 	return nil
 }
 
-func callTool(client *http.Client, endpoint *url.URL, credential string, id int, name string, arguments map[string]any) (string, error) {
+func initializeSession(client *http.Client, endpoint *url.URL, credential string) (string, error) {
+	requestBody, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2024-11-05",
+			"capabilities":    map[string]any{},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("encoding Brain initialize request: %w", err)
+	}
+	request, err := http.NewRequest(http.MethodPost, endpoint.String(), bytes.NewReader(requestBody))
+	if err != nil {
+		return "", fmt.Errorf("creating Brain initialize request: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+credential)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("initializing Brain session: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("brain initialize returned HTTP %d", response.StatusCode)
+	}
+	if _, err := readBounded(response.Body); err != nil {
+		return "", err
+	}
+	sessionID := strings.TrimSpace(response.Header.Get("Mcp-Session-Id"))
+	if sessionID == "" {
+		return "", fmt.Errorf("brain initialize returned no MCP session")
+	}
+	return sessionID, nil
+}
+
+func callTool(client *http.Client, endpoint *url.URL, credential, sessionID string, id int, name string, arguments map[string]any) (string, error) {
 	requestBody, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      id,
@@ -228,6 +270,7 @@ func callTool(client *http.Client, endpoint *url.URL, credential string, id int,
 		return "", fmt.Errorf("creating Brain smoke request: %w", err)
 	}
 	request.Header.Set("Authorization", "Bearer "+credential)
+	request.Header.Set("Mcp-Session-Id", sessionID)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
 	response, err := client.Do(request)

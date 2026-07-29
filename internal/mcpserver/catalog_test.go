@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -60,7 +61,7 @@ func TestCatalogHashChangesWithWireContract(t *testing.T) {
 	}
 }
 
-func TestCatalogHashIgnoresDescriptionsAndHandlers(t *testing.T) {
+func TestCatalogHashIncludesDescriptionsButIgnoresHandlers(t *testing.T) {
 	s := stampServer(t)
 	baseline, err := s.CatalogInfo()
 	if err != nil {
@@ -68,13 +69,23 @@ func TestCatalogHashIgnoresDescriptionsAndHandlers(t *testing.T) {
 	}
 
 	entry := s.table["repo_list"]
-	entry.def.Description = "documentation-only change"
+	entry.def.Description = "model-visible semantic change"
 	s.table["repo_list"] = entry
-	changed, err := s.CatalogInfo()
+	descriptionChanged, err := s.CatalogInfo()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed.Hash != baseline.Hash {
-		t.Fatal("catalog hash changed for a description-only edit")
+	if descriptionChanged.Hash == baseline.Hash {
+		t.Fatal("catalog hash did not change for a public description edit")
+	}
+
+	entry.handler = func(json.RawMessage) (string, error) { return "implementation-only", nil }
+	s.table["repo_list"] = entry
+	handlerChanged, err := s.CatalogInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handlerChanged.Hash != descriptionChanged.Hash {
+		t.Fatal("catalog hash changed for an implementation-only handler edit")
 	}
 }

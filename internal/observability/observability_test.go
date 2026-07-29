@@ -75,7 +75,7 @@ func TestEmitWritesOneJSONLineAndDefensivelyRedactsLabels(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &event); err != nil {
 		t.Fatal(err)
 	}
-	if event.SchemaVersion != 1 || event.Time == "" || event.Name != EventRPCRequest {
+	if event.SchemaVersion != SchemaVersion || event.Time == "" || event.Name != EventRPCRequest {
 		t.Fatalf("unexpected event: %+v", event)
 	}
 	if event.Tool != "redacted" {

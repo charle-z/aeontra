@@ -74,10 +74,8 @@ func TestHTTPConsoleDoesNotChangeMCPAuthOrCatalog(t *testing.T) {
 		t.Fatalf("unauthorized MCP status=%d", unauthorized.Code)
 	}
 
-	authorizedRequest := httptest.NewRequest(http.MethodPost, DefaultMCPPath, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
-	authorizedRequest.Header.Set("Authorization", "Bearer "+testToken)
-	authorized := httptest.NewRecorder()
-	handler.ServeHTTP(authorized, authorizedRequest)
+	sessionID := initializeHandlerSession(t, handler, "Bearer "+testToken)
+	authorized := doWithSession(t, handler, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, rpcBody(t, 2, "tools/list", nil))
 	if authorized.Code != http.StatusOK {
 		t.Fatalf("authorized MCP status=%d body=%s", authorized.Code, authorized.Body.String())
 	}
@@ -85,7 +83,7 @@ func TestHTTPConsoleDoesNotChangeMCPAuthOrCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.ToolCount != 102 || info.Hash != "sha256:477bfd598edec2d8c2e03cea3e13c60cc78f898083138e326e8fed55feb8ca1b" {
+	if info.ToolCount != 102 || info.Hash != "sha256:1d3646af205ec2b1a01a47d034641ac4cb8a4843d9c7879b122432308e961007" {
 		t.Fatalf("catalog changed: %+v", info)
 	}
 }

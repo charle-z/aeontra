@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 	"time"
 
@@ -36,6 +37,7 @@ type Server struct {
 	journal        *taskjournal.Journal
 	telemetry      *telemetry.Store
 	startedAt      time.Time
+	bootID         string
 	payload        payloadCounters
 	clients        *clientCapabilityStore
 	modelTurns     *modelturn.Store
@@ -80,11 +82,21 @@ func NewWithObserver(svc *tools.Service, observer *observability.Logger) *Server
 		table:      map[string]toolEntry{},
 		observer:   observer,
 		startedAt:  time.Now().UTC(),
+		bootID:     observability.NewRequestID(),
 		clients:    newClientCapabilityStore(),
 		modelWaits: map[string]struct{}{},
 	}
 	s.register()
 	return s
+}
+
+// BootID is an opaque process-lifetime identifier used only for operational
+// observability. It is never a session identifier and carries no authority.
+func (s *Server) BootID() string {
+	if s == nil {
+		return ""
+	}
+	return s.bootID
 }
 
 // Serve runs the stdio loop until EOF. Each input line is one JSON-RPC message;
@@ -135,6 +147,7 @@ func (s *Server) emitRPCFailure(transport observability.Transport, requestID str
 		Outcome:    observability.OutcomeError,
 		DurationMS: time.Since(started).Milliseconds(),
 		ErrorClass: errorClass,
+		BootID:     s.BootID(),
 	})
 }
 
@@ -152,6 +165,7 @@ func (s *Server) handleObservedSession(raw []byte, transport observability.Trans
 		Transport: transport,
 		Method:    observability.MethodOther,
 		Outcome:   observability.OutcomeSuccess,
+		BootID:    s.BootID(),
 	}
 	defer func() {
 		duration := time.Since(started).Milliseconds()
@@ -225,7 +239,7 @@ func (s *Server) initializeResult(params json.RawMessage, sessionKey string) map
 	runtimeInfo := s.mustRuntimeInfo()
 	return map[string]any{
 		"protocolVersion": version,
-		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": true}},
+		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
 		"serverInfo": map[string]any{
 			"name":        s.name,
 			"version":     runtimeInfo.Version,
@@ -248,8 +262,13 @@ func (s *Server) initializeResult(params json.RawMessage, sessionKey string) map
 }
 
 func (s *Server) listTools() []toolDef {
-	defs := make([]toolDef, 0, len(s.order))
-	for _, name := range s.order {
+	names := make([]string, 0, len(s.table))
+	for name := range s.table {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	defs := make([]toolDef, 0, len(names))
+	for _, name := range names {
 		defs = append(defs, s.table[name].def)
 	}
 	return defs

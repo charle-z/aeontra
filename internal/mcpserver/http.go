@@ -10,9 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
@@ -25,8 +25,9 @@ import (
 // maxHTTPBody caps a single MCP request body. MCP messages are small; this bounds
 // memory and abuse over the network transport.
 const (
-	maxHTTPBody       = 4 << 20 // 4 MiB
-	maxHTTPBatchItems = 128
+	maxHTTPBody                = 4 << 20 // 4 MiB
+	maxHTTPBatchItems          = 128
+	defaultHTTPShutdownTimeout = 8 * time.Second
 )
 
 // DefaultMCPPath is the endpoint that speaks MCP (streamable-HTTP subset).
@@ -54,10 +55,20 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 // unauthenticated presentation-only landing, and adds the authenticated console
 // configured by opts.
 func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provider, opts HTTPOptions) http.Handler {
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, newHTTPServerLifecycle(), newHTTPSessionStore(defaultHTTPSessionTTL), newHTTPTransportTelemetry())
+}
+
+func (s *Server) httpHandlerWithLifecycle(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle) http.Handler {
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, newHTTPSessionStore(defaultHTTPSessionTTL), newHTTPTransportTelemetry())
+}
+
+func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore) http.Handler {
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, sessions, newHTTPTransportTelemetry())
+}
+
+func (s *Server) httpHandlerWithRuntime(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore, telemetry *httpTransportTelemetry) http.Handler {
 	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
-	sessionID := newHTTPSessionID()
-	catalogNotifier := &oneShotCatalogNotifier{}
 	landingHandler, err := landing.New()
 	if err != nil {
 		panic(fmt.Sprintf("invalid landing configuration: %v", err))
@@ -119,6 +130,24 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 		_, _ = io.WriteString(w, "ok mcp-devbox "+buildinfo.Version+" "+buildinfo.Commit+"\n")
 	})
 
+	// Readiness is separate from liveness. During a normal replacement the process
+	// remains alive long enough to finish active work, but it must stop receiving new
+	// sessions before the listener is closed.
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if !lifecycle.Ready() {
+			http.Error(w, "draining", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "ready\n")
+	})
+
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
@@ -130,6 +159,9 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 	})
 
 	mux.HandleFunc(DefaultMCPPath, func(w http.ResponseWriter, r *http.Request) {
+		observeSessionReject := func(validation httpSessionValidation) {
+			s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, sessionValidationErrorClass(validation), telemetry.ReconnectCount())
+		}
 		switch r.Method {
 		case http.MethodPost:
 			if !authorized(r) {
@@ -137,16 +169,34 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			s.handleHTTPPost(w, r, sessionID)
+			s.handleHTTPPost(w, r, lifecycle, sessions, telemetry)
 		case http.MethodGet:
 			if !authorized(r) {
 				challenge(w)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			handleHTTPGetSSE(w, r, catalogNotifier)
+			if _, ok := validateHTTPSessionObserved(w, r, sessions, observeSessionReject); !ok {
+				return
+			}
+			handleHTTPGetSSE(w, r, lifecycle)
+		case http.MethodDelete:
+			if !authorized(r) {
+				challenge(w)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			sessionID, ok := validateHTTPSessionObserved(w, r, sessions, observeSessionReject)
+			if !ok {
+				return
+			}
+			sessions.Delete(sessionID)
+			if s.clients != nil {
+				s.clients.Delete(sessionID)
+			}
+			w.WriteHeader(http.StatusNoContent)
 		default:
-			w.Header().Set("Allow", "GET, POST")
+			w.Header().Set("Allow", "GET, POST, DELETE")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
@@ -202,6 +252,7 @@ func (w *observabilityResponseWriter) Unwrap() http.ResponseWriter {
 }
 
 func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
+	runtimeInfo := s.mustRuntimeInfo()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		requestID := observability.NewRequestID()
@@ -221,6 +272,8 @@ func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
 			outcome = observability.OutcomeAccepted
 		case status == http.StatusUnauthorized || status == http.StatusForbidden:
 			outcome = observability.OutcomeDenied
+			level = observability.LevelError
+			errorClass = observability.ErrorAuthentication
 		case status >= http.StatusBadRequest:
 			outcome = observability.OutcomeError
 			level = observability.LevelError
@@ -240,6 +293,10 @@ func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
 				DurationMS:     duration,
 				HTTPDurationMS: duration,
 				ErrorClass:     errorClass,
+				Commit:         runtimeInfo.Commit,
+				ToolCount:      runtimeInfo.ToolCount,
+				CatalogHash:    runtimeInfo.CatalogHash,
+				BootID:         s.BootID(),
 			})
 		}
 	})
@@ -256,7 +313,7 @@ func normalizedRoute(path string) observability.Route {
 	switch {
 	case path == DefaultMCPPath:
 		return observability.RouteMCP
-	case path == "/healthz":
+	case path == "/healthz", path == "/readyz":
 		return observability.RouteHealth
 	case path == "/version":
 		return observability.RouteVersion
@@ -297,29 +354,11 @@ func newHTTPSessionID() string {
 	return fmt.Sprintf("mcp-devbox-%d", time.Now().UnixNano())
 }
 
-// handleHTTPGetSSE serves the server->client SSE stream. It stays open, sending a
-// periodic keep-alive comment, until the client disconnects (request context
-// cancelled). A persistent stream (vs an immediate close) avoids clients such as
-// ChatGPT reconnecting in a loop. The stream carries keep-alive comments and one
-// standards-based tool-list refresh notification after each process start.
-type oneShotCatalogNotifier struct {
-	mu   sync.Mutex
-	sent bool
-}
-
-func (n *oneShotCatalogNotifier) Notify(write func(string) bool) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if n.sent {
-		return
-	}
-	const notification = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\n\n"
-	if write(notification) {
-		n.sent = true
-	}
-}
-
-func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotCatalogNotifier) {
+// handleHTTPGetSSE serves the server->client SSE stream. The catalog is immutable
+// for the lifetime of a process, so a restart must not fabricate tools/list_changed.
+// Clients observe a real deployed contract change by creating a fresh session and
+// calling tools/list on the replacement instance.
+func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -339,13 +378,14 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotC
 	if !writeChunk(": mcp-devbox stream open\n\n") {
 		return
 	}
-	notifier.Notify(writeChunk)
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	ctx := r.Context()
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-lifecycle.DrainDone():
 			return
 		case <-ticker.C:
 			if !writeChunk(": ping\n\n") {
@@ -358,7 +398,7 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotC
 // handleHTTPPost reads one JSON-RPC message (or a batch array) and replies. A lone
 // notification/response yields 202 Accepted with no body; a request yields 200 with
 // an application/json response; a batch yields a JSON array of the non-empty replies.
-func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionID string) {
+func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle, sessions *httpSessionStore, telemetry *httpTransportTelemetry) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHTTPBody))
 	if err != nil {
 		// MaxBytesReader signals oversize via its error; report 413.
@@ -376,8 +416,28 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 		http.Error(w, "empty body", http.StatusBadRequest)
 		return
 	}
-	if containsInitialize([]byte(trimmed)) {
+	initializing := containsInitialize([]byte(trimmed))
+	if initializing && lifecycle.Draining() {
+		s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, observability.ErrorServerDraining, telemetry.ReconnectCount())
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "server draining; initialize a new session after replacement", http.StatusServiceUnavailable)
+		return
+	}
+
+	var sessionID string
+	if initializing {
+		sessionID = sessions.Create()
 		w.Header().Set("Mcp-Session-Id", sessionID)
+		eventName, reconnectCount := telemetry.recordInitialize(r)
+		s.emitHTTPSessionEvent(r, eventName, observability.OutcomeSuccess, observability.ErrorNone, reconnectCount)
+	} else {
+		var ok bool
+		sessionID, ok = validateHTTPSessionObserved(w, r, sessions, func(validation httpSessionValidation) {
+			s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, sessionValidationErrorClass(validation), telemetry.ReconnectCount())
+		})
+		if !ok {
+			return
+		}
 	}
 
 	// JSON-RPC batch (array) support.
@@ -504,23 +564,24 @@ func (s *Server) ServeHTTPWithOptions(ctx context.Context, addr, token string, o
 	if token == "" && oauthProvider == nil {
 		return errors.New("http transport requires auth: set a bearer token or enable OAuth (refusing to start without auth)")
 	}
+	telemetry := newHTTPTransportTelemetry()
+	lifecycle := newHTTPServerLifecycle().WithObserver(func(name observability.EventName, duration time.Duration, outcome observability.Outcome, errorClass observability.ErrorClass) {
+		s.emitHTTPDrainEvent(name, duration, outcome, errorClass, telemetry.ReconnectCount())
+	})
+	sessions := newHTTPSessionStore(defaultHTTPSessionTTL)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("http server listen: %w", err)
+	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.HTTPHandlerWithOptions(token, oauthProvider, opts),
+		Handler:           s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, sessions, telemetry),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	errCh := make(chan error, 1)
-	go func() { errCh <- srv.ListenAndServe() }()
-
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return srv.Shutdown(shutdownCtx)
-	case err := <-errCh:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+	return serveHTTPListener(ctx, srv, listener, lifecycle, defaultHTTPShutdownTimeout, func() {
+		sessions.Reset()
+		if s.clients != nil {
+			s.clients.Reset()
 		}
-		return fmt.Errorf("http server: %w", err)
-	}
+	})
 }

@@ -11,7 +11,8 @@ import (
 
 func TestHTTPEmptyBatchReturnsInvalidRequest(t *testing.T) {
 	h, _ := newHTTPServer(t, config.ModeReadOnly)
-	rr := do(t, h, http.MethodPost, "/mcp", "Bearer "+testToken, `[]`)
+	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
+	rr := doWithSession(t, h, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, `[]`)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("empty batch status = %d, want 200; body=%s", rr.Code, rr.Body.String())
 	}
@@ -32,7 +33,8 @@ func TestHTTPBatchRejectsTooManyItemsWithBoundedError(t *testing.T) {
 	}
 	batch.WriteByte(']')
 
-	rr := do(t, h, http.MethodPost, "/mcp", "Bearer "+testToken, batch.String())
+	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
+	rr := doWithSession(t, h, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, batch.String())
 	if rr.Code != http.StatusOK {
 		t.Fatalf("oversized batch status = %d, want 200; body=%s", rr.Code, rr.Body.String())
 	}
@@ -56,7 +58,8 @@ func TestHTTPBatchAllowsConfiguredMaximum(t *testing.T) {
 	}
 	batch.WriteByte(']')
 
-	rr := do(t, h, http.MethodPost, "/mcp", "Bearer "+testToken, batch.String())
+	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
+	rr := doWithSession(t, h, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, batch.String())
 	if rr.Code != http.StatusOK {
 		t.Fatalf("max batch status = %d, want 200; body=%s", rr.Code, rr.Body.String())
 	}

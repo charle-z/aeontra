@@ -68,7 +68,7 @@ func TestDynamicHTTPResponsesDisableCaching(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/healthz"},
 		{method: http.MethodGet, path: "/version"},
-		{method: http.MethodPost, path: "/mcp", auth: "Bearer " + testToken, body: `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`},
+		{method: http.MethodPost, path: "/mcp", auth: "Bearer " + testToken, body: `{"jsonrpc":"2.0","id":1,"method":"initialize"}`},
 	}
 	for _, test := range tests {
 		rr := do(t, h, test.method, test.path, test.auth, test.body)

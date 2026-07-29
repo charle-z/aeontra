@@ -2,9 +2,7 @@ package mcpserver
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
@@ -18,11 +16,8 @@ func TestKnownToolCallIsJournaledWithoutChangingCatalog(t *testing.T) {
 	}
 	server.WithTaskJournal(journal)
 	handler := server.HTTPHandler(testToken, nil)
-	request := httptest.NewRequest(http.MethodPost, DefaultMCPPath, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sandbox_status","arguments":{}}}`))
-	request.Header.Set("Authorization", "Bearer "+testToken)
-	request.Header.Set("Content-Type", "application/json")
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
+	sessionID := initializeHandlerSession(t, handler, "Bearer "+testToken)
+	response := doWithSession(t, handler, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, sessionID, rpcBody(t, 2, "tools/call", map[string]any{"name": "sandbox_status", "arguments": map[string]any{}}))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -38,7 +33,7 @@ func TestKnownToolCallIsJournaledWithoutChangingCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.ToolCount != 102 || catalog.Hash != "sha256:477bfd598edec2d8c2e03cea3e13c60cc78f898083138e326e8fed55feb8ca1b" {
+	if catalog.ToolCount != 102 || catalog.Hash != "sha256:1d3646af205ec2b1a01a47d034641ac4cb8a4843d9c7879b122432308e961007" {
 		t.Fatalf("catalog changed: %+v", catalog)
 	}
 }

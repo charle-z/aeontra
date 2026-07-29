@@ -88,7 +88,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	}
 	sum := sha256.Sum256(encoded)
 	legacyHash := "sha256:" + hex.EncodeToString(sum[:])
-	const p8CurrentContractHash = "sha256:019878a58e491a45d0ece39e3fc57a21d7a7fd5ad73b8b07300dca7496f1663f"
+	const p8CurrentContractHash = "sha256:b9fe7d2b9e291e80618459baa1ac7d1099809861b96ac48706a7dfb38b6701cd"
 	if len(legacy) != 62 || legacyHash != p8CurrentContractHash {
 		t.Fatalf("P8 compatibility catalog changed: count=%d hash=%s", len(legacy), legacyHash)
 	}
@@ -104,7 +104,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	}
 	previousSum := sha256.Sum256(previousEncoded)
 	previousHash := "sha256:" + hex.EncodeToString(previousSum[:])
-	const p11CurrentContractHash = "sha256:adcb88107ac9d06043cb813307273fb9f8961750b5c9eb44fd199e8b14040161"
+	const p11CurrentContractHash = "sha256:7ec8ad55c5c109eb48e1423b3eeaa99e5f1a052974be955602afe688d50648b9"
 	if len(previous) != 71 || previousHash != p11CurrentContractHash {
 		t.Fatalf("P11 compatibility catalog changed: count=%d hash=%s", len(previous), previousHash)
 	}
@@ -121,7 +121,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	step1Sum := sha256.Sum256(step1Encoded)
 	step1ComputedHash := "sha256:" + hex.EncodeToString(step1Sum[:])
 
-	const step1Hash = "sha256:ce97116db30dafdb32b77bc4d6d0c3e3cf37405dc6c715841a3be0063f415d87"
+	const step1Hash = "sha256:832a4591fbaf9a0dfb918db99b5e011b59b154c8749e942063283d64e9333c3a"
 	if len(step1) != 72 || step1ComputedHash != step1Hash {
 		t.Fatalf("Step 1 catalog identity changed: count=%d hash=%s", len(step1), step1ComputedHash)
 	}
@@ -150,11 +150,11 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	}
 	step4Sum := sha256.Sum256(step4Encoded)
 	step4ComputedHash := "sha256:" + hex.EncodeToString(step4Sum[:])
-	const step4Hash = "sha256:d8b6bf39f04e33c26dea45b1440543c97fa7578351720528ac3fda99c12daceb"
+	const step4Hash = "sha256:afd9b609e6367ccc82bf96448882ebb5a81ed65ef2f38e9aaaf3bfc09b90702e"
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 102 || snapshot.Hash != "sha256:477bfd598edec2d8c2e03cea3e13c60cc78f898083138e326e8fed55feb8ca1b" {
+	if snapshot.ToolCount != 102 || snapshot.Hash != "sha256:1d3646af205ec2b1a01a47d034641ac4cb8a4843d9c7879b122432308e961007" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
