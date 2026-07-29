@@ -140,7 +140,9 @@ func (t *Transport) LeaseModelRuntime(ctx context.Context, wait time.Duration) (
 			default:
 				return nil, fmt.Errorf("model runtime lease rejected with HTTP %d", status)
 			}
-		} else if errors.Is(callErr, context.DeadlineExceeded) || strings.Contains(strings.ToLower(callErr.Error()), "timeout") {
+		} else if ctx.Err() != nil {
+			return nil, ctx.Err()
+		} else if isHTTPClientTimeout(callErr) {
 			recordRetry(modelturn.RuntimeRetryClientTimeout)
 		} else {
 			recordRetry(modelturn.RuntimeRetryTransportError)
@@ -159,6 +161,14 @@ func (t *Transport) modelRuntimeLeaseClient(wait time.Duration) *http.Client {
 	}
 	client.Timeout = timeout
 	return &client
+}
+
+func isHTTPClientTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var timeout interface{ Timeout() bool }
+	return errors.As(err, &timeout) && timeout.Timeout()
 }
 
 func NewRemoteEdgeTransport(opts RemoteEdgeTransportOptions) (*RemoteEdgeTransport, error) {
