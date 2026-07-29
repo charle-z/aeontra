@@ -4,49 +4,60 @@
 
 - Authoritative plan: Brain note `mcp-devbox-redeploy-continuity`.
 - Branch: `fix/mcp-redeploy-continuity`.
-- Base: `main` / `origin/main` at `b3d2c160f3179da7966254406587520b735c61ea`.
-- Current HEAD: `6e2f23a8d2bb4474e226b264c1a8eef297a7c06d`.
-- Tree clean after Hito 5 implementation.
-- Hitos 0–5 completed. Next exact step: Hito 6 only.
+- Base validated: `main` / `origin/main` at `b3d2c160f3179da7966254406587520b735c61ea`.
+- Current implementation HEAD before this continuity commit: `6ad667f1148f0bc226db3ab83169e176b1e9a08e`.
+- Hitos 0–5 complete.
+- Hito 6 local preparation complete; next exact action is publish branch and create PR.
 
-## Hito 5 completed
+## Hito 6 local corrections
 
-Commit: `6e2f23a8d2bb4474e226b264c1a8eef297a7c06d`.
+Commit: `6ad667f1148f0bc226db3ab83169e176b1e9a08e`.
 
-E2E replacement guarantee:
+- `cmd/brain-smoke` now performs `initialize`, captures the returned `Mcp-Session-Id`, and reuses it for `brain_index` and `brain_context`.
+- The smoke still prints no credential, note content, session id or private path.
+- Removed the now-unused non-observed session validation wrapper found by Staticcheck.
+- No server authority or public tool contract changed.
 
-- Uses two successive MCP server instances behind one stable logical HTTP endpoint.
-- Server A starts ready, initializes a session, lists tools and reads a safe Brain fixture.
-- A enters drain; `/readyz` changes to 503 and new initialize requests are rejected.
-- Brain A closes cleanly before B reopens the same persistent Brain root.
-- Server B has a distinct ephemeral boot id and is checked ready before becoming the active logical endpoint.
-- The old A session is rejected for both `tools/list` and `tools/call` and receives no replacement authority.
-- A fresh B session is created using the same endpoint and credentials.
-- The new session obtains `tools/list` and executes a safe tool.
-- The Brain note written before replacement is readable through B after reopening the shared store.
-- Same-contract A/B instances preserve the exact catalog hash.
-- A controlled contractual tool addition produces a new deterministic hash and is visible/callable only through the new session.
+## Final local release gates
 
-CI integration:
+All executed against the final implementation state and green:
 
-- Added a focused `Verify MCP instance replacement continuity` step to the existing `.github/workflows/ci.yml` verify job.
-- No duplicate workflow was created.
-- The normal complete `go test ./...` CI gate still runs afterward.
+- `go test ./... -count=1`.
+- `go vet ./...`.
+- `go build ./...`.
+- Staticcheck v0.7.0 over `./...` with a private temporary cache.
+- Actionlint v1.7.12.
+- `git diff --check`.
+- Complete `internal/mcpserver` suite covering HTTP transport, `/mcp`, sessions, OAuth integration, console boundaries, catalog, Brain, observability, drain and redeploy E2E.
+- `internal/oauth`, `internal/console`, `internal/brain`, `internal/observability`.
+- `cmd/brain-smoke`, `cmd/console-smoke`, `cmd/mcp-catalog-smoke`.
+- `packaging/...`, `internal/app`, `internal/integration`.
+- Catalog identity computed twice with identical result: `sha256:1d3646af205ec2b1a01a47d034641ac4cb8a4843d9c7879b122432308e961007`.
+- Tool count remains 102.
 
-Validation:
+Initial full-suite failure and resolution:
 
-- Focused `TestRedeployE2E...` same/changed contract subtests: green.
-- `go test ./internal/mcpserver ./internal/brain ./internal/tools ./internal/integration ./docs -count=1`: green.
-- Affected-package vet: green.
-- Actionlint v1.7.12: green.
-- `git diff --check`: green.
+- The first `go test ./...` found `cmd/brain-smoke` calling Brain tools without a session, returning HTTP 400.
+- This was corrected by using the protocol-required initialize/session flow.
+- The second and final full suite passed.
+- Staticcheck initially could not create its cache due the runtime home being non-writable; it was rerun with an isolated private temporary cache and found one unused wrapper, which was removed. The final Staticcheck run passed.
 
-Security and authority:
+## Security and authority confirmation
 
-- The Brain root remains outside repository policy roots.
-- No token, session id, OAuth payload or external infrastructure is persisted by the test.
-- No authority, jail, grant, Edge or workcell behavior changed.
+- `/mcp` and `/console` authentication boundaries remain intact.
+- No token, cookie, OAuth payload or session identifier is persisted or logged.
+- No free shell was added.
+- Jails, plans, grants, audit, Edge and workcells were not weakened.
+- Old sessions lose authority at replacement; new sessions require successful initialize.
+- Catalog identity changes only for public contract changes.
 
-## Next exact step
+## Next exact actions
 
-Hito 6 — run all local release gates, update continuity, publish the branch, create the PR, wait for exact-head checks, correct only real failures, update Brain and `.agent-memory` before deployment, merge with a merge commit, synchronize clean `main`, deploy only the registered MCP Devbox production application normally, and verify production routes, exact merge identity, new session, old session fixture and active-conversation behavior.
+1. Publish `fix/mcp-redeploy-continuity` without force.
+2. Create a PR against `main` with diagnosis, prior behavior, solution, server/client limits, tests, catalog impact, risks and production plan.
+3. Wait for all exact-head checks; correct only demonstrated failures.
+4. Before merge/deploy, update Brain and `.agent-memory` with PR number, exact head, checks, expected merge and recovery instructions. Any new memory commit must be pushed and revalidated by CI.
+5. Merge using a merge commit only when all checks are green.
+6. Synchronize clean local `main`.
+7. Deploy only Coolify app `jqf7qz5ensoqtvl1tb197gcv` normally, not without cache.
+8. Verify production `/`, `/version`, protected `/mcp`, protected `/console`, new MCP session, old-session fixture, persistent Brain and active-conversation behavior.
