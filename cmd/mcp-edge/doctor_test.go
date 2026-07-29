@@ -23,7 +23,7 @@ func TestDoctorReportsReadyWithoutOpaqueIdentifiers(t *testing.T) {
 	if err := doctorCommand(nil, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	want := "edge_doctor status=ready bundle=valid layout=valid identity=valid alias=parrot service=active rootless=podman journal=empty\n"
+	want := "edge_doctor status=ready bundle=valid layout=valid identity=valid alias=parrot service=active process=single lock=held coherence=managed release=p15.0.9 commit=0123456789abcdef0123456789abcdef01234567 rootless=podman journal=empty\n"
 	if stdout.String() != want {
 		t.Fatalf("output=%q want=%q", stdout.String(), want)
 	}
@@ -65,7 +65,9 @@ func TestDoctorReturnsDegradedWhenServiceIsInactive(t *testing.T) {
 	restoreDoctorHooks(t)
 	t.Setenv("HOME", t.TempDir())
 	stubHealthyDoctor(t)
-	doctorServiceActive = func(string) bool { return false }
+	doctorInspectRuntime = func(string, string) edgeRuntimeObservation {
+		return edgeRuntimeObservation{ServiceState: "inactive", ProcessState: "inactive", LockState: "missing", Coherence: "stopped"}
+	}
 
 	var stdout bytes.Buffer
 	err := doctorCommand(nil, &stdout, &bytes.Buffer{})
@@ -73,6 +75,24 @@ func TestDoctorReturnsDegradedWhenServiceIsInactive(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 	if !strings.Contains(stdout.String(), "status=degraded") || !strings.Contains(stdout.String(), "service=inactive") {
+		t.Fatalf("output=%q", stdout.String())
+	}
+}
+
+func TestDoctorDetectsDuplicateProcessAndLockIncoherence(t *testing.T) {
+	restoreDoctorHooks(t)
+	t.Setenv("HOME", t.TempDir())
+	stubHealthyDoctor(t)
+	doctorInspectRuntime = func(string, string) edgeRuntimeObservation {
+		return edgeRuntimeObservation{ServiceState: "active", ServiceActive: true, ProcessState: "duplicate", LockState: "held", Coherence: "duplicate", ProcessRelease: "p15.0.9", ProcessCommit: "0123456789abcdef0123456789abcdef01234567", Blockers: []string{"edge_process_duplicate"}}
+	}
+
+	var stdout bytes.Buffer
+	err := doctorCommand(nil, &stdout, &bytes.Buffer{})
+	if err == nil || err.Error() != "edge doctor found a degraded installation" {
+		t.Fatalf("err=%v", err)
+	}
+	if !strings.Contains(stdout.String(), "process=duplicate") || !strings.Contains(stdout.String(), "lock=held") || !strings.Contains(stdout.String(), "coherence=duplicate") {
 		t.Fatalf("output=%q", stdout.String())
 	}
 }
@@ -155,11 +175,11 @@ func stubHealthyDoctor(t *testing.T) {
 	doctorLoadIdentity = func(string) (edgeclient.Identity, ed25519.PrivateKey, error) {
 		return edgeclient.Identity{Name: "parrot", DeviceID: "ed_0123456789abcdef0123456789abcdef"}, nil, nil
 	}
-	doctorServiceActive = func(service string) bool {
+	doctorInspectRuntime = func(_ string, service string) edgeRuntimeObservation {
 		if service != "mcp-devbox-opencode-edge@charles.service" {
 			t.Fatalf("service=%q", service)
 		}
-		return true
+		return edgeRuntimeObservation{ServiceState: "active", ServiceActive: true, ProcessState: "single", LockState: "held", Coherence: "managed", ProcessRelease: "p15.0.9", ProcessCommit: "0123456789abcdef0123456789abcdef01234567", Healthy: true}
 	}
 }
 
@@ -171,7 +191,7 @@ func restoreDoctorHooks(t *testing.T) {
 	oldJournal := doctorInspectJournal
 	oldUser := doctorCurrentUser
 	oldRootless := doctorDiscoverRootless
-	oldActive := doctorServiceActive
+	oldRuntime := doctorInspectRuntime
 	oldStart := doctorStartRepair
 	oldRecover := doctorRecoverMigration
 	oldPlan := doctorPlanMigration
@@ -183,7 +203,7 @@ func restoreDoctorHooks(t *testing.T) {
 		doctorInspectJournal = oldJournal
 		doctorCurrentUser = oldUser
 		doctorDiscoverRootless = oldRootless
-		doctorServiceActive = oldActive
+		doctorInspectRuntime = oldRuntime
 		doctorStartRepair = oldStart
 		doctorRecoverMigration = oldRecover
 		doctorPlanMigration = oldPlan

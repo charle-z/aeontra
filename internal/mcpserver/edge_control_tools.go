@@ -60,6 +60,12 @@ type edgeOperationPublicView struct {
 	ManifestStatus        string              `json:"manifest_status,omitempty"`
 	ComponentsCompatible  bool                `json:"components_compatible,omitempty"`
 	ServiceActive         bool                `json:"service_active,omitempty"`
+	ServiceState          string              `json:"service_state,omitempty"`
+	ProcessState          string              `json:"process_state,omitempty"`
+	LockState             string              `json:"lock_state,omitempty"`
+	Coherence             string              `json:"coherence,omitempty"`
+	ProcessRelease        string              `json:"process_release,omitempty"`
+	ProcessCommit         string              `json:"process_commit,omitempty"`
 	UpdateAvailable       bool                `json:"update_available"`
 	Paired                bool                `json:"paired,omitempty"`
 	BubblewrapValid       bool                `json:"bubblewrap_valid,omitempty"`
@@ -295,5 +301,12 @@ func (s *Server) handleLabRetarget(arguments json.RawMessage) (string, error) {
 }
 
 func publicEdgeOperation(op edge.Operation) edgeOperationPublicView {
-	return edgeOperationPublicView{OperationID: op.ID, DeviceID: op.DeviceID, State: op.State, WorkspaceID: op.Result.WorkspaceID, AuthorizationRevision: op.Result.AuthorizationRevision, SafeCode: op.SafeCode, JobID: op.Result.JobID, JobState: op.Result.JobState, ProgressRevision: op.Result.ProgressRevision, CycleCount: op.Result.CycleCount, JobSafeCode: op.Result.JobSafeCode, Release: op.Result.Release, Commit: op.Result.Commit, ManifestStatus: op.Result.ManifestStatus, ComponentsCompatible: op.Result.ComponentsCompatible, ServiceActive: op.Result.ServiceActive, UpdateAvailable: op.Result.UpdateAvailable, Paired: op.Result.Paired, BubblewrapValid: op.Result.BubblewrapValid, RootlessValid: op.Result.RootlessValid, WorkspaceCount: op.Result.WorkspaceCount, ProviderValid: op.Result.ProviderValid, DriverValid: op.Result.DriverValid, Blockers: op.Result.Blockers}
+	view := edgeOperationPublicView{OperationID: op.ID, DeviceID: op.DeviceID, State: op.State, WorkspaceID: op.Result.WorkspaceID, AuthorizationRevision: op.Result.AuthorizationRevision, SafeCode: op.SafeCode, JobID: op.Result.JobID, JobState: op.Result.JobState, ProgressRevision: op.Result.ProgressRevision, CycleCount: op.Result.CycleCount, JobSafeCode: op.Result.JobSafeCode, Release: op.Result.Release, Commit: op.Result.Commit, ManifestStatus: op.Result.ManifestStatus, ComponentsCompatible: op.Result.ComponentsCompatible, ServiceActive: op.Result.ServiceActive, UpdateAvailable: op.Result.UpdateAvailable, Paired: op.Result.Paired, BubblewrapValid: op.Result.BubblewrapValid, RootlessValid: op.Result.RootlessValid, WorkspaceCount: op.Result.WorkspaceCount, ProviderValid: op.Result.ProviderValid, DriverValid: op.Result.DriverValid, Blockers: op.Result.Blockers}
+	view.ServiceState = op.Result.ServiceState
+	view.ProcessState = op.Result.ProcessState
+	view.LockState = op.Result.LockState
+	view.Coherence = op.Result.Coherence
+	view.ProcessRelease = op.Result.ProcessRelease
+	view.ProcessCommit = op.Result.ProcessCommit
+	return view
 }

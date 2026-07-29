@@ -39,6 +39,8 @@ func openCodeFailureCode(err error) string {
 		return "restart_interrupted"
 	case errors.Is(err, edgeclient.ErrOpenCodeTerminal):
 		return "terminal_replay"
+	case errors.Is(err, edgeclient.ErrEdgeInstanceLocked):
+		return "instance_lock_occupied"
 	}
 	message := strings.ToLower(err.Error())
 	for _, code := range []string{
@@ -163,7 +165,8 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 		}
 		*bubblewrapPath = resolved
 	}
-	if err := verifyInstalledEdgeBundle(*bundleRoot); err != nil {
+	verifiedBundle, err := verifyInstalledEdgeBundleAt(*bundleRoot)
+	if err != nil {
 		return err
 	}
 	for name, value := range map[string]string{"opencode": *opencodePath, "driver": *driverPath, "provider": *providerPath, "bubblewrap": *bubblewrapPath, "integrity": *integrityPath} {
@@ -171,6 +174,11 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 			return fmt.Errorf("%s path must be absolute", name)
 		}
 	}
+	instanceLock, err := edgeclient.AcquireEdgeInstanceLock(*state, verifiedBundle.Release, verifiedBundle.Commit)
+	if err != nil {
+		return err
+	}
+	defer instanceLock.Close()
 	registry, err := edgeclient.OpenWorkspaceRegistry(*state)
 	if err != nil {
 		return err

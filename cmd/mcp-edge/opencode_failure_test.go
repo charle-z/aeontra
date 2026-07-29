@@ -22,6 +22,7 @@ func TestOpenCodeFailureCodeIsStableAndRedacted(t *testing.T) {
 		{edgeclient.ErrKillSwitch, "kill_switch"},
 		{edgeclient.ErrOpenCodeInterrupted, "restart_interrupted"},
 		{edgeclient.ErrOpenCodeTerminal, "terminal_replay"},
+		{edgeclient.ErrEdgeInstanceLocked, "instance_lock_occupied"},
 		{errors.New("OpenCode integrity does not match the pinned release"), "installation_integrity"},
 		{errors.New("OpenCode version does not match the pinned release"), "installation_version"},
 		{errors.New("pinned OpenCode executable is unsafe"), "installation_opencode"},
