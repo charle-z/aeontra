@@ -48,6 +48,12 @@ func (s *clientCapabilityStore) Snapshot(sessionKey string) ClientCapabilities {
 	return capabilities
 }
 
+func (s *clientCapabilityStore) Reset() {
+	s.mu.Lock()
+	s.bySession = make(map[string]ClientCapabilities)
+	s.mu.Unlock()
+}
+
 func parseClientCapabilities(params json.RawMessage, observedAt time.Time) ClientCapabilities {
 	result := ClientCapabilities{ObservedAt: observedAt.UTC().Format(time.RFC3339Nano)}
 	if len(bytes.TrimSpace(params)) == 0 {

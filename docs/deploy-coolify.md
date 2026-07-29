@@ -38,7 +38,7 @@ Use the repository Dockerfile. The image:
 - runs as the non-root runtime user;
 - listens on `0.0.0.0:8765` inside the container;
 - declares `/repos`, `/state`, and `/brain` as volume locations;
-- exposes `/healthz` as the container healthcheck;
+- exposes `/readyz` as the container healthcheck and keeps `/healthz` as liveness;
 - accepts build identity inputs so `/version` can report the exact commit.
 
 Do not publish `8765` directly on the VPS firewall. Let Coolify/Traefik route the HTTPS
@@ -67,8 +67,12 @@ Set the application to build the intended branch and expose container port `8765
 Configure health checking on:
 
 ```text
-/healthz
+/readyz
 ```
+
+`/healthz` remains the liveness endpoint. `/readyz` returns `503` as soon as a
+replacement starts draining, before the HTTP listener closes, so the proxy stops
+routing new sessions while active requests receive their bounded completion window.
 
 Minimum production environment:
 
@@ -162,6 +166,7 @@ Public liveness and identity:
 
 ```bash
 curl -fsS https://mcp.example.com/healthz
+curl -fsS https://mcp.example.com/readyz
 curl -fsS https://mcp.example.com/version
 ```
 
@@ -175,6 +180,7 @@ curl -i "https://mcp.example.com/mcp?key=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE
 Expected:
 
 - `/healthz` is healthy;
+- `/readyz` is ready and becomes unavailable before shutdown during a replacement;
 - `/version` reports the intended exact commit and current catalog identity;
 - unauthenticated `/mcp` returns `401`;
 - query-string credentials return `401`;

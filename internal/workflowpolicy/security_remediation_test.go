@@ -58,7 +58,7 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"a03b06e66d862d0278b1ff45b66427f245f99c665800dc9bd790c0c13d2247fe",
 		"/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json",
 		"test ! -e /usr/lib/node_modules/npm",
-		"busybox wget -qO- http://127.0.0.1:8765/healthz",
+		"busybox wget -qO- http://127.0.0.1:8765/readyz",
 	} {
 		if !strings.Contains(dockerfile, required) {
 			t.Errorf("Dockerfile does not contain %q", required)

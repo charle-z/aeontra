@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -25,8 +26,9 @@ import (
 // maxHTTPBody caps a single MCP request body. MCP messages are small; this bounds
 // memory and abuse over the network transport.
 const (
-	maxHTTPBody       = 4 << 20 // 4 MiB
-	maxHTTPBatchItems = 128
+	maxHTTPBody                = 4 << 20 // 4 MiB
+	maxHTTPBatchItems          = 128
+	defaultHTTPShutdownTimeout = 8 * time.Second
 )
 
 // DefaultMCPPath is the endpoint that speaks MCP (streamable-HTTP subset).
@@ -54,6 +56,10 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 // unauthenticated presentation-only landing, and adds the authenticated console
 // configured by opts.
 func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provider, opts HTTPOptions) http.Handler {
+	return s.httpHandlerWithLifecycle(token, oauthProvider, opts, newHTTPServerLifecycle())
+}
+
+func (s *Server) httpHandlerWithLifecycle(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle) http.Handler {
 	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
 	sessionID := newHTTPSessionID()
@@ -119,6 +125,24 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 		_, _ = io.WriteString(w, "ok mcp-devbox "+buildinfo.Version+" "+buildinfo.Commit+"\n")
 	})
 
+	// Readiness is separate from liveness. During a normal replacement the process
+	// remains alive long enough to finish active work, but it must stop receiving new
+	// sessions before the listener is closed.
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if !lifecycle.Ready() {
+			http.Error(w, "draining", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "ready\n")
+	})
+
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
@@ -137,14 +161,14 @@ func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provi
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			s.handleHTTPPost(w, r, sessionID)
+			s.handleHTTPPost(w, r, sessionID, lifecycle)
 		case http.MethodGet:
 			if !authorized(r) {
 				challenge(w)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			handleHTTPGetSSE(w, r, catalogNotifier)
+			handleHTTPGetSSE(w, r, catalogNotifier, lifecycle)
 		default:
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -256,7 +280,7 @@ func normalizedRoute(path string) observability.Route {
 	switch {
 	case path == DefaultMCPPath:
 		return observability.RouteMCP
-	case path == "/healthz":
+	case path == "/healthz", path == "/readyz":
 		return observability.RouteHealth
 	case path == "/version":
 		return observability.RouteVersion
@@ -319,7 +343,7 @@ func (n *oneShotCatalogNotifier) Notify(write func(string) bool) {
 	}
 }
 
-func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotCatalogNotifier) {
+func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotCatalogNotifier, lifecycle *httpServerLifecycle) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -347,6 +371,8 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotC
 		select {
 		case <-ctx.Done():
 			return
+		case <-lifecycle.DrainDone():
+			return
 		case <-ticker.C:
 			if !writeChunk(": ping\n\n") {
 				return
@@ -358,7 +384,7 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotC
 // handleHTTPPost reads one JSON-RPC message (or a batch array) and replies. A lone
 // notification/response yields 202 Accepted with no body; a request yields 200 with
 // an application/json response; a batch yields a JSON array of the non-empty replies.
-func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionID string) {
+func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionID string, lifecycle *httpServerLifecycle) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHTTPBody))
 	if err != nil {
 		// MaxBytesReader signals oversize via its error; report 413.
@@ -376,7 +402,13 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, sessionI
 		http.Error(w, "empty body", http.StatusBadRequest)
 		return
 	}
-	if containsInitialize([]byte(trimmed)) {
+	initializing := containsInitialize([]byte(trimmed))
+	if initializing && lifecycle.Draining() {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "server draining; initialize a new session after replacement", http.StatusServiceUnavailable)
+		return
+	}
+	if initializing {
 		w.Header().Set("Mcp-Session-Id", sessionID)
 	}
 
@@ -504,23 +536,19 @@ func (s *Server) ServeHTTPWithOptions(ctx context.Context, addr, token string, o
 	if token == "" && oauthProvider == nil {
 		return errors.New("http transport requires auth: set a bearer token or enable OAuth (refusing to start without auth)")
 	}
+	lifecycle := newHTTPServerLifecycle()
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("http server listen: %w", err)
+	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.HTTPHandlerWithOptions(token, oauthProvider, opts),
+		Handler:           s.httpHandlerWithLifecycle(token, oauthProvider, opts, lifecycle),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	errCh := make(chan error, 1)
-	go func() { errCh <- srv.ListenAndServe() }()
-
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return srv.Shutdown(shutdownCtx)
-	case err := <-errCh:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+	return serveHTTPListener(ctx, srv, listener, lifecycle, defaultHTTPShutdownTimeout, func() {
+		if s.clients != nil {
+			s.clients.Reset()
 		}
-		return fmt.Errorf("http server: %w", err)
-	}
+	})
 }
