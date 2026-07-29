@@ -745,3 +745,54 @@ func (t *dropOnceRoundTripper) bodiesEnding(suffix string) [][]byte {
 	}
 	return bodies
 }
+
+func TestLeaseModelRuntimeClassifiesOpaqueClientTimeout(t *testing.T) {
+	fixture := newRemoteModelFixture(t, nil)
+	goal := []byte("classify opaque client timeout")
+	goalBody, err := fixture.turns.StageRuntimeGoal(t.Context(), goal, 5*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, _, err := fixture.turns.StartBoundRuntime(t.Context(), modelturn.BoundRuntimeRequest{
+		DeviceID: fixture.lease.DeviceID, WorkspaceID: "ws_1123456789abcdef0123456789abcdef",
+		Controller: modelturn.ControllerRemoteEdge, GoalSummary: modelturn.GoalSummary(goal),
+		GoalRef: goalBody.BodyRef, GoalDigest: goalBody.ContentDigest,
+		IdempotencyKeyDigest: modelturn.IdempotencyDigest("opaque-client-timeout"), TTL: 5 * time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := *fixture.client
+	client.Transport = &timeoutOnceRoundTripper{base: fixture.client.Transport}
+	transport, err := NewTransport(fixture.stateRoot, &client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := transport.LeaseModelRuntime(t.Context(), time.Second)
+	if err != nil || lease == nil || lease.RuntimeID != runtime.RuntimeID {
+		t.Fatalf("lease=%+v err=%v", lease, err)
+	}
+	if lease.RetryCounts[modelturn.RuntimeRetryClientTimeout] != 1 || len(lease.RetryCounts) != 1 {
+		t.Fatalf("retry counts=%v", lease.RetryCounts)
+	}
+}
+
+type timeoutOnceRoundTripper struct {
+	base http.RoundTripper
+	once sync.Once
+}
+
+func (t *timeoutOnceRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	var err error
+	t.once.Do(func() { err = opaqueTimeoutError{} })
+	if err != nil {
+		return nil, err
+	}
+	return t.base.RoundTrip(request)
+}
+
+type opaqueTimeoutError struct{}
+
+func (opaqueTimeoutError) Error() string   { return "opaque deadline" }
+func (opaqueTimeoutError) Timeout() bool   { return true }
+func (opaqueTimeoutError) Temporary() bool { return true }

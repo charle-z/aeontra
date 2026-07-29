@@ -20,6 +20,18 @@ import (
 
 const maxEdgeResponse = 1 << 20
 
+type edgeEndpointUnavailableError struct {
+	cause error
+}
+
+func (e *edgeEndpointUnavailableError) Error() string {
+	return "edge endpoint unavailable"
+}
+
+func (e *edgeEndpointUnavailableError) Unwrap() error {
+	return e.cause
+}
+
 type Transport struct {
 	identity  Identity
 	stateRoot string
@@ -216,7 +228,7 @@ func (t *Transport) doLimitedWithClient(ctx context.Context, client *http.Client
 	request.Header.Set(edge.HeaderSignature, base64.RawURLEncoding.EncodeToString(signed.Signature))
 	response, err := client.Do(request)
 	if err != nil {
-		return 0, errors.New("edge endpoint unavailable")
+		return 0, &edgeEndpointUnavailableError{cause: err}
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusNoContent {
