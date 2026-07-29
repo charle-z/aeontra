@@ -405,9 +405,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	}
 	defer removePrivateRuntimeDir(runtimeDir, l.config.SocketRoot)
 	socketPath := filepath.Join(runtimeDir, openCodeDriverSocketName)
-	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second)
-	cancel()
-	runCtx, cancel = context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second+l.config.RuntimeStartupBudget)
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second+l.config.RuntimeStartupBudget)
 	defer cancel()
 	executionTimeoutSeconds := lease.TimeoutSeconds
 	lease.TimeoutSeconds += int(l.config.RuntimeStartupBudget / time.Second)

@@ -83,7 +83,7 @@ func (s *Store) CreateTurnFromReference(ctx context.Context, request ModelReques
 		return Turn{}, ErrInvalidRequest
 	}
 	now := s.now().UTC()
-	requestedExpiresAt := now.Add(ttl)
+	var requestedExpiresAt time.Time
 	turnID, err := newOpaqueID("mt_")
 	if err != nil {
 		return Turn{}, errors.New("model turn id generation failed")

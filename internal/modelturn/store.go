@@ -268,7 +268,7 @@ func (s *Store) CreateTurn(ctx context.Context, request ModelRequest) (Turn, err
 		return Turn{}, ErrInvalidRequest
 	}
 	now := s.now().UTC()
-	expires := now.Add(ttl)
+	var expires time.Time
 	turnID, err := newOpaqueID("mt_")
 	if err != nil {
 		return Turn{}, errors.New("model turn id generation failed")
