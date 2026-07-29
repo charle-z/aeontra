@@ -65,6 +65,20 @@ goal is handled as a retryable lease delivery failure. The runtime returns to
 `awaiting_edge` and the Edge repeats the same signed receipt; the control plane must
 not turn that storage/availability condition into a terminal Edge failure.
 
+## Edge lease long polling
+
+The Edge requests a model-runtime lease with a signed long poll bounded from one to
+180 seconds. That request uses a dedicated clone of the configured HTTP client so its
+timeout is the requested wait plus a 30-second transport margin, capped at 210
+seconds. The clone preserves the configured transport, TLS behavior, cookie jar, and
+redirect rejection without mutating the generic 30-second client used by ordinary
+Edge requests.
+
+The caller context remains authoritative and may cancel earlier. A lease id is
+generated once before the request loop and reused across transient transport or proxy
+retries, so a lost response cannot allocate or consume a second runtime. Retries keep
+the existing bounded delay and do not introduce faster polling.
+
 ## Runtime startup observability
 
 Remote runtimes persist a bounded, server-owned phase timeline alongside the runtime

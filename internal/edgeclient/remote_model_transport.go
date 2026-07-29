@@ -23,7 +23,8 @@ const (
 	remoteModelResponseLimit    = int64(modelturn.MaxRequestBodyBytes + (512 << 10))
 	remoteModelDefaultWait      = 120 * time.Second
 	remoteModelMaxWait          = 180 * time.Second
-	remoteModelClientTimeout    = 210 * time.Second
+	remoteModelLongPollMargin   = 30 * time.Second
+	remoteModelClientTimeout    = remoteModelMaxWait + remoteModelLongPollMargin
 )
 
 type ModelRuntimeLease struct {
@@ -86,6 +87,7 @@ func (t *Transport) LeaseModelRuntime(ctx context.Context, wait time.Duration) (
 	if wait < time.Second || wait > remoteModelMaxWait {
 		return nil, errors.New("model runtime lease wait is invalid")
 	}
+	leaseClient := t.modelRuntimeLeaseClient(wait)
 	leaseID, err := randomModelJournalID("el_")
 	if err != nil || !remoteLeaseIDPattern.MatchString(leaseID) {
 		return nil, errors.New("model runtime lease id generation failed")
@@ -102,7 +104,7 @@ func (t *Transport) LeaseModelRuntime(ctx context.Context, wait time.Duration) (
 			return nil, err
 		}
 		var lease ModelRuntimeLease
-		status, callErr := t.doLimited(ctx, http.MethodPost, remoteModelRuntimeLeasePath, input, &lease, remoteModelResponseLimit)
+		status, callErr := t.doLimitedWithClient(ctx, leaseClient, http.MethodPost, remoteModelRuntimeLeasePath, input, &lease, remoteModelResponseLimit)
 		if callErr == nil {
 			switch status {
 			case http.StatusOK:
@@ -147,6 +149,16 @@ func (t *Transport) LeaseModelRuntime(ctx context.Context, wait time.Duration) (
 			return nil, err
 		}
 	}
+}
+
+func (t *Transport) modelRuntimeLeaseClient(wait time.Duration) *http.Client {
+	client := *t.client
+	timeout := wait + remoteModelLongPollMargin
+	if timeout > remoteModelClientTimeout {
+		timeout = remoteModelClientTimeout
+	}
+	client.Timeout = timeout
+	return &client
 }
 
 func NewRemoteEdgeTransport(opts RemoteEdgeTransportOptions) (*RemoteEdgeTransport, error) {
