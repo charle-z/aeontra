@@ -61,6 +61,8 @@ func TestEdgeControlHandlersQueueClosedOperationsAndReturnPublicState(t *testing
 			ProgressRevision: 9, CycleCount: 3, JobSafeCode: "cycle_complete", Release: "p15.0.0",
 			Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ManifestStatus: "valid", ComponentsCompatible: true,
 			ServiceActive: true, UpdateAvailable: true, Paired: true, BubblewrapValid: true, RootlessValid: true,
+			ServiceState: "active", ProcessState: "single", LockState: "held", Coherence: "managed",
+			ProcessRelease: "p15.0.0", ProcessCommit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			WorkspaceCount: 1, ProviderValid: true, DriverValid: true, Blockers: []string{"none"},
 		},
 	}
@@ -77,6 +79,9 @@ func TestEdgeControlHandlersQueueClosedOperationsAndReturnPublicState(t *testing
 	assertOperation(body, err, edge.OperationBundleUpdate)
 	if store.request.Release != "stable" {
 		t.Fatalf("bundle request=%+v", store.request)
+	}
+	if !strings.Contains(body, `"process_state":"single"`) || !strings.Contains(body, `"lock_state":"held"`) || !strings.Contains(body, `"coherence":"managed"`) {
+		t.Fatalf("authoritative runtime fields missing: %s", body)
 	}
 
 	body, err = server.handleLabPrepare(json.RawMessage(`{"device_id":"` + testEdgeDeviceID + `","platform":"htb","machine":"cap","target":"10.10.10.10","difficulty":"easy","operating_system":"linux"}`))

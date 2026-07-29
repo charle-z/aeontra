@@ -29,9 +29,7 @@ var doctorCurrentUser = user.Current
 var doctorDiscoverRootless = func(uid int) (*edgeclient.RootlessContainerEndpoint, error) {
 	return edgeclient.DiscoverRootlessContainerEndpoint(uid, doctorToolPath)
 }
-var doctorServiceActive = func(service string) bool {
-	return exec.Command("systemctl", "is-active", "--quiet", service).Run() == nil
-}
+var doctorInspectRuntime = inspectEdgeRuntime
 var doctorStartRepair = func() error {
 	return exec.Command("systemctl", "start", edgeRepairService).Run()
 }
@@ -133,13 +131,19 @@ func inspectEdgeHealth() (string, bool, error) {
 		return fmt.Sprintf("edge_doctor status=blocked bundle=valid layout=valid identity=invalid service=unknown rootless=%s journal=%s", rootless, journalState), false, errors.New("edge doctor found an invalid identity")
 	}
 	service := "mcp-devbox-opencode-edge@" + currentUser.Username + ".service"
-	active := doctorServiceActive(service)
+	runtime := doctorInspectRuntime(stateRoot, service)
 	status := "degraded"
-	serviceState := "inactive"
-	healthy := endpoint != nil && active && journalReady
+	healthy := endpoint != nil && runtime.Healthy && journalReady
 	if healthy {
 		status = "ready"
-		serviceState = "active"
 	}
-	return fmt.Sprintf("edge_doctor status=%s bundle=valid layout=valid identity=valid alias=%s service=%s rootless=%s journal=%s", status, identity.Name, serviceState, rootless, journalState), healthy, nil
+	processRelease := runtime.ProcessRelease
+	processCommit := runtime.ProcessCommit
+	if processRelease == "" {
+		processRelease = "none"
+	}
+	if processCommit == "" {
+		processCommit = "none"
+	}
+	return fmt.Sprintf("edge_doctor status=%s bundle=valid layout=valid identity=valid alias=%s service=%s process=%s lock=%s coherence=%s release=%s commit=%s rootless=%s journal=%s", status, identity.Name, runtime.ServiceState, runtime.ProcessState, runtime.LockState, runtime.Coherence, processRelease, processCommit, rootless, journalState), healthy, nil
 }

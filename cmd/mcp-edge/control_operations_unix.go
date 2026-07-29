@@ -381,10 +381,9 @@ func collectEdgeDiagnostic(stateRoot string, allowInvalid bool) (edge.OperationR
 	if !paired {
 		blockers = append(blockers, "edge_unpaired")
 	}
-	serviceActive := installedEdgeServiceActive()
-	if !serviceActive {
-		blockers = append(blockers, "edge_service_inactive")
-	}
+	runtime := inspectEdgeRuntime(stateRoot, installedEdgeServiceName())
+	blockers = appendUniqueBlockers(blockers, runtime.Blockers...)
+	serviceActive := runtime.ServiceActive
 	if !bubble {
 		blockers = append(blockers, "bubblewrap_unavailable")
 	}
@@ -404,37 +403,14 @@ func collectEdgeDiagnostic(stateRoot string, allowInvalid bool) (edge.OperationR
 			blockers = append(blockers, "release_channel_unavailable")
 		}
 	}
-	return edge.OperationResult{Release: verified.Release, Commit: verified.Commit, ManifestStatus: manifestStatus, ComponentsCompatible: componentsCompatible, ServiceActive: serviceActive, UpdateAvailable: available, Paired: paired, BubblewrapValid: bubble, RootlessValid: rootless, WorkspaceCount: count, ProviderValid: providerValid, DriverValid: driverValid, Blockers: blockers}, ""
-}
-
-var installedEdgeUserPattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
-var systemdInvocationIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
-
-func installedEdgeServiceActive() bool {
-	content, err := os.ReadFile("/etc/mcp-devbox/edge-user")
-	username := strings.TrimSpace(string(content))
-	if err != nil || !installedEdgeUserPattern.MatchString(username) {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, "/usr/bin/systemctl", "is-active", "--quiet", "mcp-devbox-opencode-edge@"+username+".service")
-	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if command.Run() == nil {
-		return true
-	}
-	return activeSystemdInvocation(os.Getenv("INVOCATION_ID"), os.Getenv("SYSTEMD_EXEC_PID"), os.Getpid())
-}
-
-func activeSystemdInvocation(invocationID, execPID string, pid int) bool {
-	invocationID = strings.TrimSpace(invocationID)
-	if !systemdInvocationIDPattern.MatchString(invocationID) {
-		return false
-	}
-	execPID = strings.TrimSpace(execPID)
-	return execPID == "" || execPID == fmt.Sprint(pid)
+	result := edge.OperationResult{Release: verified.Release, Commit: verified.Commit, ManifestStatus: manifestStatus, ComponentsCompatible: componentsCompatible, ServiceActive: serviceActive, UpdateAvailable: available, Paired: paired, BubblewrapValid: bubble, RootlessValid: rootless, WorkspaceCount: count, ProviderValid: providerValid, DriverValid: driverValid, Blockers: blockers}
+	result.ServiceState = runtime.ServiceState
+	result.ProcessState = runtime.ProcessState
+	result.LockState = runtime.LockState
+	result.Coherence = runtime.Coherence
+	result.ProcessRelease = runtime.ProcessRelease
+	result.ProcessCommit = runtime.ProcessCommit
+	return result, ""
 }
 
 func installedModelProviderValid(path string) bool {

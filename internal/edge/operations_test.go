@@ -110,6 +110,17 @@ func TestBundleDiagnosticCompletionAcceptsOnlySafePreciseStates(t *testing.T) {
 	if !validOperationCompletion(valid, "") {
 		t.Fatal("valid signed bundle diagnostic rejected")
 	}
+	authoritative := valid
+	authoritative.ServiceActive = true
+	authoritative.ServiceState = "active"
+	authoritative.ProcessState = "single"
+	authoritative.LockState = "held"
+	authoritative.Coherence = "managed"
+	authoritative.ProcessRelease = valid.Release
+	authoritative.ProcessCommit = valid.Commit
+	if !validOperationCompletion(authoritative, "") {
+		t.Fatal("authoritative runtime diagnostic rejected")
+	}
 	partial := OperationResult{ManifestStatus: "provider_outdated", DriverValid: true, Blockers: []string{"provider_outdated", "edge_service_inactive"}}
 	if !validOperationCompletion(partial, "") {
 		t.Fatal("safe partial-install diagnostic rejected")
@@ -118,6 +129,10 @@ func TestBundleDiagnosticCompletionAcceptsOnlySafePreciseStates(t *testing.T) {
 		{ManifestStatus: "arbitrary"},
 		{ManifestStatus: "provider_outdated", ProviderValid: true},
 		{ManifestStatus: "manifest_invalid", Blockers: []string{"contains-target-10.0.0.1"}},
+		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, ServiceActive: true, ServiceState: "inactive", ProcessState: "single", LockState: "held", Coherence: "managed"},
+		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, ServiceState: "inactive", ProcessState: "duplicate", LockState: "held", Coherence: "duplicate", ProcessRelease: "arbitrary", ProcessCommit: valid.Commit},
+		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, ServiceState: "inactive", ProcessState: "single", LockState: "held", Coherence: "manual"},
+		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, ServiceState: "inactive", ProcessState: "inactive", LockState: "held", Coherence: "stopped"},
 	} {
 		if validOperationCompletion(unsafe, "") {
 			t.Fatalf("unsafe diagnostic accepted: %+v", unsafe)

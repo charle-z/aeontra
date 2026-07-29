@@ -72,6 +72,12 @@ type OperationResult struct {
 	ManifestStatus        string   `json:"manifest_status,omitempty"`
 	ComponentsCompatible  bool     `json:"components_compatible,omitempty"`
 	ServiceActive         bool     `json:"service_active,omitempty"`
+	ServiceState          string   `json:"service_state,omitempty"`
+	ProcessState          string   `json:"process_state,omitempty"`
+	LockState             string   `json:"lock_state,omitempty"`
+	Coherence             string   `json:"coherence,omitempty"`
+	ProcessRelease        string   `json:"process_release,omitempty"`
+	ProcessCommit         string   `json:"process_commit,omitempty"`
 	UpdateAvailable       bool     `json:"update_available"`
 	Paired                bool     `json:"paired,omitempty"`
 	BubblewrapValid       bool     `json:"bubblewrap_valid,omitempty"`
@@ -331,7 +337,7 @@ func validOperationCompletion(result OperationResult, code string) bool {
 		validBundle := regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`).MatchString(result.Release) && regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(result.Commit) && result.ManifestStatus == "valid" && result.ComponentsCompatible && result.ProviderValid && result.DriverValid
 		invalidComponents := !result.ProviderValid && (!result.DriverValid || result.ManifestStatus == "provider_outdated")
 		invalidBundle := result.Release == "" && result.Commit == "" && regexp.MustCompile(`^(bundle_mismatch|provider_outdated|driver_outdated|manifest_invalid)$`).MatchString(result.ManifestStatus) && !result.ComponentsCompatible && invalidComponents
-		return (validBundle || invalidBundle) && validDiagnosticBlockers(result.Blockers)
+		return (validBundle || invalidBundle) && validDiagnosticBlockers(result.Blockers) && validRuntimeDiagnostic(result)
 	}
 	if result.JobID != "" {
 		return regexp.MustCompile(`^aj_[a-f0-9]{32}$`).MatchString(result.JobID) && regexp.MustCompile(`^(running|paused|blocked|completed|cancelled)$`).MatchString(result.JobState) && (result.JobSafeCode == "" || regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(result.JobSafeCode))
@@ -372,8 +378,26 @@ func validDiagnosticBlockers(blockers []string) bool {
 	}
 	return true
 }
+
+func validRuntimeDiagnostic(result OperationResult) bool {
+	legacy := result.ServiceState == "" && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == ""
+	if legacy {
+		return true
+	}
+	if !regexp.MustCompile(`^(active|inactive|activating|deactivating|failed|reloading|maintenance)$`).MatchString(result.ServiceState) ||
+		!regexp.MustCompile(`^(inactive|single|duplicate|incoherent)$`).MatchString(result.ProcessState) ||
+		!regexp.MustCompile(`^(missing|held|stale_recoverable|held_unverified|held_incoherent|unlocked_invalid|unlocked_live_owner|blocked)$`).MatchString(result.LockState) ||
+		!regexp.MustCompile(`^(stopped|managed|manual|duplicate|incoherent)$`).MatchString(result.Coherence) {
+		return false
+	}
+	if result.ServiceActive != (result.ServiceState == "active") {
+		return false
+	}
+	return validRuntimeDiagnosticState(result)
+}
+
 func emptyOperationResult(result OperationResult) bool {
-	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == ""
+	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == ""
 }
 
 func (s *Store) AutopilotStatus(workspaceID string) (OperationResult, error) {
