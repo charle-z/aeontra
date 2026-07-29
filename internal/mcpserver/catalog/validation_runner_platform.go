@@ -16,9 +16,9 @@ func RegisterValidationRunnerPlatform(register Register, service ValidationRunne
 		Name:        "platform_validation_runner_create_preview",
 		Description: "Plan exactly one private Coolify validation-runner application using the administrator-configured destination and exact mount allowlist. It never deploys or accepts secret values.",
 		InputSchema: object(map[string]any{
-			"branch": strProp("source branch; defaults to cubethon-q3"),
+			"branch": strProp("source branch; defaults to main"),
 		}),
-		Version: "1",
+		Version: "2",
 		Handler: func(arguments json.RawMessage) (string, error) {
 			var params struct {
 				Branch string `json:"branch"`

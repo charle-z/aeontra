@@ -2,8 +2,9 @@
 
 [![Hosted on CubePath](https://img.shields.io/badge/Hosted%20on-CubePath-00C853?style=for-the-badge&logo=cloud&logoColor=white)](https://cubepath.com)
 
-MCP Devbox is a secure-by-default, not secure, MCP server that gives AI clients useful
-hands for software work without handing them an unrestricted machine.
+MCP Devbox is secure by default, but it does not claim to eliminate every operational
+risk. It gives AI clients useful hands for software work without handing them an
+unrestricted machine.
 
 It combines repository-scoped tools, immutable startup policy, explicit approval for
 risky actions, secret redaction, audit, durable state, optional GitHub/Coolify adapters,
@@ -234,8 +235,9 @@ local-human grants, patch-first writes, command allowlists, exact plans, state
 revalidation, non-root containers, private persistent state, signed Edge releases, and
 closed public schemas.
 
-MCP Devbox is secure-by-default, not secure. Known limitations and profile-specific
-trust boundaries are part of the product contract, not fine print.
+MCP Devbox is secure by default, but it does not claim to eliminate every operational
+risk. Known limitations and profile-specific trust boundaries are part of the product
+contract, not fine print.
 
 ## Verification
 

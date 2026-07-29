@@ -28,8 +28,12 @@ func TestRegisterValidationRunnerPlatformDefinesStableContractsAndRoutesHandlers
 	gotNames := make([]string, 0, len(registered))
 	for _, tool := range registered {
 		gotNames = append(gotNames, tool.Name)
-		if tool.Version != "1" {
-			t.Fatalf("tool %s version = %q", tool.Name, tool.Version)
+		wantVersion := "1"
+		if tool.Name == "platform_validation_runner_create_preview" {
+			wantVersion = "2"
+		}
+		if tool.Version != wantVersion {
+			t.Fatalf("tool %s version = %q, want %q", tool.Name, tool.Version, wantVersion)
 		}
 	}
 	wantNames := []string{"platform_validation_runner_create_preview", "platform_validation_runner_create"}
@@ -50,7 +54,7 @@ func TestRegisterValidationRunnerPlatformDefinesStableContractsAndRoutesHandlers
 	}
 	wantSchemas := map[string]map[string]any{
 		"platform_validation_runner_create_preview": object(map[string]any{
-			"branch": strProp("source branch; defaults to cubethon-q3"),
+			"branch": strProp("source branch; defaults to main"),
 		}),
 		"platform_validation_runner_create": object(map[string]any{
 			"plan_id": strProp("plan id returned by platform_validation_runner_create_preview"),

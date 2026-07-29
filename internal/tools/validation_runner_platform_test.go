@@ -43,7 +43,7 @@ func TestPlatformValidationRunnerCreateIsPrivatePlannedAndConfiguresEnv(t *testi
 
 	svc := configuredPlatformService(t, config.ModeAsk, ts.URL)
 	svc.WithCoolify(svc.coolify.WithBuilderRuntime("destination1", validationRunnerTestMounts))
-	preview, err := svc.PlatformValidationRunnerCreatePreview("cubethon-q3")
+	preview, err := svc.PlatformValidationRunnerCreatePreview("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +63,7 @@ func TestPlatformValidationRunnerCreateIsPrivatePlannedAndConfiguresEnv(t *testi
 		t.Fatalf("unexpected result created=%d envs=%d out=%s", created, envs, out)
 	}
 	for key, want := range map[string]any{
+		"git_branch":             "main",
 		"destination_uuid":       "destination1",
 		"dockerfile_location":    "/Dockerfile.validation-runner",
 		"ports_exposes":          "8787",
@@ -87,7 +88,7 @@ func TestPlatformValidationRunnerCreateIsPrivatePlannedAndConfiguresEnv(t *testi
 func TestPlatformValidationRunnerCreateRequiresExactRuntimeConfig(t *testing.T) {
 	svc := configuredPlatformService(t, config.ModeAllow, "https://coolify.test")
 	svc.WithCoolify(svc.coolify.WithBuilderRuntime("destination1", validationRunnerTestMounts[:2]))
-	if _, err := svc.PlatformValidationRunnerCreatePreview("cubethon-q3"); err == nil || !strings.Contains(err.Error(), "exactly the three") {
+	if _, err := svc.PlatformValidationRunnerCreatePreview(""); err == nil || !strings.Contains(err.Error(), "exactly the three") {
 		t.Fatalf("incomplete mount config accepted: %v", err)
 	}
 }

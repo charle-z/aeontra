@@ -33,7 +33,8 @@ func TestStep16ReadmeIsProductEntryPoint(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"secure-by-default, not secure",
+		"MCP Devbox is secure by default",
+		"does not claim to eliminate every operational",
 		"docs/configuration.md",
 		"docs/security.md",
 		"SECURITY.md",
