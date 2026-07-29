@@ -218,6 +218,9 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 			continue
 		}
 		worked, result, runErr := launcher.RunNext(ctx, *wait)
+		if result.LeaseRetryCategory != "" {
+			fmt.Fprintf(stderr, "mcp-edge: model runtime lease retry category=%s\n", result.LeaseRetryCategory)
+		}
 		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(runErr, edgeclient.ErrKillSwitch) {
 			return nil
 		}
