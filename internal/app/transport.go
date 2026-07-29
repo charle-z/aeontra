@@ -156,6 +156,7 @@ func emitLifecycleEvent(runtime *appRuntime, name observability.EventName, trans
 			event.Commit = info.Commit
 			event.ToolCount = info.ToolCount
 			event.CatalogHash = info.CatalogHash
+			event.BootID = runtime.Server.BootID()
 		}
 	}
 	_ = runtime.Observer.Emit(event)

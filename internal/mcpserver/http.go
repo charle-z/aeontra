@@ -55,14 +55,18 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 // unauthenticated presentation-only landing, and adds the authenticated console
 // configured by opts.
 func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provider, opts HTTPOptions) http.Handler {
-	return s.httpHandlerWithState(token, oauthProvider, opts, newHTTPServerLifecycle(), newHTTPSessionStore(defaultHTTPSessionTTL))
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, newHTTPServerLifecycle(), newHTTPSessionStore(defaultHTTPSessionTTL), newHTTPTransportTelemetry())
 }
 
 func (s *Server) httpHandlerWithLifecycle(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle) http.Handler {
-	return s.httpHandlerWithState(token, oauthProvider, opts, lifecycle, newHTTPSessionStore(defaultHTTPSessionTTL))
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, newHTTPSessionStore(defaultHTTPSessionTTL), newHTTPTransportTelemetry())
 }
 
 func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore) http.Handler {
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, sessions, newHTTPTransportTelemetry())
+}
+
+func (s *Server) httpHandlerWithRuntime(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore, telemetry *httpTransportTelemetry) http.Handler {
 	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
 	landingHandler, err := landing.New()
@@ -155,6 +159,9 @@ func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provide
 	})
 
 	mux.HandleFunc(DefaultMCPPath, func(w http.ResponseWriter, r *http.Request) {
+		observeSessionReject := func(validation httpSessionValidation) {
+			s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, sessionValidationErrorClass(validation), telemetry.ReconnectCount())
+		}
 		switch r.Method {
 		case http.MethodPost:
 			if !authorized(r) {
@@ -162,14 +169,14 @@ func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provide
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			s.handleHTTPPost(w, r, lifecycle, sessions)
+			s.handleHTTPPost(w, r, lifecycle, sessions, telemetry)
 		case http.MethodGet:
 			if !authorized(r) {
 				challenge(w)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			if _, ok := validateHTTPSession(w, r, sessions); !ok {
+			if _, ok := validateHTTPSessionObserved(w, r, sessions, observeSessionReject); !ok {
 				return
 			}
 			handleHTTPGetSSE(w, r, lifecycle)
@@ -179,7 +186,7 @@ func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provide
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			sessionID, ok := validateHTTPSession(w, r, sessions)
+			sessionID, ok := validateHTTPSessionObserved(w, r, sessions, observeSessionReject)
 			if !ok {
 				return
 			}
@@ -245,6 +252,7 @@ func (w *observabilityResponseWriter) Unwrap() http.ResponseWriter {
 }
 
 func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
+	runtimeInfo := s.mustRuntimeInfo()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		requestID := observability.NewRequestID()
@@ -264,6 +272,8 @@ func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
 			outcome = observability.OutcomeAccepted
 		case status == http.StatusUnauthorized || status == http.StatusForbidden:
 			outcome = observability.OutcomeDenied
+			level = observability.LevelError
+			errorClass = observability.ErrorAuthentication
 		case status >= http.StatusBadRequest:
 			outcome = observability.OutcomeError
 			level = observability.LevelError
@@ -283,6 +293,10 @@ func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
 				DurationMS:     duration,
 				HTTPDurationMS: duration,
 				ErrorClass:     errorClass,
+				Commit:         runtimeInfo.Commit,
+				ToolCount:      runtimeInfo.ToolCount,
+				CatalogHash:    runtimeInfo.CatalogHash,
+				BootID:         s.BootID(),
 			})
 		}
 	})
@@ -384,7 +398,7 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, lifecycle *httpSer
 // handleHTTPPost reads one JSON-RPC message (or a batch array) and replies. A lone
 // notification/response yields 202 Accepted with no body; a request yields 200 with
 // an application/json response; a batch yields a JSON array of the non-empty replies.
-func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle, sessions *httpSessionStore) {
+func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle, sessions *httpSessionStore, telemetry *httpTransportTelemetry) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHTTPBody))
 	if err != nil {
 		// MaxBytesReader signals oversize via its error; report 413.
@@ -404,6 +418,7 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycl
 	}
 	initializing := containsInitialize([]byte(trimmed))
 	if initializing && lifecycle.Draining() {
+		s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, observability.ErrorServerDraining, telemetry.ReconnectCount())
 		w.Header().Set("Retry-After", "1")
 		http.Error(w, "server draining; initialize a new session after replacement", http.StatusServiceUnavailable)
 		return
@@ -413,9 +428,13 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycl
 	if initializing {
 		sessionID = sessions.Create()
 		w.Header().Set("Mcp-Session-Id", sessionID)
+		eventName, reconnectCount := telemetry.recordInitialize(r)
+		s.emitHTTPSessionEvent(r, eventName, observability.OutcomeSuccess, observability.ErrorNone, reconnectCount)
 	} else {
 		var ok bool
-		sessionID, ok = validateHTTPSession(w, r, sessions)
+		sessionID, ok = validateHTTPSessionObserved(w, r, sessions, func(validation httpSessionValidation) {
+			s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, sessionValidationErrorClass(validation), telemetry.ReconnectCount())
+		})
 		if !ok {
 			return
 		}
@@ -545,7 +564,10 @@ func (s *Server) ServeHTTPWithOptions(ctx context.Context, addr, token string, o
 	if token == "" && oauthProvider == nil {
 		return errors.New("http transport requires auth: set a bearer token or enable OAuth (refusing to start without auth)")
 	}
-	lifecycle := newHTTPServerLifecycle()
+	telemetry := newHTTPTransportTelemetry()
+	lifecycle := newHTTPServerLifecycle().WithObserver(func(name observability.EventName, duration time.Duration, outcome observability.Outcome, errorClass observability.ErrorClass) {
+		s.emitHTTPDrainEvent(name, duration, outcome, errorClass, telemetry.ReconnectCount())
+	})
 	sessions := newHTTPSessionStore(defaultHTTPSessionTTL)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -553,7 +575,7 @@ func (s *Server) ServeHTTPWithOptions(ctx context.Context, addr, token string, o
 	}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           s.httpHandlerWithState(token, oauthProvider, opts, lifecycle, sessions),
+		Handler:           s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, sessions, telemetry),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return serveHTTPListener(ctx, srv, listener, lifecycle, defaultHTTPShutdownTimeout, func() {

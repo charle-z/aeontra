@@ -160,8 +160,16 @@ func (s *httpSessionStore) evictOldestLocked() {
 }
 
 func validateHTTPSession(w http.ResponseWriter, r *http.Request, sessions *httpSessionStore) (string, bool) {
+	return validateHTTPSessionObserved(w, r, sessions, nil)
+}
+
+func validateHTTPSessionObserved(w http.ResponseWriter, r *http.Request, sessions *httpSessionStore, onReject func(httpSessionValidation)) (string, bool) {
 	sessionID := strings.TrimSpace(r.Header.Get("Mcp-Session-Id"))
-	switch sessions.Validate(sessionID) {
+	validation := sessions.Validate(sessionID)
+	if validation != httpSessionValid && onReject != nil {
+		onReject(validation)
+	}
+	switch validation {
 	case httpSessionValid:
 		return sessionID, true
 	case httpSessionMissing:

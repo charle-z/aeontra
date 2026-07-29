@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/observability"
 )
 
 // serveHTTPListener owns the bounded replacement sequence: readiness drops first,
@@ -46,8 +48,10 @@ func serveHTTPListener(
 				invalidate()
 			}
 			if closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+				lifecycle.EndDrain(observability.OutcomeError, observability.ErrorTransport)
 				return errors.Join(fmt.Errorf("http server drain: %w", shutdownErr), closeErr)
 			}
+			lifecycle.EndDrain(observability.OutcomeError, observability.ErrorTransport)
 			return fmt.Errorf("http server drain: %w", shutdownErr)
 		}
 
@@ -56,8 +60,10 @@ func serveHTTPListener(
 			invalidate()
 		}
 		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			lifecycle.EndDrain(observability.OutcomeError, observability.ErrorTransport)
 			return fmt.Errorf("http server: %w", serveErr)
 		}
+		lifecycle.EndDrain(observability.OutcomeSuccess, observability.ErrorNone)
 		return nil
 	}
 }

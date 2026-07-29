@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	SchemaVersion   = 1
+	SchemaVersion   = 2
 	DefaultMaxBytes = int64(16 << 20)
 	DefaultSegments = 4
 	MinMaxBytes     = int64(1 << 20)
@@ -56,11 +56,16 @@ const (
 type EventName string
 
 const (
-	EventServerStart EventName = "server_start"
-	EventServerStop  EventName = "server_stop"
-	EventHTTPRequest EventName = "http_request"
-	EventRPCRequest  EventName = "rpc_request"
-	EventOther       EventName = "other"
+	EventServerStart             EventName = "server_start"
+	EventServerStop              EventName = "server_stop"
+	EventServerDrainStart        EventName = "server_drain_start"
+	EventServerDrainEnd          EventName = "server_drain_end"
+	EventHTTPRequest             EventName = "http_request"
+	EventRPCRequest              EventName = "rpc_request"
+	EventMCPSessionCreated       EventName = "mcp_session_created"
+	EventMCPSessionReinitialized EventName = "mcp_session_reinitialized"
+	EventMCPSessionRejected      EventName = "mcp_session_rejected"
+	EventOther                   EventName = "other"
 )
 
 type Transport string
@@ -108,14 +113,19 @@ const (
 type ErrorClass string
 
 const (
-	ErrorNone          ErrorClass = ""
-	ErrorParse         ErrorClass = "parse_error"
-	ErrorInvalidParams ErrorClass = "invalid_params"
-	ErrorUnknownMethod ErrorClass = "unknown_method"
-	ErrorUnknownTool   ErrorClass = "unknown_tool"
-	ErrorTool          ErrorClass = "tool_error"
-	ErrorTransport     ErrorClass = "transport_error"
-	ErrorInternal      ErrorClass = "internal_error"
+	ErrorNone           ErrorClass = ""
+	ErrorAuthentication ErrorClass = "authentication_failed"
+	ErrorParse          ErrorClass = "parse_error"
+	ErrorInvalidParams  ErrorClass = "invalid_params"
+	ErrorUnknownMethod  ErrorClass = "unknown_method"
+	ErrorUnknownTool    ErrorClass = "unknown_tool"
+	ErrorTool           ErrorClass = "tool_error"
+	ErrorSessionMissing ErrorClass = "session_missing"
+	ErrorSessionUnknown ErrorClass = "session_unknown"
+	ErrorSessionExpired ErrorClass = "session_expired"
+	ErrorServerDraining ErrorClass = "server_draining"
+	ErrorTransport      ErrorClass = "transport_error"
+	ErrorInternal       ErrorClass = "internal_error"
 )
 
 // Config is immutable startup configuration for the structured event sink.
@@ -182,6 +192,8 @@ type Event struct {
 	ToolCount      int        `json:"tool_count,omitempty"`
 	CatalogHash    string     `json:"catalog_hash,omitempty"`
 	RootCount      int        `json:"root_count,omitempty"`
+	BootID         string     `json:"boot_id,omitempty"`
+	ReconnectCount uint64     `json:"reconnect_count,omitempty"`
 }
 
 type Logger struct {
@@ -338,6 +350,7 @@ func normalizeEvent(event Event) Event {
 	event.TaskID = safeDimensionID(event.TaskID)
 	event.Commit = safeCommit(event.Commit)
 	event.CatalogHash = safeCatalogHash(event.CatalogHash)
+	event.BootID = safeBootID(event.BootID)
 	if event.StatusCode < 0 || event.StatusCode > 999 {
 		event.StatusCode = 0
 	}
@@ -377,7 +390,14 @@ func validComponent(value Component) bool {
 }
 
 func validEventName(value EventName) bool {
-	return value == EventServerStart || value == EventServerStop || value == EventHTTPRequest || value == EventRPCRequest || value == EventOther
+	switch value {
+	case EventServerStart, EventServerStop, EventServerDrainStart, EventServerDrainEnd,
+		EventHTTPRequest, EventRPCRequest, EventMCPSessionCreated,
+		EventMCPSessionReinitialized, EventMCPSessionRejected, EventOther:
+		return true
+	default:
+		return false
+	}
 }
 
 func validTransport(value Transport) bool {
@@ -398,7 +418,9 @@ func validOutcome(value Outcome) bool {
 
 func validErrorClass(value ErrorClass) bool {
 	switch value {
-	case ErrorNone, ErrorParse, ErrorInvalidParams, ErrorUnknownMethod, ErrorUnknownTool, ErrorTool, ErrorTransport, ErrorInternal:
+	case ErrorNone, ErrorAuthentication, ErrorParse, ErrorInvalidParams, ErrorUnknownMethod,
+		ErrorUnknownTool, ErrorTool, ErrorSessionMissing, ErrorSessionUnknown,
+		ErrorSessionExpired, ErrorServerDraining, ErrorTransport, ErrorInternal:
 		return true
 	default:
 		return false
@@ -407,6 +429,7 @@ func validErrorClass(value ErrorClass) bool {
 
 var (
 	requestIDPattern = regexp.MustCompile(`^[a-f0-9-]{8,64}$`)
+	bootIDPattern    = regexp.MustCompile(`^[a-f0-9-]{8,64}$`)
 	toolPattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,79}$`)
 	commitPattern    = regexp.MustCompile(`^(unknown|[a-f0-9]{7,64})$`)
 	catalogPattern   = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
@@ -417,6 +440,17 @@ func safeRequestID(value string) string {
 		return ""
 	}
 	if changedByRedaction(value) || !requestIDPattern.MatchString(value) {
+		return "redacted"
+	}
+	return value
+}
+
+func safeBootID(value string) string {
+	if value == "" {
+		return ""
+	}
+	value = strings.ToLower(strings.TrimSpace(value))
+	if changedByRedaction(value) || !bootIDPattern.MatchString(value) {
 		return "redacted"
 	}
 	return value
