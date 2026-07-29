@@ -177,6 +177,13 @@ func (t *Transport) do(ctx context.Context, method, path string, input, output a
 }
 
 func (t *Transport) doLimited(ctx context.Context, method, path string, input, output any, maxResponse int64) (int, error) {
+	return t.doLimitedWithClient(ctx, t.client, method, path, input, output, maxResponse)
+}
+
+func (t *Transport) doLimitedWithClient(ctx context.Context, client *http.Client, method, path string, input, output any, maxResponse int64) (int, error) {
+	if client == nil {
+		return 0, errors.New("edge HTTP client is unavailable")
+	}
 	if maxResponse <= 0 || maxResponse > 8<<20 {
 		return 0, errors.New("edge response limit is invalid")
 	}
@@ -207,7 +214,7 @@ func (t *Transport) doLimited(ctx context.Context, method, path string, input, o
 	request.Header.Set(edge.HeaderTimestamp, strconv.FormatInt(signed.Timestamp, 10))
 	request.Header.Set(edge.HeaderNonce, signed.Nonce)
 	request.Header.Set(edge.HeaderSignature, base64.RawURLEncoding.EncodeToString(signed.Signature))
-	response, err := t.client.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return 0, errors.New("edge endpoint unavailable")
 	}

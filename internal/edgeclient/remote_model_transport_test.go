@@ -2,6 +2,7 @@ package edgeclient
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -113,6 +114,70 @@ func TestLeaseModelRuntimeRetriesWithSameLeaseID(t *testing.T) {
 	}
 	if !remoteLeaseIDPattern.MatchString(first.LeaseID) || first.LeaseID != second.LeaseID {
 		t.Fatalf("lease ids first=%q second=%q", first.LeaseID, second.LeaseID)
+	}
+}
+
+func TestLeaseModelRuntimeLongPollOutlivesGenericClientTimeout(t *testing.T) {
+	fixture := newRemoteModelFixture(t, nil)
+	client := &http.Client{
+		Transport: delayedNoContentRoundTripper{delay: 75 * time.Millisecond},
+		Timeout:   10 * time.Millisecond,
+	}
+	transport, err := NewTransport(fixture.stateRoot, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	lease, err := transport.LeaseModelRuntime(ctx, time.Second)
+	if err != nil || lease != nil {
+		t.Fatalf("lease=%+v err=%v", lease, err)
+	}
+	if client.Timeout != 10*time.Millisecond {
+		t.Fatalf("generic client timeout mutated to %s", client.Timeout)
+	}
+}
+
+func TestLeaseModelRuntimeContextDeadlineOverridesLongPollClient(t *testing.T) {
+	fixture := newRemoteModelFixture(t, nil)
+	transport, err := NewTransport(fixture.stateRoot, &http.Client{
+		Transport: delayedNoContentRoundTripper{delay: time.Second},
+		Timeout:   10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	lease, err := transport.LeaseModelRuntime(ctx, time.Second)
+	if !errors.Is(err, context.DeadlineExceeded) || lease != nil {
+		t.Fatalf("lease=%+v err=%v", lease, err)
+	}
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("context deadline was not authoritative: %s", elapsed)
+	}
+}
+
+func TestModelRuntimeLeaseClientUsesBoundedMargin(t *testing.T) {
+	base := &http.Client{Timeout: 10 * time.Millisecond}
+	transport := &Transport{client: base}
+	cases := []struct {
+		wait time.Duration
+		want time.Duration
+	}{
+		{wait: time.Second, want: 31 * time.Second},
+		{wait: remoteModelDefaultWait, want: 150 * time.Second},
+		{wait: remoteModelMaxWait, want: remoteModelClientTimeout},
+	}
+	for _, test := range cases {
+		client := transport.modelRuntimeLeaseClient(test.wait)
+		if client == base || client.Timeout != test.want {
+			t.Fatalf("wait=%s client=%p timeout=%s want=%s", test.wait, client, client.Timeout, test.want)
+		}
+	}
+	if base.Timeout != 10*time.Millisecond {
+		t.Fatalf("base client timeout mutated to %s", base.Timeout)
 	}
 }
 
@@ -577,6 +642,26 @@ func newRemoteModelFixture(t *testing.T, drops map[string]int) remoteModelFixtur
 		t.Fatalf("lease=%+v err=%v", lease, err)
 	}
 	return remoteModelFixture{devices: devices, turns: turns, stateRoot: stateRoot, lease: *lease, client: client, dropper: dropper}
+}
+
+type delayedNoContentRoundTripper struct {
+	delay time.Duration
+}
+
+func (d delayedNoContentRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	timer := time.NewTimer(d.delay)
+	defer timer.Stop()
+	select {
+	case <-request.Context().Done():
+		return nil, request.Context().Err()
+	case <-timer.C:
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(nil)),
+			Request:    request,
+		}, nil
+	}
 }
 
 type temporaryOutageRoundTripper struct {
