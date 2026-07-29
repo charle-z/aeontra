@@ -58,6 +58,28 @@ type OpenCodeRemoteTransport interface {
 	Close() error
 }
 
+type openCodeRuntimePhaseReporter interface {
+	ReportPhase(context.Context, modelturn.RuntimePhase, modelturn.RuntimeRetryCategory, uint32) (modelturn.Runtime, error)
+}
+
+func reportOpenCodeRuntimePhase(ctx context.Context, remote OpenCodeRemoteTransport, phase modelturn.RuntimePhase) error {
+	reporter, ok := remote.(openCodeRuntimePhaseReporter)
+	if !ok {
+		return nil
+	}
+	_, err := reporter.ReportPhase(ctx, phase, "", 1)
+	return err
+}
+
+func reportOpenCodeRuntimeRetry(ctx context.Context, remote OpenCodeRemoteTransport, category modelturn.RuntimeRetryCategory, count uint32) error {
+	reporter, ok := remote.(openCodeRuntimePhaseReporter)
+	if !ok || count == 0 {
+		return nil
+	}
+	_, err := reporter.ReportPhase(ctx, modelturn.RuntimePhaseLeaseRetry, category, count)
+	return err
+}
+
 type OpenCodeLauncherConfig struct {
 	StateRoot      string
 	SocketRoot     string
@@ -76,11 +98,12 @@ type OpenCodeLauncherConfig struct {
 }
 
 type OpenCodeLaunchResult struct {
-	RuntimeID       string
-	WorkspaceID     string
-	State           OpenCodeLocalState
-	ExitCode        int
-	OutputTruncated bool
+	RuntimeID          string
+	WorkspaceID        string
+	State              OpenCodeLocalState
+	LeaseRetryCategory modelturn.RuntimeRetryCategory
+	ExitCode           int
+	OutputTruncated    bool
 }
 
 type OpenCodeLauncher struct {
@@ -107,6 +130,7 @@ type openCodeProcessSpec struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
 	Sandbox    openCodeSandboxSpec
+	Started    func() error
 }
 
 type openCodeSandboxMount struct {
@@ -203,8 +227,15 @@ func (l *OpenCodeLauncher) RunNext(ctx context.Context, wait time.Duration) (boo
 		return false, OpenCodeLaunchResult{}, err
 	}
 	lease, err := transport.LeaseModelRuntime(ctx, wait)
-	if err != nil || lease == nil {
-		return false, OpenCodeLaunchResult{}, err
+	if err != nil {
+		category := modelturn.RuntimeRetryTransportError
+		if errors.Is(err, context.DeadlineExceeded) || strings.Contains(strings.ToLower(err.Error()), "timeout") {
+			category = modelturn.RuntimeRetryClientTimeout
+		}
+		return false, OpenCodeLaunchResult{LeaseRetryCategory: category}, err
+	}
+	if lease == nil {
+		return false, OpenCodeLaunchResult{LeaseRetryCategory: modelturn.RuntimeRetryNoContent}, nil
 	}
 	result, err := l.RunLease(ctx, *lease)
 	return true, result, err
@@ -232,6 +263,18 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	if err != nil {
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
+	}
+	for _, category := range []modelturn.RuntimeRetryCategory{
+		modelturn.RuntimeRetryClientTimeout,
+		modelturn.RuntimeRetryTransportError,
+		modelturn.RuntimeRetryServerBusy,
+		modelturn.RuntimeRetryUpstreamUnavailable,
+		modelturn.RuntimeRetryGatewayTimeout,
+	} {
+		if err := reportOpenCodeRuntimeRetry(ctx, remote, category, lease.RetryCounts[category]); err != nil {
+			_, _ = remote.Failed(context.Background(), "")
+			return result, err
+		}
 	}
 	if !created {
 		result.State = entry.State
@@ -317,6 +360,11 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		return result, errors.New("workspace contract changed during local preflight")
 	}
 	workspaceRecord = workspaceAfter
+	if err := reportOpenCodeRuntimePhase(ctx, remote, modelturn.RuntimePhaseLocalPreflightComplete); err != nil {
+		failLocal(OpenCodeLocalFailed, -1, false)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, err
+	}
 	if _, err := remote.Started(ctx); err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
 		return result, err
@@ -398,6 +446,13 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
+	if err := reportOpenCodeRuntimePhase(runCtx, remote, modelturn.RuntimePhaseDriverSocketReady); err != nil {
+		cancel()
+		<-driverDone
+		failLocal(OpenCodeLocalFailed, -1, false)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, err
+	}
 	if err := l.config.Journal.MarkRunning(ctx, lease.RuntimeID); err != nil {
 		cancel()
 		<-driverDone
@@ -415,6 +470,9 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		failLocal(OpenCodeLocalFailed, -1, false)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
+	}
+	spec.Started = func() error {
+		return reportOpenCodeRuntimePhase(runCtx, remote, modelturn.RuntimePhaseOpenCodeProcessStarted)
 	}
 	processDone := make(chan openCodeProcessResult, 1)
 	processStarted := time.Now()
@@ -1101,7 +1159,17 @@ func runOpenCodeProcess(ctx context.Context, spec openCodeProcessSpec) openCodeP
 		return err
 	}
 	cmd.WaitDelay = 5 * time.Second
-	err := cmd.Run()
+	err := cmd.Start()
+	if err == nil && spec.Started != nil {
+		if startedErr := spec.Started(); startedErr != nil {
+			_ = cmd.Cancel()
+			_ = cmd.Wait()
+			return openCodeProcessResult{ExitCode: -1, Err: startedErr}
+		}
+	}
+	if err == nil {
+		err = cmd.Wait()
+	}
 	if err == nil {
 		return openCodeProcessResult{ExitCode: 0}
 	}

@@ -108,7 +108,7 @@ func TestOpenCodeRuntimeStartIsIdempotentAndPubliclyRedacted(t *testing.T) {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	wantKeys := []string{"controller", "device_id", "last_sequence", "runtime_id", "state", "updated_at", "workspace_id"}
+	wantKeys := []string{"controller", "device_id", "last_sequence", "phases", "runtime_id", "state", "updated_at", "workspace_id"}
 	if !reflect.DeepEqual(keys, wantKeys) {
 		t.Fatalf("public keys=%v body=%s", keys, firstText)
 	}
@@ -123,6 +123,9 @@ func TestOpenCodeRuntimeStartIsIdempotentAndPubliclyRedacted(t *testing.T) {
 	}
 	if view.State != modelturn.RuntimeStateAwaitingEdge || view.Controller != modelturn.ControllerRemoteEdge || view.DeviceID != testEdgeDeviceID || view.WorkspaceID != testWorkspaceID {
 		t.Fatalf("view=%+v", view)
+	}
+	if len(view.Phases) != 1 || view.Phases[0].Phase != modelturn.RuntimePhaseCreated || view.Phases[0].DurationMS != 0 || view.Phases[0].SinceCreatedMS != 0 {
+		t.Fatalf("phases=%+v", view.Phases)
 	}
 	runtime, err := store.Runtime(context.Background(), view.RuntimeID)
 	if err != nil {

@@ -56,21 +56,22 @@ var (
 )
 
 type Runtime struct {
-	RuntimeID        string            `json:"runtime_id"`
-	DeviceID         string            `json:"device_id,omitempty"`
-	WorkspaceID      string            `json:"workspace_id,omitempty"`
-	Controller       RuntimeController `json:"controller"`
-	State            RuntimeState      `json:"state"`
-	Status           RuntimeStatus     `json:"status"`
-	GoalSummary      string            `json:"goal_summary,omitempty"`
-	CreatedAt        time.Time         `json:"created_at"`
-	ExpiresAt        time.Time         `json:"expires_at"`
-	LastHeartbeat    time.Time         `json:"last_heartbeat,omitempty"`
-	LastSequence     uint64            `json:"last_sequence"`
-	ActiveTurnID     TurnID            `json:"active_turn_id,omitempty"`
-	ActiveTurnStatus Status            `json:"active_turn_status,omitempty"`
-	ResultRef        string            `json:"result_ref,omitempty"`
-	UpdatedAt        time.Time         `json:"updated_at"`
+	RuntimeID        string              `json:"runtime_id"`
+	DeviceID         string              `json:"device_id,omitempty"`
+	WorkspaceID      string              `json:"workspace_id,omitempty"`
+	Controller       RuntimeController   `json:"controller"`
+	State            RuntimeState        `json:"state"`
+	Status           RuntimeStatus       `json:"status"`
+	GoalSummary      string              `json:"goal_summary,omitempty"`
+	CreatedAt        time.Time           `json:"created_at"`
+	ExpiresAt        time.Time           `json:"expires_at"`
+	LastHeartbeat    time.Time           `json:"last_heartbeat,omitempty"`
+	LastSequence     uint64              `json:"last_sequence"`
+	ActiveTurnID     TurnID              `json:"active_turn_id,omitempty"`
+	ActiveTurnStatus Status              `json:"active_turn_status,omitempty"`
+	ResultRef        string              `json:"result_ref,omitempty"`
+	UpdatedAt        time.Time           `json:"updated_at"`
+	Phases           []RuntimePhaseEvent `json:"phases,omitempty"`
 
 	goalRef              string
 	goalDigest           string
@@ -215,12 +216,24 @@ func (s *Store) startRuntimeLocked(ctx context.Context, request BoundRuntimeRequ
 		state = RuntimeStateAwaitingModel
 	}
 	expires := now.Add(ttl)
-	if _, err := s.db.ExecContext(ctx, `INSERT INTO model_runtimes(runtime_id,status,device_id,workspace_id,controller,state,goal_summary,goal_ref,goal_digest,expires_at,last_heartbeat,last_sequence,active_turn_id,result_ref,idempotency_key_digest,created_at,updated_at) VALUES(?,'ready',?,?,?,?,?,?,?,?,0,0,'','',?,?,?)`,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Runtime{}, errors.New("model runtime transaction failed")
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO model_runtimes(runtime_id,status,device_id,workspace_id,controller,state,goal_summary,goal_ref,goal_digest,expires_at,last_heartbeat,last_sequence,active_turn_id,result_ref,idempotency_key_digest,created_at,updated_at) VALUES(?,'ready',?,?,?,?,?,?,?,?,0,0,'','',?,?,?)`,
 		runtimeID, request.DeviceID, request.WorkspaceID, controller, state, request.GoalSummary, request.GoalRef, request.GoalDigest, expires.UnixNano(), request.IdempotencyKeyDigest, now.UnixNano(), now.UnixNano()); err != nil {
 		return Runtime{}, errors.New("model runtime persistence failed")
 	}
+	if err := s.recordRuntimePhaseLocked(ctx, tx, runtimeID, RuntimePhaseCreated, "", 1, now); err != nil {
+		return Runtime{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Runtime{}, errors.New("model runtime commit failed")
+	}
 	s.signal()
-	return Runtime{RuntimeID: runtimeID, DeviceID: request.DeviceID, WorkspaceID: request.WorkspaceID, Controller: controller, State: state, Status: RuntimeReady, GoalSummary: request.GoalSummary, CreatedAt: now, ExpiresAt: expires, UpdatedAt: now, goalRef: request.GoalRef, goalDigest: request.GoalDigest, idempotencyKeyDigest: request.IdempotencyKeyDigest}, nil
+	created := RuntimePhaseEvent{Phase: RuntimePhaseCreated, Timestamp: now, LastTimestamp: now, Count: 1}
+	return Runtime{RuntimeID: runtimeID, DeviceID: request.DeviceID, WorkspaceID: request.WorkspaceID, Controller: controller, State: state, Status: RuntimeReady, GoalSummary: request.GoalSummary, CreatedAt: now, ExpiresAt: expires, UpdatedAt: now, Phases: []RuntimePhaseEvent{created}, goalRef: request.GoalRef, goalDigest: request.GoalDigest, idempotencyKeyDigest: request.IdempotencyKeyDigest}, nil
 }
 
 func (s *Store) SetRuntimeRunning(ctx context.Context, runtimeID string) error {
@@ -236,7 +249,18 @@ func (s *Store) FailRuntime(ctx context.Context, runtimeID string) error {
 }
 
 func (s *Store) SetRuntimeState(ctx context.Context, runtimeID string, target RuntimeState, allowed ...RuntimeState) error {
-	if !safeIdentifier.MatchString(runtimeID) || !validRuntimeState(target) || len(allowed) == 0 {
+	return s.setRuntimeState(ctx, runtimeID, target, "", allowed...)
+}
+
+func (s *Store) SetRuntimeStateAndRecordPhase(ctx context.Context, runtimeID string, target RuntimeState, phase RuntimePhase, allowed ...RuntimeState) error {
+	if phase != RuntimePhaseStartedConfirmed && phase != RuntimePhaseToolExecutionStarted {
+		return ErrInvalidRequest
+	}
+	return s.setRuntimeState(ctx, runtimeID, target, phase, allowed...)
+}
+
+func (s *Store) setRuntimeState(ctx context.Context, runtimeID string, target RuntimeState, phase RuntimePhase, allowed ...RuntimeState) error {
+	if !safeIdentifier.MatchString(runtimeID) || !validRuntimeState(target) || len(allowed) == 0 || (phase != "" && !validRuntimePhase(phase)) {
 		return ErrInvalidRequest
 	}
 	now := s.now().UTC()
@@ -256,13 +280,31 @@ func (s *Store) SetRuntimeState(ctx context.Context, runtimeID string, target Ru
 	query += ")"
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result, err := s.db.ExecContext(ctx, query, args...)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.New("model runtime transition transaction failed")
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return errors.New("model runtime transition failed")
 	}
 	rows, _ := result.RowsAffected()
 	if rows != 1 {
 		return ErrTurnConflict
+	}
+	if phase != "" {
+		if err := s.recordRuntimePhaseLocked(ctx, tx, runtimeID, phase, "", 1, now); err != nil {
+			return err
+		}
+	}
+	if target == RuntimeStateCompleted || target == RuntimeStateFailed || target == RuntimeStateCancelled || target == RuntimeStateExpired {
+		if err := s.recordRuntimePhaseLocked(ctx, tx, runtimeID, RuntimePhaseTerminal, "", 1, now); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New("model runtime transition commit failed")
 	}
 	s.signal()
 	return nil
@@ -298,12 +340,16 @@ func (s *Store) LeaseNextRuntime(ctx context.Context, deviceID string) (Runtime,
 		return Runtime{}, false, errors.New("model runtime lease failed")
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET state='expired',status='failed',updated_at=? WHERE state NOT IN ('completed','failed','cancelled','expired') AND expires_at<=?`, now.UnixNano(), now.UnixNano()); err != nil {
-		return Runtime{}, false, errors.New("model runtime expiry failed")
+	if err := s.expireRuntimesLocked(ctx, tx, now); err != nil {
+		return Runtime{}, false, err
 	}
 	var runtimeID string
 	if err := tx.QueryRowContext(ctx, `SELECT runtime_id FROM model_runtimes WHERE device_id=? AND controller='remote_edge' AND state='awaiting_edge' AND expires_at>? ORDER BY created_at,runtime_id LIMIT 1`, deviceID, now.UnixNano()).Scan(&runtimeID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if commitErr := tx.Commit(); commitErr != nil {
+				return Runtime{}, false, errors.New("model runtime expiry commit failed")
+			}
+			s.signal()
 			return Runtime{}, false, nil
 		}
 		return Runtime{}, false, errors.New("model runtime lease failed")
@@ -315,6 +361,9 @@ func (s *Store) LeaseNextRuntime(ctx context.Context, deviceID string) (Runtime,
 	rows, _ := result.RowsAffected()
 	if rows != 1 {
 		return Runtime{}, false, ErrTurnConflict
+	}
+	if err := s.recordRuntimePhaseLocked(ctx, tx, runtimeID, RuntimePhaseLeaseAssigned, "", 1, now); err != nil {
+		return Runtime{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Runtime{}, false, errors.New("model runtime lease commit failed")
@@ -383,6 +432,9 @@ func (s *Store) CancelRuntime(ctx context.Context, runtimeID string) error {
 	if rows != 1 {
 		return ErrTurnConflict
 	}
+	if err := s.recordRuntimePhaseLocked(ctx, tx, runtimeID, RuntimePhaseTerminal, "", 1, now); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE model_turns SET status='cancelled' WHERE runtime_id=? AND status IN ('created','awaiting_model','disconnected')`, runtimeID); err != nil {
 		return errors.New("model runtime turn cancellation failed")
 	}
@@ -434,6 +486,11 @@ func (s *Store) runtimeLocked(ctx context.Context, runtimeID string) (Runtime, e
 	if lastHeartbeat > 0 {
 		runtime.LastHeartbeat = time.Unix(0, lastHeartbeat).UTC()
 	}
+	phases, phaseErr := s.runtimePhasesLocked(ctx, runtime)
+	if phaseErr != nil {
+		return Runtime{}, phaseErr
+	}
+	runtime.Phases = phases
 	var turnID sql.NullString
 	var status sql.NullString
 	var sequence sql.NullInt64

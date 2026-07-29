@@ -156,6 +156,9 @@ func (s *Store) CreateTurnFromReference(ctx context.Context, request ModelReques
 	if _, err := tx.ExecContext(ctx, `UPDATE model_runtimes SET state='awaiting_model',status='running',last_sequence=?,active_turn_id=?,updated_at=? WHERE runtime_id=? AND state NOT IN ('completed','failed','cancelled','expired')`, request.Sequence, turnID, now.UnixNano(), request.RuntimeID); err != nil {
 		return Turn{}, errors.New("model runtime turn binding failed")
 	}
+	if err := s.recordRuntimePhaseLocked(ctx, tx, request.RuntimeID, RuntimePhaseFirstTurnCreated, "", 1, now); err != nil {
+		return Turn{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Turn{}, errors.New("model turn commit failed")
 	}

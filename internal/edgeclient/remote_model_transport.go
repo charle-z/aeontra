@@ -27,15 +27,16 @@ const (
 )
 
 type ModelRuntimeLease struct {
-	RuntimeID       string                      `json:"runtime_id"`
-	DeviceID        string                      `json:"device_id"`
-	WorkspaceID     string                      `json:"workspace_id"`
-	Controller      modelturn.RuntimeController `json:"controller"`
-	State           modelturn.RuntimeState      `json:"state"`
-	Goal            string                      `json:"goal"`
-	GoalDigest      string                      `json:"goal_digest"`
-	TimeoutSeconds  int                         `json:"timeout_seconds"`
-	ProviderProfile string                      `json:"provider_profile"`
+	RuntimeID       string                                    `json:"runtime_id"`
+	DeviceID        string                                    `json:"device_id"`
+	WorkspaceID     string                                    `json:"workspace_id"`
+	Controller      modelturn.RuntimeController               `json:"controller"`
+	State           modelturn.RuntimeState                    `json:"state"`
+	Goal            string                                    `json:"goal"`
+	GoalDigest      string                                    `json:"goal_digest"`
+	TimeoutSeconds  int                                       `json:"timeout_seconds"`
+	ProviderProfile string                                    `json:"provider_profile"`
+	RetryCounts     map[modelturn.RuntimeRetryCategory]uint32 `json:"-"`
 }
 
 type RemoteEdgeTransportOptions struct {
@@ -69,7 +70,10 @@ type remoteTurnWaitRequest struct {
 }
 
 type remoteRuntimeLifecycleRequest struct {
-	ResultRef string `json:"result_ref,omitempty"`
+	ResultRef     string                         `json:"result_ref,omitempty"`
+	Phase         modelturn.RuntimePhase         `json:"phase,omitempty"`
+	RetryCategory modelturn.RuntimeRetryCategory `json:"retry_category,omitempty"`
+	Count         uint32                         `json:"count,omitempty"`
 }
 
 func (t *Transport) LeaseModelRuntime(ctx context.Context, wait time.Duration) (*ModelRuntimeLease, error) {
@@ -87,6 +91,12 @@ func (t *Transport) LeaseModelRuntime(ctx context.Context, wait time.Duration) (
 		return nil, errors.New("model runtime lease id generation failed")
 	}
 	input := map[string]any{"lease_id": leaseID, "wait_seconds": int(wait / time.Second)}
+	retryCounts := make(map[modelturn.RuntimeRetryCategory]uint32)
+	recordRetry := func(category modelturn.RuntimeRetryCategory) {
+		if retryCounts[category] < 100 {
+			retryCounts[category]++
+		}
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -111,16 +121,27 @@ func (t *Transport) LeaseModelRuntime(ctx context.Context, wait time.Duration) (
 				if closeErr != nil {
 					return nil, errors.New("model runtime lease receipt close failed")
 				}
+				if len(retryCounts) != 0 {
+					lease.RetryCounts = retryCounts
+				}
 				return &lease, nil
 			case http.StatusNoContent:
 				return nil, nil
-			case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
-				// Retry with the same lease ID; the VPS returns the same runtime receipt.
+			case http.StatusTooManyRequests:
+				recordRetry(modelturn.RuntimeRetryServerBusy)
+			case http.StatusBadGateway, http.StatusServiceUnavailable:
+				recordRetry(modelturn.RuntimeRetryUpstreamUnavailable)
+			case http.StatusGatewayTimeout:
+				recordRetry(modelturn.RuntimeRetryGatewayTimeout)
 			case http.StatusUnauthorized, http.StatusForbidden:
 				return nil, errors.New("model runtime device was rejected")
 			default:
 				return nil, fmt.Errorf("model runtime lease rejected with HTTP %d", status)
 			}
+		} else if errors.Is(callErr, context.DeadlineExceeded) || strings.Contains(strings.ToLower(callErr.Error()), "timeout") {
+			recordRetry(modelturn.RuntimeRetryClientTimeout)
+		} else {
+			recordRetry(modelturn.RuntimeRetryTransportError)
 		}
 		if err := waitRetry(ctx, time.Second); err != nil {
 			return nil, err
@@ -400,7 +421,15 @@ func (r *RemoteEdgeTransport) Completed(ctx context.Context, resultRef string) (
 	return r.lifecycle(ctx, "completed", resultRef)
 }
 
+func (r *RemoteEdgeTransport) ReportPhase(ctx context.Context, phase modelturn.RuntimePhase, category modelturn.RuntimeRetryCategory, count uint32) (modelturn.Runtime, error) {
+	return r.lifecycleRequest(ctx, "phase", remoteRuntimeLifecycleRequest{Phase: phase, RetryCategory: category, Count: count})
+}
+
 func (r *RemoteEdgeTransport) lifecycle(ctx context.Context, action, resultRef string) (modelturn.Runtime, error) {
+	return r.lifecycleRequest(ctx, action, remoteRuntimeLifecycleRequest{ResultRef: resultRef})
+}
+
+func (r *RemoteEdgeTransport) lifecycleRequest(ctx context.Context, action string, input remoteRuntimeLifecycleRequest) (modelturn.Runtime, error) {
 	if r == nil {
 		return modelturn.Runtime{}, modelturn.ErrInvalidRequest
 	}
@@ -408,7 +437,7 @@ func (r *RemoteEdgeTransport) lifecycle(ctx context.Context, action, resultRef s
 	var runtime modelturn.Runtime
 	err := r.retry(ctx, func() (bool, error) {
 		runtime = modelturn.Runtime{}
-		status, callErr := r.signed.doLimited(ctx, http.MethodPost, path, remoteRuntimeLifecycleRequest{ResultRef: resultRef}, &runtime, 256<<10)
+		status, callErr := r.signed.doLimited(ctx, http.MethodPost, path, input, &runtime, 256<<10)
 		if callErr != nil {
 			return true, callErr
 		}

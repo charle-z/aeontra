@@ -92,6 +92,9 @@ func TestRemoteEdgeTransportRecoversLostCreateAndWaitResponses(t *testing.T) {
 
 func TestLeaseModelRuntimeRetriesWithSameLeaseID(t *testing.T) {
 	fixture := newRemoteModelFixture(t, map[string]int{"/lease": 1})
+	if fixture.lease.RetryCounts[modelturn.RuntimeRetryTransportError] != 1 || len(fixture.lease.RetryCounts) != 1 {
+		t.Fatalf("retry counts=%v", fixture.lease.RetryCounts)
+	}
 	if fixture.dropper.callsEnding("/lease") != 2 {
 		t.Fatalf("lease calls=%d, want 2", fixture.dropper.callsEnding("/lease"))
 	}

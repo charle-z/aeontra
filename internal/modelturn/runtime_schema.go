@@ -22,6 +22,17 @@ func (s *Store) ensureRuntimeSchema() error {
 		BEGIN
 			SELECT RAISE(ABORT, 'runtime body is immutable');
 		END`,
+		`CREATE TABLE IF NOT EXISTS runtime_phase_events (
+			runtime_id TEXT NOT NULL,
+			phase TEXT NOT NULL,
+			category TEXT NOT NULL DEFAULT '',
+			count INTEGER NOT NULL,
+			occurred_at INTEGER NOT NULL,
+			last_at INTEGER NOT NULL,
+			PRIMARY KEY(runtime_id,phase,category),
+			FOREIGN KEY(runtime_id) REFERENCES model_runtimes(runtime_id)
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS runtime_phase_events_order ON runtime_phase_events(runtime_id,occurred_at,phase)`,
 	} {
 		if _, err := s.db.Exec(statement); err != nil {
 			return fmt.Errorf("model runtime schema initialization failed: %w", err)
