@@ -105,10 +105,11 @@ type OpenCodeLauncherConfig struct {
 	// DriverStartupBudget bounds how long the launcher waits for the model-turn
 	// driver to publish its private socket. It is deliberately separate from the
 	// lease execution budget so a local startup stall fails fast and classified.
-	DriverStartupBudget time.Duration
-	HTTPClient          *http.Client
-	Workspaces          *WorkspaceRegistry
-	Journal             *OpenCodeRuntimeJournal
+	DriverStartupBudget  time.Duration
+	RuntimeStartupBudget time.Duration
+	HTTPClient           *http.Client
+	Workspaces           *WorkspaceRegistry
+	Journal              *OpenCodeRuntimeJournal
 }
 
 type OpenCodeLaunchResult struct {
@@ -223,6 +224,12 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 	}
 	if config.DriverStartupBudget < openCodeMinDriverStartupBudget || config.DriverStartupBudget > openCodeMaxDriverStartupBudget {
 		return nil, errors.New("OpenCode driver startup budget is invalid")
+	}
+	if config.RuntimeStartupBudget == 0 {
+		config.RuntimeStartupBudget = modelturn.RemoteRuntimeStartupTTL
+	}
+	if config.RuntimeStartupBudget < time.Second || config.RuntimeStartupBudget > modelturn.MaxTurnTTL {
+		return nil, errors.New("OpenCode runtime startup budget is invalid")
 	}
 	if config.Workspaces == nil || config.Journal == nil {
 		return nil, errors.New("OpenCode launcher requires local workspace and runtime journals")
@@ -398,8 +405,10 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	}
 	defer removePrivateRuntimeDir(runtimeDir, l.config.SocketRoot)
 	socketPath := filepath.Join(runtimeDir, openCodeDriverSocketName)
-	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second)
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second+l.config.RuntimeStartupBudget)
 	defer cancel()
+	executionTimeoutSeconds := lease.TimeoutSeconds
+	lease.TimeoutSeconds += int(l.config.RuntimeStartupBudget / time.Second)
 	var internalBrokerDone <-chan error
 	var internalBrokerCancel context.CancelFunc
 	internalBrokerName := ""
@@ -450,6 +459,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 			<-internalBrokerDone
 		}
 	}()
+	lease.TimeoutSeconds = executionTimeoutSeconds
 	driverDone, err := l.startDriver(runCtx, socketPath, lease, remote)
 	if err != nil {
 		failLocal(OpenCodeLocalFailed, -1, false)
@@ -565,6 +575,12 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		terminalCheckpoint = "cancelled"
 		failLocal(OpenCodeLocalCancelled, processResult.ExitCode, truncated)
 		return result, context.Canceled
+	}
+	if terminalRuntime.State == modelturn.RuntimeStateExpired {
+		terminalCheckpoint = "timeout"
+		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
+		_, _ = remote.Failed(context.Background(), "")
+		return result, context.DeadlineExceeded
 	}
 	if l.killSwitchActive() {
 		terminalCheckpoint = "cancelled: kill switch"

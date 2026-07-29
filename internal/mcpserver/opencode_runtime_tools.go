@@ -97,8 +97,9 @@ func (s *Server) handleOpenCodeRuntimeStart(arguments json.RawMessage) (string, 
 	if err != nil || !validWorkspaceBinding(binding, params.WorkspaceID) || binding.DeviceID != params.DeviceID || binding.Mode != "dev" {
 		return "", errors.New("registered development workspace not found")
 	}
-	ttl := time.Duration(params.TimeoutSeconds) * time.Second
-	body, err := s.modelTurns.StageRuntimeGoal(context.Background(), goal, ttl)
+	executionTTL := time.Duration(params.TimeoutSeconds) * time.Second
+	startupTTL := modelturn.RemoteRuntimeStartupTTL
+	body, err := s.modelTurns.StageRuntimeGoal(context.Background(), goal, startupTTL)
 	if err != nil {
 		return "", err
 	}
@@ -106,7 +107,7 @@ func (s *Server) handleOpenCodeRuntimeStart(arguments json.RawMessage) (string, 
 		DeviceID: params.DeviceID, WorkspaceID: params.WorkspaceID,
 		Controller: modelturn.ControllerRemoteEdge, GoalSummary: modelturn.GoalSummary(goal),
 		GoalRef: body.BodyRef, GoalDigest: body.ContentDigest,
-		IdempotencyKeyDigest: modelturn.IdempotencyDigest(params.IdempotencyKey), TTL: ttl,
+		IdempotencyKeyDigest: modelturn.IdempotencyDigest(params.IdempotencyKey), TTL: startupTTL, ExecutionTTL: executionTTL,
 	})
 	if err != nil || !created {
 		_ = s.modelTurns.DiscardRuntimeGoal(context.Background(), body.BodyRef, body.ContentDigest)

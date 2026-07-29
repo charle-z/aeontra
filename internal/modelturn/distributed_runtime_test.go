@@ -165,6 +165,9 @@ func TestOpenStoreMigratesLegacyRuntimeSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if runtime.ExecutionTimeoutSeconds != int(MaxTurnTTL/time.Second) {
+		t.Fatalf("legacy execution budget=%d", runtime.ExecutionTimeoutSeconds)
+	}
 	if runtime.Controller != ControllerPullRendezvous || runtime.State != RuntimeStateAwaitingModel || runtime.ExpiresAt.IsZero() {
 		t.Fatalf("legacy runtime not migrated: %+v", runtime)
 	}

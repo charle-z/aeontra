@@ -60,6 +60,7 @@ func (s *Store) ensureRuntimeSchema() error {
 		{"active_turn_id", `TEXT NOT NULL DEFAULT ''`},
 		{"result_ref", `TEXT NOT NULL DEFAULT ''`},
 		{"idempotency_key_digest", `TEXT NOT NULL DEFAULT ''`},
+		{"execution_timeout_seconds", `INTEGER NOT NULL DEFAULT 0`},
 	}
 	for _, addition := range additions {
 		if columns[addition.name] {
@@ -81,6 +82,9 @@ func (s *Store) ensureRuntimeSchema() error {
 		END,
 		expires_at=CASE WHEN expires_at=0 THEN updated_at+? ELSE expires_at END`, MaxTurnTTL.Nanoseconds()); err != nil {
 		return errors.New("model runtime schema backfill failed")
+	}
+	if _, err := s.db.Exec(`UPDATE model_runtimes SET execution_timeout_seconds=CAST((expires_at-created_at)/1000000000 AS INTEGER) WHERE execution_timeout_seconds<=0 AND expires_at>created_at`); err != nil {
+		return errors.New("model runtime execution budget backfill failed")
 	}
 	for _, statement := range []string{
 		`CREATE INDEX IF NOT EXISTS model_runtimes_device_queue ON model_runtimes(device_id,controller,state,created_at)`,

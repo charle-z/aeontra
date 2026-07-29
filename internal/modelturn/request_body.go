@@ -83,7 +83,7 @@ func (s *Store) CreateTurnFromReference(ctx context.Context, request ModelReques
 		return Turn{}, ErrInvalidRequest
 	}
 	now := s.now().UTC()
-	requestedExpiresAt := now.Add(ttl)
+	var requestedExpiresAt time.Time
 	turnID, err := newOpaqueID("mt_")
 	if err != nil {
 		return Turn{}, errors.New("model turn id generation failed")
@@ -121,6 +121,10 @@ func (s *Store) CreateTurnFromReference(ctx context.Context, request ModelReques
 	}
 	if request.Sequence != expected {
 		return Turn{}, ErrSequenceMismatch
+	}
+	requestedExpiresAt, err = s.runtimeTurnDeadlineLocked(ctx, tx, request.RuntimeID, request.Sequence, ttl, now)
+	if err != nil {
+		return Turn{}, err
 	}
 
 	var kind string

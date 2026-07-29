@@ -111,6 +111,7 @@ func newOpenCodeLauncherFixture(t *testing.T) *openCodeLauncherFixture {
 		t.Fatal(err)
 	}
 	launcher.allowRootTest = true
+	launcher.config.RuntimeStartupBudget = 0
 	launcher.verifySandbox = func(ctx context.Context, _ openCodeProcessSpec) error {
 		output, err := exec.CommandContext(ctx, executable, "--version").Output()
 		if err != nil {
