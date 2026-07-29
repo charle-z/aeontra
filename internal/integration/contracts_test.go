@@ -121,8 +121,21 @@ func TestStdioHTTPAndRuntimeIdentityRemainEquivalent(t *testing.T) {
 		t.Fatalf("unauthorized status=%d challenge=%q", unauthorized.Code, unauthorized.Header().Get("WWW-Authenticate"))
 	}
 
+	initializeRequest := httptest.NewRequest(http.MethodPost, "http://mcp.local/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
+	initializeRequest.Header.Set("Authorization", "Bearer "+token)
+	initialize := httptest.NewRecorder()
+	handler.ServeHTTP(initialize, initializeRequest)
+	if initialize.Code != http.StatusOK {
+		t.Fatalf("initialize status = %d body=%s", initialize.Code, initialize.Body.String())
+	}
+	sessionID := initialize.Header().Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Fatal("initialize did not return Mcp-Session-Id")
+	}
+
 	authorizedRequest := httptest.NewRequest(http.MethodPost, "http://mcp.local/mcp", strings.NewReader(rpcToolsListRequest()))
 	authorizedRequest.Header.Set("Authorization", "Bearer "+token)
+	authorizedRequest.Header.Set("Mcp-Session-Id", sessionID)
 	authorized := httptest.NewRecorder()
 	handler.ServeHTTP(authorized, authorizedRequest)
 	if authorized.Code != http.StatusOK {

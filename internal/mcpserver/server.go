@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 	"time"
 
@@ -225,7 +226,7 @@ func (s *Server) initializeResult(params json.RawMessage, sessionKey string) map
 	runtimeInfo := s.mustRuntimeInfo()
 	return map[string]any{
 		"protocolVersion": version,
-		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": true}},
+		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
 		"serverInfo": map[string]any{
 			"name":        s.name,
 			"version":     runtimeInfo.Version,
@@ -248,8 +249,13 @@ func (s *Server) initializeResult(params json.RawMessage, sessionKey string) map
 }
 
 func (s *Server) listTools() []toolDef {
-	defs := make([]toolDef, 0, len(s.order))
-	for _, name := range s.order {
+	names := make([]string, 0, len(s.table))
+	for name := range s.table {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	defs := make([]toolDef, 0, len(names))
+	for _, name := range names {
 		defs = append(defs, s.table[name].def)
 	}
 	return defs

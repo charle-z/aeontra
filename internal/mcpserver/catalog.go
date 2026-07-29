@@ -9,11 +9,12 @@ import (
 	"strings"
 )
 
-// CatalogTool is the deterministic contract identity of one MCP tool. Descriptions
-// and handlers are intentionally excluded: they can change without changing the
-// machine-facing wire contract.
+// CatalogTool is the deterministic public contract identity of one MCP tool.
+// Descriptions are included because they define model-visible semantics. Handlers and
+// process-local operational state remain excluded because they are implementation details.
 type CatalogTool struct {
 	Name        string         `json:"name"`
+	Description string         `json:"description"`
 	Version     string         `json:"version"`
 	InputSchema map[string]any `json:"input_schema"`
 	Annotations map[string]any `json:"annotations"`
@@ -53,6 +54,7 @@ func (s *Server) CatalogInfo() (CatalogSnapshot, error) {
 		}
 		tools = append(tools, CatalogTool{
 			Name:        name,
+			Description: entry.def.Description,
 			Version:     version,
 			InputSchema: schema,
 			Annotations: annotations,

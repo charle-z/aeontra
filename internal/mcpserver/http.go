@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
@@ -66,7 +65,6 @@ func (s *Server) httpHandlerWithLifecycle(token string, oauthProvider *oauth.Pro
 func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore) http.Handler {
 	runtimeInfo := s.mustRuntimeInfo()
 	mux := http.NewServeMux()
-	catalogNotifier := &oneShotCatalogNotifier{}
 	landingHandler, err := landing.New()
 	if err != nil {
 		panic(fmt.Sprintf("invalid landing configuration: %v", err))
@@ -174,7 +172,7 @@ func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provide
 			if _, ok := validateHTTPSession(w, r, sessions); !ok {
 				return
 			}
-			handleHTTPGetSSE(w, r, catalogNotifier, lifecycle)
+			handleHTTPGetSSE(w, r, lifecycle)
 		case http.MethodDelete:
 			if !authorized(r) {
 				challenge(w)
@@ -342,29 +340,11 @@ func newHTTPSessionID() string {
 	return fmt.Sprintf("mcp-devbox-%d", time.Now().UnixNano())
 }
 
-// handleHTTPGetSSE serves the server->client SSE stream. It stays open, sending a
-// periodic keep-alive comment, until the client disconnects (request context
-// cancelled). A persistent stream (vs an immediate close) avoids clients such as
-// ChatGPT reconnecting in a loop. The stream carries keep-alive comments and one
-// standards-based tool-list refresh notification after each process start.
-type oneShotCatalogNotifier struct {
-	mu   sync.Mutex
-	sent bool
-}
-
-func (n *oneShotCatalogNotifier) Notify(write func(string) bool) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if n.sent {
-		return
-	}
-	const notification = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}\n\n"
-	if write(notification) {
-		n.sent = true
-	}
-}
-
-func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotCatalogNotifier, lifecycle *httpServerLifecycle) {
+// handleHTTPGetSSE serves the server->client SSE stream. The catalog is immutable
+// for the lifetime of a process, so a restart must not fabricate tools/list_changed.
+// Clients observe a real deployed contract change by creating a fresh session and
+// calling tools/list on the replacement instance.
+func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -384,7 +364,6 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, notifier *oneShotC
 	if !writeChunk(": mcp-devbox stream open\n\n") {
 		return
 	}
-	notifier.Notify(writeChunk)
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	ctx := r.Context()

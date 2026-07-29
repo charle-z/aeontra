@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestInitializeAdvertisesToolListChanges(t *testing.T) {
+func TestInitializeDoesNotAdvertiseUnsupportedToolListChanges(t *testing.T) {
 	s := stampServer(t)
 	response := s.handle([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
 	var got struct {
@@ -25,22 +25,22 @@ func TestInitializeAdvertisesToolListChanges(t *testing.T) {
 	if err := json.Unmarshal(response, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.Result.Capabilities.Tools.ListChanged {
-		t.Fatal("initialize must advertise tools.listChanged=true")
+	if got.Result.Capabilities.Tools.ListChanged {
+		t.Fatal("initialize advertised tools.listChanged without an in-process mutable catalog")
 	}
 }
 
-func TestSSEEmitsCatalogChangeNotificationOnce(t *testing.T) {
+func TestSSENeverInventsCatalogChangeOnStartup(t *testing.T) {
 	h, _ := newHTTPServer(t, "read-only")
 
-	first := recordSSE(t, h)
-	if !strings.Contains(first, `"method":"notifications/tools/list_changed"`) {
-		t.Fatalf("first SSE stream lacks tool-list change notification: %q", first)
-	}
-
-	second := recordSSE(t, h)
-	if strings.Contains(second, `"method":"notifications/tools/list_changed"`) {
-		t.Fatalf("catalog notification was duplicated across SSE streams: %q", second)
+	for stream := 1; stream <= 2; stream++ {
+		body := recordSSE(t, h)
+		if strings.Contains(body, `"method":"notifications/tools/list_changed"`) {
+			t.Fatalf("SSE stream %d fabricated a tool-list change: %q", stream, body)
+		}
+		if !strings.Contains(body, ": mcp-devbox stream open") {
+			t.Fatalf("SSE stream %d did not open normally: %q", stream, body)
+		}
 	}
 }
 
@@ -48,7 +48,7 @@ func recordSSE(t *testing.T, h http.Handler) string {
 	t.Helper()
 	sessionID := initializeHandlerSession(t, h, "Bearer "+testToken)
 	ctx, cancel := context.WithCancel(context.Background())
-	req := httptest.NewRequest(http.MethodGet, "/mcp", nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, DefaultMCPPath, nil).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	req.Header.Set("Mcp-Session-Id", sessionID)
 	recorder := httptest.NewRecorder()

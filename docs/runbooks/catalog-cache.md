@@ -1,8 +1,8 @@
 # Runbook: deployment identity and stale MCP catalogs
 
-Use this runbook after changing tool names, schemas, annotations, aliases, or contract
-versions. It distinguishes a stale deployment from a client that retained an older
-`tools/list` result.
+Use this runbook after changing tool names, descriptions, schemas, annotations, aliases,
+or contract versions. It distinguishes a stale deployment from a client that retained
+an older `tools/list` result.
 
 ## Runtime signals
 
@@ -46,19 +46,17 @@ The command:
 
 Success means the deployed process is running the expected source and catalog.
 
-## Tool-list change notification
+## Tool-list change behavior
 
-The server advertises `capabilities.tools.listChanged=true`. On the first authorized
-SSE stream opened after a process starts, it emits one JSON-RPC notification:
+The production catalog is immutable for the lifetime of one server process. The server
+therefore advertises `capabilities.tools.listChanged=false` and does not fabricate a
+`notifications/tools/list_changed` event merely because a container restarted.
 
-```json
-{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}
-```
-
-The notification is one-shot per process so the same event is not duplicated across
-multiple concurrent SSE streams. A compatible client should request `tools/list`
-again. This is best effort: the server cannot force a client to discard an internal
-catalog cache.
+A real contractual change is deployed as a replacement instance with a different
+catalog hash. Sessions are instance-bound, so the previous session fails and a client
+must run `initialize` again on the same URL and OAuth configuration, then request
+`tools/list`. The server cannot force ChatGPT or another client to reload a connector
+inside an existing conversation.
 
 ## Diagnosis
 
@@ -75,10 +73,10 @@ Do not classify this as a client cache problem.
 
 ### Commit, hash, and count all match but the client lacks tools
 
-The server is current. Confirm the client received a new `initialize` response and
-an SSE tool-list change notification. Reconnect the connector once if it does not
-request `tools/list` again. Record the client/version behavior as a compatibility
-limitation rather than redeploying repeatedly.
+The server is current. Confirm the old session was rejected, the client received a new
+`initialize` response, and the new session requested `tools/list`. Reconnect the
+connector once if the client does not start a new session. Record the client/version
+behavior as a compatibility limitation rather than redeploying repeatedly.
 
 ### OAuth asks for login after every deployment
 
@@ -88,6 +86,6 @@ strategy unless its registration is actually invalid.
 
 ## Rollback
 
-The catalog features are additive. Roll back to the prior commit if `/version`, HTTP
-headers, initialization, or SSE behavior causes a client regression. Existing tool
-names, schemas, handlers, environment variables, and auth mechanisms are unchanged.
+Roll back to the prior commit if `/version`, HTTP headers, initialization, session
+replacement, or SSE keep-alive behavior causes a client regression. Existing auth,
+authority, jail, grant, and durable-state mechanisms remain unchanged.
