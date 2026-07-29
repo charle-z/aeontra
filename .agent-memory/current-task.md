@@ -1,44 +1,48 @@
-# Current task — presentation optimization complete
+# Current task — MCP redeploy continuity
 
-Authoritative plan: Brain note `mcp-devbox-presentation-optimization`.
+Authoritative plan: Brain note `mcp-devbox-redeploy-continuity`.
 
-## Observed implementation state
+## Hito 0 — completed
 
-- PR #70 was merged into `main`.
-- PR head: `61fe682228e4d86c53cb3ed168cb77186be6595b`.
-- Merge commit: `182a14fe6c64df5651bd25c57a01056ecff446b1`.
-- All 16 exact-head checks passed before merge.
-- Local `main` and `origin/main` were synchronized and clean at the merge commit.
-- The MCP Devbox production application was healthy and `/version` reported exactly `182a14fe6c64df5651bd25c57a01056ecff446b1` before the final closeout.
-- The public landing and `/showcase/pixelgrama-evidence.json` both returned HTTP 200.
+- Branch: `fix/mcp-redeploy-continuity`.
+- Validated base: `main` / `origin/main` / merge-base `b3d2c160f3179da7966254406587520b735c61ea`.
+- Implementation commit: `6fa43f0bd220bc275e162ae91d242b9642068ea1`.
+- File added: `internal/mcpserver/redeploy_continuity_test.go`.
+- Production baseline: app `jqf7qz5ensoqtvl1tb197gcv` healthy; live commit `b3d2c160f3179da7966254406587520b735c61ea`; 102 tools; catalog `sha256:477bfd598edec2d8c2e03cea3e13c60cc78f898083138e326e8fed55feb8ca1b`.
 
-The live deployment identity must always be read from `/version`; a repository file cannot reliably embed the future merge commit that contains the file itself. Brain records the final post-merge production observation.
+## Reproduced behavior
 
-## Completed presentation scope
+The automated same-endpoint replacement fixture proves:
 
-- Hito 4: canonical public Pixelgrama evidence manifest, closed validation, build embedding and safe static serving.
-- Hito 1: benefit-first bilingual landing hierarchy.
-- Hito 2: visual authority comparison and accessible `read-only`, `ask` and `allow` explanation.
-- Hito 3: public read-only Pixelgrama walkthrough grounded in the canonical manifest.
-- Cross-cutting review: mobile layout, accessibility, focus isolation, loading state and CSP hardening.
-- Product cleanup: the obsolete event delivery document was removed while CubePath attribution remained in the README.
+1. Server A accepts `initialize`, `tools/list`, and safe `system_runtime_info`.
+2. Server B can start on the same logical endpoint and issue a different new session ID.
+3. A new session works after replacement.
+4. The old Server A session header is also accepted by Server B.
+5. With the same contract, both instances expose the same catalog hash.
+6. With a test-only contractual tool added to B, the catalog hash changes.
+7. The old session can silently see and call the changed B catalog.
 
-At the start of the final closeout, implementation, CI, merge and production verification were complete; only documentation, continuity and safe neutralization of obsolete event wording remained.
+## Confirmed root cause
 
-## Final closeout contract update
+`internal/mcpserver/http.go` creates one process-wide `Mcp-Session-Id`, returns it on `initialize`, but never validates the client's later `Mcp-Session-Id` header. `tools/list` and `tools/call` do not require a valid initialized HTTP session. Therefore a replacement instance accepts an identifier emitted by the previous instance and grants the current authenticated tool authority through it.
 
-The managed validation-runner creation preview now defaults to the repository's active product branch, `main`, instead of an obsolete event branch name. The preview contract is version 2. Tool count remains 102; the deterministic current catalog hash is `sha256:477bfd598edec2d8c2e03cea3e13c60cc78f898083138e326e8fed55feb8ca1b`.
+This is a server defect. Separately, ChatGPT may or may not refresh a connector inside an active conversation; that client behavior is not a server guarantee and does not explain the invalid-session acceptance.
 
-This update does not change destination ownership, mount allowlists, approval, plans, isolation, deployment posture or secret handling. Historical dated baselines and Git history remain unchanged.
+## Verification
 
-## Authority model summary
+- `go test ./internal/mcpserver -run TestRedeployContinuityCharacterizesCurrent -count=1` — pass.
+- `go test ./internal/mcpserver -count=1` — pass.
+- `git diff --check` — pass.
+- Diff reviewed; no production implementation changed in Hito 0.
+- Tree was clean immediately after implementation commit.
 
-- `read-only`: inspect and diagnose without writes or command execution.
-- `ask`: authorized direct writes require an approval round trip before exact execution.
-- `allow`: authorized direct writes execute without that approval round trip.
+## Decisions and boundaries
 
-Modes remain separate from exact, expiring and single-use plans and from local human grants. `allow` does not remove repository jails, secret denial, schemas, allowlists, redaction, audit, application restrictions or state revalidation.
+- Do not touch the unrelated `h1-edge-runtime-observability` worktree/branch.
+- Do not change URL, domain, OAuth configuration, authority modes, jails, grants, Edge, workcells, or add a general shell.
+- Preserve persistent Brain and state stores.
+- The one-shot SSE catalog notification on every process start is recorded for Hito 3; do not fix it early.
 
-## Owner-facing recommendation
+## Exact next step
 
-The Hito 5 recommendation was delivered directly to the owner in chat. It is intentionally not stored as a repository file, README section, issue, event delivery document or detailed `.agent-memory` artifact.
+Hito 1 only: implement bounded graceful draining and readiness. Mark the instance unready before shutdown, reject new MCP initialization during drain, allow active requests to finish within a fixed deadline, close listeners and invalidate in-memory sessions safely, preserve durable state, and keep `/mcp` and `/console` authentication intact. Do not begin Hito 2 session reinitalization semantics until Hito 1 is committed, tested, reviewed, and recorded.
