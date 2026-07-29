@@ -159,10 +159,6 @@ func (s *httpSessionStore) evictOldestLocked() {
 	}
 }
 
-func validateHTTPSession(w http.ResponseWriter, r *http.Request, sessions *httpSessionStore) (string, bool) {
-	return validateHTTPSessionObserved(w, r, sessions, nil)
-}
-
 func validateHTTPSessionObserved(w http.ResponseWriter, r *http.Request, sessions *httpSessionStore, onReject func(httpSessionValidation)) (string, bool) {
 	sessionID := strings.TrimSpace(r.Header.Get("Mcp-Session-Id"))
 	validation := sessions.Validate(sessionID)
