@@ -77,6 +77,26 @@ Use `/front-door/healthz` for the front-door container healthcheck. Do not use b
 `/readyz` as the platform liveness check for the front door, because a backend rollout
 must not cause the platform to restart the stable facade.
 
+## Managed Coolify workflow
+
+MCP Devbox exposes three narrow operations for the first independent deployment:
+
+1. `platform_front_door_create_preview` validates the temporary public origin, fixed
+   backend origin, exact protocol and catalog hash, then binds the current commit of
+   `front-door-stable` into an expiring single-use plan.
+2. `platform_front_door_create` creates or reconciles exactly one application named
+   `mcp-devbox-front-door-managed`, upserts the three non-secret compatibility
+   variables, and deploys only when the pinned commit is not already healthy.
+3. `platform_front_door_status` resolves that fixed application by server-owned name
+   and returns bounded deployment-contract metadata without exposing environment
+   values or requiring its UUID in the general application allowlist.
+
+The caller cannot select a repository, branch, Dockerfile, port, mounts, destination,
+healthcheck, Docker flags, auto-deploy posture or application name. Those values are
+compiled into the managed contract. Duplicate names, a changed stable-branch SHA, an
+existing application with different topology, or a domain outside
+`COOLIFY_ALLOWED_DOMAINS` fail closed.
+
 ## Rollout sequence
 
 1. Deploy the front door on a temporary reviewed hostname pointing to the current backend.

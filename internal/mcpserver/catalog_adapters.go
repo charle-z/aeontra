@@ -17,3 +17,22 @@ func (adapter platformAppPreviewAdapter) PlatformAppCreatePreview(request catalo
 		RequiredEnv: request.RequiredEnv,
 	})
 }
+
+type frontDoorPlatformAdapter struct {
+	service *tools.Service
+}
+
+func (adapter frontDoorPlatformAdapter) PlatformFrontDoorCreatePreview(request catalog.FrontDoorPlatformPreviewRequest) (string, error) {
+	return adapter.service.PlatformFrontDoorCreatePreview(tools.PlatformFrontDoorRequest{
+		Domain: request.Domain, BackendURL: request.BackendURL, ExpectedProtocol: request.ExpectedProtocol,
+		ExpectedCatalogHash: request.ExpectedCatalogHash,
+	})
+}
+
+func (adapter frontDoorPlatformAdapter) PlatformFrontDoorCreate(planID string, approve bool) (string, error) {
+	return adapter.service.PlatformFrontDoorCreate(planID, approve)
+}
+
+func (adapter frontDoorPlatformAdapter) PlatformFrontDoorStatus() (string, error) {
+	return adapter.service.PlatformFrontDoorStatus()
+}

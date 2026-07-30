@@ -40,6 +40,13 @@ type platformApplication struct {
 	Domain           string `json:"domain"`
 	GitCommitSHA     string `json:"git_commit_sha"`
 	SourceCommit     string `json:"source_commit"`
+	BuildPack        string `json:"build_pack"`
+	Dockerfile       string `json:"dockerfile_location"`
+	PortsExposes     string `json:"ports_exposes"`
+	AutoDeploy       bool   `json:"is_auto_deploy_enabled"`
+	InstantDeploy    bool   `json:"instant_deploy"`
+	HealthcheckPath  string `json:"health_check_path"`
+	DestinationUUID  string `json:"destination_uuid"`
 }
 
 func (a platformApplication) repo() string {
