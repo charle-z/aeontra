@@ -9,7 +9,7 @@ import (
 
 func TestInvalidOperationCompletionFailsTerminalInsteadOfRequeueing(t *testing.T) {
 	now := time.Date(2026, 7, 30, 17, 30, 0, 0, time.UTC)
-	store, err := Open(Config{Root: t.TempDir(), Now: func() time.Time { return now }})
+	store, err := Open(Config{Root: t.TempDir() + "/edge", Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
