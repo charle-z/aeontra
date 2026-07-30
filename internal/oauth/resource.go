@@ -6,22 +6,33 @@ import (
 	"time"
 )
 
+// Principal validates the access token and returns a stable connector principal.
+// The principal is derived from the OAuth client id, not the rotating access token,
+// so one authenticated MCP session survives token refresh and daemon replacement.
+func (p *Provider) Principal(r *http.Request) (string, bool) {
+	if p == nil || r == nil {
+		return "", false
+	}
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	if !strings.HasPrefix(h, prefix) {
+		return "", false
+	}
+	token := strings.TrimSpace(h[len(prefix):])
+	g, ok := p.store.getAccess(token)
+	if !ok || g.resource != p.resource || strings.TrimSpace(g.clientID) == "" {
+		return "", false
+	}
+	return "oauth-client:" + g.clientID, true
+}
+
 // Authorize validates the access token on an MCP request. It reads ONLY the
 // Authorization: Bearer header (access tokens must never ride the query string), looks
 // the token up, and requires it to be unexpired and minted for THIS server's canonical
 // resource (audience binding, RFC 8707). Returns true only when all checks pass.
 func (p *Provider) Authorize(r *http.Request) bool {
-	const prefix = "Bearer "
-	h := r.Header.Get("Authorization")
-	if !strings.HasPrefix(h, prefix) {
-		return false
-	}
-	token := strings.TrimSpace(h[len(prefix):])
-	g, ok := p.store.getAccess(token)
-	if !ok {
-		return false
-	}
-	return g.resource == p.resource
+	_, ok := p.Principal(r)
+	return ok
 }
 
 // ChallengeHeader is the WWW-Authenticate value returned on a 401 from the MCP endpoint.

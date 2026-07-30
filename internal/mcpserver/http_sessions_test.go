@@ -111,7 +111,7 @@ func TestHTTPSessionValidationBlocksAuthorityFallback(t *testing.T) {
 	}
 
 	unknown := doWithSession(t, handler, http.MethodPost, DefaultMCPPath, "Bearer "+testToken, "previous-instance-session", callBody)
-	if unknown.Code != http.StatusNotFound || !strings.Contains(unknown.Body.String(), "unknown to this server instance") {
+	if unknown.Code != http.StatusNotFound || !strings.Contains(unknown.Body.String(), "unknown or revoked") {
 		t.Fatalf("unknown session status=%d body=%s", unknown.Code, unknown.Body.String())
 	}
 	if unknown.Header().Get("Mcp-Session-Id") != "" || calls.Load() != 0 {

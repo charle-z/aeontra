@@ -41,6 +41,15 @@ func (s *clientCapabilityStore) Record(sessionKey string, params json.RawMessage
 	return capabilities
 }
 
+func (s *clientCapabilityStore) Put(sessionKey string, capabilities ClientCapabilities) {
+	if s == nil || sessionKey == "" {
+		return
+	}
+	s.mu.Lock()
+	s.bySession[sessionKey] = capabilities
+	s.mu.Unlock()
+}
+
 func (s *clientCapabilityStore) Snapshot(sessionKey string) ClientCapabilities {
 	s.mu.RLock()
 	capabilities := s.bySession[sessionKey]

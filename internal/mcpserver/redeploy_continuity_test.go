@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -130,28 +131,34 @@ func assertSuccessfulToolSequence(t *testing.T, client *http.Client, baseURL, se
 	}
 }
 
-func assertRejectedSession(t *testing.T, client *http.Client, baseURL, sessionID string) {
+func assertSessionContinues(t *testing.T, client *http.Client, baseURL, sessionID, expectedTool string) {
 	t.Helper()
-	for _, request := range []string{
-		rpcBody(t, 10, "tools/list", nil),
-		rpcBody(t, 11, "tools/call", map[string]any{"name": "system_runtime_info", "arguments": map[string]any{}}),
-	} {
-		response := callRemoteRPC(t, client, baseURL, sessionID, request)
-		if response.Status != http.StatusNotFound {
-			t.Fatalf("old session status=%d want=%d body=%s", response.Status, http.StatusNotFound, response.Body)
-		}
-		if response.Header.Get("Mcp-Session-Id") != "" {
-			t.Fatalf("old session rejection exposed a replacement session id: %v", response.Header)
-		}
-		if !strings.Contains(response.Body, "call initialize") || strings.Contains(response.Body, `"result"`) {
-			t.Fatalf("old session rejection is ambiguous or returned a tool result: %s", response.Body)
-		}
-	}
+	assertSuccessfulToolSequence(t, client, baseURL, sessionID, expectedTool)
 }
 
-func TestRedeployContinuityRejectsOldSessionWithSameCatalog(t *testing.T) {
+func openReplacementSessionStores(t *testing.T) (*HTTPSessionStore, *HTTPSessionStore) {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "mcp-sessions")
+	first, err := OpenHTTPSessionStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := OpenHTTPSessionStore(root)
+	if err != nil {
+		_ = first.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	t.Cleanup(func() { _ = second.Close() })
+	return first, second
+}
+
+func TestRedeployContinuityPreservesSessionWithSameCatalog(t *testing.T) {
+	storeA, storeB := openReplacementSessionStores(t)
 	serverA, _ := newHTTPServerObject(t, config.ModeReadOnly)
 	serverB, _ := newHTTPServerObject(t, config.ModeReadOnly)
+	serverA.WithHTTPSessionStore(storeA)
+	serverB.WithHTTPSessionStore(storeB)
 	infoA := serverA.mustRuntimeInfo()
 	infoB := serverB.mustRuntimeInfo()
 	if infoA.CatalogHash != infoB.CatalogHash {
@@ -162,22 +169,19 @@ func TestRedeployContinuityRejectsOldSessionWithSameCatalog(t *testing.T) {
 	endpoint := httptest.NewServer(logical)
 	defer endpoint.Close()
 
-	oldSession := initializeRemote(t, endpoint.Client(), endpoint.URL)
-	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, oldSession, "system_runtime_info")
+	sessionID := initializeRemote(t, endpoint.Client(), endpoint.URL)
+	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, sessionID, "system_runtime_info")
 
 	logical.Replace(serverB.HTTPHandler(testToken, nil))
-	newSession := initializeRemote(t, endpoint.Client(), endpoint.URL)
-	if newSession == oldSession {
-		t.Fatal("replacement instance reused the previous process session id")
-	}
-	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, newSession, "system_runtime_info")
-
-	assertRejectedSession(t, endpoint.Client(), endpoint.URL, oldSession)
+	assertSessionContinues(t, endpoint.Client(), endpoint.URL, sessionID, "system_runtime_info")
 }
 
-func TestRedeployContinuityRejectsOldSessionWithChangedCatalog(t *testing.T) {
+func TestRedeployContinuityPreservesSessionWithChangedCatalog(t *testing.T) {
+	storeA, storeB := openReplacementSessionStores(t)
 	serverA, _ := newHTTPServerObject(t, config.ModeReadOnly)
 	serverB, _ := newHTTPServerObject(t, config.ModeReadOnly)
+	serverA.WithHTTPSessionStore(storeA)
+	serverB.WithHTTPSessionStore(storeB)
 	serverB.table["redeploy_contract_probe"] = toolEntry{
 		def: toolDef{
 			Name:        "redeploy_contract_probe",
@@ -199,12 +203,9 @@ func TestRedeployContinuityRejectsOldSessionWithChangedCatalog(t *testing.T) {
 	endpoint := httptest.NewServer(logical)
 	defer endpoint.Close()
 
-	oldSession := initializeRemote(t, endpoint.Client(), endpoint.URL)
-	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, oldSession, "system_runtime_info")
+	sessionID := initializeRemote(t, endpoint.Client(), endpoint.URL)
+	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, sessionID, "system_runtime_info")
 
 	logical.Replace(serverB.HTTPHandler(testToken, nil))
-	newSession := initializeRemote(t, endpoint.Client(), endpoint.URL)
-	assertSuccessfulToolSequence(t, endpoint.Client(), endpoint.URL, newSession, "redeploy_contract_probe")
-
-	assertRejectedSession(t, endpoint.Client(), endpoint.URL, oldSession)
+	assertSessionContinues(t, endpoint.Client(), endpoint.URL, sessionID, "redeploy_contract_probe")
 }

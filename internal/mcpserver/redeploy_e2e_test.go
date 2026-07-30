@@ -107,8 +107,8 @@ func initializeRemoteWithPrior(t *testing.T, client *http.Client, baseURL, prior
 		t.Fatalf("replacement initialize status=%d", response.StatusCode)
 	}
 	sessionID := response.Header.Get("Mcp-Session-Id")
-	if sessionID == "" || sessionID == priorSession {
-		t.Fatalf("replacement session prior=%q new=%q", priorSession, sessionID)
+	if sessionID == "" || sessionID != priorSession {
+		t.Fatalf("replacement changed durable session prior=%q new=%q", priorSession, sessionID)
 	}
 	return sessionID
 }
@@ -244,7 +244,7 @@ func TestRedeployE2EInstanceReplacementPreservesBrainAndSessionBoundary(t *testi
 				t.Fatal("logical endpoint did not become ready on server B")
 			}
 
-			assertRejectedSession(t, client, endpoint.URL, oldSession)
+			assertSessionContinues(t, client, endpoint.URL, oldSession, "system_runtime_info")
 			newSession := initializeRemoteWithPrior(t, client, endpoint.URL, oldSession)
 			assertRemoteToolAvailable(t, client, endpoint.URL, newSession, test.expectedNewTool)
 			if test.changeContract {

@@ -24,6 +24,23 @@ func TestAuthorize_ValidToken(t *testing.T) {
 	}
 }
 
+func TestPrincipalIsStableAcrossAccessTokenRotation(t *testing.T) {
+	p := testProvider(t)
+	first := p.issueAccessToken("client-1", p.resource, "mcp", time.Hour)
+	second := p.issueAccessToken("client-1", p.resource, "mcp", time.Hour)
+	firstPrincipal, firstOK := p.Principal(bearerReq(first))
+	secondPrincipal, secondOK := p.Principal(bearerReq(second))
+	if !firstOK || !secondOK {
+		t.Fatal("valid rotated access tokens must resolve a principal")
+	}
+	if firstPrincipal != "oauth-client:client-1" || secondPrincipal != firstPrincipal {
+		t.Fatalf("principal rotated with access token: first=%q second=%q", firstPrincipal, secondPrincipal)
+	}
+	if other, ok := p.Principal(bearerReq(p.issueAccessToken("client-2", p.resource, "mcp", time.Hour))); !ok || other == firstPrincipal {
+		t.Fatalf("different OAuth client did not receive a distinct principal: %q", other)
+	}
+}
+
 func TestAuthorize_UnknownToken(t *testing.T) {
 	p := testProvider(t)
 	if p.Authorize(bearerReq("nope-not-a-real-token")) {

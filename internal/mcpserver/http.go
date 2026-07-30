@@ -55,11 +55,11 @@ func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.H
 // unauthenticated presentation-only landing, and adds the authenticated console
 // configured by opts.
 func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provider, opts HTTPOptions) http.Handler {
-	return s.httpHandlerWithRuntime(token, oauthProvider, opts, newHTTPServerLifecycle(), newHTTPSessionStore(defaultHTTPSessionTTL), newHTTPTransportTelemetry())
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, newHTTPServerLifecycle(), s.configuredHTTPSessionStore(), newHTTPTransportTelemetry())
 }
 
 func (s *Server) httpHandlerWithLifecycle(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle) http.Handler {
-	return s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, newHTTPSessionStore(defaultHTTPSessionTTL), newHTTPTransportTelemetry())
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, s.configuredHTTPSessionStore(), newHTTPTransportTelemetry())
 }
 
 func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore) http.Handler {
@@ -79,13 +79,21 @@ func (s *Server) httpHandlerWithRuntime(token string, oauthProvider *oauth.Provi
 		oauthProvider.RegisterRoutes(mux)
 	}
 
-	// authorized accepts either the legacy static token (only when configured) or a
-	// valid OAuth access token (only when OAuth is enabled).
-	authorized := func(r *http.Request) bool {
+	// authenticate returns one stable logical principal while still validating the
+	// current credential on every request. OAuth access-token rotation therefore does
+	// not rotate the MCP session identity.
+	authenticate := func(r *http.Request) (string, bool) {
 		if token != "" && authOK(r, token) {
-			return true
+			return "static-owner", true
 		}
-		return oauthProvider != nil && oauthProvider.Authorize(r)
+		if oauthProvider != nil {
+			return oauthProvider.Principal(r)
+		}
+		return "", false
+	}
+	authorized := func(r *http.Request) bool {
+		_, ok := authenticate(r)
+		return ok
 	}
 	// challenge sets the correct WWW-Authenticate header for a 401. When OAuth is on it
 	// points at the exact Protected Resource Metadata (RFC 9728 §5.1).
@@ -164,33 +172,43 @@ func (s *Server) httpHandlerWithRuntime(token string, oauthProvider *oauth.Provi
 		}
 		switch r.Method {
 		case http.MethodPost:
-			if !authorized(r) {
+			principal, ok := authenticate(r)
+			if !ok {
 				challenge(w)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			s.handleHTTPPost(w, r, lifecycle, sessions, telemetry)
+			s.handleHTTPPost(w, r, lifecycle, sessions, telemetry, principal, runtimeInfo.CatalogHash)
 		case http.MethodGet:
-			if !authorized(r) {
+			principal, ok := authenticate(r)
+			if !ok {
 				challenge(w)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			if _, ok := validateHTTPSessionObserved(w, r, sessions, observeSessionReject); !ok {
-				return
-			}
-			handleHTTPGetSSE(w, r, lifecycle)
-		case http.MethodDelete:
-			if !authorized(r) {
-				challenge(w)
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-			sessionID, ok := validateHTTPSessionObserved(w, r, sessions, observeSessionReject)
+			sessionID, record, ok := validateHTTPSessionObserved(w, r, sessions, principal, runtimeInfo.CatalogHash, true, observeSessionReject)
 			if !ok {
 				return
 			}
-			sessions.Delete(sessionID)
+			if s.clients != nil {
+				s.clients.Put(sessionID, record.Capabilities)
+			}
+			handleHTTPGetSSE(w, r, lifecycle)
+		case http.MethodDelete:
+			principal, ok := authenticate(r)
+			if !ok {
+				challenge(w)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			sessionID, _, ok := validateHTTPSessionObserved(w, r, sessions, principal, runtimeInfo.CatalogHash, true, observeSessionReject)
+			if !ok {
+				return
+			}
+			if _, err := sessions.DeleteBound(sessionID, principal); err != nil {
+				writeHTTPSessionError(w, http.StatusServiceUnavailable, "MCP session storage is temporarily unavailable")
+				return
+			}
 			if s.clients != nil {
 				s.clients.Delete(sessionID)
 			}
@@ -398,7 +416,7 @@ func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, lifecycle *httpSer
 // handleHTTPPost reads one JSON-RPC message (or a batch array) and replies. A lone
 // notification/response yields 202 Accepted with no body; a request yields 200 with
 // an application/json response; a batch yields a JSON array of the non-empty replies.
-func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle, sessions *httpSessionStore, telemetry *httpTransportTelemetry) {
+func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle, sessions *httpSessionStore, telemetry *httpTransportTelemetry, principal, catalogHash string) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHTTPBody))
 	if err != nil {
 		// MaxBytesReader signals oversize via its error; report 413.
@@ -420,23 +438,49 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycl
 	if initializing && lifecycle.Draining() {
 		s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, observability.ErrorServerDraining, telemetry.ReconnectCount())
 		w.Header().Set("Retry-After", "1")
-		http.Error(w, "server draining; initialize a new session after replacement", http.StatusServiceUnavailable)
+		http.Error(w, "server draining; retry initialize after replacement", http.StatusServiceUnavailable)
 		return
 	}
 
 	var sessionID string
 	if initializing {
-		sessionID = sessions.Create()
+		params := initializeRequestParams([]byte(trimmed))
+		capabilities := parseClientCapabilities(params, time.Now().UTC())
+		priorSessionID := strings.TrimSpace(r.Header.Get("Mcp-Session-Id"))
+		if priorSessionID != "" {
+			_, validation, err := sessions.ValidateBound(priorSessionID, principal, catalogHash, true)
+			if err != nil {
+				writeHTTPSessionError(w, http.StatusServiceUnavailable, "MCP session storage is temporarily unavailable")
+				return
+			}
+			if validation == httpSessionValid {
+				sessionID = priorSessionID
+				if err := sessions.UpdateCapabilitiesBound(sessionID, principal, catalogHash, capabilities); err != nil {
+					writeHTTPSessionError(w, http.StatusServiceUnavailable, "MCP session storage is temporarily unavailable")
+					return
+				}
+			}
+		}
+		if sessionID == "" {
+			created, err := sessions.CreateBound(principal, catalogHash, capabilities)
+			if err != nil {
+				writeHTTPSessionError(w, http.StatusServiceUnavailable, "MCP session storage is temporarily unavailable")
+				return
+			}
+			sessionID = created
+		}
 		w.Header().Set("Mcp-Session-Id", sessionID)
 		eventName, reconnectCount := telemetry.recordInitialize(r)
 		s.emitHTTPSessionEvent(r, eventName, observability.OutcomeSuccess, observability.ErrorNone, reconnectCount)
 	} else {
-		var ok bool
-		sessionID, ok = validateHTTPSessionObserved(w, r, sessions, func(validation httpSessionValidation) {
+		sessionID, record, ok := validateHTTPSessionObserved(w, r, sessions, principal, catalogHash, true, func(validation httpSessionValidation) {
 			s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, sessionValidationErrorClass(validation), telemetry.ReconnectCount())
 		})
 		if !ok {
 			return
+		}
+		if s.clients != nil {
+			s.clients.Put(sessionID, record.Capabilities)
 		}
 	}
 
@@ -475,6 +519,28 @@ func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycl
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(resp)
+}
+
+func initializeRequestParams(raw []byte) json.RawMessage {
+	var message struct {
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if json.Unmarshal(raw, &message) == nil && message.Method == "initialize" {
+		return message.Params
+	}
+	var batch []struct {
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if json.Unmarshal(raw, &batch) == nil {
+		for _, message := range batch {
+			if message.Method == "initialize" {
+				return message.Params
+			}
+		}
+	}
+	return nil
 }
 
 func containsInitialize(raw []byte) bool {
@@ -568,7 +634,7 @@ func (s *Server) ServeHTTPWithOptions(ctx context.Context, addr, token string, o
 	lifecycle := newHTTPServerLifecycle().WithObserver(func(name observability.EventName, duration time.Duration, outcome observability.Outcome, errorClass observability.ErrorClass) {
 		s.emitHTTPDrainEvent(name, duration, outcome, errorClass, telemetry.ReconnectCount())
 	})
-	sessions := newHTTPSessionStore(defaultHTTPSessionTTL)
+	sessions := s.configuredHTTPSessionStore()
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("http server listen: %w", err)
