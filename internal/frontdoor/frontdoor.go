@@ -103,7 +103,11 @@ func New(config Config) (*FrontDoor, error) {
 	if client == nil {
 		client = &http.Client{Transport: http.DefaultTransport}
 	}
-	transport := client.Transport
+	probeClient := *client
+	probeClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	transport := probeClient.Transport
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
@@ -114,7 +118,7 @@ func New(config Config) (*FrontDoor, error) {
 	front := &FrontDoor{
 		backend: backend, expectedProtocol: config.ExpectedProtocol, expectedCatalogHash: config.ExpectedCatalogHash,
 		frontDoorCommit: config.FrontDoorCommit, probeInterval: config.ProbeInterval, probeTimeout: config.ProbeTimeout,
-		probeClient: client, proxy: proxy,
+		probeClient: &probeClient, proxy: proxy,
 	}
 	front.state.Store(&snapshot{Reason: "backend_not_probed"})
 	proxy.ErrorHandler = front.proxyError
