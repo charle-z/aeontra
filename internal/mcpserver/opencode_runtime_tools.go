@@ -23,6 +23,9 @@ type edgeDeviceRegistry interface {
 type edgeOperationRegistry interface {
 	CreateOperation(string, edge.OperationKind, edge.OperationRequest) (edge.Operation, bool, error)
 	OperationStatus(string) (edge.Operation, error)
+	ActiveOperations(string, int) ([]edge.Operation, error)
+	OperationLifecycleStatus(string) (edge.Operation, error)
+	RequestOperationCancel(string) (edge.Operation, error)
 	AutopilotStatus(string) (edge.OperationResult, error)
 	WaitOperation(context.Context, string, time.Duration) (edge.Operation, error)
 }

@@ -115,7 +115,7 @@ func Open(cfg Config) (*Store, error) {
 		`CREATE INDEX IF NOT EXISTS edge_tasks_queue ON edge_tasks(device_id,workcell,state,created_at)`,
 		`CREATE TABLE IF NOT EXISTS edge_workspaces(workspace_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, profile TEXT NOT NULL, mode TEXT NOT NULL, registered_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(device_id) REFERENCES devices(device_id)) WITHOUT ROWID`,
 		`CREATE INDEX IF NOT EXISTS edge_workspaces_device ON edge_workspaces(device_id,workspace_id)`,
-		`CREATE TABLE IF NOT EXISTS edge_operations(operation_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, kind TEXT NOT NULL, request_json BLOB NOT NULL, request_digest TEXT NOT NULL, state TEXT NOT NULL, lease_id TEXT, lease_until INTEGER, result_json BLOB, safe_code TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(device_id) REFERENCES devices(device_id))`,
+		`CREATE TABLE IF NOT EXISTS edge_operations(operation_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, kind TEXT NOT NULL, request_json BLOB NOT NULL, request_digest TEXT NOT NULL, state TEXT NOT NULL, lease_id TEXT, lease_until INTEGER, result_json BLOB, safe_code TEXT NOT NULL DEFAULT '', cancel_requested INTEGER NOT NULL DEFAULT 0, progress_json BLOB, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(device_id) REFERENCES devices(device_id))`,
 		`CREATE INDEX IF NOT EXISTS edge_operations_idempotency ON edge_operations(device_id,kind,request_digest,created_at)`,
 		`CREATE INDEX IF NOT EXISTS edge_operations_queue ON edge_operations(device_id,state,created_at)`,
 		`CREATE TABLE IF NOT EXISTS edge_autopilot_status(workspace_id TEXT PRIMARY KEY,device_id TEXT NOT NULL,result_json BLOB NOT NULL,updated_at INTEGER NOT NULL,FOREIGN KEY(device_id) REFERENCES devices(device_id)) WITHOUT ROWID`,
@@ -126,6 +126,10 @@ func Open(cfg Config) (*Store, error) {
 		}
 	}
 	if err := store.ensureModelRelaySchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := store.ensureOperationLifecycleSchema(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}

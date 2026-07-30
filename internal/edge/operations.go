@@ -19,6 +19,11 @@ type OperationKind string
 type OperationState string
 
 const (
+	MaxOperationProgressUnits = 1_000_000_000
+	MaxOperationResultBytes   = 64 << 10
+)
+
+const (
 	OperationLabPrepare       OperationKind = "lab_prepare"
 	OperationLabRetarget      OperationKind = "lab_retarget"
 	OperationAutopilotStart   OperationKind = "autopilot_start"
@@ -38,6 +43,7 @@ const (
 	OperationLeased    OperationState = "leased"
 	OperationSucceeded OperationState = "succeeded"
 	OperationFailed    OperationState = "failed"
+	OperationCancelled OperationState = "cancelled"
 )
 
 var operationIDPattern = regexp.MustCompile(`^eo_[a-f0-9]{32}$`)
@@ -45,6 +51,7 @@ var projectOperationAliasPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,6
 var projectOperationTargetPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$`)
 var projectOperationRepositoryPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 var projectOperationIdempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+var operationProgressPhasePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 
 type OperationRequest struct {
 	Platform        string `json:"platform,omitempty"`
@@ -101,16 +108,29 @@ type OperationResult struct {
 	SnapshotClean         bool     `json:"snapshot_clean,omitempty"`
 }
 
+type OperationProgress struct {
+	Revision       uint64 `json:"revision"`
+	Phase          string `json:"phase"`
+	CompletedUnits uint64 `json:"completed_units,omitempty"`
+	TotalUnits     uint64 `json:"total_units,omitempty"`
+}
+
+type OperationControl struct {
+	CancelRequested bool `json:"cancel_requested"`
+}
+
 type Operation struct {
-	ID        string           `json:"operation_id"`
-	DeviceID  string           `json:"device_id"`
-	Kind      OperationKind    `json:"kind"`
-	Request   OperationRequest `json:"request"`
-	State     OperationState   `json:"state"`
-	Result    OperationResult  `json:"result,omitempty"`
-	SafeCode  string           `json:"safe_code,omitempty"`
-	CreatedAt time.Time        `json:"created_at"`
-	UpdatedAt time.Time        `json:"updated_at"`
+	ID              string            `json:"operation_id"`
+	DeviceID        string            `json:"device_id"`
+	Kind            OperationKind     `json:"kind"`
+	Request         OperationRequest  `json:"request"`
+	State           OperationState    `json:"state"`
+	Result          OperationResult   `json:"result,omitempty"`
+	SafeCode        string            `json:"safe_code,omitempty"`
+	Progress        OperationProgress `json:"progress,omitempty"`
+	CancelRequested bool              `json:"cancel_requested,omitempty"`
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
 type OperationLease struct {
@@ -155,7 +175,7 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 	if err := s.db.QueryRow(`SELECT state FROM devices WHERE device_id=?`, deviceID).Scan(&state); err != nil || state != StateActive {
 		return Operation{}, false, errors.New("active edge device not found")
 	}
-	if existing, err := s.operationByDigest(deviceID, kind, digest); err == nil {
+	if existing, err := s.operationLifecycleByDigest(deviceID, kind, digest); err == nil {
 		if kind == OperationProjectSnapshot && existing.Request != request {
 			return Operation{}, false, errors.New("edge operation idempotency conflict")
 		}
@@ -188,7 +208,8 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
 	defer tx.Rollback()
-	_, _ = tx.Exec(`UPDATE edge_operations SET state=?,lease_id=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND lease_until<=?`, OperationQueued, now.UnixNano(), deviceID, OperationLeased, now.UnixNano())
+	_, _ = tx.Exec(`UPDATE edge_operations SET state=?,safe_code='operation_cancelled',lease_id=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND cancel_requested=1 AND lease_until<=?`, OperationCancelled, now.UnixNano(), deviceID, OperationLeased, now.UnixNano())
+	_, _ = tx.Exec(`UPDATE edge_operations SET state=?,lease_id=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND cancel_requested=0 AND lease_until<=?`, OperationQueued, now.UnixNano(), deviceID, OperationLeased, now.UnixNano())
 	var id string
 	if err := tx.QueryRow(`SELECT operation_id FROM edge_operations WHERE device_id=? AND state=? ORDER BY created_at,operation_id LIMIT 1`, deviceID, OperationQueued).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -223,7 +244,7 @@ func (s *Store) CompleteOperation(deviceID, operationID, leaseID string, result 
 	now := s.now().UTC()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	updated, err := s.db.Exec(`UPDATE edge_operations SET state=?,result_json=?,safe_code=?,lease_id=NULL,lease_until=NULL,updated_at=? WHERE operation_id=? AND device_id=? AND lease_id=? AND state=? AND lease_until>?`, state, body, safeCode, now.UnixNano(), operationID, deviceID, leaseID, OperationLeased, now.UnixNano())
+	updated, err := s.db.Exec(`UPDATE edge_operations SET state=?,result_json=?,safe_code=?,lease_id=NULL,lease_until=NULL,updated_at=? WHERE operation_id=? AND device_id=? AND lease_id=? AND state=? AND cancel_requested=0 AND lease_until>?`, state, body, safeCode, now.UnixNano(), operationID, deviceID, leaseID, OperationLeased, now.UnixNano())
 	if err != nil {
 		return Operation{}, errors.New("operation completion unavailable")
 	}
@@ -231,14 +252,14 @@ func (s *Store) CompleteOperation(deviceID, operationID, leaseID string, result 
 	if rows != 1 {
 		return Operation{}, errors.New("active operation lease not found")
 	}
-	return s.operationByID(operationID)
+	return s.operationLifecycleByID(operationID)
 }
 
 func (s *Store) OperationStatus(operationID string) (Operation, error) {
 	if !operationIDPattern.MatchString(operationID) {
 		return Operation{}, errors.New("operation id is invalid")
 	}
-	op, err := s.operationByID(operationID)
+	op, err := s.operationLifecycleByID(operationID)
 	if err != nil {
 		return Operation{}, errors.New("edge operation not found")
 	}
@@ -258,7 +279,7 @@ func (s *Store) WaitOperation(ctx context.Context, operationID string, timeout t
 		if err != nil {
 			return Operation{}, err
 		}
-		if operation.State == OperationSucceeded || operation.State == OperationFailed {
+		if operation.State == OperationSucceeded || operation.State == OperationFailed || operation.State == OperationCancelled {
 			return operation, nil
 		}
 		select {
@@ -352,6 +373,10 @@ func validProjectOperationRequestCommon(request OperationRequest) bool {
 }
 
 func validOperationCompletion(result OperationResult, code string) bool {
+	body, err := json.Marshal(result)
+	if err != nil || len(body) > MaxOperationResultBytes {
+		return false
+	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return code == "" && validProjectSnapshotResult(result)
 	}
