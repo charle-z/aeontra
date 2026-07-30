@@ -34,6 +34,7 @@ func TestFrontDoorRejectsUnsafeConfiguration(t *testing.T) {
 func TestFrontDoorProxiesMCPHeadersAndFailsClosedOnIncompatibleBackend(t *testing.T) {
 	t.Parallel()
 	var compatible atomic.Bool
+	var backendHost string
 	compatible.Store(true)
 	backend := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -55,6 +56,10 @@ func TestFrontDoorProxiesMCPHeadersAndFailsClosedOnIncompatibleBackend(t *testin
 				"generation": "blue",
 			})
 		case "/mcp":
+			if r.Host != backendHost {
+				http.Error(w, "incorrect upstream host", http.StatusMisdirectedRequest)
+				return
+			}
 			if r.Header.Get("Authorization") != "Bearer secret" || r.Header.Get("Mcp-Session-Id") != "session-1" {
 				http.Error(w, "missing forwarded identity", http.StatusBadRequest)
 				return
@@ -68,6 +73,7 @@ func TestFrontDoorProxiesMCPHeadersAndFailsClosedOnIncompatibleBackend(t *testin
 		}
 	}))
 	defer backend.Close()
+	backendHost = strings.TrimPrefix(backend.URL, "https://")
 
 	door, err := New(Config{
 		BackendURL: backend.URL, ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: testCatalogHash,

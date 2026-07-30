@@ -111,9 +111,13 @@ func New(config Config) (*FrontDoor, error) {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	proxy := httputil.NewSingleHostReverseProxy(backend)
-	proxy.Transport = transport
-	proxy.FlushInterval = -1
+	proxy := &httputil.ReverseProxy{
+		Transport:     transport,
+		FlushInterval: -1,
+		Rewrite: func(request *httputil.ProxyRequest) {
+			request.SetURL(backend)
+		},
+	}
 
 	front := &FrontDoor{
 		backend: backend, expectedProtocol: config.ExpectedProtocol, expectedCatalogHash: config.ExpectedCatalogHash,
