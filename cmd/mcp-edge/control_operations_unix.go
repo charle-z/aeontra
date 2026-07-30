@@ -94,6 +94,8 @@ func executeControlOperation(ctx context.Context, stateRoot string, operation ed
 		return executeProjectPrepare(ctx, stateRoot, operation.Request)
 	case edge.OperationProjectStatus:
 		return executeProjectStatus(ctx, stateRoot, operation.Request)
+	case edge.OperationProjectSnapshot:
+		return executeProjectSnapshot(ctx, stateRoot, operation.Request)
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectEdgeDiagnostic(stateRoot, true)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:
@@ -135,6 +137,60 @@ func executeProjectStatus(ctx context.Context, stateRoot string, request edge.Op
 	defer workspaces.Close()
 	defer projects.Close()
 	return projectControlResult(ctx, projects, request.Alias, request.TargetAlias)
+}
+
+func executeProjectSnapshot(ctx context.Context, stateRoot string, request edge.OperationRequest) (edge.OperationResult, string) {
+	credential, workspaces, projects, _, code := openProjectControlState(stateRoot)
+	if code != "" {
+		return edge.OperationResult{}, code
+	}
+	defer workspaces.Close()
+	defer projects.Close()
+	resolved, err := projects.Resolve(ctx, request.Alias, request.TargetAlias)
+	if err != nil {
+		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	return collectProjectSnapshot(ctx, resolved, edgeclient.NewDevGitCommandRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin"), credential)
+}
+
+var projectSnapshotHeadPattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
+var projectSnapshotBranchPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
+
+func collectProjectSnapshot(ctx context.Context, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential) (edge.OperationResult, string) {
+	if runner == nil || resolved.Workspace.Profile != edgeclient.WorkspaceProfileLinuxWorkcell || resolved.Workspace.Mode != edgeclient.WorkspaceModeDev {
+		return edge.OperationResult{}, "project_snapshot_invalid"
+	}
+	headOutput, err := runner.Run(ctx, resolved.Workspace.Path, []string{"rev-parse", "--verify", "HEAD"}, credential)
+	head := strings.TrimSpace(headOutput)
+	if err != nil || !projectSnapshotHeadPattern.MatchString(head) {
+		return edge.OperationResult{}, "project_snapshot_failed"
+	}
+	branchOutput, err := runner.Run(ctx, resolved.Workspace.Path, []string{"branch", "--show-current"}, credential)
+	branch := strings.TrimSpace(branchOutput)
+	if err != nil || !validProjectSnapshotBranch(branch) {
+		return edge.OperationResult{}, "project_snapshot_failed"
+	}
+	statusOutput, err := runner.Run(ctx, resolved.Workspace.Path, []string{"status", "--porcelain=v1", "--untracked-files=all"}, credential)
+	if err != nil {
+		return edge.OperationResult{}, "project_snapshot_failed"
+	}
+	if strings.TrimSpace(statusOutput) != "" {
+		return edge.OperationResult{}, "project_checkout_dirty"
+	}
+	return edge.OperationResult{
+		WorkspaceID:  resolved.Workspace.ID,
+		ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner,
+		ProjectRepository: resolved.Project.Repository, ProjectTarget: resolved.TargetAlias,
+		ProjectState: "ready", ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
+		SnapshotBranch: branch, SnapshotHead: head, SnapshotClean: true,
+	}, ""
+}
+
+func validProjectSnapshotBranch(branch string) bool {
+	return projectSnapshotBranchPattern.MatchString(branch) &&
+		!strings.HasPrefix(branch, "-") && !strings.Contains(branch, "..") && !strings.Contains(branch, "//") &&
+		!strings.Contains(branch, "@{") && !strings.HasSuffix(branch, "/") && !strings.HasSuffix(branch, ".") &&
+		!strings.HasSuffix(branch, ".lock")
 }
 
 func openProjectControlState(stateRoot string) (edgeclient.GitHubCredential, *edgeclient.WorkspaceRegistry, *edgeclient.ProjectRegistry, edgeclient.WorkspaceRoots, string) {

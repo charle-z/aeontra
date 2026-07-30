@@ -268,6 +268,33 @@ created workspace registration if project binding fails. Clone additionally remo
 its exact reserved directory on an ordinary failure; a replaced path is preserved for
 manual review. Existing repositories are never rewritten, moved or deleted.
 
+## Direct GPT Web snapshot vertical
+
+`project_snapshot` is the first direct GPT Web to Edge operation. The caller supplies
+only a project alias, a human Edge target alias and a caller-generated idempotency key.
+The control plane persists the complete normalized request in the existing durable Edge
+operation queue. It does not create a model runtime or a model turn.
+
+The paired Edge resolves the project and target through `projects.db`, revalidates the
+owner-bound checkout and selects the registered `linux-workcell/dev` workspace. It then
+runs exactly these fixed Git commands in that workspace:
+
+```text
+git rev-parse --verify HEAD
+git branch --show-current
+git status --porcelain=v1 --untracked-files=all
+```
+
+The response is bounded to operation identity, reuse state, project/repository/target,
+profile/mode, branch, commit and clean state. Device identity, workspace identity, paths,
+command output and credentials are not returned. A dirty checkout fails with the stable
+`project_checkout_dirty` code.
+
+Repeating the same normalized request and idempotency key returns the original durable
+operation, including a terminal result. This allows the same GPT conversation to retry
+after an MCP transport reconnect without duplicating work. A different key creates a new
+snapshot operation. OpenCode and the model-turn path remain unchanged as a fallback.
+
 ## Current limitations
 
 This Step 3 cut does not yet:

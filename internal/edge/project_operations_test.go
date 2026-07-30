@@ -57,6 +57,61 @@ func TestProjectOperationsUseHumanAliasesAndSafeResults(t *testing.T) {
 	}
 }
 
+func TestProjectSnapshotOperationIsDurablyIdempotent(t *testing.T) {
+	store := openHTTPTestStore(t)
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, err := store.Pair(code, "parrot", publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := OperationRequest{
+		Alias: "Project", TargetAlias: "Parrot", Profile: "linux-workcell",
+		IdempotencyKey: "chat-vertical-1",
+	}
+	operation, fresh, err := store.CreateOperation(device.ID, OperationProjectSnapshot, request)
+	if err != nil || !fresh || operation.State != OperationQueued {
+		t.Fatalf("operation=%+v fresh=%t err=%v", operation, fresh, err)
+	}
+	lease, err := store.LeaseOperation(device.ID, time.Minute)
+	if err != nil || lease.Operation.ID != operation.ID {
+		t.Fatalf("lease=%+v err=%v", lease, err)
+	}
+	result := OperationResult{
+		WorkspaceID:  "ws_0123456789abcdef0123456789abcdef",
+		ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
+		ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
+		SnapshotBranch: "main", SnapshotHead: "0123456789abcdef0123456789abcdef01234567", SnapshotClean: true,
+	}
+	completed, err := store.CompleteOperation(device.ID, operation.ID, lease.LeaseID, result, "")
+	if err != nil || completed.State != OperationSucceeded {
+		t.Fatalf("completed=%+v err=%v", completed, err)
+	}
+	reused, fresh, err := store.CreateOperation(device.ID, OperationProjectSnapshot, request)
+	if err != nil || fresh || reused.ID != operation.ID || reused.State != OperationSucceeded {
+		t.Fatalf("reused=%+v fresh=%t err=%v", reused, fresh, err)
+	}
+	conflict := request
+	conflict.Alias = "other-project"
+	if _, _, err := store.CreateOperation(device.ID, OperationProjectSnapshot, conflict); err == nil {
+		t.Fatal("idempotency key accepted different snapshot parameters")
+	}
+	request.IdempotencyKey = "chat-vertical-2"
+	second, fresh, err := store.CreateOperation(device.ID, OperationProjectSnapshot, request)
+	if err != nil || !fresh || second.ID == operation.ID {
+		t.Fatalf("second=%+v fresh=%t err=%v", second, fresh, err)
+	}
+	request.IdempotencyKey = "bad key"
+	if _, _, err := store.CreateOperation(device.ID, OperationProjectSnapshot, request); err == nil {
+		t.Fatal("unsafe idempotency key accepted")
+	}
+	unsafe := result
+	unsafe.SnapshotHead = "not-a-commit"
+	if validOperationCompletion(unsafe, "") {
+		t.Fatal("unsafe project snapshot result accepted")
+	}
+}
+
 func TestResolveActiveDeviceNameRequiresUniqueActiveAlias(t *testing.T) {
 	store := openHTTPTestStore(t)
 	pair := func(name string) Device {

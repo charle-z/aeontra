@@ -38,7 +38,7 @@ func (store *projectToolEdgeStore) AutopilotStatus(string) (edge.OperationResult
 }
 
 func (store *projectToolEdgeStore) WaitOperation(_ context.Context, operationID string, _ time.Duration) (edge.Operation, error) {
-	return edge.Operation{
+	operation := edge.Operation{
 		ID: operationID, DeviceID: "ed_11111111111111111111111111111111", Kind: store.createdKind,
 		State: edge.OperationSucceeded,
 		Result: edge.OperationResult{
@@ -46,7 +46,13 @@ func (store *projectToolEdgeStore) WaitOperation(_ context.Context, operationID 
 			ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
 			ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
 		},
-	}, nil
+	}
+	if store.createdKind == edge.OperationProjectSnapshot {
+		operation.Result.SnapshotBranch = "main"
+		operation.Result.SnapshotHead = "0123456789abcdef0123456789abcdef01234567"
+		operation.Result.SnapshotClean = true
+	}
+	return operation, nil
 }
 
 func TestProjectToolsUseHumanAliasesAndHideOpaqueIDs(t *testing.T) {
@@ -112,6 +118,43 @@ func TestProjectStatusRejectsRepositoryAndUnknownFields(t *testing.T) {
 	} {
 		if _, err := server.table["project_status"].handler(json.RawMessage(input)); err == nil {
 			t.Fatalf("accepted %s", input)
+		}
+	}
+}
+
+func TestProjectSnapshotUsesOneDurableIdempotentEdgeOperation(t *testing.T) {
+	store := &projectToolEdgeStore{}
+	server := New(nil).WithEdgeStore(store)
+	entry, ok := server.table["project_snapshot"]
+	if !ok {
+		t.Fatal("missing project_snapshot")
+	}
+	if entry.def.Annotations["readOnlyHint"] != true || entry.def.Annotations["idempotentHint"] != true {
+		t.Fatalf("annotations=%+v", entry.def.Annotations)
+	}
+	output, err := entry.handler(json.RawMessage(`{"alias":"project","target":"parrot","idempotency_key":"chat-vertical-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.resolvedTarget != "parrot" || store.createdKind != edge.OperationProjectSnapshot {
+		t.Fatalf("target=%q kind=%q", store.resolvedTarget, store.createdKind)
+	}
+	expected := edge.OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", IdempotencyKey: "chat-vertical-1"}
+	if store.createdRequest != expected {
+		t.Fatalf("request=%+v", store.createdRequest)
+	}
+	for _, required := range []string{
+		`"operation_id":"eo_22222222222222222222222222222222"`,
+		`"alias":"project"`, `"repository":"charle-z/repo"`, `"target":"parrot"`,
+		`"branch":"main"`, `"head":"0123456789abcdef0123456789abcdef01234567"`, `"clean":true`,
+	} {
+		if !strings.Contains(output, required) {
+			t.Fatalf("snapshot output missing %q: %s", required, output)
+		}
+	}
+	for _, forbidden := range []string{"device_id", "workspace_id", "ed_111", "ws_333"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("snapshot output exposed %q: %s", forbidden, output)
 		}
 	}
 }

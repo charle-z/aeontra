@@ -29,6 +29,7 @@ do not replace server-side enforcement.
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
 | `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |
 | `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning only safe repository, profile, mode, readiness or blocker metadata. |
+| `project_snapshot` | 1/0/1/0 | Queue or reuse one durable Edge operation by caller idempotency key, resolve the selected development workspace locally, run only fixed read-only Git identity/cleanliness commands, and return bounded repository, branch, commit and operation metadata without starting another model. |
 | `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
 | `workspace_autopilot_start` | 0/0/1/0 | Start or reuse one durable local job with `run_until=completed_or_cancelled`; no free-form objective is accepted. |
 | `workspace_autopilot_status` | 1/0/1/0 | Return signed, content-free job state, progress revision, cycle count and safe blocker code. |
