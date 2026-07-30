@@ -148,12 +148,16 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 			return "", err
 		}
 	} else {
-		app, err = s.createManagedFrontDoorApp(request.Domain)
+		app, err = s.createManagedFrontDoorApp()
 		if err != nil {
 			sp.Finish(audit.Error, planID, nil, err)
 			return "", err
 		}
 		created = true
+	}
+	if err := s.ensureManagedFrontDoorDomain(app, request.Domain); err != nil {
+		sp.Finish(audit.Error, planID, nil, err)
+		return fmt.Sprintf("application_uuid: %s\napplication_created: %t\ndeployed: false\n", app.UUID, created), err
 	}
 	vars := map[string]string{
 		"MCP_FRONT_DOOR_BACKEND_URL":           request.BackendURL,
@@ -311,12 +315,12 @@ func (s *PlatformCapability) managedFrontDoorApp() (platformApplication, bool, e
 
 func (s *PlatformCapability) validateManagedFrontDoorApp(app platformApplication, domain string) error {
 	if app.UUID == "" || app.Name != managedFrontDoorName || !s.managedFrontDoorRepositoryMatches(app.repo()) ||
-		app.branch() != managedFrontDoorBranch || app.domain() == "" || app.domain() != domain || app.BuildPack != "dockerfile" ||
+		app.branch() != managedFrontDoorBranch || (app.domain() != "" && app.domain() != domain) || app.BuildPack != "dockerfile" ||
 		app.Dockerfile != managedFrontDoorDockerfile || app.PortsExposes != managedFrontDoorPort || app.AutoDeploy ||
 		app.InstantDeploy || app.HealthcheckPath != managedFrontDoorHealthPath {
 		return errors.New("existing front-door application does not match the managed contract")
 	}
-	if !s.coolify.domainAllowed(app.domain()) {
+	if app.domain() != "" && !s.coolify.domainAllowed(app.domain()) {
 		return errors.New("existing front-door domain is outside COOLIFY_ALLOWED_DOMAINS")
 	}
 	return nil
@@ -328,12 +332,29 @@ func (s *PlatformCapability) managedFrontDoorRepositoryMatches(raw string) bool 
 	return strings.EqualFold(normalized, ownerRepo) || strings.EqualFold(normalized, "https://github.com/"+ownerRepo)
 }
 
-func (s *PlatformCapability) createManagedFrontDoorApp(domain string) (platformApplication, error) {
+func (s *PlatformCapability) ensureManagedFrontDoorDomain(app platformApplication, domain string) error {
+	if app.domain() == domain {
+		return nil
+	}
+	if app.domain() != "" {
+		return errors.New("existing front-door application domain does not match the managed contract")
+	}
+	status, body, err := s.coolify.request(context.Background(), http.MethodPatch, "/api/v1/applications/"+url.PathEscape(app.UUID), map[string]any{"fqdn": domain})
+	if err != nil {
+		return fmt.Errorf("configuring managed front-door domain: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("configuring managed front-door domain -> HTTP %d: %s", status, s.coolifySafe(body))
+	}
+	return nil
+}
+
+func (s *PlatformCapability) createManagedFrontDoorApp() (platformApplication, error) {
 	payload := map[string]any{
 		"name": managedFrontDoorName, "server_uuid": s.coolify.serverUUID, "project_uuid": s.coolify.projectUUID,
 		"destination_uuid": s.coolify.destinationUUID, "git_repository": s.managedFrontDoorRepository(),
 		"git_branch": managedFrontDoorBranch, "build_pack": "dockerfile", "dockerfile_location": managedFrontDoorDockerfile,
-		"ports_exposes": managedFrontDoorPort, "ports_mappings": "", "fqdn": domain, "autogenerate_domain": false,
+		"ports_exposes": managedFrontDoorPort, "ports_mappings": "", "autogenerate_domain": false,
 		"is_auto_deploy_enabled": false, "instant_deploy": false, "custom_docker_run_options": "",
 		"health_check_enabled": true, "health_check_type": "http", "health_check_scheme": "http",
 		"health_check_method": "GET", "health_check_path": managedFrontDoorHealthPath, "health_check_port": 8765,

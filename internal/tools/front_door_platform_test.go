@@ -25,22 +25,31 @@ func configuredFrontDoorPlatformService(t *testing.T, mode config.Mode, baseURL 
 
 func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *testing.T) {
 	created := 0
+	domainPatches := 0
 	envs := 0
 	deploys := 0
 	var payload map[string]any
+	var domainPayload map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[]`))
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/public":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/private-github-app":
 			created++
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed"}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1":
+			domainPatches++
+			if err := json.NewDecoder(r.Body).Decode(&domainPayload); err != nil {
+				t.Fatal(err)
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"uuid":"front1"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1/envs":
 			_, _ = w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/front1/envs":
@@ -60,6 +69,7 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 	defer ts.Close()
 
 	svc := configuredFrontDoorPlatformService(t, config.ModeAsk, ts.URL)
+	svc.WithCoolify(svc.coolify.WithGitHubApp("githubapp1"))
 	request := PlatformFrontDoorRequest{
 		Domain: "https://front-door.example.com", BackendURL: "https://mcp-backend.example.com",
 		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
@@ -81,18 +91,24 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created != 1 || envs != 3 || deploys != 1 || !strings.Contains(out, "application_uuid: front1") || !strings.Contains(out, "deployment_id: dep1") {
-		t.Fatalf("created=%d envs=%d deploys=%d out=%s", created, envs, deploys, out)
+	if created != 1 || domainPatches != 1 || envs != 3 || deploys != 1 || !strings.Contains(out, "application_uuid: front1") || !strings.Contains(out, "deployment_id: dep1") {
+		t.Fatalf("created=%d domainPatches=%d envs=%d deploys=%d out=%s", created, domainPatches, envs, deploys, out)
+	}
+	if _, exists := payload["fqdn"]; exists {
+		t.Fatalf("private GitHub App creation payload unexpectedly contains fqdn: %#v", payload)
+	}
+	if domainPayload["fqdn"] != "https://front-door.example.com" {
+		t.Fatalf("domain patch payload=%#v", domainPayload)
 	}
 	for key, want := range map[string]any{
 		"name":                   "mcp-devbox-front-door-managed",
+		"github_app_uuid":        "githubapp1",
 		"git_branch":             "front-door-stable",
 		"destination_uuid":       "destination1",
 		"build_pack":             "dockerfile",
 		"dockerfile_location":    "/Dockerfile.front-door",
 		"ports_exposes":          "8765",
 		"ports_mappings":         "",
-		"fqdn":                   "https://front-door.example.com",
 		"autogenerate_domain":    false,
 		"is_auto_deploy_enabled": false,
 		"instant_deploy":         false,
@@ -239,6 +255,57 @@ func TestPlatformFrontDoorCreateRejectsStableBranchChangeAfterPreview(t *testing
 	_, err = svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
 	if err == nil || !strings.Contains(err.Error(), "stable front-door branch changed") || created != 0 {
 		t.Fatalf("err=%v created=%d", err, created)
+	}
+}
+
+func TestPlatformFrontDoorCreateRecoversPartialApplicationWithoutDomain(t *testing.T) {
+	created := 0
+	domainPatches := 0
+	envs := 0
+	deploys := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+			_, _ = w.Write([]byte("{\"object\":{\"sha\":\"" + frontDoorTestSHA + "\"}}"))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
+			_, _ = w.Write([]byte("[{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\"}]"))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1":
+			_, _ = w.Write([]byte("{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\",\"status\":\"exited:unknown\",\"git_repository\":\"https://github.com/acme/mcp-devbox.git\",\"git_branch\":\"front-door-stable\",\"git_commit_sha\":\"" + frontDoorTestSHA + "\",\"build_pack\":\"dockerfile\",\"dockerfile_location\":\"/Dockerfile.front-door\",\"ports_exposes\":\"8765\",\"is_auto_deploy_enabled\":false,\"instant_deploy\":false,\"health_check_path\":\"/front-door/healthz\"}"))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1":
+			domainPatches++
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("{\"uuid\":\"front1\"}"))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1/envs":
+			_, _ = w.Write([]byte("[]"))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/front1/envs":
+			envs++
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte("{\"uuid\":\"env1\"}"))
+		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/applications/public" || r.URL.Path == "/api/v1/applications/private-github-app"):
+			created++
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+			deploys++
+			_, _ = w.Write([]byte("{\"deployment_uuid\":\"dep-recovered\",\"status\":\"queued\"}"))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	svc := configuredFrontDoorPlatformService(t, config.ModeAllow, ts.URL)
+	preview, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
+		Domain: "https://front-door.example.com", BackendURL: "https://mcp-backend.example.com",
+		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
+	})
+	if err != nil || !strings.Contains(preview, "action: reconcile") {
+		t.Fatalf("preview=%s err=%v", preview, err)
+	}
+	out, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created != 0 || domainPatches != 1 || envs != 3 || deploys != 1 || !strings.Contains(out, "deployment_id: dep-recovered") {
+		t.Fatalf("created=%d domainPatches=%d envs=%d deploys=%d out=%s", created, domainPatches, envs, deploys, out)
 	}
 }
 
