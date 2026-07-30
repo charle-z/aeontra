@@ -128,6 +128,7 @@ These references remain useful, but they do not replace the canonical product so
 above:
 
 - Public presentation landing contract: `docs/landing/public-showcase.md`.
+- Stable independently deployed MCP facade: `docs/stable-mcp-front-door.md`.
 - Canonical Pixelgrama presentation evidence: `docs/showcase/pixelgrama-evidence.json`.
 - GitHub Actions diagnosis and bounded log retrieval: `docs/github-actions-diagnostics.md`.
 - P8 closure evidence: `docs/baselines/2026-07-13-p8.md`.

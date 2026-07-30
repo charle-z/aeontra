@@ -14,6 +14,7 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"fuzz.yml":                     "../../.github/workflows/fuzz.yml",
 		"Dockerfile":                   "../../Dockerfile",
 		"Dockerfile.validation-runner": "../../Dockerfile.validation-runner",
+		"Dockerfile.front-door":        "../../Dockerfile.front-door",
 	}
 	contents := make(map[string]string, len(files))
 	for name, path := range files {
@@ -32,7 +33,7 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 			t.Errorf("%s must use Go 1.26.5", workflow)
 		}
 	}
-	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.validation-runner"} {
+	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.validation-runner", "Dockerfile.front-door"} {
 		if !strings.Contains(contents[dockerfile], "golang:1.26.5-alpine3.24") {
 			t.Errorf("%s must use the fixed versioned Go/Alpine base", dockerfile)
 		}

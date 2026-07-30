@@ -242,3 +242,13 @@ release. Verify Edge state separately.
 - Do not relax application/domain/owner boundaries for convenience.
 - Do not describe a healthy VPS deployment as proof of a source release or installed
   Edge state; each requires separate evidence.
+
+## Stable MCP Front Door deployment
+
+Deploy the facade described in [`stable-mcp-front-door.md`](stable-mcp-front-door.md)
+as a separate Coolify application from a stable branch. Its container healthcheck must
+use `/front-door/healthz`, not the backend `/readyz`, so a backend rollout does not cause
+Coolify to replace the facade. Configure one fixed backend origin and pin the approved
+protocol and catalog hash. Validate on a temporary hostname before moving the existing
+connector hostname through a reviewed, reversible domain operation. Backend `main`
+deployments must not automatically redeploy the front door.
