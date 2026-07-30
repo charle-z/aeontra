@@ -12,27 +12,11 @@ const (
 )
 
 func (s *Store) recoverExpiredOperationLeasesForDeviceLocked(deviceID string) error {
-	now := s.now().UTC().UnixNano()
-	_, err := s.db.Exec(`UPDATE edge_operations SET
-		state=CASE WHEN cancel_requested=1 THEN ? ELSE ? END,
-		safe_code=CASE WHEN cancel_requested=1 THEN 'operation_cancelled' ELSE '' END,
-		progress_json=CASE WHEN cancel_requested=1 THEN progress_json ELSE NULL END,
-		lease_id=NULL,lease_until=NULL,updated_at=?
-		WHERE device_id=? AND state=? AND lease_until<=?`,
-		OperationCancelled, OperationQueued, now, deviceID, OperationLeased, now)
-	return err
+	return recoverExpiredOperationLeases(s.db, s.now(), "device_id", deviceID)
 }
 
 func (s *Store) recoverExpiredOperationLeaseByIDLocked(operationID string) error {
-	now := s.now().UTC().UnixNano()
-	_, err := s.db.Exec(`UPDATE edge_operations SET
-		state=CASE WHEN cancel_requested=1 THEN ? ELSE ? END,
-		safe_code=CASE WHEN cancel_requested=1 THEN 'operation_cancelled' ELSE '' END,
-		progress_json=CASE WHEN cancel_requested=1 THEN progress_json ELSE NULL END,
-		lease_id=NULL,lease_until=NULL,updated_at=?
-		WHERE operation_id=? AND state=? AND lease_until<=?`,
-		OperationCancelled, OperationQueued, now, operationID, OperationLeased, now)
-	return err
+	return recoverExpiredOperationLeases(s.db, s.now(), "operation_id", operationID)
 }
 
 func (s *Store) ReportOperationProgress(deviceID, operationID, leaseID string, progress OperationProgress) (OperationControl, error) {

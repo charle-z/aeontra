@@ -1,0 +1,96 @@
+package edge
+
+import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestPrivilegedOperationRecoveryBudgetFailsClosed(t *testing.T) {
+	now := time.Date(2026, 7, 30, 16, 30, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	operation, fresh, err := store.CreateOperation(device.ID, OperationBundleUpdate, OperationRequest{Release: "stable"})
+	if err != nil || !fresh {
+		t.Fatalf("operation=%+v fresh=%t err=%v", operation, fresh, err)
+	}
+
+	for attempt := 1; attempt <= maxPrivilegedOperationLeaseAttempts; attempt++ {
+		lease, err := store.LeaseOperation(device.ID, MinLeaseTTL)
+		if err != nil || lease.Operation.ID != operation.ID {
+			t.Fatalf("attempt=%d lease=%+v err=%v", attempt, lease, err)
+		}
+		now = now.Add(MinLeaseTTL + time.Second)
+		status, err := store.OperationLifecycleStatus(operation.ID)
+		if err != nil {
+			t.Fatalf("attempt=%d status error=%v", attempt, err)
+		}
+		if attempt < maxPrivilegedOperationLeaseAttempts {
+			if status.State != OperationQueued || status.SafeCode != "" {
+				t.Fatalf("attempt=%d status=%+v", attempt, status)
+			}
+			continue
+		}
+		if status.State != OperationFailed || status.SafeCode != privilegedOperationRecoveryExhaustedCode || status.CancelRequested {
+			t.Fatalf("exhausted status=%+v", status)
+		}
+	}
+	active, err := store.ActiveOperations(device.ID, 10)
+	if err != nil || len(active) != 0 {
+		t.Fatalf("active=%+v err=%v", active, err)
+	}
+}
+
+func TestPrivilegedOperationRecoveryWindowFailsClosed(t *testing.T) {
+	now := time.Date(2026, 7, 30, 16, 35, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	operation, _, _ := store.CreateOperation(device.ID, OperationEdgeRepair, OperationRequest{})
+	lease, err := store.LeaseOperation(device.ID, MinLeaseTTL)
+	if err != nil || lease.Operation.ID != operation.ID {
+		t.Fatalf("lease=%+v err=%v", lease, err)
+	}
+	now = now.Add(maxPrivilegedOperationRecoveryWindow + time.Second)
+	status, err := store.OperationLifecycleStatus(operation.ID)
+	if err != nil || status.State != OperationFailed || status.SafeCode != privilegedOperationRecoveryExhaustedCode {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+}
+
+func TestNormalOperationLeaseStillRecoversWithoutPrivilegedBudget(t *testing.T) {
+	now := time.Date(2026, 7, 30, 16, 40, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	operation, _, _ := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	for attempt := 0; attempt < maxPrivilegedOperationLeaseAttempts+2; attempt++ {
+		lease, err := store.LeaseOperation(device.ID, MinLeaseTTL)
+		if err != nil || lease.Operation.ID != operation.ID {
+			t.Fatalf("attempt=%d lease=%+v err=%v", attempt, lease, err)
+		}
+		now = now.Add(MinLeaseTTL + time.Second)
+		status, err := store.OperationLifecycleStatus(operation.ID)
+		if err != nil || status.State != OperationQueued || status.SafeCode != "" {
+			t.Fatalf("attempt=%d status=%+v err=%v", attempt, status, err)
+		}
+	}
+}

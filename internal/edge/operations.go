@@ -211,8 +211,9 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
 	defer tx.Rollback()
-	_, _ = tx.Exec(`UPDATE edge_operations SET state=?,safe_code='operation_cancelled',lease_id=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND cancel_requested=1 AND lease_until<=?`, OperationCancelled, now.UnixNano(), deviceID, OperationLeased, now.UnixNano())
-	_, _ = tx.Exec(`UPDATE edge_operations SET state=?,progress_json=NULL,lease_id=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND cancel_requested=0 AND lease_until<=?`, OperationQueued, now.UnixNano(), deviceID, OperationLeased, now.UnixNano())
+	if err := recoverExpiredOperationLeases(tx, now, "device_id", deviceID); err != nil {
+		return OperationLease{}, errors.New("operation lease unavailable")
+	}
 	var id string
 	if err := tx.QueryRow(`SELECT operation_id FROM edge_operations WHERE device_id=? AND state=? ORDER BY created_at,operation_id LIMIT 1`, deviceID, OperationQueued).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -225,7 +226,7 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
 	expires := now.Add(ttl)
-	if _, err := tx.Exec(`UPDATE edge_operations SET state=?,lease_id=?,lease_until=?,updated_at=? WHERE operation_id=? AND state=?`, OperationLeased, leaseID, expires.UnixNano(), now.UnixNano(), id, OperationQueued); err != nil {
+	if _, err := tx.Exec(`UPDATE edge_operations SET state=?,lease_id=?,lease_until=?,lease_attempts=lease_attempts+1,first_leased_at=COALESCE(first_leased_at,?),updated_at=? WHERE operation_id=? AND state=?`, OperationLeased, leaseID, expires.UnixNano(), now.UnixNano(), now.UnixNano(), id, OperationQueued); err != nil {
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
 	op, err := scanOperation(tx.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,created_at,updated_at FROM edge_operations WHERE operation_id=?`, id))
