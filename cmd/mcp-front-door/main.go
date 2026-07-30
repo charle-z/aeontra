@@ -24,6 +24,8 @@ const (
 	listenAddrEnv       = "MCP_FRONT_DOOR_ADDR"
 	probeIntervalEnv    = "MCP_FRONT_DOOR_PROBE_INTERVAL"
 	probeTimeoutEnv     = "MCP_FRONT_DOOR_PROBE_TIMEOUT"
+	commitOverrideEnv   = "MCP_DEVBOX_COMMIT"
+	commitSourceEnv     = "SOURCE_COMMIT"
 )
 
 func main() {
@@ -62,8 +64,23 @@ func loadConfig(getenv func(string) string) (frontdoor.Config, string, error) {
 	}
 	return frontdoor.Config{
 		BackendURL: backendURL, ExpectedProtocol: protocol, ExpectedCatalogHash: catalog,
-		FrontDoorCommit: buildinfo.Commit, ProbeInterval: probeInterval, ProbeTimeout: probeTimeout,
+		FrontDoorCommit: resolveFrontDoorCommit(buildinfo.Commit, getenv), ProbeInterval: probeInterval, ProbeTimeout: probeTimeout,
 	}, addr, nil
+}
+
+func resolveFrontDoorCommit(linked string, getenv func(string) string) string {
+	linked = strings.TrimSpace(linked)
+	if linked != "" && linked != "unknown" {
+		return linked
+	}
+	if getenv != nil {
+		for _, name := range []string{commitOverrideEnv, commitSourceEnv} {
+			if value := strings.TrimSpace(getenv(name)); value != "" {
+				return value
+			}
+		}
+	}
+	return "unknown"
 }
 
 func parseDuration(raw string, fallback time.Duration, name string) (time.Duration, error) {

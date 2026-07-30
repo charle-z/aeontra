@@ -48,3 +48,20 @@ func TestLoadConfigUsesSafeDefaults(t *testing.T) {
 		t.Fatalf("config=%+v addr=%q", config, addr)
 	}
 }
+
+func TestResolveFrontDoorCommitUsesCoolifyFallbackOnlyForUnstampedBuild(t *testing.T) {
+	t.Parallel()
+	const sourceCommit = "0123456789abcdef0123456789abcdef01234567"
+	values := map[string]string{
+		"MCP_DEVBOX_COMMIT": "",
+		"SOURCE_COMMIT":     sourceCommit,
+	}
+	getenv := func(key string) string { return values[key] }
+	if got := resolveFrontDoorCommit("unknown", getenv); got != sourceCommit {
+		t.Fatalf("unstamped commit=%q want %q", got, sourceCommit)
+	}
+	const linked = "fedcba9876543210fedcba9876543210fedcba98"
+	if got := resolveFrontDoorCommit(linked, getenv); got != linked {
+		t.Fatalf("linked commit=%q want %q", got, linked)
+	}
+}
