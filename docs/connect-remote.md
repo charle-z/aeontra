@@ -198,7 +198,7 @@ recovery header, then call a normal read-only tool and confirm redaction.
 |---|---|
 | `401` from `/mcp` | Complete OAuth or send the configured recovery bearer in `Authorization`. Query credentials never authorize. |
 | `400` for missing session | Call `initialize` and send the returned `Mcp-Session-Id` on later MCP requests. |
-| `404` for unknown or expired session | The session ended or belongs to a replaced instance. Reinitialize on the same URL with the same OAuth credential; do not change connector configuration. |
+| `404` for unknown, revoked, or expired session | The logical session was explicitly revoked, expired, or is not bound to the authenticated connector principal. A normal redeploy preserves the existing `Mcp-Session-Id`; do not change connector configuration. |
 | Connector cannot send a bearer header | Configure OAuth on the clean URL. |
 | `/healthz` works but connector is stale | Compare `/version` or `system_runtime_info` with the expected exact commit, then refresh the client catalog. |
 | No tools appear | Verify the URL, OAuth completion, reverse-proxy routing to internal port `8765`, and MCP initialization. |

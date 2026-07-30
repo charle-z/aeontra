@@ -44,6 +44,7 @@ type Server struct {
 	edgeDevices    edgeDeviceRegistry
 	edgeWorkspaces edgeWorkspaceRegistry
 	edgeOperations edgeOperationRegistry
+	httpSessions   *HTTPSessionStore
 	stateRoot      string
 	auditPath      string
 	modelWaitMu    sync.Mutex

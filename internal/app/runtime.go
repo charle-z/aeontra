@@ -37,13 +37,14 @@ type appRuntime struct {
 	Results     *resultstore.Store
 	ModelTurns  *modelturn.Store
 	Edge        *edge.Store
+	Sessions    *mcpserver.HTTPSessionStore
 }
 
 func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr, telemetryErr, journalErr, resultErr, modelTurnErr, edgeErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, journalErr, resultErr, modelTurnErr, edgeErr, sessionErr error
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -68,7 +69,10 @@ func (r *appRuntime) Close() error {
 	if r.Edge != nil {
 		edgeErr = r.Edge.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || journalErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil {
+	if r.Sessions != nil {
+		sessionErr = r.Sessions.Close()
+	}
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || journalErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil || sessionErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
@@ -151,12 +155,24 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, fmt.Errorf("opening edge identity store: %w", err)
 	}
+	sessions, err := mcpserver.OpenHTTPSessionStore(filepath.Join(stateRoot, "mcp-sessions"))
+	if err != nil {
+		_ = edgeStore.Close()
+		_ = modelTurns.Close()
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening MCP session store: %w", err)
+	}
+
 	return &appRuntime{
 		Policy:      pol,
 		Logger:      logger,
 		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithConsoleStorageRoots(stateRoot, auditPath),
+		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithConsoleStorageRoots(stateRoot, auditPath).WithHTTPSessionStore(sessions),
 		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,
@@ -165,6 +181,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Results:     results,
 		ModelTurns:  modelTurns,
 		Edge:        edgeStore,
+		Sessions:    sessions,
 	}, nil
 }
 

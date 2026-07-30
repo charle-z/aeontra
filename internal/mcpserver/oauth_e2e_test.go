@@ -139,9 +139,9 @@ func TestOAuthEndToEnd(t *testing.T) {
 		t.Fatalf("OAuth replacement initialize status=%d old=%q new=%q", status, oldSession, newSession)
 	}
 	oldList := mcpOAuthRequest(t, client, ts.URL, tok.AccessToken, oldSession, rpcBody(t, 2, "tools/list", nil))
-	if oldList.StatusCode != http.StatusNotFound {
+	if oldList.StatusCode != http.StatusOK {
 		defer oldList.Body.Close()
-		t.Fatalf("old OAuth session status=%d want=%d", oldList.StatusCode, http.StatusNotFound)
+		t.Fatalf("durable OAuth session status=%d want=200", oldList.StatusCode)
 	}
 	oldList.Body.Close()
 	newList := mcpOAuthRequest(t, client, ts.URL, tok.AccessToken, newSession, rpcBody(t, 3, "tools/list", nil))
