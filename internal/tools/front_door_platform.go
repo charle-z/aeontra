@@ -339,7 +339,7 @@ func (s *PlatformCapability) ensureManagedFrontDoorDomain(app platformApplicatio
 	if app.domain() != "" {
 		return errors.New("existing front-door application domain does not match the managed contract")
 	}
-	status, body, err := s.coolify.request(context.Background(), http.MethodPatch, "/api/v1/applications/"+url.PathEscape(app.UUID), map[string]any{"fqdn": domain})
+	status, body, err := s.coolify.request(context.Background(), http.MethodPatch, "/api/v1/applications/"+url.PathEscape(app.UUID), map[string]any{"domains": domain})
 	if err != nil {
 		return fmt.Errorf("configuring managed front-door domain: %w", err)
 	}
