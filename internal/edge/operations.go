@@ -507,12 +507,6 @@ func (s *Store) ReportAutopilot(deviceID string, result OperationResult) error {
 	return nil
 }
 
-func (s *Store) operationByDigest(device string, kind OperationKind, digest string) (Operation, error) {
-	return scanOperation(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,created_at,updated_at FROM edge_operations WHERE device_id=? AND kind=? AND request_digest=? ORDER BY created_at DESC LIMIT 1`, device, kind, digest))
-}
-func (s *Store) operationByID(id string) (Operation, error) {
-	return scanOperation(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,created_at,updated_at FROM edge_operations WHERE operation_id=?`, id))
-}
 func scanOperation(row rowScanner) (Operation, error) {
 	var op Operation
 	var request, result []byte
