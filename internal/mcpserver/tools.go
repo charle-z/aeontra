@@ -71,6 +71,8 @@ func (s *Server) register() {
 
 	catalog.RegisterPlatformAppPreview(s.addCatalogTool, platformAppPreviewAdapter{service: s.svc})
 
+	catalog.RegisterFrontDoorPlatform(s.addCatalogTool, frontDoorPlatformAdapter{service: s.svc})
+
 	catalog.RegisterPlatformDeployment(s.addCatalogTool, s.svc)
 
 	catalog.RegisterPlatformEnvironment(s.addCatalogTool, s.svc)

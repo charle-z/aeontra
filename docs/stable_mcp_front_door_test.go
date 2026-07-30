@@ -20,6 +20,9 @@ func TestStableMCPFrontDoorDocumentationIsCanonicalAndLinked(t *testing.T) {
 		"/front-door/healthz",
 		"Requests already accepted continue",
 		"cannot prevent a ChatGPT client-side",
+		"platform_front_door_create_preview",
+		"platform_front_door_create",
+		"platform_front_door_status",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("front-door documentation missing %q", required)
