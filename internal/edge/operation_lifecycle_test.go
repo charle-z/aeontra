@@ -104,6 +104,127 @@ func TestExpiredOperationLeaseRecoversQueuedOrFinishesCancellation(t *testing.T)
 	}
 }
 
+func TestExpiredOperationLeaseRecoversOnReadAndIdempotentReuse(t *testing.T) {
+	now := time.Date(2026, 7, 30, 0, 10, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	operation, fresh, err := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if err != nil || !fresh {
+		t.Fatalf("operation=%+v fresh=%t err=%v", operation, fresh, err)
+	}
+	lease, err := store.LeaseOperation(device.ID, MinLeaseTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReportOperationProgress(device.ID, operation.ID, lease.LeaseID, OperationProgress{Revision: 4, Phase: "running", CompletedUnits: 1, TotalUnits: 2}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(operationHeartbeatTTL + time.Second)
+
+	status, err := store.OperationLifecycleStatus(operation.ID)
+	if err != nil || status.State != OperationQueued || status.Progress.Revision != 0 {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+	legacy, err := store.OperationStatus(operation.ID)
+	if err != nil || legacy.State != OperationQueued {
+		t.Fatalf("legacy=%+v err=%v", legacy, err)
+	}
+	active, err := store.ActiveOperations(device.ID, 10)
+	if err != nil || len(active) != 1 || active[0].ID != operation.ID || active[0].State != OperationQueued || active[0].Progress.Revision != 0 {
+		t.Fatalf("active=%+v err=%v", active, err)
+	}
+	reused, fresh, err := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if err != nil || fresh || reused.ID != operation.ID || reused.State != OperationQueued {
+		t.Fatalf("reused=%+v fresh=%t err=%v", reused, fresh, err)
+	}
+	retry, err := store.LeaseOperation(device.ID, MinLeaseTTL)
+	if err != nil || retry.Operation.ID != operation.ID {
+		t.Fatalf("retry=%+v err=%v", retry, err)
+	}
+	if _, err := store.ReportOperationProgress(device.ID, operation.ID, retry.LeaseID, OperationProgress{Revision: 1, Phase: "running", CompletedUnits: 1, TotalUnits: 2}); err != nil {
+		t.Fatalf("fresh progress after recovery failed: %v", err)
+	}
+}
+
+func TestExpiredOperationLeaseRecoversBeforeIdempotentReuse(t *testing.T) {
+	now := time.Date(2026, 7, 30, 0, 11, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	operation, _, _ := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if _, err := store.LeaseOperation(device.ID, MinLeaseTTL); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(MinLeaseTTL)
+
+	reused, fresh, err := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if err != nil || fresh || reused.ID != operation.ID || reused.State != OperationQueued {
+		t.Fatalf("reused=%+v fresh=%t err=%v", reused, fresh, err)
+	}
+}
+
+func TestExpiredOperationLeaseCanBeCancelledAfterExpiry(t *testing.T) {
+	now := time.Date(2026, 7, 30, 0, 11, 30, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	operation, _, _ := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if _, err := store.LeaseOperation(device.ID, MinLeaseTTL); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(MinLeaseTTL)
+
+	cancelled, err := store.RequestOperationCancel(operation.ID)
+	if err != nil || cancelled.State != OperationCancelled || !cancelled.CancelRequested || cancelled.SafeCode != "operation_cancelled" {
+		t.Fatalf("cancelled=%+v err=%v", cancelled, err)
+	}
+}
+
+func TestExpiredCancelledOperationLeaseClosesOnRead(t *testing.T) {
+	now := time.Date(2026, 7, 30, 0, 12, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	operation, _, _ := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if _, err := store.LeaseOperation(device.ID, MinLeaseTTL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RequestOperationCancel(operation.ID); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(MinLeaseTTL + time.Second)
+
+	status, err := store.OperationLifecycleStatus(operation.ID)
+	if err != nil || status.State != OperationCancelled || !status.CancelRequested || status.SafeCode != "operation_cancelled" {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+	active, err := store.ActiveOperations(device.ID, 10)
+	if err != nil || len(active) != 0 {
+		t.Fatalf("active=%+v err=%v", active, err)
+	}
+}
+
 func TestOperationProgressRejectsReplayAndUnsafeBounds(t *testing.T) {
 	store := openHTTPTestStore(t)
 	code, _ := store.CreatePairing(time.Minute)

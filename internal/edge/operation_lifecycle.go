@@ -11,6 +11,30 @@ const (
 	operationHeartbeatTTL     = time.Minute
 )
 
+func (s *Store) recoverExpiredOperationLeasesForDeviceLocked(deviceID string) error {
+	now := s.now().UTC().UnixNano()
+	_, err := s.db.Exec(`UPDATE edge_operations SET
+		state=CASE WHEN cancel_requested=1 THEN ? ELSE ? END,
+		safe_code=CASE WHEN cancel_requested=1 THEN 'operation_cancelled' ELSE '' END,
+		progress_json=CASE WHEN cancel_requested=1 THEN progress_json ELSE NULL END,
+		lease_id=NULL,lease_until=NULL,updated_at=?
+		WHERE device_id=? AND state=? AND lease_until<=?`,
+		OperationCancelled, OperationQueued, now, deviceID, OperationLeased, now)
+	return err
+}
+
+func (s *Store) recoverExpiredOperationLeaseByIDLocked(operationID string) error {
+	now := s.now().UTC().UnixNano()
+	_, err := s.db.Exec(`UPDATE edge_operations SET
+		state=CASE WHEN cancel_requested=1 THEN ? ELSE ? END,
+		safe_code=CASE WHEN cancel_requested=1 THEN 'operation_cancelled' ELSE '' END,
+		progress_json=CASE WHEN cancel_requested=1 THEN progress_json ELSE NULL END,
+		lease_id=NULL,lease_until=NULL,updated_at=?
+		WHERE operation_id=? AND state=? AND lease_until<=?`,
+		OperationCancelled, OperationQueued, now, operationID, OperationLeased, now)
+	return err
+}
+
 func (s *Store) ReportOperationProgress(deviceID, operationID, leaseID string, progress OperationProgress) (OperationControl, error) {
 	body, _ := json.Marshal(progress)
 	if !idPattern.MatchString(deviceID) || !operationIDPattern.MatchString(operationID) || !leaseIDPattern.MatchString(leaseID) ||
@@ -49,6 +73,9 @@ func (s *Store) RequestOperationCancel(operationID string) (Operation, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.recoverExpiredOperationLeaseByIDLocked(operationID); err != nil {
+		return Operation{}, errors.New("operation cancellation unavailable")
+	}
 	var state OperationState
 	var kind OperationKind
 	if err := s.db.QueryRow(`SELECT state,kind FROM edge_operations WHERE operation_id=?`, operationID).Scan(&state, &kind); err != nil {
@@ -97,6 +124,11 @@ func (s *Store) ActiveOperations(deviceID string, limit int) ([]Operation, error
 	if !idPattern.MatchString(deviceID) || limit < 1 || limit > 100 {
 		return nil, errors.New("active operation list request is invalid")
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.recoverExpiredOperationLeasesForDeviceLocked(deviceID); err != nil {
+		return nil, errors.New("active operation list unavailable")
+	}
 	rows, err := s.db.Query(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,updated_at FROM edge_operations WHERE device_id=? AND state IN (?,?) ORDER BY created_at,operation_id LIMIT ?`, deviceID, OperationQueued, OperationLeased, limit)
 	if err != nil {
 		return nil, errors.New("active operation list unavailable")
@@ -119,6 +151,11 @@ func (s *Store) ActiveOperations(deviceID string, limit int) ([]Operation, error
 func (s *Store) OperationLifecycleStatus(operationID string) (Operation, error) {
 	if !operationIDPattern.MatchString(operationID) {
 		return Operation{}, errors.New("operation id is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.recoverExpiredOperationLeaseByIDLocked(operationID); err != nil {
+		return Operation{}, errors.New("edge operation unavailable")
 	}
 	op, err := s.operationLifecycleByID(operationID)
 	if err != nil {

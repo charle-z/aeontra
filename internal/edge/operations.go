@@ -171,6 +171,9 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 	digest := hex.EncodeToString(sum[:])
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.recoverExpiredOperationLeasesForDeviceLocked(deviceID); err != nil {
+		return Operation{}, false, errors.New("edge operation persistence failed")
+	}
 	var state State
 	if err := s.db.QueryRow(`SELECT state FROM devices WHERE device_id=?`, deviceID).Scan(&state); err != nil || state != StateActive {
 		return Operation{}, false, errors.New("active edge device not found")
@@ -209,7 +212,7 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 	}
 	defer tx.Rollback()
 	_, _ = tx.Exec(`UPDATE edge_operations SET state=?,safe_code='operation_cancelled',lease_id=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND cancel_requested=1 AND lease_until<=?`, OperationCancelled, now.UnixNano(), deviceID, OperationLeased, now.UnixNano())
-	_, _ = tx.Exec(`UPDATE edge_operations SET state=?,lease_id=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND cancel_requested=0 AND lease_until<=?`, OperationQueued, now.UnixNano(), deviceID, OperationLeased, now.UnixNano())
+	_, _ = tx.Exec(`UPDATE edge_operations SET state=?,progress_json=NULL,lease_id=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND cancel_requested=0 AND lease_until<=?`, OperationQueued, now.UnixNano(), deviceID, OperationLeased, now.UnixNano())
 	var id string
 	if err := tx.QueryRow(`SELECT operation_id FROM edge_operations WHERE device_id=? AND state=? ORDER BY created_at,operation_id LIMIT 1`, deviceID, OperationQueued).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -258,6 +261,11 @@ func (s *Store) CompleteOperation(deviceID, operationID, leaseID string, result 
 func (s *Store) OperationStatus(operationID string) (Operation, error) {
 	if !operationIDPattern.MatchString(operationID) {
 		return Operation{}, errors.New("operation id is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.recoverExpiredOperationLeaseByIDLocked(operationID); err != nil {
+		return Operation{}, errors.New("edge operation unavailable")
 	}
 	op, err := s.operationLifecycleByID(operationID)
 	if err != nil {
