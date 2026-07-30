@@ -12,7 +12,7 @@ An operation moves through a closed state machine:
 - `failed`: completed with a stable safe code and no result body.
 - `cancelled`: cancellation won before a terminal success or failure.
 
-Terminal states are immutable. An expired normal lease returns to `queued`. An expired lease with cancellation requested becomes `cancelled` instead of being executed again.
+Terminal states are immutable. An expired normal lease returns to `queued`. An expired lease with cancellation requested becomes `cancelled` instead of being executed again. Status reads, active-operation listings, cancellation requests and idempotent retries normalize expired leases immediately; they do not wait for the Edge to poll again. Requeued attempts clear prior progress so the new lease can restart progress at revision `1`.
 
 ## Progress and restart recovery
 
