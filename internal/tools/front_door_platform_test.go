@@ -97,7 +97,10 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 	if _, exists := payload["fqdn"]; exists {
 		t.Fatalf("private GitHub App creation payload unexpectedly contains fqdn: %#v", payload)
 	}
-	if domainPayload["fqdn"] != "https://front-door.example.com" {
+	if _, exists := domainPayload["fqdn"]; exists {
+		t.Fatalf("domain patch payload unexpectedly contains fqdn: %#v", domainPayload)
+	}
+	if domainPayload["domains"] != "https://front-door.example.com" {
 		t.Fatalf("domain patch payload=%#v", domainPayload)
 	}
 	for key, want := range map[string]any{
