@@ -54,3 +54,5 @@ Device ids, workspace ids, local paths, request bodies, idempotency keys, creden
 ## Deliberate boundary
 
 This milestone provides identity, idempotency, queueing, pickup, progress, terminal state, cancellation, bounded storage and restart recovery. Arbitrary argv, stdin, environment overlays, background processes and output streaming belong to the next roadmap milestone and are not smuggled into this lifecycle contract.
+- Lifecycle responses expose `cancellable` so callers do not have to infer authority from the operation kind or state.
+- `edge_operation_cancel` rejects a leased non-interruptible operation instead of pretending that the effect stopped.

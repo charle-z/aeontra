@@ -104,6 +104,9 @@ func TestEdgeOperationLifecycleToolsAreBoundedAndHideInternalState(t *testing.T)
 				t.Fatalf("%s output missing %q: %s", name, required, output)
 			}
 		}
+		if !strings.Contains(output, "cancellable") {
+			t.Fatalf("%s output omitted cancellation authority: %s", name, output)
+		}
 		for _, forbidden := range []string{"device_id", "workspace_id", "ed_111", "ws_333", "private-key", "linux-workcell"} {
 			if strings.Contains(output, forbidden) {
 				t.Fatalf("%s output exposed %q: %s", name, forbidden, output)
