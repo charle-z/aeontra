@@ -112,6 +112,11 @@ func New(config Config) (*FrontDoor, error) {
 		transport = http.DefaultTransport
 	}
 	proxy := httputil.NewSingleHostReverseProxy(backend)
+	director := proxy.Director
+	proxy.Director = func(request *http.Request) {
+		director(request)
+		request.Host = backend.Host
+	}
 	proxy.Transport = transport
 	proxy.FlushInterval = -1
 
