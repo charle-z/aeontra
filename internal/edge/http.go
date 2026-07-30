@@ -77,6 +77,13 @@ type operationCompletionRequest struct {
 	Result   OperationResult `json:"result"`
 	SafeCode string          `json:"safe_code,omitempty"`
 }
+type operationProgressRequest struct {
+	LeaseID  string            `json:"lease_id"`
+	Progress OperationProgress `json:"progress"`
+}
+type operationCancelRequest struct {
+	LeaseID string `json:"lease_id"`
+}
 
 func (s *Store) handleOperationLease(w http.ResponseWriter, r *http.Request) {
 	if !requirePOST(w, r) {
@@ -123,20 +130,48 @@ func (s *Store) handleOperationAction(w http.ResponseWriter, r *http.Request) {
 	}
 	remainder := strings.TrimPrefix(r.URL.Path, "/edge/v1/operations/")
 	parts := strings.Split(remainder, "/")
-	if len(parts) != 2 || parts[1] != "complete" || !operationIDPattern.MatchString(parts[0]) {
+	if len(parts) != 2 || !operationIDPattern.MatchString(parts[0]) {
 		http.NotFound(w, r)
 		return
 	}
-	var request operationCompletionRequest
-	if !decodeStrictJSON(w, r, &request) {
-		return
+	deviceID := DeviceFromContext(r.Context()).ID
+	switch parts[1] {
+	case "complete":
+		var request operationCompletionRequest
+		if !decodeStrictJSON(w, r, &request) {
+			return
+		}
+		op, err := s.CompleteOperation(deviceID, parts[0], request.LeaseID, request.Result, request.SafeCode)
+		if err != nil {
+			http.Error(w, "operation completion rejected", http.StatusConflict)
+			return
+		}
+		writeJSON(w, http.StatusOK, op)
+	case "progress":
+		var request operationProgressRequest
+		if !decodeStrictJSON(w, r, &request) {
+			return
+		}
+		control, err := s.ReportOperationProgress(deviceID, parts[0], request.LeaseID, request.Progress)
+		if err != nil {
+			http.Error(w, "operation progress rejected", http.StatusConflict)
+			return
+		}
+		writeJSON(w, http.StatusOK, control)
+	case "cancel":
+		var request operationCancelRequest
+		if !decodeStrictJSON(w, r, &request) {
+			return
+		}
+		op, err := s.CancelLeasedOperation(deviceID, parts[0], request.LeaseID)
+		if err != nil {
+			http.Error(w, "operation cancellation rejected", http.StatusConflict)
+			return
+		}
+		writeJSON(w, http.StatusOK, op)
+	default:
+		http.NotFound(w, r)
 	}
-	op, err := s.CompleteOperation(DeviceFromContext(r.Context()).ID, parts[0], request.LeaseID, request.Result, request.SafeCode)
-	if err != nil {
-		http.Error(w, "operation completion rejected", http.StatusConflict)
-		return
-	}
-	writeJSON(w, http.StatusOK, op)
 }
 
 func (s *Store) handlePair(w http.ResponseWriter, r *http.Request) {

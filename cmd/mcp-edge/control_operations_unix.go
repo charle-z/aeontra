@@ -42,7 +42,17 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 			}
 			continue
 		}
-		result, code := executeControlOperation(ctx, stateRoot, lease.Operation)
+		result, code, cancelRequested, lifecycleErr := executeControlOperationWithProgress(ctx, stateRoot, transport, *lease)
+		if lifecycleErr != nil {
+			fmt.Fprintln(stderr, "mcp-edge: control operation progress failed safely")
+			continue
+		}
+		if cancelRequested {
+			if err = acknowledgeControlOperationCancellation(ctx, stateRoot, transport, *lease); err != nil {
+				fmt.Fprintln(stderr, "mcp-edge: control operation cancellation failed safely")
+			}
+			continue
+		}
 		if code == "" {
 			registry, openErr := edgeclient.OpenWorkspaceRegistry(stateRoot)
 			if openErr == nil {

@@ -43,19 +43,19 @@ func isP15Control(name string) bool {
 }
 
 func isP16Project(name string) bool {
-	return name == "project_prepare" || name == "project_status" || name == "project_snapshot"
+	return name == "project_prepare" || name == "project_status" || name == "project_snapshot" || strings.HasPrefix(name, "edge_operation_")
 }
 
 func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 103 {
-		t.Fatalf("tool order length=%d want=103", len(server.order))
+	if len(server.order) != 106 {
+		t.Fatalf("tool order length=%d want=106", len(server.order))
 	}
-	if server.order[25] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:25])
+	if server.order[28] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:28])
 	}
-	if !reflect.DeepEqual(server.order[30:33], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[30:33])
+	if !reflect.DeepEqual(server.order[33:36], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[33:36])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
@@ -66,8 +66,8 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("P8 compatibility tool order changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[98:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[98:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[101:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[101:], brainToolOrder)
 	}
 
 	// Compatibility slices below are rebuilt from current tool contracts. Dated
@@ -154,7 +154,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 103 || snapshot.Hash != "sha256:1781e419163f57f6d0f5c595fd263a7a3aa36dd5a71b29670d54f9c11233fdfd" {
+	if snapshot.ToolCount != 106 || snapshot.Hash != "sha256:0d2ba5350c49cea301ce87df1816e55630354f46feed3a6008803460ff029e28" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

@@ -40,6 +40,19 @@ func (s *recordingEdgeControlStore) OperationStatus(string) (edge.Operation, err
 	return s.pending, nil
 }
 
+func (s *recordingEdgeControlStore) ActiveOperations(string, int) ([]edge.Operation, error) {
+	return []edge.Operation{s.pending}, nil
+}
+
+func (s *recordingEdgeControlStore) OperationLifecycleStatus(string) (edge.Operation, error) {
+	return s.pending, nil
+}
+
+func (s *recordingEdgeControlStore) RequestOperationCancel(string) (edge.Operation, error) {
+	s.pending.CancelRequested = true
+	return s.pending, nil
+}
+
 func (s *recordingEdgeControlStore) AutopilotStatus(string) (edge.OperationResult, error) {
 	return s.status, nil
 }

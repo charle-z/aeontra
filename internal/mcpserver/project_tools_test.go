@@ -33,6 +33,18 @@ func (store *projectToolEdgeStore) OperationStatus(string) (edge.Operation, erro
 	return edge.Operation{}, nil
 }
 
+func (store *projectToolEdgeStore) ActiveOperations(string, int) ([]edge.Operation, error) {
+	return nil, nil
+}
+
+func (store *projectToolEdgeStore) OperationLifecycleStatus(string) (edge.Operation, error) {
+	return edge.Operation{}, nil
+}
+
+func (store *projectToolEdgeStore) RequestOperationCancel(string) (edge.Operation, error) {
+	return edge.Operation{}, nil
+}
+
 func (store *projectToolEdgeStore) AutopilotStatus(string) (edge.OperationResult, error) {
 	return edge.OperationResult{}, nil
 }

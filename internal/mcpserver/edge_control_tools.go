@@ -105,6 +105,7 @@ func (s *Server) addEdgeControlTools() {
 		}, []string{"alias", "target", "idempotency_key"}), Version: "1",
 		Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 	}, s.handleProjectSnapshot)
+	s.addEdgeOperationLifecycleTools(projectSchema)
 	s.addDirectTool(toolDef{
 		Name: "workspace_lab_prepare", Description: "Create or reuse one authorized HTB Linux workspace on a paired Edge using only closed lab metadata; execution remains local.",
 		InputSchema: closedObject(map[string]any{
