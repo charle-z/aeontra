@@ -78,6 +78,24 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Optional:** recovery bearer, GitHub, Coolify, Brain, and the private validation
   runner.
 
+### Stable MCP Front Door
+
+- **Components:** the dedicated `mcp-front-door` binary, TLS routing, and one fixed
+  operator-owned MCP Devbox backend origin.
+- **Minimum configuration:** backend URL, exact protocol version, and exact catalog
+  hash. The dedicated image is built with `Dockerfile.front-door`.
+- **Volumes:** none. The front door is stateless and must not mount `/repos`, `/state`,
+  `/brain`, a Docker socket, or Edge state.
+- **Security posture:** it forwards the original OAuth and MCP headers without logging
+  or persisting them. The backend remains authoritative for authentication, sessions,
+  policy, tools, repositories and Edge operations.
+- **Validation:** check `/front-door/healthz`, then `/front-door/readyz`; verify OAuth,
+  initialization, session reuse and the exact backend `/version` through the facade.
+  Perform backend replacements without redeploying the front-door application.
+- **Optional:** shorter probe intervals within the documented bounds. The front-door
+  deployment should use a stable branch that advances independently from backend
+  `main`.
+
 ### Global builder
 
 - **Components:** the VPS profile plus Go, Git, Node/npm in the image and optional
@@ -199,6 +217,17 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_OAUTH_REFRESH_STORE` | refresh-token persistence | Optional; secret-bearing state path | under state root when configured; absolute override | `/state/oauth-refresh.json`; `/state` volume | Missing with a state root uses the default; without it refresh grants are memory-only. Invalid/unwritable store fails OAuth startup. |
 | `CONSOLE_TIMEZONE` | console presentation | Optional; not secret | `America/Bogota`; valid IANA name or `UTC` | `America/Bogota`; platform env | Empty uses default. Invalid or ambiguous timezone fails startup. |
 
+### Stable MCP Front Door service
+
+| Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
+|---|---|---|---|---|---|
+| `MCP_FRONT_DOOR_BACKEND_URL` | fixed backend origin | Required; sensitive topology, not a credential | HTTPS origin without user info, query, fragment or path; loopback HTTP only for local validation | `https://mcp-backend.example.com`; platform env | Missing or unsafe origin fails startup. It is never accepted from a request. |
+| `MCP_FRONT_DOOR_EXPECTED_PROTOCOL` | compatibility gate | Required; not secret | exact MCP protocol date | `2024-11-05`; platform env | Missing or malformed value fails startup. A backend mismatch makes the facade unready. |
+| `MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH` | compatibility gate | Required; not secret | `sha256:` plus 64 lowercase hexadecimal characters | read from the approved backend `/version`; platform env | Missing or malformed value fails startup. A mismatch blocks new proxied requests. |
+| `MCP_FRONT_DOOR_ADDR` | front-door listener | Optional; not secret | `0.0.0.0:8765`; valid host:port | platform env | Invalid address fails startup. Keep the port behind TLS routing. |
+| `MCP_FRONT_DOOR_PROBE_INTERVAL` | compatibility probe | Optional; not secret | `1s`; 250 ms–1 minute | platform env | Invalid or out-of-range value fails startup. Do not increase it to hide rollout failures. |
+| `MCP_FRONT_DOOR_PROBE_TIMEOUT` | compatibility probe | Optional; not secret | `3s`; 250 ms–10 seconds | platform env | Invalid or out-of-range value fails startup. |
+
 ### Durable state, Brain, and observability
 
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
@@ -279,6 +308,9 @@ because they appear in source.
 | Item | Purpose | Persistence / ownership | Jail and backup posture |
 |---|---|---|---|
 | port `8765` | internal HTTP listener and healthcheck | container-only; Traefik/reverse proxy routes to it | do not publish directly on the VPS firewall |
+| `/front-door/healthz` | stateless facade liveness | none | use for front-door container health; independent from backend readiness |
+| `/front-door/readyz` | compatible backend readiness | memory-only probe state | `503` blocks new requests while accepted requests drain |
+| `/front-door/version` | bounded facade and last backend identity | memory-only probe state | diagnostic only; public `/version` remains the proxied backend identity |
 | `/mcp` | authenticated MCP stream and JSON-RPC | no filesystem persistence | OAuth preferred; bearer header recovery only |
 | `/healthz` | bounded liveness/build identity | none | public only according to deployment policy |
 | `/version` | safe live version, commit, protocol, tool count, catalog hash | none | source of live deployment identity; do not hardcode it in operational docs |

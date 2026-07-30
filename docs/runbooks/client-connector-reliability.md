@@ -48,7 +48,7 @@ Classify as an expected restart only when all of these correlate:
 - Coolify replaced/restarted the container;
 - the same deployment finishes successfully;
 - `/version` then reports the new expected commit;
-- health returns and the catalog remains 62 tools with the expected hash.
+- health returns and the live protocol, tool count, and catalog hash match the expected contract.
 
 A brief connector error during that interval is expected transport fallout, not proof of a client defect or VPS saturation. Preserve the deployment ID and avoid triggering a second build.
 
@@ -121,7 +121,15 @@ Classify as client/transport only when server-side evidence stays stable across 
 - MCP audit/logs show either a completed response or no corresponding request;
 - the UI loses, duplicates, reorders, or stops displaying messages/tools anyway.
 
-This category includes stale/incomplete client tool catalogs when the server reports the full 62-tool catalog and expected hash. The server cannot prove the exact internal cause inside the ChatGPT client; record it as client/transport presentation evidence, not as an asserted OpenAI root cause.
+This category includes stale or incomplete client tool catalogs when `system_runtime_info`
+still reports the complete expected catalog. The server cannot prove the exact internal
+cause inside the ChatGPT client; record it as client/transport presentation evidence,
+not as an asserted OpenAI root cause.
+
+When a Stable MCP Front Door is deployed, capture `/front-door/healthz`,
+`/front-door/readyz`, `/front-door/version` and the proxied backend `/version`. A healthy
+facade and compatible healthy backend during a missing namespace strengthens the
+client-presentation classification; it does not identify an internal OpenAI cause.
 
 ## Decision examples
 

@@ -193,7 +193,6 @@ func (f *FrontDoor) probeVersion(ctx context.Context) (runtimeInfo, error) {
 		return runtimeInfo{}, errors.New("backend version probe was not successful")
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maxVersionBody))
-	decoder.DisallowUnknownFields()
 	var info runtimeInfo
 	if err := decoder.Decode(&info); err != nil {
 		return runtimeInfo{}, errors.New("backend version response is invalid")

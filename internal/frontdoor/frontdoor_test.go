@@ -52,6 +52,7 @@ func TestFrontDoorProxiesMCPHeadersAndFailsClosedOnIncompatibleBackend(t *testin
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"status": "ok", "version": "0.2.0", "protocol_version": "2024-11-05",
 				"commit": "0123456789abcdef0123456789abcdef01234567", "tool_count": 106, "catalog_hash": hash,
+				"generation": "blue",
 			})
 		case "/mcp":
 			if r.Header.Get("Authorization") != "Bearer secret" || r.Header.Get("Mcp-Session-Id") != "session-1" {
