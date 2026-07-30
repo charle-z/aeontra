@@ -237,8 +237,12 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 }
 
 func (s *Store) CompleteOperation(deviceID, operationID, leaseID string, result OperationResult, safeCode string) (Operation, error) {
-	if !idPattern.MatchString(deviceID) || !operationIDPattern.MatchString(operationID) || !leaseIDPattern.MatchString(leaseID) || !validOperationCompletion(result, safeCode) {
+	if !idPattern.MatchString(deviceID) || !operationIDPattern.MatchString(operationID) || !leaseIDPattern.MatchString(leaseID) {
 		return Operation{}, errors.New("operation completion is invalid")
+	}
+	if !validOperationCompletion(result, safeCode) {
+		result = OperationResult{}
+		safeCode = "operation_result_invalid"
 	}
 	state := OperationSucceeded
 	if safeCode != "" {
