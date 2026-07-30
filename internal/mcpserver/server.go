@@ -252,7 +252,7 @@ func (s *Server) initializeResult(params json.RawMessage, sessionKey string) map
 			"Session preflight: repo_list, workspace_checkpoint with repo; then repo_status, and build_context_pack only for file context. Work loop: plan, act, observe, " +
 			"run_tests when code changed, revise on failure, and record durable state in memory. Sync only with repo_fetch, " +
 			"repo_fast_forward_preview, repo_fast_forward; clone only with git_clone. Edit with apply_patch/create_file; " +
-			"git_commit does not push. Active-chat Edge: workspace_runtime_continue, then model_turn_next/model_turn_respond; a local model provider is optional. When explicitly requested use source_repo_create_preview/source_repo_create, " +
+			"git_commit does not push. Direct Edge: project_snapshot; OpenCode fallback: workspace_runtime_continue, then model_turn_next/model_turn_respond; a local model provider is optional. When explicitly requested use source_repo_create_preview/source_repo_create, " +
 			"repo_remote_preview/repo_remote_set, repo_publish_preview/repo_publish, platform_app_create_preview/" +
 			"platform_app_create, platform_deploy_preview/platform_deploy, then platform_app_status. Notes use notes_read " +
 			"and notes_write_preview/notes_write. Brain is demand-driven: use brain_context or brain_search, never inject it wholesale. Privileged profiles are disabled by default and use " +

@@ -32,6 +32,7 @@ const (
 	OperationOnboardingStatus OperationKind = "onboarding_status"
 	OperationProjectPrepare   OperationKind = "project_prepare"
 	OperationProjectStatus    OperationKind = "project_status"
+	OperationProjectSnapshot  OperationKind = "project_snapshot"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -43,6 +44,7 @@ var operationIDPattern = regexp.MustCompile(`^eo_[a-f0-9]{32}$`)
 var projectOperationAliasPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 var projectOperationTargetPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$`)
 var projectOperationRepositoryPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
+var projectOperationIdempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
 type OperationRequest struct {
 	Platform        string `json:"platform,omitempty"`
@@ -57,6 +59,7 @@ type OperationRequest struct {
 	Repository      string `json:"repository,omitempty"`
 	TargetAlias     string `json:"target_alias,omitempty"`
 	Profile         string `json:"profile,omitempty"`
+	IdempotencyKey  string `json:"idempotency_key,omitempty"`
 }
 
 type OperationResult struct {
@@ -93,6 +96,9 @@ type OperationResult struct {
 	ProjectState          string   `json:"project_state,omitempty"`
 	ProjectProfile        string   `json:"project_profile,omitempty"`
 	ProjectMode           string   `json:"project_mode,omitempty"`
+	SnapshotBranch        string   `json:"snapshot_branch,omitempty"`
+	SnapshotHead          string   `json:"snapshot_head,omitempty"`
+	SnapshotClean         bool     `json:"snapshot_clean,omitempty"`
 }
 
 type Operation struct {
@@ -137,7 +143,11 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 		return Operation{}, false, errors.New("edge operation is invalid")
 	}
 	body, _ := json.Marshal(request)
-	sum := sha256.Sum256(body)
+	digestInput := body
+	if kind == OperationProjectSnapshot {
+		digestInput = []byte(request.IdempotencyKey)
+	}
+	sum := sha256.Sum256(digestInput)
 	digest := hex.EncodeToString(sum[:])
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -146,7 +156,10 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 		return Operation{}, false, errors.New("active edge device not found")
 	}
 	if existing, err := s.operationByDigest(deviceID, kind, digest); err == nil {
-		if kind == OperationLabPrepare || kind == OperationLabRetarget || existing.State == OperationQueued || existing.State == OperationLeased {
+		if kind == OperationProjectSnapshot && existing.Request != request {
+			return Operation{}, false, errors.New("edge operation idempotency conflict")
+		}
+		if kind == OperationLabPrepare || kind == OperationLabRetarget || kind == OperationProjectSnapshot || existing.State == OperationQueued || existing.State == OperationLeased {
 			return existing, false, nil
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -259,6 +272,9 @@ func (s *Store) WaitOperation(ctx context.Context, operationID string, timeout t
 }
 
 func validateOperationRequest(kind OperationKind, request OperationRequest) (OperationRequest, error) {
+	if kind != OperationProjectSnapshot && request.IdempotencyKey != "" {
+		return OperationRequest{}, errors.New("operation idempotency key is invalid")
+	}
 	switch kind {
 	case OperationLabPrepare:
 		parsed := net.ParseIP(strings.TrimSpace(request.Target))
@@ -306,6 +322,15 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 		if !validProjectOperationRequestCommon(request) || request.Repository != "" {
 			return OperationRequest{}, errors.New("project status request is invalid")
 		}
+	case OperationProjectSnapshot:
+		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
+		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
+		request.Profile = strings.TrimSpace(request.Profile)
+		request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
+		if !validProjectOperationRequestCommon(request) || request.Repository != "" ||
+			!projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) {
+			return OperationRequest{}, errors.New("project snapshot request is invalid")
+		}
 	case OperationBundleStatus, OperationBundleRollback, OperationEdgeRepair, OperationOnboardingStatus:
 		if request != (OperationRequest{}) {
 			return OperationRequest{}, errors.New("edge diagnostic request is invalid")
@@ -327,8 +352,14 @@ func validProjectOperationRequestCommon(request OperationRequest) bool {
 }
 
 func validOperationCompletion(result OperationResult, code string) bool {
+	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
+		return code == "" && validProjectSnapshotResult(result)
+	}
 	if code != "" {
 		return regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(code) && emptyOperationResult(result)
+	}
+	if validProjectSnapshotResult(result) {
+		return true
 	}
 	if validProjectOperationResult(result) {
 		return true
@@ -363,6 +394,24 @@ func validProjectOperationResult(result OperationResult) bool {
 	metadata.ProjectProfile = ""
 	metadata.ProjectMode = ""
 	return emptyOperationResult(metadata)
+}
+
+var projectSnapshotBranchPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
+var projectSnapshotCommitPattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
+
+func validProjectSnapshotResult(result OperationResult) bool {
+	branch := result.SnapshotBranch
+	if !result.SnapshotClean || !projectSnapshotBranchPattern.MatchString(branch) ||
+		strings.HasPrefix(branch, "-") || strings.Contains(branch, "..") || strings.Contains(branch, "//") ||
+		strings.Contains(branch, "@{") || strings.HasSuffix(branch, "/") || strings.HasSuffix(branch, ".") ||
+		strings.HasSuffix(branch, ".lock") || !projectSnapshotCommitPattern.MatchString(result.SnapshotHead) {
+		return false
+	}
+	metadata := result
+	metadata.SnapshotBranch = ""
+	metadata.SnapshotHead = ""
+	metadata.SnapshotClean = false
+	return validProjectOperationResult(metadata)
 }
 
 var githubOwnerOperationPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)

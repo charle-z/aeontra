@@ -98,6 +98,14 @@ func (s *Server) addEdgeControlTools() {
 		return s.handleProjectOperation(arguments, edge.OperationProjectStatus)
 	})
 	s.addDirectTool(toolDef{
+		Name: "project_snapshot", Description: "Run one fixed read-only Git snapshot in the selected Edge development workspace through a durable idempotent operation. It returns only bounded repository identity, branch, commit and clean-state metadata; it does not start a model.",
+		InputSchema: closedObject(map[string]any{
+			"alias": projectSchema["alias"], "target": projectSchema["target"],
+			"idempotency_key": stringSchema("caller-generated durable operation key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, 128),
+		}, []string{"alias", "target", "idempotency_key"}), Version: "1",
+		Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+	}, s.handleProjectSnapshot)
+	s.addDirectTool(toolDef{
 		Name: "workspace_lab_prepare", Description: "Create or reuse one authorized HTB Linux workspace on a paired Edge using only closed lab metadata; execution remains local.",
 		InputSchema: closedObject(map[string]any{
 			"device_id":        stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35),
@@ -188,6 +196,50 @@ func (s *Server) handleProjectOperation(arguments json.RawMessage, kind edge.Ope
 		view.Mode = op.Result.ProjectMode
 	} else if op.State == edge.OperationFailed {
 		view.Reason = op.SafeCode
+	}
+	return marshalToolValue(view, err)
+}
+
+func (s *Server) handleProjectSnapshot(arguments json.RawMessage) (string, error) {
+	if s.edgeOperations == nil || s.edgeDevices == nil {
+		return "", errEdgeStoreUnavailable
+	}
+	resolver, ok := s.edgeDevices.(edgeDeviceAliasRegistry)
+	if !ok {
+		return "", errors.New("edge target alias resolution is unavailable")
+	}
+	var params projectSnapshotParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	device, err := resolver.ResolveActiveDeviceName(params.Target)
+	if err != nil {
+		return "", err
+	}
+	request := edge.OperationRequest{
+		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell",
+		IdempotencyKey: params.IdempotencyKey,
+	}
+	operation, created, err := s.edgeOperations.CreateOperation(device.ID, edge.OperationProjectSnapshot, request)
+	if err == nil {
+		operation, err = s.edgeOperations.WaitOperation(context.Background(), operation.ID, 180*time.Second)
+	}
+	reused := err == nil && !created
+	view := projectSnapshotPublicView{
+		OperationID: operation.ID, State: operation.State, Alias: params.Alias,
+		Target: params.Target, Reused: reused,
+	}
+	if operation.State == edge.OperationSucceeded {
+		view.Alias = operation.Result.ProjectAlias
+		view.Repository = operation.Result.ProjectOwner + "/" + operation.Result.ProjectRepository
+		view.Target = operation.Result.ProjectTarget
+		view.Profile = operation.Result.ProjectProfile
+		view.Mode = operation.Result.ProjectMode
+		view.Branch = operation.Result.SnapshotBranch
+		view.Head = operation.Result.SnapshotHead
+		view.Clean = operation.Result.SnapshotClean
+	} else if operation.State == edge.OperationFailed {
+		view.Reason = operation.SafeCode
 	}
 	return marshalToolValue(view, err)
 }
@@ -309,4 +361,25 @@ func publicEdgeOperation(op edge.Operation) edgeOperationPublicView {
 	view.ProcessRelease = op.Result.ProcessRelease
 	view.ProcessCommit = op.Result.ProcessCommit
 	return view
+}
+
+type projectSnapshotParams struct {
+	Alias          string `json:"alias"`
+	Target         string `json:"target"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type projectSnapshotPublicView struct {
+	OperationID string              `json:"operation_id"`
+	State       edge.OperationState `json:"state"`
+	Alias       string              `json:"alias"`
+	Repository  string              `json:"repository,omitempty"`
+	Target      string              `json:"target"`
+	Profile     string              `json:"profile,omitempty"`
+	Mode        string              `json:"mode,omitempty"`
+	Branch      string              `json:"branch,omitempty"`
+	Head        string              `json:"head,omitempty"`
+	Clean       bool                `json:"clean"`
+	Reused      bool                `json:"reused"`
+	Reason      string              `json:"reason,omitempty"`
 }

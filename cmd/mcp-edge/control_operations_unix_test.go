@@ -3,11 +3,15 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
+	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
 func TestBundleOperationReceiptIsDurableExclusiveAndValidated(t *testing.T) {
@@ -73,5 +77,70 @@ func TestInstalledModelProviderAcceptsOnlyClosedLoopbackConfiguration(t *testing
 		if installedModelProviderValid(path) {
 			t.Fatalf("accepted unsafe model config: %s", invalid)
 		}
+	}
+}
+
+type projectSnapshotRunner struct {
+	outputs map[string]string
+	calls   []string
+}
+
+func (runner *projectSnapshotRunner) Run(_ context.Context, dir string, args []string, _ edgeclient.GitHubCredential) (string, error) {
+	key := strings.Join(args, " ")
+	runner.calls = append(runner.calls, dir+"|"+key)
+	return runner.outputs[key], nil
+}
+
+func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
+	resolved := edgeclient.ProjectResolution{
+		Project:     edgeclient.Project{Alias: "mcp-devbox", Owner: "charle-z", Repository: "mcp-devbox"},
+		TargetAlias: "parrot",
+		Workspace: edgeclient.Workspace{
+			ID: "ws_0123456789abcdef0123456789abcdef", Path: "/home/charles/workspaces/mcp-devbox",
+			Profile: edgeclient.WorkspaceProfileLinuxWorkcell, Mode: edgeclient.WorkspaceModeDev,
+		},
+	}
+	runner := &projectSnapshotRunner{outputs: map[string]string{
+		"rev-parse --verify HEAD":                     "0123456789abcdef0123456789abcdef01234567\n",
+		"branch --show-current":                       "main\n",
+		"status --porcelain=v1 --untracked-files=all": "",
+	}}
+	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
+	if code != "" || result.SnapshotHead != "0123456789abcdef0123456789abcdef01234567" ||
+		result.SnapshotBranch != "main" || !result.SnapshotClean || result.WorkspaceID != resolved.Workspace.ID {
+		t.Fatalf("result=%+v code=%q", result, code)
+	}
+	expected := []string{
+		resolved.Workspace.Path + "|rev-parse --verify HEAD",
+		resolved.Workspace.Path + "|branch --show-current",
+		resolved.Workspace.Path + "|status --porcelain=v1 --untracked-files=all",
+	}
+	if strings.Join(runner.calls, "\n") != strings.Join(expected, "\n") {
+		t.Fatalf("calls=%v", runner.calls)
+	}
+}
+
+func TestCollectProjectSnapshotFailsClosedForDirtyOrWrongWorkspace(t *testing.T) {
+	resolved := edgeclient.ProjectResolution{
+		Project:     edgeclient.Project{Alias: "project", Owner: "charle-z", Repository: "repo"},
+		TargetAlias: "parrot",
+		Workspace: edgeclient.Workspace{
+			ID: "ws_0123456789abcdef0123456789abcdef", Path: "/home/charles/workspaces/repo",
+			Profile: edgeclient.WorkspaceProfileLinuxWorkcell, Mode: edgeclient.WorkspaceModeDev,
+		},
+	}
+	runner := &projectSnapshotRunner{outputs: map[string]string{
+		"rev-parse --verify HEAD":                     "0123456789abcdef0123456789abcdef01234567",
+		"branch --show-current":                       "main",
+		"status --porcelain=v1 --untracked-files=all": " M changed.go\n",
+	}}
+	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
+	if code != "project_checkout_dirty" || !reflect.DeepEqual(result, edge.OperationResult{}) {
+		t.Fatalf("result=%+v code=%q", result, code)
+	}
+	resolved.Workspace.Mode = edgeclient.WorkspaceModeHTBLinux
+	result, code = collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
+	if code != "project_snapshot_invalid" || !reflect.DeepEqual(result, edge.OperationResult{}) {
+		t.Fatalf("wrong-mode result=%+v code=%q", result, code)
 	}
 }
