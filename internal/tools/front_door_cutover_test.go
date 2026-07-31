@@ -26,6 +26,7 @@ func configuredManagedCutoverService(t *testing.T, baseURL string) *Service {
 		WithBuilderRuntime("destination1", nil))
 	svc.PlatformCapability.managedFrontDoorProbe = func(context.Context, string, bool, string, string, string) error { return nil }
 	svc.PlatformCapability.managedFrontDoorSleepFn = func(time.Duration) {}
+	svc.PlatformCapability.managedFrontDoorExternalCoordinator = true
 	return svc
 }
 
