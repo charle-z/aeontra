@@ -98,7 +98,7 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 	if !reflect.DeepEqual(domainUpdates, want) {
 		t.Fatalf("domain sequence=%v want=%v", domainUpdates, want)
 	}
-	if environmentUpdates != 3 || deployments != 1 || !strings.Contains(out, "action: cutover") || !strings.Contains(out, "rollback_request_domain: "+managedFrontDoorTemporaryOrigin) {
+	if environmentUpdates != 3 || deployments != 2 || !strings.Contains(out, "action: cutover") || !strings.Contains(out, "rollback_request_domain: "+managedFrontDoorTemporaryOrigin) || !strings.Contains(out, "public_domain_deployment_id: dep1") {
 		t.Fatalf("env=%d deployments=%d out=%s", environmentUpdates, deployments, out)
 	}
 }
@@ -107,6 +107,7 @@ func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
 	frontDomain := managedFrontDoorPublicOrigin
 	backendDomain := managedFrontDoorBackendOrigin
 	var domainUpdates []string
+	deployments := 0
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -134,6 +135,7 @@ func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1/envs":
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+			deployments++
 			_, _ = w.Write([]byte(`{"deployment_uuid":"dep2","status":"queued"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep2":
 			_, _ = w.Write([]byte(`{"deployment_uuid":"dep2","status":"finished"}`))
@@ -160,14 +162,15 @@ func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
 		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorBackendOrigin + "," + managedFrontDoorPublicOrigin,
 		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorPublicOrigin,
 	}
-	if !reflect.DeepEqual(domainUpdates, want) || !strings.Contains(out, "action: rollback") {
-		t.Fatalf("domain sequence=%v want=%v out=%s", domainUpdates, want, out)
+	if !reflect.DeepEqual(domainUpdates, want) || deployments != 2 || !strings.Contains(out, "action: rollback") || !strings.Contains(out, "temporary_domain_deployment_id: dep2") {
+		t.Fatalf("domain sequence=%v want=%v deployments=%d out=%s", domainUpdates, want, deployments, out)
 	}
 }
 
 func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T) {
 	frontDomain := managedFrontDoorLegacyOrigin
 	var updates []string
+	deployments := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
@@ -182,6 +185,11 @@ func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T)
 			frontDomain, _ = payload["domains"].(string)
 			updates = append(updates, frontDomain)
 			_, _ = w.Write([]byte("{\"uuid\":\"front1\"}"))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+			deployments++
+			_, _ = w.Write([]byte(`{"deployment_uuid":"dep-rename","status":"queued"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep-rename":
+			_, _ = w.Write([]byte(`{"deployment_uuid":"dep-rename","status":"finished"}`))
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
 		}
@@ -189,8 +197,14 @@ func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T)
 	defer ts.Close()
 
 	svc := configuredManagedCutoverService(t, ts.URL)
-	svc.PlatformCapability.managedFrontDoorProbe = func(context.Context, string, bool, string, string, string) error {
-		return errors.New("probe failed")
+	svc.PlatformCapability.managedFrontDoorProbe = func(_ context.Context, origin string, _ bool, _ string, _ string, _ string) error {
+		if deployments < 1 {
+			return errors.New("probe ran before deployment")
+		}
+		if origin == managedFrontDoorTemporaryOrigin {
+			return errors.New("probe failed")
+		}
+		return nil
 	}
 	preview, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
 		Domain: managedFrontDoorTemporaryOrigin, BackendURL: managedFrontDoorPublicOrigin,
@@ -203,8 +217,8 @@ func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T)
 		t.Fatal("failed temporary origin was accepted")
 	}
 	want := []string{managedFrontDoorTemporaryOrigin, managedFrontDoorLegacyOrigin}
-	if !reflect.DeepEqual(updates, want) || frontDomain != managedFrontDoorLegacyOrigin {
-		t.Fatalf("updates=%v domain=%s", updates, frontDomain)
+	if !reflect.DeepEqual(updates, want) || frontDomain != managedFrontDoorLegacyOrigin || deployments != 2 {
+		t.Fatalf("updates=%v domain=%s deployments=%d", updates, frontDomain, deployments)
 	}
 }
 
