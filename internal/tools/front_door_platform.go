@@ -161,7 +161,9 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 			sp.Finish(audit.Deny, planID, nil, err)
 			return "", err
 		}
-		if action == frontDoorActionRenameTemporary || action == frontDoorActionCutover || action == frontDoorActionRollback {
+		if action == frontDoorActionRenameTemporary || action == frontDoorActionCutover ||
+			action == frontDoorActionResumeCutoverBackend || action == frontDoorActionResumeCutoverPublic ||
+			action == frontDoorActionRollback {
 			out, transitionErr := s.executeManagedFrontDoorTransition(action, app, backend, request, sha)
 			if transitionErr != nil {
 				sp.Finish(audit.Error, planID, nil, transitionErr)
