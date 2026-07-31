@@ -80,6 +80,9 @@ jobs:
       - name: Build private front door coordinator image
         run: docker build --file Dockerfile.front-door-coordinator --tag mcp-front-door-coordinator:ci .
 
+      - name: Verify private coordinator named-volume startup
+        run: sh scripts/test-front-door-coordinator-volume.sh
+
       - name: Generate local SBOM
         uses: anchore/sbom-action@v0.24.0
         with:
