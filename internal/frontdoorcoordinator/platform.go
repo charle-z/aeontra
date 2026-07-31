@@ -103,7 +103,7 @@ func NewClient(config Config) (*Client, error) {
 	}
 	parsed, err := url.Parse(config.CoolifyURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
-		return nil, errors.New("Coolify URL must be a fixed HTTPS origin")
+		return nil, errors.New("coolify URL must be a fixed HTTPS origin")
 	}
 	if !commitPattern.MatchString(config.ExpectedFrontCommit) || !commitPattern.MatchString(config.ExpectedBackendCommit) || !protocolPattern.MatchString(config.ExpectedProtocol) || !catalogPattern.MatchString(config.ExpectedCatalogHash) {
 		return nil, errors.New("managed compatibility identity is invalid")
@@ -226,7 +226,7 @@ func (c *Client) application(ctx context.Context, appID string) (application, er
 		app.UUID = appID
 	}
 	if app.UUID != appID {
-		return application{}, errors.New("Coolify application identity mismatch")
+		return application{}, errors.New("coolify application identity mismatch")
 	}
 	return app, nil
 }
@@ -254,7 +254,7 @@ func (c *Client) setEnvironment(ctx context.Context, appID string, vars map[stri
 	for _, key := range keys {
 		value := vars[key]
 		if counts[key] > 1 {
-			return fmt.Errorf("Coolify environment key %s is ambiguous", key)
+			return fmt.Errorf("coolify environment key %s is ambiguous", key)
 		}
 		method := http.MethodPost
 		if counts[key] == 1 {
@@ -276,7 +276,7 @@ func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error
 	response := decodeDeploymentResponse(raw)
 	deploymentID := response.DeploymentUUID
 	if deploymentID == "" {
-		return "", errors.New("Coolify deployment returned no id")
+		return "", errors.New("coolify deployment returned no id")
 	}
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
@@ -288,7 +288,7 @@ func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error
 		case "finished":
 			return deploymentID, nil
 		case "failed", "cancelled":
-			return deploymentID, fmt.Errorf("Coolify deployment ended in %s", current.Status)
+			return deploymentID, fmt.Errorf("coolify deployment ended in %s", current.Status)
 		}
 		select {
 		case <-ctx.Done():
@@ -328,7 +328,7 @@ func (c *Client) requestJSON(ctx context.Context, method, path string, payload a
 		return err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("Coolify API returned HTTP %d", response.StatusCode)
+		return fmt.Errorf("coolify API returned HTTP %d", response.StatusCode)
 	}
 	if result != nil && len(strings.TrimSpace(string(data))) > 0 {
 		if err := json.Unmarshal(data, result); err != nil {
@@ -518,7 +518,7 @@ func decodeCollection[T any](raw []byte) ([]T, error) {
 		Data []T `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &wrapped); err != nil || wrapped.Data == nil {
-		return nil, errors.New("unexpected Coolify collection response")
+		return nil, errors.New("unexpected coolify collection response")
 	}
 	return wrapped.Data, nil
 }
