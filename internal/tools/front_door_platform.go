@@ -62,15 +62,22 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 		sp.Finish(audit.Error, "preview app", nil, err)
 		return "", err
 	}
-	action := "create"
+	action := frontDoorActionCreate
 	appID := ""
+	currentFrontDomain := ""
+	backendAppID := ""
+	backendDomain := ""
 	if exists {
-		if err := s.validateManagedFrontDoorApp(app, normalized.Domain); err != nil {
+		var backend platformApplication
+		action, backend, err = s.managedFrontDoorAction(app, normalized)
+		if err != nil {
 			sp.Finish(audit.Deny, "preview existing", nil, err)
 			return "", err
 		}
-		action = "reconcile"
 		appID = app.UUID
+		currentFrontDomain = app.domain()
+		backendAppID = backend.UUID
+		backendDomain = backend.domain()
 	}
 	plan, err := s.plans.Create("platform-front-door-create", map[string]string{
 		"action": action, "app": appID, "domain": normalized.Domain, "backend_url": normalized.BackendURL,
@@ -78,16 +85,17 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 		"branch_sha": sha, "server_uuid": s.coolify.serverUUID, "project_uuid": s.coolify.projectUUID,
 		"environment_uuid": s.coolify.environmentUUID, "environment_name": s.coolify.environmentName,
 		"destination_uuid": s.coolify.destinationUUID, "github_app_uuid": s.coolify.githubAppUUID,
+		"front_domain_before": currentFrontDomain, "backend_app": backendAppID, "backend_domain_before": backendDomain,
 	})
 	if err != nil {
 		sp.Finish(audit.Error, "preview plan", nil, err)
 		return "", err
 	}
 	sp.Finish(audit.Allow, "preview "+plan.ID, nil, nil)
-	return fmt.Sprintf("action: %s\napplication_name: %s\napplication_uuid: %s\nrepository: %s\nbranch: %s\nbranch_sha: %s\ndockerfile_location: %s\nport: %s\ndomain: %s\nbackend_origin: %s\nexpected_protocol: %s\nexpected_catalog_hash: %s\nauto_deploy: disabled\ninstant_deploy: disabled\nmounts: none\neffect: create or reconcile exactly one managed front-door application, set three non-secret variables, and deploy only when the expected commit is not already healthy\nplan_id: %s\nexpiry: %s\n",
+	return fmt.Sprintf("action: %s\napplication_name: %s\napplication_uuid: %s\nrepository: %s\nbranch: %s\nbranch_sha: %s\ndockerfile_location: %s\nport: %s\ndomain: %s\nbackend_origin: %s\nexpected_protocol: %s\nexpected_catalog_hash: %s\nauto_deploy: disabled\ninstant_deploy: disabled\nmounts: none\neffect: %s\nplan_id: %s\nexpiry: %s\n",
 		action, managedFrontDoorName, appID, s.managedFrontDoorRepository(), managedFrontDoorBranch, sha,
 		managedFrontDoorDockerfile, managedFrontDoorPort, normalized.Domain, normalized.BackendURL,
-		normalized.ExpectedProtocol, normalized.ExpectedCatalogHash, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
+		normalized.ExpectedProtocol, normalized.ExpectedCatalogHash, managedFrontDoorEffect(action), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
 func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool) (string, error) {
@@ -143,9 +151,24 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 	}
 	created := false
 	if exists {
-		if err := s.validateManagedFrontDoorApp(app, request.Domain); err != nil {
+		action, backend, actionErr := s.managedFrontDoorAction(app, request)
+		if actionErr != nil {
+			sp.Finish(audit.Deny, planID, nil, actionErr)
+			return "", actionErr
+		}
+		if action != plan.Args["action"] || app.domain() != plan.Args["front_domain_before"] || backend.UUID != plan.Args["backend_app"] || backend.domain() != plan.Args["backend_domain_before"] {
+			err := errors.New("managed front-door topology changed after preview")
 			sp.Finish(audit.Deny, planID, nil, err)
 			return "", err
+		}
+		if action == frontDoorActionRenameTemporary || action == frontDoorActionCutover || action == frontDoorActionRollback {
+			out, transitionErr := s.executeManagedFrontDoorTransition(action, app, backend, request, sha)
+			if transitionErr != nil {
+				sp.Finish(audit.Error, planID, nil, transitionErr)
+				return out, transitionErr
+			}
+			sp.Finish(audit.Allow, planID, nil, nil)
+			return out, nil
 		}
 	} else {
 		app, err = s.createManagedFrontDoorApp()
@@ -315,7 +338,7 @@ func (s *PlatformCapability) managedFrontDoorApp() (platformApplication, bool, e
 
 func (s *PlatformCapability) validateManagedFrontDoorApp(app platformApplication, domain string) error {
 	if app.UUID == "" || app.Name != managedFrontDoorName || !s.managedFrontDoorRepositoryMatches(app.repo()) ||
-		app.branch() != managedFrontDoorBranch || (app.domain() != "" && app.domain() != domain) || app.BuildPack != "dockerfile" ||
+		app.branch() != managedFrontDoorBranch || app.BuildPack != "dockerfile" ||
 		app.Dockerfile != managedFrontDoorDockerfile || app.PortsExposes != managedFrontDoorPort || app.AutoDeploy ||
 		app.InstantDeploy || app.HealthcheckPath != managedFrontDoorHealthPath {
 		return errors.New("existing front-door application does not match the managed contract")

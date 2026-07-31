@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/policy"
@@ -45,7 +46,9 @@ type GitCapability struct {
 type PlatformCapability struct {
 	*serviceCore
 	*SourceCapability
-	coolify *CoolifyClient
+	coolify                 *CoolifyClient
+	managedFrontDoorProbe   func(context.Context, string, bool, string, string, string) error
+	managedFrontDoorSleepFn func(time.Duration)
 }
 
 // ExecutionCapability owns process, sandbox, validation, and privileged-profile

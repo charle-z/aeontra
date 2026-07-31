@@ -1,0 +1,236 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/config"
+)
+
+func configuredManagedCutoverService(t *testing.T, baseURL string) *Service {
+	t.Helper()
+	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithGitHub(NewGitHubClient(baseURL, "github-token", "acme", "org", "private"))
+	svc.WithCoolify(NewCoolifyClient(baseURL, "coolify-token", nil).
+		WithBuilderConfig("server1", "project1", "production", "", []string{
+			"mcp-devbox-charlez.duckdns.org",
+			"144-225-147-58.sslip.io",
+		}).
+		WithBuilderRuntime("destination1", nil))
+	svc.PlatformCapability.managedFrontDoorProbe = func(context.Context, string, bool, string, string, string) error { return nil }
+	svc.PlatformCapability.managedFrontDoorSleepFn = func(time.Duration) {}
+	return svc
+}
+
+func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
+	frontDomain := managedFrontDoorLegacyOrigin
+	backendDomain := managedFrontDoorPublicOrigin
+	var domainUpdates []string
+	environmentUpdates := 0
+	deployments := 0
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
+			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1":
+			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"` + frontDomain + `","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door","ports_exposes":"8765","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/front-door/healthz"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/"+managedBackendAppUUID:
+			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","name":"mcp-devbox","status":"running:healthy","git_repository":"acme/mcp-devbox","git_branch":"main","fqdn":"` + backendDomain + `"}`))
+		case r.Method == http.MethodPatch && (r.URL.Path == "/api/v1/applications/front1" || r.URL.Path == "/api/v1/applications/"+managedBackendAppUUID):
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			domains, _ := payload["domains"].(string)
+			domainUpdates = append(domainUpdates, r.URL.Path+"="+domains)
+			if r.URL.Path == "/api/v1/applications/front1" {
+				frontDomain = domains
+			} else {
+				backendDomain = domains
+			}
+			_, _ = w.Write([]byte(`{"uuid":"ok"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1/envs":
+			_, _ = w.Write([]byte(`[{"uuid":"env1","key":"MCP_FRONT_DOOR_BACKEND_URL"},{"uuid":"env2","key":"MCP_FRONT_DOOR_EXPECTED_PROTOCOL"},{"uuid":"env3","key":"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH"}]`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1/envs":
+			environmentUpdates++
+			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+			deployments++
+			_, _ = w.Write([]byte(`{"deployment_uuid":"dep1","status":"queued"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep1":
+			_, _ = w.Write([]byte(`{"deployment_uuid":"dep1","status":"finished"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	svc := configuredManagedCutoverService(t, ts.URL)
+	preview, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
+		Domain: managedFrontDoorPublicOrigin, BackendURL: managedFrontDoorBackendOrigin,
+		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(preview, "action: cutover") || !strings.Contains(preview, "compensation on failure") {
+		t.Fatalf("cutover preview was incomplete:\n%s", preview)
+	}
+	out, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorPublicOrigin + "," + managedFrontDoorBackendOrigin,
+		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorBackendOrigin,
+		"/api/v1/applications/front1=" + managedFrontDoorPublicOrigin,
+	}
+	if !reflect.DeepEqual(domainUpdates, want) {
+		t.Fatalf("domain sequence=%v want=%v", domainUpdates, want)
+	}
+	if environmentUpdates != 3 || deployments != 1 || !strings.Contains(out, "action: cutover") || !strings.Contains(out, "rollback_request_domain: "+managedFrontDoorTemporaryOrigin) {
+		t.Fatalf("env=%d deployments=%d out=%s", environmentUpdates, deployments, out)
+	}
+}
+
+func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
+	frontDomain := managedFrontDoorPublicOrigin
+	backendDomain := managedFrontDoorBackendOrigin
+	var domainUpdates []string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
+			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1":
+			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"` + frontDomain + `","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door","ports_exposes":"8765","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/front-door/healthz"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/"+managedBackendAppUUID:
+			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","git_repository":"acme/mcp-devbox","git_branch":"main","fqdn":"` + backendDomain + `"}`))
+		case r.Method == http.MethodPatch && (r.URL.Path == "/api/v1/applications/front1" || r.URL.Path == "/api/v1/applications/"+managedBackendAppUUID):
+			var payload map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			domains, _ := payload["domains"].(string)
+			domainUpdates = append(domainUpdates, r.URL.Path+"="+domains)
+			if r.URL.Path == "/api/v1/applications/front1" {
+				frontDomain = domains
+			} else {
+				backendDomain = domains
+			}
+			_, _ = w.Write([]byte(`{"uuid":"ok"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1/envs":
+			_, _ = w.Write([]byte(`[{"uuid":"env1","key":"MCP_FRONT_DOOR_BACKEND_URL"},{"uuid":"env2","key":"MCP_FRONT_DOOR_EXPECTED_PROTOCOL"},{"uuid":"env3","key":"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH"}]`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1/envs":
+			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+			_, _ = w.Write([]byte(`{"deployment_uuid":"dep2","status":"queued"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep2":
+			_, _ = w.Write([]byte(`{"deployment_uuid":"dep2","status":"finished"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	svc := configuredManagedCutoverService(t, ts.URL)
+	preview, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
+		Domain: managedFrontDoorTemporaryOrigin, BackendURL: managedFrontDoorPublicOrigin,
+		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"/api/v1/applications/front1=" + managedFrontDoorTemporaryOrigin,
+		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorBackendOrigin + "," + managedFrontDoorPublicOrigin,
+		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorPublicOrigin,
+	}
+	if !reflect.DeepEqual(domainUpdates, want) || !strings.Contains(out, "action: rollback") {
+		t.Fatalf("domain sequence=%v want=%v out=%s", domainUpdates, want, out)
+	}
+}
+
+func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T) {
+	frontDomain := managedFrontDoorLegacyOrigin
+	var updates []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+			_, _ = w.Write([]byte("{\"object\":{\"sha\":\"" + frontDoorTestSHA + "\"}}"))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
+			_, _ = w.Write([]byte("[{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\"}]"))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1":
+			_, _ = w.Write([]byte("{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\",\"status\":\"running:healthy\",\"git_repository\":\"acme/mcp-devbox\",\"git_branch\":\"front-door-stable\",\"git_commit_sha\":\"" + frontDoorTestSHA + "\",\"fqdn\":\"" + frontDomain + "\",\"build_pack\":\"dockerfile\",\"dockerfile_location\":\"/Dockerfile.front-door\",\"ports_exposes\":\"8765\",\"is_auto_deploy_enabled\":false,\"instant_deploy\":false,\"health_check_path\":\"/front-door/healthz\"}"))
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1":
+			var payload map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			frontDomain, _ = payload["domains"].(string)
+			updates = append(updates, frontDomain)
+			_, _ = w.Write([]byte("{\"uuid\":\"front1\"}"))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	svc := configuredManagedCutoverService(t, ts.URL)
+	svc.PlatformCapability.managedFrontDoorProbe = func(context.Context, string, bool, string, string, string) error {
+		return errors.New("probe failed")
+	}
+	preview, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
+		Domain: managedFrontDoorTemporaryOrigin, BackendURL: managedFrontDoorPublicOrigin,
+		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true); err == nil {
+		t.Fatal("failed temporary origin was accepted")
+	}
+	want := []string{managedFrontDoorTemporaryOrigin, managedFrontDoorLegacyOrigin}
+	if !reflect.DeepEqual(updates, want) || frontDomain != managedFrontDoorLegacyOrigin {
+		t.Fatalf("updates=%v domain=%s", updates, frontDomain)
+	}
+}
+
+func TestPlatformFrontDoorPublicReconcileRejectsBackendOriginDrift(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+			_, _ = w.Write([]byte("{\"object\":{\"sha\":\"" + frontDoorTestSHA + "\"}}"))
+		case r.URL.Path == "/api/v1/applications":
+			_, _ = w.Write([]byte("[{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\"}]"))
+		case r.URL.Path == "/api/v1/applications/front1":
+			_, _ = w.Write([]byte("{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\",\"status\":\"running:healthy\",\"git_repository\":\"acme/mcp-devbox\",\"git_branch\":\"front-door-stable\",\"git_commit_sha\":\"" + frontDoorTestSHA + "\",\"fqdn\":\"" + managedFrontDoorPublicOrigin + "\",\"build_pack\":\"dockerfile\",\"dockerfile_location\":\"/Dockerfile.front-door\",\"ports_exposes\":\"8765\",\"is_auto_deploy_enabled\":false,\"instant_deploy\":false,\"health_check_path\":\"/front-door/healthz\"}"))
+		case r.URL.Path == "/api/v1/applications/"+managedBackendAppUUID:
+			_, _ = w.Write([]byte("{\"uuid\":\"" + managedBackendAppUUID + "\",\"git_repository\":\"acme/mcp-devbox\",\"git_branch\":\"main\",\"fqdn\":\"" + managedFrontDoorPublicOrigin + "\"}"))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	svc := configuredManagedCutoverService(t, ts.URL)
+	_, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
+		Domain: managedFrontDoorPublicOrigin, BackendURL: managedFrontDoorBackendOrigin,
+		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
+	})
+	if err == nil || !strings.Contains(err.Error(), "expected origin") {
+		t.Fatalf("backend origin drift was accepted: %v", err)
+	}
+}
