@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/charle-z/mcp-devbox/internal/frontdoorcoordinator"
 )
 
 func TestSetEnvironmentVariablesUsesLiteralRuntimeContract(t *testing.T) {
@@ -38,6 +40,7 @@ func TestSetEnvironmentVariablesUsesLiteralRuntimeContract(t *testing.T) {
 				}
 				for key, want := range map[string]any{
 					"key": "MCP_FRONT_DOOR_BACKEND_URL", "value": "https://backend.example",
+					"comment":    frontdoorcoordinator.ManagedEnvironmentComment("token", "MCP_FRONT_DOOR_BACKEND_URL", "https://backend.example"),
 					"is_preview": false, "is_literal": true, "is_runtime": true, "is_buildtime": false,
 				} {
 					if got := payload[key]; got != want {

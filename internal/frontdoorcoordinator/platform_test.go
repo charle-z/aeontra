@@ -80,7 +80,7 @@ func TestTopologyReadsRepositoryBranchesDomainsAndFrontBackend(t *testing.T) {
 		case "/api/v1/applications/backend1":
 			_, _ = w.Write([]byte(`{"uuid":"backend1","repository":"charle-z/mcp-devbox","branch":"main","fqdn":"` + FrontPublicOrigin + `,` + BackendOrigin + `"}`))
 		case "/api/v1/applications/front1/envs":
-			_, _ = w.Write([]byte(`{"data":[{"key":"MCP_FRONT_DOOR_BACKEND_URL","value":"` + BackendOrigin + `","is_preview":false}]}`))
+			_, _ = w.Write([]byte(`{"data":[` + managedEnvironmentEntryJSON("token", "MCP_FRONT_DOOR_BACKEND_URL", BackendOrigin) + `]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -109,7 +109,7 @@ func TestTopologyRejectsAmbiguousFrontBackend(t *testing.T) {
 		case "/api/v1/applications/backend1":
 			_, _ = w.Write([]byte(`{"uuid":"backend1","git_repository":"charle-z/mcp-devbox","git_branch":"main","fqdn":"` + FrontPublicOrigin + `"}`))
 		case "/api/v1/applications/front1/envs":
-			_, _ = w.Write([]byte(`[{"key":"MCP_FRONT_DOOR_BACKEND_URL","value":"` + FrontPublicOrigin + `"},{"key":"MCP_FRONT_DOOR_BACKEND_URL","value":"` + BackendOrigin + `"}]`))
+			_, _ = w.Write([]byte(`[` + managedEnvironmentEntryJSON("token", "MCP_FRONT_DOOR_BACKEND_URL", FrontPublicOrigin) + `,` + managedEnvironmentEntryJSON("token", "MCP_FRONT_DOOR_BACKEND_URL", BackendOrigin) + `]`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -179,4 +179,12 @@ func TestProbeOnceRejectsRedirect(t *testing.T) {
 	if err := client.probeOnce(context.Background(), ts.URL, false); err == nil || !strings.Contains(err.Error(), "redirect") {
 		t.Fatalf("redirect accepted: %v", err)
 	}
+}
+
+func managedEnvironmentEntryJSON(token, key, value string) string {
+	encoded, _ := json.Marshal(environmentEntry{
+		Key: key, Comment: ManagedEnvironmentComment(token, key, value),
+		IsLiteral: true, IsRuntime: true,
+	})
+	return string(encoded)
 }

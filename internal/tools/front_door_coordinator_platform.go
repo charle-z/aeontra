@@ -474,18 +474,23 @@ func (s *PlatformCapability) managedFrontDoorConfiguredBackend(appID string) (st
 	if err != nil {
 		return "", err
 	}
-	value := ""
+	var matched *coolifyEnvironmentVariable
 	for _, entry := range entries {
 		if entry.IsPreview || entry.Key != "MCP_FRONT_DOOR_BACKEND_URL" {
 			continue
 		}
-		if value != "" {
+		if matched != nil {
 			return "", errors.New("managed front-door backend environment is ambiguous")
 		}
-		value = strings.TrimSpace(entry.Value)
+		copy := entry
+		matched = &copy
 	}
-	if value != frontdoorcoordinator.FrontPublicOrigin && value != frontdoorcoordinator.BackendOrigin {
-		return "", errors.New("managed front-door backend environment is outside the fixed contract")
+	if matched == nil || !matched.IsLiteral || !matched.IsRuntime || matched.IsBuildtime {
+		return "", errors.New("managed front-door backend environment metadata is outside the fixed contract")
+	}
+	value, err := frontdoorcoordinator.ManagedEnvironmentValue(matched.Comment, s.coolify.token, matched.Key, frontdoorcoordinator.FrontPublicOrigin, frontdoorcoordinator.BackendOrigin)
+	if err != nil {
+		return "", fmt.Errorf("managed front-door backend environment is outside the fixed contract: %w", err)
 	}
 	return value, nil
 }

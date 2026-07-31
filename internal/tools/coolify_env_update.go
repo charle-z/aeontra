@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+
+	"github.com/charle-z/mcp-devbox/internal/frontdoorcoordinator"
 )
 
 func (c *CoolifyClient) setEnvironmentVariables(ctx context.Context, app string, vars map[string]string, keys []string) ([]string, error) {
@@ -29,6 +31,7 @@ func (c *CoolifyClient) setEnvironmentVariables(ctx context.Context, app string,
 	for _, key := range keys {
 		payload := map[string]any{
 			"key": key, "value": vars[key],
+			"comment":    frontdoorcoordinator.ManagedEnvironmentComment(c.token, key, vars[key]),
 			"is_preview": false, "is_literal": true,
 			"is_runtime": true, "is_buildtime": false,
 		}
