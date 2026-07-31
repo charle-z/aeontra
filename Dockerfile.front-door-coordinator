@@ -11,17 +11,21 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     -o /out/mcp-front-door-coordinator ./cmd/mcp-front-door-coordinator
 
 FROM alpine:3.24
-RUN apk add --no-cache ca-certificates \
+RUN apk add --no-cache ca-certificates su-exec \
     && addgroup -S mcpcoord \
     && adduser -S -D -H -u 10003 -G mcpcoord mcpcoord \
     && mkdir -p /coordinator-state \
     && chown -R mcpcoord:mcpcoord /coordinator-state \
     && chmod 0700 /coordinator-state
 COPY --from=build /out/mcp-front-door-coordinator /usr/local/bin/mcp-front-door-coordinator
-USER 10003:10003
+COPY scripts/front-door-coordinator-entrypoint.sh /usr/local/bin/mcp-front-door-coordinator-entrypoint
+RUN chmod 0755 /usr/local/bin/mcp-front-door-coordinator-entrypoint
 VOLUME ["/coordinator-state"]
 EXPOSE 8766
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=12 \
     CMD wget -qO- http://127.0.0.1:8766/healthz >/dev/null || exit 1
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/local/bin/mcp-front-door-coordinator"]
+# The entrypoint starts with only enough privilege to repair Docker named-volume
+# ownership, then execs PID 1 permanently as UID/GID 10003.
+USER 0:0
+ENTRYPOINT ["/usr/local/bin/mcp-front-door-coordinator-entrypoint"]

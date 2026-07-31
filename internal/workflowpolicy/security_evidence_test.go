@@ -25,6 +25,8 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"docker build --file Dockerfile --tag mcp-devbox:ci .",
 		"docker build --file Dockerfile.front-door --tag mcp-front-door:ci .",
 		"docker build --file Dockerfile.front-door-coordinator --tag mcp-front-door-coordinator:ci .",
+		"Verify private coordinator named-volume startup",
+		"sh scripts/test-front-door-coordinator-volume.sh",
 		"output-file: front-door-sbom.spdx.json",
 		"image: mcp-front-door:ci",
 		"output-file: front-door-grype.json",
