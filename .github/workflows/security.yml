@@ -77,6 +77,9 @@ jobs:
       - name: Build stable front door image
         run: docker build --file Dockerfile.front-door --tag mcp-front-door:ci .
 
+      - name: Build private front door coordinator image
+        run: docker build --file Dockerfile.front-door-coordinator --tag mcp-front-door-coordinator:ci .
+
       - name: Generate local SBOM
         uses: anchore/sbom-action@v0.24.0
         with:
@@ -102,6 +105,19 @@ jobs:
 
       - name: Verify stable front door SBOM
         run: test -s front-door-sbom.spdx.json
+
+      - name: Generate private front door coordinator SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: mcp-front-door-coordinator:ci
+          format: spdx-json
+          output-file: front-door-coordinator-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+
+      - name: Verify private front door coordinator SBOM
+        run: test -s front-door-coordinator-sbom.spdx.json
 
       - name: Scan local image
         uses: anchore/scan-action@v7.4.0
@@ -134,3 +150,19 @@ jobs:
 
       - name: Enforce stable front door vulnerability threshold
         run: go run ./cmd/grype-gate --report front-door-grype.json --minimum high --annotation-file Dockerfile.front-door
+
+      - name: Scan private front door coordinator image
+        uses: anchore/scan-action@v7.4.0
+        with:
+          image: mcp-front-door-coordinator:ci
+          fail-build: false
+          severity-cutoff: high
+          output-format: json
+          output-file: front-door-coordinator-grype.json
+          cache-db: true
+
+      - name: Verify private front door coordinator vulnerability report
+        run: test -s front-door-coordinator-grype.json
+
+      - name: Enforce private front door coordinator vulnerability threshold
+        run: go run ./cmd/grype-gate --report front-door-coordinator-grype.json --minimum high --annotation-file Dockerfile.front-door-coordinator

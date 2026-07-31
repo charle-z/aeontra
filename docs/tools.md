@@ -125,6 +125,11 @@ exterior MCP catalog; see `docs/development-edge-git.md`.
 | `platform_front_door_create_preview` | 1/0/1/1 | Plan one fixed independently deployed MCP facade with allowed domain/backend and exact protocol/catalog pins. |
 | `platform_front_door_create` | 0/1/0/1 | Create or reconcile only the managed facade, configure its three non-secret variables, and deploy only when its pinned commit is not already healthy. |
 | `platform_front_door_status` | 1/0/1/1 | Read the managed facade by fixed server-owned name without exposing environment values or requiring its UUID in the general app allowlist. |
+| `platform_front_door_coordinator_preview` | 1/0/1/1 | Plan the single private no-domain coordinator worker and its dedicated persistent journal. |
+| `platform_front_door_coordinator_create` | 0/1/0/1 | Create or reconcile the private coordinator with fixed application identities and one normal deployment. |
+| `platform_front_door_transition_preview` | 1/0/1/1 | Reconstruct the fixed topology and plan a cutover or rollback disposition as dispatch, observe, or noop. |
+| `platform_front_door_transition` | 0/1/0/1 | Dispatch one reviewed closed target to the independent coordinator without changing domains in the backend request. |
+| `platform_front_door_transition_status` | 1/0/1/1 | Read the coordinator contract, durable monotonic journal status, and current fixed topology. |
 | `coolify_create_app` | 0/0/0/1 | Compatibility name for planned `platform_app_create`. |
 | `platform_app_create` | 0/0/0/1 | Create one app from an unexpired single-use plan. |
 | `platform_validation_runner_create_preview` | 1/0/1/1 | Plan one private validation runner using administrator-owned destination and mounts. |

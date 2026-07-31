@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1.7
+
+FROM golang:1.26.5-alpine3.24 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY cmd/mcp-front-door-coordinator ./cmd/mcp-front-door-coordinator
+COPY internal/frontdoorcoordinator ./internal/frontdoorcoordinator
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+    -o /out/mcp-front-door-coordinator ./cmd/mcp-front-door-coordinator
+
+FROM alpine:3.24
+RUN apk add --no-cache ca-certificates \
+    && addgroup -S mcpcoord \
+    && adduser -S -D -H -u 10003 -G mcpcoord mcpcoord \
+    && mkdir -p /coordinator-state \
+    && chown -R mcpcoord:mcpcoord /coordinator-state \
+    && chmod 0700 /coordinator-state
+COPY --from=build /out/mcp-front-door-coordinator /usr/local/bin/mcp-front-door-coordinator
+USER 10003:10003
+VOLUME ["/coordinator-state"]
+EXPOSE 8766
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=12 \
+    CMD wget -qO- http://127.0.0.1:8766/healthz >/dev/null || exit 1
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/local/bin/mcp-front-door-coordinator"]
