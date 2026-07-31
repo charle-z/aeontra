@@ -46,9 +46,10 @@ type GitCapability struct {
 type PlatformCapability struct {
 	*serviceCore
 	*SourceCapability
-	coolify                 *CoolifyClient
-	managedFrontDoorProbe   func(context.Context, string, bool, string, string, string) error
-	managedFrontDoorSleepFn func(time.Duration)
+	coolify                             *CoolifyClient
+	managedFrontDoorProbe               func(context.Context, string, bool, string, string, string) error
+	managedFrontDoorSleepFn             func(time.Duration)
+	managedFrontDoorExternalCoordinator bool
 }
 
 // ExecutionCapability owns process, sandbox, validation, and privileged-profile

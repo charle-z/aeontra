@@ -137,6 +137,14 @@ repository, protocol, catalog hash, deployment mode and operation order are comp
 into the managed contract. The caller cannot supply another backend application or an
 arbitrary migration topology.
 
+The public-domain cutover and rollback actions are disabled in the production tool
+surface until they are executed by a coordinator that is independent from the backend
+process and from the public connector hostname being moved. Running either transition
+from the backend can remove the hostname used by the active MCP call before the next
+phase can run. Preview and execution therefore fail closed even for a previously
+created plan. Tests may enable the coordinator-only path explicitly to validate the
+state machine, but runtime configuration cannot enable it.
+
 ## Rollout sequence
 
 1. Deploy the front door on a temporary reviewed hostname pointing to the current backend.

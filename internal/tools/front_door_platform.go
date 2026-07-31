@@ -74,6 +74,11 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 			sp.Finish(audit.Deny, "preview existing", nil, err)
 			return "", err
 		}
+		if managedFrontDoorActionRequiresExternalCoordinator(action) && !s.managedFrontDoorExternalCoordinator {
+			err = errors.New("managed front-door topology transition requires an external coordinator independent from the backend process")
+			sp.Finish(audit.Deny, "preview existing", nil, err)
+			return "", err
+		}
 		appID = app.UUID
 		currentFrontDomain = app.domain()
 		backendAppID = backend.UUID
@@ -155,6 +160,11 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 		if actionErr != nil {
 			sp.Finish(audit.Deny, planID, nil, actionErr)
 			return "", actionErr
+		}
+		if managedFrontDoorActionRequiresExternalCoordinator(action) && !s.managedFrontDoorExternalCoordinator {
+			err := errors.New("managed front-door topology transition requires an external coordinator independent from the backend process")
+			sp.Finish(audit.Deny, planID, nil, err)
+			return "", err
 		}
 		if action != plan.Args["action"] || app.domain() != plan.Args["front_domain_before"] || backend.UUID != plan.Args["backend_app"] || backend.domain() != plan.Args["backend_domain_before"] {
 			err := errors.New("managed front-door topology changed after preview")
@@ -242,6 +252,15 @@ func (s *PlatformCapability) PlatformFrontDoorStatus() (string, error) {
 		app.UUID, app.Name, app.Status, app.DeploymentStatus, safePlatformURL(app.repo()), app.branch(), app.commit(),
 		safePlatformURL(app.domain()), app.BuildPack, app.Dockerfile, app.PortsExposes, app.AutoDeploy, app.InstantDeploy,
 		app.HealthcheckPath, contract)), nil
+}
+
+func managedFrontDoorActionRequiresExternalCoordinator(action string) bool {
+	switch action {
+	case frontDoorActionCutover, frontDoorActionResumeCutoverBackend, frontDoorActionResumeCutoverPublic, frontDoorActionRollback:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *PlatformCapability) frontDoorPlatformConfigError() error {
