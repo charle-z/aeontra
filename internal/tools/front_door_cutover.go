@@ -131,14 +131,16 @@ func (s *PlatformCapability) managedBackendApp() (platformApplication, error) {
 func (s *PlatformCapability) executeManagedFrontDoorTransition(action string, app, backend platformApplication, request PlatformFrontDoorRequest, sha string) (string, error) {
 	switch action {
 	case frontDoorActionRenameTemporary:
-		if err := s.patchManagedApplicationDomains(app.UUID, managedFrontDoorTemporaryOrigin); err != nil {
-			return "", err
+		deploymentID, err := s.patchAndDeployManagedFrontDoorDomain(app.UUID, managedFrontDoorTemporaryOrigin)
+		if err != nil {
+			compensationErr := s.restoreManagedFrontDoorDomain(app.UUID, managedFrontDoorLegacyOrigin, sha, request.ExpectedProtocol, request.ExpectedCatalogHash)
+			return "", managedTransitionError("activating temporary DuckDNS front-door routing", err, compensationErr)
 		}
 		if err := s.probeManagedOrigin(managedFrontDoorTemporaryOrigin, true, sha, request.ExpectedProtocol, request.ExpectedCatalogHash); err != nil {
-			_ = s.patchManagedApplicationDomains(app.UUID, managedFrontDoorLegacyOrigin)
-			return "", fmt.Errorf("temporary DuckDNS front door did not become ready: %w", err)
+			compensationErr := s.restoreManagedFrontDoorDomain(app.UUID, managedFrontDoorLegacyOrigin, sha, request.ExpectedProtocol, request.ExpectedCatalogHash)
+			return "", managedTransitionError("temporary DuckDNS front door did not become ready", err, compensationErr)
 		}
-		return fmt.Sprintf("application_uuid: %s\naction: %s\ndomain: %s\nbackend_origin: %s\nfront_door_commit: %s\nrollback_domain: %s\n", app.UUID, action, managedFrontDoorTemporaryOrigin, managedFrontDoorPublicOrigin, sha, managedFrontDoorLegacyOrigin), nil
+		return fmt.Sprintf("application_uuid: %s\naction: %s\ndeployment_id: %s\ndomain: %s\nbackend_origin: %s\nfront_door_commit: %s\nrollback_domain: %s\n", app.UUID, action, deploymentID, managedFrontDoorTemporaryOrigin, managedFrontDoorPublicOrigin, sha, managedFrontDoorLegacyOrigin), nil
 	case frontDoorActionCutover:
 		return s.executeManagedFrontDoorCutover(app, backend, request, sha)
 	case frontDoorActionRollback:
@@ -171,25 +173,29 @@ func (s *PlatformCapability) executeManagedFrontDoorCutover(app, backend platfor
 	if err := s.patchManagedApplicationDomains(backend.UUID, managedFrontDoorBackendOrigin); err != nil {
 		return "", fmt.Errorf("releasing public origin from backend: %w", err)
 	}
-	if err := s.patchManagedApplicationDomains(app.UUID, managedFrontDoorPublicOrigin); err != nil {
+	publicDeploymentID, err := s.patchAndDeployManagedFrontDoorDomain(app.UUID, managedFrontDoorPublicOrigin)
+	if err != nil {
+		compensationErr := s.restoreManagedFrontDoorDomain(app.UUID, currentFrontOrigin, sha, request.ExpectedProtocol, request.ExpectedCatalogHash)
 		_ = s.patchManagedApplicationDomains(backend.UUID, managedFrontDoorPublicOrigin+","+managedFrontDoorBackendOrigin)
-		return "", fmt.Errorf("assigning public origin to front door: %w", err)
+		return "", managedTransitionError("assigning public origin to front door", err, compensationErr)
 	}
 	if err := s.probeManagedOrigin(managedFrontDoorPublicOrigin, true, sha, request.ExpectedProtocol, request.ExpectedCatalogHash); err != nil {
-		_ = s.patchManagedApplicationDomains(app.UUID, currentFrontOrigin)
+		compensationErr := s.restoreManagedFrontDoorDomain(app.UUID, currentFrontOrigin, sha, request.ExpectedProtocol, request.ExpectedCatalogHash)
 		_ = s.patchManagedApplicationDomains(backend.UUID, managedFrontDoorPublicOrigin+","+managedFrontDoorBackendOrigin)
-		return "", fmt.Errorf("public front door did not become ready: %w", err)
+		return "", managedTransitionError("public front door did not become ready", err, compensationErr)
 	}
-	return fmt.Sprintf("application_uuid: %s\naction: %s\ndeployment_id: %s\npublic_origin: %s\nbackend_origin: %s\nfront_door_commit: %s\nrollback_request_domain: %s\nrollback_request_backend: %s\n", app.UUID, frontDoorActionCutover, deploymentID, managedFrontDoorPublicOrigin, managedFrontDoorBackendOrigin, sha, managedFrontDoorTemporaryOrigin, managedFrontDoorPublicOrigin), nil
+	return fmt.Sprintf("application_uuid: %s\naction: %s\nbackend_switch_deployment_id: %s\npublic_domain_deployment_id: %s\npublic_origin: %s\nbackend_origin: %s\nfront_door_commit: %s\nrollback_request_domain: %s\nrollback_request_backend: %s\n", app.UUID, frontDoorActionCutover, deploymentID, publicDeploymentID, managedFrontDoorPublicOrigin, managedFrontDoorBackendOrigin, sha, managedFrontDoorTemporaryOrigin, managedFrontDoorPublicOrigin), nil
 }
 
 func (s *PlatformCapability) executeManagedFrontDoorRollback(app, backend platformApplication, request PlatformFrontDoorRequest, sha string) (string, error) {
-	if err := s.patchManagedApplicationDomains(app.UUID, managedFrontDoorTemporaryOrigin); err != nil {
-		return "", fmt.Errorf("moving front door to temporary origin: %w", err)
+	temporaryDeploymentID, err := s.patchAndDeployManagedFrontDoorDomain(app.UUID, managedFrontDoorTemporaryOrigin)
+	if err != nil {
+		compensationErr := s.restoreManagedFrontDoorDomain(app.UUID, managedFrontDoorPublicOrigin, sha, request.ExpectedProtocol, request.ExpectedCatalogHash)
+		return "", managedTransitionError("moving front door to temporary origin", err, compensationErr)
 	}
 	if err := s.probeManagedOrigin(managedFrontDoorTemporaryOrigin, true, sha, request.ExpectedProtocol, request.ExpectedCatalogHash); err != nil {
-		_ = s.patchManagedApplicationDomains(app.UUID, managedFrontDoorPublicOrigin)
-		return "", fmt.Errorf("temporary front door did not become ready during rollback: %w", err)
+		compensationErr := s.restoreManagedFrontDoorDomain(app.UUID, managedFrontDoorPublicOrigin, sha, request.ExpectedProtocol, request.ExpectedCatalogHash)
+		return "", managedTransitionError("temporary front door did not become ready during rollback", err, compensationErr)
 	}
 	if err := s.patchManagedApplicationDomains(backend.UUID, managedFrontDoorBackendOrigin+","+managedFrontDoorPublicOrigin); err != nil {
 		return "", fmt.Errorf("restoring public backend origin: %w", err)
@@ -210,7 +216,7 @@ func (s *PlatformCapability) executeManagedFrontDoorRollback(app, backend platfo
 	if err := s.patchManagedApplicationDomains(backend.UUID, managedFrontDoorPublicOrigin); err != nil {
 		return "", fmt.Errorf("removing alternate backend origin after rollback: %w", err)
 	}
-	return fmt.Sprintf("application_uuid: %s\naction: %s\ndeployment_id: %s\nfront_door_origin: %s\nbackend_origin: %s\nfront_door_commit: %s\n", app.UUID, frontDoorActionRollback, deploymentID, managedFrontDoorTemporaryOrigin, managedFrontDoorPublicOrigin, sha), nil
+	return fmt.Sprintf("application_uuid: %s\naction: %s\ntemporary_domain_deployment_id: %s\nbackend_switch_deployment_id: %s\nfront_door_origin: %s\nbackend_origin: %s\nfront_door_commit: %s\n", app.UUID, frontDoorActionRollback, temporaryDeploymentID, deploymentID, managedFrontDoorTemporaryOrigin, managedFrontDoorPublicOrigin, sha), nil
 }
 
 func (s *PlatformCapability) configureAndDeployManagedFrontDoor(appID string, request PlatformFrontDoorRequest) (string, error) {
@@ -246,6 +252,45 @@ func (s *PlatformCapability) patchManagedApplicationDomains(appID, domains strin
 		return fmt.Errorf("domain update -> HTTP %d: %s", status, s.coolifySafe(body))
 	}
 	return nil
+}
+
+func (s *PlatformCapability) patchAndDeployManagedFrontDoorDomain(appID, domain string) (string, error) {
+	if err := s.patchManagedApplicationDomains(appID, domain); err != nil {
+		return "", err
+	}
+	return s.deployAndWaitManagedApplication(appID)
+}
+
+func (s *PlatformCapability) deployAndWaitManagedApplication(appID string) (string, error) {
+	status, body, err := s.coolify.deploy(context.Background(), appID, false)
+	if err != nil {
+		return "", fmt.Errorf("managed application deployment request failed: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		return "", fmt.Errorf("managed application deployment -> HTTP %d: %s", status, s.coolifySafe(body))
+	}
+	deployment := decodePlatformDeployResponse(body)
+	if deployment.DeploymentUUID == "" {
+		return "", errors.New("managed application deployment returned no deployment id")
+	}
+	if err := s.waitManagedDeployment(deployment.DeploymentUUID); err != nil {
+		return deployment.DeploymentUUID, err
+	}
+	return deployment.DeploymentUUID, nil
+}
+
+func (s *PlatformCapability) restoreManagedFrontDoorDomain(appID, domain, expectedCommit, expectedProtocol, expectedHash string) error {
+	if _, err := s.patchAndDeployManagedFrontDoorDomain(appID, domain); err != nil {
+		return err
+	}
+	return s.probeManagedOrigin(domain, true, expectedCommit, expectedProtocol, expectedHash)
+}
+
+func managedTransitionError(message string, cause, compensationErr error) error {
+	if compensationErr == nil {
+		return fmt.Errorf("%s: %w", message, cause)
+	}
+	return fmt.Errorf("%s: %w; compensation failed: %v", message, cause, compensationErr)
 }
 
 func (s *PlatformCapability) waitManagedDeployment(deploymentID string) error {
