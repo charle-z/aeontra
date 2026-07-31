@@ -52,8 +52,8 @@ func isFrontDoorPlatform(name string) bool {
 
 func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 109 {
-		t.Fatalf("tool order length=%d want=109", len(server.order))
+	if len(server.order) != 114 {
+		t.Fatalf("tool order length=%d want=114", len(server.order))
 	}
 	if server.order[28] != "workspace_checkpoint" {
 		t.Fatalf("workspace checkpoint position=%v", server.order[:28])
@@ -70,8 +70,8 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("P8 compatibility tool order changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[104:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[104:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[109:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[109:], brainToolOrder)
 	}
 
 	// Compatibility slices below are rebuilt from current tool contracts. Dated
@@ -158,7 +158,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 109 || snapshot.Hash != "sha256:748ef93cac8e66fe611e9e24edee9cb41282943bdadb9191102f09c290928666" {
+	if snapshot.ToolCount != 114 || snapshot.Hash != "sha256:327a5ac4830172c9c64545c9b7d121487c773aed255f7c64e732606b491eaf99" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

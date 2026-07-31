@@ -30,6 +30,7 @@ type PlatformAppCreateRequest struct {
 type platformApplication struct {
 	UUID             string `json:"uuid"`
 	Name             string `json:"name"`
+	Description      string `json:"description"`
 	Status           string `json:"status"`
 	DeploymentStatus string `json:"deployment_status"`
 	Repository       string `json:"repository"`
@@ -47,6 +48,7 @@ type platformApplication struct {
 	InstantDeploy    bool   `json:"instant_deploy"`
 	HealthcheckPath  string `json:"health_check_path"`
 	DestinationUUID  string `json:"destination_uuid"`
+	DockerRunOptions string `json:"custom_docker_run_options"`
 }
 
 func (a platformApplication) repo() string {

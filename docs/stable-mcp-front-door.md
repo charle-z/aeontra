@@ -137,13 +137,57 @@ repository, protocol, catalog hash, deployment mode and operation order are comp
 into the managed contract. The caller cannot supply another backend application or an
 arbitrary migration topology.
 
-The public-domain cutover and rollback actions are disabled in the production tool
-surface until they are executed by a coordinator that is independent from the backend
-process and from the public connector hostname being moved. Running either transition
-from the backend can remove the hostname used by the active MCP call before the next
-phase can run. Preview and execution therefore fail closed even for a previously
-created plan. Tests may enable the coordinator-only path explicitly to validate the
-state machine, but runtime configuration cannot enable it.
+The production public-domain cutover and rollback are executed by a private coordinator
+worker, not by the backend request whose hostname may disappear during the transition.
+
+The coordinator contract is exposed through five closed operations:
+
+1. platform_front_door_coordinator_preview binds the current main commit, frozen
+   facade commit, exact backend commit, fixed application UUIDs, protocol and catalog
+   into a single-use plan.
+2. platform_front_door_coordinator_create creates or reconciles one private worker
+   with no public domain, no Docker options and one dedicated persistent journal.
+3. platform_front_door_transition_preview reconstructs the real topology, verifies
+   healthy finished deployments, exact branch commits and the complete managed worker
+   environment, then returns a dispatch, observe or noop disposition for cutover or
+   rollback. The same identity is fixed in the single-use plan and revalidated at execute.
+4. platform_front_door_transition may only set that closed target, bind the consumed
+   single-use plan ID as the durable request ID and trigger one normal deployment of
+   the coordinator. It does not patch facade or backend domains.
+5. platform_front_door_transition_status reads the bounded published journal and the
+   current fixed topology without exposing environment values or credentials.
+
+The worker has no connector hostname and is not a second facade. It stores an atomic,
+worker-private monotonic journal under /coordinator-state, accepts only the two fixed
+targets and can mutate only the two compiled application UUIDs and three compiled
+DuckDNS origins.
+
+Each phase performs one normal non-force deployment, waits for its terminal state and
+verifies the expected origin before advancing. A restart resumes from the journal and
+the externally visible topology. Unknown topology, conflicting active targets, missing
+storage, duplicate application identity or an exhausted finite phase budget fail closed.
+
+A non-interruption failure changes the durable state to `compensating` and drives the
+opposite fixed target: failed cutover restores the direct-backend topology; failed
+rollback restores the stable-front-door topology. Compensation derives every next phase
+from the current external domains and facade backend, retries transient failures inside
+a finite budget and resumes after process replacement. Once the safe topology is
+restored, the original request remains terminal `failed` with a `_compensated` reason;
+it is never reported as a successful cutover or rollback.
+
+Published status is retried with a finite budget. If publication or the local journal
+remains unavailable, the worker exits non-zero instead of remaining healthy with a
+stalled transition, so the platform can surface or restart it from the durable journal.
+
+The backend-facing dispatch remains safe if GPT Web temporarily loses the MCP namespace:
+the independent worker continues from its durable journal. The same request ID resumes
+or republishes its existing state; it never restarts a failed transition. Only a new
+reviewed preview and dispatch may retry a failed target, and a different request cannot
+replace one already queued, running or compensating. The request ID is not returned by
+status tools.
+After reconnecting, callers must read transition status before considering another
+dispatch; they must never repeat a write merely because the client reported a network
+error.
 
 ## Rollout sequence
 
@@ -167,6 +211,8 @@ that the server can force ChatGPT to keep a connector namespace mounted.
 ## Security and limitations
 
 - Credentials pass through process memory but are never logged or persisted.
+- The private coordinator receives the Coolify token only through its managed environment;
+  its client can mutate only the two compiled application UUIDs and fixed topology fields.
 - The backend URL is startup configuration, never caller input.
 - The front door has no repository volumes, state volume, Docker socket or Edge access.
 - It is not a generic outbound proxy and does not accept arbitrary target URLs.

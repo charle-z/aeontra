@@ -73,6 +73,8 @@ func (s *Server) register() {
 
 	catalog.RegisterFrontDoorPlatform(s.addCatalogTool, frontDoorPlatformAdapter{service: s.svc})
 
+	catalog.RegisterFrontDoorCoordinator(s.addCatalogTool, frontDoorCoordinatorAdapter{service: s.svc})
+
 	catalog.RegisterPlatformDeployment(s.addCatalogTool, s.svc)
 
 	catalog.RegisterPlatformEnvironment(s.addCatalogTool, s.svc)
@@ -108,4 +110,10 @@ func (s *Server) register() {
 	catalog.RegisterBrain(s.addCatalogTool, s.svc)
 
 	catalog.RegisterAnnotations(s.annotate)
+	s.annotate(map[string]any{
+		"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true,
+	}, "platform_front_door_coordinator_preview", "platform_front_door_transition_preview", "platform_front_door_transition_status")
+	s.annotate(map[string]any{
+		"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true,
+	}, "platform_front_door_coordinator_create", "platform_front_door_transition")
 }
