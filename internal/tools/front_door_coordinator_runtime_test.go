@@ -12,8 +12,7 @@ import (
 
 func TestVerifyManagedFrontDoorCoordinatorRuntimeRejectsStaleCommitAndUnexpectedEnvironment(t *testing.T) {
 	environment := ""
-	var server *httptest.Server
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/repos/acme/mcp-devbox/git/ref/heads/main", "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
@@ -44,8 +43,7 @@ func TestVerifyManagedFrontDoorCoordinatorRuntimeRejectsStaleCommitAndUnexpected
 func TestVerifyManagedFrontDoorCoordinatorRuntimeUsesAuthenticatedCommentsWithoutValues(t *testing.T) {
 	const requestID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	environment := ""
-	var server *httptest.Server
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/repos/acme/mcp-devbox/git/ref/heads/main", "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
@@ -76,7 +74,11 @@ func TestVerifyManagedFrontDoorCoordinatorRuntimeUsesAuthenticatedCommentsWithou
 	for _, entry := range entries {
 		if entry["key"] == "MCP_FRONT_DOOR_COORDINATOR_REQUEST_ID" {
 			comment := entry["comment"].(string)
-			entry["comment"] = comment[:len(comment)-1] + "0"
+			replacement := byte('0')
+			if comment[len(comment)-1] == replacement {
+				replacement = '1'
+			}
+			entry["comment"] = comment[:len(comment)-1] + string(replacement)
 		}
 	}
 	tampered, _ := json.Marshal(entries)
