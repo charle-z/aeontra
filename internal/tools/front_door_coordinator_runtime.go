@@ -45,7 +45,7 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 	if err != nil {
 		return managedFrontDoorCoordinatorIdentity{}, err
 	}
-	values := map[string]string{}
+	environment := map[string]coolifyEnvironmentVariable{}
 	allowed := map[string]bool{
 		"COOLIFY_URL": true, "COOLIFY_API_TOKEN": true,
 		"MCP_FRONT_DOOR_COORDINATOR_APP_UUID": true, "MCP_FRONT_DOOR_APP_UUID": true,
@@ -65,13 +65,27 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 		if !allowed[entry.Key] {
 			continue
 		}
-		if _, exists := values[entry.Key]; exists {
+		if _, exists := environment[entry.Key]; exists {
 			return managedFrontDoorCoordinatorIdentity{}, fmt.Errorf("managed coordinator environment key %s is ambiguous", entry.Key)
 		}
-		values[entry.Key] = strings.TrimSpace(entry.Value)
+		if !entry.IsLiteral || !entry.IsRuntime || entry.IsBuildtime {
+			return managedFrontDoorCoordinatorIdentity{}, fmt.Errorf("managed coordinator environment key %s has invalid metadata", entry.Key)
+		}
+		environment[entry.Key] = entry
 	}
-	if !managedCoordinatorSecretMatches(values["COOLIFY_API_TOKEN"], s.coolify.token) {
-		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed coordinator Coolify token is absent or invalid")
+	resolve := func(key string, candidates ...string) (string, error) {
+		entry, ok := environment[key]
+		if !ok {
+			return "", fmt.Errorf("managed coordinator environment key %s is absent", key)
+		}
+		value, err := frontdoorcoordinator.ManagedEnvironmentValue(entry.Comment, s.coolify.token, key, candidates...)
+		if err != nil {
+			return "", fmt.Errorf("managed coordinator environment key %s does not match the fixed contract: %w", key, err)
+		}
+		return value, nil
+	}
+	if _, err := resolve("COOLIFY_API_TOKEN", s.coolify.token); err != nil {
+		return managedFrontDoorCoordinatorIdentity{}, err
 	}
 	expected := map[string]string{
 		"COOLIFY_URL":                            s.coolify.baseURL,
@@ -84,34 +98,53 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 		"MCP_FRONT_DOOR_COORDINATOR_ADDR":        "0.0.0.0:" + managedFrontDoorCoordinatorPort,
 	}
 	for key, want := range expected {
-		if values[key] != want {
-			return managedFrontDoorCoordinatorIdentity{}, fmt.Errorf("managed coordinator environment key %s does not match the fixed contract", key)
-		}
-	}
-	protocol := values["MCP_FRONT_DOOR_EXPECTED_PROTOCOL"]
-	catalogHash := values["MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH"]
-	if !frontDoorProtocolPattern.MatchString(protocol) || !frontDoorCatalogPattern.MatchString(catalogHash) {
-		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed coordinator compatibility environment is invalid")
-	}
-	target, err := frontdoorcoordinator.ParseTarget(values["MCP_FRONT_DOOR_COORDINATOR_TARGET"])
-	if err != nil {
-		return managedFrontDoorCoordinatorIdentity{}, err
-	}
-	requestID := values["MCP_FRONT_DOOR_COORDINATOR_REQUEST_ID"]
-	if requestID != "" {
-		if err := frontdoorcoordinator.ValidateRequestID(requestID); err != nil {
+		if _, err := resolve(key, want); err != nil {
 			return managedFrontDoorCoordinatorIdentity{}, err
 		}
 	}
-	if target != frontdoorcoordinator.TargetIdle && requestID == "" {
-		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed coordinator non-idle target has no durable request id")
+	protocol, err := resolve("MCP_FRONT_DOOR_EXPECTED_PROTOCOL")
+	if err != nil {
+		return managedFrontDoorCoordinatorIdentity{}, err
+	}
+	catalogHash, err := resolve("MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH")
+	if err != nil {
+		return managedFrontDoorCoordinatorIdentity{}, err
+	}
+	if !frontDoorProtocolPattern.MatchString(protocol) || !frontDoorCatalogPattern.MatchString(catalogHash) {
+		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed coordinator compatibility environment is invalid")
+	}
+	targetValue, err := resolve("MCP_FRONT_DOOR_COORDINATOR_TARGET")
+	if err != nil {
+		return managedFrontDoorCoordinatorIdentity{}, err
+	}
+	target, err := frontdoorcoordinator.ParseTarget(targetValue)
+	if err != nil {
+		return managedFrontDoorCoordinatorIdentity{}, err
+	}
+	published, present, err := frontdoorcoordinator.DecodePublishedStatus(app.Description)
+	if err != nil {
+		return managedFrontDoorCoordinatorIdentity{}, err
+	}
+	expectedRequestID := ""
+	if present {
+		if published.Target != target {
+			return managedFrontDoorCoordinatorIdentity{}, errors.New("managed coordinator target does not match the durable journal")
+		}
+		expectedRequestID = published.RequestID
+	} else if target != frontdoorcoordinator.TargetIdle {
+		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed coordinator non-idle target has no durable published state")
+	}
+	if expectedRequestID != "" {
+		if err := frontdoorcoordinator.ValidateRequestID(expectedRequestID); err != nil {
+			return managedFrontDoorCoordinatorIdentity{}, err
+		}
+		if _, err := resolve("MCP_FRONT_DOOR_COORDINATOR_REQUEST_ID", expectedRequestID); err != nil {
+			return managedFrontDoorCoordinatorIdentity{}, err
+		}
+	} else if _, exists := environment["MCP_FRONT_DOOR_COORDINATOR_REQUEST_ID"]; exists {
+		if _, err := resolve("MCP_FRONT_DOOR_COORDINATOR_REQUEST_ID", ""); err != nil {
+			return managedFrontDoorCoordinatorIdentity{}, err
+		}
 	}
 	return managedFrontDoorCoordinatorIdentity{MainCommit: mainSHA, FrontCommit: frontSHA, Protocol: protocol, CatalogHash: catalogHash}, nil
-}
-
-func managedCoordinatorSecretMatches(got, want string) bool {
-	if got == want && got != "" {
-		return true
-	}
-	return len(got) >= 4 && strings.Trim(got, "*") == ""
 }

@@ -76,9 +76,13 @@ func (a application) branch() string {
 }
 
 type environmentEntry struct {
-	Key       string `json:"key"`
-	Value     string `json:"value"`
-	IsPreview bool   `json:"is_preview"`
+	Key         string `json:"key"`
+	Value       string `json:"value"`
+	Comment     string `json:"comment"`
+	IsPreview   bool   `json:"is_preview"`
+	IsLiteral   bool   `json:"is_literal"`
+	IsRuntime   bool   `json:"is_runtime"`
+	IsBuildtime bool   `json:"is_buildtime"`
 }
 
 type deployment struct {
@@ -260,7 +264,13 @@ func (c *Client) setEnvironment(ctx context.Context, appID string, vars map[stri
 		if counts[key] == 1 {
 			method = http.MethodPatch
 		}
-		if err := c.requestJSON(ctx, method, "/api/v1/applications/"+url.PathEscape(appID)+"/envs", map[string]any{"key": key, "value": value}, nil); err != nil {
+		payload := map[string]any{
+			"key": key, "value": value,
+			"comment":    ManagedEnvironmentComment(c.config.CoolifyToken, key, value),
+			"is_preview": false, "is_literal": true,
+			"is_runtime": true, "is_buildtime": false,
+		}
+		if err := c.requestJSON(ctx, method, "/api/v1/applications/"+url.PathEscape(appID)+"/envs", payload, nil); err != nil {
 			return err
 		}
 	}
@@ -485,18 +495,23 @@ func (c *Client) frontBackendURL(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var value string
+	var matched *environmentEntry
 	for _, entry := range entries {
 		if entry.IsPreview || entry.Key != "MCP_FRONT_DOOR_BACKEND_URL" {
 			continue
 		}
-		if value != "" {
+		if matched != nil {
 			return "", errors.New("front-door backend environment is ambiguous")
 		}
-		value = strings.TrimSpace(entry.Value)
+		copy := entry
+		matched = &copy
 	}
-	if value != FrontPublicOrigin && value != BackendOrigin {
-		return "", errors.New("front-door backend environment is outside the fixed contract")
+	if matched == nil || !matched.IsLiteral || !matched.IsRuntime || matched.IsBuildtime {
+		return "", errors.New("front-door backend environment metadata is outside the fixed contract")
+	}
+	value, err := ManagedEnvironmentValue(matched.Comment, c.config.CoolifyToken, matched.Key, FrontPublicOrigin, BackendOrigin)
+	if err != nil {
+		return "", fmt.Errorf("front-door backend environment is outside the fixed contract: %w", err)
 	}
 	return value, nil
 }
