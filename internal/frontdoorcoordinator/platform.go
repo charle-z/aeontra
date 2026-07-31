@@ -297,7 +297,7 @@ func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error
 		}
 		c.sleep(2 * time.Second)
 	}
-	return deploymentID, errors.New("Coolify deployment did not reach terminal state")
+	return deploymentID, errors.New("coolify deployment did not reach terminal state")
 }
 
 func (c *Client) requestJSON(ctx context.Context, method, path string, payload any, result any) error {
