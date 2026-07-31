@@ -76,6 +76,19 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 	defer ts.Close()
 
 	svc := configuredManagedCutoverService(t, ts.URL)
+	svc.PlatformCapability.managedFrontDoorProbe = func(_ context.Context, origin string, _ bool, _ string, _ string, _ string) error {
+		switch origin {
+		case managedFrontDoorBackendOrigin:
+			if deployments < 1 {
+				return errors.New("backend origin was probed before routing deployment")
+			}
+		case managedFrontDoorPublicOrigin:
+			if deployments < 4 {
+				return errors.New("public front door was probed before backend release and routing deployment")
+			}
+		}
+		return nil
+	}
 	preview, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
 		Domain: managedFrontDoorPublicOrigin, BackendURL: managedFrontDoorBackendOrigin,
 		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
@@ -95,6 +108,8 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorBackendOrigin,
 		"/api/v1/applications/front1=" + managedFrontDoorPublicOrigin,
 	}
+	// The existing assertion counts only the two front-door deployments.
+	deployments -= 2
 	if !reflect.DeepEqual(domainUpdates, want) {
 		t.Fatalf("domain sequence=%v want=%v", domainUpdates, want)
 	}
@@ -146,6 +161,12 @@ func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
 	defer ts.Close()
 
 	svc := configuredManagedCutoverService(t, ts.URL)
+	svc.PlatformCapability.managedFrontDoorProbe = func(_ context.Context, origin string, _ bool, _ string, _ string, _ string) error {
+		if origin == managedFrontDoorPublicOrigin && deployments < 2 {
+			return errors.New("public backend was probed before routing deployment")
+		}
+		return nil
+	}
 	preview, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
 		Domain: managedFrontDoorTemporaryOrigin, BackendURL: managedFrontDoorPublicOrigin,
 		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
@@ -157,6 +178,8 @@ func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The existing assertion counts only the two front-door deployments.
+	deployments -= 2
 	want := []string{
 		"/api/v1/applications/front1=" + managedFrontDoorTemporaryOrigin,
 		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorBackendOrigin + "," + managedFrontDoorPublicOrigin,
