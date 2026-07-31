@@ -97,6 +97,38 @@ compiled into the managed contract. Duplicate names, a changed stable-branch SHA
 existing application with different topology, or a domain outside
 `COOLIFY_ALLOWED_DOMAINS` fail closed.
 
+## Managed DuckDNS topology and reversible cutover
+
+The production topology reuses the existing DuckDNS name and its subdomains:
+
+```text
+public connector: https://mcp-devbox-charlez.duckdns.org
+front-door staging: https://front.mcp-devbox-charlez.duckdns.org
+backend origin: https://backend.mcp-devbox-charlez.duckdns.org
+```
+
+All three names resolve to the same VPS. Traefik routes by hostname, so the front door
+and backend remain separate applications even though they share one IP address. The
+front door must never use its own public hostname as its backend origin.
+
+The existing `platform_front_door_create_preview` and
+`platform_front_door_create` operations recognize three fixed transitions without
+adding a generic domain editor or changing the MCP catalog:
+
+1. `rename-temporary`: replace the legacy `sslip.io` front-door hostname with the
+   fixed `front.` DuckDNS hostname. If readiness fails, restore the legacy hostname.
+2. `cutover`: add and verify the `backend.` hostname on the backend while the original
+   public hostname remains active; redeploy the front door against that backend;
+   release the original hostname from the backend; then assign it to the front door.
+3. `rollback`: move the front door back to `front.`, restore and verify the original
+   hostname on the backend, redeploy the front door against it, and remove the
+   alternate backend hostname.
+
+The backend application UUID, all three origins, application identities, branch,
+repository, protocol, catalog hash, deployment mode and operation order are compiled
+into the managed contract. The caller cannot supply another backend application or an
+arbitrary migration topology.
+
 ## Rollout sequence
 
 1. Deploy the front door on a temporary reviewed hostname pointing to the current backend.
