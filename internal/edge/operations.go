@@ -133,6 +133,24 @@ type Operation struct {
 	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
+// MarshalJSON preserves compatibility with Edge bundles released before
+// operation lifecycle progress was added. encoding/json does not consider a
+// zero-valued struct empty for `omitempty`, so without this adapter every lease
+// includes an empty `progress` object that strict legacy decoders reject.
+func (operation Operation) MarshalJSON() ([]byte, error) {
+	type operationAlias Operation
+	type operationWire struct {
+		operationAlias
+		Progress *OperationProgress `json:"progress,omitempty"`
+	}
+	var progress *OperationProgress
+	if operation.Progress != (OperationProgress{}) {
+		value := operation.Progress
+		progress = &value
+	}
+	return json.Marshal(operationWire{operationAlias: operationAlias(operation), Progress: progress})
+}
+
 type OperationLease struct {
 	Operation        Operation `json:"operation"`
 	LeaseID          string    `json:"lease_id"`
