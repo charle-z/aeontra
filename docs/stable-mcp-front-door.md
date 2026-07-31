@@ -117,10 +117,18 @@ adding a generic domain editor or changing the MCP catalog:
 
 1. `rename-temporary`: replace the legacy `sslip.io` front-door hostname with the
    fixed `front.` DuckDNS hostname. If readiness fails, restore the legacy hostname.
-2. `cutover`: add and verify the `backend.` hostname on the backend while the original
-   public hostname remains active; redeploy the front door against that backend;
-   release the original hostname from the backend; then assign it to the front door.
-3. `rollback`: move the front door back to `front.`, restore and verify the original
+2. `cutover`: start the normal backend routing deployment that adds the `backend.`
+   hostname while the original public hostname remains active, then return its
+   deployment ID before that backend replaces the process executing the tool.
+3. `resume-cutover-backend`: after the caller verifies that deployment reached a
+   successful terminal state, verify the alternate backend, redeploy the front door
+   against it, and start the normal backend deployment that releases the public
+   hostname.
+4. `resume-cutover-public`: after the caller verifies the backend-release deployment
+   reached a successful terminal state, verify the temporary front door, assign the
+   public hostname to it, and verify the final topology. Each resume action is derived
+   from the exact external topology and does not depend on the prior in-memory plan.
+5. `rollback`: move the front door back to `front.`, restore and verify the original
    hostname on the backend, redeploy the front door against it, and remove the
    alternate backend hostname.
 

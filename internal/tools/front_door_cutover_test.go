@@ -75,8 +75,7 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	svc := configuredManagedCutoverService(t, ts.URL)
-	svc.PlatformCapability.managedFrontDoorProbe = func(_ context.Context, origin string, _ bool, _ string, _ string, _ string) error {
+	probe := func(_ context.Context, origin string, _ bool, _ string, _ string, _ string) error {
 		switch origin {
 		case managedFrontDoorBackendOrigin:
 			if deployments < 1 {
@@ -89,15 +88,54 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 		}
 		return nil
 	}
-	preview, err := svc.PlatformFrontDoorCreatePreview(PlatformFrontDoorRequest{
+	newService := func() *Service {
+		svc := configuredManagedCutoverService(t, ts.URL)
+		svc.PlatformCapability.managedFrontDoorProbe = probe
+		return svc
+	}
+	svc := newService()
+	request := PlatformFrontDoorRequest{
 		Domain: managedFrontDoorPublicOrigin, BackendURL: managedFrontDoorBackendOrigin,
 		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorTestCatalog,
-	})
+	}
+	preview, err := svc.PlatformFrontDoorCreatePreview(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(preview, "action: cutover") || !strings.Contains(preview, "compensation on failure") {
+	if !strings.Contains(preview, "action: cutover") || !strings.Contains(preview, "return its deployment id") {
 		t.Fatalf("cutover preview was incomplete:\n%s", preview)
+	}
+	phaseOne, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(phaseOne, "action: cutover") || !strings.Contains(phaseOne, "backend_origin_deployment_id: dep1") || !strings.Contains(phaseOne, "next_action: "+frontDoorActionResumeCutoverBackend) {
+		t.Fatalf("first cutover phase was incomplete: %s", phaseOne)
+	}
+	svc = newService()
+
+	preview, err = svc.PlatformFrontDoorCreatePreview(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(preview, "action: "+frontDoorActionResumeCutoverBackend) {
+		t.Fatalf("backend-ready resume preview was incomplete:\n%s", preview)
+	}
+	phaseTwo, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(phaseTwo, "front_door_backend_deployment_id: dep1") || !strings.Contains(phaseTwo, "backend_release_deployment_id: dep1") || !strings.Contains(phaseTwo, "next_action: "+frontDoorActionResumeCutoverPublic) {
+		t.Fatalf("second cutover phase was incomplete: %s", phaseTwo)
+	}
+	svc = newService()
+
+	preview, err = svc.PlatformFrontDoorCreatePreview(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(preview, "action: "+frontDoorActionResumeCutoverPublic) {
+		t.Fatalf("public-ready resume preview was incomplete:\n%s", preview)
 	}
 	out, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
 	if err != nil {
@@ -108,12 +146,10 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 		"/api/v1/applications/" + managedBackendAppUUID + "=" + managedFrontDoorBackendOrigin,
 		"/api/v1/applications/front1=" + managedFrontDoorPublicOrigin,
 	}
-	// The existing assertion counts only the two front-door deployments.
-	deployments -= 2
 	if !reflect.DeepEqual(domainUpdates, want) {
 		t.Fatalf("domain sequence=%v want=%v", domainUpdates, want)
 	}
-	if environmentUpdates != 3 || deployments != 2 || !strings.Contains(out, "action: cutover") || !strings.Contains(out, "rollback_request_domain: "+managedFrontDoorTemporaryOrigin) || !strings.Contains(out, "public_domain_deployment_id: dep1") {
+	if environmentUpdates != 3 || deployments != 4 || !strings.Contains(out, "action: "+frontDoorActionResumeCutoverPublic) || !strings.Contains(out, "rollback_request_domain: "+managedFrontDoorTemporaryOrigin) || !strings.Contains(out, "public_domain_deployment_id: dep1") {
 		t.Fatalf("env=%d deployments=%d out=%s", environmentUpdates, deployments, out)
 	}
 }
