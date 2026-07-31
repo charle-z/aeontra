@@ -27,7 +27,11 @@ func (c *CoolifyClient) setEnvironmentVariables(ctx context.Context, app string,
 	summaries := make([]string, 0, len(keys))
 	basePath := "/api/v1/applications/" + app + "/envs"
 	for _, key := range keys {
-		payload := map[string]any{"key": key, "value": vars[key]}
+		payload := map[string]any{
+			"key": key, "value": vars[key],
+			"is_preview": false, "is_literal": true,
+			"is_runtime": true, "is_buildtime": false,
+		}
 		method := http.MethodPost
 		path := basePath
 		operation := "created"
