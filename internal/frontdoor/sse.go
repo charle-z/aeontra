@@ -180,6 +180,14 @@ func copyResponseHeaders(destination, source http.Header) {
 }
 
 func removeHopHeaders(header http.Header) {
+	for _, connection := range header.Values("Connection") {
+		for _, name := range strings.Split(connection, ",") {
+			name = strings.TrimSpace(name)
+			if name != "" {
+				header.Del(name)
+			}
+		}
+	}
 	for _, key := range []string{
 		"Connection", "Proxy-Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
 		"Te", "Trailer", "Transfer-Encoding", "Upgrade",
