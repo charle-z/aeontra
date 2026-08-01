@@ -166,6 +166,10 @@ connection failure. The generic transport code remains the fallback for non-gate
 transports. None of these codes includes the Coolify origin, host, IP, port, token,
 response body or raw network error.
 
+After Coolify removes an unhealthy coordinator container, `platform_deployment_status`
+may recover only one unambiguous allowlisted coordinator `safe_code` from the retained
+deployment record. It never returns the underlying deployment log or arbitrary matches.
+
 The worker has no connector hostname and is not a second facade. It stores an atomic,
 worker-private monotonic journal under /coordinator-state, accepts only the two fixed
 targets and can mutate only the two compiled application UUIDs and three compiled
