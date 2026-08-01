@@ -92,9 +92,9 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Validation:** check `/front-door/healthz`, then `/front-door/readyz`; verify OAuth,
   initialization, session reuse and the exact backend `/version` through the facade.
   Perform backend replacements without redeploying the front-door application.
-- **Optional:** shorter probe intervals within the documented bounds. The front-door
-  deployment should use a stable branch that advances independently from backend
-  `main`.
+- **Optional:** shorter probe intervals and a bounded admission timeout within the
+  documented limits. The front-door deployment should use a stable branch that advances
+  independently from backend `main`.
 
 ### Global builder
 
@@ -227,6 +227,7 @@ remain unavailable until a tool is called.
 | `MCP_FRONT_DOOR_ADDR` | front-door listener | Optional; not secret | `0.0.0.0:8765`; valid host:port | platform env | Invalid address fails startup. Keep the port behind TLS routing. |
 | `MCP_FRONT_DOOR_PROBE_INTERVAL` | compatibility probe | Optional; not secret | `1s`; 250 ms–1 minute | platform env | Invalid or out-of-range value fails startup. Do not increase it to hide rollout failures. |
 | `MCP_FRONT_DOOR_PROBE_TIMEOUT` | compatibility probe | Optional; not secret | `3s`; 250 ms–10 seconds | platform env | Invalid or out-of-range value fails startup. |
+| `MCP_FRONT_DOOR_ADMISSION_TIMEOUT` | backend replacement admission | Optional; not secret | `45s`; 250 ms–2 minutes | platform env | Invalid or out-of-range value fails startup. Requests time out before upstream dispatch; dispatched POSTs are never retried. |
 
 ### Durable state, Brain, and observability
 
@@ -309,8 +310,8 @@ because they appear in source.
 |---|---|---|---|
 | port `8765` | internal HTTP listener and healthcheck | container-only; Traefik/reverse proxy routes to it | do not publish directly on the VPS firewall |
 | `/front-door/healthz` | stateless facade liveness | none | use for front-door container health; independent from backend readiness |
-| `/front-door/readyz` | compatible backend readiness | memory-only probe state | `503` blocks new requests while accepted requests drain |
-| `/front-door/version` | bounded facade and last backend identity | memory-only probe state | diagnostic only; public `/version` remains the proxied backend identity |
+| `/front-door/readyz` | compatible backend readiness | memory-only probe state | `503` marks the backend unavailable while bounded facade admission waits before dispatch |
+| `/front-door/version` | bounded facade/backend identity and aggregate recovery counters | memory-only probe state | diagnostic only; public `/version` remains the proxied backend identity |
 | `/mcp` | authenticated MCP stream and JSON-RPC | no filesystem persistence | OAuth preferred; bearer header recovery only |
 | `/healthz` | bounded liveness/build identity | none | public only according to deployment policy |
 | `/version` | safe live version, commit, protocol, tool count, catalog hash | none | source of live deployment identity; do not hardcode it in operational docs |

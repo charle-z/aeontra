@@ -21,7 +21,6 @@ const (
 	defaultProbeInterval    = time.Second
 	defaultProbeTimeout     = 3 * time.Second
 	defaultAdmissionTimeout = 45 * time.Second
-	readinessFreshness      = 250 * time.Millisecond
 	sseWaitKeepalive        = 5 * time.Second
 	maxVersionBody          = 64 << 10
 )
@@ -117,7 +116,7 @@ func New(config Config) (*FrontDoor, error) {
 	if config.AdmissionTimeout <= 0 {
 		config.AdmissionTimeout = defaultAdmissionTimeout
 	}
-	if config.AdmissionTimeout < time.Second || config.AdmissionTimeout > 2*time.Minute {
+	if config.AdmissionTimeout < 250*time.Millisecond || config.AdmissionTimeout > 2*time.Minute {
 		return nil, errors.New("front door admission timeout is invalid")
 	}
 	client := config.Client
@@ -137,6 +136,13 @@ func New(config Config) (*FrontDoor, error) {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
+	streamTransport := transport
+	if standard, ok := transport.(*http.Transport); ok {
+		clone := standard.Clone()
+		clone.ResponseHeaderTimeout = config.ProbeTimeout
+		streamTransport = clone
+	}
+	streamClient.Transport = streamTransport
 	proxy := &httputil.ReverseProxy{
 		Transport:     transport,
 		FlushInterval: -1,
@@ -201,7 +207,7 @@ func (f *FrontDoor) probeLocked(parent context.Context) error {
 	}
 	if info.Status != "ok" || info.ProtocolVersion != f.expectedProtocol || info.CatalogHash != f.expectedCatalogHash ||
 		!commitPattern.MatchString(info.Commit) || info.ToolCount < 1 {
-		err = errors.New("backend compatibility identity does not match the front door contract")
+		err = errBackendIncompatible
 		f.storeUnavailable(err)
 		return err
 	}

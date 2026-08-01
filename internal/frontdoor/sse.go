@@ -22,6 +22,9 @@ func (f *FrontDoor) serveMCPStream(w http.ResponseWriter, r *http.Request) {
 	for {
 		response, err := f.awaitMCPStream(w, r, started)
 		if err != nil {
+			if r.Context().Err() != nil {
+				return
+			}
 			if started {
 				f.sseReconnectFails.Add(1)
 				return

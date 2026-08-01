@@ -25,29 +25,31 @@ func (f *FrontDoor) stateChangeChannel() <-chan struct{} {
 	return f.stateChanged
 }
 
-func (f *FrontDoor) probeIfStale(parent context.Context) error {
+func (f *FrontDoor) probeAfter(parent context.Context, minimum time.Time) error {
 	f.probeMu.Lock()
 	defer f.probeMu.Unlock()
 	state := f.state.Load()
-	if state != nil && !state.CheckedAt.IsZero() {
-		age := time.Since(state.CheckedAt)
-		if age >= 0 && age <= readinessFreshness {
-			if state.Ready {
-				return nil
-			}
-			if state.Reason == "backend_incompatible" {
-				return errBackendIncompatible
-			}
-			return errBackendUnavailable
+	if state != nil && !state.CheckedAt.Before(minimum) {
+		if state.Ready {
+			return nil
 		}
+		if state.Reason == "backend_incompatible" {
+			return errBackendIncompatible
+		}
+		return errBackendUnavailable
 	}
 	return f.probeLocked(parent)
 }
 
 func (f *FrontDoor) waitForBackend(ctx context.Context, heartbeat func() error) error {
+	minimum := time.Now().UTC()
 	waited := false
 	for {
-		if err := f.probeIfStale(ctx); err == nil {
+		err := f.probeAfter(ctx, minimum)
+		if errors.Is(err, errBackendIncompatible) {
+			return err
+		}
+		if err == nil {
 			if waited {
 				f.admissionRecoveries.Add(1)
 			}
@@ -72,17 +74,13 @@ func (f *FrontDoor) waitForBackend(ctx context.Context, heartbeat func() error) 
 		timer := time.NewTimer(sseWaitKeepalive)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+			stopTimer(timer)
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				f.admissionTimeouts.Add(1)
 			}
 			return ctx.Err()
 		case <-changed:
-			if !timer.Stop() {
-				<-timer.C
-			}
+			stopTimer(timer)
 		case <-timer.C:
 			if err := heartbeat(); err != nil {
 				return err

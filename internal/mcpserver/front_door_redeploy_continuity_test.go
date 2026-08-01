@@ -295,6 +295,8 @@ func TestFrontDoorBackendReplacementPreservesSessionSSEAndTools(t *testing.T) {
 		}
 	}
 
+	requireFrontDoorRecoveryMetrics(t, front)
+
 	closeSSE()
 	select {
 	case err := <-sseClosed:
