@@ -106,6 +106,26 @@ func TestRequestJSONReturnsOnlyClosedFailureClasses(t *testing.T) {
 	)
 }
 
+func TestRequestJSONPreservesOnlyClosedPrivateTransportDetail(t *testing.T) {
+	t.Parallel()
+	client := newDiagnosticClient(t, diagnosticRoundTripper(func(*http.Request) (*http.Response, error) {
+		return nil, errors.Join(ErrCoolifyPrivateRefused, errors.New("raw transport secret"))
+	}))
+
+	err := client.requestJSON(context.Background(), http.MethodGet, "/api/v1/test", nil, nil)
+	if !errors.Is(err, ErrCoolifyRequestTransport) {
+		t.Fatalf("transport class missing: %v", err)
+	}
+	if !errors.Is(err, ErrCoolifyPrivateRefused) {
+		t.Fatalf("private transport detail missing: %v", err)
+	}
+	for _, forbidden := range []string{"raw", "secret", "coolify.example"} {
+		if strings.Contains(err.Error(), forbidden) {
+			t.Fatalf("transport diagnostic leaked %q: %q", forbidden, err.Error())
+		}
+	}
+}
+
 func TestApplicationIdentityFailureIsClosed(t *testing.T) {
 	t.Parallel()
 	client := newDiagnosticClient(t, diagnosticRoundTripper(func(request *http.Request) (*http.Response, error) {

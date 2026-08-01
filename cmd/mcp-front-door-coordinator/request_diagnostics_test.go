@@ -14,6 +14,13 @@ func TestTopologyStartupCodeClassifiesFrontApplicationRequestFailures(t *testing
 		want   startupCode
 	}{
 		{detail: frontdoorcoordinator.ErrCoolifyRequestBuild, want: startupTopologyFrontApplicationBuild},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateTarget), want: startupCode("topology_front_application_transport_target_failed")},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateResolve), want: startupCode("topology_front_application_transport_resolution_failed")},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateAddress), want: startupCode("topology_front_application_transport_address_policy_failed")},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateRefused), want: startupCode("topology_front_application_transport_connection_refused")},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateTimeout), want: startupCode("topology_front_application_transport_connection_timed_out")},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateRoute), want: startupCode("topology_front_application_transport_route_unavailable")},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateConnect), want: startupCode("topology_front_application_transport_connection_failed")},
 		{detail: frontdoorcoordinator.ErrCoolifyRequestTransport, want: startupTopologyFrontApplicationTransport},
 		{detail: frontdoorcoordinator.ErrCoolifyResponseRead, want: startupTopologyFrontApplicationRead},
 		{detail: frontdoorcoordinator.ErrCoolifyResponseHTTP, want: startupTopologyFrontApplicationHTTP},
