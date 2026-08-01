@@ -92,6 +92,36 @@ func coordinatorGET(t *testing.T, baseURL, path string) (int, string) {
 	}
 }
 
+func coordinatorGETUntilCode(t *testing.T, baseURL, path, code string) (int, string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		status, body := coordinatorGET(t, baseURL, path)
+		if strings.Contains(body, `"code":"`+code+`"`) {
+			return status, body
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("endpoint %s did not reach code %s: status=%d body=%q", path, code, status, body)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func coordinatorGETUntilStatus(t *testing.T, baseURL, path string, expected int) (int, string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		status, body := coordinatorGET(t, baseURL, path)
+		if status == expected {
+			return status, body
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("endpoint %s did not reach HTTP %d: status=%d body=%q", path, expected, status, body)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func stopCoordinatorTestServer(t *testing.T, cancel context.CancelFunc, done <-chan error) {
 	t.Helper()
 	cancel()
@@ -146,7 +176,7 @@ func TestCoordinatorTopologyFailureDoesNotAdvanceJournalOrMutate(t *testing.T) {
 	})
 	defer stopCoordinatorTestServer(t, cancel, done)
 
-	status, body := coordinatorGET(t, baseURL, "/readyz")
+	status, body := coordinatorGETUntilCode(t, baseURL, "/readyz", "topology_validation_failed")
 	if status != http.StatusServiceUnavailable || !strings.Contains(body, `"code":"topology_validation_failed"`) {
 		t.Fatalf("ready status=%d body=%q", status, body)
 	}
@@ -183,7 +213,7 @@ func TestCoordinatorReadyAndShutdownPreserveIdleJournal(t *testing.T) {
 		newPlatform: func(frontdoorcoordinator.Config) (frontdoorcoordinator.Platform, error) { return platform, nil },
 	})
 
-	status, body := coordinatorGET(t, baseURL, "/readyz")
+	status, body := coordinatorGETUntilStatus(t, baseURL, "/readyz", http.StatusOK)
 	if status != http.StatusOK || !strings.Contains(body, `"ready":true`) || !strings.Contains(body, `"revision":0`) {
 		t.Fatalf("ready status=%d body=%q", status, body)
 	}

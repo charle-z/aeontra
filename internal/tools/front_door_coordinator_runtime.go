@@ -41,6 +41,10 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed front-door deployment commits do not match the approved branches")
 	}
 
+	coordinatorCoolifyURL, err := s.managedFrontDoorCoordinatorCoolifyURL()
+	if err != nil {
+		return managedFrontDoorCoordinatorIdentity{}, err
+	}
 	entries, err := s.coolify.listEnvironmentVariables(context.Background(), app.UUID)
 	if err != nil {
 		return managedFrontDoorCoordinatorIdentity{}, err
@@ -88,7 +92,7 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 		return managedFrontDoorCoordinatorIdentity{}, err
 	}
 	expected := map[string]string{
-		"COOLIFY_URL":                            s.coolify.baseURL,
+		"COOLIFY_URL":                            coordinatorCoolifyURL,
 		"MCP_FRONT_DOOR_COORDINATOR_APP_UUID":    app.UUID,
 		"MCP_FRONT_DOOR_APP_UUID":                front.UUID,
 		"MCP_FRONT_DOOR_BACKEND_APP_UUID":        backend.UUID,

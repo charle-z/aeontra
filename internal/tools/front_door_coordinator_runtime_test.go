@@ -104,6 +104,7 @@ func coordinatorRuntimeApplications() (platformApplication, platformApplication,
 		GitRepository: "acme/mcp-devbox", GitBranch: managedFrontDoorCoordinatorBranch, GitCommitSHA: frontDoorTestSHA,
 		BuildPack: "dockerfile", Dockerfile: managedFrontDoorCoordinatorDockerfile,
 		PortsExposes: managedFrontDoorCoordinatorPort, HealthcheckPath: managedFrontDoorCoordinatorHealthPath,
+		DockerRunOptions: managedFrontDoorCoordinatorDockerOptions,
 	}
 	return front, backend, coordinator
 }

@@ -12,6 +12,7 @@ import (
 
 func TestPlatformFrontDoorCoordinatorReconcilesExistingWorkerReadiness(t *testing.T) {
 	healthPath := managedFrontDoorCoordinatorLegacyPath
+	dockerOptions := ""
 	applicationPatches := 0
 	applicationCreates := 0
 	storageCreates := 0
@@ -29,17 +30,18 @@ func TestPlatformFrontDoorCoordinatorReconcilesExistingWorkerReadiness(t *testin
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/"+managedBackendAppUUID:
 			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","name":"mcp-devbox","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/coord1":
-			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"` + healthPath + `","custom_docker_run_options":""}`))
+			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"` + healthPath + `","custom_docker_run_options":"` + dockerOptions + `"}`))
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/coord1":
 			applicationPatches++
 			var payload map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatal(err)
 			}
-			if payload["health_check_path"] != managedFrontDoorCoordinatorHealthPath || payload["health_check_port"] != float64(8766) {
+			if payload["health_check_path"] != managedFrontDoorCoordinatorHealthPath || payload["health_check_port"] != float64(8766) || payload["custom_docker_run_options"] != managedFrontDoorCoordinatorDockerOptions {
 				t.Fatalf("unexpected readiness reconciliation payload: %#v", payload)
 			}
 			healthPath = managedFrontDoorCoordinatorHealthPath
+			dockerOptions = managedFrontDoorCoordinatorDockerOptions
 			_, _ = w.Write([]byte(`{"uuid":"coord1"}`))
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/api/v1/applications/") && !strings.HasSuffix(r.URL.Path, "/envs") && !strings.HasSuffix(r.URL.Path, "/storages"):
 			applicationCreates++
@@ -84,7 +86,7 @@ func TestPlatformFrontDoorCoordinatorReconcilesExistingWorkerReadiness(t *testin
 	if applicationPatches != 1 || applicationCreates != 0 || storageCreates != 0 || environmentWrites != 12 || deploys != 1 {
 		t.Fatalf("patches=%d creates=%d storageCreates=%d env=%d deploys=%d out=%s", applicationPatches, applicationCreates, storageCreates, environmentWrites, deploys, out)
 	}
-	if healthPath != managedFrontDoorCoordinatorHealthPath || !strings.Contains(out, "application_uuid: coord1") || !strings.Contains(out, "deployment_id: coord-reconcile-dep") {
+	if healthPath != managedFrontDoorCoordinatorHealthPath || dockerOptions != managedFrontDoorCoordinatorDockerOptions || !strings.Contains(out, "application_uuid: coord1") || !strings.Contains(out, "deployment_id: coord-reconcile-dep") {
 		t.Fatalf("reconciliation did not preserve identity or readiness: health=%s out=%s", healthPath, out)
 	}
 }
