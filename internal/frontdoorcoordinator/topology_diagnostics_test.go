@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -64,8 +65,10 @@ func TestTopologyReturnsOnlySanitizedStageErrors(t *testing.T) {
 		if !errors.Is(err, testCase.want) {
 			t.Fatalf("stage=%s error=%v want=%v", testCase.stage, err, testCase.want)
 		}
-		if err.Error() != testCase.want.Error() {
-			t.Fatalf("stage=%s leaked wrapped detail: %q", testCase.stage, err.Error())
+		for _, forbidden := range []string{"raw", "secret"} {
+			if strings.Contains(err.Error(), forbidden) {
+				t.Fatalf("stage=%s leaked wrapped detail %q: %q", testCase.stage, forbidden, err.Error())
+			}
 		}
 	}
 }

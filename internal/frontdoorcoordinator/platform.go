@@ -27,6 +27,13 @@ var (
 	ErrTopologyBackendApplication = errors.New("backend application topology read failed")
 	ErrTopologyManagedIdentity    = errors.New("managed topology identity failed")
 	ErrTopologyFrontBackend       = errors.New("front backend topology read failed")
+
+	ErrCoolifyRequestBuild     = errors.New("coolify request build failed")
+	ErrCoolifyRequestTransport = errors.New("coolify request transport failed")
+	ErrCoolifyResponseRead     = errors.New("coolify response read failed")
+	ErrCoolifyResponseHTTP     = errors.New("coolify response HTTP failed")
+	ErrCoolifyResponseDecode   = errors.New("coolify response decode failed")
+	ErrCoolifyIdentity         = errors.New("coolify application identity failed")
 )
 
 type Config struct {
@@ -207,11 +214,11 @@ func NewClient(config Config) (*Client, error) {
 func (c *Client) Topology(ctx context.Context) (Topology, error) {
 	front, err := c.application(ctx, c.config.FrontAppID)
 	if err != nil {
-		return Topology{}, ErrTopologyFrontApplication
+		return Topology{}, errors.Join(ErrTopologyFrontApplication, err)
 	}
 	backend, err := c.application(ctx, c.config.BackendAppID)
 	if err != nil {
-		return Topology{}, ErrTopologyBackendApplication
+		return Topology{}, errors.Join(ErrTopologyBackendApplication, err)
 	}
 	if front.branch() != "front-door-stable" || backend.branch() != "main" || !managedRepositoryMatches(front.repository()) || !managedRepositoryMatches(backend.repository()) {
 		return Topology{}, ErrTopologyManagedIdentity
@@ -308,7 +315,7 @@ func (c *Client) application(ctx context.Context, appID string) (application, er
 		app.UUID = appID
 	}
 	if app.UUID != appID {
-		return application{}, errors.New("coolify application identity mismatch")
+		return application{}, ErrCoolifyIdentity
 	}
 	return app, nil
 }
@@ -393,13 +400,13 @@ func (c *Client) requestJSON(ctx context.Context, method, path string, payload a
 	if payload != nil {
 		data, err := json.Marshal(payload)
 		if err != nil {
-			return err
+			return ErrCoolifyRequestBuild
 		}
 		body = strings.NewReader(string(data))
 	}
 	request, err := http.NewRequestWithContext(ctx, method, c.config.CoolifyURL+path, body)
 	if err != nil {
-		return err
+		return ErrCoolifyRequestBuild
 	}
 	request.Header.Set("Authorization", "Bearer "+c.config.CoolifyToken)
 	request.Header.Set("Accept", "application/json")
@@ -408,19 +415,19 @@ func (c *Client) requestJSON(ctx context.Context, method, path string, payload a
 	}
 	response, err := c.http.Do(request)
 	if err != nil {
-		return err
+		return ErrCoolifyRequestTransport
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
-		return err
+		return ErrCoolifyResponseRead
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("coolify API returned HTTP %d", response.StatusCode)
+		return ErrCoolifyResponseHTTP
 	}
 	if result != nil && len(strings.TrimSpace(string(data))) > 0 {
 		if err := json.Unmarshal(data, result); err != nil {
-			return err
+			return ErrCoolifyResponseDecode
 		}
 	}
 	return nil

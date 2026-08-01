@@ -17,18 +17,24 @@ import (
 type startupCode string
 
 const (
-	startupInitializing                     startupCode = "initializing"
-	startupConfigurationInvalid             startupCode = "configuration_invalid"
-	startupJournalOpenFailed                startupCode = "journal_open_failed"
-	startupCoolifyClientInvalid             startupCode = "coolify_client_invalid"
-	startupTopologyValidationFailed         startupCode = "topology_validation_failed"
-	startupTopologyFrontApplicationFailed   startupCode = "topology_front_application_failed"
-	startupTopologyBackendApplicationFailed startupCode = "topology_backend_application_failed"
-	startupTopologyIdentityInvalid          startupCode = "topology_identity_invalid"
-	startupTopologyFrontBackendFailed       startupCode = "topology_front_backend_failed"
-	startupTopologyContractInvalid          startupCode = "topology_contract_invalid"
-	startupDurableStateFailed               startupCode = "durable_state_failed"
-	startupStatusPublishFailed              startupCode = "status_publish_failed"
+	startupInitializing                      startupCode = "initializing"
+	startupConfigurationInvalid              startupCode = "configuration_invalid"
+	startupJournalOpenFailed                 startupCode = "journal_open_failed"
+	startupCoolifyClientInvalid              startupCode = "coolify_client_invalid"
+	startupTopologyValidationFailed          startupCode = "topology_validation_failed"
+	startupTopologyFrontApplicationFailed    startupCode = "topology_front_application_failed"
+	startupTopologyFrontApplicationBuild     startupCode = "topology_front_application_request_build_failed"
+	startupTopologyFrontApplicationTransport startupCode = "topology_front_application_transport_failed"
+	startupTopologyFrontApplicationRead      startupCode = "topology_front_application_response_read_failed"
+	startupTopologyFrontApplicationHTTP      startupCode = "topology_front_application_http_failed"
+	startupTopologyFrontApplicationDecode    startupCode = "topology_front_application_decode_failed"
+	startupTopologyFrontApplicationIdentity  startupCode = "topology_front_application_identity_failed"
+	startupTopologyBackendApplicationFailed  startupCode = "topology_backend_application_failed"
+	startupTopologyIdentityInvalid           startupCode = "topology_identity_invalid"
+	startupTopologyFrontBackendFailed        startupCode = "topology_front_backend_failed"
+	startupTopologyContractInvalid           startupCode = "topology_contract_invalid"
+	startupDurableStateFailed                startupCode = "durable_state_failed"
+	startupStatusPublishFailed               startupCode = "status_publish_failed"
 )
 
 type coordinatorRuntimeState struct {
@@ -182,6 +188,18 @@ func serveCoordinator(ctx context.Context, listener net.Listener, getenv func(st
 
 func topologyStartupCode(err error) startupCode {
 	switch {
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyRequestBuild):
+		return startupTopologyFrontApplicationBuild
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyRequestTransport):
+		return startupTopologyFrontApplicationTransport
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyResponseRead):
+		return startupTopologyFrontApplicationRead
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyResponseHTTP):
+		return startupTopologyFrontApplicationHTTP
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyResponseDecode):
+		return startupTopologyFrontApplicationDecode
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyIdentity):
+		return startupTopologyFrontApplicationIdentity
 	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication):
 		return startupTopologyFrontApplicationFailed
 	case errors.Is(err, frontdoorcoordinator.ErrTopologyBackendApplication):
