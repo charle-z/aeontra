@@ -99,9 +99,6 @@ func coordinatorHTTPHandler(state *coordinatorRuntimeState) http.Handler {
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		response := state.snapshot()
 		w.Header().Set("Content-Type", "application/json")
-		if !response.Ready {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		}
 		_ = json.NewEncoder(w).Encode(response)
 	})
 	return mux

@@ -123,6 +123,10 @@ func TestCoordinatorInitializationFailureKeepsSanitizedLiveness(t *testing.T) {
 	if status != http.StatusServiceUnavailable || !strings.Contains(body, `"code":"journal_open_failed"`) {
 		t.Fatalf("ready status=%d body=%q", status, body)
 	}
+	status, body = coordinatorGET(t, baseURL, "/status")
+	if status != http.StatusOK || !strings.Contains(body, `"code":"journal_open_failed"`) {
+		t.Fatalf("status endpoint status=%d body=%q", status, body)
+	}
 	for _, forbidden := range []string{"token-value", "request-id", "/private/path"} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("readiness exposed %q: %s", forbidden, body)

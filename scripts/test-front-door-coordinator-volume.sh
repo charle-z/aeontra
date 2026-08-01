@@ -4,18 +4,14 @@ set -eu
 volume="mcp-front-door-coordinator-ci-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 container="mcp-front-door-coordinator-ci-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 secret="coordinator-ci-credential-marker"
-ready_body="$(mktemp)"
 cleanup() {
-    rm -f "$ready_body"
     docker rm --force "$container" >/dev/null 2>&1 || true
     docker volume rm "$volume" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-command -v curl >/dev/null
 docker volume create "$volume" >/dev/null
 docker run --detach --name "$container" \
-    --publish 127.0.0.1::8766 \
     --volume "$volume:/coordinator-state" \
     --env COOLIFY_URL=https://control.example \
     --env COOLIFY_API_TOKEN="$secret" \
@@ -46,20 +42,20 @@ test "$attempt" -lt 30
 test "$(docker exec "$container" awk '/^Uid:/ {print $2; exit}' /proc/1/status)" = 10003
 docker exec "$container" su-exec 10003:10003 sh -c 'test -w /coordinator-state && : > /coordinator-state/.write-probe && rm /coordinator-state/.write-probe'
 
-endpoint="$(docker port "$container" 8766/tcp | head -n 1)"
-test -n "$endpoint"
 ready_attempt=0
 while [ "$ready_attempt" -lt 45 ]; do
-    ready_status="$(curl --silent --show-error --output "$ready_body" --write-out '%{http_code}' "http://$endpoint/readyz" || true)"
-    if [ "$ready_status" = 503 ] && grep -q '"code":"topology_validation_failed"' "$ready_body"; then
+    ready_headers="$(docker exec "$container" sh -c 'wget -S -O /dev/null http://127.0.0.1:8766/readyz 2>&1 || true')"
+    status_body="$(docker exec "$container" wget -qO- http://127.0.0.1:8766/status || true)"
+    if printf '%s\n' "$ready_headers" | grep -q '503 Service Unavailable' \
+        && printf '%s\n' "$status_body" | grep -q '"code":"topology_validation_failed"'; then
         break
     fi
     ready_attempt=$((ready_attempt + 1))
     sleep 1
 done
 test "$ready_attempt" -lt 45
-if grep -Fq "$secret" "$ready_body"; then
-    echo "readiness exposed a secret" >&2
+if printf '%s\n' "$status_body" | grep -Fq "$secret"; then
+    echo "status exposed a secret" >&2
     exit 1
 fi
 logs="$(docker logs "$container" 2>&1)"
