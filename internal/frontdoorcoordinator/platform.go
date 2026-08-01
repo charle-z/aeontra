@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -30,6 +31,13 @@ var (
 
 	ErrCoolifyRequestBuild     = errors.New("coolify request build failed")
 	ErrCoolifyRequestTransport = errors.New("coolify request transport failed")
+	ErrCoolifyPrivateTarget    = errors.New("coolify private gateway target failed")
+	ErrCoolifyPrivateResolve   = errors.New("coolify private gateway resolution failed")
+	ErrCoolifyPrivateAddress   = errors.New("coolify private gateway address policy failed")
+	ErrCoolifyPrivateRefused   = errors.New("coolify private gateway connection refused")
+	ErrCoolifyPrivateTimeout   = errors.New("coolify private gateway connection timed out")
+	ErrCoolifyPrivateRoute     = errors.New("coolify private gateway route unavailable")
+	ErrCoolifyPrivateConnect   = errors.New("coolify private gateway connection failed")
 	ErrCoolifyResponseRead     = errors.New("coolify response read failed")
 	ErrCoolifyResponseHTTP     = errors.New("coolify response HTTP failed")
 	ErrCoolifyResponseDecode   = errors.New("coolify response decode failed")
@@ -98,27 +106,74 @@ func privateCoolifyDialContext(expectedAddress string) func(context.Context, str
 	expectedHost, expectedPort, err := net.SplitHostPort(expectedAddress)
 	if err != nil || expectedHost == "" || expectedPort == "" {
 		return func(context.Context, string, string) (net.Conn, error) {
-			return nil, errors.New("private Coolify expected control origin is invalid")
+			return nil, ErrCoolifyPrivateTarget
 		}
 	}
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)
 		if err != nil || !strings.EqualFold(host, expectedHost) || port != expectedPort {
-			return nil, errors.New("private Coolify dial target is outside the fixed control origin")
+			return nil, ErrCoolifyPrivateTarget
 		}
 		addresses, err := net.DefaultResolver.LookupIPAddr(ctx, privateCoolifyHost)
-		if err != nil || !privateCoolifyAddressesAllowed(addresses) {
-			return nil, errors.New("private Coolify host gateway did not resolve exclusively to private addresses")
+		if err != nil {
+			return nil, ErrCoolifyPrivateResolve
+		}
+		if !privateCoolifyAddressesAllowed(addresses) {
+			return nil, ErrCoolifyPrivateAddress
 		}
 		dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+		var classified error
 		for _, resolved := range addresses {
 			connection, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(resolved.IP.String(), port))
 			if dialErr == nil {
 				return connection, nil
 			}
+			current := classifyPrivateCoolifyDialError(dialErr)
+			if classified == nil {
+				classified = current
+			} else if classified != current {
+				classified = ErrCoolifyPrivateConnect
+			}
 		}
-		return nil, errors.New("private Coolify host gateway connection failed")
+		if classified == nil {
+			classified = ErrCoolifyPrivateConnect
+		}
+		return nil, classified
 	}
+}
+
+func classifyPrivateCoolifyDialError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return ErrCoolifyPrivateTimeout
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return ErrCoolifyPrivateTimeout
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return ErrCoolifyPrivateRefused
+	}
+	if errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH) {
+		return ErrCoolifyPrivateRoute
+	}
+	return ErrCoolifyPrivateConnect
+}
+
+func closedCoolifyTransportError(err error) error {
+	for _, detail := range []error{
+		ErrCoolifyPrivateTarget,
+		ErrCoolifyPrivateResolve,
+		ErrCoolifyPrivateAddress,
+		ErrCoolifyPrivateRefused,
+		ErrCoolifyPrivateTimeout,
+		ErrCoolifyPrivateRoute,
+		ErrCoolifyPrivateConnect,
+	} {
+		if errors.Is(err, detail) {
+			return errors.Join(ErrCoolifyRequestTransport, detail)
+		}
+	}
+	return ErrCoolifyRequestTransport
 }
 
 type application struct {
@@ -415,7 +470,7 @@ func (c *Client) requestJSON(ctx context.Context, method, path string, payload a
 	}
 	response, err := c.http.Do(request)
 	if err != nil {
-		return ErrCoolifyRequestTransport
+		return closedCoolifyTransportError(err)
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))

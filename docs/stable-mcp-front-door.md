@@ -146,7 +146,9 @@ The coordinator contract is exposed through five closed operations:
    facade commit, exact backend commit, fixed application UUIDs, protocol and catalog
    into a single-use plan.
 2. platform_front_door_coordinator_create creates or reconciles one private worker
-   with no public domain, no Docker options and one dedicated persistent journal.
+   with no public domain, one dedicated persistent journal and the exact private
+   host-gateway mapping required to reach the operator-owned Coolify API without
+   sending its token to a public HTTP destination.
 3. platform_front_door_transition_preview reconstructs the real topology, verifies
    healthy finished deployments, exact branch commits and the complete managed worker
    environment, then returns a dispatch, observe or noop disposition for cutover or
@@ -156,6 +158,13 @@ The coordinator contract is exposed through five closed operations:
    the coordinator. It does not patch facade or backend domains.
 5. platform_front_door_transition_status reads the bounded published journal and the
    current fixed topology without exposing environment values or credentials.
+
+Startup readiness exposes only closed diagnostic codes. Private host-gateway transport
+failures distinguish an invalid fixed target, gateway resolution, address-policy
+rejection, connection refusal, timeout, unavailable route and an otherwise unclassified
+connection failure. The generic transport code remains the fallback for non-gateway
+transports. None of these codes includes the Coolify origin, host, IP, port, token,
+response body or raw network error.
 
 The worker has no connector hostname and is not a second facade. It stores an atomic,
 worker-private monotonic journal under /coordinator-state, accepts only the two fixed

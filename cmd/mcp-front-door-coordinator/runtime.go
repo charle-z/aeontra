@@ -25,6 +25,13 @@ const (
 	startupTopologyFrontApplicationFailed    startupCode = "topology_front_application_failed"
 	startupTopologyFrontApplicationBuild     startupCode = "topology_front_application_request_build_failed"
 	startupTopologyFrontApplicationTransport startupCode = "topology_front_application_transport_failed"
+	startupTopologyFrontTransportTarget      startupCode = "topology_front_application_transport_target_failed"
+	startupTopologyFrontTransportResolve     startupCode = "topology_front_application_transport_resolution_failed"
+	startupTopologyFrontTransportAddress     startupCode = "topology_front_application_transport_address_policy_failed"
+	startupTopologyFrontTransportRefused     startupCode = "topology_front_application_transport_connection_refused"
+	startupTopologyFrontTransportTimeout     startupCode = "topology_front_application_transport_connection_timed_out"
+	startupTopologyFrontTransportRoute       startupCode = "topology_front_application_transport_route_unavailable"
+	startupTopologyFrontTransportConnect     startupCode = "topology_front_application_transport_connection_failed"
 	startupTopologyFrontApplicationRead      startupCode = "topology_front_application_response_read_failed"
 	startupTopologyFrontApplicationHTTP      startupCode = "topology_front_application_http_failed"
 	startupTopologyFrontApplicationDecode    startupCode = "topology_front_application_decode_failed"
@@ -190,6 +197,20 @@ func topologyStartupCode(err error) startupCode {
 	switch {
 	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyRequestBuild):
 		return startupTopologyFrontApplicationBuild
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateTarget):
+		return startupTopologyFrontTransportTarget
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateResolve):
+		return startupTopologyFrontTransportResolve
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateAddress):
+		return startupTopologyFrontTransportAddress
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateRefused):
+		return startupTopologyFrontTransportRefused
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateTimeout):
+		return startupTopologyFrontTransportTimeout
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateRoute):
+		return startupTopologyFrontTransportRoute
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateConnect):
+		return startupTopologyFrontTransportConnect
 	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyRequestTransport):
 		return startupTopologyFrontApplicationTransport
 	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication) && errors.Is(err, frontdoorcoordinator.ErrCoolifyResponseRead):

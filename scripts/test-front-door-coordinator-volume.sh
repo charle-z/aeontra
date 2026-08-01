@@ -48,7 +48,7 @@ while [ "$ready_attempt" -lt 45 ]; do
     ready_headers="$(docker exec "$container" sh -c 'wget -S -O /dev/null http://127.0.0.1:8766/readyz 2>&1 || true')"
     status_body="$(docker exec "$container" wget -qO- http://127.0.0.1:8766/status || true)"
     if printf '%s\n' "$ready_headers" | grep -q '503 Service Unavailable' \
-        && printf '%s\n' "$status_body" | grep -q '"code":"topology_front_application_transport_failed"'; then
+        && printf '%s\n' "$status_body" | grep -q '"code":"topology_front_application_transport_connection_refused"'; then
         break
     fi
     ready_attempt=$((ready_attempt + 1))
@@ -60,7 +60,7 @@ if printf '%s\n' "$status_body" | grep -Fq "$secret"; then
     exit 1
 fi
 logs="$(docker logs "$container" 2>&1)"
-printf '%s\n' "$logs" | grep -q 'code=topology_front_application_transport_failed'
+printf '%s\n' "$logs" | grep -q 'code=topology_front_application_transport_connection_refused'
 if printf '%s\n' "$logs" | grep -Fq "$secret"; then
     echo "logs exposed a secret" >&2
     exit 1

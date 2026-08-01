@@ -1,32 +1,47 @@
-# Handoff — P16 deterministic calibration review
+# Handoff — Stable MCP Front Door private transport diagnostics
 
-Canonical `main` and production are currently synchronized at
-`1e418658102645ed45b739a9a84562704cae65ab`. Coolify application
-`jqf7qz5ensoqtvl1tb197gcv` is healthy. The live runtime exposes 102 tools with
-catalog hash `sha256:5a2091d85585d13eb7efbc22d942b2dfbd71fc7d547581803eb7633cac64d68b`.
+The Stable MCP Front Door Brain gate remains open. Functional Edge roadmap work,
+cutover and rollback are blocked until the private coordinator is healthy and real
+MCP continuity is proven.
 
-Historical markers remain explicit: P8.1 is closed and deployed at
-`d343264bffdc0ae1bc045a9d723e913be977090c`, tagged `p8.1`; that historical
-snapshot had 67 tools and Edge state `not_paired`. P9 Brain is its deployed
-successor at `4fbe1dda02351c632e67c0f10a5c5b314df745e2`.
+Verified production base:
 
-Branch: `fix/p16-calibration-review`, based on `origin/main`.
+- repository and backend commit `8408fad6b872e000182e48be888293641c020367`;
+- backend protocol `2024-11-05`, 114 tools and catalog
+  `sha256:327a5ac4830172c9c64545c9b7d121487c773aed255f7c64e732606b491eaf99`;
+- healthy managed facade `o338wpoy1254d83ud2y8p1v8`;
+- private coordinator `v13i2apwnvu09ms7l77x6opk`, with no public domain;
+- durable journal target/state `idle`, revision 0 and no dispatched transition.
 
-Implemented locally and staged:
+One reviewed coordinator reconciliation produced deployment
+`jigawl3rhnpmjmwb2eqo4j85`. It built and started, but `/readyz` remained 503,
+emitted only `topology_front_application_transport_failed`, became unhealthy and
+was rolled back. The healthcheck fallback reached the service with `wget`; absence
+of `curl` was not the cause.
 
-- closed deterministic review of the exact 50/65/80 x cached/no-cache evidence matrix;
-- bounded cached-log proof requiring `CACHED` for each quota;
-- hard rejection of malformed, duplicate, incomplete, failed, unhealthy, OOM,
-  unbounded or identity-missing evidence;
-- root-private selection output and explicit structural-stop result;
-- calibrator/bootstrap integration, tests, docs and accurate Step 7 task state.
+Active branch: `fix/front-door-coordinator-transport-diagnostics`.
 
-Local validation is green: full repository tests, Vet, build, focused builder/docs/
-buildspike/coverage tests and diff checks. Staticcheck remains an exact-head CI gate
-because the local allowlist does not expose it.
+The branch preserves only closed private-transport classes: fixed target,
+resolution, address policy, refusal, timeout, route and generic connection failure.
+Raw network errors, origin, host, IP, port, token and response bodies remain absent
+from status, logs and MCP results. Unit and runtime mappings, container smoke and
+the stable-front-door runbook are synchronized.
 
-Do not begin Step 8. Real VPS calibration is still a genuine host-root boundary. The
-public Coolify MCP has no host systemd/filesystem authority, and privileged profiles are
-disabled. After this branch is merged and deployed, run the reviewed one-command
-bootstrap against the exact green merge commit, preserve its private archive, record a
-new dated baseline, and freeze the selected quota before worker integration.
+Verification completed:
+
+- focused coordinator and workflow-policy tests;
+- all `cmd`, `docs`, integrations, packaging and profile tests;
+- all internal package tests in deterministic batches;
+- `go vet ./...`;
+- `go build ./...`;
+- `git diff --check`.
+
+Next exact sequence:
+
+1. Commit and publish this diagnostic-only branch.
+2. Open a non-draft PR and require all exact-head checks green.
+3. Merge by merge commit and verify production serves the merge.
+4. Reconcile the same private coordinator exactly once and observe that deployment.
+5. Use its closed subcode as proof for a separate minimal correction PR.
+6. Require coordinator health, ready journal and real `front.*` MCP continuity
+   before any cutover.
