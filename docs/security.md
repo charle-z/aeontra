@@ -160,7 +160,7 @@ bearer.
 OAuth is the preferred public connector path. The public URL and passphrase must be set
 together; half-configuration fails startup. With a durable state root, dynamic client
 registrations and rotating refresh grants persist under `/state`. Authorization codes
-and access tokens remain bounded and in-memory according to the OAuth implementation.
+and raw access tokens remain memory-only; only bounded SHA-256 access-grant digests may persist.
 
 The static bearer is a **header-only recovery** mechanism. It is accepted through
 `Authorization: Bearer`; query-string credentials are rejected even when the value is

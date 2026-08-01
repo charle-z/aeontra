@@ -81,6 +81,10 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 // refresh token, and writes the token response.
 func (p *Provider) issueTokenPair(w http.ResponseWriter, clientID, resource, scope string) {
 	access := p.issueAccessToken(clientID, resource, scope, accessTokenTTL)
+	if access == "" {
+		tokenError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "access token storage is temporarily unavailable")
+		return
+	}
 	refresh := randToken()
 	p.store.putRefresh(refresh, refreshGrant{
 		clientID:  clientID,

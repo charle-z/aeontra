@@ -37,8 +37,17 @@ func (s *tokenStore) revokeAccess(token string) {
 	if s == nil || token == "" {
 		return
 	}
+	digest := accessTokenDigest(token)
 	s.mu.Lock()
-	delete(s.access, token)
+	_ = withAccessStoreFileLock(s.accessStorePath, func() error {
+		if s.accessStorePath != "" {
+			if err := s.loadAccessLocked(); err != nil {
+				return err
+			}
+		}
+		delete(s.access, digest)
+		return s.persistAccessLocked()
+	})
 	s.mu.Unlock()
 }
 

@@ -17,21 +17,23 @@ Set both required env vars (OAuth stays **off** unless both are present):
 | `MCP_DEVBOX_OAUTH_PASSPHRASE` | The owner login secret entered on the authorize page. | *(a strong passphrase)* |
 | `MCP_DEVBOX_STATE_ROOT` | Administrator-owned durable state root. When set, missing OAuth store paths default beneath it. The Docker image sets `/state`. | `/state` |
 | `MCP_DEVBOX_OAUTH_CLIENT_STORE` | Optional absolute override for persistent Dynamic Client Registration clients. Defaults to `<STATE_ROOT>/oauth-clients.json` when a state root is configured. | `/state/oauth-clients.json` |
+| `MCP_DEVBOX_OAUTH_ACCESS_STORE` | Optional absolute override for the 0600 access-grant store. It contains only SHA-256 bearer digests plus bounded grant metadata, never raw access tokens. Defaults to `<STATE_ROOT>/oauth-access.json`. | `/state/oauth-access.json` |
 | `MCP_DEVBOX_OAUTH_REFRESH_STORE` | Optional absolute override for the 0600 refresh-token store. Defaults to `<STATE_ROOT>/oauth-refresh.json` when a state root is configured. | `/state/oauth-refresh.json` |
 
 The token **audience** (canonical resource) is derived as `<PUBLIC_URL>/mcp`.
 
 ### Avoiding re-login on every redeploy
 
-The Docker deployment sets `MCP_DEVBOX_STATE_ROOT=/state`, so OAuth client registrations
-and rotating refresh tokens use durable files there by default. Explicit `..._CLIENT_STORE`
-and `..._REFRESH_STORE` values still take precedence when a different administrator-owned
-location is required.
+The Docker deployment sets `MCP_DEVBOX_STATE_ROOT=/state`, so OAuth client registrations,
+SHA-256 access-grant digests and rotating refresh tokens use durable files there by default.
+Explicit `..._CLIENT_STORE`, `..._ACCESS_STORE` and `..._REFRESH_STORE` values still take
+precedence when a different administrator-owned location is required.
 
 The `/state` path must be a persistent volume. A container-local or newly-created anonymous
 state volume still disappears from the next deployment's point of view. With the same
-persistent `/state` mounted across replacements, ChatGPT can silently refresh and keep the
-connector authorized. Access tokens and authorization codes remain memory-only by design.
+persistent `/state` mounted across replacements, an unexpired bearer remains valid on the
+replacement backend and ChatGPT can also rotate it through its durable refresh grant. Raw
+access tokens and authorization codes remain memory-only; only access-token digests persist.
 
 When no state root and no explicit store paths are configured, local development preserves
 the previous memory-only behavior and a process restart requires authorization again.
@@ -74,9 +76,9 @@ clients can bootstrap the flow.
 - The owner passphrase is compared in **constant time** and is **rate-limited**; DCR is
   capped and rate-limited. A registered client is useless without the human passphrase.
 - Redirect URIs: exact match, `https`-or-`localhost` only, no fragments/wildcards.
-- **Narrow persistence only**: public client registrations and refresh grants may be
-  restored from their administrator-owned 0600 stores. Authorization codes and access
-  tokens stay in process memory and disappear on restart.
+- **Narrow persistence only**: public client registrations, SHA-256 access-token digests
+  with bounded grant metadata, and refresh grants may be restored from administrator-owned
+  0600 stores. Raw access tokens and authorization codes are never persisted.
 - Keep `/state` outside the writable repo workspace so MCP tools cannot edit OAuth server
   state as repository data.
 
