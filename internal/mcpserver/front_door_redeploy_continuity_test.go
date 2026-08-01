@@ -201,6 +201,14 @@ func TestFrontDoorBackendReplacementPreservesSessionSSEAndTools(t *testing.T) {
 	tracker := &continuityRPCTracker{}
 	instanceA := &countedBackendInstance{next: handlerA, tracker: tracker}
 	instanceB := &countedBackendInstance{next: handlerB, tracker: tracker}
+	unavailableHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" || r.URL.Path == "/version" {
+			http.Error(w, "replacement gap", http.StatusServiceUnavailable)
+			return
+		}
+		http.Error(w, "no upstream", http.StatusBadGateway)
+	})
+	unavailable := &countedBackendInstance{next: unavailableHandler, tracker: tracker}
 	backendSwitch := newSwitchingHTTPHandler(instanceA)
 	backend := httptest.NewServer(backendSwitch)
 	defer backend.Close()
@@ -229,6 +237,12 @@ func TestFrontDoorBackendReplacementPreservesSessionSSEAndTools(t *testing.T) {
 	closeSSE, sseClosed := openContinuitySSE(t, client, endpoint.URL, sessionID)
 	defer closeSSE()
 
+	backendSwitch.Replace(unavailable)
+	lifecycleA.BeginDrain()
+	if err := front.Probe(context.Background()); err == nil {
+		t.Fatal("front door accepted the no-upstream replacement gap")
+	}
+
 	errorsDuring := make(chan error, 32)
 	callsDone := make(chan struct{})
 	go func() {
@@ -237,14 +251,17 @@ func TestFrontDoorBackendReplacementPreservesSessionSSEAndTools(t *testing.T) {
 			if err := continuityToolCall(client, endpoint.URL, sessionID, id); err != nil {
 				errorsDuring <- err
 			}
-			time.Sleep(5 * time.Millisecond)
 		}
 	}()
 
-	deadline := time.Now().Add(2 * time.Second)
-	for instanceA.calls.Load() < 4 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
+	select {
+	case <-callsDone:
+		t.Fatal("tool calls escaped the replacement gap instead of waiting for a compatible backend")
+	case err := <-sseClosed:
+		t.Fatalf("SSE reset during the replacement gap: %v", err)
+	case <-time.After(150 * time.Millisecond):
 	}
+
 	backendSwitch.Replace(instanceB)
 	if err := front.Probe(context.Background()); err != nil {
 		t.Fatalf("front door rejected ready replacement: %v", err)
@@ -279,7 +296,6 @@ func TestFrontDoorBackendReplacementPreservesSessionSSEAndTools(t *testing.T) {
 	}
 
 	closeSSE()
-	lifecycleA.BeginDrain()
 	select {
 	case err := <-sseClosed:
 		if err != nil && !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "closed") {
