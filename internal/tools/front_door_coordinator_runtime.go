@@ -10,10 +10,11 @@ import (
 )
 
 type managedFrontDoorCoordinatorIdentity struct {
-	MainCommit  string
-	FrontCommit string
-	Protocol    string
-	CatalogHash string
+	CoordinatorCommit string
+	MainCommit        string
+	FrontCommit       string
+	Protocol          string
+	CatalogHash       string
 }
 
 func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front, backend platformApplication) (managedFrontDoorCoordinatorIdentity, error) {
@@ -28,17 +29,35 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 	if err != nil || !frontDoorCommitPattern.MatchString(frontSHA) {
 		return managedFrontDoorCoordinatorIdentity{}, errors.New("stable front-door branch returned an invalid commit")
 	}
-	for name, current := range map[string]platformApplication{
-		"coordinator": app,
-		"front door":  front,
-		"backend":     backend,
-	} {
-		if current.Status != "running:healthy" || current.DeploymentStatus != "finished" {
-			return managedFrontDoorCoordinatorIdentity{}, fmt.Errorf("managed %s application is not running healthy on a finished deployment", name)
-		}
+	components := []struct {
+		name           string
+		app            platformApplication
+		expectedCommit string
+	}{
+		{name: "coordinator", app: app},
+		{name: "front door", app: front, expectedCommit: frontSHA},
+		{name: "backend", app: backend, expectedCommit: mainSHA},
 	}
-	if app.commit() != mainSHA || backend.commit() != mainSHA || front.commit() != frontSHA {
-		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed front-door deployment commits do not match the approved branches")
+	deployments := make(map[string]managedApplicationDeployment, len(components))
+	for _, component := range components {
+		if component.app.Status != "running:healthy" {
+			return managedFrontDoorCoordinatorIdentity{}, fmt.Errorf("managed %s application is not running healthy", component.name)
+		}
+		deployment, err := s.latestManagedApplicationDeployment(component.app.UUID)
+		if err != nil {
+			return managedFrontDoorCoordinatorIdentity{}, fmt.Errorf("managed %s deployment identity: %w", component.name, err)
+		}
+		if err := requireManagedDeployment(component.name, deployment, component.expectedCommit); err != nil {
+			return managedFrontDoorCoordinatorIdentity{}, err
+		}
+		deployments[component.name] = deployment
+	}
+	coordinatorOnMain, err := s.github.commitIsAncestor(context.Background(), "mcp-devbox", deployments["coordinator"].Commit, mainSHA)
+	if err != nil {
+		return managedFrontDoorCoordinatorIdentity{}, fmt.Errorf("validating managed coordinator deployment ancestry: %w", err)
+	}
+	if !coordinatorOnMain {
+		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed coordinator latest deployment is not part of the approved main history")
 	}
 
 	coordinatorCoolifyURL, err := s.managedFrontDoorCoordinatorCoolifyURL()
@@ -150,5 +169,11 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 			return managedFrontDoorCoordinatorIdentity{}, err
 		}
 	}
-	return managedFrontDoorCoordinatorIdentity{MainCommit: mainSHA, FrontCommit: frontSHA, Protocol: protocol, CatalogHash: catalogHash}, nil
+	return managedFrontDoorCoordinatorIdentity{
+		CoordinatorCommit: deployments["coordinator"].Commit,
+		MainCommit:        mainSHA,
+		FrontCommit:       frontSHA,
+		Protocol:          protocol,
+		CatalogHash:       catalogHash,
+	}, nil
 }

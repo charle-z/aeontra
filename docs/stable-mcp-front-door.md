@@ -170,6 +170,15 @@ The coordinator contract is exposed through five closed operations:
    healthy finished deployments, exact branch commits and the complete managed worker
    environment, then returns a dispatch, observe or noop disposition for cutover or
    rollback. The same identity is fixed in the single-use plan and revalidated at execute.
+
+Application health comes from each Coolify application record, but deployment state and
+commit identity do not. Current Coolify versions may expose `deployment_status=null` and
+`git_commit_sha=HEAD` on an otherwise healthy application. The gate therefore queries the
+application deployment history, selects one unambiguous latest deployment by timestamp,
+requires terminal `finished`, and seals its exact commit into the preview. Backend and
+front-door deployments must equal the current approved branch commits. The coordinator
+may run an earlier reviewed `main` commit, but that commit must remain an ancestor of the
+current `main`; a divergent, active, failed, ambiguous or malformed deployment fails closed.
 4. platform_front_door_transition may only set that closed target, bind the consumed
    single-use plan ID as the durable request ID and trigger one normal deployment of
    the coordinator. It does not patch facade or backend domains.

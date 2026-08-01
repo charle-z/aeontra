@@ -93,6 +93,31 @@ func (c *GitHubClient) branchSHA(ctx context.Context, repo, branch string) (stri
 	return response.Object.SHA, nil
 }
 
+type githubCompareResponse struct {
+	Status string `json:"status"`
+}
+
+func (c *GitHubClient) commitIsAncestor(ctx context.Context, repo, ancestor, descendant string) (bool, error) {
+	ancestor = strings.TrimSpace(ancestor)
+	descendant = strings.TrimSpace(descendant)
+	if !frontDoorCommitPattern.MatchString(ancestor) || !frontDoorCommitPattern.MatchString(descendant) {
+		return false, fmt.Errorf("GitHub commit ancestry received an invalid commit")
+	}
+	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/compare/" + ancestor + "..." + descendant
+	status, body, err := c.doJSONLimit(ctx, http.MethodGet, path, nil, githubRefAndMergeResponseLimit)
+	if err != nil {
+		return false, err
+	}
+	if status < 200 || status >= 300 {
+		return false, fmt.Errorf("GitHub commit ancestry lookup -> HTTP %d", status)
+	}
+	var response githubCompareResponse
+	if err := json.Unmarshal([]byte(body), &response); err != nil {
+		return false, fmt.Errorf("decoding GitHub commit ancestry: %w", err)
+	}
+	return response.Status == "ahead" || response.Status == "identical", nil
+}
+
 func (c *GitHubClient) findPullRequest(ctx context.Context, repo, head, base string) (*githubPullResponse, error) {
 	query := url.Values{}
 	query.Set("state", "open")
