@@ -343,7 +343,7 @@ func (s *PlatformCapability) PlatformFrontDoorTransitionPreview(targetRaw string
 		"action": action, "target": string(target), "coordinator_app": app.UUID,
 		"front_app": front.UUID, "backend_app": backend.UUID, "front_domain": topology.FrontDomain,
 		"front_backend": topology.FrontBackendURL, "backend_domains": topology.BackendDomains, "status_revision": fmt.Sprint(published.Revision),
-		"main_commit": identity.MainCommit, "front_commit": identity.FrontCommit,
+		"coordinator_commit": identity.CoordinatorCommit, "main_commit": identity.MainCommit, "front_commit": identity.FrontCommit,
 		"expected_protocol": identity.Protocol, "expected_catalog_hash": identity.CatalogHash,
 	})
 	if err != nil {
@@ -357,7 +357,7 @@ func (s *PlatformCapability) PlatformFrontDoorTransitionPreview(targetRaw string
 	}
 	return fmt.Sprintf("action: %s\ndisposition: %s\ntarget: %s\nphase: %s\ncoordinator_application_uuid: %s\nfront_application_uuid: %s\nbackend_application_uuid: %s\nfront_domain: %s\nfront_backend: %s\nbackend_domains: %s\ncurrent_state: %s\ncurrent_revision: %d\ncoordinator_commit: %s\nfront_commit: %s\nbackend_commit: %s\nexpected_protocol: %s\nexpected_catalog_hash: %s\neffect: %s\nplan_id: %s\nexpiry: %s\n",
 		headlineAction, action, target, phase, app.UUID, front.UUID, backend.UUID, topology.FrontDomain, topology.FrontBackendURL, topology.BackendDomains,
-		published.State, published.Revision, identity.MainCommit, identity.FrontCommit, identity.MainCommit, identity.Protocol, identity.CatalogHash,
+		published.State, published.Revision, identity.CoordinatorCommit, identity.FrontCommit, identity.MainCommit, identity.Protocol, identity.CatalogHash,
 		managedFrontDoorTransitionEffect(action), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
@@ -415,7 +415,7 @@ func (s *PlatformCapability) PlatformFrontDoorTransition(planID string, approve 
 	if err == nil {
 		frontBackend, err = s.managedFrontDoorConfiguredBackend(front.UUID)
 	}
-	if err != nil || identity.MainCommit != plan.Args["main_commit"] || identity.FrontCommit != plan.Args["front_commit"] ||
+	if err != nil || identity.CoordinatorCommit != plan.Args["coordinator_commit"] || identity.MainCommit != plan.Args["main_commit"] || identity.FrontCommit != plan.Args["front_commit"] ||
 		identity.Protocol != plan.Args["expected_protocol"] || identity.CatalogHash != plan.Args["expected_catalog_hash"] || backend.UUID != plan.Args["backend_app"] || front.domain() != plan.Args["front_domain"] || frontBackend != plan.Args["front_backend"] || backend.domain() != plan.Args["backend_domains"] {
 		if err == nil {
 			err = errors.New("managed topology changed after transition preview")
