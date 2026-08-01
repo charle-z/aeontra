@@ -380,7 +380,6 @@ func (s *Store) LeaseNextRuntime(ctx context.Context, deviceID string) (Runtime,
 			if commitErr := tx.Commit(); commitErr != nil {
 				return Runtime{}, false, errors.New("model runtime expiry commit failed")
 			}
-			s.signal()
 			return Runtime{}, false, nil
 		}
 		return Runtime{}, false, errors.New("model runtime lease failed")
