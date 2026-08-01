@@ -12,14 +12,17 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 const (
-	defaultProbeInterval = time.Second
-	defaultProbeTimeout  = 3 * time.Second
-	maxVersionBody       = 64 << 10
+	defaultProbeInterval    = time.Second
+	defaultProbeTimeout     = 3 * time.Second
+	defaultAdmissionTimeout = 45 * time.Second
+	sseWaitKeepalive        = 5 * time.Second
+	maxVersionBody          = 64 << 10
 )
 
 var (
@@ -37,6 +40,7 @@ type Config struct {
 	FrontDoorCommit     string
 	ProbeInterval       time.Duration
 	ProbeTimeout        time.Duration
+	AdmissionTimeout    time.Duration
 	Client              *http.Client
 }
 
@@ -67,10 +71,20 @@ type FrontDoor struct {
 	frontDoorCommit     string
 	probeInterval       time.Duration
 	probeTimeout        time.Duration
+	admissionTimeout    time.Duration
 	probeClient         *http.Client
+	streamClient        *http.Client
 	proxy               *httputil.ReverseProxy
+	probeMu             sync.Mutex
+	stateMu             sync.Mutex
+	stateChanged        chan struct{}
 	state               atomic.Pointer[snapshot]
 	activeRequests      atomic.Int64
+	admissionWaits      atomic.Int64
+	admissionRecoveries atomic.Int64
+	admissionTimeouts   atomic.Int64
+	sseReconnects       atomic.Int64
+	sseReconnectFails   atomic.Int64
 }
 
 func New(config Config) (*FrontDoor, error) {
@@ -99,6 +113,12 @@ func New(config Config) (*FrontDoor, error) {
 	if config.ProbeTimeout < 250*time.Millisecond || config.ProbeTimeout > 10*time.Second {
 		return nil, errors.New("front door probe timeout is invalid")
 	}
+	if config.AdmissionTimeout <= 0 {
+		config.AdmissionTimeout = defaultAdmissionTimeout
+	}
+	if config.AdmissionTimeout < 250*time.Millisecond || config.AdmissionTimeout > 2*time.Minute {
+		return nil, errors.New("front door admission timeout is invalid")
+	}
 	client := config.Client
 	if client == nil {
 		client = &http.Client{Transport: http.DefaultTransport}
@@ -107,10 +127,22 @@ func New(config Config) (*FrontDoor, error) {
 	probeClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
+	streamClient := *client
+	streamClient.Timeout = 0
+	streamClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	transport := probeClient.Transport
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
+	streamTransport := transport
+	if standard, ok := transport.(*http.Transport); ok {
+		clone := standard.Clone()
+		clone.ResponseHeaderTimeout = config.ProbeTimeout
+		streamTransport = clone
+	}
+	streamClient.Transport = streamTransport
 	proxy := &httputil.ReverseProxy{
 		Transport:     transport,
 		FlushInterval: -1,
@@ -122,7 +154,8 @@ func New(config Config) (*FrontDoor, error) {
 	front := &FrontDoor{
 		backend: backend, expectedProtocol: config.ExpectedProtocol, expectedCatalogHash: config.ExpectedCatalogHash,
 		frontDoorCommit: config.FrontDoorCommit, probeInterval: config.ProbeInterval, probeTimeout: config.ProbeTimeout,
-		probeClient: &probeClient, proxy: proxy,
+		admissionTimeout: config.AdmissionTimeout, probeClient: &probeClient, streamClient: &streamClient,
+		proxy: proxy, stateChanged: make(chan struct{}),
 	}
 	front.state.Store(&snapshot{Reason: "backend_not_probed"})
 	proxy.ErrorHandler = front.proxyError
@@ -155,6 +188,12 @@ func validateBackendURL(raw string) (*url.URL, error) {
 
 // Probe verifies readiness and the exact public MCP compatibility identity.
 func (f *FrontDoor) Probe(parent context.Context) error {
+	f.probeMu.Lock()
+	defer f.probeMu.Unlock()
+	return f.probeLocked(parent)
+}
+
+func (f *FrontDoor) probeLocked(parent context.Context) error {
 	ctx, cancel := context.WithTimeout(parent, f.probeTimeout)
 	defer cancel()
 	if err := f.probeReady(ctx); err != nil {
@@ -168,11 +207,11 @@ func (f *FrontDoor) Probe(parent context.Context) error {
 	}
 	if info.Status != "ok" || info.ProtocolVersion != f.expectedProtocol || info.CatalogHash != f.expectedCatalogHash ||
 		!commitPattern.MatchString(info.Commit) || info.ToolCount < 1 {
-		err = errors.New("backend compatibility identity does not match the front door contract")
+		err = errBackendIncompatible
 		f.storeUnavailable(err)
 		return err
 	}
-	f.state.Store(&snapshot{Ready: true, Info: info, CheckedAt: time.Now().UTC()})
+	f.storeSnapshot(&snapshot{Ready: true, Info: info, CheckedAt: time.Now().UTC()})
 	return nil
 }
 
@@ -222,7 +261,7 @@ func (f *FrontDoor) storeUnavailable(err error) {
 	if previous != nil {
 		info = previous.Info
 	}
-	f.state.Store(&snapshot{Info: info, CheckedAt: time.Now().UTC(), Reason: reason})
+	f.storeSnapshot(&snapshot{Info: info, CheckedAt: time.Now().UTC(), Reason: reason})
 }
 
 // Run probes immediately and then continuously until context cancellation.
@@ -264,14 +303,19 @@ func (f *FrontDoor) Handler() http.Handler {
 			f.writeFrontDoorVersion(w)
 			return
 		}
-		state := f.state.Load()
-		if state == nil || !state.Ready {
+		f.activeRequests.Add(1)
+		defer f.activeRequests.Add(-1)
+		if isMCPStreamRequest(r) {
+			f.serveMCPStream(w, r)
+			return
+		}
+		waitCtx, cancel := context.WithTimeout(r.Context(), f.admissionTimeout)
+		defer cancel()
+		if err := f.waitForBackend(waitCtx, nil); err != nil {
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "MCP backend is temporarily unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		f.activeRequests.Add(1)
-		defer f.activeRequests.Add(-1)
 		f.proxy.ServeHTTP(w, r)
 	})
 }
@@ -279,14 +323,28 @@ func (f *FrontDoor) Handler() http.Handler {
 func (f *FrontDoor) writeFrontDoorVersion(w http.ResponseWriter) {
 	state := f.state.Load()
 	response := struct {
-		Status         string      `json:"status"`
-		Commit         string      `json:"commit"`
-		ActiveRequests int64       `json:"active_requests"`
-		BackendReady   bool        `json:"backend_ready"`
-		Backend        runtimeInfo `json:"backend,omitempty"`
-		CheckedAt      time.Time   `json:"checked_at,omitempty"`
-		Reason         string      `json:"reason,omitempty"`
-	}{Status: "ok", Commit: normalizedCommit(f.frontDoorCommit), ActiveRequests: f.activeRequests.Load()}
+		Status               string      `json:"status"`
+		Commit               string      `json:"commit"`
+		ActiveRequests       int64       `json:"active_requests"`
+		AdmissionWaits       int64       `json:"admission_waits"`
+		AdmissionRecoveries  int64       `json:"admission_recoveries"`
+		AdmissionTimeouts    int64       `json:"admission_timeouts"`
+		SSEReconnects        int64       `json:"sse_reconnects"`
+		SSEReconnectFailures int64       `json:"sse_reconnect_failures"`
+		BackendReady         bool        `json:"backend_ready"`
+		Backend              runtimeInfo `json:"backend,omitempty"`
+		CheckedAt            time.Time   `json:"checked_at,omitempty"`
+		Reason               string      `json:"reason,omitempty"`
+	}{
+		Status:               "ok",
+		Commit:               normalizedCommit(f.frontDoorCommit),
+		ActiveRequests:       f.activeRequests.Load(),
+		AdmissionWaits:       f.admissionWaits.Load(),
+		AdmissionRecoveries:  f.admissionRecoveries.Load(),
+		AdmissionTimeouts:    f.admissionTimeouts.Load(),
+		SSEReconnects:        f.sseReconnects.Load(),
+		SSEReconnectFailures: f.sseReconnectFails.Load(),
+	}
 	if state != nil {
 		response.BackendReady = state.Ready
 		response.Backend = state.Info

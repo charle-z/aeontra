@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -40,11 +41,15 @@ func TestOAuthEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := tools.NewService(pol, audit.New(&bytes.Buffer{}), pol.Roots()[0])
-	prov, err := oauth.NewProvider(oauth.Config{
-		Issuer:     "http://localhost:8765",
-		Resource:   resource,
-		Passphrase: passphrase,
-	})
+	oauthConfig := oauth.Config{
+		Issuer:           "http://localhost:8765",
+		Resource:         resource,
+		Passphrase:       passphrase,
+		ClientStorePath:  filepath.Join(root, "oauth-clients.json"),
+		AccessStorePath:  filepath.Join(root, "oauth-access.json"),
+		RefreshStorePath: filepath.Join(root, "oauth-refresh.json"),
+	}
+	prov, err := oauth.NewProvider(oauthConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +138,11 @@ func TestOAuthEndToEnd(t *testing.T) {
 	if status != http.StatusOK || oldSession == "" {
 		t.Fatalf("valid OAuth initialize status=%d session=%q", status, oldSession)
 	}
-	logical.Replace(New(svc).HTTPHandler("", prov))
+	replacementProvider, err := oauth.NewProvider(oauthConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logical.Replace(New(svc).HTTPHandler("", replacementProvider))
 	status, newSession := mcpInitialize(t, client, ts.URL, tok.AccessToken)
 	if status != http.StatusOK || newSession == "" || newSession == oldSession {
 		t.Fatalf("OAuth replacement initialize status=%d old=%q new=%q", status, oldSession, newSession)

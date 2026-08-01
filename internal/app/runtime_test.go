@@ -16,7 +16,7 @@ func clearRuntimeEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
 		tokenEnv, publicURLEnv, oauthPassphraseEnv, brainRootEnv, stateRootEnv,
-		oauthClientStorePathEnv, oauthRefreshStorePathEnv,
+		oauthClientStorePathEnv, oauthAccessStorePathEnv, oauthRefreshStorePathEnv,
 		observabilityModeEnv, observabilityPathEnv, observabilityMaxBytesEnv,
 		sandboxImageEnv,
 		validationRunnerURLEnv, validationRunnerTokenEnv,

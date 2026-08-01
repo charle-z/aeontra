@@ -93,6 +93,7 @@ The console remains presentation-only. F9/F10 do not approve or execute anything
 MCP_DEVBOX_PUBLIC_URL=https://<your-mcp-host>
 MCP_DEVBOX_OAUTH_PASSPHRASE=<configured-owner-passphrase>
 MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json
+MCP_DEVBOX_OAUTH_ACCESS_STORE=/state/oauth-access.json
 MCP_DEVBOX_OAUTH_REFRESH_STORE=/state/oauth-refresh.json
 MCP_DEVBOX_TASK_ROOT=/state/tasks
 MCP_DEVBOX_BRAIN_ROOT=/brain

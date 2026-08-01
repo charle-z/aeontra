@@ -78,6 +78,7 @@ func TestFrontDoorProxiesMCPHeadersAndFailsClosedOnIncompatibleBackend(t *testin
 	door, err := New(Config{
 		BackendURL: backend.URL, ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: testCatalogHash,
 		Client: backend.Client(), FrontDoorCommit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		AdmissionTimeout: 250 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)

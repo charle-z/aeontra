@@ -219,7 +219,7 @@ repo content. Tokens are sent only in HTTP authorization headers and never retur
   `MCP_DEVBOX_TEST_CMD`, `MCP_DEVBOX_ALLOW_CMD`, `MCP_DEVBOX_BRAIN_ROOT`,
   `MCP_DEVBOX_PUBLIC_URL`,
   `MCP_DEVBOX_OAUTH_PASSPHRASE`, `MCP_DEVBOX_OAUTH_CLIENT_STORE`, and
-  `MCP_DEVBOX_OAUTH_REFRESH_STORE` as applicable.
+  `MCP_DEVBOX_OAUTH_ACCESS_STORE` and `MCP_DEVBOX_OAUTH_REFRESH_STORE` as applicable.
 - GitHub: `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_OWNER_TYPE` (`user` or `org`),
   and optional `GITHUB_DEFAULT_VISIBILITY` (`private` by default).
 - Coolify: `COOLIFY_URL`, `COOLIFY_API_TOKEN`, `COOLIFY_SERVER_UUID`,

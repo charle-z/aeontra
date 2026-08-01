@@ -33,6 +33,7 @@ const (
 	publicURLEnv             = "MCP_DEVBOX_PUBLIC_URL"
 	oauthPassphraseEnv       = "MCP_DEVBOX_OAUTH_PASSPHRASE"
 	oauthClientStorePathEnv  = "MCP_DEVBOX_OAUTH_CLIENT_STORE"
+	oauthAccessStorePathEnv  = "MCP_DEVBOX_OAUTH_ACCESS_STORE"
 	oauthRefreshStorePathEnv = "MCP_DEVBOX_OAUTH_REFRESH_STORE"
 )
 

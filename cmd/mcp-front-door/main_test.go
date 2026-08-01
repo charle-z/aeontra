@@ -14,6 +14,7 @@ func TestLoadConfigRequiresPinnedBackendCompatibility(t *testing.T) {
 		listenAddrEnv:       "0.0.0.0:9000",
 		probeIntervalEnv:    "2s",
 		probeTimeoutEnv:     "4s",
+		admissionTimeoutEnv: "6s",
 	}
 	config, addr, err := loadConfig(func(key string) string { return values[key] })
 	if err != nil {
@@ -23,8 +24,8 @@ func TestLoadConfigRequiresPinnedBackendCompatibility(t *testing.T) {
 		config.ExpectedCatalogHash != values[expectedCatalogEnv] || addr != values[listenAddrEnv] {
 		t.Fatalf("config=%+v addr=%q", config, addr)
 	}
-	if config.ProbeInterval != 2*time.Second || config.ProbeTimeout != 4*time.Second {
-		t.Fatalf("probe durations=%s/%s", config.ProbeInterval, config.ProbeTimeout)
+	if config.ProbeInterval != 2*time.Second || config.ProbeTimeout != 4*time.Second || config.AdmissionTimeout != 6*time.Second {
+		t.Fatalf("durations=%s/%s/%s", config.ProbeInterval, config.ProbeTimeout, config.AdmissionTimeout)
 	}
 
 	delete(values, expectedCatalogEnv)
@@ -44,7 +45,7 @@ func TestLoadConfigUsesSafeDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if addr != "0.0.0.0:8765" || config.ProbeInterval != time.Second || config.ProbeTimeout != 3*time.Second {
+	if addr != "0.0.0.0:8765" || config.ProbeInterval != time.Second || config.ProbeTimeout != 3*time.Second || config.AdmissionTimeout != 45*time.Second {
 		t.Fatalf("config=%+v addr=%q", config, addr)
 	}
 }

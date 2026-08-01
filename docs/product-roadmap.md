@@ -115,7 +115,7 @@ Target: prove the complete product path through a public, read-only demonstratio
 - Complete one external flow: create/publish -> create Coolify app -> deploy ->
   inspect status/logs -> return a working public URL.
 - Confirm `MCP_DEVBOX_OAUTH_CLIENT_STORE` and
-  `MCP_DEVBOX_OAUTH_REFRESH_STORE` use the persistent `/state` volume.
+  `MCP_DEVBOX_OAUTH_ACCESS_STORE` and `MCP_DEVBOX_OAUTH_REFRESH_STORE` use the persistent `/state` volume.
 - Perform two redeploys and verify the second does not require deleting the ChatGPT
   connector or re-entering the owner passphrase.
 

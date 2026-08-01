@@ -92,9 +92,9 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Validation:** check `/front-door/healthz`, then `/front-door/readyz`; verify OAuth,
   initialization, session reuse and the exact backend `/version` through the facade.
   Perform backend replacements without redeploying the front-door application.
-- **Optional:** shorter probe intervals within the documented bounds. The front-door
-  deployment should use a stable branch that advances independently from backend
-  `main`.
+- **Optional:** shorter probe intervals and a bounded admission timeout within the
+  documented limits. The front-door deployment should use a stable branch that advances
+  independently from backend `main`.
 
 ### Global builder
 
@@ -214,6 +214,7 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_PUBLIC_URL` | OAuth issuer/resource | Required with passphrase; not itself secret | none; HTTPS base URL, except localhost may use HTTP | `https://mcp.example.com`; platform env | Both OAuth vars absent disables OAuth. Only one set fails startup. Invalid issuer fails startup. |
 | `MCP_DEVBOX_OAUTH_PASSPHRASE` | OAuth owner login | Required with public URL; secret | none; strong passphrase | `REPLACE_WITH_LONG_OWNER_PASSPHRASE`; secret manager | Half-configuration or invalid provider setup fails startup. |
 | `MCP_DEVBOX_OAUTH_CLIENT_STORE` | OAuth DCR persistence | Optional; sensitive state path | under state root when configured; absolute override | `/state/oauth-clients.json`; `/state` volume | Missing with a state root uses the default; without a state root DCR is memory-only. Invalid/unwritable store fails OAuth startup. |
+| `MCP_DEVBOX_OAUTH_ACCESS_STORE` | access-grant continuity | Optional; sensitive state path | under state root when configured; absolute override | `/state/oauth-access.json`; `/state` volume | Stores only SHA-256 bearer digests and bounded grant metadata, never raw tokens. Missing with a state root uses the default; invalid/unwritable state fails OAuth startup or token issuance. |
 | `MCP_DEVBOX_OAUTH_REFRESH_STORE` | refresh-token persistence | Optional; secret-bearing state path | under state root when configured; absolute override | `/state/oauth-refresh.json`; `/state` volume | Missing with a state root uses the default; without it refresh grants are memory-only. Invalid/unwritable store fails OAuth startup. |
 | `CONSOLE_TIMEZONE` | console presentation | Optional; not secret | `America/Bogota`; valid IANA name or `UTC` | `America/Bogota`; platform env | Empty uses default. Invalid or ambiguous timezone fails startup. |
 
@@ -227,6 +228,7 @@ remain unavailable until a tool is called.
 | `MCP_FRONT_DOOR_ADDR` | front-door listener | Optional; not secret | `0.0.0.0:8765`; valid host:port | platform env | Invalid address fails startup. Keep the port behind TLS routing. |
 | `MCP_FRONT_DOOR_PROBE_INTERVAL` | compatibility probe | Optional; not secret | `1s`; 250 ms–1 minute | platform env | Invalid or out-of-range value fails startup. Do not increase it to hide rollout failures. |
 | `MCP_FRONT_DOOR_PROBE_TIMEOUT` | compatibility probe | Optional; not secret | `3s`; 250 ms–10 seconds | platform env | Invalid or out-of-range value fails startup. |
+| `MCP_FRONT_DOOR_ADMISSION_TIMEOUT` | backend replacement admission | Optional; not secret | `45s`; 250 ms–2 minutes | platform env | Invalid or out-of-range value fails startup. Requests time out before upstream dispatch; dispatched POSTs are never retried. |
 
 ### Durable state, Brain, and observability
 
@@ -309,12 +311,12 @@ because they appear in source.
 |---|---|---|---|
 | port `8765` | internal HTTP listener and healthcheck | container-only; Traefik/reverse proxy routes to it | do not publish directly on the VPS firewall |
 | `/front-door/healthz` | stateless facade liveness | none | use for front-door container health; independent from backend readiness |
-| `/front-door/readyz` | compatible backend readiness | memory-only probe state | `503` blocks new requests while accepted requests drain |
-| `/front-door/version` | bounded facade and last backend identity | memory-only probe state | diagnostic only; public `/version` remains the proxied backend identity |
+| `/front-door/readyz` | compatible backend readiness | memory-only probe state | `503` marks the backend unavailable while bounded facade admission waits before dispatch |
+| `/front-door/version` | bounded facade/backend identity and aggregate recovery counters | memory-only probe state | diagnostic only; public `/version` remains the proxied backend identity |
 | `/mcp` | authenticated MCP stream and JSON-RPC | no filesystem persistence | OAuth preferred; bearer header recovery only |
 | `/healthz` | bounded liveness/build identity | none | public only according to deployment policy |
 | `/version` | safe live version, commit, protocol, tool count, catalog hash | none | source of live deployment identity; do not hardcode it in operational docs |
-| OAuth discovery and `/oauth/*` | discovery, registration, authorization, token exchange | client/refresh stores under `/state` when configured | codes/access tokens remain memory-only; never expose store files to agents |
+| OAuth discovery and `/oauth/*` | discovery, registration, authorization, token exchange | client/access-digest/refresh stores under `/state` when configured | raw access tokens and authorization codes remain memory-only; never expose store files to agents |
 | `/repos` | repository jail root in global-builder mode | persistent, runtime UID/GID `10001:10001` in image | agent-visible by design; back up repositories according to project policy |
 | `/state` | OAuth stores, audit, observability, metrics, tasks, results, model turns, Edge coordination, console state | persistent, private; image prepares subdirectories `0700`, files are expected `0600` | must stay outside the repository jail; back up durable authority/state, not transient cache blindly |
 | `/state/results` | bounded redacted `result_ref` payloads | persistent when result continuity matters | sensitive operational data; expire/clean by store policy |

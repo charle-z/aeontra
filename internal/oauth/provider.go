@@ -12,8 +12,9 @@
 //
 // Security posture: OAuth is enabled only when explicitly configured; tokens are opaque,
 // short-lived, single-use where applicable, never logged, and validated per request with
-// strict audience (resource) binding. Optional persistence is limited to DCR public
-// client registrations; tokens and authorization codes stay in process memory only.
+// strict audience (resource) binding. Optional persistence stores only DCR public client
+// registrations, rotating refresh grants, and SHA-256 digests of unexpired access tokens.
+// Raw access tokens and authorization codes are never persisted.
 package oauth
 
 import (
@@ -29,10 +30,13 @@ type Config struct {
 	Issuer          string // e.g. https://mcp-devbox-charlez.duckdns.org
 	Resource        string // e.g. https://mcp-devbox-charlez.duckdns.org/mcp
 	Passphrase      string // owner login secret presented at /oauth/authorize
-	ClientStorePath string // optional JSON file for DCR clients only; tokens remain in memory
+	ClientStorePath string // optional JSON file for DCR clients only
+	// AccessStorePath persists only SHA-256 token digests and bounded grant metadata.
+	// Raw bearer values are never written.
+	AccessStorePath string
 	// RefreshStorePath is an optional JSON file that persists ONLY refresh tokens, so a
 	// ChatGPT connector survives a daemon restart (redeploy) without re-entering the
-	// passphrase. Access tokens and authorization codes are never persisted.
+	// passphrase. Authorization codes are never persisted.
 	RefreshStorePath string
 }
 
@@ -68,6 +72,11 @@ func NewProvider(cfg Config) (*Provider, error) {
 	if strings.TrimSpace(cfg.ClientStorePath) != "" {
 		if err := store.enableClientPersistence(cfg.ClientStorePath); err != nil {
 			return nil, fmt.Errorf("oauth: client store: %w", err)
+		}
+	}
+	if strings.TrimSpace(cfg.AccessStorePath) != "" {
+		if err := store.enableAccessPersistence(cfg.AccessStorePath); err != nil {
+			return nil, fmt.Errorf("oauth: access store: %w", err)
 		}
 	}
 	if strings.TrimSpace(cfg.RefreshStorePath) != "" {

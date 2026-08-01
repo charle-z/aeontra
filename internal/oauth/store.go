@@ -69,10 +69,10 @@ type clientReg struct {
 	createdAt    time.Time
 }
 
-// tokenStore holds short-lived OAuth state in process memory. Access tokens,
-// refresh tokens, and authorization codes are never persisted. Only DCR public
-// client registrations may be persisted, so a ChatGPT connector can reauthorize
-// after a daemon restart without deleting and recreating the connector.
+// tokenStore holds short-lived OAuth state. Access grants are keyed by SHA-256 digest;
+// raw bearer values are never stored. DCR public client registrations, access-grant
+// digests, and rotating refresh grants may be persisted independently. Authorization
+// codes always remain in process memory.
 type tokenStore struct {
 	mu               sync.Mutex
 	access           map[string]accessGrant
@@ -80,6 +80,7 @@ type tokenStore struct {
 	refresh          map[string]refreshGrant
 	clients          map[string]clientReg
 	clientStorePath  string
+	accessStorePath  string
 	refreshStorePath string
 	regTimes         []time.Time // sliding window of recent registration timestamps
 	failTimes        []time.Time // sliding window of recent passphrase failures
@@ -326,12 +327,6 @@ func (s *tokenStore) pruneFailuresLocked() {
 	s.failTimes = kept
 }
 
-func (s *tokenStore) putAccess(token string, g accessGrant) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.access[token] = g
-}
-
 func (s *tokenStore) putRefresh(token string, g refreshGrant) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -478,23 +473,4 @@ func writeFileAtomic0600(path string, body []byte) error {
 	}
 	cleanup = false
 	return nil
-}
-
-// getAccess returns the grant for a token if present and unexpired. Expired grants are
-// evicted on read so the map does not accumulate stale entries.
-func (s *tokenStore) getAccess(token string) (accessGrant, bool) {
-	if token == "" {
-		return accessGrant{}, false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	g, ok := s.access[token]
-	if !ok {
-		return accessGrant{}, false
-	}
-	if time.Now().After(g.expiresAt) {
-		delete(s.access, token)
-		return accessGrant{}, false
-	}
-	return g, true
 }

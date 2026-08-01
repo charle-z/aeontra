@@ -33,9 +33,23 @@ The process refuses new proxied requests until both backend probes pass:
 2. `GET /version` reports `status=ok`, the configured MCP protocol version, the exact
    configured catalog hash, a valid commit and a non-empty catalog.
 
-A later probe failure stops only new requests. Requests already accepted continue on
-the backend connection that accepted them. A proxied `/mcp` response is also rejected
-if its `X-MCP-Catalog-Hash` differs from the pinned contract.
+A later probe failure closes admission to the backend without immediately failing the
+client request. New requests wait at the front door for at most the configured bounded
+admission timeout. Their bodies are not sent upstream while the backend is unavailable;
+compatible readiness wakes them immediately. Once a `POST /mcp` has been dispatched,
+the front door never retries it because the backend may have executed the JSON-RPC
+operation even when its response was lost.
+
+Requests already accepted continue on the backend connection that accepted them. For
+an authenticated `GET /mcp` SSE stream, the front door owns the downstream connection.
+If the backend process retires, it keeps the client stream open, waits for the next
+compatible backend and reconnects upstream with the same authorization and durable
+session headers. This reconnect contract is deliberately limited to the current MCP
+backend stream, which emits comments and keepalives only. A non-comment SSE event fails
+closed until an explicit replay or resume contract exists.
+
+A proxied `/mcp` response is also rejected if its `X-MCP-Catalog-Hash` differs from the
+pinned contract.
 
 This behavior is intentionally fail-closed. It prevents an incompatible backend rollout
 from silently changing the connector contract behind an existing front door.
@@ -60,6 +74,7 @@ Optional variables:
 MCP_FRONT_DOOR_ADDR=0.0.0.0:8765
 MCP_FRONT_DOOR_PROBE_INTERVAL=1s
 MCP_FRONT_DOOR_PROBE_TIMEOUT=3s
+MCP_FRONT_DOOR_ADMISSION_TIMEOUT=45s
 ```
 
 Only an HTTPS backend origin is accepted, except loopback HTTP for local validation.
@@ -69,7 +84,9 @@ User information, query strings, fragments and backend path prefixes are rejecte
 
 - `/front-door/healthz`: front-door process liveness; independent from backend health.
 - `/front-door/readyz`: front door plus compatible backend readiness.
-- `/front-door/version`: bounded front-door identity and last compatible backend state.
+- `/front-door/version`: bounded front-door identity, last compatible backend state and
+  aggregate admission/recovery counters. It contains no request body, credential,
+  session identifier, hostname, IP address or raw transport error.
 - every other route, including `/mcp`, OAuth discovery, authorization, token exchange,
   `/console`, `/healthz` and `/version`, is proxied to the compatible backend.
 
@@ -229,6 +246,12 @@ that the server can force ChatGPT to keep a connector namespace mounted.
 - The backend URL is startup configuration, never caller input.
 - The front door has no repository volumes, state volume, Docker socket or Edge access.
 - It is not a generic outbound proxy and does not accept arbitrary target URLs.
+- Admission waiting is finite. If no compatible backend returns within the configured
+  budget, the request fails closed with `503` and `Retry-After`; it is not forwarded.
+- There is no generic write retry. A `POST /mcp` transport error after dispatch is
+  returned as unavailable rather than risking a duplicated tool execution.
+- SSE reconnection is safe only while the backend emits comments and keepalives. The
+  proxy rejects a data-bearing event instead of silently losing or duplicating it.
 - It cannot prevent a ChatGPT client-side catalog/cache or namespace presentation issue.
 - A healthy front door plus healthy backend during a missing namespace is evidence of a
   client presentation problem, not proof of an internal OpenAI root cause.

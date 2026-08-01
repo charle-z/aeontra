@@ -55,13 +55,13 @@ func TestRefresh_SurvivesProviderRestart(t *testing.T) {
 	}
 }
 
-func TestRefresh_AccessTokensNeverPersisted(t *testing.T) {
+func TestRefreshStoreNeverContainsRawAccessTokens(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "oauth-refresh.json")
 	p1 := providerWithRefreshStore(t, path)
 	access := p1.issueAccessToken("client-1", p1.resource, "mcp", time.Hour)
 	p1.store.putRefresh(randToken(), refreshGrant{clientID: "client-1", scope: "mcp", resource: p1.resource, expiresAt: time.Now().Add(refreshTokenTTL)})
 
-	// Access tokens are short-lived and must remain in memory only.
+	// A refresh-only store must never contain or restore a raw access bearer.
 	p2 := providerWithRefreshStore(t, path)
 	if p2.Authorize(bearerReq(access)) {
 		t.Fatal("access tokens must never be persisted across restart")
