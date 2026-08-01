@@ -71,4 +71,4 @@ test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" = 0
 docker run --rm --entrypoint /bin/sh \
     --volume "$volume:/coordinator-state:ro" \
     mcp-front-door-coordinator:ci -c \
-    'test -f /coordinator-state/front-door-coordinator.json && grep -Eq '"'"'"revision":[[:space:]]*0'"'"' /coordinator-state/front-door-coordinator.json && grep -Eq '"'"'"state":[[:space:]]*"idle"'"'"' /coordinator-state/front-door-coordinator.json'
+    'test -f /coordinator-state/front-door-transition.json && grep -Eq '"'"'"revision":[[:space:]]*0'"'"' /coordinator-state/front-door-transition.json && grep -Eq '"'"'"state":[[:space:]]*"idle"'"'"' /coordinator-state/front-door-transition.json'

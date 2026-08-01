@@ -248,7 +248,62 @@ func OpenJournal(root string) (*Journal, error) {
 	if err := os.Chmod(root, 0o700); err != nil {
 		return nil, err
 	}
-	return &Journal{path: filepath.Join(root, JournalFilename), now: time.Now}, nil
+	journal := &Journal{path: filepath.Join(root, JournalFilename), now: time.Now}
+	if err := journal.initialize(); err != nil {
+		return nil, err
+	}
+	return journal, nil
+}
+
+func (j *Journal) initialize() error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	info, err := os.Lstat(j.path)
+	if err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("front-door coordinator journal must not be a symlink")
+		}
+		_, err = j.readLocked()
+		return err
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	idle := Status{SchemaVersion: 1, Target: TargetIdle, State: StateIdle}
+	data, err := json.Marshal(idle)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(j.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		_, err = j.readLocked()
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(append(data, '\n')); err != nil {
+		_ = file.Close()
+		_ = os.Remove(j.path)
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		_ = os.Remove(j.path)
+		return err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(j.path)
+		return err
+	}
+	directory, err := os.Open(filepath.Dir(j.path))
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
 }
 
 func (j *Journal) Read() (Status, error) {
