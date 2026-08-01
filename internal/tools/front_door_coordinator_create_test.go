@@ -20,6 +20,7 @@ func TestPlatformFrontDoorCoordinatorCreatesOnePrivateWorker(t *testing.T) {
 	var createPayload map[string]any
 	var storagePayload map[string]any
 	seenKeys := map[string]bool{}
+	seenValues := map[string]string{}
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -66,7 +67,9 @@ func TestPlatformFrontDoorCoordinatorCreatesOnePrivateWorker(t *testing.T) {
 				t.Fatal(err)
 			}
 			key, _ := payload["key"].(string)
+			value, _ := payload["value"].(string)
 			seenKeys[key] = true
+			seenValues[key] = value
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
@@ -105,7 +108,7 @@ func TestPlatformFrontDoorCoordinatorCreatesOnePrivateWorker(t *testing.T) {
 	if created != 1 || storageCreates != 1 || environmentWrites != 12 || deploys != 1 {
 		t.Fatalf("created=%d storage=%d env=%d deploys=%d out=%s", created, storageCreates, environmentWrites, deploys, out)
 	}
-	if createPayload["autogenerate_domain"] != false || createPayload["custom_docker_run_options"] != "" || createPayload["dockerfile_location"] != "/Dockerfile.front-door-coordinator" || createPayload["ports_exposes"] != "8766" {
+	if createPayload["autogenerate_domain"] != false || createPayload["custom_docker_run_options"] != managedFrontDoorCoordinatorDockerOptions || createPayload["dockerfile_location"] != "/Dockerfile.front-door-coordinator" || createPayload["ports_exposes"] != "8766" {
 		t.Fatalf("unsafe coordinator create payload: %#v", createPayload)
 	}
 	for _, forbidden := range []string{"fqdn", "domains", "ports_mappings"} {
@@ -122,6 +125,9 @@ func TestPlatformFrontDoorCoordinatorCreatesOnePrivateWorker(t *testing.T) {
 		if !seenKeys[key] {
 			t.Fatalf("missing fixed coordinator environment key %s", key)
 		}
+	}
+	if seenValues["COOLIFY_URL"] != coordinatorRuntimeCoolifyURL(ts.URL) {
+		t.Fatalf("coordinator Coolify URL was not rewritten to the private gateway")
 	}
 	if strings.Contains(out, "coolify-token") || !strings.Contains(out, "domain: none") || !strings.Contains(out, "deployment_id: coord-dep") {
 		t.Fatalf("unsafe coordinator output: %s", out)

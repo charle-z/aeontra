@@ -16,14 +16,15 @@ import (
 )
 
 const (
-	managedFrontDoorCoordinatorName       = "mcp-devbox-front-door-coordinator-managed"
-	managedFrontDoorCoordinatorBranch     = "main"
-	managedFrontDoorCoordinatorDockerfile = "/Dockerfile.front-door-coordinator"
-	managedFrontDoorCoordinatorPort       = "8766"
-	managedFrontDoorCoordinatorHealthPath = "/readyz"
-	managedFrontDoorCoordinatorLegacyPath = "/healthz"
-	managedFrontDoorCoordinatorStateName  = "mcp-devbox-front-door-coordinator-state"
-	managedFrontDoorCoordinatorStateMount = "/coordinator-state"
+	managedFrontDoorCoordinatorName          = "mcp-devbox-front-door-coordinator-managed"
+	managedFrontDoorCoordinatorBranch        = "main"
+	managedFrontDoorCoordinatorDockerfile    = "/Dockerfile.front-door-coordinator"
+	managedFrontDoorCoordinatorPort          = "8766"
+	managedFrontDoorCoordinatorHealthPath    = "/readyz"
+	managedFrontDoorCoordinatorLegacyPath    = "/healthz"
+	managedFrontDoorCoordinatorDockerOptions = "--add-host host.docker.internal:host-gateway"
+	managedFrontDoorCoordinatorStateName     = "mcp-devbox-front-door-coordinator-state"
+	managedFrontDoorCoordinatorStateMount    = "/coordinator-state"
 )
 
 type PlatformFrontDoorCoordinatorRequest struct {
@@ -31,10 +32,36 @@ type PlatformFrontDoorCoordinatorRequest struct {
 	ExpectedCatalogHash string
 }
 
+func (s *PlatformCapability) managedFrontDoorCoordinatorCoolifyURL() (string, error) {
+	if s == nil || s.coolify == nil {
+		return "", errors.New("Coolify client is required")
+	}
+	parsed, err := url.Parse(strings.TrimSpace(s.coolify.baseURL))
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return "", errors.New("configured Coolify URL is not a fixed origin")
+	}
+	switch parsed.Scheme {
+	case "https":
+		return strings.TrimRight(parsed.String(), "/"), nil
+	case "http":
+		if parsed.Port() == "" {
+			return "", errors.New("HTTP Coolify control origin requires an explicit port for the private host gateway")
+		}
+		return "http://host.docker.internal:" + parsed.Port(), nil
+	default:
+		return "", errors.New("configured Coolify URL scheme is unsupported")
+	}
+}
+
 func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request PlatformFrontDoorCoordinatorRequest) (string, error) {
 	sp := s.log.Start("platform_front_door_coordinator_preview")
 	if err := s.frontDoorPlatformConfigError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
+		return "", err
+	}
+	coordinatorCoolifyURL, err := s.managedFrontDoorCoordinatorCoolifyURL()
+	if err != nil {
+		sp.Finish(audit.Deny, "preview Coolify origin", nil, err)
 		return "", err
 	}
 	if !frontDoorProtocolPattern.MatchString(strings.TrimSpace(request.ExpectedProtocol)) || !frontDoorCatalogPattern.MatchString(strings.TrimSpace(request.ExpectedCatalogHash)) {
@@ -90,15 +117,16 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request Platfor
 		"server_uuid":           s.coolify.serverUUID, "project_uuid": s.coolify.projectUUID,
 		"environment_uuid": s.coolify.environmentUUID, "environment_name": s.coolify.environmentName,
 		"destination_uuid": s.coolify.destinationUUID, "github_app_uuid": s.coolify.githubAppUUID,
+		"coordinator_coolify_url": coordinatorCoolifyURL,
 	})
 	if err != nil {
 		sp.Finish(audit.Error, "preview plan", nil, err)
 		return "", err
 	}
 	sp.Finish(audit.Allow, "preview "+plan.ID, nil, nil)
-	return fmt.Sprintf("action: %s\napplication_name: %s\napplication_uuid: %s\nrepository: %s\nbranch: %s\nbranch_sha: %s\ndockerfile_location: %s\nport: %s\ndomain: none\nauto_deploy: disabled\ninstant_deploy: disabled\ndocker_run_options: none\npersistent_storage: %s:%s\nfront_application_uuid: %s\nbackend_application_uuid: %s\nfront_commit: %s\nexpected_protocol: %s\nexpected_catalog_hash: %s\neffect: create or reconcile one private coordinator worker; no domain or topology changes\nplan_id: %s\nexpiry: %s\n",
+	return fmt.Sprintf("action: %s\napplication_name: %s\napplication_uuid: %s\nrepository: %s\nbranch: %s\nbranch_sha: %s\ndockerfile_location: %s\nport: %s\ndomain: none\nauto_deploy: disabled\ninstant_deploy: disabled\ndocker_run_options: %s\npersistent_storage: %s:%s\nfront_application_uuid: %s\nbackend_application_uuid: %s\nfront_commit: %s\nexpected_protocol: %s\nexpected_catalog_hash: %s\neffect: create or reconcile one private coordinator worker; no domain or topology changes\nplan_id: %s\nexpiry: %s\n",
 		action, managedFrontDoorCoordinatorName, appID, s.managedFrontDoorRepository(), managedFrontDoorCoordinatorBranch,
-		mainSHA, managedFrontDoorCoordinatorDockerfile, managedFrontDoorCoordinatorPort,
+		mainSHA, managedFrontDoorCoordinatorDockerfile, managedFrontDoorCoordinatorPort, managedFrontDoorCoordinatorDockerOptions,
 		managedFrontDoorCoordinatorStateName, managedFrontDoorCoordinatorStateMount, front.UUID, backend.UUID, frontSHA,
 		strings.TrimSpace(request.ExpectedProtocol), strings.TrimSpace(request.ExpectedCatalogHash), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
@@ -127,6 +155,14 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 		plan.Args["environment_uuid"] != s.coolify.environmentUUID || plan.Args["environment_name"] != s.coolify.environmentName ||
 		plan.Args["destination_uuid"] != s.coolify.destinationUUID || plan.Args["github_app_uuid"] != s.coolify.githubAppUUID {
 		err := errors.New("front-door coordinator platform configuration changed after preview")
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	coordinatorCoolifyURL, err := s.managedFrontDoorCoordinatorCoolifyURL()
+	if err != nil || coordinatorCoolifyURL != plan.Args["coordinator_coolify_url"] {
+		if err == nil {
+			err = errors.New("front-door coordinator Coolify origin changed after preview")
+		}
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
@@ -194,7 +230,7 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 		return "", err
 	}
 	vars := map[string]string{
-		"COOLIFY_URL":                            s.coolify.baseURL,
+		"COOLIFY_URL":                            coordinatorCoolifyURL,
 		"COOLIFY_API_TOKEN":                      s.coolify.token,
 		"MCP_FRONT_DOOR_COORDINATOR_APP_UUID":    app.UUID,
 		"MCP_FRONT_DOOR_APP_UUID":                front.UUID,
@@ -562,16 +598,17 @@ func (s *PlatformCapability) validateManagedFrontDoorCoordinatorReconcileApp(app
 	return s.validateManagedFrontDoorCoordinatorContract(app, true)
 }
 
-func (s *PlatformCapability) validateManagedFrontDoorCoordinatorContract(app platformApplication, allowLegacyHealth bool) error {
+func (s *PlatformCapability) validateManagedFrontDoorCoordinatorContract(app platformApplication, allowLegacy bool) error {
 	healthPathValid := app.HealthcheckPath == managedFrontDoorCoordinatorHealthPath
-	if allowLegacyHealth && app.HealthcheckPath == managedFrontDoorCoordinatorLegacyPath {
-		healthPathValid = true
+	dockerOptionsValid := strings.TrimSpace(app.DockerRunOptions) == managedFrontDoorCoordinatorDockerOptions
+	if allowLegacy {
+		healthPathValid = healthPathValid || app.HealthcheckPath == managedFrontDoorCoordinatorLegacyPath
+		dockerOptionsValid = dockerOptionsValid || strings.TrimSpace(app.DockerRunOptions) == ""
 	}
 	if app.UUID == "" || app.Name != managedFrontDoorCoordinatorName || !s.managedFrontDoorRepositoryMatches(app.repo()) ||
 		app.branch() != managedFrontDoorCoordinatorBranch || app.BuildPack != "dockerfile" ||
 		app.Dockerfile != managedFrontDoorCoordinatorDockerfile || app.PortsExposes != managedFrontDoorCoordinatorPort ||
-		app.AutoDeploy || app.InstantDeploy || !healthPathValid ||
-		app.domain() != "" || strings.TrimSpace(app.DockerRunOptions) != "" {
+		app.AutoDeploy || app.InstantDeploy || !healthPathValid || !dockerOptionsValid || app.domain() != "" {
 		return errors.New("existing front-door coordinator does not match the private worker contract")
 	}
 	return nil
@@ -581,11 +618,12 @@ func (s *PlatformCapability) reconcileManagedFrontDoorCoordinatorApp(app platfor
 	if err := s.validateManagedFrontDoorCoordinatorReconcileApp(app); err != nil {
 		return platformApplication{}, err
 	}
-	if app.HealthcheckPath == managedFrontDoorCoordinatorHealthPath {
+	if app.HealthcheckPath == managedFrontDoorCoordinatorHealthPath && strings.TrimSpace(app.DockerRunOptions) == managedFrontDoorCoordinatorDockerOptions {
 		return app, nil
 	}
 	payload := map[string]any{
-		"health_check_enabled": true, "health_check_type": "http", "health_check_scheme": "http",
+		"custom_docker_run_options": managedFrontDoorCoordinatorDockerOptions,
+		"health_check_enabled":      true, "health_check_type": "http", "health_check_scheme": "http",
 		"health_check_method": "GET", "health_check_path": managedFrontDoorCoordinatorHealthPath,
 		"health_check_port": 8766, "health_check_return_code": 200, "health_check_interval": 10,
 		"health_check_timeout": 3, "health_check_retries": 12, "health_check_start_period": 20,
@@ -614,7 +652,7 @@ func (s *PlatformCapability) createManagedFrontDoorCoordinatorApp() (platformApp
 		"git_branch": managedFrontDoorCoordinatorBranch, "build_pack": "dockerfile",
 		"dockerfile_location": managedFrontDoorCoordinatorDockerfile, "ports_exposes": managedFrontDoorCoordinatorPort,
 		"ports_mappings": "", "autogenerate_domain": false, "is_auto_deploy_enabled": false,
-		"instant_deploy": false, "custom_docker_run_options": "", "health_check_enabled": true,
+		"instant_deploy": false, "custom_docker_run_options": managedFrontDoorCoordinatorDockerOptions, "health_check_enabled": true,
 		"health_check_type": "http", "health_check_scheme": "http", "health_check_method": "GET",
 		"health_check_path": managedFrontDoorCoordinatorHealthPath, "health_check_port": 8766,
 		"health_check_return_code": 200, "health_check_interval": 10, "health_check_timeout": 3,
