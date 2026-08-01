@@ -183,6 +183,11 @@ If the optional paginated deployment request returns a successful but empty body
 performs exactly one compatibility read of the same official endpoint without pagination.
 A second empty response, non-success status, malformed non-empty JSON or an oversized record
 set still fails closed; no application or transition is modified by either read.
+The primary request asks Coolify for only the two newest deployments because the upstream
+model orders them by `created_at` descending; two records are sufficient to identify the
+latest entry and detect a timestamp tie. Deployment history uses a dedicated 32 MiB response
+cap with explicit overflow detection rather than the generic 1 MiB response reader. Large
+upstream `logs` fields are ignored by the bounded decoder and are never returned or logged.
 4. platform_front_door_transition may only set that closed target, bind the consumed
    single-use plan ID as the durable request ID and trigger one normal deployment of
    the coordinator. It does not patch facade or backend domains.

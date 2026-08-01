@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	managedDeploymentListLimit   = 20
+	managedDeploymentListLimit   = 2
 	managedDeploymentDecodeLimit = 100
+	managedDeploymentBodyLimit   = 32 << 20
 )
 
 type managedApplicationDeployment struct {
@@ -38,7 +39,7 @@ func (s *PlatformCapability) latestManagedApplicationDeployment(appID string) (m
 	paths := []string{basePath + "?" + query.Encode(), basePath}
 	body := ""
 	for index, path := range paths {
-		status, candidate, err := s.coolify.request(context.Background(), http.MethodGet, path, nil)
+		status, candidate, err := s.coolify.requestBounded(context.Background(), http.MethodGet, path, nil, managedDeploymentBodyLimit)
 		if err != nil {
 			return managedApplicationDeployment{}, fmt.Errorf("reading managed application deployments: %w", err)
 		}
