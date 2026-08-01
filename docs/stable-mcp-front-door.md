@@ -236,3 +236,8 @@ that the server can force ChatGPT to keep a connector namespace mounted.
 See [`configuration.md`](configuration.md) for the canonical variable inventory and
 [`runbooks/client-connector-reliability.md`](runbooks/client-connector-reliability.md)
 for incident classification.
+
+When the managed Docker alias is unavailable, the private client derives the single
+usable default gateway from a bounded container route table and accepts it only when
+it is a private IPv4 address. Missing, malformed, public, ambiguous or non-gateway
+routes retain the closed resolution failure.

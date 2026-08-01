@@ -51,7 +51,6 @@ func TestFrontDoorCoordinatorVolumeBootstrapDropsPrivileges(t *testing.T) {
 	}
 	for _, required := range []string{
 		`docker volume create "$volume"`,
-		`--add-host host.docker.internal:host-gateway`,
 		`--env COOLIFY_URL=http+host-gateway://control.example:1`,
 		`--volume "$volume:/coordinator-state"`,
 		`awk '/^Uid:/ {print $2; exit}' /proc/1/status`,
@@ -64,6 +63,9 @@ func TestFrontDoorCoordinatorVolumeBootstrapDropsPrivileges(t *testing.T) {
 	}
 	if strings.Contains(string(smoke), "COOLIFY_URL=http://control.example") {
 		t.Error("coordinator smoke uses a public HTTP Coolify origin")
+	}
+	if strings.Contains(string(smoke), "--add-host") {
+		t.Error("coordinator smoke still depends on a Docker host alias")
 	}
 	for _, forbidden := range []string{"chown -R", "chmod -R", "eval ", "exec sh", "exec /bin/sh"} {
 		if strings.Contains(string(entrypoint), forbidden) {

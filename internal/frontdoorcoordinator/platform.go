@@ -114,7 +114,7 @@ func privateCoolifyDialContext(expectedAddress string) func(context.Context, str
 		if err != nil || !strings.EqualFold(host, expectedHost) || port != expectedPort {
 			return nil, ErrCoolifyPrivateTarget
 		}
-		addresses, err := net.DefaultResolver.LookupIPAddr(ctx, privateCoolifyHost)
+		addresses, err := privateCoolifyAddresses(ctx)
 		if err != nil {
 			return nil, ErrCoolifyPrivateResolve
 		}
