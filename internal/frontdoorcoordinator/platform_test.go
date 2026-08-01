@@ -120,7 +120,7 @@ func TestTopologyRejectsAmbiguousFrontBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	client.http = ts.Client()
-	if _, err := client.Topology(context.Background()); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+	if _, err := client.Topology(context.Background()); err != ErrTopologyFrontBackend {
 		t.Fatalf("ambiguous topology accepted: %v", err)
 	}
 }
