@@ -475,6 +475,31 @@ type platformDeployment struct {
 	CreatedAt      string  `json:"created_at"`
 	UpdatedAt      string  `json:"updated_at"`
 	FinishedAt     *string `json:"finished_at"`
+	Logs           string  `json:"logs"`
+}
+
+func safeCoordinatorDeploymentCode(logs string) string {
+	allowed := []string{
+		"topology_front_application_transport_target_failed",
+		"topology_front_application_transport_resolution_failed",
+		"topology_front_application_transport_address_policy_failed",
+		"topology_front_application_transport_connection_refused",
+		"topology_front_application_transport_connection_timed_out",
+		"topology_front_application_transport_route_unavailable",
+		"topology_front_application_transport_connection_failed",
+		"topology_front_application_transport_failed",
+	}
+	matched := ""
+	for _, code := range allowed {
+		if !strings.Contains(logs, "code="+code) {
+			continue
+		}
+		if matched != "" && matched != code {
+			return ""
+		}
+		matched = code
+	}
+	return matched
 }
 
 func (s *PlatformCapability) PlatformDeploymentStatus(deploymentID string) (string, error) {
@@ -512,9 +537,13 @@ func (s *PlatformCapability) PlatformDeploymentStatus(deploymentID string) (stri
 		finished = *deployment.FinishedAt
 	}
 	sp.Finish(audit.Allow, "deployment "+deploymentID, nil, nil)
-	return s.redact(fmt.Sprintf("deployment_id: %s\napplication: %s\nstatus: %s\ncommit: %s\ncommit_message: %s\ncreated_at: %s\nupdated_at: %s\nfinished_at: %s\n",
+	out := fmt.Sprintf("deployment_id: %s\napplication: %s\nstatus: %s\ncommit: %s\ncommit_message: %s\ncreated_at: %s\nupdated_at: %s\nfinished_at: %s\n",
 		deployment.DeploymentUUID, deployment.Application, deployment.Status, deployment.Commit,
-		deployment.CommitMessage, deployment.CreatedAt, deployment.UpdatedAt, finished)), nil
+		deployment.CommitMessage, deployment.CreatedAt, deployment.UpdatedAt, finished)
+	if code := safeCoordinatorDeploymentCode(deployment.Logs); code != "" {
+		out += "safe_code: " + code + "\n"
+	}
+	return s.redact(out), nil
 }
 
 func (s *PlatformCapability) getPlatformApp(appID string) (platformApplication, error) {

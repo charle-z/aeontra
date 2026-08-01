@@ -120,7 +120,7 @@ exterior MCP catalog; see `docs/development-edge-git.md`.
 | `coolify_app_logs` | 1/0/1/1 | Compatibility name for bounded, redacted `platform_app_logs`. |
 | `platform_app_logs` | 1/0/1/1 | Return bounded and redacted logs for one allowed application. |
 | `coolify_deployment_status` | 1/0/1/1 | Compatibility name for one deployment's safe status summary. |
-| `platform_deployment_status` | 1/0/1/1 | Return one deployment's status, commit, timestamps, and application name. |
+| `platform_deployment_status` | 1/0/1/1 | Return one deployment's status, commit, timestamps, application name, and only an unambiguous allowlisted Front Door coordinator `safe_code` when present in retained deployment logs. |
 | `platform_app_create_preview` | 1/0/1/1 | Validate and plan owner/domain-restricted app creation. |
 | `platform_front_door_create_preview` | 1/0/1/1 | Plan one fixed independently deployed MCP facade with allowed domain/backend and exact protocol/catalog pins. |
 | `platform_front_door_create` | 0/1/0/1 | Create or reconcile only the managed facade, configure its three non-secret variables, and deploy only when its pinned commit is not already healthy. |

@@ -255,7 +255,7 @@ func TestPlatformDeploymentStatusReturnsSafeSummary(t *testing.T) {
 	var gotPath string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		_, _ = w.Write([]byte("{\"deployment_uuid\":\"dep1\",\"application_name\":\"demo\",\"status\":\"finished\",\"commit\":\"abc123\",\"commit_message\":\"ship it\",\"created_at\":\"2026-07-12T10:00:00Z\",\"updated_at\":\"2026-07-12T10:01:00Z\",\"finished_at\":\"2026-07-12T10:01:00Z\"}"))
+		_, _ = w.Write([]byte("{\"deployment_uuid\":\"dep1\",\"application_name\":\"demo\",\"status\":\"finished\",\"commit\":\"abc123\",\"commit_message\":\"ship it\",\"created_at\":\"2026-07-12T10:00:00Z\",\"updated_at\":\"2026-07-12T10:01:00Z\",\"finished_at\":\"2026-07-12T10:01:00Z\",\"logs\":\"raw secret host=private.example code=topology_front_application_transport_connection_refused token=never-return\"}"))
 	}))
 	defer ts.Close()
 	svc := configuredPlatformService(t, config.ModeReadOnly, ts.URL)
@@ -271,8 +271,33 @@ func TestPlatformDeploymentStatusReturnsSafeSummary(t *testing.T) {
 			t.Fatalf("deployment summary missing %q:\n%s", want, out)
 		}
 	}
+	if !strings.Contains(out, "safe_code: topology_front_application_transport_connection_refused") {
+		t.Fatalf("closed deployment code missing:\n%s", out)
+	}
+	for _, forbidden := range []string{"raw secret", "private.example", "never-return", "logs:"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("deployment logs leaked %q:\n%s", forbidden, out)
+		}
+	}
 	if _, err := svc.PlatformDeploymentStatus("../unsafe"); err == nil {
 		t.Fatal("unsafe deployment id accepted")
+	}
+}
+
+func TestSafeCoordinatorDeploymentCodeRejectsUnknownOrAmbiguousLogs(t *testing.T) {
+	t.Parallel()
+	if got := safeCoordinatorDeploymentCode("code=topology_front_application_transport_unreviewed"); got != "" {
+		t.Fatalf("unknown code accepted: %q", got)
+	}
+	logs := strings.Join([]string{
+		"code=topology_front_application_transport_connection_refused",
+		"code=topology_front_application_transport_route_unavailable",
+	}, "\n")
+	if got := safeCoordinatorDeploymentCode(logs); got != "" {
+		t.Fatalf("ambiguous codes accepted: %q", got)
+	}
+	if got := safeCoordinatorDeploymentCode("secret only"); got != "" {
+		t.Fatalf("arbitrary log accepted: %q", got)
 	}
 }
 

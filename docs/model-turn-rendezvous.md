@@ -60,6 +60,11 @@ A runtime interrupted in `awaiting_model` may mark the turn `disconnected`. Afte
 process restart, `ResumeRuntime` moves unexpired disconnected turns back to
 `awaiting_model` without changing turn id, sequence, digest, request ref, or body.
 
+Long-poll reads perform expiry cleanup at most once per second per store. Concurrent
+pollers share that bounded cleanup gate instead of opening one SQLite write
+transaction per poll. Explicit cleanup remains available for lifecycle and test
+callers, while expiry semantics retain their one-second scheduling precision.
+
 For a remote-Edge runtime before its first turn, inability to read the private runtime
 goal is handled as a retryable lease delivery failure. The runtime returns to
 `awaiting_edge` and the Edge repeats the same signed receipt; the control plane must
