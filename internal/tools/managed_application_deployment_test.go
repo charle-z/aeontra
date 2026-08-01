@@ -90,3 +90,79 @@ func TestLatestManagedApplicationDeploymentGate(t *testing.T) {
 		})
 	}
 }
+
+func TestLatestManagedApplicationDeploymentFallsBackOnlyForEmptyPaginatedResponse(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/deployments/applications/app1" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+		if r.URL.RawQuery != "" {
+			if r.URL.Query().Get("skip") != "0" || r.URL.Query().Get("take") != "20" {
+				t.Fatalf("unexpected paginated query %q", r.URL.RawQuery)
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_, _ = w.Write([]byte(`[{"uuid":"dep1","status":"finished","git_commit_sha":"` + frontDoorTestSHA + `","created_at":"2026-08-01T20:00:00Z","updated_at":"2026-08-01T20:01:00Z"}]`))
+	}))
+	defer server.Close()
+
+	svc := configuredPlatformService(t, config.ModeReadOnly, server.URL)
+	deployment, err := svc.latestManagedApplicationDeployment("app1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || deployment.Status != "finished" || deployment.Commit != frontDoorTestSHA {
+		t.Fatalf("calls=%d deployment=%+v", calls, deployment)
+	}
+}
+
+func TestLatestManagedApplicationDeploymentRejectsRepeatedEmptyResponse(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	svc := configuredPlatformService(t, config.ModeReadOnly, server.URL)
+	_, err := svc.latestManagedApplicationDeployment("app1")
+	if err == nil || !strings.Contains(err.Error(), "response is empty") || calls != 2 {
+		t.Fatalf("calls=%d error=%v", calls, err)
+	}
+}
+
+func TestLatestManagedApplicationDeploymentDoesNotFallbackForMalformedJSON(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.RawQuery == "" {
+			t.Fatal("malformed non-empty response triggered fallback")
+		}
+		_, _ = w.Write([]byte("{"))
+	}))
+	defer server.Close()
+
+	svc := configuredPlatformService(t, config.ModeReadOnly, server.URL)
+	_, err := svc.latestManagedApplicationDeployment("app1")
+	if err == nil || !strings.Contains(err.Error(), "decoding managed application deployments") || calls != 1 {
+		t.Fatalf("calls=%d error=%v", calls, err)
+	}
+}
+
+func TestDecodeManagedApplicationDeploymentsRejectsExcessiveRecords(t *testing.T) {
+	var body strings.Builder
+	body.WriteByte('[')
+	for i := 0; i <= managedDeploymentDecodeLimit; i++ {
+		if i > 0 {
+			body.WriteByte(',')
+		}
+		fmt.Fprintf(&body, `{"uuid":"dep%d","status":"finished","git_commit_sha":"%s","created_at":"2026-08-01T20:00:00Z"}`, i, frontDoorTestSHA)
+	}
+	body.WriteByte(']')
+	if _, err := decodeManagedApplicationDeployments(body.String()); err == nil || !strings.Contains(err.Error(), "max") {
+		t.Fatalf("oversized deployment response error=%v", err)
+	}
+}
