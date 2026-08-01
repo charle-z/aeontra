@@ -139,7 +139,7 @@ func (c *CoolifyClient) request(ctx context.Context, method, path string, payloa
 
 func (c *CoolifyClient) requestBounded(ctx context.Context, method, path string, payload any, limit int64) (int, string, error) {
 	if limit <= 0 {
-		return 0, "", fmt.Errorf("Coolify response limit must be positive")
+		return 0, "", fmt.Errorf("coolify response limit must be positive")
 	}
 	var body io.Reader
 	if payload != nil {
@@ -168,7 +168,7 @@ func (c *CoolifyClient) requestBounded(ctx context.Context, method, path string,
 		return 0, "", err
 	}
 	if int64(len(data)) > limit {
-		return resp.StatusCode, "", fmt.Errorf("Coolify response exceeds %d bytes", limit)
+		return resp.StatusCode, "", fmt.Errorf("coolify response exceeds %d bytes", limit)
 	}
 	return resp.StatusCode, strings.TrimSpace(string(data)), nil
 }
