@@ -52,7 +52,7 @@ func TestFrontDoorCoordinatorVolumeBootstrapDropsPrivileges(t *testing.T) {
 	for _, required := range []string{
 		`docker volume create "$volume"`,
 		`--add-host host.docker.internal:host-gateway`,
-		`--env COOLIFY_URL=http://host.docker.internal:1`,
+		`--env COOLIFY_URL=http+host-gateway://control.example:1`,
 		`--volume "$volume:/coordinator-state"`,
 		`awk '/^Uid:/ {print $2; exit}' /proc/1/status`,
 		`su-exec 10003:10003 sh -c`,

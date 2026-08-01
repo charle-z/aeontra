@@ -14,7 +14,7 @@ docker volume create "$volume" >/dev/null
 docker run --detach --name "$container" \
     --add-host host.docker.internal:host-gateway \
     --volume "$volume:/coordinator-state" \
-    --env COOLIFY_URL=http://host.docker.internal:1 \
+    --env COOLIFY_URL=http+host-gateway://control.example:1 \
     --env COOLIFY_API_TOKEN="$secret" \
     --env MCP_FRONT_DOOR_COORDINATOR_APP_UUID=coord1 \
     --env MCP_FRONT_DOOR_APP_UUID=front1 \
