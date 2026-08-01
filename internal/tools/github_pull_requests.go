@@ -103,8 +103,11 @@ func (c *GitHubClient) commitIsAncestor(ctx context.Context, repo, ancestor, des
 	if !frontDoorCommitPattern.MatchString(ancestor) || !frontDoorCommitPattern.MatchString(descendant) {
 		return false, fmt.Errorf("GitHub commit ancestry received an invalid commit")
 	}
-	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/compare/" + ancestor + "..." + descendant
-	status, body, err := c.doJSONLimit(ctx, http.MethodGet, path, nil, githubRefAndMergeResponseLimit)
+	query := url.Values{}
+	query.Set("per_page", "1")
+	query.Set("page", "1")
+	path := "/repos/" + url.PathEscape(c.owner) + "/" + url.PathEscape(repo) + "/compare/" + ancestor + "..." + descendant + "?" + query.Encode()
+	status, body, err := c.doJSONLimit(ctx, http.MethodGet, path, nil, githubCompareResponseLimit)
 	if err != nil {
 		return false, err
 	}

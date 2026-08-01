@@ -179,6 +179,10 @@ requires terminal `finished`, and seals its exact commit into the preview. Backe
 front-door deployments must equal the current approved branch commits. The coordinator
 may run an earlier reviewed `main` commit, but that commit must remain an ancestor of the
 current `main`; a divergent, active, failed, ambiguous or malformed deployment fails closed.
+The coordinator ancestry check uses GitHub's compare endpoint with one commit per page and a
+dedicated 8 MiB response cap because compare responses may include file metadata far larger
+than a branch-ref response. Other GitHub ref and merge operations retain their 64 KiB cap,
+and an oversized or malformed compare response still fails closed.
 If the optional paginated deployment request returns a successful but empty body, the gate
 performs exactly one compatibility read of the same official endpoint without pagination.
 A second empty response, non-success status, malformed non-empty JSON or an oversized record

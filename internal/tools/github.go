@@ -17,6 +17,7 @@ import (
 const (
 	githubDefaultResponseLimit      int64 = 16 << 10
 	githubRefAndMergeResponseLimit  int64 = 64 << 10
+	githubCompareResponseLimit      int64 = 8 << 20
 	githubRepoMetadataResponseLimit int64 = 256 << 10
 	githubPullResponseLimit         int64 = 512 << 10
 	githubPullListResponseLimit     int64 = 1 << 20
