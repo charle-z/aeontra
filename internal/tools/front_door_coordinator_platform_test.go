@@ -27,7 +27,7 @@ func coordinatorRuntimeCoolifyURL(baseURL string) string {
 	if err != nil || parsed.Scheme == "https" {
 		return baseURL
 	}
-	return "http://host.docker.internal:" + parsed.Port()
+	return "http+host-gateway://" + parsed.Host
 }
 
 func coordinatorRuntimeEnvironmentEntry(key, value string) map[string]any {

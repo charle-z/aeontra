@@ -47,7 +47,7 @@ func (s *PlatformCapability) managedFrontDoorCoordinatorCoolifyURL() (string, er
 		if parsed.Port() == "" {
 			return "", errors.New("HTTP Coolify control origin requires an explicit port for the private host gateway")
 		}
-		return "http://host.docker.internal:" + parsed.Port(), nil
+		return "http+host-gateway://" + parsed.Host, nil
 	default:
 		return "", errors.New("configured Coolify URL scheme is unsupported")
 	}

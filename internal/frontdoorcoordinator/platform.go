@@ -43,7 +43,10 @@ type Client struct {
 	sleep     func(time.Duration)
 }
 
-const privateCoolifyHost = "host.docker.internal"
+const (
+	privateCoolifyHost   = "host.docker.internal"
+	privateCoolifyScheme = "http+host-gateway"
+)
 
 func validateCoolifyOrigin(raw string) (*url.URL, bool, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
@@ -53,13 +56,13 @@ func validateCoolifyOrigin(raw string) (*url.URL, bool, error) {
 	switch parsed.Scheme {
 	case "https":
 		return parsed, false, nil
-	case "http":
-		if !strings.EqualFold(parsed.Hostname(), privateCoolifyHost) || parsed.Port() == "" {
-			return nil, false, errors.New("coolify HTTP URL is restricted to the private host gateway with an explicit port")
+	case privateCoolifyScheme:
+		if parsed.Port() == "" {
+			return nil, false, errors.New("private Coolify gateway URL requires an explicit port")
 		}
 		return parsed, true, nil
 	default:
-		return nil, false, errors.New("coolify URL must use HTTPS or the private host gateway")
+		return nil, false, errors.New("coolify URL must use HTTPS or the managed private gateway scheme")
 	}
 }
 
@@ -79,23 +82,31 @@ func privateCoolifyAddressesAllowed(addresses []net.IPAddr) bool {
 	return true
 }
 
-func privateCoolifyDialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	host, port, err := net.SplitHostPort(address)
-	if err != nil || !strings.EqualFold(host, privateCoolifyHost) || port == "" {
-		return nil, errors.New("private Coolify dial target is outside the fixed host gateway")
-	}
-	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, privateCoolifyHost)
-	if err != nil || !privateCoolifyAddressesAllowed(addresses) {
-		return nil, errors.New("private Coolify host gateway did not resolve exclusively to private addresses")
-	}
-	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	for _, resolved := range addresses {
-		connection, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(resolved.IP.String(), port))
-		if dialErr == nil {
-			return connection, nil
+func privateCoolifyDialContext(expectedAddress string) func(context.Context, string, string) (net.Conn, error) {
+	expectedHost, expectedPort, err := net.SplitHostPort(expectedAddress)
+	if err != nil || expectedHost == "" || expectedPort == "" {
+		return func(context.Context, string, string) (net.Conn, error) {
+			return nil, errors.New("private Coolify expected control origin is invalid")
 		}
 	}
-	return nil, errors.New("private Coolify host gateway connection failed")
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil || !strings.EqualFold(host, expectedHost) || port != expectedPort {
+			return nil, errors.New("private Coolify dial target is outside the fixed control origin")
+		}
+		addresses, err := net.DefaultResolver.LookupIPAddr(ctx, privateCoolifyHost)
+		if err != nil || !privateCoolifyAddressesAllowed(addresses) {
+			return nil, errors.New("private Coolify host gateway did not resolve exclusively to private addresses")
+		}
+		dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+		for _, resolved := range addresses {
+			connection, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(resolved.IP.String(), port))
+			if dialErr == nil {
+				return connection, nil
+			}
+		}
+		return nil, errors.New("private Coolify host gateway connection failed")
+	}
 }
 
 type application struct {
@@ -161,7 +172,7 @@ func NewClient(config Config) (*Client, error) {
 			return nil, fmt.Errorf("%s is required", name)
 		}
 	}
-	_, privateHTTP, err := validateCoolifyOrigin(config.CoolifyURL)
+	parsed, privateGateway, err := validateCoolifyOrigin(config.CoolifyURL)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +181,11 @@ func NewClient(config Config) (*Client, error) {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	if privateHTTP {
-		transport.DialContext = privateCoolifyDialContext
+	if privateGateway {
+		config.CoolifyURL = "http://" + parsed.Host
+		transport.DialContext = privateCoolifyDialContext(parsed.Host)
+	} else {
+		config.CoolifyURL = strings.TrimRight(parsed.String(), "/")
 	}
 	probeTransport := http.DefaultTransport.(*http.Transport).Clone()
 	probeTransport.Proxy = nil

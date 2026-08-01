@@ -8,15 +8,15 @@ import (
 
 func TestNewClientAllowsOnlyFixedPrivateGatewayHTTP(t *testing.T) {
 	t.Parallel()
-	if _, err := NewClient(validClientConfig("http://host.docker.internal:8000")); err != nil {
+	if _, err := NewClient(validClientConfig("http+host-gateway://coolify.example:8000")); err != nil {
 		t.Fatalf("private host gateway rejected: %v", err)
 	}
 	for _, raw := range []string{
 		"http://coolify.example:8000",
-		"http://host.docker.internal",
-		"http://host.docker.internal:8000/path",
-		"http://user@host.docker.internal:8000",
-		"http://host.docker.internal:8000?x=1",
+		"http+host-gateway://coolify.example",
+		"http+host-gateway://coolify.example:8000/path",
+		"http+host-gateway://user@coolify.example:8000",
+		"http+host-gateway://coolify.example:8000?x=1",
 	} {
 		if _, err := NewClient(validClientConfig(raw)); err == nil {
 			t.Fatalf("unsafe HTTP origin accepted: %s", raw)
@@ -43,7 +43,8 @@ func TestPrivateCoolifyAddressPolicyRejectsPublicAndMixedDNS(t *testing.T) {
 
 func TestPrivateCoolifyDialRejectsAlternateHostBeforeResolution(t *testing.T) {
 	t.Parallel()
-	if _, err := privateCoolifyDialContext(context.Background(), "tcp", "example.com:8000"); err == nil {
+	dial := privateCoolifyDialContext("coolify.example:8000")
+	if _, err := dial(context.Background(), "tcp", "example.com:8000"); err == nil {
 		t.Fatal("alternate host reached private Coolify dialer")
 	}
 }
