@@ -31,6 +31,7 @@ const (
 	MaxInlineRequestBytes   = int64(64 << 10)
 	MaxRequestBodyBytes     = int64(4 << 20)
 	turnDatabaseFilename    = "model-turns.db"
+	pollCleanupInterval     = time.Second
 )
 
 type Status string
@@ -106,13 +107,15 @@ type ResponseSubmission struct {
 }
 
 type Store struct {
-	mu         sync.Mutex
-	db         *sql.DB
-	root       string
-	quotaBytes int64
-	defaultTTL time.Duration
-	now        func() time.Time
-	wake       *wakeHub
+	mu          sync.Mutex
+	cleanupMu   sync.Mutex
+	db          *sql.DB
+	root        string
+	quotaBytes  int64
+	defaultTTL  time.Duration
+	now         func() time.Time
+	lastCleanup time.Time
+	wake        *wakeHub
 }
 
 type wakeHub struct {
@@ -182,6 +185,7 @@ func OpenStore(cfg StoreConfig) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	store.lastCleanup = store.now().UTC()
 	return store, nil
 }
 
@@ -362,7 +366,7 @@ func (s *Store) Next(ctx context.Context, runtimeID string) (Offer, error) {
 
 func (s *Store) nextOnce(ctx context.Context, runtimeID string) (Offer, error) {
 	now := s.now().UTC()
-	if err := s.Cleanup(ctx); err != nil {
+	if err := s.cleanupIfDue(ctx); err != nil {
 		return Offer{}, err
 	}
 	row := s.db.QueryRowContext(ctx, `SELECT turn_id,runtime_id,sequence,request_digest,request_ref,response_digest,response_ref,status,created_at,expires_at,responded_at,consumed_at,offered_tools_json
@@ -613,6 +617,20 @@ func (s *Store) Get(ctx context.Context, turnID TurnID) (Record, error) {
 		return Record{}, errors.New("model turn read failed")
 	}
 	return record, nil
+}
+
+func (s *Store) cleanupIfDue(ctx context.Context) error {
+	now := s.now().UTC()
+	s.cleanupMu.Lock()
+	defer s.cleanupMu.Unlock()
+	if !s.lastCleanup.IsZero() && now.Before(s.lastCleanup.Add(pollCleanupInterval)) {
+		return nil
+	}
+	if err := s.Cleanup(ctx); err != nil {
+		return err
+	}
+	s.lastCleanup = now
+	return nil
 }
 
 func (s *Store) Cleanup(ctx context.Context) error {
