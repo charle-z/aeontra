@@ -45,6 +45,7 @@ func (f *FrontDoor) waitForBackend(ctx context.Context, heartbeat func() error) 
 	minimum := time.Now().UTC()
 	waited := false
 	for {
+		changed := f.stateChangeChannel()
 		err := f.probeAfter(ctx, minimum)
 		if errors.Is(err, errBackendIncompatible) {
 			return err
@@ -59,7 +60,6 @@ func (f *FrontDoor) waitForBackend(ctx context.Context, heartbeat func() error) 
 			f.admissionWaits.Add(1)
 			waited = true
 		}
-		changed := f.stateChangeChannel()
 		if heartbeat == nil {
 			select {
 			case <-ctx.Done():
