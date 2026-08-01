@@ -55,6 +55,7 @@ func TestPlatformFrontDoorTransitionDispatchesOnlyPrivateCoordinator(t *testing.
 	environmentWrites := 0
 	coordinatorDeploys := 0
 	domainWrites := 0
+	coordinatorHealthPath := managedFrontDoorCoordinatorHealthPath
 
 	var ts *httptest.Server
 	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +70,7 @@ func TestPlatformFrontDoorTransitionDispatchesOnlyPrivateCoordinator(t *testing.
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1":
 			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"https://front.mcp-devbox-charlez.duckdns.org","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door","ports_exposes":"8765","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/front-door/healthz","custom_docker_run_options":""}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/coord1":
-			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/healthz","custom_docker_run_options":""}`))
+			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"` + coordinatorHealthPath + `","custom_docker_run_options":""}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/"+managedBackendAppUUID:
 			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","name":"mcp-devbox","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/coord1/storages":
@@ -117,6 +118,11 @@ func TestPlatformFrontDoorTransitionDispatchesOnlyPrivateCoordinator(t *testing.
 	defer ts.Close()
 
 	svc := configuredCoordinatorService(t, config.ModeAllow, ts.URL)
+	coordinatorHealthPath = managedFrontDoorCoordinatorLegacyPath
+	if blocked, err := svc.PlatformFrontDoorTransitionPreview("cutover"); err == nil || strings.Contains(blocked, "plan_id") {
+		t.Fatalf("non-ready coordinator produced transition preview: preview=%q err=%v", blocked, err)
+	}
+	coordinatorHealthPath = managedFrontDoorCoordinatorHealthPath
 	preview, err := svc.PlatformFrontDoorTransitionPreview("cutover")
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +161,7 @@ func TestPlatformFrontDoorTransitionPreviewIsNoopAtTargetAndRejectsConflictingJo
 		case "/api/v1/applications/front1":
 			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"` + frontDomain + `"}`))
 		case "/api/v1/applications/coord1":
-			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","description":` + mustJSON(statusDescription) + `,"git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/healthz","custom_docker_run_options":""}`))
+			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","description":` + mustJSON(statusDescription) + `,"git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/readyz","custom_docker_run_options":""}`))
 		case "/api/v1/applications/" + managedBackendAppUUID:
 			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"` + backendDomains + `"}`))
 		case "/api/v1/applications/front1/envs":
@@ -203,7 +209,7 @@ func TestPlatformFrontDoorTransitionStatusOmitsDurableRequestID(t *testing.T) {
 		case "/api/v1/applications/front1":
 			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","fqdn":"https://front.mcp-devbox-charlez.duckdns.org","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door","ports_exposes":"8765","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/front-door/healthz","custom_docker_run_options":""}`))
 		case "/api/v1/applications/coord1":
-			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","description":` + mustJSON(statusDescription) + `,"git_repository":"acme/mcp-devbox","git_branch":"main","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/healthz","custom_docker_run_options":""}`))
+			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","description":` + mustJSON(statusDescription) + `,"git_repository":"acme/mcp-devbox","git_branch":"main","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/readyz","custom_docker_run_options":""}`))
 		case "/api/v1/applications/" + managedBackendAppUUID:
 			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","git_repository":"acme/mcp-devbox","git_branch":"main","fqdn":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"}`))
 		case "/api/v1/applications/front1/envs":

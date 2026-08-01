@@ -193,6 +193,26 @@ func NextPhase(target Target, topology Topology) (Phase, bool, error) {
 	return PhaseNone, false, fmt.Errorf("managed topology is not valid for target %s", target)
 }
 
+// ValidateTopology verifies that the current managed topology belongs to the
+// closed cutover/rollback state machine without performing any mutation.
+func ValidateTopology(target Target, topology Topology) error {
+	switch target {
+	case TargetCutover, TargetRollback:
+		_, _, err := NextPhase(target, topology)
+		return err
+	case TargetIdle:
+		if _, _, err := NextPhase(TargetCutover, topology); err == nil {
+			return nil
+		}
+		if _, _, err := NextPhase(TargetRollback, topology); err == nil {
+			return nil
+		}
+		return errors.New("managed front-door topology is invalid")
+	default:
+		return errors.New("front-door coordinator target is invalid")
+	}
+}
+
 func normalizeDomains(raw string) string {
 	parts := strings.Split(strings.TrimSpace(raw), ",")
 	seen := map[string]bool{}
