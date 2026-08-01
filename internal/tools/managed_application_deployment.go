@@ -12,7 +12,10 @@ import (
 	"time"
 )
 
-const managedDeploymentListLimit = 20
+const (
+	managedDeploymentListLimit   = 20
+	managedDeploymentDecodeLimit = 100
+)
 
 type managedApplicationDeployment struct {
 	DeploymentUUID string
@@ -31,13 +34,24 @@ func (s *PlatformCapability) latestManagedApplicationDeployment(appID string) (m
 		"skip": {"0"},
 		"take": {fmt.Sprint(managedDeploymentListLimit)},
 	}
-	path := "/api/v1/deployments/applications/" + url.PathEscape(appID) + "?" + query.Encode()
-	status, body, err := s.coolify.request(context.Background(), http.MethodGet, path, nil)
-	if err != nil {
-		return managedApplicationDeployment{}, fmt.Errorf("reading managed application deployments: %w", err)
-	}
-	if status < 200 || status >= 300 {
-		return managedApplicationDeployment{}, fmt.Errorf("reading managed application deployments -> HTTP %d: %s", status, s.coolifySafe(body))
+	basePath := "/api/v1/deployments/applications/" + url.PathEscape(appID)
+	paths := []string{basePath + "?" + query.Encode(), basePath}
+	body := ""
+	for index, path := range paths {
+		status, candidate, err := s.coolify.request(context.Background(), http.MethodGet, path, nil)
+		if err != nil {
+			return managedApplicationDeployment{}, fmt.Errorf("reading managed application deployments: %w", err)
+		}
+		if status < 200 || status >= 300 {
+			return managedApplicationDeployment{}, fmt.Errorf("reading managed application deployments -> HTTP %d: %s", status, s.coolifySafe(candidate))
+		}
+		if strings.TrimSpace(candidate) != "" {
+			body = candidate
+			break
+		}
+		if index == len(paths)-1 {
+			return managedApplicationDeployment{}, errors.New("managed application deployments response is empty")
+		}
 	}
 	deployments, err := decodeManagedApplicationDeployments(body)
 	if err != nil {
@@ -90,6 +104,9 @@ func decodeManagedApplicationDeployments(body string) ([]managedApplicationDeplo
 		} else {
 			raw = wrapped.Data
 		}
+	}
+	if len(raw) > managedDeploymentDecodeLimit {
+		return nil, fmt.Errorf("managed application deployment response has %d records, max %d", len(raw), managedDeploymentDecodeLimit)
 	}
 	seen := map[string]bool{}
 	deployments := make([]managedApplicationDeployment, 0, len(raw))
