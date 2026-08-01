@@ -480,6 +480,12 @@ type platformDeployment struct {
 
 func safeCoordinatorDeploymentCode(logs string) string {
 	allowed := []string{
+		"configuration_invalid",
+		"journal_open_failed",
+		"coolify_client_invalid",
+		"topology_validation_failed",
+		"topology_front_application_failed",
+		"topology_front_application_request_build_failed",
 		"topology_front_application_transport_target_failed",
 		"topology_front_application_transport_resolution_failed",
 		"topology_front_application_transport_address_policy_failed",
@@ -488,6 +494,16 @@ func safeCoordinatorDeploymentCode(logs string) string {
 		"topology_front_application_transport_route_unavailable",
 		"topology_front_application_transport_connection_failed",
 		"topology_front_application_transport_failed",
+		"topology_front_application_response_read_failed",
+		"topology_front_application_http_failed",
+		"topology_front_application_decode_failed",
+		"topology_front_application_identity_failed",
+		"topology_backend_application_failed",
+		"topology_identity_invalid",
+		"topology_front_backend_failed",
+		"topology_contract_invalid",
+		"durable_state_failed",
+		"status_publish_failed",
 	}
 	matched := ""
 	for _, code := range allowed {
