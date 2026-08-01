@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -63,7 +64,7 @@ func TestLatestManagedApplicationDeploymentGate(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/deployments/applications/app1" || r.URL.Query().Get("skip") != "0" || r.URL.Query().Get("take") != "20" {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/deployments/applications/app1" || r.URL.Query().Get("skip") != "0" || r.URL.Query().Get("take") != "2" {
 					t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
 				}
 				_, _ = w.Write([]byte(tc.body))
@@ -99,7 +100,7 @@ func TestLatestManagedApplicationDeploymentFallsBackOnlyForEmptyPaginatedRespons
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
 		}
 		if r.URL.RawQuery != "" {
-			if r.URL.Query().Get("skip") != "0" || r.URL.Query().Get("take") != "20" {
+			if r.URL.Query().Get("skip") != "0" || r.URL.Query().Get("take") != "2" {
 				t.Fatalf("unexpected paginated query %q", r.URL.RawQuery)
 			}
 			w.WriteHeader(http.StatusOK)
@@ -164,5 +165,41 @@ func TestDecodeManagedApplicationDeploymentsRejectsExcessiveRecords(t *testing.T
 	body.WriteByte(']')
 	if _, err := decodeManagedApplicationDeployments(body.String()); err == nil || !strings.Contains(err.Error(), "max") {
 		t.Fatalf("oversized deployment response error=%v", err)
+	}
+}
+
+func TestLatestManagedApplicationDeploymentAcceptsLargeBoundedLogs(t *testing.T) {
+	largeLog := strings.Repeat("x", (1<<20)+4096)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/deployments/applications/app1" || r.URL.Query().Get("take") != "2" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+		_, _ = fmt.Fprintf(w, `{"count":2,"deployments":[{"uuid":"depnew","status":"finished","git_commit_sha":"%s","created_at":"2026-08-01T20:01:00Z","updated_at":"2026-08-01T20:02:00Z","logs":%q},{"uuid":"depold","status":"finished","git_commit_sha":"%s","created_at":"2026-08-01T20:00:00Z","updated_at":"2026-08-01T20:01:00Z"}]}`, frontDoorTestSHA, largeLog, frontDoorTestSHA)
+	}))
+	defer server.Close()
+
+	svc := configuredPlatformService(t, config.ModeReadOnly, server.URL)
+	deployment, err := svc.latestManagedApplicationDeployment("app1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deployment.DeploymentUUID != "depnew" || deployment.Status != "finished" || deployment.Commit != frontDoorTestSHA {
+		t.Fatalf("deployment=%+v", deployment)
+	}
+}
+
+func TestCoolifyRequestBoundedRejectsOversizedBodyWithoutTruncatingJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", 1025)))
+	}))
+	defer server.Close()
+
+	client := NewCoolifyClient(server.URL, "fixture-token", nil)
+	status, body, err := client.requestBounded(context.Background(), http.MethodGet, "/large", nil, 1024)
+	if err == nil || !strings.Contains(err.Error(), "exceeds 1024 bytes") {
+		t.Fatalf("status=%d body_len=%d error=%v", status, len(body), err)
+	}
+	if status != http.StatusOK || body != "" {
+		t.Fatalf("status=%d body_len=%d", status, len(body))
 	}
 }

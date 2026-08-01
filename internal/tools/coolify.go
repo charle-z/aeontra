@@ -134,6 +134,13 @@ func (c *CoolifyClient) deploy(ctx context.Context, uuid string, force bool) (in
 }
 
 func (c *CoolifyClient) request(ctx context.Context, method, path string, payload any) (int, string, error) {
+	return c.requestBounded(ctx, method, path, payload, 1<<20)
+}
+
+func (c *CoolifyClient) requestBounded(ctx context.Context, method, path string, payload any, limit int64) (int, string, error) {
+	if limit <= 0 {
+		return 0, "", fmt.Errorf("Coolify response limit must be positive")
+	}
 	var body io.Reader
 	if payload != nil {
 		data, err := json.Marshal(payload)
@@ -156,7 +163,13 @@ func (c *CoolifyClient) request(ctx context.Context, method, path string, payloa
 		return 0, "", err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return 0, "", err
+	}
+	if int64(len(data)) > limit {
+		return resp.StatusCode, "", fmt.Errorf("Coolify response exceeds %d bytes", limit)
+	}
 	return resp.StatusCode, strings.TrimSpace(string(data)), nil
 }
 
