@@ -34,7 +34,7 @@ type PlatformFrontDoorCoordinatorRequest struct {
 
 func (s *PlatformCapability) managedFrontDoorCoordinatorCoolifyURL() (string, error) {
 	if s == nil || s.coolify == nil {
-		return "", errors.New("Coolify client is required")
+		return "", errors.New("coolify client is required")
 	}
 	parsed, err := url.Parse(strings.TrimSpace(s.coolify.baseURL))
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
