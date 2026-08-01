@@ -12,7 +12,6 @@ trap cleanup EXIT
 
 docker volume create "$volume" >/dev/null
 docker run --detach --name "$container" \
-    --add-host host.docker.internal:host-gateway \
     --volume "$volume:/coordinator-state" \
     --env COOLIFY_URL=http+host-gateway://control.example:1 \
     --env COOLIFY_API_TOKEN="$secret" \
