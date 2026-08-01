@@ -20,7 +20,8 @@ const (
 	managedFrontDoorCoordinatorBranch     = "main"
 	managedFrontDoorCoordinatorDockerfile = "/Dockerfile.front-door-coordinator"
 	managedFrontDoorCoordinatorPort       = "8766"
-	managedFrontDoorCoordinatorHealthPath = "/healthz"
+	managedFrontDoorCoordinatorHealthPath = "/readyz"
+	managedFrontDoorCoordinatorLegacyPath = "/healthz"
 	managedFrontDoorCoordinatorStateName  = "mcp-devbox-front-door-coordinator-state"
 	managedFrontDoorCoordinatorStateMount = "/coordinator-state"
 )
@@ -74,7 +75,7 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request Platfor
 	action := "create"
 	appID := ""
 	if exists {
-		if err := s.validateManagedFrontDoorCoordinatorApp(app); err != nil {
+		if err := s.validateManagedFrontDoorCoordinatorReconcileApp(app); err != nil {
 			sp.Finish(audit.Deny, "preview coordinator", nil, err)
 			return "", err
 		}
@@ -169,7 +170,8 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 			sp.Finish(audit.Deny, planID, nil, err)
 			return "", err
 		}
-		if err := s.validateManagedFrontDoorCoordinatorApp(app); err != nil {
+		app, err = s.reconcileManagedFrontDoorCoordinatorApp(app)
+		if err != nil {
 			sp.Finish(audit.Deny, planID, nil, err)
 			return "", err
 		}
@@ -553,14 +555,56 @@ func (s *PlatformCapability) getManagedApplication(appID string) (platformApplic
 }
 
 func (s *PlatformCapability) validateManagedFrontDoorCoordinatorApp(app platformApplication) error {
+	return s.validateManagedFrontDoorCoordinatorContract(app, false)
+}
+
+func (s *PlatformCapability) validateManagedFrontDoorCoordinatorReconcileApp(app platformApplication) error {
+	return s.validateManagedFrontDoorCoordinatorContract(app, true)
+}
+
+func (s *PlatformCapability) validateManagedFrontDoorCoordinatorContract(app platformApplication, allowLegacyHealth bool) error {
+	healthPathValid := app.HealthcheckPath == managedFrontDoorCoordinatorHealthPath
+	if allowLegacyHealth && app.HealthcheckPath == managedFrontDoorCoordinatorLegacyPath {
+		healthPathValid = true
+	}
 	if app.UUID == "" || app.Name != managedFrontDoorCoordinatorName || !s.managedFrontDoorRepositoryMatches(app.repo()) ||
 		app.branch() != managedFrontDoorCoordinatorBranch || app.BuildPack != "dockerfile" ||
 		app.Dockerfile != managedFrontDoorCoordinatorDockerfile || app.PortsExposes != managedFrontDoorCoordinatorPort ||
-		app.AutoDeploy || app.InstantDeploy || app.HealthcheckPath != managedFrontDoorCoordinatorHealthPath ||
+		app.AutoDeploy || app.InstantDeploy || !healthPathValid ||
 		app.domain() != "" || strings.TrimSpace(app.DockerRunOptions) != "" {
 		return errors.New("existing front-door coordinator does not match the private worker contract")
 	}
 	return nil
+}
+
+func (s *PlatformCapability) reconcileManagedFrontDoorCoordinatorApp(app platformApplication) (platformApplication, error) {
+	if err := s.validateManagedFrontDoorCoordinatorReconcileApp(app); err != nil {
+		return platformApplication{}, err
+	}
+	if app.HealthcheckPath == managedFrontDoorCoordinatorHealthPath {
+		return app, nil
+	}
+	payload := map[string]any{
+		"health_check_enabled": true, "health_check_type": "http", "health_check_scheme": "http",
+		"health_check_method": "GET", "health_check_path": managedFrontDoorCoordinatorHealthPath,
+		"health_check_port": 8766, "health_check_return_code": 200, "health_check_interval": 10,
+		"health_check_timeout": 3, "health_check_retries": 12, "health_check_start_period": 20,
+	}
+	status, body, err := s.coolify.request(context.Background(), http.MethodPatch, "/api/v1/applications/"+url.PathEscape(app.UUID), payload)
+	if err != nil {
+		return platformApplication{}, err
+	}
+	if status < 200 || status >= 300 {
+		return platformApplication{}, fmt.Errorf("reconciling coordinator readiness healthcheck -> HTTP %d: %s", status, s.coolifySafe(body))
+	}
+	updated, err := s.getManagedApplication(app.UUID)
+	if err != nil {
+		return platformApplication{}, err
+	}
+	if err := s.validateManagedFrontDoorCoordinatorApp(updated); err != nil {
+		return platformApplication{}, err
+	}
+	return updated, nil
 }
 
 func (s *PlatformCapability) createManagedFrontDoorCoordinatorApp() (platformApplication, error) {

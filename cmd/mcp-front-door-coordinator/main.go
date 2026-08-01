@@ -2,16 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/frontdoorcoordinator"
 )
@@ -43,78 +41,10 @@ type runtimeConfig struct {
 }
 
 func main() {
-	config, err := loadConfig(os.Getenv)
-	if err != nil {
-		log.Fatal(err)
-	}
-	journal, err := frontdoorcoordinator.OpenJournal(config.StateRoot)
-	if err != nil {
-		log.Fatal(err)
-	}
-	client, err := frontdoorcoordinator.NewClient(config.ClientConfig)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		if _, err := journal.Read(); err != nil {
-			http.Error(w, "journal unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte("ok mcp-front-door-coordinator\n"))
-	})
-	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
-		status, err := journal.Read()
-		if err != nil {
-			http.Error(w, "journal unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		status.RequestID = ""
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(status)
-	})
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	server := &http.Server{Addr: config.ListenAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("coordinator HTTP server failed: %v", err)
-			stop()
-		}
-	}()
-
-	fatalTransition := make(chan error, 1)
-	if config.Target != frontdoorcoordinator.TargetIdle {
-		go func() {
-			runner := frontdoorcoordinator.Runner{Platform: client, Journal: journal, RequestID: config.RequestID}
-			status, runErr := runner.Run(ctx, config.Target)
-			if runErr != nil {
-				log.Printf("front-door transition failed: target=%s state=%s phase=%s reason=%s", status.Target, status.State, status.Phase, status.Reason)
-				if errors.Is(runErr, frontdoorcoordinator.ErrStatusPublish) || errors.Is(runErr, frontdoorcoordinator.ErrDurableState) {
-					fatalTransition <- runErr
-				}
-				return
-			}
-			log.Printf("front-door transition terminal: target=%s state=%s revision=%d", status.Target, status.State, status.Revision)
-		}()
-	}
-
-	var fatalErr error
-	select {
-	case <-ctx.Done():
-	case fatalErr = <-fatalTransition:
-		stop()
-	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("coordinator HTTP shutdown failed: %v", err)
-	}
-	if fatalErr != nil {
-		log.Fatalf("front-door coordinator cannot maintain durable state: %v", fatalErr)
+	if err := runCoordinator(ctx, os.Getenv, defaultCoordinatorDependencies()); err != nil {
+		log.Fatal("front-door coordinator stopped")
 	}
 }
 
@@ -140,11 +70,14 @@ func loadConfig(getenv func(string) string) (runtimeConfig, error) {
 	if stateRoot == "" {
 		stateRoot = defaultStateRoot
 	}
+	if stateRoot != defaultStateRoot {
+		return runtimeConfig{}, fmt.Errorf("%s must remain %s", stateRootEnv, defaultStateRoot)
+	}
 	listenAddr := strings.TrimSpace(getenv(listenAddrEnv))
 	if listenAddr == "" {
 		listenAddr = defaultListenAddr
 	}
-	if !strings.Contains(listenAddr, ":") {
+	if _, _, err := net.SplitHostPort(listenAddr); err != nil {
 		return runtimeConfig{}, fmt.Errorf("%s must be a host:port", listenAddrEnv)
 	}
 	return runtimeConfig{
