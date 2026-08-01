@@ -22,6 +22,11 @@ var (
 	commitPattern   = regexp.MustCompile("^[a-f0-9]{40}$")
 	protocolPattern = regexp.MustCompile("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 	catalogPattern  = regexp.MustCompile("^sha256:[a-f0-9]{64}$")
+
+	ErrTopologyFrontApplication   = errors.New("front application topology read failed")
+	ErrTopologyBackendApplication = errors.New("backend application topology read failed")
+	ErrTopologyManagedIdentity    = errors.New("managed topology identity failed")
+	ErrTopologyFrontBackend       = errors.New("front backend topology read failed")
 )
 
 type Config struct {
@@ -202,18 +207,18 @@ func NewClient(config Config) (*Client, error) {
 func (c *Client) Topology(ctx context.Context) (Topology, error) {
 	front, err := c.application(ctx, c.config.FrontAppID)
 	if err != nil {
-		return Topology{}, err
+		return Topology{}, ErrTopologyFrontApplication
 	}
 	backend, err := c.application(ctx, c.config.BackendAppID)
 	if err != nil {
-		return Topology{}, err
+		return Topology{}, ErrTopologyBackendApplication
 	}
 	if front.branch() != "front-door-stable" || backend.branch() != "main" || !managedRepositoryMatches(front.repository()) || !managedRepositoryMatches(backend.repository()) {
-		return Topology{}, errors.New("managed applications do not match fixed repository and branches")
+		return Topology{}, ErrTopologyManagedIdentity
 	}
 	frontBackend, err := c.frontBackendURL(ctx)
 	if err != nil {
-		return Topology{}, err
+		return Topology{}, ErrTopologyFrontBackend
 	}
 	return Topology{FrontDomain: front.domains(), FrontBackendURL: frontBackend, BackendDomains: backend.domains()}, nil
 }

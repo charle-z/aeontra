@@ -17,13 +17,18 @@ import (
 type startupCode string
 
 const (
-	startupInitializing             startupCode = "initializing"
-	startupConfigurationInvalid     startupCode = "configuration_invalid"
-	startupJournalOpenFailed        startupCode = "journal_open_failed"
-	startupCoolifyClientInvalid     startupCode = "coolify_client_invalid"
-	startupTopologyValidationFailed startupCode = "topology_validation_failed"
-	startupDurableStateFailed       startupCode = "durable_state_failed"
-	startupStatusPublishFailed      startupCode = "status_publish_failed"
+	startupInitializing                     startupCode = "initializing"
+	startupConfigurationInvalid             startupCode = "configuration_invalid"
+	startupJournalOpenFailed                startupCode = "journal_open_failed"
+	startupCoolifyClientInvalid             startupCode = "coolify_client_invalid"
+	startupTopologyValidationFailed         startupCode = "topology_validation_failed"
+	startupTopologyFrontApplicationFailed   startupCode = "topology_front_application_failed"
+	startupTopologyBackendApplicationFailed startupCode = "topology_backend_application_failed"
+	startupTopologyIdentityInvalid          startupCode = "topology_identity_invalid"
+	startupTopologyFrontBackendFailed       startupCode = "topology_front_backend_failed"
+	startupTopologyContractInvalid          startupCode = "topology_contract_invalid"
+	startupDurableStateFailed               startupCode = "durable_state_failed"
+	startupStatusPublishFailed              startupCode = "status_publish_failed"
 )
 
 type coordinatorRuntimeState struct {
@@ -175,6 +180,21 @@ func serveCoordinator(ctx context.Context, listener net.Listener, getenv func(st
 	return result
 }
 
+func topologyStartupCode(err error) startupCode {
+	switch {
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontApplication):
+		return startupTopologyFrontApplicationFailed
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyBackendApplication):
+		return startupTopologyBackendApplicationFailed
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyManagedIdentity):
+		return startupTopologyIdentityInvalid
+	case errors.Is(err, frontdoorcoordinator.ErrTopologyFrontBackend):
+		return startupTopologyFrontBackendFailed
+	default:
+		return startupTopologyValidationFailed
+	}
+}
+
 func initializeCoordinator(ctx context.Context, getenv func(string) string, dependencies coordinatorDependencies) (runtimeConfig, *frontdoorcoordinator.Journal, frontdoorcoordinator.Platform, startupCode) {
 	config, err := loadConfig(getenv)
 	if err != nil {
@@ -195,8 +215,11 @@ func initializeCoordinator(ctx context.Context, getenv func(string) string, depe
 		return runtimeConfig{}, journal, nil, startupCoolifyClientInvalid
 	}
 	topology, err := platform.Topology(ctx)
-	if err != nil || frontdoorcoordinator.ValidateTopology(config.Target, topology) != nil {
-		return runtimeConfig{}, journal, platform, startupTopologyValidationFailed
+	if err != nil {
+		return runtimeConfig{}, journal, platform, topologyStartupCode(err)
+	}
+	if frontdoorcoordinator.ValidateTopology(config.Target, topology) != nil {
+		return runtimeConfig{}, journal, platform, startupTopologyContractInvalid
 	}
 	return config, journal, platform, ""
 }
