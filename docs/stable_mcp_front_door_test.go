@@ -17,6 +17,7 @@ func TestStableMCPFrontDoorDocumentationIsCanonicalAndLinked(t *testing.T) {
 		"MCP_FRONT_DOOR_BACKEND_URL",
 		"MCP_FRONT_DOOR_EXPECTED_PROTOCOL",
 		"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH",
+		"MCP_FRONT_DOOR_TRANSITION_CATALOG_HASH",
 		"/front-door/healthz",
 		"Requests already accepted continue",
 		"cannot prevent a ChatGPT client-side",
@@ -36,6 +37,7 @@ func TestStableMCPFrontDoorDocumentationIsCanonicalAndLinked(t *testing.T) {
 		"MCP_FRONT_DOOR_BACKEND_URL",
 		"MCP_FRONT_DOOR_EXPECTED_PROTOCOL",
 		"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH",
+		"MCP_FRONT_DOOR_TRANSITION_CATALOG_HASH",
 	} {
 		if !strings.Contains(string(configuration), variable) {
 			t.Fatalf("canonical configuration missing %q", variable)

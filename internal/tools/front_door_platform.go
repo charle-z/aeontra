@@ -67,6 +67,7 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 	currentFrontDomain := ""
 	backendAppID := ""
 	backendDomain := ""
+	catalogPlan := managedFrontDoorCatalogPlan{Primary: normalized.ExpectedCatalogHash, Changed: true}
 	if exists {
 		var backend platformApplication
 		action, backend, err = s.managedFrontDoorAction(app, normalized)
@@ -83,6 +84,18 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 		currentFrontDomain = app.domain()
 		backendAppID = backend.UUID
 		backendDomain = backend.domain()
+		if action == frontDoorActionReconcile {
+			entries, listErr := s.coolify.listEnvironmentVariables(context.Background(), app.UUID)
+			if listErr != nil {
+				sp.Finish(audit.Error, "preview catalog", nil, listErr)
+				return "", listErr
+			}
+			catalogPlan, err = planManagedFrontDoorCatalogTransition(entries, s.coolify.token, normalized.ExpectedCatalogHash)
+			if err != nil {
+				sp.Finish(audit.Deny, "preview catalog", nil, err)
+				return "", err
+			}
+		}
 	}
 	plan, err := s.plans.Create("platform-front-door-create", map[string]string{
 		"action": action, "app": appID, "domain": normalized.Domain, "backend_url": normalized.BackendURL,
@@ -91,6 +104,8 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 		"environment_uuid": s.coolify.environmentUUID, "environment_name": s.coolify.environmentName,
 		"destination_uuid": s.coolify.destinationUUID, "github_app_uuid": s.coolify.githubAppUUID,
 		"front_domain_before": currentFrontDomain, "backend_app": backendAppID, "backend_domain_before": backendDomain,
+		"catalog_primary": catalogPlan.Primary, "catalog_transition": catalogPlan.Transition,
+		"catalog_remove_uuid": catalogPlan.RemoveUUID, "catalog_changed": fmt.Sprintf("%t", catalogPlan.Changed),
 	})
 	if err != nil {
 		sp.Finish(audit.Error, "preview plan", nil, err)
@@ -155,6 +170,7 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 		return "", err
 	}
 	created := false
+	catalogPlan := managedFrontDoorCatalogPlan{Primary: request.ExpectedCatalogHash, Changed: true}
 	if exists {
 		action, backend, actionErr := s.managedFrontDoorAction(app, request)
 		if actionErr != nil {
@@ -170,6 +186,24 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 			err := errors.New("managed front-door topology changed after preview")
 			sp.Finish(audit.Deny, planID, nil, err)
 			return "", err
+		}
+		if action == frontDoorActionReconcile {
+			entries, listErr := s.coolify.listEnvironmentVariables(context.Background(), app.UUID)
+			if listErr != nil {
+				sp.Finish(audit.Error, planID, nil, listErr)
+				return "", listErr
+			}
+			catalogPlan, err = planManagedFrontDoorCatalogTransition(entries, s.coolify.token, request.ExpectedCatalogHash)
+			if err != nil {
+				sp.Finish(audit.Deny, planID, nil, err)
+				return "", err
+			}
+			if catalogPlan.Primary != plan.Args["catalog_primary"] || catalogPlan.Transition != plan.Args["catalog_transition"] ||
+				catalogPlan.RemoveUUID != plan.Args["catalog_remove_uuid"] || fmt.Sprintf("%t", catalogPlan.Changed) != plan.Args["catalog_changed"] {
+				err = errors.New("managed front-door catalog state changed after preview")
+				sp.Finish(audit.Deny, planID, nil, err)
+				return "", err
+			}
 		}
 		if action == frontDoorActionRenameTemporary || action == frontDoorActionCutover ||
 			action == frontDoorActionResumeCutoverBackend || action == frontDoorActionResumeCutoverPublic ||
@@ -195,9 +229,18 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 		return fmt.Sprintf("application_uuid: %s\napplication_created: %t\ndeployed: false\n", app.UUID, created), err
 	}
 	vars := map[string]string{
-		"MCP_FRONT_DOOR_BACKEND_URL":           request.BackendURL,
-		"MCP_FRONT_DOOR_EXPECTED_PROTOCOL":     request.ExpectedProtocol,
-		"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH": request.ExpectedCatalogHash,
+		"MCP_FRONT_DOOR_BACKEND_URL":       request.BackendURL,
+		"MCP_FRONT_DOOR_EXPECTED_PROTOCOL": request.ExpectedProtocol,
+		frontDoorExpectedCatalogKey:        catalogPlan.Primary,
+	}
+	if catalogPlan.Transition != "" {
+		vars[frontDoorTransitionCatalogKey] = catalogPlan.Transition
+	}
+	if catalogPlan.RemoveUUID != "" {
+		if err := s.coolify.deleteEnvironmentVariable(context.Background(), app.UUID, catalogPlan.RemoveUUID); err != nil {
+			sp.Finish(audit.Error, planID, nil, err)
+			return fmt.Sprintf("application_uuid: %s\napplication_created: %t\ndeployed: false\n", app.UUID, created), err
+		}
 	}
 	keys := make([]string, 0, len(vars))
 	for key := range vars {
@@ -208,8 +251,8 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 		sp.Finish(audit.Error, planID, nil, err)
 		return fmt.Sprintf("application_uuid: %s\napplication_created: %t\ndeployed: false\n", app.UUID, created), err
 	}
-	out := fmt.Sprintf("application_uuid: %s\napplication_created: %t\nbranch: %s\nexpected_commit: %s\nenvironment_variables_configured: 3\n", app.UUID, created, managedFrontDoorBranch, sha)
-	if app.commit() == sha && app.Status == "running:healthy" {
+	out := fmt.Sprintf("application_uuid: %s\napplication_created: %t\nbranch: %s\nexpected_commit: %s\nenvironment_variables_configured: %d\n", app.UUID, created, managedFrontDoorBranch, sha, len(vars))
+	if app.commit() == sha && app.Status == "running:healthy" && !catalogPlan.Changed {
 		sp.Finish(audit.Allow, planID, nil, nil)
 		return out + "deployment_skipped: already_serving_expected_commit\n", nil
 	}
