@@ -123,7 +123,7 @@ exterior MCP catalog; see `docs/development-edge-git.md`.
 | `platform_deployment_status` | 1/0/1/1 | Return one deployment's status, commit, timestamps, application name, and only an unambiguous allowlisted Front Door coordinator `safe_code` when present in retained deployment logs. |
 | `platform_app_create_preview` | 1/0/1/1 | Validate and plan owner/domain-restricted app creation. |
 | `platform_front_door_create_preview` | 1/0/1/1 | Plan one fixed independently deployed MCP facade with allowed domain/backend and exact protocol/catalog pins. |
-| `platform_front_door_create` | 0/1/0/1 | Create or reconcile only the managed facade, configure its three non-secret variables, and deploy only when its pinned commit is not already healthy. |
+| `platform_front_door_create` | 0/1/0/1 | Create or reconcile only the managed facade, configure its authenticated non-secret compatibility variables, allow at most one exact transition catalog, and deploy only when the pinned commit and catalog state are already active. |
 | `platform_front_door_status` | 1/0/1/1 | Read the managed facade by fixed server-owned name without exposing environment values or requiring its UUID in the general app allowlist. |
 | `platform_front_door_coordinator_preview` | 1/0/1/1 | Plan the single private no-domain coordinator worker and its dedicated persistent journal. |
 | `platform_front_door_coordinator_create` | 0/1/0/1 | Create or reconcile the private coordinator with fixed application identities and one normal deployment. |

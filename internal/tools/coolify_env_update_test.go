@@ -61,3 +61,20 @@ func TestSetEnvironmentVariablesUsesLiteralRuntimeContract(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteEnvironmentVariableUsesExactApplicationAndEnvironmentIdentity(t *testing.T) {
+	t.Parallel()
+	client := NewCoolifyClient("https://coolify.example", "token", nil)
+	client.do = func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodDelete || request.URL.Path != "/api/v1/applications/front1/envs/env1" {
+			t.Fatalf("unexpected delete request: %s %s", request.Method, request.URL.Path)
+		}
+		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
+	}
+	if err := client.deleteEnvironmentVariable(context.Background(), "front1", "env1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.deleteEnvironmentVariable(context.Background(), "front1", "../env1"); err == nil {
+		t.Fatal("unsafe environment identity accepted")
+	}
+}
