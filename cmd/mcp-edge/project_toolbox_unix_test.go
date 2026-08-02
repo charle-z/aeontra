@@ -13,12 +13,14 @@ import (
 )
 
 type fakeProjectToolboxManager struct {
+	createRequest  edgeclient.ProjectToolboxCreateRequest
 	execRequest    edgeclient.ProjectToolboxExecRequest
 	serviceRequest edgeclient.ProjectToolboxServiceStartRequest
 	removed        bool
 }
 
-func (*fakeProjectToolboxManager) Create(context.Context, edgeclient.ProjectToolboxCreateRequest) (edgeclient.ProjectToolboxSnapshot, bool, error) {
+func (manager *fakeProjectToolboxManager) Create(_ context.Context, request edgeclient.ProjectToolboxCreateRequest) (edgeclient.ProjectToolboxSnapshot, bool, error) {
+	manager.createRequest = request
 	return toolboxFixtureSnapshot(), false, nil
 }
 func (*fakeProjectToolboxManager) Status(context.Context, edgeclient.ProjectToolboxStatusRequest) (edgeclient.ProjectToolboxSnapshot, error) {
@@ -62,6 +64,27 @@ func toolboxFixtureSnapshot() edgeclient.ProjectToolboxSnapshot {
 		ToolboxID: "tb_11111111111111111111111111111111", State: edgeclient.ProjectToolboxRunning,
 		BaseImage: "docker.io/library/debian:bookworm-slim", BaseImageID: "sha256:" + strings.Repeat("a", 64),
 		CreatedAt: time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 8, 2, 12, 1, 0, 0, time.UTC),
+		CPUMillis: 4000, MemoryMiB: 8192, ProcessLimit: 2048,
+		ContainerAccess: true, WritableBytes: 4096, RootFSBytes: 80 << 20,
+	}
+}
+
+func TestCollectProjectToolboxMapsCreateResourceLimits(t *testing.T) {
+	resolved := edgeclient.ProjectResolution{
+		Project: edgeclient.Project{Alias: "project", Owner: "charle-z", Repository: "repo"}, TargetAlias: "parrot",
+		Workspace: edgeclient.Workspace{ID: "ws_22222222222222222222222222222222", Path: "/private/workspace", Profile: edgeclient.WorkspaceProfileLinuxWorkcell, Mode: edgeclient.WorkspaceModeDev},
+	}
+	manager := &fakeProjectToolboxManager{}
+	operation := edge.Operation{Kind: edge.OperationProjectToolboxCreate, Request: edge.OperationRequest{ToolboxCPUMillis: 4000, ToolboxMemoryMiB: 8192, ToolboxProcessLimit: 2048}}
+	result, code := collectProjectToolbox(t.Context(), manager, resolved, operation)
+	if code != "" || manager.createRequest.CPUMillis != 4000 || manager.createRequest.MemoryMiB != 8192 || manager.createRequest.ProcessLimit != 2048 {
+		t.Fatalf("request=%+v result=%+v code=%q", manager.createRequest, result, code)
+	}
+	if result.ToolboxCPUMillis != 4000 || result.ToolboxMemoryMiB != 8192 || result.ToolboxProcessLimit != 2048 {
+		t.Fatalf("result=%+v", result)
+	}
+	if !result.ToolboxContainerAccess || result.ToolboxWritableBytes != 4096 || result.ToolboxRootFSBytes != 80<<20 {
+		t.Fatalf("container metadata=%+v", result)
 	}
 }
 

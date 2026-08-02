@@ -52,7 +52,7 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	var err error
 	switch operation.Kind {
 	case edge.OperationProjectToolboxCreate:
-		snapshot, _, err = manager.Create(ctx, edgeclient.ProjectToolboxCreateRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
+		snapshot, _, err = manager.Create(ctx, edgeclient.ProjectToolboxCreateRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace, CPUMillis: request.ToolboxCPUMillis, MemoryMiB: request.ToolboxMemoryMiB, ProcessLimit: request.ToolboxProcessLimit})
 	case edge.OperationProjectToolboxStatus:
 		snapshot, err = manager.Status(ctx, edgeclient.ProjectToolboxStatusRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 	case edge.OperationProjectToolboxRepair:
@@ -114,6 +114,12 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	result.ToolboxOutput = snapshot.Output
 	result.ToolboxOutputTruncated = snapshot.Truncated
 	result.ToolboxRemoved = snapshot.State == "removed"
+	result.ToolboxCPUMillis = snapshot.CPUMillis
+	result.ToolboxMemoryMiB = snapshot.MemoryMiB
+	result.ToolboxProcessLimit = snapshot.ProcessLimit
+	result.ToolboxContainerAccess = snapshot.ContainerAccess
+	result.ToolboxWritableBytes = snapshot.WritableBytes
+	result.ToolboxRootFSBytes = snapshot.RootFSBytes
 	if service.ServiceID != "" {
 		result.ToolboxServiceID = service.ServiceID
 		result.ToolboxServiceName = service.Name

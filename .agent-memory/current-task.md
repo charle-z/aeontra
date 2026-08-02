@@ -1,38 +1,38 @@
-# Current task — Hito 4 persistent toolbox services
+# Current task — Hito 4 resource controls
 
-## Verified base and production
+## Verified production base
 
-- Branch: `codex/toolbox-services-repair`.
-- Base: `origin/main` at Hito 4 core merge
-  `010c6091358f62b6fada35dbfc33eeaf50c2ae11`.
-- PR #128 passed 16/16 exact-head checks and is merged/deployed.
-- Backend serves 130 tools at
-  `sha256:11697746d4c61b4035c8a6413b4ad63a0b29a50d343cf64d524640fdb719d03d`.
-- Front Door deployment `f5lj9mh5l20zfnh8xjg3jvrg` finished, retired the old
-  catalog, and remains healthy with a valid contract.
-- Public OAuth discovery is 200 and unauthenticated `/mcp` is 401 with
-  `resource_metadata`.
-- Real Edge remains on signed `p15.0.12`; Hito 3A/3B/safe-sync/H4 real-device
-  acceptance still requires one explicitly numbered signed release and update.
-
-## Candidate scope
-
-- Adds fail-closed repair plus named service start/status/stop on the same toolbox.
-- Service identity is opaque and PID/start ticks remain private; no public path,
-  process argv, environment, log or container identity is returned.
-- Service status never starts a stopped toolbox. Commands are not persisted or replayed
-  automatically after WSL/container restart.
-- Candidate catalog is 134 tools at
+- Branch base: `origin/main` at `f902fc4a229503a05eb47fa9ac4b3137b55d46f2`.
+- PR #129 passed 16/16 exact-head checks, merged and auto-deployed.
+- Backend serves 134 tools at
   `sha256:504e6f371de9a46a6e255913a019a9990d8977de286fa4f51d90f27fdf06308b`.
+- Front Door retirement deployment `vll165rrqplfulnw8oyh1ucs` finished with only the
+  current catalog allowed. Public MCP challenge and OAuth discovery are healthy.
+- Brain note `gpt-web-direct-edge-h4-toolbox-services` records the closure.
+
+## Active source candidate
+
+- Branch: `codex/toolbox-container-controls`.
+- PR #130 is open at exact head `c4645faf6b5a68561e1fe889cbe600d056a65757`.
+- `project_toolbox_create` now accepts optional bounded CPU, memory and process limits.
+- Defaults are 4000 millicores, 8192 MiB and 2048 processes.
+- The limits persist in owner-only state, appear as safe public metadata and are
+  revalidated against live rootless `HostConfig` on every operation.
+- Reuse with different limits and live drift fail closed.
+- The toolbox also receives the validated user-owned rootless engine at a fixed private
+  path with server-owned client variables and reports bounded storage usage.
+- Combined candidate catalog remains 134 tools at
+  `sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
+- CI exposed an existing terminal-state ordering bug in project-process recovery:
+  an unsafe process could publish `exited` after reconciliation detected incomplete
+  logs but before `failed` was persisted. The candidate now persists the failure
+  before sending the mandatory kill. The failing test passes 20/20 under `-race` and
+  the complete race suite passed through `internal/edgeclient`; a later independent
+  policy timing assertion was green when repeated three times in isolation.
 
 ## Next exact action
 
-PR #129 is open from `codex/toolbox-services-repair`; its initial exact head is
-`59b2581a09c5cbf13e2d1cc84b9385e90b17296a`. Require exact-head CI, merge/deploy with a
-bounded Front Door catalog transition and record Brain evidence. Do not infer an
-immutable release number.
-
-The first published documentation head `964cc6a3ae3fa0ef4a2524452a9aba18b7197b39`
-failed only Staticcheck S1016 at `toolboxServiceSnapshot`. The mechanical typed
-conversion is locally green under the exact Staticcheck v0.7.0; publication of that
-correction is the active action.
+Commit and publish the terminal-state ordering correction, wait for PR #130 exact-head
+gates, then use the managed dual-catalog Front Door transition before merging and
+deploying the 134-tool candidate. Retire the old catalog only after the new backend is
+healthy. Do not infer a signed Edge release number after installed `p15.0.12`.

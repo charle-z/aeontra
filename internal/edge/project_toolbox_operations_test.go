@@ -7,12 +7,29 @@ import (
 
 func TestProjectToolboxOperationContractsAreClosedAndIdempotent(t *testing.T) {
 	common := OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell"}
-	for _, kind := range []OperationKind{OperationProjectToolboxCreate, OperationProjectToolboxCleanup, OperationProjectToolboxRepair} {
+	for _, kind := range []OperationKind{OperationProjectToolboxCleanup, OperationProjectToolboxRepair} {
 		request := common
 		request.IdempotencyKey = "toolbox-1"
 		if _, err := validateOperationRequestWithProjectExec(kind, request); err != nil {
 			t.Fatalf("%s: %v", kind, err)
 		}
+	}
+	create := common
+	create.IdempotencyKey = "toolbox-create-1"
+	create.ToolboxCPUMillis = 12000
+	create.ToolboxMemoryMiB = 24576
+	create.ToolboxProcessLimit = 6144
+	if normalized, err := validateOperationRequestWithProjectExec(OperationProjectToolboxCreate, create); err != nil {
+		t.Fatal(err)
+	} else if normalized.ToolboxCPUMillis != 12000 || normalized.ToolboxMemoryMiB != 24576 || normalized.ToolboxProcessLimit != 6144 {
+		t.Fatalf("normalized create=%+v", normalized)
+	}
+	defaults := common
+	defaults.IdempotencyKey = "toolbox-create-defaults"
+	if normalized, err := validateOperationRequestWithProjectExec(OperationProjectToolboxCreate, defaults); err != nil {
+		t.Fatal(err)
+	} else if normalized.ToolboxCPUMillis != DefaultProjectToolboxCPUMillis || normalized.ToolboxMemoryMiB != DefaultProjectToolboxMemoryMiB || normalized.ToolboxProcessLimit != DefaultProjectToolboxProcessLimit {
+		t.Fatalf("defaulted create=%+v", normalized)
 	}
 	serviceStart := common
 	serviceStart.IdempotencyKey = "toolbox-service-start-1"
@@ -71,6 +88,21 @@ func TestProjectToolboxOperationContractsAreClosedAndIdempotent(t *testing.T) {
 	if _, err := validateOperationRequestWithProjectExec(OperationProjectExec, crossKind); err == nil {
 		t.Fatal("accepted toolbox service field on foreground exec")
 	}
+	for _, invalidLimits := range []OperationRequest{
+		{ToolboxCPUMillis: 249, ToolboxMemoryMiB: DefaultProjectToolboxMemoryMiB, ToolboxProcessLimit: DefaultProjectToolboxProcessLimit},
+		{ToolboxCPUMillis: DefaultProjectToolboxCPUMillis, ToolboxMemoryMiB: 511, ToolboxProcessLimit: DefaultProjectToolboxProcessLimit},
+		{ToolboxCPUMillis: DefaultProjectToolboxCPUMillis, ToolboxMemoryMiB: DefaultProjectToolboxMemoryMiB, ToolboxProcessLimit: 127},
+	} {
+		invalidLimits.Alias, invalidLimits.TargetAlias, invalidLimits.Profile, invalidLimits.IdempotencyKey = "project", "parrot", "linux-workcell", "invalid-limits"
+		if _, err := validateOperationRequestWithProjectExec(OperationProjectToolboxCreate, invalidLimits); err == nil {
+			t.Fatalf("accepted invalid limits: %+v", invalidLimits)
+		}
+	}
+	statusWithLimits := common
+	statusWithLimits.ToolboxCPUMillis = DefaultProjectToolboxCPUMillis
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectToolboxStatus, statusWithLimits); err == nil {
+		t.Fatal("status accepted create-only resource limits")
+	}
 }
 
 func TestProjectToolboxCompletionIsBoundToItsOperationKind(t *testing.T) {
@@ -79,6 +111,8 @@ func TestProjectToolboxCompletionIsBoundToItsOperationKind(t *testing.T) {
 		ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
 		ToolboxID: "tb_22222222222222222222222222222222", ToolboxState: "running", ToolboxBase: "debian-bookworm-slim",
 		ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z",
+		ToolboxCPUMillis: DefaultProjectToolboxCPUMillis, ToolboxMemoryMiB: DefaultProjectToolboxMemoryMiB, ToolboxProcessLimit: DefaultProjectToolboxProcessLimit,
+		ToolboxContainerAccess: true, ToolboxWritableBytes: 4096, ToolboxRootFSBytes: 80 << 20,
 	}
 	if !validOperationCompletionForKind(OperationProjectToolboxStatus, result, "") {
 		t.Fatal("valid toolbox status was rejected")

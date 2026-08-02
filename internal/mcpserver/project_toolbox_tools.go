@@ -19,6 +19,9 @@ type projectToolboxParams struct {
 	TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
 	ServiceID      string            `json:"service_id,omitempty"`
 	ServiceName    string            `json:"service_name,omitempty"`
+	CPUMillis      int               `json:"cpu_millis,omitempty"`
+	MemoryMiB      int               `json:"memory_mib,omitempty"`
+	ProcessLimit   int               `json:"process_limit,omitempty"`
 }
 
 type projectToolboxPublicView struct {
@@ -42,6 +45,12 @@ type projectToolboxPublicView struct {
 	ServiceCreatedAt string              `json:"service_created_at,omitempty"`
 	ServiceUpdatedAt string              `json:"service_updated_at,omitempty"`
 	Reused           bool                `json:"reused"`
+	CPUMillis        int                 `json:"cpu_millis,omitempty"`
+	MemoryMiB        int                 `json:"memory_mib,omitempty"`
+	ProcessLimit     int                 `json:"process_limit,omitempty"`
+	ContainerAccess  bool                `json:"rootless_engine_access,omitempty"`
+	WritableBytes    int64               `json:"writable_bytes,omitempty"`
+	RootFSBytes      int64               `json:"rootfs_bytes,omitempty"`
 	Reason           string              `json:"reason,omitempty"`
 }
 
@@ -53,7 +62,11 @@ func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
 	serviceID := stringSchema("opaque toolbox service identifier", `^ts_[a-f0-9]{32}$`, 35)
 	serviceName := stringSchema("stable toolbox service name", `^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`, 63)
 	execProperties := map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key, "argv": argv, "cwd": map[string]any{"type": "string", "maxLength": 1024}, "environment": environment, "timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": 3600}}
-	s.addDirectTool(toolDef{Name: "project_toolbox_create", Description: "Create or recover the project's persistent rootless Debian toolbox. The server owns the base image and container identity; packages, caches and writable rootfs remain until explicit cleanup.", InputSchema: closedObject(map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key}, []string{"alias", "target", "idempotency_key"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
+	createProperties := map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key,
+		"cpu_millis":    map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxCPUMillis, "maximum": edge.MaxProjectToolboxCPUMillis},
+		"memory_mib":    map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxMemoryMiB, "maximum": edge.MaxProjectToolboxMemoryMiB},
+		"process_limit": map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxProcessLimit, "maximum": edge.MaxProjectToolboxProcessLimit}}
+	s.addDirectTool(toolDef{Name: "project_toolbox_create", Description: "Create or recover the project's persistent rootless Debian toolbox with optional bounded CPU, memory and process limits. The server owns the base image and container identity; packages, caches and writable rootfs remain until explicit cleanup.", InputSchema: closedObject(createProperties, []string{"alias", "target", "idempotency_key"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
 		return s.handleProjectToolbox(raw, edge.OperationProjectToolboxCreate)
 	})
 	s.addDirectTool(toolDef{Name: "project_toolbox_status", Description: "Inspect the registered project's persistent rootless toolbox without exposing host paths, engine names or container identifiers.", InputSchema: closedObject(common, []string{"alias", "target"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
@@ -66,8 +79,8 @@ func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
 		name, description string
 		kind              edge.OperationKind
 	}{
-		{name: "project_toolbox_exec", description: "Execute arbitrary argv inside the persistent rootless toolbox with the project mounted at /workspace. No implicit shell or command allowlist is added.", kind: edge.OperationProjectToolboxExec},
-		{name: "project_toolbox_install", description: "Install toolchains, system packages or project dependencies by executing explicit argv as root inside the rootless toolbox; the host package database is not modified.", kind: edge.OperationProjectToolboxInstall},
+		{name: "project_toolbox_exec", description: "Execute arbitrary argv inside the persistent rootless toolbox with the project at /workspace and its validated user-owned rootless engine at a fixed private endpoint. No implicit shell or command allowlist is added.", kind: edge.OperationProjectToolboxExec},
+		{name: "project_toolbox_install", description: "Install toolchains, system packages, rootless container clients or project dependencies by explicit argv as container root; the host package database is not modified.", kind: edge.OperationProjectToolboxInstall},
 	} {
 		definition := definition
 		s.addDirectTool(toolDef{Name: definition.name, Description: definition.description, InputSchema: closedObject(execProperties, []string{"alias", "target", "idempotency_key", "argv", "timeout_seconds"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
@@ -105,7 +118,7 @@ func (s *Server) handleProjectToolbox(arguments json.RawMessage, kind edge.Opera
 	if err != nil {
 		return "", err
 	}
-	request := edge.OperationRequest{Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", IdempotencyKey: params.IdempotencyKey, Argv: params.Argv, CWD: params.CWD, Environment: params.Environment, TimeoutSeconds: params.TimeoutSeconds, ToolboxServiceID: params.ServiceID, ToolboxServiceName: params.ServiceName}
+	request := edge.OperationRequest{Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", IdempotencyKey: params.IdempotencyKey, Argv: params.Argv, CWD: params.CWD, Environment: params.Environment, TimeoutSeconds: params.TimeoutSeconds, ToolboxServiceID: params.ServiceID, ToolboxServiceName: params.ServiceName, ToolboxCPUMillis: params.CPUMillis, ToolboxMemoryMiB: params.MemoryMiB, ToolboxProcessLimit: params.ProcessLimit}
 	operation, created, err := s.edgeOperations.CreateOperation(device.ID, kind, request)
 	if err == nil {
 		operation, err = s.edgeOperations.WaitOperation(context.Background(), operation.ID, 180*time.Second)
@@ -117,6 +130,8 @@ func (s *Server) handleProjectToolbox(arguments json.RawMessage, kind edge.Opera
 		view.ToolboxID, view.ToolboxState, view.Base, view.BaseImageID = result.ToolboxID, result.ToolboxState, result.ToolboxBase, result.ToolboxBaseImageID
 		view.CreatedAt, view.UpdatedAt, view.Output = result.ToolboxCreatedAt, result.ToolboxUpdatedAt, result.ToolboxOutput
 		view.OutputTruncated, view.Removed = result.ToolboxOutputTruncated, result.ToolboxRemoved
+		view.CPUMillis, view.MemoryMiB, view.ProcessLimit = result.ToolboxCPUMillis, result.ToolboxMemoryMiB, result.ToolboxProcessLimit
+		view.ContainerAccess, view.WritableBytes, view.RootFSBytes = result.ToolboxContainerAccess, result.ToolboxWritableBytes, result.ToolboxRootFSBytes
 		view.ServiceID, view.ServiceName, view.ServiceState = result.ToolboxServiceID, result.ToolboxServiceName, result.ToolboxServiceState
 		view.ServiceCreatedAt, view.ServiceUpdatedAt = result.ToolboxServiceCreatedAt, result.ToolboxServiceUpdatedAt
 	} else if operation.State == edge.OperationFailed || operation.State == edge.OperationCancelled {

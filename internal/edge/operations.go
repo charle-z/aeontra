@@ -102,6 +102,9 @@ type OperationRequest struct {
 	GitPlanID           string            `json:"git_plan_id,omitempty"`
 	ToolboxServiceID    string            `json:"toolbox_service_id,omitempty"`
 	ToolboxServiceName  string            `json:"toolbox_service_name,omitempty"`
+	ToolboxCPUMillis    int               `json:"toolbox_cpu_millis,omitempty"`
+	ToolboxMemoryMiB    int               `json:"toolbox_memory_mib,omitempty"`
+	ToolboxProcessLimit int               `json:"toolbox_process_limit,omitempty"`
 }
 
 type BackgroundProcessSummary struct {
@@ -205,6 +208,12 @@ type OperationResult struct {
 	ToolboxServiceState       string                     `json:"toolbox_service_state,omitempty"`
 	ToolboxServiceCreatedAt   string                     `json:"toolbox_service_created_at,omitempty"`
 	ToolboxServiceUpdatedAt   string                     `json:"toolbox_service_updated_at,omitempty"`
+	ToolboxCPUMillis          int                        `json:"toolbox_cpu_millis,omitempty"`
+	ToolboxMemoryMiB          int                        `json:"toolbox_memory_mib,omitempty"`
+	ToolboxProcessLimit       int                        `json:"toolbox_process_limit,omitempty"`
+	ToolboxContainerAccess    bool                       `json:"toolbox_container_access,omitempty"`
+	ToolboxWritableBytes      int64                      `json:"toolbox_writable_bytes,omitempty"`
+	ToolboxRootFSBytes        int64                      `json:"toolbox_rootfs_bytes,omitempty"`
 }
 
 type OperationProgress struct {
