@@ -1,25 +1,24 @@
-# Handoff — Hito 3B process recovery candidate
+# Handoff — safe Edge checkout synchronization candidate
 
-Remote `main` and production backend are at
-`84bac0a13bf71078e94e407f49f52e5758f3b872`. The stable Front Door is healthy and the
-public contract is the 118-tool Hito 3A catalog. The real Edge is still the older signed
-`p15.0.12` bundle, so Hito 3A real-device acceptance remains pending.
+Hito 3B is merged through PR #126 at `1d511cb038141a2a7f4bdf97d2472d4428e1f8d1`,
+deployed with 121 tools, and reconciled through the stable Front Door. Production OAuth
+discovery and the unauthenticated MCP challenge are healthy. Brain note
+`gpt-web-direct-edge-h3b-deployed` records the exact deployments and remaining real
+Edge acceptance.
 
-Current branch `codex/h3b-process-recovery` is based exactly on that remote main. It
-adds closed signal/list/cleanup process operations, bounded public summaries, explicit
-terminal-only cleanup, restart reconciliation, owner/PID/start-ticks/group/log
-validation, a signed per-process redaction/receipt worker, and background process
-survival across Edge service restart. No model
-runtime, OpenCode task, autopilot, subagent or additional authentication path was used.
+Current branch `codex/edge-safe-sync` is based exactly on that merge. It adds four
+closed direct-Edge Git operations for status, no-tag fetch, exact fast-forward preview
+and plan execution. The implementation reuses the existing private owner-bound
+askpass runner. Callers cannot provide paths, URLs, remotes, refspecs, tags, force or
+checkout/reset actions, and public results contain no credential or host path.
 
-Focused tests, vet, build and the CGO race matrix are green. The full suite has only
-the known local DrvFS `0777`/Linux `0755` fixture mismatch; Linux CI is authoritative.
-Candidate catalog identity is 121 tools,
-`sha256:feca2e4d163cfcff7e08410d5d5b34a52396430d49515c0f601486ffde0b31e2`.
-The remaining safe sequence is full gates, diff review, commit, publish, exact-head CI,
-merge, Front Door two-catalog transition, backend deployment, old-catalog retirement,
-signed release, one Edge update and real restart recovery acceptance.
+The plan is private `0600`, current-owner checked, durable across Edge restart,
+five-minute and single-use. It binds the registered workspace, project, target, branch,
+local HEAD and fetched remote HEAD. Dirty, detached, ahead, diverged, stale, changed,
+malformed, symlinked, expired and replayed state is rejected. Candidate identity is 125
+tools at `sha256:9f1ce2ece243c1d5e821adc9b037b21b50941125292485ac43748671d13451c8`.
 
-The immutable release version is the only known external authorization constraint. An
-attempt to infer `p15.0.13` was rejected before dispatch; no release was created. Obtain
-explicit approval for the exact next version rather than bypassing the workflow gate.
+The immutable Edge release version is still the only external authorization
+constraint. No release after `p15.0.12` was inferred or created. Finish all independent
+PR/deploy work, then request one exact release number only when real Edge acceptance is
+the remaining gate.

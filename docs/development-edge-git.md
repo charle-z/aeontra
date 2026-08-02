@@ -109,3 +109,14 @@ an old runtime for a later chat.
   dirty tree, behind/diverged branch, expired plan, or replay fails closed.
 - Rotate the PAT in both Coolify and Edge independently. Re-running `github configure`
   atomically replaces only the Edge credential file.
+
+## Direct registered-checkout synchronization
+
+The public direct-Edge path reuses the same private credential authority without
+starting OpenCode. `project_git_status`, `project_git_fetch`,
+`project_git_fast_forward_preview`, and `project_git_fast_forward` operate only on the
+checkout already bound to a human project alias and Edge target. The credential stays
+in the askpass child environment, while the public result contains only bounded Git
+identity and relationship metadata. The write plan is durable across Edge restart but
+expires after five minutes solely as a transaction guard; it is single-use and does
+not impose a workspace TTL.

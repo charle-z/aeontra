@@ -1,54 +1,35 @@
-# Current task — direct Edge Hito 3B process recovery
+# Current task — safe Edge checkout synchronization
 
-## Verified remote base
+## Verified base and production
 
-- Branch: `codex/h3b-process-recovery`.
-- Base: `origin/main` at `84bac0a13bf71078e94e407f49f52e5758f3b872`.
-- Hito 3A code merged through PRs #123/#125 and is deployed behind the stable Front
-  Door with 118 tools and catalog
-  `sha256:d8b6b35f7f3dc7ef13a16d98130c0d129a50cf64f2e6216cecc39e3e1b1829ab`.
-- Real Edge remains on signed `p15.0.12` at `b419d9dfd888a216813bca05aafa5d4de28f0196`.
-  No later release or Edge update has been executed.
+- Branch: `codex/edge-safe-sync`.
+- Base: `origin/main` at Hito 3B merge `1d511cb038141a2a7f4bdf97d2472d4428e1f8d1`.
+- PR #126 passed 16/16 exact-head checks and is merged/deployed.
+- Backend serves 121 tools at
+  `sha256:feca2e4d163cfcff7e08410d5d5b34a52396430d49515c0f601486ffde0b31e2`.
+- Front Door transition deployments `ek8coe188tjlsl90vh2cpwk3` and
+  `i10q024us3jyv22cw7zl38o1` finished; the old catalog is retired.
+- Public OAuth discovery is 200 and unauthenticated `/mcp` is 401 with
+  `resource_metadata`.
+- Real Edge remains on signed `p15.0.12`; Hito 3A/3B real-device acceptance still
+  requires one explicitly numbered signed release and update.
 
 ## Candidate scope
 
-- Public `project_process_signal`, `project_process_list`, and
-  `project_process_cleanup`; candidate catalog is 121 tools at
-  `sha256:feca2e4d163cfcff7e08410d5d5b34a52396430d49515c0f601486ffde0b31e2`.
-- Closed signals only: interrupt, terminate, kill.
-- Bounded metadata-only list by project/target; no PID, argv, env or paths.
-- Explicit individual/project cleanup removes terminal state only and preserves live
-  processes/logs.
-- Reconciliation on manager open and explicit lifecycle calls, without an idle poller.
-- PID/start-ticks/group/current-owner validation and safe classification for missing,
-  reused, foreign or incomplete state.
-- A signed per-process worker owns Bubblewrap pipes, redaction and terminal receipts;
-  it survives the Edge parent, while the service uses `KillMode=process`.
-  Foreground commands and OpenCode retain their parent-death behavior.
-
-## Verification
-
-- Focused manager recovery, list, signal, cleanup, PID reuse, ownership and log
-  corruption regressions are green in Parrot WSL.
-- Edge operation and MCP catalog contracts are green after the 121-tool reconciliation.
-- Full `go test ./... -count=1` passed every package except the known Windows DrvFS
-  executable-mode fixture (`0777` observed, Linux contract `0755`); affected Linux
-  package, Debian/Parrot packaging and docs suites are green.
-- `go vet ./...`, `go build ./...`, focused CGO race for `internal/edge`,
-  `internal/edgeclient`, and `internal/mcpserver`, catalog identity, and
-  `git diff --check` are green.
-- Commit, PR, exact-head CI, merge and production/Edge acceptance are pending.
-
-## External release constraint
-
-The roadmap authorizes ordinary releases generally but names only installed
-`p15.0.12`. An attempted dispatch for inferred `p15.0.13` was rejected before execution
-because that immutable version was not explicitly authorized. Do not bypass that gate
-or claim real Hito 3A/3B Edge acceptance until an exact next release is authorized and
-published through `.github/workflows/edge-release.yml`.
+- `project_git_status`, `project_git_fetch`, `project_git_fast_forward_preview`, and
+  `project_git_fast_forward` operate on the registered Edge checkout only.
+- Existing private owner-bound Git credential runner is reused; no new auth path.
+- Fetch is exactly `git fetch --no-tags origin`.
+- Fast-forward uses a private owner-checked five-minute single-use plan bound to
+  project, target, branch, local HEAD and remote HEAD, then only `git merge --ff-only`.
+- Dirty, detached, ahead, diverged, stale tracking, changed, malformed, symlinked,
+  expired or replayed state fails closed.
+- Candidate catalog is 125 tools at
+  `sha256:9f1ce2ece243c1d5e821adc9b037b21b50941125292485ac43748671d13451c8`.
 
 ## Next exact action
 
-Finish candidate documentation and adversarial tests, run the full local gates, review
-the diff, commit and publish the Hito 3B PR. Continue all independent roadmap work while
-the exact immutable release version remains the only external release blocker.
+Finish adversarial tests and catalog/documentation reconciliation, run focused and full
+gates, review the diff, commit, publish, open a PR, wait exact-head CI, transition the
+Front Door, merge/deploy, retire the previous catalog and continue to Hito 4. Do not
+infer an immutable release number.

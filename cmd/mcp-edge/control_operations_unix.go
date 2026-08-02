@@ -116,6 +116,8 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectExec(ctx, stateRoot, operation)
 	case edge.OperationProjectProcessStart, edge.OperationProjectProcessStatus, edge.OperationProjectProcessStop, edge.OperationProjectProcessSignal, edge.OperationProjectProcessList, edge.OperationProjectProcessCleanup:
 		return executeProjectProcess(ctx, stateRoot, processes, operation)
+	case edge.OperationProjectGitStatus, edge.OperationProjectGitFetch, edge.OperationProjectGitFastForwardPreview, edge.OperationProjectGitFastForward:
+		return executeProjectGitSync(ctx, stateRoot, operation)
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectEdgeDiagnostic(stateRoot, true)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:
@@ -123,6 +125,37 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}
+}
+
+func executeProjectGitSync(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
+	credential, workspaces, projects, _, code := openProjectControlState(stateRoot)
+	if code != "" {
+		return edge.OperationResult{}, code
+	}
+	defer workspaces.Close()
+	defer projects.Close()
+	resolved, err := projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
+	if err != nil {
+		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	runner := edgeclient.NewDevGitCommandRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin")
+	var result edge.OperationResult
+	switch operation.Kind {
+	case edge.OperationProjectGitStatus:
+		result, err = inspectProjectGitCheckout(ctx, resolved, runner, credential)
+	case edge.OperationProjectGitFetch:
+		result, err = fetchProjectGitCheckout(ctx, resolved, runner, credential)
+	case edge.OperationProjectGitFastForwardPreview:
+		result, err = previewProjectGitFastForward(ctx, stateRoot, resolved, runner, credential, time.Now().UTC())
+	case edge.OperationProjectGitFastForward:
+		result, err = executeProjectGitFastForward(ctx, stateRoot, resolved, operation.Request.GitPlanID, runner, credential, time.Now().UTC())
+	default:
+		return edge.OperationResult{}, "operation_invalid"
+	}
+	if err != nil {
+		return edge.OperationResult{}, "project_git_sync_failed"
+	}
+	return result, ""
 }
 
 func executeProjectPrepare(ctx context.Context, stateRoot string, request edge.OperationRequest) (edge.OperationResult, string) {

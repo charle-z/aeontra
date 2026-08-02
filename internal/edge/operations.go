@@ -24,27 +24,31 @@ const (
 )
 
 const (
-	OperationLabPrepare            OperationKind = "lab_prepare"
-	OperationLabRetarget           OperationKind = "lab_retarget"
-	OperationAutopilotStart        OperationKind = "autopilot_start"
-	OperationAutopilotPause        OperationKind = "autopilot_pause"
-	OperationAutopilotResume       OperationKind = "autopilot_resume"
-	OperationAutopilotCancel       OperationKind = "autopilot_cancel"
-	OperationBundleStatus          OperationKind = "bundle_status"
-	OperationBundleUpdate          OperationKind = "bundle_update"
-	OperationBundleRollback        OperationKind = "bundle_rollback"
-	OperationEdgeRepair            OperationKind = "edge_repair"
-	OperationOnboardingStatus      OperationKind = "onboarding_status"
-	OperationProjectPrepare        OperationKind = "project_prepare"
-	OperationProjectStatus         OperationKind = "project_status"
-	OperationProjectSnapshot       OperationKind = "project_snapshot"
-	OperationProjectExec           OperationKind = "project_exec"
-	OperationProjectProcessStart   OperationKind = "project_process_start"
-	OperationProjectProcessStatus  OperationKind = "project_process_status"
-	OperationProjectProcessStop    OperationKind = "project_process_stop"
-	OperationProjectProcessSignal  OperationKind = "project_process_signal"
-	OperationProjectProcessList    OperationKind = "project_process_list"
-	OperationProjectProcessCleanup OperationKind = "project_process_cleanup"
+	OperationLabPrepare                   OperationKind = "lab_prepare"
+	OperationLabRetarget                  OperationKind = "lab_retarget"
+	OperationAutopilotStart               OperationKind = "autopilot_start"
+	OperationAutopilotPause               OperationKind = "autopilot_pause"
+	OperationAutopilotResume              OperationKind = "autopilot_resume"
+	OperationAutopilotCancel              OperationKind = "autopilot_cancel"
+	OperationBundleStatus                 OperationKind = "bundle_status"
+	OperationBundleUpdate                 OperationKind = "bundle_update"
+	OperationBundleRollback               OperationKind = "bundle_rollback"
+	OperationEdgeRepair                   OperationKind = "edge_repair"
+	OperationOnboardingStatus             OperationKind = "onboarding_status"
+	OperationProjectPrepare               OperationKind = "project_prepare"
+	OperationProjectStatus                OperationKind = "project_status"
+	OperationProjectSnapshot              OperationKind = "project_snapshot"
+	OperationProjectExec                  OperationKind = "project_exec"
+	OperationProjectProcessStart          OperationKind = "project_process_start"
+	OperationProjectProcessStatus         OperationKind = "project_process_status"
+	OperationProjectProcessStop           OperationKind = "project_process_stop"
+	OperationProjectProcessSignal         OperationKind = "project_process_signal"
+	OperationProjectProcessList           OperationKind = "project_process_list"
+	OperationProjectProcessCleanup        OperationKind = "project_process_cleanup"
+	OperationProjectGitStatus             OperationKind = "project_git_status"
+	OperationProjectGitFetch              OperationKind = "project_git_fetch"
+	OperationProjectGitFastForwardPreview OperationKind = "project_git_fast_forward_preview"
+	OperationProjectGitFastForward        OperationKind = "project_git_fast_forward"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -86,6 +90,7 @@ type OperationRequest struct {
 	GraceSeconds        int               `json:"grace_seconds,omitempty"`
 	BackgroundSignal    string            `json:"background_signal,omitempty"`
 	ProcessLimit        int               `json:"process_limit,omitempty"`
+	GitPlanID           string            `json:"git_plan_id,omitempty"`
 }
 
 type BackgroundProcessSummary struct {
@@ -162,6 +167,19 @@ type OperationResult struct {
 	BackgroundProcesses       []BackgroundProcessSummary `json:"background_processes,omitempty"`
 	BackgroundCleanupRemoved  int                        `json:"background_cleanup_removed,omitempty"`
 	BackgroundCleanupActive   int                        `json:"background_cleanup_active,omitempty"`
+	GitBranch                 string                     `json:"git_branch,omitempty"`
+	GitHead                   string                     `json:"git_head,omitempty"`
+	GitRemoteHead             string                     `json:"git_remote_head,omitempty"`
+	GitAhead                  int                        `json:"git_ahead,omitempty"`
+	GitBehind                 int                        `json:"git_behind,omitempty"`
+	GitDiverged               bool                       `json:"git_diverged,omitempty"`
+	GitDetached               bool                       `json:"git_detached,omitempty"`
+	GitDirty                  bool                       `json:"git_dirty,omitempty"`
+	GitClean                  bool                       `json:"git_clean,omitempty"`
+	GitFetched                bool                       `json:"git_fetched,omitempty"`
+	GitFastForwarded          bool                       `json:"git_fast_forwarded,omitempty"`
+	GitPlanID                 string                     `json:"git_plan_id,omitempty"`
+	GitPlanExpiresAt          string                     `json:"git_plan_expires_at,omitempty"`
 }
 
 type OperationProgress struct {
@@ -474,6 +492,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if hasProjectProcessResult(result) {
 		return code == "" && validProjectProcessResult(result)
 	}
+	if hasProjectGitSyncResult(result) {
+		return code == "" && validProjectGitSyncResult(result)
+	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return code == "" && validProjectSnapshotResult(result)
 	}
@@ -514,10 +535,13 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectProcessResult(result) {
 		return (kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal) && validOperationCompletion(result, "")
 	}
+	if hasProjectGitSyncResult(result) {
+		return validProjectGitSyncResultForKind(kind, result)
+	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
 	}
-	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot {
+	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward {
 		return false
 	}
 	return validOperationCompletion(result, "")

@@ -37,6 +37,10 @@ do not replace server-side enforcement.
 | `project_process_signal` | 0/1/0/0 | Send one closed `interrupt`, `terminate`, or `kill` signal to an owned process group after PID/start-time revalidation; arbitrary signals and host-wide targets are rejected. |
 | `project_process_list` | 1/0/1/0 | List at most 100 opaque process identities, states and timestamps for one project/target without exposing PID, argv, environment, paths or log contents. |
 | `project_process_cleanup` | 0/1/1/0 | Explicitly remove terminal journal records and private logs for one process or a project/target; live processes are reported and preserved. |
+| `project_git_status` | 1/0/1/1 | Inspect the registered Edge checkout and fixed owner-bound `origin`, returning only branch/commit/remote relation and clean, detached or diverged state. No path, URL or credential is returned. |
+| `project_git_fetch` | 0/0/1/1 | Fetch exactly `origin` with `--no-tags` and an Edge-constructed current-branch refspec, using the existing private Git broker credential; no caller refspec is accepted. |
+| `project_git_fast_forward_preview` | 1/0/1/0 | Create a five-minute Edge-owned single-use plan bound to project, target, branch, clean tree, local HEAD and fetched remote HEAD. Dirty, detached, ahead or diverged checkouts fail closed. |
+| `project_git_fast_forward` | 0/0/1/0 | Consume and revalidate one exact plan, then run only `git merge --ff-only <bound-commit>`; no reset, checkout, force, tags, URL or free refspec exists. |
 | `edge_operation_list` | 1/0/1/0 | List bounded queued/running operation identity, kind, progress and cancellation state for one human Edge target without exposing device/workspace ids, paths, request bodies or raw output. |
 | `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle and progress metadata by operation id. |
 | `edge_operation_cancel` | 0/1/1/0 | Idempotently cancel one queued operation or one interruptible running operation; updater, rollback and repair effects become non-cancellable after pickup. |

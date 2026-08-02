@@ -107,6 +107,7 @@ func (s *Server) addEdgeControlTools() {
 	}, s.handleProjectSnapshot)
 	s.addProjectExecTool(projectSchema)
 	s.addProjectProcessTools(projectSchema)
+	s.addProjectGitSyncTools(projectSchema)
 	s.addEdgeOperationLifecycleTools(projectSchema)
 	s.addDirectTool(toolDef{
 		Name: "workspace_lab_prepare", Description: "Create or reuse one authorized HTB Linux workspace on a paired Edge using only closed lab metadata; execution remains local.",
