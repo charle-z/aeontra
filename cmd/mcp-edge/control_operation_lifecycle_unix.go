@@ -16,7 +16,7 @@ type controlOperationExecution struct {
 	code   string
 }
 
-func executeControlOperationWithProgress(ctx context.Context, stateRoot string, transport *edgeclient.Transport, lease edge.OperationLease) (edge.OperationResult, string, bool, error) {
+func executeControlOperationWithProgress(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, lease edge.OperationLease) (edge.OperationResult, string, bool, error) {
 	revision := uint64(1)
 	control, err := reportControlOperationProgress(ctx, transport, lease, revision, "running")
 	if err != nil {
@@ -30,7 +30,7 @@ func executeControlOperationWithProgress(ctx context.Context, stateRoot string, 
 	defer cancelExecution()
 	completed := make(chan controlOperationExecution, 1)
 	go func() {
-		result, code := executeControlOperation(executionCtx, stateRoot, lease.Operation)
+		result, code := executeControlOperation(executionCtx, stateRoot, processes, lease.Operation)
 		completed <- controlOperationExecution{result: result, code: code}
 	}()
 
