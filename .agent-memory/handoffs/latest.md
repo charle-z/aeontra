@@ -1,24 +1,36 @@
-# Handoff — Hito 3A background-process candidate
+# Handoff — official connector catalog-transition recovery
 
-Branch `codex/h3a-background-processes` is based on clean `origin/main` at
-`b419d9dfd888a216813bca05aafa5d4de28f0196`.
+The active incident is deterministic catalog incompatibility, not backend failure or
+CPU saturation. Backend `ecc1bef21aab0a144a9129a9d9907313661658c5` is healthy with
+115 tools and catalog
+`sha256:d1dab9c0d265284dc66d8c07a0c78b59aa1bd5d89d256255ab5862268e858bfb`.
+Front Door `o338wpoy1254d83ud2y8p1v8` runs
+`ced84aade8a691e487b4ca7448a87df42c9da0cb`, is process-healthy, but still pins only
+the former 114-tool catalog. Its `/front-door/version` reports
+`backend_incompatible`; official MCP and OAuth routes therefore return 503.
 
-The candidate adds three direct public tools and three signed Edge operation kinds for
-background start/status/stop. The Edge implementation reuses the foreground workcell
-process-spec builder, stores private durable metadata/logs, redacts before persistence,
-returns bounded incremental output, enforces request idempotency and stops only a
-PID-start-time-verified owned process group. It adds no model runtime and leaves the
-OpenCode fallback intact.
+Branch `codex/front-door-catalog-transition` implements:
 
-Focused suites and the focused CGO race matrix are green in Parrot WSL2 Go 1.26.5,
-including catalog contracts and split-chunk secret redaction. The complete suite passed
-apart from the known DrvFS `0777`/Linux `0755` packaging-mode mismatch; vet, build and
-native `git diff --check` are green. No commit, PR, deployment, release or Edge update exists
-for this candidate yet. The next exact action is final diff review and commit. Linux CI
-is authoritative for the known DrvFS executable-mode fixture.
+- one exact required primary catalog and at most one exact distinct transition hash;
+- startup rejection for empty primary, malformed, duplicate or third catalogs;
+- the same allowlist on probes, proxied MCP responses and SSE;
+- OAuth discovery, authorization, token and DCR routing independent from MCP admission;
+- managed transition planning from authenticated existing Coolify environment metadata;
+- plan revalidation, normal deployment on catalog-state change and exact deletion of
+  the transition environment entry during retirement.
 
-The pre-existing real Edge service incident was reconciled before implementation: one
-unmanaged old process held the instance lock while systemd retried. After terminating
-only the verified stale PID, systemd acquired the lock and doctor reported one managed
-active process on `p15.0.12`. Recheck live service identity before real acceptance; do
-not repeat a repair if doctor remains ready.
+No MCP tool schema or public description changed, so the backend catalog remains exactly
+115 tools with hash `d1dab9c0d265284dc66d8c07a0c78b59aa1bd5d89d256255ab5862268e858bfb`.
+
+Local evidence:
+
+- affected package and documentation suites: green;
+- full suite: all affected packages green; two unrelated 10-second provider fixtures
+  timed out under aggregate load and passed isolated;
+- Windows/DrvFS cannot reproduce the Linux `0755` packaging mode assertion;
+- WSL `go vet ./...`, `go build ./...` and `git diff --check`: green.
+
+Next: commit, publish, PR to main, exact-head CI, merge commit, then a separate reviewed
+advance of `front-door-stable`. Deploy only the existing Front Door once with the former
+and new hashes. Validate real public OAuth/DCR and MCP continuity. Retire the former hash
+in a later managed reconciliation and prove rejection before release/Edge work.

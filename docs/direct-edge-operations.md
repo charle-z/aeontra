@@ -1,8 +1,6 @@
 # Direct Edge operation lifecycle
 
-Direct GPT Web actions use the existing server-owned `edge_operations` journal. The
-same lifecycle now carries bounded foreground execution and durable background process
-control; these operations do not start or use a second OpenCode model runtime.
+Direct GPT Web actions use the existing server-owned `edge_operations` journal. This layer is transport and lifecycle infrastructure; it does not yet accept arbitrary commands or scripts.
 
 ## Durable states
 
@@ -32,33 +30,7 @@ While executing an operation, the Edge sends signed progress heartbeats. Progres
 
 A valid progress heartbeat renews the lease for one bounded heartbeat window. Progress JSON is capped at 1 KiB, counters are bounded, and arbitrary messages are not accepted. The journal and progress survive server restarts because SQLite is the authority.
 
-Operation results are validated by operation kind and capped at 64 KiB before
-persistence. Foreground output is bounded in the operation result. Background output is
-redacted before it reaches private Edge log files and is returned incrementally through
-bounded status calls, so the control-plane journal never becomes an unbounded log store.
-
-## Durable background processes
-
-`project_process_start`, `project_process_status`, and `project_process_stop` extend the
-same trusted-workcell executor as `project_exec`:
-
-- start accepts an argv array, relative workspace cwd, optional stdin and a non-secret
-  environment overlay; it never adds an implicit shell;
-- a caller idempotency key maps the same request to one opaque `pr_...` identity, while
-  reuse with different parameters fails closed;
-- private SQLite metadata and separate `0600` stdout/stderr files survive chat and
-  control-plane reconnects;
-- public results expose state, safe timestamps, bounded redacted output, offsets,
-  truncation, exit status and terminal signal, but never PID, process group, host path,
-  argv, environment or secret material;
-- stop revalidates Linux PID start time and process-group identity before sending TERM,
-  waits the requested bounded grace period, and sends KILL only if the owned group did
-  not stop;
-- terminal stop is idempotent and process rows have no TTL or automatic cleanup.
-
-Emergency concurrency and per-stream storage ceilings are administrator-controlled
-Edge flags. They are protection against host exhaustion, not per-command allowlists or
-process expiration.
+Operation results are validated by operation kind and capped at 64 KiB before persistence. Large or arbitrary stdout and stderr are not part of this milestone.
 
 ## Cancellation
 
@@ -87,10 +59,6 @@ Device ids, workspace ids, local paths, request bodies, idempotency keys, creden
 
 ## Deliberate boundary
 
-This layer provides operation identity, queueing, cancellation, bounded result
-transport and direct foreground/background execution. Background process listing,
-explicit signal selection, restart reconciliation and explicit cleanup belong to the
-follow-up lifecycle milestone; the initial start/status/stop surface does not pretend
-those contracts already exist.
+This milestone provides identity, idempotency, queueing, pickup, progress, terminal state, cancellation, bounded storage and restart recovery. Arbitrary argv, stdin, environment overlays, background processes and output streaming belong to the next roadmap milestone and are not smuggled into this lifecycle contract.
 - Lifecycle responses expose `cancellable` so callers do not have to infer authority from the operation kind or state.
 - `edge_operation_cancel` rejects a leased non-interruptible operation instead of pretending that the effect stopped.

@@ -277,15 +277,6 @@ Large results are redacted before persistence and represented at the MCP boundar
 opaque `result_ref` with bounded exact reads. The reference cannot address arbitrary
 filesystem paths.
 
-Trusted-workcell background processes reuse the foreground Bubblewrap launcher and its
-workspace/cwd/environment checks. Their private Edge journal binds an opaque public id
-to a local PID, process group and Linux start-time identity; only the private executor
-uses those OS identities. Output is split by stream, redacted before private persistence,
-bounded by administrator emergency limits and read incrementally. Stop signals only the
-revalidated owned process group. Public tools never return PID, argv, environment,
-workspace or log paths. Process state has no product TTL and cleanup is never inferred
-from the end of a chat turn.
-
 Redaction is not a substitute for keeping secrets out of inputs and storage.
 
 ## Secure deployment checklist
