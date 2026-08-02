@@ -85,7 +85,9 @@ MCP_FRONT_DOOR_TRANSITION_CATALOG_HASH=sha256:<different-64-lowercase-hex>
 The transition variable is not a free-form compatibility escape hatch. The managed
 workflow authenticates the existing primary value, seals both exact hashes into its
 single-use plan, rejects a third value and removes the old hash on the next reviewed
-reconciliation after the new primary is live.
+reconciliation after the new primary is live. If Coolify masks a runtime value as
+`null`, reconciliation recovers only these non-secret catalog hashes from their
+authenticated public managed comments; missing or invalid signatures still fail closed.
 
 Optional variables:
 
