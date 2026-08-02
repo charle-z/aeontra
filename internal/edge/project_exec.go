@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/charle-z/mcp-devbox/internal/policy"
 )
 
 const (
@@ -52,6 +54,9 @@ func normalizeProjectExecRequest(request OperationRequest) (OperationRequest, er
 	if argvBytes > maxProjectExecArgvBytes {
 		return OperationRequest{}, errors.New("project exec argv is invalid")
 	}
+	if projectExecSecretShaped(strings.Join(request.Argv, "\n")) {
+		return OperationRequest{}, errors.New("project exec argv contains a secret")
+	}
 	cwd := strings.TrimSpace(request.CWD)
 	if cwd == "" || cwd == "." {
 		request.CWD = ""
@@ -68,12 +73,15 @@ func normalizeProjectExecRequest(request OperationRequest) (OperationRequest, er
 	if len(request.Stdin) > MaxProjectExecStdinBytes || !utf8.ValidString(request.Stdin) || strings.ContainsRune(request.Stdin, 0) {
 		return OperationRequest{}, errors.New("project exec stdin is invalid")
 	}
+	if projectExecSecretShaped(request.Stdin) {
+		return OperationRequest{}, errors.New("project exec stdin contains a secret")
+	}
 	if len(request.Environment) > 32 {
 		return OperationRequest{}, errors.New("project exec environment is invalid")
 	}
 	environmentBytes := 0
 	for key, value := range request.Environment {
-		if !projectExecEnvironmentKeyPattern.MatchString(key) || projectExecReservedEnvironmentKey(key) ||
+		if !projectExecEnvironmentKeyPattern.MatchString(key) || projectExecReservedEnvironmentKey(key) || projectExecSecretShaped(value) ||
 			len(value) > 4096 || !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
 			return OperationRequest{}, errors.New("project exec environment is invalid")
 		}
@@ -83,6 +91,11 @@ func normalizeProjectExecRequest(request OperationRequest) (OperationRequest, er
 		return OperationRequest{}, errors.New("project exec request is invalid")
 	}
 	return request, nil
+}
+
+func projectExecSecretShaped(value string) bool {
+	redacted, changed := policy.Redact(value)
+	return changed || redacted != value
 }
 
 func projectExecReservedEnvironmentKey(key string) bool {
