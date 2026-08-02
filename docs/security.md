@@ -171,6 +171,12 @@ The console uses server-side OAuth completion, PKCE/state/single-use codes, and 
 `Secure; HttpOnly; SameSite=Strict` sessions. Public landing content grants no MCP,
 console, repository, deployment, or Edge authority.
 
+The stable Front Door keeps OAuth discovery, authorization, token and RFC 7591
+registration routing independent from MCP catalog admission. Catalog mismatch still
+blocks `/mcp`, including SSE, while a healthy fixed backend can continue serving OAuth.
+Rollouts may admit only the exact primary hash plus one authenticated transition hash;
+wildcards, duplicates, malformed hashes and a third catalog fail closed.
+
 ## Edge trust and signed releases
 
 The public control plane and a paired Edge authenticate their outbound protocol with a

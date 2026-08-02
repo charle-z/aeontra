@@ -8,13 +8,14 @@ import (
 func TestLoadConfigRequiresPinnedBackendCompatibility(t *testing.T) {
 	t.Parallel()
 	values := map[string]string{
-		backendURLEnv:       "https://backend.example",
-		expectedProtocolEnv: "2024-11-05",
-		expectedCatalogEnv:  "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-		listenAddrEnv:       "0.0.0.0:9000",
-		probeIntervalEnv:    "2s",
-		probeTimeoutEnv:     "4s",
-		admissionTimeoutEnv: "6s",
+		backendURLEnv:        "https://backend.example",
+		expectedProtocolEnv:  "2024-11-05",
+		expectedCatalogEnv:   "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		transitionCatalogEnv: "sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+		listenAddrEnv:        "0.0.0.0:9000",
+		probeIntervalEnv:     "2s",
+		probeTimeoutEnv:      "4s",
+		admissionTimeoutEnv:  "6s",
 	}
 	config, addr, err := loadConfig(func(key string) string { return values[key] })
 	if err != nil {
@@ -23,6 +24,9 @@ func TestLoadConfigRequiresPinnedBackendCompatibility(t *testing.T) {
 	if config.BackendURL != values[backendURLEnv] || config.ExpectedProtocol != values[expectedProtocolEnv] ||
 		config.ExpectedCatalogHash != values[expectedCatalogEnv] || addr != values[listenAddrEnv] {
 		t.Fatalf("config=%+v addr=%q", config, addr)
+	}
+	if len(config.TransitionCatalogHashes) != 1 || config.TransitionCatalogHashes[0] != values[transitionCatalogEnv] {
+		t.Fatalf("transition catalogs=%#v", config.TransitionCatalogHashes)
 	}
 	if config.ProbeInterval != 2*time.Second || config.ProbeTimeout != 4*time.Second || config.AdmissionTimeout != 6*time.Second {
 		t.Fatalf("durations=%s/%s/%s", config.ProbeInterval, config.ProbeTimeout, config.AdmissionTimeout)
