@@ -1,0 +1,160 @@
+//go:build !windows
+
+package edgeclient
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+)
+
+type recordingToolboxRunner struct {
+	calls     [][]string
+	fail      string
+	workspace string
+	state     string
+}
+
+func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, args, _ []string) ([]byte, error) {
+	call := append([]string{executable}, args...)
+	runner.calls = append(runner.calls, call)
+	joined := strings.Join(args, " ")
+	if runner.fail != "" && strings.Contains(joined, runner.fail) {
+		return nil, errors.New("runner failed")
+	}
+	switch {
+	case strings.Contains(joined, "image inspect"):
+		return []byte("sha256:" + strings.Repeat("a", 64) + "\n"), nil
+	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "Config.Labels"):
+		return []byte("tb_11111111111111111111111111111111|sha256:" + strings.Repeat("a", 64) + "\n"), nil
+	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "json .Mounts"):
+		return []byte(`[{"Type":"bind","Source":"` + runner.workspace + `","Destination":"/workspace","RW":true}]`), nil
+	case strings.Contains(joined, " inspect "):
+		if runner.state == "" {
+			runner.state = "running|true"
+		}
+		return []byte(runner.state + "\n"), nil
+	case strings.Contains(joined, " create "):
+		return []byte(strings.Repeat("b", 64) + "\n"), nil
+	case strings.Contains(joined, " exec "):
+		return []byte("toolbox-ok\n"), nil
+	case strings.Contains(joined, " start "):
+		runner.state = "running|true"
+		return nil, nil
+	default:
+		return nil, nil
+	}
+}
+
+func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *testing.T) {
+	stateRoot := t.TempDir()
+	workspaceRoot := t.TempDir()
+	runner := &recordingToolboxRunner{workspace: workspaceRoot}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+		StateRoot: stateRoot,
+		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+		Runner:    runner,
+		NewID:     func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+		Now:       func() time.Time { return time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: workspaceRoot, Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	created, reused, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reused || created.ToolboxID != "tb_11111111111111111111111111111111" || created.State != ProjectToolboxRunning || created.BaseImageID != "sha256:"+strings.Repeat("a", 64) {
+		t.Fatalf("created=%+v reused=%v", created, reused)
+	}
+	if info, err := os.Lstat(filepath.Join(stateRoot, projectToolboxStateDirectory, workspace.ID+".json")); err != nil || info.Mode().Perm() != 0o600 || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("metadata info=%+v err=%v", info, err)
+	}
+
+	manager, err = OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: manager.endpoint, Runner: runner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.state = "exited|false"
+	status, reused, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+	if err != nil || !reused || status.ToolboxID != created.ToolboxID || status.State != ProjectToolboxRunning {
+		t.Fatalf("recovered status=%+v reused=%v err=%v", status, reused, err)
+	}
+	executed, err := manager.Exec(t.Context(), ProjectToolboxExecRequest{
+		ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace,
+		Argv: []string{"sh", "-lc", "command -v ruby || true"}, CWD: "src", Environment: map[string]string{"CI": "true"},
+	})
+	if err != nil || executed.Output != "toolbox-ok\n" || executed.State != ProjectToolboxRunning {
+		t.Fatalf("executed=%+v err=%v", executed, err)
+	}
+	last := runner.calls[len(runner.calls)-1]
+	wantTail := []string{"exec", "--workdir", "/workspace/src", "--env", "CI=true", "mcp-toolbox-11111111111111111111111111111111", "sh", "-lc", "command -v ruby || true"}
+	if len(last) < len(wantTail) || !reflect.DeepEqual(last[len(last)-len(wantTail):], wantTail) {
+		t.Fatalf("exec call=%q", last)
+	}
+}
+
+func TestProjectToolboxRejectsCrossProjectAccessAndCleansUpOnlyExplicitly(t *testing.T) {
+	stateRoot := t.TempDir()
+	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	runner := &recordingToolboxRunner{workspace: workspace.Path}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+		StateRoot: stateRoot,
+		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+		Runner:    runner,
+		NewID:     func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Status(t.Context(), ProjectToolboxStatusRequest{ProjectAlias: "other", TargetAlias: "parrot", Workspace: workspace}); !errors.Is(err, ErrProjectToolboxNotOwned) {
+		t.Fatalf("cross-project err=%v", err)
+	}
+	removed, err := manager.Cleanup(t.Context(), ProjectToolboxCleanupRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+	if err != nil || !removed {
+		t.Fatalf("removed=%v err=%v", removed, err)
+	}
+	if _, err := os.Stat(filepath.Join(stateRoot, projectToolboxStateDirectory, workspace.ID+".json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("metadata survived cleanup: %v", err)
+	}
+	last := strings.Join(runner.calls[len(runner.calls)-1], " ")
+	if !strings.Contains(last, " rm -f mcp-toolbox-11111111111111111111111111111111") {
+		t.Fatalf("cleanup call=%q", last)
+	}
+}
+
+func TestProjectToolboxFailsClosedOnUnsafeStateAndMissingRootlessEngine(t *testing.T) {
+	if _, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: t.TempDir()}); !errors.Is(err, ErrProjectToolboxUnavailable) {
+		t.Fatalf("missing endpoint err=%v", err)
+	}
+	stateRoot := t.TempDir()
+	stateDir := filepath.Join(stateRoot, projectToolboxStateDirectory)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(stateDir, "ws_22222222222222222222222222222222.json")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "outside"), path); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+		StateRoot: stateRoot,
+		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+		Runner:    &recordingToolboxRunner{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	if _, err := manager.Status(t.Context(), ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); !errors.Is(err, ErrProjectToolboxUnsafeState) {
+		t.Fatalf("unsafe state err=%v", err)
+	}
+}

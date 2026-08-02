@@ -43,7 +43,7 @@ func isP15Control(name string) bool {
 }
 
 func isP16Project(name string) bool {
-	return name == "project_prepare" || name == "project_status" || name == "project_snapshot" || name == "project_exec" || strings.HasPrefix(name, "project_process_") || strings.HasPrefix(name, "project_git_") || strings.HasPrefix(name, "edge_operation_")
+	return name == "project_prepare" || name == "project_status" || name == "project_snapshot" || name == "project_exec" || strings.HasPrefix(name, "project_process_") || strings.HasPrefix(name, "project_git_") || strings.HasPrefix(name, "project_toolbox_") || strings.HasPrefix(name, "edge_operation_")
 }
 
 func isFrontDoorPlatform(name string) bool {
@@ -52,14 +52,14 @@ func isFrontDoorPlatform(name string) bool {
 
 func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 125 {
-		t.Fatalf("tool order length=%d want=125", len(server.order))
+	if len(server.order) != 130 {
+		t.Fatalf("tool order length=%d want=130", len(server.order))
 	}
-	if server.order[39] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:39])
+	if server.order[44] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:44])
 	}
-	if !reflect.DeepEqual(server.order[44:47], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[44:47])
+	if !reflect.DeepEqual(server.order[49:52], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[49:52])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
@@ -70,8 +70,8 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("P8 compatibility tool order changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[120:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[120:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[125:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[125:], brainToolOrder)
 	}
 
 	// Compatibility slices below are rebuilt from current tool contracts. Dated
@@ -158,7 +158,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 125 || snapshot.Hash != "sha256:9f1ce2ece243c1d5e821adc9b037b21b50941125292485ac43748671d13451c8" {
+	if snapshot.ToolCount != 130 || snapshot.Hash != "sha256:11697746d4c61b4035c8a6413b4ad63a0b29a50d343cf64d524640fdb719d03d" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

@@ -1,35 +1,37 @@
-# Current task — safe Edge checkout synchronization
+# Current task — Hito 4 persistent toolbox core
 
 ## Verified base and production
 
-- Branch: `codex/edge-safe-sync`.
-- Base: `origin/main` at Hito 3B merge `1d511cb038141a2a7f4bdf97d2472d4428e1f8d1`.
-- PR #126 passed 16/16 exact-head checks and is merged/deployed.
-- Backend serves 121 tools at
-  `sha256:feca2e4d163cfcff7e08410d5d5b34a52396430d49515c0f601486ffde0b31e2`.
-- Front Door transition deployments `ek8coe188tjlsl90vh2cpwk3` and
-  `i10q024us3jyv22cw7zl38o1` finished; the old catalog is retired.
+- Branch: `codex/persistent-toolbox`.
+- Base: `origin/main` at safe-sync merge
+  `e7a2e6048c5a7a3a7fec77ee699653babaab244c`.
+- PR #127 passed 16/16 exact-head checks and is merged/deployed.
+- Backend serves 125 tools at
+  `sha256:9f1ce2ece243c1d5e821adc9b037b21b50941125292485ac43748671d13451c8`.
+- Front Door deployment `g13z5dohfncg8r16cv7w4ngn` finished, retired the old
+  catalog, and remains healthy with a valid contract.
 - Public OAuth discovery is 200 and unauthenticated `/mcp` is 401 with
   `resource_metadata`.
-- Real Edge remains on signed `p15.0.12`; Hito 3A/3B real-device acceptance still
-  requires one explicitly numbered signed release and update.
+- Real Edge remains on signed `p15.0.12`; Hito 3A/3B/safe-sync real-device acceptance
+  still requires one explicitly numbered signed release and update.
 
 ## Candidate scope
 
-- `project_git_status`, `project_git_fetch`, `project_git_fast_forward_preview`, and
-  `project_git_fast_forward` operate on the registered Edge checkout only.
-- Existing private owner-bound Git credential runner is reused; no new auth path.
-- Fetch is exactly `git fetch --no-tags origin`.
-- Fast-forward uses a private owner-checked five-minute single-use plan bound to
-  project, target, branch, local HEAD and remote HEAD, then only `git merge --ff-only`.
-- Dirty, detached, ahead, diverged, stale tracking, changed, malformed, symlinked,
-  expired or replayed state fails closed.
-- Candidate catalog is 125 tools at
-  `sha256:9f1ce2ece243c1d5e821adc9b037b21b50941125292485ac43748671d13451c8`.
+- One persistent rootless Debian toolbox is bound to one registered dev workspace.
+- Private owner-only metadata records opaque toolbox identity, base image identity and
+  timestamps; caller input cannot select images, paths, sockets, volumes or privileged
+  flags.
+- Create/status/arbitrary exec/install/explicit cleanup use the validated user-owned
+  Podman/Docker endpoint. The project is mounted only at `/workspace`; the host package
+  database is unchanged.
+- Installed packages, toolchains, caches and writable rootfs have no TTL or automatic
+  cleanup.
+- Candidate catalog is 130 tools at
+  `sha256:11697746d4c61b4035c8a6413b4ad63a0b29a50d343cf64d524640fdb719d03d`.
 
 ## Next exact action
 
-Finish adversarial tests and catalog/documentation reconciliation, run focused and full
-gates, review the diff, commit, publish, open a PR, wait exact-head CI, transition the
-Front Door, merge/deploy, retire the previous catalog and continue to Hito 4. Do not
-infer an immutable release number.
+Finish full package/documentation validation, review and commit the core slice, publish
+one PR, require exact-head CI, merge/deploy with a bounded Front Door catalog
+transition, then continue Hito 4 with service lifecycle, repair and background-process
+integration. Do not infer an immutable release number.

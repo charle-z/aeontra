@@ -41,6 +41,11 @@ do not replace server-side enforcement.
 | `project_git_fetch` | 0/0/1/1 | Fetch exactly `origin` with `--no-tags` and an Edge-constructed current-branch refspec, using the existing private Git broker credential; no caller refspec is accepted. |
 | `project_git_fast_forward_preview` | 1/0/1/0 | Create a five-minute Edge-owned single-use plan bound to project, target, branch, clean tree, local HEAD and fetched remote HEAD. Dirty, detached, ahead or diverged checkouts fail closed. |
 | `project_git_fast_forward` | 0/0/1/0 | Consume and revalidate one exact plan, then run only `git merge --ff-only <bound-commit>`; no reset, checkout, force, tags, URL or free refspec exists. |
+| `project_toolbox_create` | 0/1/1/1 | Create or recover one persistent Debian rootfs for the registered workspace through its user-owned rootless container engine. The server fixes the base and private container identity; installed packages and caches have no TTL. |
+| `project_toolbox_status` | 1/0/1/1 | Return only the opaque toolbox id, lifecycle state, verified base image identity and timestamps; host paths, engine socket and container identity remain private. |
+| `project_toolbox_exec` | 0/1/1/1 | Execute explicit arbitrary argv inside the persistent toolbox with the project at `/workspace`, relative cwd, non-secret environment overlay, bounded redacted output and no implicit shell or command allowlist. |
+| `project_toolbox_install` | 0/1/1/1 | Run explicit package/toolchain installation argv as container root inside the rootless user namespace; the host WSL package database and global toolchains are not modified. |
+| `project_toolbox_cleanup` | 0/1/1/1 | Explicitly remove only the project's toolbox rootfs and its private metadata. Cleanup is idempotent, never automatic, and does not delete the project workspace. |
 | `edge_operation_list` | 1/0/1/0 | List bounded queued/running operation identity, kind, progress and cancellation state for one human Edge target without exposing device/workspace ids, paths, request bodies or raw output. |
 | `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle and progress metadata by operation id. |
 | `edge_operation_cancel` | 0/1/1/0 | Idempotently cancel one queued operation or one interruptible running operation; updater, rollback and repair effects become non-cancellable after pickup. |

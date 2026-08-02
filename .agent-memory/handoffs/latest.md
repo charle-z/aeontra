@@ -1,24 +1,28 @@
-# Handoff — safe Edge checkout synchronization candidate
+# Handoff — Hito 4 persistent toolbox core candidate
 
-Hito 3B is merged through PR #126 at `1d511cb038141a2a7f4bdf97d2472d4428e1f8d1`,
-deployed with 121 tools, and reconciled through the stable Front Door. Production OAuth
-discovery and the unauthenticated MCP challenge are healthy. Brain note
-`gpt-web-direct-edge-h3b-deployed` records the exact deployments and remaining real
-Edge acceptance.
+Safe Edge checkout sync merged through PR #127 at
+`e7a2e6048c5a7a3a7fec77ee699653babaab244c`, deployed with 125 tools, and reconciled
+through the stable Front Door. Deployment `g13z5dohfncg8r16cv7w4ngn` retired the old
+catalog. OAuth discovery and the unauthenticated MCP challenge are healthy. Brain note
+`edge-safe-checkout-sync-deployed` records the closure and signed-release constraint.
 
-Current branch `codex/edge-safe-sync` is based exactly on that merge. It adds four
-closed direct-Edge Git operations for status, no-tag fetch, exact fast-forward preview
-and plan execution. The implementation reuses the existing private owner-bound
-askpass runner. Callers cannot provide paths, URLs, remotes, refspecs, tags, force or
-checkout/reset actions, and public results contain no credential or host path.
+Current branch `codex/persistent-toolbox` is based exactly on that merge. It adds five
+direct tools for a persistent rootless Debian toolbox: create, status, arbitrary exec,
+install and explicit cleanup. The Edge fixes the base and private container identity,
+records exact image identity in owner-only `0600` metadata, mounts only the selected
+workspace at `/workspace`, and uses the already validated rootless Podman/Docker
+endpoint. Callers cannot provide images, host paths, sockets, volumes, container names
+or privileged flags.
 
-The plan is private `0600`, current-owner checked, durable across Edge restart,
-five-minute and single-use. It binds the registered workspace, project, target, branch,
-local HEAD and fetched remote HEAD. Dirty, detached, ahead, diverged, stale, changed,
-malformed, symlinked, expired and replayed state is rejected. Candidate identity is 125
-tools at `sha256:9f1ce2ece243c1d5e821adc9b037b21b50941125292485ac43748671d13451c8`.
+Manager tests prove persistence across reopen, project/target ownership, arbitrary argv
+construction, explicit cleanup, missing rootless authority and symlinked metadata
+rejection. Edge operation and MCP tests bind each result to its operation kind and keep
+paths, engine/container identity, argv and environment out of public output. Candidate
+identity is 130 tools at
+`sha256:11697746d4c61b4035c8a6413b4ad63a0b29a50d343cf64d524640fdb719d03d`.
 
-The immutable Edge release version is still the only external authorization
-constraint. No release after `p15.0.12` was inferred or created. Finish all independent
-PR/deploy work, then request one exact release number only when real Edge acceptance is
-the remaining gate.
+The next safe action is full focused/docs validation, diff review, commit/PR/exact-head
+CI/merge/deploy/catalog retirement. Then add service start/status/stop, repair and
+background integration on the same toolbox identity. The immutable Edge release
+version remains an external authorization constraint; do not infer one after
+`p15.0.12`.

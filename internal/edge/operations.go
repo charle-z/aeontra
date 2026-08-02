@@ -49,6 +49,11 @@ const (
 	OperationProjectGitFetch              OperationKind = "project_git_fetch"
 	OperationProjectGitFastForwardPreview OperationKind = "project_git_fast_forward_preview"
 	OperationProjectGitFastForward        OperationKind = "project_git_fast_forward"
+	OperationProjectToolboxCreate         OperationKind = "project_toolbox_create"
+	OperationProjectToolboxStatus         OperationKind = "project_toolbox_status"
+	OperationProjectToolboxExec           OperationKind = "project_toolbox_exec"
+	OperationProjectToolboxInstall        OperationKind = "project_toolbox_install"
+	OperationProjectToolboxCleanup        OperationKind = "project_toolbox_cleanup"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -180,6 +185,15 @@ type OperationResult struct {
 	GitFastForwarded          bool                       `json:"git_fast_forwarded,omitempty"`
 	GitPlanID                 string                     `json:"git_plan_id,omitempty"`
 	GitPlanExpiresAt          string                     `json:"git_plan_expires_at,omitempty"`
+	ToolboxID                 string                     `json:"toolbox_id,omitempty"`
+	ToolboxState              string                     `json:"toolbox_state,omitempty"`
+	ToolboxBase               string                     `json:"toolbox_base,omitempty"`
+	ToolboxBaseImageID        string                     `json:"toolbox_base_image_id,omitempty"`
+	ToolboxCreatedAt          string                     `json:"toolbox_created_at,omitempty"`
+	ToolboxUpdatedAt          string                     `json:"toolbox_updated_at,omitempty"`
+	ToolboxOutput             string                     `json:"toolbox_output,omitempty"`
+	ToolboxOutputTruncated    bool                       `json:"toolbox_output_truncated,omitempty"`
+	ToolboxRemoved            bool                       `json:"toolbox_removed,omitempty"`
 }
 
 type OperationProgress struct {
@@ -495,6 +509,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if hasProjectGitSyncResult(result) {
 		return code == "" && validProjectGitSyncResult(result)
 	}
+	if hasProjectToolboxResult(result) {
+		return code == "" && validProjectToolboxResult(result)
+	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return code == "" && validProjectSnapshotResult(result)
 	}
@@ -538,10 +555,13 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectGitSyncResult(result) {
 		return validProjectGitSyncResultForKind(kind, result)
 	}
+	if hasProjectToolboxResult(result) {
+		return validProjectToolboxResultForKind(kind, result)
+	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
 	}
-	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward {
+	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup {
 		return false
 	}
 	return validOperationCompletion(result, "")

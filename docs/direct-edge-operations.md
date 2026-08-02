@@ -96,6 +96,35 @@ Only `ls-remote` and fetch receive the private askpass credential. Local inspect
 ancestor checks and `merge --ff-only` run with an empty credential environment, so
 repository-controlled filters cannot inherit the GitHub token.
 
+## Persistent rootless toolbox
+
+The registered development workspace can own one persistent toolbox independently of
+OpenCode or a model runtime:
+
+- `project_toolbox_create` pulls the server-owned Debian base through the Edge user's
+  validated rootless Podman/Docker endpoint, records its exact image ID, creates a
+  labelled container with only the selected workspace mounted at `/workspace`, and
+  starts it with an idle process;
+- private metadata is one owner-only `0600` record under Edge state. The opaque
+  `tb_...` identity, base image identity and timestamps survive chat, backend, Edge and
+  WSL restarts as long as the user-owned container storage survives;
+- `project_toolbox_exec` and `project_toolbox_install` accept explicit arbitrary argv,
+  optional relative cwd and a non-secret environment overlay. They add no shell and no
+  command, language, package-manager or destination allowlist;
+- execution runs as container root inside the rootless user namespace, so `apt`, npm,
+  pip, Go modules, Cargo and other toolchains can persist without changing the host WSL
+  package database;
+- public results are bounded and redacted and expose no host path, socket, container
+  name, raw engine identifier or environment;
+- `project_toolbox_cleanup` is the only automatic product path that removes the
+  toolbox, and it runs only when explicitly called. It removes neither the project
+  workspace nor unrelated rootless resources.
+
+The first toolbox slice deliberately uses a server-owned Debian base and one container
+per workspace. Service lifecycle, repair and background-process integration remain the
+next additive slice; they must reuse this identity and storage rather than creating a
+second toolbox family.
+
 ## Cancellation
 
 `edge_operation_cancel` is idempotent for an already cancelled operation.

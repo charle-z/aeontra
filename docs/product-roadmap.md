@@ -13,10 +13,10 @@ runtime; OpenCode remains a tested optional fallback.
 | 1 direct vertical slice | Deployed | Direct signed control operations reached the paired Edge without a second model session. |
 | 2 durable Edge operations | Deployed | Server-owned operation identity, leases, progress, cancellation and restart-safe queue state are in production. |
 | 3 foreground execution | Deployed | `project_exec` uses arbitrary argv without an implicit shell in the trusted workcell. |
-| 3A background start/status/stop | Merged and deployed; device acceptance pending | PRs #123/#125 produced `main` `84bac0a13bf71078e94e407f49f52e5758f3b872`; backend and stable Front Door serve the 118-tool catalog. The next signed Edge release/version still requires explicit release authorization before real-device acceptance. |
-| 3B recovery/list/signal/cleanup | In progress | `codex/h3b-process-recovery` adds closed signal/list/cleanup, restart reconciliation, live-preserving explicit cleanup and process survival across Edge service restarts. CI, merge, signed release and real restart acceptance remain required. |
-| Safe Edge checkout synchronization | Candidate | Closed brokered status/fetch/preview/fast-forward surface implemented with exact durable plans; PR, release and real Edge acceptance remain. |
-| 4 persistent universal toolbox | Planned | Rootless persistent rootfs, package/tool/service lifecycle and explicit cleanup. |
+| 3A background start/status/stop | Merged and deployed; device acceptance pending | Backend and stable Front Door include direct durable background start/status/stop. The next signed Edge release/version still requires explicit release authorization before real-device acceptance. |
+| 3B recovery/list/signal/cleanup | Merged and deployed; device acceptance pending | Closed signal/list/cleanup, restart reconciliation and live-preserving explicit cleanup are deployed; signed-release and real restart acceptance remain. |
+| Safe Edge checkout synchronization | Merged and deployed; device acceptance pending | Closed brokered status/fetch/preview/fast-forward and exact durable plans are deployed; signed-release and real Edge acceptance remain. |
+| 4 persistent universal toolbox | In progress | Candidate adds one persistent rootless Debian rootfs per workspace with create/status/arbitrary exec/install and explicit cleanup. Service lifecycle, repair, signed release and real restart acceptance remain. |
 | 5 complete persistent GitHub broker | Planned | Extend the owner-bound broker for repository, PR, Actions, release and bounded API workflows without exposing the credential. |
 | 6 direct GPT Web parity | Planned | Workspace-scoped filesystem, Git, process, toolbox, container and durable-result coverage. |
 | 7 worktrees and deterministic parallelism | Planned | Durable isolated worktrees, ownership, fairness, recovery and explicit cleanup. |
