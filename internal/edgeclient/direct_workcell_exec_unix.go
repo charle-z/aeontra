@@ -66,14 +66,15 @@ func RunDirectWorkcellCommand(ctx context.Context, request DirectWorkcellCommand
 	if err != nil {
 		return DirectWorkcellCommandResult{}, err
 	}
+	bubblewrap := "bwrap"
 	if runner == nil {
 		runner = directWorkcellExecRunner{}
+		bubblewrap, err = resolveDirectWorkcellBubblewrap()
+		if err != nil {
+			return DirectWorkcellCommandResult{}, err
+		}
 	}
 	if err := prepareDirectWorkcellRuntime(workspace); err != nil {
-		return DirectWorkcellCommandResult{}, err
-	}
-	bubblewrap, err := resolveDirectWorkcellBubblewrap()
-	if err != nil {
 		return DirectWorkcellCommandResult{}, err
 	}
 	args, environment, err := directWorkcellBubblewrapArgs(workspace, sandboxCWD, request)

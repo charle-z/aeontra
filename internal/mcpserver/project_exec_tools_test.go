@@ -30,18 +30,26 @@ func (store *projectExecToolStore) CreateOperation(deviceID string, kind edge.Op
 	return edge.Operation{ID: "eo_22222222222222222222222222222222", DeviceID: deviceID, Kind: kind, Request: request, State: edge.OperationQueued}, true, nil
 }
 
-func (*projectExecToolStore) OperationStatus(string) (edge.Operation, error) { return edge.Operation{}, nil }
+func (*projectExecToolStore) OperationStatus(string) (edge.Operation, error) {
+	return edge.Operation{}, nil
+}
 func (*projectExecToolStore) ActiveOperations(string, int) ([]edge.Operation, error) { return nil, nil }
-func (*projectExecToolStore) OperationLifecycleStatus(string) (edge.Operation, error) { return edge.Operation{}, nil }
-func (*projectExecToolStore) RequestOperationCancel(string) (edge.Operation, error) { return edge.Operation{}, nil }
-func (*projectExecToolStore) AutopilotStatus(string) (edge.OperationResult, error) { return edge.OperationResult{}, nil }
+func (*projectExecToolStore) OperationLifecycleStatus(string) (edge.Operation, error) {
+	return edge.Operation{}, nil
+}
+func (*projectExecToolStore) RequestOperationCancel(string) (edge.Operation, error) {
+	return edge.Operation{}, nil
+}
+func (*projectExecToolStore) AutopilotStatus(string) (edge.OperationResult, error) {
+	return edge.OperationResult{}, nil
+}
 
 func (store *projectExecToolStore) WaitOperation(_ context.Context, operationID string, _ time.Duration) (edge.Operation, error) {
 	return edge.Operation{
 		ID: operationID, DeviceID: "ed_11111111111111111111111111111111", Kind: store.createdKind,
 		State: edge.OperationSucceeded,
 		Result: edge.OperationResult{
-			WorkspaceID: "ws_33333333333333333333333333333333",
+			WorkspaceID:  "ws_33333333333333333333333333333333",
 			ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
 			ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
 			ExecCompleted: true, ExecExitCode: 0, ExecStdout: "ok\n",

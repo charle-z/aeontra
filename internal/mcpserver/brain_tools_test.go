@@ -43,7 +43,7 @@ func isP15Control(name string) bool {
 }
 
 func isP16Project(name string) bool {
-	return name == "project_prepare" || name == "project_status" || name == "project_snapshot" || strings.HasPrefix(name, "edge_operation_")
+	return name == "project_prepare" || name == "project_status" || name == "project_snapshot" || name == "project_exec" || strings.HasPrefix(name, "edge_operation_")
 }
 
 func isFrontDoorPlatform(name string) bool {

@@ -106,6 +106,8 @@ func executeControlOperation(ctx context.Context, stateRoot string, operation ed
 		return executeProjectStatus(ctx, stateRoot, operation.Request)
 	case edge.OperationProjectSnapshot:
 		return executeProjectSnapshot(ctx, stateRoot, operation.Request)
+	case edge.OperationProjectExec:
+		return executeProjectExec(ctx, stateRoot, operation)
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectEdgeDiagnostic(stateRoot, true)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:

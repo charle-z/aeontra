@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -96,7 +97,7 @@ func TestProjectToolsUseHumanAliasesAndHideOpaqueIDs(t *testing.T) {
 	if store.resolvedTarget != "parrot" || store.createdKind != edge.OperationProjectPrepare {
 		t.Fatalf("target=%q kind=%q", store.resolvedTarget, store.createdKind)
 	}
-	if store.createdRequest != (edge.OperationRequest{Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: "linux-workcell"}) {
+	if !reflect.DeepEqual(store.createdRequest, edge.OperationRequest{Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: "linux-workcell"}) {
 		t.Fatalf("request=%+v", store.createdRequest)
 	}
 	for _, forbidden := range []string{"ed_111", "ws_333", "eo_222", "device_id", "workspace_id", "operation_id"} {
@@ -152,7 +153,7 @@ func TestProjectSnapshotUsesOneDurableIdempotentEdgeOperation(t *testing.T) {
 		t.Fatalf("target=%q kind=%q", store.resolvedTarget, store.createdKind)
 	}
 	expected := edge.OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", IdempotencyKey: "chat-vertical-1"}
-	if store.createdRequest != expected {
+	if !reflect.DeepEqual(store.createdRequest, expected) {
 		t.Fatalf("request=%+v", store.createdRequest)
 	}
 	for _, required := range []string{
