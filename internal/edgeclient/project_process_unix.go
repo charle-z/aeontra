@@ -603,7 +603,7 @@ func (writer *projectProcessLogWriter) writeSanitized(data []byte) error {
 	return err
 }
 func (writer *projectProcessLogWriter) markTruncated() {
-	file, err := os.OpenFile(writer.marker, os.O_CREATE|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(writer.marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err == nil {
 		_ = file.Close()
 	}
@@ -632,15 +632,11 @@ func (writer *projectProcessLogWriter) Close() error {
 
 func (manager *ProjectProcessManager) readLog(processID, stream string, offset int64, limit int) (string, int64, bool, bool, error) {
 	path := filepath.Join(manager.logRoot, processID+"."+stream+".log")
-	file, err := os.Open(path)
+	file, info, err := openPrivateProjectProcessLog(path)
 	if err != nil {
 		return "", 0, false, false, errors.New("project process log unavailable")
 	}
 	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
-		return "", 0, false, false, errors.New("project process log is unsafe")
-	}
 	if offset > info.Size() {
 		offset = info.Size()
 	}
@@ -651,9 +647,33 @@ func (manager *ProjectProcessManager) readLog(processID, stream string, offset i
 	}
 	value, _ := policy.Redact(strings.ToValidUTF8(string(buffer[:read]), "�"))
 	next := offset + int64(read)
-	_, markerErr := os.Lstat(path + ".truncated")
+	markerInfo, markerErr := os.Lstat(path + ".truncated")
 	truncated := markerErr == nil
+	if markerErr == nil && (!markerInfo.Mode().IsRegular() || markerInfo.Mode()&os.ModeSymlink != 0 || markerInfo.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(markerInfo)) {
+		return "", 0, false, false, errors.New("project process log is unsafe")
+	}
+	if markerErr != nil && !errors.Is(markerErr, os.ErrNotExist) {
+		return "", 0, false, false, errors.New("project process log unavailable")
+	}
 	return value, next, next >= info.Size(), truncated, nil
+}
+
+func openPrivateProjectProcessLog(path string) (*os.File, os.FileInfo, error) {
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(before) {
+		return nil, nil, errors.New("project process log is unsafe")
+	}
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, nil, errors.New("project process log is unsafe")
+	}
+	file := os.NewFile(uintptr(fd), path)
+	after, err := file.Stat()
+	if err != nil || !os.SameFile(before, after) || !after.Mode().IsRegular() || after.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(after) {
+		_ = file.Close()
+		return nil, nil, errors.New("project process log is unsafe")
+	}
+	return file, after, nil
 }
 
 type osProjectProcessPlatform struct{}

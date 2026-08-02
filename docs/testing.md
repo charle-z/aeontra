@@ -30,7 +30,7 @@ idempotency, conflicting reuse, no implicit shell, cwd traversal and symlink esc
 secret input rejection, independent concurrent processes, natural zero/non-zero exit,
 separate incremental stdout/stderr, output ceilings, split-chunk and private-key
 redaction before persistence, TERM/KILL escalation, repeated stop, cross-project
-lookup denial and PID start-time reuse defense. Exact-head CI remains authoritative for
+lookup denial, private-log no-follow checks and PID start-time reuse defense. Exact-head CI remains authoritative for
 race, Linux packaging modes and the complete release matrix.
 
 ## Race detector baseline — P5 Step 79

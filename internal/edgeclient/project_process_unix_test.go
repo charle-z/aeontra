@@ -248,6 +248,31 @@ func TestProjectProcessManagerRejectsCrossProjectAndPIDReuse(t *testing.T) {
 	}
 }
 
+func TestProjectProcessManagerRejectsSymlinkedPrivateLog(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "process-log-symlink"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform.naturalExit(platform.nextPID, 0)
+	waitProjectProcessState(t, manager, started.ProcessID, ProjectProcessExited)
+	logPath := filepath.Join(manager.logRoot, started.ProcessID+".stdout.log")
+	if err := os.Remove(logPath); err != nil {
+		t.Fatal(err)
+	}
+	privatePath := filepath.Join(t.TempDir(), "private")
+	if err := os.WriteFile(privatePath, []byte("must-not-be-returned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(privatePath, logPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Status(ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 1024}); err == nil {
+		t.Fatal("symlinked private process log was accepted")
+	}
+}
+
 func TestProjectProcessManagerUsesForegroundCWDAndSymlinkValidation(t *testing.T) {
 	platform := newFakeProjectProcessPlatform()
 	manager := openTestProjectProcessManager(t, platform, 1<<20)

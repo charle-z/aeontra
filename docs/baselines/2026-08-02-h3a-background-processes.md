@@ -25,6 +25,7 @@ On the Windows checkout through Parrot WSL2 and Go 1.26.5, the focused Edge, cli
 MCP server, command, catalog, integration and documentation suites passed. The matrix
 includes split-write redaction, truncation, zero/non-zero exit, concurrency, cwd and
 symlink rejection, cross-project denial, PID-reuse defense and repeated stop.
+Private log reads also reject symlink substitution and revalidate the same opened inode.
 
 The focused CGO race detector passed for `internal/edge`, `internal/edgeclient` and
 `internal/mcpserver`. The complete suite passed every package except the existing
