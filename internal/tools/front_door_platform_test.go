@@ -239,6 +239,17 @@ func TestPlatformFrontDoorCreateDeploysOneAuthenticatedCatalogTransition(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, want := range []string{
+		"catalog_primary: " + frontDoorNextCatalog,
+		"catalog_transition: " + frontDoorTestCatalog,
+		"catalog_transition_remove: false",
+		"catalog_changed: true",
+		"catalog_contract: accept the authenticated primary plus at most one authenticated temporary transition catalog",
+	} {
+		if !strings.Contains(preview, want) {
+			t.Fatalf("preview missing %q: %s", want, preview)
+		}
+	}
 	out, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
 	if err != nil {
 		t.Fatal(err)
