@@ -148,15 +148,6 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Volumes and paths:** server coordination is under `/state/edge` and
   `/state/model-turns`; the real Edge keeps private state under
   `~/.local/state/mcp-edge`, with workspaces under the configured local roots.
-- **Background process state:** the Edge stores private process metadata at
-  `~/.local/state/mcp-edge/project-processes.db` and separate redacted logs below
-  `~/.local/state/mcp-edge/project-process-logs`. The directory is owner-only and log
-  and database files are `0600`; none is mounted into a workcell or returned as a path.
-- **Emergency limits:** `mcp-edge opencode --project-process-limit` defaults to `256`
-  concurrent durable processes (maximum `4096`).
-  `--project-process-log-limit` defaults to `67108864` bytes per stdout/stderr stream
-  (maximum `1073741824`). Neither setting is a TTL and terminal rows are not removed
-  automatically.
 - **Security posture:** the ordinary Edge sandbox is networkless; the trusted Linux
   workcell intentionally shares the host network; authorized target-locked actions
   revalidate the private target and VPN route. These are distinct boundaries.

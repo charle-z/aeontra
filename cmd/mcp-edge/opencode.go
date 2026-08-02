@@ -145,8 +145,6 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	poll := fs.Duration("poll", 5*time.Second, "delay after an empty long-poll or safe failure")
 	heartbeat := fs.Duration("heartbeat", 5*time.Second, "runtime heartbeat interval")
 	outputLimit := fs.Int64("output-limit", 1<<20, "maximum transient bytes per OpenCode output stream")
-	processLimit := fs.Int("project-process-limit", 256, "maximum concurrent durable project processes")
-	processLogLimit := fs.Int64("project-process-log-limit", 64<<20, "maximum persisted bytes per project process output stream")
 	once := fs.Bool("once", false, "process at most one runtime lease")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -159,9 +157,6 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	}
 	if *wait < time.Second || *wait > 180*time.Second || *poll < time.Second || *poll > time.Minute || *heartbeat < time.Second || *heartbeat > 30*time.Second {
 		return errors.New("OpenCode relay timing is outside the safe bounds")
-	}
-	if *processLimit < 1 || *processLimit > 4096 || *processLogLimit < 1 || *processLogLimit > 1<<30 {
-		return errors.New("project process emergency limits are outside the safe bounds")
 	}
 	if strings.TrimSpace(*bubblewrapPath) == "" {
 		resolved, err := exec.LookPath("bwrap")
@@ -211,7 +206,7 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go runControlOperationLoop(ctx, *state, transport, *processLimit, *processLogLimit, stderr)
+	go runControlOperationLoop(ctx, *state, transport, stderr)
 	go runAutopilotSupervisor(ctx, *state, *bundleRoot, transport, stderr)
 	for {
 		workspaces, registryErr := registry.List()

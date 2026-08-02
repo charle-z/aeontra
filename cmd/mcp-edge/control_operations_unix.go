@@ -23,13 +23,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/edgeupdate"
 )
 
-func runControlOperationLoop(ctx context.Context, stateRoot string, transport *edgeclient.Transport, maxProcesses int, maxLogBytes int64, stderr io.Writer) {
-	processes, err := edgeclient.OpenProjectProcessManager(edgeclient.ProjectProcessManagerConfig{StateRoot: stateRoot, MaxProcesses: maxProcesses, MaxLogBytes: maxLogBytes})
-	if err != nil {
-		fmt.Fprintln(stderr, "mcp-edge: project process journal failed safely")
-		return
-	}
-	defer processes.Close()
+func runControlOperationLoop(ctx context.Context, stateRoot string, transport *edgeclient.Transport, stderr io.Writer) {
 	for {
 		if ctx.Err() != nil {
 			return
@@ -48,7 +42,7 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 			}
 			continue
 		}
-		result, code, cancelRequested, lifecycleErr := executeControlOperationWithProgress(ctx, stateRoot, transport, processes, *lease)
+		result, code, cancelRequested, lifecycleErr := executeControlOperationWithProgress(ctx, stateRoot, transport, *lease)
 		if lifecycleErr != nil {
 			fmt.Fprintln(stderr, "mcp-edge: control operation progress failed safely")
 			continue
@@ -88,7 +82,7 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 	}
 }
 
-func executeControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, operation edge.Operation) (edge.OperationResult, string) {
+func executeControlOperation(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
 	var output strings.Builder
 	switch operation.Kind {
 	case edge.OperationLabPrepare:
@@ -114,8 +108,6 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectSnapshot(ctx, stateRoot, operation.Request)
 	case edge.OperationProjectExec:
 		return executeProjectExec(ctx, stateRoot, operation)
-	case edge.OperationProjectProcessStart, edge.OperationProjectProcessStatus, edge.OperationProjectProcessStop:
-		return executeProjectProcess(ctx, stateRoot, processes, operation)
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectEdgeDiagnostic(stateRoot, true)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:

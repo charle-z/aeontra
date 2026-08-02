@@ -214,9 +214,9 @@ func validStoredOperationLifecycle(operation Operation) bool {
 	case OperationLeased:
 		return operation.SafeCode == "" && emptyOperationResult(operation.Result)
 	case OperationSucceeded:
-		return !operation.CancelRequested && operation.SafeCode == "" && validOperationCompletionForKind(operation.Kind, operation.Result, "")
+		return !operation.CancelRequested && operation.SafeCode == "" && validOperationCompletion(operation.Result, "")
 	case OperationFailed:
-		return !operation.CancelRequested && operation.SafeCode != "" && validOperationCompletionForKind(operation.Kind, operation.Result, operation.SafeCode)
+		return !operation.CancelRequested && operation.SafeCode != "" && validOperationCompletion(operation.Result, operation.SafeCode)
 	case OperationCancelled:
 		return operation.CancelRequested && operation.SafeCode == "operation_cancelled" && emptyOperationResult(operation.Result)
 	default:

@@ -1,27 +1,6 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-08-02
-
-## Direct GPT Web to Edge roadmap
-
-The current product sequence keeps GPT Web as the reasoning client and MCP Devbox as
-the durable execution authority. Direct execution does not create an OpenCode/model
-runtime; OpenCode remains a tested optional fallback.
-
-| Hito | Status | Current evidence / next gate |
-|---|---|---|
-| 1 direct vertical slice | Deployed | Direct signed control operations reached the paired Edge without a second model session. |
-| 2 durable Edge operations | Deployed | Server-owned operation identity, leases, progress, cancellation and restart-safe queue state are in production. |
-| 3 foreground execution | Deployed | `project_exec` uses arbitrary argv without an implicit shell in the trusted workcell. |
-| 3A background start/status/stop | In progress | Candidate branch adds the same-executor process surface, durable private journal/logs, opaque identity, incremental redacted output and TERM/KILL lifecycle. Exact-head CI, merge, release and real-Edge acceptance remain required. |
-| 3B recovery/list/signal/cleanup | Planned | Must reconcile live and terminal process identity after Edge restart without duplication or busy polling. |
-| Safe Edge checkout synchronization | Planned | Closed brokered fetch/status/fast-forward surface; no dirty, detached, diverged, forced or arbitrary-ref operations. |
-| 4 persistent universal toolbox | Planned | Rootless persistent rootfs, package/tool/service lifecycle and explicit cleanup. |
-| 5 complete persistent GitHub broker | Planned | Extend the owner-bound broker for repository, PR, Actions, release and bounded API workflows without exposing the credential. |
-| 6 direct GPT Web parity | Planned | Workspace-scoped filesystem, Git, process, toolbox, container and durable-result coverage. |
-| 7 worktrees and deterministic parallelism | Planned | Durable isolated worktrees, ownership, fairness, recovery and explicit cleanup. |
-| 8 full benchmark | Planned | Complete project delivery through the direct path with retained latency/resource/CI evidence. |
-| 9 durable task graph | Planned | Product-native task dependencies, worktree/process/result association and recovery; not required for the single-agent path. |
+Last updated: 2026-07-18
 
 ## Status snapshot — 2026-07-18
 

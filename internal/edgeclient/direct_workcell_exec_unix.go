@@ -62,19 +62,33 @@ type DirectWorkcellCommandRunner interface {
 type directWorkcellExecRunner struct{}
 
 func RunDirectWorkcellCommand(ctx context.Context, request DirectWorkcellCommandRequest, runner DirectWorkcellCommandRunner) (DirectWorkcellCommandResult, error) {
-	stdout := newBoundedCapture(edge.MaxProjectExecStreamBytes)
-	stderr := newBoundedCapture(edge.MaxProjectExecStreamBytes)
-	resolveExecutable := runner == nil
-	if runner == nil {
-		runner = directWorkcellExecRunner{}
-	}
-	spec, err := prepareDirectWorkcellProcessSpec(request, stdout, stderr, resolveExecutable)
+	workspace, sandboxCWD, err := validateDirectWorkcellRequest(request)
 	if err != nil {
 		return DirectWorkcellCommandResult{}, err
 	}
+	bubblewrap := "bwrap"
+	if runner == nil {
+		runner = directWorkcellExecRunner{}
+		bubblewrap, err = resolveDirectWorkcellBubblewrap()
+		if err != nil {
+			return DirectWorkcellCommandResult{}, err
+		}
+	}
+	if err := prepareDirectWorkcellRuntime(workspace); err != nil {
+		return DirectWorkcellCommandResult{}, err
+	}
+	args, environment, err := directWorkcellBubblewrapArgs(workspace, sandboxCWD, request)
+	if err != nil {
+		return DirectWorkcellCommandResult{}, err
+	}
+	stdout := newBoundedCapture(edge.MaxProjectExecStreamBytes)
+	stderr := newBoundedCapture(edge.MaxProjectExecStreamBytes)
 	executionCtx, cancel := context.WithTimeout(ctx, time.Duration(request.TimeoutSeconds)*time.Second)
 	defer cancel()
-	exitCode, runErr := runner.Run(executionCtx, spec)
+	exitCode, runErr := runner.Run(executionCtx, DirectWorkcellProcessSpec{
+		Executable: bubblewrap, Args: args, Dir: workspace, Env: environment,
+		Stdin: strings.NewReader(request.Stdin), Stdout: stdout, Stderr: stderr,
+	})
 	result := DirectWorkcellCommandResult{
 		Completed: true, ExitCode: exitCode,
 		Stdout:          boundedRedactedWorkcellOutput(stdout.String(), edge.MaxProjectExecStreamBytes),
@@ -93,31 +107,6 @@ func RunDirectWorkcellCommand(ctx context.Context, request DirectWorkcellCommand
 		return DirectWorkcellCommandResult{}, errors.New("direct workcell exit status is invalid")
 	}
 	return result, nil
-}
-
-func prepareDirectWorkcellProcessSpec(request DirectWorkcellCommandRequest, stdout, stderr io.Writer, resolveExecutable bool) (DirectWorkcellProcessSpec, error) {
-	workspace, sandboxCWD, err := validateDirectWorkcellRequest(request)
-	if err != nil {
-		return DirectWorkcellProcessSpec{}, err
-	}
-	bubblewrap := "bwrap"
-	if resolveExecutable {
-		bubblewrap, err = resolveDirectWorkcellBubblewrap()
-		if err != nil {
-			return DirectWorkcellProcessSpec{}, err
-		}
-	}
-	if err := prepareDirectWorkcellRuntime(workspace); err != nil {
-		return DirectWorkcellProcessSpec{}, err
-	}
-	args, environment, err := directWorkcellBubblewrapArgs(workspace, sandboxCWD, request)
-	if err != nil {
-		return DirectWorkcellProcessSpec{}, err
-	}
-	return DirectWorkcellProcessSpec{
-		Executable: bubblewrap, Args: args, Dir: workspace, Env: environment,
-		Stdin: strings.NewReader(request.Stdin), Stdout: stdout, Stderr: stderr,
-	}, nil
 }
 
 func validateDirectWorkcellRequest(request DirectWorkcellCommandRequest) (string, string, error) {
