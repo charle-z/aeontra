@@ -30,6 +30,9 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward {
 		return normalizeProjectGitSyncRequest(kind, request)
 	}
+	if kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup {
+		return normalizeProjectToolboxRequest(kind, request)
+	}
 	if !emptyProjectExecRequestFields(request) {
 		return OperationRequest{}, errors.New("project exec fields are invalid for this operation")
 	}
@@ -149,7 +152,8 @@ func operationRequestsEqual(left, right OperationRequest) bool {
 
 func projectOperationUsesIdempotency(kind OperationKind) bool {
 	return kind == OperationProjectSnapshot || kind == OperationProjectExec || kind == OperationProjectProcessStart ||
-		kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward
+		kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward ||
+		kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup
 }
 
 func hasProjectExecResult(result OperationResult) bool {

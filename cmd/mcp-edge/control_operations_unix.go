@@ -118,6 +118,8 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectProcess(ctx, stateRoot, processes, operation)
 	case edge.OperationProjectGitStatus, edge.OperationProjectGitFetch, edge.OperationProjectGitFastForwardPreview, edge.OperationProjectGitFastForward:
 		return executeProjectGitSync(ctx, stateRoot, operation)
+	case edge.OperationProjectToolboxCreate, edge.OperationProjectToolboxStatus, edge.OperationProjectToolboxExec, edge.OperationProjectToolboxInstall, edge.OperationProjectToolboxCleanup:
+		return executeProjectToolbox(ctx, stateRoot, operation)
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectEdgeDiagnostic(stateRoot, true)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:

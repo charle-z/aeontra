@@ -311,6 +311,15 @@ private redacted logs and explicit TERM/KILL lifecycle; ending the MCP turn does
 stop them. OpenCode remains installed as an optional fallback and is not launched by
 these tools.
 
+The direct path also supports a persistent rootless toolbox per registered development
+workspace. The toolbox keeps its writable Debian rootfs, installed packages and caches
+across calls and Edge restarts, mounts only the selected workspace at `/workspace`, and
+uses the already validated user-owned Podman/Docker endpoint. It never mounts a
+rootful socket or modifies the host WSL package database. Creation, status, arbitrary
+argv execution, installation and explicit cleanup are available without starting an
+OpenCode/model runtime; service lifecycle and repair are tracked as the next additive
+toolbox slice.
+
 ## Verification matrix
 
 Local automated coverage includes:

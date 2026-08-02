@@ -1,0 +1,64 @@
+//go:build !windows
+
+package main
+
+import (
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/edge"
+	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+)
+
+type fakeProjectToolboxManager struct {
+	execRequest edgeclient.ProjectToolboxExecRequest
+	removed     bool
+}
+
+func (*fakeProjectToolboxManager) Create(context.Context, edgeclient.ProjectToolboxCreateRequest) (edgeclient.ProjectToolboxSnapshot, bool, error) {
+	return toolboxFixtureSnapshot(), false, nil
+}
+func (*fakeProjectToolboxManager) Status(context.Context, edgeclient.ProjectToolboxStatusRequest) (edgeclient.ProjectToolboxSnapshot, error) {
+	return toolboxFixtureSnapshot(), nil
+}
+func (manager *fakeProjectToolboxManager) Exec(_ context.Context, request edgeclient.ProjectToolboxExecRequest) (edgeclient.ProjectToolboxSnapshot, error) {
+	manager.execRequest = request
+	snapshot := toolboxFixtureSnapshot()
+	snapshot.Output = "ok\n"
+	return snapshot, nil
+}
+func (manager *fakeProjectToolboxManager) Cleanup(context.Context, edgeclient.ProjectToolboxCleanupRequest) (bool, error) {
+	manager.removed = true
+	return true, nil
+}
+
+func toolboxFixtureSnapshot() edgeclient.ProjectToolboxSnapshot {
+	return edgeclient.ProjectToolboxSnapshot{
+		ToolboxID: "tb_11111111111111111111111111111111", State: edgeclient.ProjectToolboxRunning,
+		BaseImage: "docker.io/library/debian:bookworm-slim", BaseImageID: "sha256:" + strings.Repeat("a", 64),
+		CreatedAt: time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 8, 2, 12, 1, 0, 0, time.UTC),
+	}
+}
+
+func TestCollectProjectToolboxMapsExecAndCleanupWithoutInternalIdentity(t *testing.T) {
+	resolved := edgeclient.ProjectResolution{
+		Project: edgeclient.Project{Alias: "project", Owner: "charle-z", Repository: "repo"}, TargetAlias: "parrot",
+		Workspace: edgeclient.Workspace{ID: "ws_22222222222222222222222222222222", Path: "/private/workspace", Profile: edgeclient.WorkspaceProfileLinuxWorkcell, Mode: edgeclient.WorkspaceModeDev},
+	}
+	manager := &fakeProjectToolboxManager{}
+	operation := edge.Operation{Kind: edge.OperationProjectToolboxExec, Request: edge.OperationRequest{Argv: []string{"ruby", "--version"}, CWD: "src", Environment: map[string]string{"CI": "true"}, TimeoutSeconds: 60}}
+	result, code := collectProjectToolbox(t.Context(), manager, resolved, operation)
+	if code != "" || result.ToolboxID == "" || result.ToolboxState != "running" || result.ToolboxOutput != "ok\n" || result.WorkspaceID != resolved.Workspace.ID {
+		t.Fatalf("result=%+v code=%q", result, code)
+	}
+	if strings.Contains(result.ToolboxBase, "/") || manager.execRequest.CWD != "src" || manager.execRequest.Argv[0] != "ruby" {
+		t.Fatalf("public base=%q request=%+v", result.ToolboxBase, manager.execRequest)
+	}
+	operation.Kind = edge.OperationProjectToolboxCleanup
+	result, code = collectProjectToolbox(t.Context(), manager, resolved, operation)
+	if code != "" || !manager.removed || !result.ToolboxRemoved || result.ToolboxState != "removed" {
+		t.Fatalf("cleanup result=%+v code=%q", result, code)
+	}
+}
