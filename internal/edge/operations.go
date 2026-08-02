@@ -38,6 +38,7 @@ const (
 	OperationProjectPrepare   OperationKind = "project_prepare"
 	OperationProjectStatus    OperationKind = "project_status"
 	OperationProjectSnapshot  OperationKind = "project_snapshot"
+	OperationProjectExec      OperationKind = "project_exec"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -54,19 +55,24 @@ var projectOperationIdempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z
 var operationProgressPhasePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 
 type OperationRequest struct {
-	Platform        string `json:"platform,omitempty"`
-	Machine         string `json:"machine,omitempty"`
-	Target          string `json:"target"`
-	Difficulty      string `json:"difficulty,omitempty"`
-	OperatingSystem string `json:"operating_system,omitempty"`
-	WorkspaceID     string `json:"workspace_id,omitempty"`
-	RunUntil        string `json:"run_until,omitempty"`
-	Release         string `json:"release,omitempty"`
-	Alias           string `json:"alias,omitempty"`
-	Repository      string `json:"repository,omitempty"`
-	TargetAlias     string `json:"target_alias,omitempty"`
-	Profile         string `json:"profile,omitempty"`
-	IdempotencyKey  string `json:"idempotency_key,omitempty"`
+	Platform        string            `json:"platform,omitempty"`
+	Machine         string            `json:"machine,omitempty"`
+	Target          string            `json:"target"`
+	Difficulty      string            `json:"difficulty,omitempty"`
+	OperatingSystem string            `json:"operating_system,omitempty"`
+	WorkspaceID     string            `json:"workspace_id,omitempty"`
+	RunUntil        string            `json:"run_until,omitempty"`
+	Release         string            `json:"release,omitempty"`
+	Alias           string            `json:"alias,omitempty"`
+	Repository      string            `json:"repository,omitempty"`
+	TargetAlias     string            `json:"target_alias,omitempty"`
+	Profile         string            `json:"profile,omitempty"`
+	IdempotencyKey  string            `json:"idempotency_key,omitempty"`
+	Argv            []string          `json:"argv,omitempty"`
+	CWD             string            `json:"cwd,omitempty"`
+	Stdin           string            `json:"stdin,omitempty"`
+	Environment     map[string]string `json:"environment,omitempty"`
+	TimeoutSeconds  int               `json:"timeout_seconds,omitempty"`
 }
 
 type OperationResult struct {
@@ -106,6 +112,13 @@ type OperationResult struct {
 	SnapshotBranch        string   `json:"snapshot_branch,omitempty"`
 	SnapshotHead          string   `json:"snapshot_head,omitempty"`
 	SnapshotClean         bool     `json:"snapshot_clean,omitempty"`
+	ExecCompleted         bool     `json:"exec_completed,omitempty"`
+	ExecExitCode          int      `json:"exec_exit_code,omitempty"`
+	ExecStdout            string   `json:"exec_stdout,omitempty"`
+	ExecStderr            string   `json:"exec_stderr,omitempty"`
+	ExecTimedOut          bool     `json:"exec_timed_out,omitempty"`
+	ExecStdoutTruncated   bool     `json:"exec_stdout_truncated,omitempty"`
+	ExecStderrTruncated   bool     `json:"exec_stderr_truncated,omitempty"`
 }
 
 type OperationProgress struct {
@@ -176,13 +189,13 @@ func (s *Store) SignOperationLease(lease OperationLease) (OperationLease, error)
 }
 
 func (s *Store) CreateOperation(deviceID string, kind OperationKind, request OperationRequest) (Operation, bool, error) {
-	request, err := validateOperationRequest(kind, request)
+	request, err := validateOperationRequestWithProjectExec(kind, request)
 	if !idPattern.MatchString(deviceID) || err != nil {
 		return Operation{}, false, errors.New("edge operation is invalid")
 	}
 	body, _ := json.Marshal(request)
 	digestInput := body
-	if kind == OperationProjectSnapshot {
+	if projectOperationUsesIdempotency(kind) {
 		digestInput = []byte(request.IdempotencyKey)
 	}
 	sum := sha256.Sum256(digestInput)
@@ -197,10 +210,10 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 		return Operation{}, false, errors.New("active edge device not found")
 	}
 	if existing, err := s.operationLifecycleByDigest(deviceID, kind, digest); err == nil {
-		if kind == OperationProjectSnapshot && existing.Request != request {
+		if projectOperationUsesIdempotency(kind) && !operationRequestsEqual(existing.Request, request) {
 			return Operation{}, false, errors.New("edge operation idempotency conflict")
 		}
-		if kind == OperationLabPrepare || kind == OperationLabRetarget || kind == OperationProjectSnapshot || existing.State == OperationQueued || existing.State == OperationLeased {
+		if kind == OperationLabPrepare || kind == OperationLabRetarget || projectOperationUsesIdempotency(kind) || existing.State == OperationQueued || existing.State == OperationLeased {
 			return existing, false, nil
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -324,7 +337,7 @@ func (s *Store) WaitOperation(ctx context.Context, operationID string, timeout t
 }
 
 func validateOperationRequest(kind OperationKind, request OperationRequest) (OperationRequest, error) {
-	if kind != OperationProjectSnapshot && request.IdempotencyKey != "" {
+	if !projectOperationUsesIdempotency(kind) && request.IdempotencyKey != "" {
 		return OperationRequest{}, errors.New("operation idempotency key is invalid")
 	}
 	switch kind {
@@ -384,11 +397,11 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 			return OperationRequest{}, errors.New("project snapshot request is invalid")
 		}
 	case OperationBundleStatus, OperationBundleRollback, OperationEdgeRepair, OperationOnboardingStatus:
-		if request != (OperationRequest{}) {
+		if !operationRequestEmpty(request) {
 			return OperationRequest{}, errors.New("edge diagnostic request is invalid")
 		}
 	case OperationBundleUpdate:
-		if request != (OperationRequest{Release: "stable"}) {
+		if !operationRequestStableBundle(request) {
 			return OperationRequest{}, errors.New("bundle update request is invalid")
 		}
 	default:
@@ -407,6 +420,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	body, err := json.Marshal(result)
 	if err != nil || len(body) > MaxOperationResultBytes {
 		return false
+	}
+	if hasProjectExecResult(result) {
+		return code == "" && validProjectExecResult(result)
 	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return code == "" && validProjectSnapshotResult(result)
@@ -502,6 +518,9 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 }
 
 func emptyOperationResult(result OperationResult) bool {
+	if hasProjectExecResult(result) {
+		return false
+	}
 	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == ""
 }
 
