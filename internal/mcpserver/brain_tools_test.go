@@ -55,11 +55,11 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(server.order) != 115 {
 		t.Fatalf("tool order length=%d want=115", len(server.order))
 	}
-	if server.order[28] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:28])
+	if server.order[29] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:29])
 	}
-	if !reflect.DeepEqual(server.order[33:36], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[33:36])
+	if !reflect.DeepEqual(server.order[34:37], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[34:37])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {

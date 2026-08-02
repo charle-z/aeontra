@@ -21,6 +21,10 @@ func executeProjectExec(ctx context.Context, stateRoot string, operation edge.Op
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
 	}
+	return collectProjectExec(ctx, operation, resolved, nil)
+}
+
+func collectProjectExec(ctx context.Context, operation edge.Operation, resolved edgeclient.ProjectResolution, runner edgeclient.DirectWorkcellCommandRunner) (edge.OperationResult, string) {
 	execution, err := edgeclient.RunDirectWorkcellCommand(ctx, edgeclient.DirectWorkcellCommandRequest{
 		OperationID: operation.ID, Workspace: resolved.Workspace,
 		Argv: operation.Request.Argv, CWD: operation.Request.CWD, Stdin: operation.Request.Stdin,

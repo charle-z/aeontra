@@ -15,9 +15,12 @@ import (
 )
 
 type fakeDirectWorkcellRunner struct {
-	spec DirectWorkcellProcessSpec
-	exit int
-	wait bool
+	spec         DirectWorkcellProcessSpec
+	exit         int
+	wait         bool
+	customOutput bool
+	stdout       string
+	stderr       string
 }
 
 func (runner *fakeDirectWorkcellRunner) Run(ctx context.Context, spec DirectWorkcellProcessSpec) (int, error) {
@@ -26,8 +29,14 @@ func (runner *fakeDirectWorkcellRunner) Run(ctx context.Context, spec DirectWork
 		<-ctx.Done()
 		return -1, ctx.Err()
 	}
-	_, _ = io.WriteString(spec.Stdout, "ok\n")
-	_, _ = io.WriteString(spec.Stderr, "warning\n")
+	stdout := "ok\n"
+	stderr := "warning\n"
+	if runner.customOutput {
+		stdout = runner.stdout
+		stderr = runner.stderr
+	}
+	_, _ = io.WriteString(spec.Stdout, stdout)
+	_, _ = io.WriteString(spec.Stderr, stderr)
 	return runner.exit, nil
 }
 
