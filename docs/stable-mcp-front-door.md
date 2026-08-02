@@ -219,6 +219,14 @@ verifies the expected origin before advancing. A restart resumes from the journa
 the externally visible topology. Unknown topology, conflicting active targets, missing
 storage, duplicate application identity or an exhausted finite phase budget fail closed.
 
+An active `queued`, `running` or `compensating` request in the persistent journal is
+authoritative across container replacement, even when the managed environment has already
+been reconciled back to `idle`. A replacement worker restores that exact request ID and target
+from the journal; it never substitutes a new request. The worker reports ready first and waits
+75 seconds before resuming, so Coolify can complete the coordinator rollout before the worker
+publishes status or mutates the managed topology. Cancellation during that gate performs no
+transition work.
+
 A non-interruption failure changes the durable state to `compensating` and drives the
 opposite fixed target: failed cutover restores the direct-backend topology; failed
 rollback restores the stable-front-door topology. Compensation derives every next phase

@@ -122,9 +122,12 @@ func coordinatorHTTPHandler(state *coordinatorRuntimeState) http.Handler {
 	return mux
 }
 
+const defaultTransitionStartDelay = 75 * time.Second
+
 type coordinatorDependencies struct {
-	openJournal func(string) (*frontdoorcoordinator.Journal, error)
-	newPlatform func(frontdoorcoordinator.Config) (frontdoorcoordinator.Platform, error)
+	openJournal            func(string) (*frontdoorcoordinator.Journal, error)
+	newPlatform            func(frontdoorcoordinator.Config) (frontdoorcoordinator.Platform, error)
+	waitForTransitionStart func(context.Context) error
 }
 
 func defaultCoordinatorDependencies() coordinatorDependencies {
@@ -132,6 +135,16 @@ func defaultCoordinatorDependencies() coordinatorDependencies {
 		openJournal: frontdoorcoordinator.OpenJournal,
 		newPlatform: func(config frontdoorcoordinator.Config) (frontdoorcoordinator.Platform, error) {
 			return frontdoorcoordinator.NewClient(config)
+		},
+		waitForTransitionStart: func(ctx context.Context) error {
+			timer := time.NewTimer(defaultTransitionStartDelay)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C:
+				return nil
+			}
 		},
 	}
 }
@@ -176,7 +189,14 @@ func serveCoordinator(ctx context.Context, listener net.Listener, getenv func(st
 	} else {
 		state.setReady()
 		if config.Target != frontdoorcoordinator.TargetIdle {
-			go runCoordinatorTransition(ctx, state, config, journal, platform)
+			go func() {
+				if dependencies.waitForTransitionStart != nil {
+					if err := dependencies.waitForTransitionStart(ctx); err != nil {
+						return
+					}
+				}
+				runCoordinatorTransition(ctx, state, config, journal, platform)
+			}()
 		}
 	}
 
@@ -246,9 +266,11 @@ func initializeCoordinator(ctx context.Context, getenv func(string) string, depe
 	if err != nil {
 		return runtimeConfig{}, nil, nil, startupJournalOpenFailed
 	}
-	if _, err := journal.Read(); err != nil {
+	persisted, err := journal.Read()
+	if err != nil {
 		return runtimeConfig{}, journal, nil, startupJournalOpenFailed
 	}
+	config = resumeActiveCoordinatorRequest(config, persisted)
 	platform, err := dependencies.newPlatform(config.ClientConfig)
 	if err != nil {
 		return runtimeConfig{}, journal, nil, startupCoolifyClientInvalid
@@ -261,6 +283,15 @@ func initializeCoordinator(ctx context.Context, getenv func(string) string, depe
 		return runtimeConfig{}, journal, platform, startupTopologyContractInvalid
 	}
 	return config, journal, platform, ""
+}
+
+func resumeActiveCoordinatorRequest(config runtimeConfig, persisted frontdoorcoordinator.Status) runtimeConfig {
+	switch persisted.State {
+	case frontdoorcoordinator.StateQueued, frontdoorcoordinator.StateRunning, frontdoorcoordinator.StateCompensating:
+		config.Target = persisted.Target
+		config.RequestID = persisted.RequestID
+	}
+	return config
 }
 
 func runCoordinatorTransition(ctx context.Context, state *coordinatorRuntimeState, config runtimeConfig, journal *frontdoorcoordinator.Journal, platform frontdoorcoordinator.Platform) {
