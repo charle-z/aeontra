@@ -239,11 +239,11 @@ func (r Runner) publishStatus(ctx context.Context, status Status) error {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return errors.Join(ctx.Err(), fmt.Errorf("%w: %v", ErrStatusPublish, lastErr))
+			return errors.Join(ctx.Err(), ErrStatusPublish, lastErr)
 		case <-timer.C:
 		}
 	}
-	return fmt.Errorf("%w after %d attempts: %v", ErrStatusPublish, attempts, lastErr)
+	return errors.Join(fmt.Errorf("%w after %d attempts", ErrStatusPublish, attempts), lastErr)
 }
 
 func (r Runner) fail(ctx context.Context, current Status, reason string, cause error) (Status, error) {

@@ -331,21 +331,24 @@ func (c *Client) ProbeFront(ctx context.Context, origin string) error {
 }
 
 func (c *Client) PublishStatus(ctx context.Context, status Status) error {
-	data, err := json.Marshal(status)
+	description, err := encodePublishedStatus(status)
 	if err != nil {
 		return err
 	}
-	if len(data) > 4096 {
-		return errors.New("front-door coordinator status is too large")
-	}
-	return c.patch(ctx, c.config.CoordinatorAppID, map[string]any{"description": statusDescriptionPrefix + string(data)})
+	return c.patch(ctx, c.config.CoordinatorAppID, map[string]any{"description": description})
 }
 
 func DecodePublishedStatus(description string) (Status, bool, error) {
 	description = strings.TrimSpace(description)
+	if strings.HasPrefix(description, compactStatusDescriptionPrefix) {
+		status, err := decodeCompactPublishedStatus(strings.TrimPrefix(description, compactStatusDescriptionPrefix))
+		return status, true, err
+	}
 	if !strings.HasPrefix(description, statusDescriptionPrefix) {
 		return Status{}, false, nil
 	}
+	// The v1 shape remains readable for existing coordinator descriptions. New
+	// publications always use the compact v2 envelope.
 	var status Status
 	if err := json.Unmarshal([]byte(strings.TrimPrefix(description, statusDescriptionPrefix)), &status); err != nil {
 		return Status{}, true, err

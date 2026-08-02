@@ -311,6 +311,18 @@ func TestSafeCoordinatorDeploymentCodeRejectsUnknownOrAmbiguousLogs(t *testing.T
 		"topology_contract_invalid",
 		"durable_state_failed",
 		"status_publish_failed",
+		"status_publish_request_build_failed",
+		"status_publish_transport_failed",
+		"status_publish_transport_target_failed",
+		"status_publish_transport_resolution_failed",
+		"status_publish_transport_address_policy_failed",
+		"status_publish_transport_connection_refused",
+		"status_publish_transport_connection_timed_out",
+		"status_publish_transport_route_unavailable",
+		"status_publish_transport_connection_failed",
+		"status_publish_response_read_failed",
+		"status_publish_http_failed",
+		"status_publish_response_decode_failed",
 	}
 	for _, code := range known {
 		if got := safeCoordinatorDeploymentCode("prefix code=" + code + " suffix"); got != code {
