@@ -14,8 +14,16 @@ silently resize an existing toolbox, and drift fails as an ownership error.
 
 Focused tests pass and a real temporary rootless Podman container returned exactly
 8589934592 memory bytes, 4000000000 NanoCpus and PidsLimit 2048 before cleanup. The
-candidate keeps 134 tools with catalog
+resource-limit-only commit kept 134 tools at
 `sha256:14de29c2c2c7dca8ba6d0621f57495940f88975d4fea0bd97a72f91848b03b84`.
+The combined rootless-engine candidate is 134 tools at
+`sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
+
+The next uncommitted slice mounts only the already validated user-owned rootless socket
+at a fixed internal path, owns Docker/Podman/Compose endpoint variables and reports
+writable/rootfs usage. A real toolbox-shaped container installed Podman, reported its
+remote engine as rootless and launched an auto-removed Alpine child returning
+`nested-ok`; all temporary resources were removed.
 
 Complete the remaining gates and commit this step. Hito 4 still needs direct rootless
 container/Compose/BuildKit lifecycle, bounded storage acceptance and real-device proof.

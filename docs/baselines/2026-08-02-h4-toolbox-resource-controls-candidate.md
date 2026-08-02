@@ -13,8 +13,10 @@ real-device acceptance record.
 ## Candidate
 
 - Branch: `codex/toolbox-container-controls`.
-- Tool count remains 134; the schema change produces catalog
+- The resource-limit-only schema produced 134 tools at
   `sha256:14de29c2c2c7dca8ba6d0621f57495940f88975d4fea0bd97a72f91848b03b84`.
+- The combined resource, rootless-engine and storage candidate remains 134 tools at
+  `sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
 - `project_toolbox_create` accepts optional CPU millicores, memory MiB and process
   count limits. Omitted values become 4000, 8192 and 2048 respectively.
 - The private record binds the selected limits to the persistent container. Reuse with
@@ -22,6 +24,10 @@ real-device acceptance record.
   `HostConfig` values before acting.
 - No socket, host path, container identity, argv, environment or secret is added to the
   public result. Safe applied limits are returned as metadata.
+- The validated user-owned rootless engine is mounted only at a fixed internal socket;
+  endpoint environment, parent label and Compose project name are server-owned.
+- Status returns only availability plus writable/rootfs byte usage, not the engine or
+  socket identity.
 
 ## Verification
 
@@ -32,6 +38,10 @@ real-device acceptance record.
   - `NanoCpus=4000000000`;
   - `PidsLimit=2048`.
 - The temporary acceptance container was removed.
+- A toolbox-shaped real container installed Podman internally, observed the remote
+  engine as `rootless=true`, and launched an auto-removed Alpine child that returned
+  `nested-ok`. `podman inspect --size` returned nonzero writable/rootfs byte usage.
+- The child, toolbox and temporary workspace were removed; no labelled child remained.
 - The ordinary suite is green except when run directly from DrvFS, where one existing
   permission-contract test sees synthetic mode `0777`; that same test passes from a
   Linux-filesystem copy.
@@ -39,8 +49,7 @@ real-device acceptance record.
 ## Remaining Hito 4 acceptance
 
 - publish and deploy this candidate through a reviewed PR;
-- implement direct rootless container/Compose/BuildKit lifecycle and bounded storage
-  metadata/cleanup without exposing a privileged socket;
+- complete Compose and BuildKit acceptance through the fixed rootless endpoint;
 - publish an explicitly numbered signed Edge release;
 - update the real Edge and prove restart persistence, network, toolchain installation,
   build, service and explicit cleanup.

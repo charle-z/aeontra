@@ -313,9 +313,9 @@ these tools.
 
 The direct path also supports a persistent rootless toolbox per registered development
 workspace. The toolbox keeps its writable Debian rootfs, installed packages and caches
-across calls and Edge restarts, mounts only the selected workspace at `/workspace`, and
-uses the already validated user-owned Podman/Docker endpoint. It never mounts a
-rootful socket or modifies the host WSL package database. Creation, status, arbitrary
+across calls and Edge restarts, mounts the selected workspace at `/workspace` and the
+already validated user-owned Podman/Docker endpoint at one fixed private socket path.
+It never mounts a rootful socket or modifies the host WSL package database. Creation, status, arbitrary
 argv execution, installation, explicit repair and cleanup are available without
 starting an OpenCode/model runtime. Named background services use the same toolbox;
 their opaque identities survive chat and Edge-daemon restarts while the container is
@@ -325,7 +325,10 @@ Creation also binds configurable CPU, memory and process limits to the persisten
 private record. Omitted values use broad server defaults. Each later operation compares
 those values with the engine's live `HostConfig`; drift or a request to reuse the same
 workspace with different limits fails closed. Storage continues to be the rootless
-user's persistent container storage and is removed only by explicit toolbox cleanup.
+user's persistent container storage; status reports bounded writable/rootfs byte usage
+and storage is removed only by explicit toolbox cleanup. Installed remote Podman,
+Docker or Compose clients inherit server-owned endpoint variables that callers cannot
+override.
 
 ## Verification matrix
 

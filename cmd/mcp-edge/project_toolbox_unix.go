@@ -117,6 +117,9 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	result.ToolboxCPUMillis = snapshot.CPUMillis
 	result.ToolboxMemoryMiB = snapshot.MemoryMiB
 	result.ToolboxProcessLimit = snapshot.ProcessLimit
+	result.ToolboxContainerAccess = snapshot.ContainerAccess
+	result.ToolboxWritableBytes = snapshot.WritableBytes
+	result.ToolboxRootFSBytes = snapshot.RootFSBytes
 	if service.ServiceID != "" {
 		result.ToolboxServiceID = service.ServiceID
 		result.ToolboxServiceName = service.Name

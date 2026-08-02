@@ -332,6 +332,12 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
   server-owned defaults and maxima. The applied values are stored in owner-only state
   and revalidated against the live rootless container before use; limit drift is an
   ownership failure, not an invitation to update the container implicitly.
+- A toolbox may receive only the user-owned rootless engine endpoint already validated
+  by the Edge. The internal socket path and endpoint variables are fixed; ownership
+  revalidation requires exactly the workspace and socket binds and rejects extra
+  mounts or environment drift. This authority can consume the user's rootless CPU,
+  memory, disk and network, so it remains confined to explicitly registered `dev`
+  workspaces and is never exposed by the public result.
 - Target-locking is a closed operational contract, not universal egress filtering.
 - Signed bundles prove artifact identity, not correctness of every dependency or host.
 - A compromised administrator, host kernel, reverse proxy, signing key, or external

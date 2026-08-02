@@ -65,6 +65,7 @@ func toolboxFixtureSnapshot() edgeclient.ProjectToolboxSnapshot {
 		BaseImage: "docker.io/library/debian:bookworm-slim", BaseImageID: "sha256:" + strings.Repeat("a", 64),
 		CreatedAt: time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 8, 2, 12, 1, 0, 0, time.UTC),
 		CPUMillis: 4000, MemoryMiB: 8192, ProcessLimit: 2048,
+		ContainerAccess: true, WritableBytes: 4096, RootFSBytes: 80 << 20,
 	}
 }
 
@@ -81,6 +82,9 @@ func TestCollectProjectToolboxMapsCreateResourceLimits(t *testing.T) {
 	}
 	if result.ToolboxCPUMillis != 4000 || result.ToolboxMemoryMiB != 8192 || result.ToolboxProcessLimit != 2048 {
 		t.Fatalf("result=%+v", result)
+	}
+	if !result.ToolboxContainerAccess || result.ToolboxWritableBytes != 4096 || result.ToolboxRootFSBytes != 80<<20 {
+		t.Fatalf("container metadata=%+v", result)
 	}
 }
 

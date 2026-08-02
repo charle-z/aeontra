@@ -18,12 +18,14 @@
 - The limits persist in owner-only state, appear as safe public metadata and are
   revalidated against live rootless `HostConfig` on every operation.
 - Reuse with different limits and live drift fail closed.
-- Candidate catalog remains 134 tools at
-  `sha256:14de29c2c2c7dca8ba6d0621f57495940f88975d4fea0bd97a72f91848b03b84`.
+- The toolbox also receives the validated user-owned rootless engine at a fixed private
+  path with server-owned client variables and reports bounded storage usage.
+- Combined candidate catalog remains 134 tools at
+  `sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
 
 ## Next exact action
 
-Finish full Linux-filesystem suite, vet, build, coverage and documentation checks;
-commit this isolated step. Continue the remaining direct rootless
-container/Compose/BuildKit and storage slice before Hito 5. Do not infer a signed Edge
+Compute and synchronize the catalog identity, run the complete gates and commit the
+rootless-engine/storage slice separately. Then prove Compose/engine-native build and
+decide the bounded BuildKit path before publishing Hito 4. Do not infer a signed Edge
 release number after installed `p15.0.12`.

@@ -112,6 +112,7 @@ func TestProjectToolboxCompletionIsBoundToItsOperationKind(t *testing.T) {
 		ToolboxID: "tb_22222222222222222222222222222222", ToolboxState: "running", ToolboxBase: "debian-bookworm-slim",
 		ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z",
 		ToolboxCPUMillis: DefaultProjectToolboxCPUMillis, ToolboxMemoryMiB: DefaultProjectToolboxMemoryMiB, ToolboxProcessLimit: DefaultProjectToolboxProcessLimit,
+		ToolboxContainerAccess: true, ToolboxWritableBytes: 4096, ToolboxRootFSBytes: 80 << 20,
 	}
 	if !validOperationCompletionForKind(OperationProjectToolboxStatus, result, "") {
 		t.Fatal("valid toolbox status was rejected")

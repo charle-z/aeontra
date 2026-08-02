@@ -48,6 +48,9 @@ type projectToolboxPublicView struct {
 	CPUMillis        int                 `json:"cpu_millis,omitempty"`
 	MemoryMiB        int                 `json:"memory_mib,omitempty"`
 	ProcessLimit     int                 `json:"process_limit,omitempty"`
+	ContainerAccess  bool                `json:"rootless_engine_access,omitempty"`
+	WritableBytes    int64               `json:"writable_bytes,omitempty"`
+	RootFSBytes      int64               `json:"rootfs_bytes,omitempty"`
 	Reason           string              `json:"reason,omitempty"`
 }
 
@@ -76,8 +79,8 @@ func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
 		name, description string
 		kind              edge.OperationKind
 	}{
-		{name: "project_toolbox_exec", description: "Execute arbitrary argv inside the persistent rootless toolbox with the project mounted at /workspace. No implicit shell or command allowlist is added.", kind: edge.OperationProjectToolboxExec},
-		{name: "project_toolbox_install", description: "Install toolchains, system packages or project dependencies by executing explicit argv as root inside the rootless toolbox; the host package database is not modified.", kind: edge.OperationProjectToolboxInstall},
+		{name: "project_toolbox_exec", description: "Execute arbitrary argv inside the persistent rootless toolbox with the project at /workspace and its validated user-owned rootless engine at a fixed private endpoint. No implicit shell or command allowlist is added.", kind: edge.OperationProjectToolboxExec},
+		{name: "project_toolbox_install", description: "Install toolchains, system packages, rootless container clients or project dependencies by explicit argv as container root; the host package database is not modified.", kind: edge.OperationProjectToolboxInstall},
 	} {
 		definition := definition
 		s.addDirectTool(toolDef{Name: definition.name, Description: definition.description, InputSchema: closedObject(execProperties, []string{"alias", "target", "idempotency_key", "argv", "timeout_seconds"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
@@ -128,6 +131,7 @@ func (s *Server) handleProjectToolbox(arguments json.RawMessage, kind edge.Opera
 		view.CreatedAt, view.UpdatedAt, view.Output = result.ToolboxCreatedAt, result.ToolboxUpdatedAt, result.ToolboxOutput
 		view.OutputTruncated, view.Removed = result.ToolboxOutputTruncated, result.ToolboxRemoved
 		view.CPUMillis, view.MemoryMiB, view.ProcessLimit = result.ToolboxCPUMillis, result.ToolboxMemoryMiB, result.ToolboxProcessLimit
+		view.ContainerAccess, view.WritableBytes, view.RootFSBytes = result.ToolboxContainerAccess, result.ToolboxWritableBytes, result.ToolboxRootFSBytes
 		view.ServiceID, view.ServiceName, view.ServiceState = result.ToolboxServiceID, result.ToolboxServiceName, result.ToolboxServiceState
 		view.ServiceCreatedAt, view.ServiceUpdatedAt = result.ToolboxServiceCreatedAt, result.ToolboxServiceUpdatedAt
 	} else if operation.State == edge.OperationFailed || operation.State == edge.OperationCancelled {

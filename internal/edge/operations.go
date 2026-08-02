@@ -211,6 +211,9 @@ type OperationResult struct {
 	ToolboxCPUMillis          int                        `json:"toolbox_cpu_millis,omitempty"`
 	ToolboxMemoryMiB          int                        `json:"toolbox_memory_mib,omitempty"`
 	ToolboxProcessLimit       int                        `json:"toolbox_process_limit,omitempty"`
+	ToolboxContainerAccess    bool                       `json:"toolbox_container_access,omitempty"`
+	ToolboxWritableBytes      int64                      `json:"toolbox_writable_bytes,omitempty"`
+	ToolboxRootFSBytes        int64                      `json:"toolbox_rootfs_bytes,omitempty"`
 }
 
 type OperationProgress struct {

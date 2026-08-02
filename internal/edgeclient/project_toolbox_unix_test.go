@@ -17,6 +17,7 @@ type recordingToolboxRunner struct {
 	calls     [][]string
 	fail      string
 	workspace string
+	socket    string
 	state     string
 }
 
@@ -33,9 +34,13 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "Config.Labels"):
 		return []byte("tb_11111111111111111111111111111111|sha256:" + strings.Repeat("a", 64) + "\n"), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "json .Mounts"):
-		return []byte(`[{"Type":"bind","Source":"` + runner.workspace + `","Destination":"/workspace","RW":true}]`), nil
+		return []byte(`[{"Type":"bind","Source":"` + runner.workspace + `","Destination":"/workspace","RW":true},{"Type":"bind","Source":"` + runner.socket + `","Destination":"/run/mcp-devbox/container.sock","RW":true}]`), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "HostConfig.Memory"):
 		return []byte("8589934592|4000000000|2048\n"), nil
+	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "json .Config.Env"):
+		return []byte(`["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","DOCKER_HOST=unix:///run/mcp-devbox/container.sock","CONTAINER_HOST=unix:///run/mcp-devbox/container.sock","MCP_DEVBOX_CONTAINER_ENGINE=podman","MCP_DEVBOX_CONTAINER_LABEL=mcp.devbox.toolbox.parent=tb_11111111111111111111111111111111","COMPOSE_PROJECT_NAME=mcp-tb-1111111111111111"]`), nil
+	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "SizeRw"):
+		return []byte("4096|83886080\n"), nil
 	case strings.Contains(joined, " inspect "):
 		if runner.state == "" {
 			runner.state = "running|true"
@@ -62,7 +67,7 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 func TestProjectToolboxServiceLifecycleAndRepairUseOwnedContainer(t *testing.T) {
 	stateRoot := t.TempDir()
 	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
-	runner := &recordingToolboxRunner{workspace: workspace.Path}
+	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
 	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
 		StateRoot:    stateRoot,
 		Endpoint:     &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
@@ -139,7 +144,7 @@ func countToolboxCalls(calls [][]string, fragment string) int {
 func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *testing.T) {
 	stateRoot := t.TempDir()
 	workspaceRoot := t.TempDir()
-	runner := &recordingToolboxRunner{workspace: workspaceRoot}
+	runner := &recordingToolboxRunner{workspace: workspaceRoot, socket: filepath.Join(stateRoot, "podman.sock")}
 	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
 		StateRoot: stateRoot,
 		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
@@ -164,8 +169,11 @@ func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *test
 			createCall = strings.Join(call, " ")
 		}
 	}
-	if !containsToolboxArgs(createCall, "--cpus 4.000", "--memory 8192m", "--pids-limit 2048") {
+	if !containsToolboxArgs(createCall, "--cpus 4.000", "--memory 8192m", "--pids-limit 2048", "--volume "+filepath.Join(stateRoot, "podman.sock")+":/run/mcp-devbox/container.sock:rw", "--env DOCKER_HOST=unix:///run/mcp-devbox/container.sock", "--env CONTAINER_HOST=unix:///run/mcp-devbox/container.sock", "--env MCP_DEVBOX_CONTAINER_ENGINE=podman", "--env MCP_DEVBOX_CONTAINER_LABEL=mcp.devbox.toolbox.parent=tb_11111111111111111111111111111111", "--env COMPOSE_PROJECT_NAME=mcp-tb-1111111111111111") {
 		t.Fatalf("create call=%q", createCall)
+	}
+	if !created.ContainerAccess || created.WritableBytes != 4096 || created.RootFSBytes != 80<<20 {
+		t.Fatalf("storage/container metadata=%+v", created)
 	}
 	if info, err := os.Lstat(filepath.Join(stateRoot, projectToolboxStateDirectory, workspace.ID+".json")); err != nil || info.Mode().Perm() != 0o600 || info.Mode()&os.ModeSymlink != 0 {
 		t.Fatalf("metadata info=%+v err=%v", info, err)
@@ -206,7 +214,7 @@ func containsToolboxArgs(value string, fragments ...string) bool {
 func TestProjectToolboxRejectsLimitDriftOnReuse(t *testing.T) {
 	stateRoot := t.TempDir()
 	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
-	runner := &recordingToolboxRunner{workspace: workspace.Path}
+	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
 	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"}, Runner: runner, NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +232,7 @@ func TestProjectToolboxRejectsLimitDriftOnReuse(t *testing.T) {
 func TestProjectToolboxRejectsCrossProjectAccessAndCleansUpOnlyExplicitly(t *testing.T) {
 	stateRoot := t.TempDir()
 	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
-	runner := &recordingToolboxRunner{workspace: workspace.Path}
+	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
 	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
 		StateRoot: stateRoot,
 		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
