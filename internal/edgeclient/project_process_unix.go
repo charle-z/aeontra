@@ -620,8 +620,9 @@ func (manager *ProjectProcessManager) reconcileRecord(record projectProcessRecor
 	}
 	if alive {
 		if err := manager.validateRecoveredLogs(record.ProcessID); err != nil {
+			failureErr := manager.finishFailed(record.ProcessID, "process_logs_incomplete")
 			_ = manager.platform.Signal(record.Identity, ProjectProcessKill)
-			return manager.finishFailed(record.ProcessID, "process_logs_incomplete")
+			return failureErr
 		}
 		if record.State == ProjectProcessStarting {
 			_, err = manager.db.Exec(`UPDATE project_processes SET state=? WHERE process_id=? AND state=?`, ProjectProcessRunning, record.ProcessID, ProjectProcessStarting)

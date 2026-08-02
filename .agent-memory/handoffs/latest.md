@@ -19,12 +19,19 @@ resource-limit-only commit kept 134 tools at
 The combined rootless-engine candidate is 134 tools at
 `sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
 
-The next uncommitted slice mounts only the already validated user-owned rootless socket
-at a fixed internal path, owns Docker/Podman/Compose endpoint variables and reports
-writable/rootfs usage. A real toolbox-shaped container installed Podman, reported its
-remote engine as rootless and launched an auto-removed Alpine child returning
-`nested-ok`; all temporary resources were removed.
+PR #130 at head `c4645faf6b5a68561e1fe889cbe600d056a65757` contains the two
+committed slices. A real toolbox-shaped container installed Podman, reported its remote
+engine as rootless and launched an auto-removed Alpine child returning `nested-ok`;
+all temporary resources were removed.
 
-Complete the remaining gates and commit this step. Hito 4 still needs direct rootless
-container/Compose/BuildKit lifecycle, bounded storage acceptance and real-device proof.
-The installed Edge remains `p15.0.12`; do not infer the next immutable release number.
+The first CI run exposed an existing ordering race in project-process reconciliation:
+the kill receipt could win over the intended `process_logs_incomplete` failure. The
+minimal candidate correction persists the terminal failure before killing the unsafe
+process. The exact failing test is green 20/20 under `-race`; the full race run passed
+`internal/edgeclient`, while an independent policy performance assertion later exceeded
+its wall-clock threshold under host load and passed three isolated repetitions.
+
+Commit and publish that correction, obtain exact-head green gates, perform the managed
+dual-catalog Front Door transition, merge and deploy, then retire the previous catalog.
+Hito 4 still needs real-device release proof. The installed Edge remains `p15.0.12`;
+do not infer the next immutable release number.
