@@ -37,11 +37,15 @@ type Config struct {
 	BackendURL          string
 	ExpectedProtocol    string
 	ExpectedCatalogHash string
-	FrontDoorCommit     string
-	ProbeInterval       time.Duration
-	ProbeTimeout        time.Duration
-	AdmissionTimeout    time.Duration
-	Client              *http.Client
+	// TransitionCatalogHashes contains at most one additional, explicitly
+	// approved catalog during a bounded rollout. The primary catalog remains
+	// required and duplicates are rejected.
+	TransitionCatalogHashes []string
+	FrontDoorCommit         string
+	ProbeInterval           time.Duration
+	ProbeTimeout            time.Duration
+	AdmissionTimeout        time.Duration
+	Client                  *http.Client
 }
 
 type runtimeInfo struct {
@@ -67,7 +71,7 @@ type snapshot struct {
 type FrontDoor struct {
 	backend             *url.URL
 	expectedProtocol    string
-	expectedCatalogHash string
+	acceptedCatalogs    map[string]struct{}
 	frontDoorCommit     string
 	probeInterval       time.Duration
 	probeTimeout        time.Duration
@@ -97,6 +101,19 @@ func New(config Config) (*FrontDoor, error) {
 	}
 	if !catalogPattern.MatchString(config.ExpectedCatalogHash) {
 		return nil, errors.New("front door expected catalog hash is invalid")
+	}
+	acceptedCatalogs := map[string]struct{}{config.ExpectedCatalogHash: {}}
+	if len(config.TransitionCatalogHashes) > 1 {
+		return nil, errors.New("front door accepts at most two catalog hashes")
+	}
+	for _, catalog := range config.TransitionCatalogHashes {
+		if !catalogPattern.MatchString(catalog) {
+			return nil, errors.New("front door transition catalog hash is invalid")
+		}
+		if _, exists := acceptedCatalogs[catalog]; exists {
+			return nil, errors.New("front door catalog hashes must be unique")
+		}
+		acceptedCatalogs[catalog] = struct{}{}
 	}
 	if config.FrontDoorCommit != "" && config.FrontDoorCommit != "unknown" && !commitPattern.MatchString(config.FrontDoorCommit) {
 		return nil, errors.New("front door commit is invalid")
@@ -152,8 +169,9 @@ func New(config Config) (*FrontDoor, error) {
 	}
 
 	front := &FrontDoor{
-		backend: backend, expectedProtocol: config.ExpectedProtocol, expectedCatalogHash: config.ExpectedCatalogHash,
-		frontDoorCommit: config.FrontDoorCommit, probeInterval: config.ProbeInterval, probeTimeout: config.ProbeTimeout,
+		backend: backend, expectedProtocol: config.ExpectedProtocol,
+		acceptedCatalogs: acceptedCatalogs,
+		frontDoorCommit:  config.FrontDoorCommit, probeInterval: config.ProbeInterval, probeTimeout: config.ProbeTimeout,
 		admissionTimeout: config.AdmissionTimeout, probeClient: &probeClient, streamClient: &streamClient,
 		proxy: proxy, stateChanged: make(chan struct{}),
 	}
@@ -205,7 +223,7 @@ func (f *FrontDoor) probeLocked(parent context.Context) error {
 		f.storeUnavailable(err)
 		return err
 	}
-	if info.Status != "ok" || info.ProtocolVersion != f.expectedProtocol || info.CatalogHash != f.expectedCatalogHash ||
+	if info.Status != "ok" || info.ProtocolVersion != f.expectedProtocol || !f.acceptsCatalog(info.CatalogHash) ||
 		!commitPattern.MatchString(info.Commit) || info.ToolCount < 1 {
 		err = errBackendIncompatible
 		f.storeUnavailable(err)
@@ -305,6 +323,10 @@ func (f *FrontDoor) Handler() http.Handler {
 		}
 		f.activeRequests.Add(1)
 		defer f.activeRequests.Add(-1)
+		if isOAuthRoute(r.URL.Path) {
+			f.proxy.ServeHTTP(w, r)
+			return
+		}
 		if isMCPStreamRequest(r) {
 			f.serveMCPStream(w, r)
 			return
@@ -357,7 +379,7 @@ func (f *FrontDoor) writeFrontDoorVersion(w http.ResponseWriter) {
 
 func (f *FrontDoor) validateResponse(response *http.Response) error {
 	if response.Request.URL.Path == "/mcp" {
-		if response.Header.Get("X-MCP-Catalog-Hash") != f.expectedCatalogHash {
+		if !f.acceptsCatalog(response.Header.Get("X-MCP-Catalog-Hash")) {
 			_ = response.Body.Close()
 			f.storeUnavailable(errors.New("backend compatibility response mismatch"))
 			return errors.New("backend MCP catalog identity changed")
@@ -381,6 +403,26 @@ func normalizedCommit(commit string) string {
 	return "unknown"
 }
 
+func (f *FrontDoor) acceptsCatalog(catalog string) bool {
+	_, ok := f.acceptedCatalogs[catalog]
+	return ok
+}
+
+func isOAuthRoute(path string) bool {
+	switch path {
+	case "/.well-known/oauth-protected-resource",
+		"/.well-known/oauth-protected-resource/mcp",
+		"/.well-known/oauth-authorization-server",
+		"/.well-known/openid-configuration",
+		"/oauth/authorize",
+		"/oauth/token",
+		"/oauth/register":
+		return true
+	default:
+		return false
+	}
+}
+
 func (f *FrontDoor) String() string {
-	return fmt.Sprintf("front-door backend=%s protocol=%s catalog=%s", f.backend.Redacted(), f.expectedProtocol, f.expectedCatalogHash)
+	return fmt.Sprintf("front-door backend=%s protocol=%s catalogs=%d", f.backend.Redacted(), f.expectedProtocol, len(f.acceptedCatalogs))
 }

@@ -18,15 +18,16 @@ import (
 )
 
 const (
-	backendURLEnv       = "MCP_FRONT_DOOR_BACKEND_URL"
-	expectedProtocolEnv = "MCP_FRONT_DOOR_EXPECTED_PROTOCOL"
-	expectedCatalogEnv  = "MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH"
-	listenAddrEnv       = "MCP_FRONT_DOOR_ADDR"
-	probeIntervalEnv    = "MCP_FRONT_DOOR_PROBE_INTERVAL"
-	probeTimeoutEnv     = "MCP_FRONT_DOOR_PROBE_TIMEOUT"
-	admissionTimeoutEnv = "MCP_FRONT_DOOR_ADMISSION_TIMEOUT"
-	commitOverrideEnv   = "MCP_DEVBOX_COMMIT"
-	commitSourceEnv     = "SOURCE_COMMIT"
+	backendURLEnv        = "MCP_FRONT_DOOR_BACKEND_URL"
+	expectedProtocolEnv  = "MCP_FRONT_DOOR_EXPECTED_PROTOCOL"
+	expectedCatalogEnv   = "MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH"
+	transitionCatalogEnv = "MCP_FRONT_DOOR_TRANSITION_CATALOG_HASH"
+	listenAddrEnv        = "MCP_FRONT_DOOR_ADDR"
+	probeIntervalEnv     = "MCP_FRONT_DOOR_PROBE_INTERVAL"
+	probeTimeoutEnv      = "MCP_FRONT_DOOR_PROBE_TIMEOUT"
+	admissionTimeoutEnv  = "MCP_FRONT_DOOR_ADMISSION_TIMEOUT"
+	commitOverrideEnv    = "MCP_DEVBOX_COMMIT"
+	commitSourceEnv      = "SOURCE_COMMIT"
 )
 
 func main() {
@@ -67,10 +68,14 @@ func loadConfig(getenv func(string) string) (frontdoor.Config, string, error) {
 	if err != nil {
 		return frontdoor.Config{}, "", err
 	}
-	return frontdoor.Config{
+	config := frontdoor.Config{
 		BackendURL: backendURL, ExpectedProtocol: protocol, ExpectedCatalogHash: catalog,
 		FrontDoorCommit: resolveFrontDoorCommit(buildinfo.Commit, getenv), ProbeInterval: probeInterval, ProbeTimeout: probeTimeout, AdmissionTimeout: admissionTimeout,
-	}, addr, nil
+	}
+	if transition := strings.TrimSpace(getenv(transitionCatalogEnv)); transition != "" {
+		config.TransitionCatalogHashes = []string{transition}
+	}
+	return config, addr, nil
 }
 
 func resolveFrontDoorCommit(linked string, getenv func(string) string) string {

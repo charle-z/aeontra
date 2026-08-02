@@ -1,47 +1,36 @@
-# Handoff — Stable MCP Front Door private transport diagnostics
+# Handoff — official connector catalog-transition recovery
 
-The Stable MCP Front Door Brain gate remains open. Functional Edge roadmap work,
-cutover and rollback are blocked until the private coordinator is healthy and real
-MCP continuity is proven.
+The active incident is deterministic catalog incompatibility, not backend failure or
+CPU saturation. Backend `ecc1bef21aab0a144a9129a9d9907313661658c5` is healthy with
+115 tools and catalog
+`sha256:d1dab9c0d265284dc66d8c07a0c78b59aa1bd5d89d256255ab5862268e858bfb`.
+Front Door `o338wpoy1254d83ud2y8p1v8` runs
+`ced84aade8a691e487b4ca7448a87df42c9da0cb`, is process-healthy, but still pins only
+the former 114-tool catalog. Its `/front-door/version` reports
+`backend_incompatible`; official MCP and OAuth routes therefore return 503.
 
-Verified production base:
+Branch `codex/front-door-catalog-transition` implements:
 
-- repository and backend commit `8408fad6b872e000182e48be888293641c020367`;
-- backend protocol `2024-11-05`, 114 tools and catalog
-  `sha256:327a5ac4830172c9c64545c9b7d121487c773aed255f7c64e732606b491eaf99`;
-- healthy managed facade `o338wpoy1254d83ud2y8p1v8`;
-- private coordinator `v13i2apwnvu09ms7l77x6opk`, with no public domain;
-- durable journal target/state `idle`, revision 0 and no dispatched transition.
+- one exact required primary catalog and at most one exact distinct transition hash;
+- startup rejection for empty primary, malformed, duplicate or third catalogs;
+- the same allowlist on probes, proxied MCP responses and SSE;
+- OAuth discovery, authorization, token and DCR routing independent from MCP admission;
+- managed transition planning from authenticated existing Coolify environment metadata;
+- plan revalidation, normal deployment on catalog-state change and exact deletion of
+  the transition environment entry during retirement.
 
-One reviewed coordinator reconciliation produced deployment
-`jigawl3rhnpmjmwb2eqo4j85`. It built and started, but `/readyz` remained 503,
-emitted only `topology_front_application_transport_failed`, became unhealthy and
-was rolled back. The healthcheck fallback reached the service with `wget`; absence
-of `curl` was not the cause.
+No MCP tool schema or public description changed, so the backend catalog remains exactly
+115 tools with hash `d1dab9c0d265284dc66d8c07a0c78b59aa1bd5d89d256255ab5862268e858bfb`.
 
-Active branch: `fix/front-door-coordinator-transport-diagnostics`.
+Local evidence:
 
-The branch preserves only closed private-transport classes: fixed target,
-resolution, address policy, refusal, timeout, route and generic connection failure.
-Raw network errors, origin, host, IP, port, token and response bodies remain absent
-from status, logs and MCP results. Unit and runtime mappings, container smoke and
-the stable-front-door runbook are synchronized.
+- affected package and documentation suites: green;
+- full suite: all affected packages green; two unrelated 10-second provider fixtures
+  timed out under aggregate load and passed isolated;
+- Windows/DrvFS cannot reproduce the Linux `0755` packaging mode assertion;
+- WSL `go vet ./...`, `go build ./...` and `git diff --check`: green.
 
-Verification completed:
-
-- focused coordinator and workflow-policy tests;
-- all `cmd`, `docs`, integrations, packaging and profile tests;
-- all internal package tests in deterministic batches;
-- `go vet ./...`;
-- `go build ./...`;
-- `git diff --check`.
-
-Next exact sequence:
-
-1. Commit and publish this diagnostic-only branch.
-2. Open a non-draft PR and require all exact-head checks green.
-3. Merge by merge commit and verify production serves the merge.
-4. Reconcile the same private coordinator exactly once and observe that deployment.
-5. Use its closed subcode as proof for a separate minimal correction PR.
-6. Require coordinator health, ready journal and real `front.*` MCP continuity
-   before any cutover.
+Next: commit, publish, PR to main, exact-head CI, merge commit, then a separate reviewed
+advance of `front-door-stable`. Deploy only the existing Front Door once with the former
+and new hashes. Validate real public OAuth/DCR and MCP continuity. Retire the former hash
+in a later managed reconciliation and prove rejection before release/Edge work.

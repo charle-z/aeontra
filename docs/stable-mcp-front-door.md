@@ -31,7 +31,8 @@ The process refuses new proxied requests until both backend probes pass:
 
 1. `GET /readyz` returns `200`;
 2. `GET /version` reports `status=ok`, the configured MCP protocol version, the exact
-   configured catalog hash, a valid commit and a non-empty catalog.
+   configured primary catalog hash or the single explicitly approved transition hash,
+   a valid commit and a non-empty catalog.
 
 A later probe failure closes admission to the backend without immediately failing the
 client request. New requests wait at the front door for at most the configured bounded
@@ -48,8 +49,15 @@ session headers. This reconnect contract is deliberately limited to the current 
 backend stream, which emits comments and keepalives only. A non-comment SSE event fails
 closed until an explicit replay or resume contract exists.
 
-A proxied `/mcp` response is also rejected if its `X-MCP-Catalog-Hash` differs from the
-pinned contract.
+A proxied `/mcp` response, including SSE, is also rejected unless its
+`X-MCP-Catalog-Hash` belongs to that same one- or two-hash contract. Protocol identity
+remains exact. A third, malformed, duplicate or wildcard catalog is never accepted.
+
+OAuth discovery, authorization, token and dynamic-registration routes are routed to the
+fixed backend independently from MCP catalog admission. A healthy backend therefore
+continues to advertise OAuth and accept RFC 7591 registration while an unapproved MCP
+catalog remains blocked. This does not bypass backend OAuth or authorize `/mcp`; an
+unreachable backend still fails closed.
 
 This behavior is intentionally fail-closed. It prevents an incompatible backend rollout
 from silently changing the connector contract behind an existing front door.
@@ -67,6 +75,17 @@ MCP_FRONT_DOOR_BACKEND_URL=https://backend.example.com
 MCP_FRONT_DOOR_EXPECTED_PROTOCOL=2024-11-05
 MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH=sha256:<64-lowercase-hex>
 ```
+
+During one reviewed rollout the managed workflow may additionally set:
+
+```text
+MCP_FRONT_DOOR_TRANSITION_CATALOG_HASH=sha256:<different-64-lowercase-hex>
+```
+
+The transition variable is not a free-form compatibility escape hatch. The managed
+workflow authenticates the existing primary value, seals both exact hashes into its
+single-use plan, rejects a third value and removes the old hash on the next reviewed
+reconciliation after the new primary is live.
 
 Optional variables:
 
@@ -102,8 +121,10 @@ MCP Devbox exposes three narrow operations for the first independent deployment:
    backend origin, exact protocol and catalog hash, then binds the current commit of
    `front-door-stable` into an expiring single-use plan.
 2. `platform_front_door_create` creates or reconciles exactly one application named
-   `mcp-devbox-front-door-managed`, upserts the three non-secret compatibility
-   variables, and deploys only when the pinned commit is not already healthy.
+   `mcp-devbox-front-door-managed`, upserts the managed non-secret compatibility
+   variables, and deploys only when the pinned commit and catalog state are already
+   active. A primary change temporarily preserves only the authenticated previous
+   primary; a later same-primary reconciliation deletes that transition entry.
 3. `platform_front_door_status` resolves that fixed application by server-owned name
    and returns bounded deployment-contract metadata without exposing environment
    values or requiring its UUID in the general application allowlist.

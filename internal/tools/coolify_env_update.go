@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/charle-z/mcp-devbox/internal/frontdoorcoordinator"
 )
@@ -52,4 +53,19 @@ func (c *CoolifyClient) setEnvironmentVariables(ctx context.Context, app string,
 		summaries = append(summaries, fmt.Sprintf("%s -> %s (HTTP %d)", key, operation, status))
 	}
 	return summaries, nil
+}
+
+func (c *CoolifyClient) deleteEnvironmentVariable(ctx context.Context, app, envUUID string) error {
+	if !coolifyUUIDRe.MatchString(envUUID) {
+		return fmt.Errorf("coolify environment identity is invalid")
+	}
+	path := "/api/v1/applications/" + url.PathEscape(app) + "/envs/" + url.PathEscape(envUUID)
+	status, _, err := c.request(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return fmt.Errorf("coolify delete env request failed: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("coolify delete env -> HTTP %d", status)
+	}
+	return nil
 }

@@ -126,7 +126,7 @@ func (f *FrontDoor) openMCPStream(ctx context.Context, incoming *http.Request) (
 		return nil, true, errBackendUnavailable
 	}
 	if response.StatusCode == http.StatusOK {
-		if response.Header.Get("X-MCP-Catalog-Hash") != f.expectedCatalogHash ||
+		if !f.acceptsCatalog(response.Header.Get("X-MCP-Catalog-Hash")) ||
 			!strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
 			_ = response.Body.Close()
 			f.storeUnavailable(errors.New("backend compatibility response mismatch"))

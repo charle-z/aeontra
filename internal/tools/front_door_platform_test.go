@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/frontdoorcoordinator"
 )
 
 const (
@@ -139,7 +140,15 @@ func TestPlatformFrontDoorCreateReconcilesOneExistingAppAndSkipsDuplicateDeploy(
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1":
 			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"https://front-door.example.com","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door","ports_exposes":"8765","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/front-door/healthz"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1/envs":
-			_, _ = w.Write([]byte(`[{"uuid":"env1","key":"MCP_FRONT_DOOR_BACKEND_URL"},{"uuid":"env2","key":"MCP_FRONT_DOOR_EXPECTED_PROTOCOL"},{"uuid":"env3","key":"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH"}]`))
+			body, err := json.Marshal([]coolifyEnvironmentVariable{
+				{UUID: "env1", Key: "MCP_FRONT_DOOR_BACKEND_URL"},
+				{UUID: "env2", Key: "MCP_FRONT_DOOR_EXPECTED_PROTOCOL"},
+				managedCatalogEntry("env3", frontDoorExpectedCatalogKey, frontDoorTestCatalog),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = w.Write(body)
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1/envs":
 			patched++
 			w.WriteHeader(http.StatusOK)
@@ -169,6 +178,73 @@ func TestPlatformFrontDoorCreateReconcilesOneExistingAppAndSkipsDuplicateDeploy(
 	}
 	if created != 0 || patched != 3 || deploys != 0 || !strings.Contains(out, "deployment_skipped: already_serving_expected_commit") {
 		t.Fatalf("created=%d patched=%d deploys=%d out=%s", created, patched, deploys, out)
+	}
+}
+
+func TestPlatformFrontDoorCreateDeploysOneAuthenticatedCatalogTransition(t *testing.T) {
+	t.Parallel()
+	const nextFrontSHA = "fedcba9876543210fedcba9876543210fedcba98"
+	deploys := 0
+	writes := map[string]string{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+			_, _ = w.Write([]byte(`{"object":{"sha":"` + nextFrontSHA + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
+			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1":
+			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"https://front-door.example.com","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door","ports_exposes":"8765","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/front-door/healthz"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1/envs":
+			body, err := json.Marshal([]coolifyEnvironmentVariable{
+				{UUID: "backend", Key: "MCP_FRONT_DOOR_BACKEND_URL"},
+				{UUID: "protocol", Key: "MCP_FRONT_DOOR_EXPECTED_PROTOCOL"},
+				managedCatalogEntry("primary", frontDoorExpectedCatalogKey, frontDoorTestCatalog),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = w.Write(body)
+		case (r.Method == http.MethodPatch || r.Method == http.MethodPost) && r.URL.Path == "/api/v1/applications/front1/envs":
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			key, _ := payload["key"].(string)
+			value, _ := payload["value"].(string)
+			comment, _ := payload["comment"].(string)
+			if _, err := frontdoorcoordinator.ManagedEnvironmentValue(comment, "coolify-token", key, value); err != nil {
+				t.Fatalf("unmanaged environment %s: %v", key, err)
+			}
+			writes[key] = value
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"uuid":"env"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+			deploys++
+			if r.URL.Query().Get("force") != "false" {
+				t.Fatalf("force deployment requested: %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"deployment_uuid":"dep-transition","status":"queued"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	svc := configuredFrontDoorPlatformService(t, config.ModeAllow, ts.URL)
+	request := PlatformFrontDoorRequest{
+		Domain: "https://front-door.example.com", BackendURL: "https://mcp-backend.example.com",
+		ExpectedProtocol: "2024-11-05", ExpectedCatalogHash: frontDoorNextCatalog,
+	}
+	preview, err := svc.PlatformFrontDoorCreatePreview(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deploys != 1 || writes[frontDoorExpectedCatalogKey] != frontDoorNextCatalog || writes[frontDoorTransitionCatalogKey] != frontDoorTestCatalog || !strings.Contains(out, "deployment_id: dep-transition") {
+		t.Fatalf("deploys=%d writes=%#v out=%s", deploys, writes, out)
 	}
 }
 
