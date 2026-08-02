@@ -24,13 +24,22 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if kind == OperationProjectExec {
 		return normalizeProjectExecRequest(request)
 	}
+	if kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop {
+		return normalizeProjectProcessRequest(kind, request)
+	}
 	if !emptyProjectExecRequestFields(request) {
 		return OperationRequest{}, errors.New("project exec fields are invalid for this operation")
+	}
+	if !emptyProjectProcessRequestFields(request) {
+		return OperationRequest{}, errors.New("project process fields are invalid for this operation")
 	}
 	return validateOperationRequest(kind, request)
 }
 
 func normalizeProjectExecRequest(request OperationRequest) (OperationRequest, error) {
+	if !emptyProjectProcessRequestFields(request) {
+		return OperationRequest{}, errors.New("project exec request is invalid")
+	}
 	request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
 	request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
 	request.Profile = strings.TrimSpace(request.Profile)
@@ -133,7 +142,7 @@ func operationRequestsEqual(left, right OperationRequest) bool {
 }
 
 func projectOperationUsesIdempotency(kind OperationKind) bool {
-	return kind == OperationProjectSnapshot || kind == OperationProjectExec
+	return kind == OperationProjectSnapshot || kind == OperationProjectExec || kind == OperationProjectProcessStart
 }
 
 func hasProjectExecResult(result OperationResult) bool {
