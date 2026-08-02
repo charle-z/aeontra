@@ -15,6 +15,24 @@ go build ./...
 These commands are the per-step baseline. They do not replace race, fuzz, coverage,
 or integration gates.
 
+## Direct background-process candidate
+
+The Hito 3A focused matrix runs on Linux because the launcher and PID/start-time
+identity are Linux contracts:
+
+```text
+go test ./internal/edge ./internal/edgeclient ./internal/mcpserver ./cmd/mcp-edge -count=1
+go test ./internal/mcpserver ./internal/app ./internal/integration ./cmd/mcp-catalog-smoke ./docs -count=1
+```
+
+It covers closed request/result validation, operation-kind binding, same-request
+idempotency, conflicting reuse, no implicit shell, cwd traversal and symlink escape,
+secret input rejection, independent concurrent processes, natural zero/non-zero exit,
+separate incremental stdout/stderr, output ceilings, split-chunk and private-key
+redaction before persistence, TERM/KILL escalation, repeated stop, cross-project
+lookup denial, private-log no-follow checks and PID start-time reuse defense. Exact-head CI remains authoritative for
+race, Linux packaging modes and the complete release matrix.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:
