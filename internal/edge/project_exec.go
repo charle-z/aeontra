@@ -21,6 +21,10 @@ const (
 var projectExecEnvironmentKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
 
 func validateOperationRequestWithProjectExec(kind OperationKind, request OperationRequest) (OperationRequest, error) {
+	isToolbox := kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop
+	if !isToolbox && (request.ToolboxServiceID != "" || request.ToolboxServiceName != "") {
+		return OperationRequest{}, errors.New("project toolbox service fields are invalid for this operation")
+	}
 	if kind == OperationProjectExec {
 		return normalizeProjectExecRequest(request)
 	}
@@ -30,7 +34,7 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward {
 		return normalizeProjectGitSyncRequest(kind, request)
 	}
-	if kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup {
+	if isToolbox {
 		return normalizeProjectToolboxRequest(kind, request)
 	}
 	if !emptyProjectExecRequestFields(request) {
@@ -153,7 +157,8 @@ func operationRequestsEqual(left, right OperationRequest) bool {
 func projectOperationUsesIdempotency(kind OperationKind) bool {
 	return kind == OperationProjectSnapshot || kind == OperationProjectExec || kind == OperationProjectProcessStart ||
 		kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward ||
-		kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup
+		kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup ||
+		kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStop
 }
 
 func hasProjectExecResult(result OperationResult) bool {

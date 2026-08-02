@@ -323,6 +323,11 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
 - Secret content detection is heuristic.
 - The trusted Linux workcell shares host networking and can consume owner resources.
 - A rootless engine still grants broad authority within that user's namespace.
+- Persistent toolbox services expose only server-generated identities and lifecycle
+  state. Their private PID is always paired with Linux process start ticks before
+  status, TERM or KILL, and caller argv is passed positionally to a fixed internal
+  supervisor script rather than interpolated into shell text. Service commands are not
+  persisted for unattended replay after a container restart.
 - Target-locking is a closed operational contract, not universal egress filtering.
 - Signed bundles prove artifact identity, not correctness of every dependency or host.
 - A compromised administrator, host kernel, reverse proxy, signing key, or external

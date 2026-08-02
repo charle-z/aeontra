@@ -54,6 +54,10 @@ const (
 	OperationProjectToolboxExec           OperationKind = "project_toolbox_exec"
 	OperationProjectToolboxInstall        OperationKind = "project_toolbox_install"
 	OperationProjectToolboxCleanup        OperationKind = "project_toolbox_cleanup"
+	OperationProjectToolboxRepair         OperationKind = "project_toolbox_repair"
+	OperationProjectToolboxServiceStart   OperationKind = "project_toolbox_service_start"
+	OperationProjectToolboxServiceStatus  OperationKind = "project_toolbox_service_status"
+	OperationProjectToolboxServiceStop    OperationKind = "project_toolbox_service_stop"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -96,6 +100,8 @@ type OperationRequest struct {
 	BackgroundSignal    string            `json:"background_signal,omitempty"`
 	ProcessLimit        int               `json:"process_limit,omitempty"`
 	GitPlanID           string            `json:"git_plan_id,omitempty"`
+	ToolboxServiceID    string            `json:"toolbox_service_id,omitempty"`
+	ToolboxServiceName  string            `json:"toolbox_service_name,omitempty"`
 }
 
 type BackgroundProcessSummary struct {
@@ -194,6 +200,11 @@ type OperationResult struct {
 	ToolboxOutput             string                     `json:"toolbox_output,omitempty"`
 	ToolboxOutputTruncated    bool                       `json:"toolbox_output_truncated,omitempty"`
 	ToolboxRemoved            bool                       `json:"toolbox_removed,omitempty"`
+	ToolboxServiceID          string                     `json:"toolbox_service_id,omitempty"`
+	ToolboxServiceName        string                     `json:"toolbox_service_name,omitempty"`
+	ToolboxServiceState       string                     `json:"toolbox_service_state,omitempty"`
+	ToolboxServiceCreatedAt   string                     `json:"toolbox_service_created_at,omitempty"`
+	ToolboxServiceUpdatedAt   string                     `json:"toolbox_service_updated_at,omitempty"`
 }
 
 type OperationProgress struct {
@@ -509,6 +520,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if hasProjectGitSyncResult(result) {
 		return code == "" && validProjectGitSyncResult(result)
 	}
+	if hasProjectToolboxServiceResult(result) {
+		return code == "" && validProjectToolboxServiceResult(result)
+	}
 	if hasProjectToolboxResult(result) {
 		return code == "" && validProjectToolboxResult(result)
 	}
@@ -555,13 +569,16 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectGitSyncResult(result) {
 		return validProjectGitSyncResultForKind(kind, result)
 	}
+	if hasProjectToolboxServiceResult(result) {
+		return validProjectToolboxServiceResultForKind(kind, result)
+	}
 	if hasProjectToolboxResult(result) {
 		return validProjectToolboxResultForKind(kind, result)
 	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
 	}
-	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup {
+	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")

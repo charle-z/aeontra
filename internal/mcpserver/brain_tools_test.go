@@ -52,14 +52,14 @@ func isFrontDoorPlatform(name string) bool {
 
 func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 130 {
-		t.Fatalf("tool order length=%d want=130", len(server.order))
+	if len(server.order) != 134 {
+		t.Fatalf("tool order length=%d want=134", len(server.order))
 	}
-	if server.order[44] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:44])
+	if server.order[48] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:48])
 	}
-	if !reflect.DeepEqual(server.order[49:52], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[49:52])
+	if !reflect.DeepEqual(server.order[53:56], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[53:56])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
@@ -70,8 +70,8 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("P8 compatibility tool order changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[125:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[125:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[129:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[129:], brainToolOrder)
 	}
 
 	// Compatibility slices below are rebuilt from current tool contracts. Dated
@@ -158,7 +158,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 130 || snapshot.Hash != "sha256:11697746d4c61b4035c8a6413b4ad63a0b29a50d343cf64d524640fdb719d03d" {
+	if snapshot.ToolCount != 134 || snapshot.Hash != "sha256:504e6f371de9a46a6e255913a019a9990d8977de286fa4f51d90f27fdf06308b" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

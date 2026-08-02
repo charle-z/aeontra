@@ -37,30 +37,34 @@ const (
 )
 
 var (
-	projectToolboxIDPattern      = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
-	projectToolboxImageIDPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
-	projectToolboxEnvKeyPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
-	ErrProjectToolboxNotFound    = errors.New("project toolbox not found")
-	ErrProjectToolboxNotOwned    = errors.New("project toolbox is not owned")
-	ErrProjectToolboxUnsafeState = errors.New("project toolbox state is unsafe")
-	ErrProjectToolboxUnavailable = errors.New("project toolbox rootless engine is unavailable")
+	projectToolboxIDPattern          = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
+	projectToolboxImageIDPattern     = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	projectToolboxEnvKeyPattern      = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
+	projectToolboxServiceIDPattern   = regexp.MustCompile(`^ts_[a-f0-9]{32}$`)
+	projectToolboxServiceNamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	ErrProjectToolboxNotFound        = errors.New("project toolbox not found")
+	ErrProjectToolboxNotOwned        = errors.New("project toolbox is not owned")
+	ErrProjectToolboxUnsafeState     = errors.New("project toolbox state is unsafe")
+	ErrProjectToolboxUnavailable     = errors.New("project toolbox rootless engine is unavailable")
 )
 
 type ProjectToolboxManagerConfig struct {
-	StateRoot string
-	Endpoint  *RootlessContainerEndpoint
-	Runner    ContainerCommandRunner
-	NewID     func() (string, error)
-	Now       func() time.Time
+	StateRoot    string
+	Endpoint     *RootlessContainerEndpoint
+	Runner       ContainerCommandRunner
+	NewID        func() (string, error)
+	NewServiceID func() (string, error)
+	Now          func() time.Time
 }
 
 type ProjectToolboxManager struct {
-	stateRoot string
-	endpoint  *RootlessContainerEndpoint
-	runner    ContainerCommandRunner
-	newID     func() (string, error)
-	now       func() time.Time
-	mu        sync.Mutex
+	stateRoot    string
+	endpoint     *RootlessContainerEndpoint
+	runner       ContainerCommandRunner
+	newID        func() (string, error)
+	newServiceID func() (string, error)
+	now          func() time.Time
+	mu           sync.Mutex
 }
 
 type ProjectToolboxCreateRequest struct {
@@ -86,6 +90,34 @@ type ProjectToolboxCleanupRequest struct {
 	Workspace                 Workspace
 }
 
+type ProjectToolboxRepairRequest struct {
+	ProjectAlias, TargetAlias string
+	Workspace                 Workspace
+}
+
+type ProjectToolboxServiceStartRequest struct {
+	ProjectAlias, TargetAlias string
+	Workspace                 Workspace
+	Name                      string
+	Argv                      []string
+	CWD                       string
+	Environment               map[string]string
+}
+
+type ProjectToolboxServiceRequest struct {
+	ProjectAlias, TargetAlias string
+	Workspace                 Workspace
+	ServiceID                 string
+}
+
+type ProjectToolboxServiceSnapshot struct {
+	ServiceID string
+	Name      string
+	State     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type ProjectToolboxSnapshot struct {
 	ToolboxID   string
 	State       ProjectToolboxState
@@ -101,6 +133,15 @@ type projectToolboxRecord struct {
 	ToolboxID, WorkspaceID, ProjectAlias, TargetAlias string
 	ContainerName, BaseImage, BaseImageID             string
 	CreatedAt, UpdatedAt                              time.Time
+	Services                                          []projectToolboxServiceRecord `json:"services,omitempty"`
+}
+
+type projectToolboxServiceRecord struct {
+	ServiceID string    `json:"service_id"`
+	Name      string    `json:"name"`
+	State     string    `json:"state"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectToolboxManager, error) {
@@ -128,11 +169,15 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 	if newID == nil {
 		newID = newProjectToolboxID
 	}
+	newServiceID := config.NewServiceID
+	if newServiceID == nil {
+		newServiceID = newProjectToolboxServiceID
+	}
 	now := config.Now
 	if now == nil {
 		now = time.Now
 	}
-	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, newID: newID, now: now}, nil
+	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, newID: newID, newServiceID: newServiceID, now: now}, nil
 }
 
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
@@ -267,6 +312,168 @@ func (manager *ProjectToolboxManager) Exec(ctx context.Context, request ProjectT
 	return snapshot, nil
 }
 
+func (manager *ProjectToolboxManager) Repair(ctx context.Context, request ProjectToolboxRepairRequest) (ProjectToolboxSnapshot, error) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	record, err := manager.load(request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	snapshot, err := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	if snapshot.State == ProjectToolboxStopped || snapshot.State == ProjectToolboxCreated {
+		if _, err := manager.run(ctx, "start", record.ContainerName); err != nil {
+			return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
+		}
+		return manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+	}
+	if snapshot.State != ProjectToolboxRunning {
+		return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
+	}
+	return snapshot, nil
+}
+
+func (manager *ProjectToolboxManager) ServiceStart(ctx context.Context, request ProjectToolboxServiceStartRequest) (ProjectToolboxServiceSnapshot, bool, error) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil ||
+		!projectToolboxServiceNamePattern.MatchString(request.Name) || len(request.Argv) == 0 || len(request.Argv) > 128 {
+		return ProjectToolboxServiceSnapshot{}, false, ErrProjectToolboxUnsafeState
+	}
+	record, err := manager.load(request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, false, err
+	}
+	if _, err := manager.ensureRunning(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
+		return ProjectToolboxServiceSnapshot{}, false, err
+	}
+	for i := range record.Services {
+		if record.Services[i].Name == request.Name {
+			snapshot, statusErr := manager.serviceStatus(ctx, &record, i, request.Workspace)
+			if statusErr != nil || snapshot.State == "running" {
+				return snapshot, true, statusErr
+			}
+			record.Services = append(record.Services[:i], record.Services[i+1:]...)
+			break
+		}
+	}
+	serviceID, err := manager.newServiceID()
+	if err != nil || !projectToolboxServiceIDPattern.MatchString(serviceID) {
+		return ProjectToolboxServiceSnapshot{}, false, ErrProjectToolboxUnsafeState
+	}
+	cwd, err := normalizeProjectToolboxCWD(request.CWD)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, false, err
+	}
+	args := []string{"exec", "--detach", "--workdir", cwd}
+	keys := make([]string, 0, len(request.Environment))
+	for key := range request.Environment {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := request.Environment[key]
+		if !projectToolboxEnvKeyPattern.MatchString(key) || projectToolboxReservedEnvironmentKey(key) || projectToolboxSecretShaped(value) {
+			return ProjectToolboxServiceSnapshot{}, false, ErrProjectToolboxUnsafeState
+		}
+		args = append(args, "--env", key+"="+value)
+	}
+	for _, argument := range request.Argv {
+		if argument == "" || !utf8.ValidString(argument) || strings.ContainsRune(argument, 0) || projectToolboxSecretShaped(argument) {
+			return ProjectToolboxServiceSnapshot{}, false, ErrProjectToolboxUnsafeState
+		}
+	}
+	now := manager.now().UTC()
+	record.Services = append(record.Services, projectToolboxServiceRecord{ServiceID: serviceID, Name: request.Name, State: "starting", CreatedAt: now, UpdatedAt: now})
+	record.UpdatedAt = now
+	if err := manager.save(record); err != nil {
+		return ProjectToolboxServiceSnapshot{}, false, err
+	}
+	args = append(args, record.ContainerName, "/bin/sh", "-c", projectToolboxServiceStartScript, "mcp-toolbox-service-start", serviceID)
+	args = append(args, request.Argv...)
+	if _, err := manager.run(ctx, args...); err != nil {
+		record.Services = record.Services[:len(record.Services)-1]
+		record.UpdatedAt = manager.now().UTC()
+		if saveErr := manager.save(record); saveErr != nil {
+			return ProjectToolboxServiceSnapshot{}, false, saveErr
+		}
+		return ProjectToolboxServiceSnapshot{}, false, ErrProjectToolboxUnavailable
+	}
+	index := len(record.Services) - 1
+	snapshot, err := manager.serviceStatus(ctx, &record, index, request.Workspace)
+	return snapshot, false, err
+}
+
+func (manager *ProjectToolboxManager) ServiceStatus(ctx context.Context, request ProjectToolboxServiceRequest) (ProjectToolboxServiceSnapshot, error) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	record, index, err := manager.serviceRecord(request)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	toolbox, err := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	if toolbox.State == ProjectToolboxStopped || toolbox.State == ProjectToolboxCreated {
+		return manager.markServiceStopped(&record, index)
+	}
+	if toolbox.State != ProjectToolboxRunning {
+		return ProjectToolboxServiceSnapshot{}, ErrProjectToolboxUnavailable
+	}
+	return manager.serviceStatus(ctx, &record, index, request.Workspace)
+}
+
+func (manager *ProjectToolboxManager) ServiceStop(ctx context.Context, request ProjectToolboxServiceRequest) (ProjectToolboxServiceSnapshot, error) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	record, index, err := manager.serviceRecord(request)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	toolbox, err := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	if toolbox.State == ProjectToolboxStopped || toolbox.State == ProjectToolboxCreated {
+		return manager.markServiceStopped(&record, index)
+	}
+	if toolbox.State != ProjectToolboxRunning {
+		return ProjectToolboxServiceSnapshot{}, ErrProjectToolboxUnavailable
+	}
+	if record.Services[index].State != "stopped" {
+		output, runErr := manager.run(ctx, "exec", record.ContainerName, "/bin/sh", "-c", projectToolboxServiceStopScript, "mcp-toolbox-service-stop", request.ServiceID)
+		if runErr != nil || strings.TrimSpace(string(output)) != "stopped" {
+			return ProjectToolboxServiceSnapshot{}, ErrProjectToolboxUnavailable
+		}
+	}
+	record.Services[index].State = "stopped"
+	record.Services[index].UpdatedAt = manager.now().UTC()
+	record.UpdatedAt = record.Services[index].UpdatedAt
+	if err := manager.save(record); err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	return toolboxServiceSnapshot(record.Services[index]), nil
+}
+
+func (manager *ProjectToolboxManager) markServiceStopped(record *projectToolboxRecord, index int) (ProjectToolboxServiceSnapshot, error) {
+	if record == nil || index < 0 || index >= len(record.Services) {
+		return ProjectToolboxServiceSnapshot{}, ErrProjectToolboxUnsafeState
+	}
+	record.Services[index].State = "stopped"
+	record.Services[index].UpdatedAt = manager.now().UTC()
+	record.UpdatedAt = record.Services[index].UpdatedAt
+	if err := manager.save(*record); err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	return toolboxServiceSnapshot(record.Services[index]), nil
+}
+
 func (manager *ProjectToolboxManager) Cleanup(ctx context.Context, request ProjectToolboxCleanupRequest) (bool, error) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
@@ -291,6 +498,66 @@ func (manager *ProjectToolboxManager) Cleanup(ctx context.Context, request Proje
 	}
 	return true, nil
 }
+
+func (manager *ProjectToolboxManager) serviceRecord(request ProjectToolboxServiceRequest) (projectToolboxRecord, int, error) {
+	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil || !projectToolboxServiceIDPattern.MatchString(request.ServiceID) {
+		return projectToolboxRecord{}, -1, ErrProjectToolboxUnsafeState
+	}
+	record, err := manager.load(request.Workspace.ID)
+	if err != nil {
+		return projectToolboxRecord{}, -1, err
+	}
+	for index := range record.Services {
+		if record.Services[index].ServiceID == request.ServiceID {
+			return record, index, nil
+		}
+	}
+	return projectToolboxRecord{}, -1, ErrProjectToolboxNotFound
+}
+
+func (manager *ProjectToolboxManager) serviceStatus(ctx context.Context, record *projectToolboxRecord, index int, workspace Workspace) (ProjectToolboxServiceSnapshot, error) {
+	if record == nil || index < 0 || index >= len(record.Services) {
+		return ProjectToolboxServiceSnapshot{}, ErrProjectToolboxUnsafeState
+	}
+	service := &record.Services[index]
+	output, err := manager.run(ctx, "exec", record.ContainerName, "/bin/sh", "-c", projectToolboxServiceStatusScript, "mcp-toolbox-service-status", service.ServiceID)
+	state := strings.TrimSpace(string(output))
+	if err != nil || state != "running" && state != "stopped" {
+		return ProjectToolboxServiceSnapshot{}, ErrProjectToolboxUnavailable
+	}
+	service.State = state
+	service.UpdatedAt = manager.now().UTC()
+	record.UpdatedAt = service.UpdatedAt
+	if err := manager.save(*record); err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	return toolboxServiceSnapshot(*service), nil
+}
+
+func (manager *ProjectToolboxManager) ensureRunning(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) (ProjectToolboxSnapshot, error) {
+	snapshot, err := manager.status(ctx, record, alias, target, workspace)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	if snapshot.State == ProjectToolboxStopped || snapshot.State == ProjectToolboxCreated {
+		if _, err := manager.run(ctx, "start", record.ContainerName); err != nil {
+			return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
+		}
+		return manager.status(ctx, record, alias, target, workspace)
+	}
+	if snapshot.State != ProjectToolboxRunning {
+		return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
+	}
+	return snapshot, nil
+}
+
+func toolboxServiceSnapshot(service projectToolboxServiceRecord) ProjectToolboxServiceSnapshot {
+	return ProjectToolboxServiceSnapshot{ServiceID: service.ServiceID, Name: service.Name, State: service.State, CreatedAt: service.CreatedAt, UpdatedAt: service.UpdatedAt}
+}
+
+const projectToolboxServiceStartScript = `service=$1; shift; umask 077; root=/var/lib/mcp-devbox/services/$service; mkdir -p "$root"; printf '%s ' "$$" > "$root/identity"; awk '{print $22}' "/proc/$$/stat" >> "$root/identity"; exec "$@" >> "$root/stdout.log" 2>> "$root/stderr.log"`
+const projectToolboxServiceStatusScript = `root=/var/lib/mcp-devbox/services/$1; test -r "$root/identity" || { printf 'stopped\n'; exit 0; }; read pid ticks < "$root/identity"; case "$pid:$ticks" in *[!0-9:]*|:*|*:) printf 'stopped\n'; exit 0;; esac; test -r "/proc/$pid/stat" || { printf 'stopped\n'; exit 0; }; current=$(awk '{print $22}' "/proc/$pid/stat"); if test "$current" = "$ticks"; then printf 'running\n'; else printf 'stopped\n'; fi`
+const projectToolboxServiceStopScript = `root=/var/lib/mcp-devbox/services/$1; test -r "$root/identity" || { printf 'stopped\n'; exit 0; }; read pid ticks < "$root/identity"; case "$pid:$ticks" in *[!0-9:]*|:*|*:) printf 'stopped\n'; exit 0;; esac; test -r "/proc/$pid/stat" || { printf 'stopped\n'; exit 0; }; current=$(awk '{print $22}' "/proc/$pid/stat"); test "$current" = "$ticks" || { printf 'stopped\n'; exit 0; }; kill -TERM "$pid" 2>/dev/null || true; i=0; while kill -0 "$pid" 2>/dev/null && test "$i" -lt 100; do sleep 0.1; i=$((i+1)); done; kill -KILL "$pid" 2>/dev/null || true; printf 'stopped\n'`
 
 func (manager *ProjectToolboxManager) status(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) (ProjectToolboxSnapshot, error) {
 	if err := manager.verifyOwnership(ctx, record, alias, target, workspace); err != nil {
@@ -359,6 +626,17 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 	var record projectToolboxRecord
 	if json.Unmarshal(data, &record) != nil || record.WorkspaceID != workspaceID || !projectToolboxIDPattern.MatchString(record.ToolboxID) || !projectToolboxImageIDPattern.MatchString(record.BaseImageID) || record.BaseImage != projectToolboxBaseImage || record.CreatedAt.IsZero() || record.UpdatedAt.IsZero() {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
+	}
+	if len(record.Services) > 64 {
+		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
+	}
+	seenIDs, seenNames := map[string]bool{}, map[string]bool{}
+	for _, service := range record.Services {
+		if !projectToolboxServiceIDPattern.MatchString(service.ServiceID) || !projectToolboxServiceNamePattern.MatchString(service.Name) ||
+			(service.State != "starting" && service.State != "running" && service.State != "stopped") || service.CreatedAt.IsZero() || service.UpdatedAt.Before(service.CreatedAt) || seenIDs[service.ServiceID] || seenNames[service.Name] {
+			return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
+		}
+		seenIDs[service.ServiceID], seenNames[service.Name] = true, true
 	}
 	return record, nil
 }
@@ -455,4 +733,12 @@ func newProjectToolboxID() (string, error) {
 		return "", fmt.Errorf("generate toolbox id: %w", err)
 	}
 	return "tb_" + hex.EncodeToString(buffer), nil
+}
+
+func newProjectToolboxServiceID() (string, error) {
+	buffer := make([]byte, 16)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", fmt.Errorf("generate toolbox service id: %w", err)
+	}
+	return "ts_" + hex.EncodeToString(buffer), nil
 }

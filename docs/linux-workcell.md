@@ -316,9 +316,11 @@ workspace. The toolbox keeps its writable Debian rootfs, installed packages and 
 across calls and Edge restarts, mounts only the selected workspace at `/workspace`, and
 uses the already validated user-owned Podman/Docker endpoint. It never mounts a
 rootful socket or modifies the host WSL package database. Creation, status, arbitrary
-argv execution, installation and explicit cleanup are available without starting an
-OpenCode/model runtime; service lifecycle and repair are tracked as the next additive
-toolbox slice.
+argv execution, installation, explicit repair and cleanup are available without
+starting an OpenCode/model runtime. Named background services use the same toolbox;
+their opaque identities survive chat and Edge-daemon restarts while the container is
+running. Service status never starts a stopped container, and service argv/environment
+are deliberately not persisted for automatic replay after a WSL/container restart.
 
 ## Verification matrix
 

@@ -11,9 +11,12 @@ import (
 const MaxProjectToolboxOutputBytes = 24 << 10
 
 var (
-	projectToolboxIDPattern      = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
-	projectToolboxStatePattern   = regexp.MustCompile(`^(created|running|stopped|unknown|removed)$`)
-	projectToolboxImageIDPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	projectToolboxIDPattern           = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
+	projectToolboxStatePattern        = regexp.MustCompile(`^(created|running|stopped|unknown|removed)$`)
+	projectToolboxImageIDPattern      = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	projectToolboxServiceIDPattern    = regexp.MustCompile(`^ts_[a-f0-9]{32}$`)
+	projectToolboxServiceNamePattern  = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	projectToolboxServiceStatePattern = regexp.MustCompile(`^(starting|running|stopped)$`)
 )
 
 func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest) (OperationRequest, error) {
@@ -24,20 +27,22 @@ func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest
 	request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
 	request.Profile = strings.TrimSpace(request.Profile)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
+	request.ToolboxServiceID = strings.TrimSpace(request.ToolboxServiceID)
+	request.ToolboxServiceName = strings.ToLower(strings.TrimSpace(request.ToolboxServiceName))
 	if !validProjectOperationRequestCommon(request) || request.Repository != "" {
 		return OperationRequest{}, errors.New("project toolbox request is invalid")
 	}
 	switch kind {
 	case OperationProjectToolboxStatus:
-		if request.IdempotencyKey != "" || !emptyProjectExecRequestFields(request) {
+		if request.IdempotencyKey != "" || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
 			return OperationRequest{}, errors.New("project toolbox status request is invalid")
 		}
-	case OperationProjectToolboxCreate, OperationProjectToolboxCleanup:
-		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || !emptyProjectExecRequestFields(request) {
+	case OperationProjectToolboxCreate, OperationProjectToolboxCleanup, OperationProjectToolboxRepair:
+		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
 			return OperationRequest{}, errors.New("project toolbox lifecycle request is invalid")
 		}
 	case OperationProjectToolboxExec, OperationProjectToolboxInstall:
-		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.TimeoutSeconds < 1 || request.TimeoutSeconds > 3600 {
+		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || request.TimeoutSeconds < 1 || request.TimeoutSeconds > 3600 {
 			return OperationRequest{}, errors.New("project toolbox exec request is invalid")
 		}
 		timeout := request.TimeoutSeconds
@@ -48,6 +53,26 @@ func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest
 		}
 		normalized.TimeoutSeconds = timeout
 		return normalized, nil
+	case OperationProjectToolboxServiceStart:
+		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" ||
+			!projectToolboxServiceNamePattern.MatchString(request.ToolboxServiceName) || request.TimeoutSeconds != 0 {
+			return OperationRequest{}, errors.New("project toolbox service start request is invalid")
+		}
+		request.TimeoutSeconds = 1
+		normalized, err := normalizeProjectExecRequest(request)
+		if err != nil {
+			return OperationRequest{}, errors.New("project toolbox service start request is invalid")
+		}
+		normalized.TimeoutSeconds = 0
+		return normalized, nil
+	case OperationProjectToolboxServiceStatus:
+		if request.IdempotencyKey != "" || !projectToolboxServiceIDPattern.MatchString(request.ToolboxServiceID) || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
+			return OperationRequest{}, errors.New("project toolbox service status request is invalid")
+		}
+	case OperationProjectToolboxServiceStop:
+		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || !projectToolboxServiceIDPattern.MatchString(request.ToolboxServiceID) || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
+			return OperationRequest{}, errors.New("project toolbox service stop request is invalid")
+		}
 	default:
 		return OperationRequest{}, errors.New("project toolbox operation is invalid")
 	}
@@ -57,6 +82,11 @@ func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest
 func hasProjectToolboxResult(result OperationResult) bool {
 	return result.ToolboxID != "" || result.ToolboxState != "" || result.ToolboxBase != "" || result.ToolboxBaseImageID != "" ||
 		result.ToolboxCreatedAt != "" || result.ToolboxUpdatedAt != "" || result.ToolboxOutput != "" || result.ToolboxOutputTruncated || result.ToolboxRemoved
+}
+
+func hasProjectToolboxServiceResult(result OperationResult) bool {
+	return result.ToolboxServiceID != "" || result.ToolboxServiceName != "" || result.ToolboxServiceState != "" ||
+		result.ToolboxServiceCreatedAt != "" || result.ToolboxServiceUpdatedAt != ""
 }
 
 func validProjectToolboxResult(result OperationResult) bool {
@@ -89,7 +119,7 @@ func validProjectToolboxResultForKind(kind OperationKind, result OperationResult
 	}
 	hasOutput := result.ToolboxOutput != "" || result.ToolboxOutputTruncated
 	switch kind {
-	case OperationProjectToolboxCreate, OperationProjectToolboxStatus:
+	case OperationProjectToolboxCreate, OperationProjectToolboxStatus, OperationProjectToolboxRepair:
 		return !hasOutput && !result.ToolboxRemoved
 	case OperationProjectToolboxExec, OperationProjectToolboxInstall:
 		return !result.ToolboxRemoved && result.ToolboxState == "running"
@@ -98,4 +128,43 @@ func validProjectToolboxResultForKind(kind OperationKind, result OperationResult
 	default:
 		return false
 	}
+}
+
+func validProjectToolboxServiceResultForKind(kind OperationKind, result OperationResult) bool {
+	if !validProjectToolboxServiceResult(result) {
+		return false
+	}
+	switch kind {
+	case OperationProjectToolboxServiceStart:
+		return result.ToolboxServiceState == "starting" || result.ToolboxServiceState == "running" || result.ToolboxServiceState == "stopped"
+	case OperationProjectToolboxServiceStatus:
+		return result.ToolboxServiceState == "running" || result.ToolboxServiceState == "stopped"
+	case OperationProjectToolboxServiceStop:
+		return result.ToolboxServiceState == "stopped"
+	default:
+		return false
+	}
+}
+
+func validProjectToolboxServiceResult(result OperationResult) bool {
+	if !projectToolboxServiceIDPattern.MatchString(result.ToolboxServiceID) ||
+		!projectToolboxServiceNamePattern.MatchString(result.ToolboxServiceName) ||
+		!projectToolboxServiceStatePattern.MatchString(result.ToolboxServiceState) {
+		return false
+	}
+	created, err := time.Parse(time.RFC3339Nano, result.ToolboxServiceCreatedAt)
+	if err != nil || created.IsZero() {
+		return false
+	}
+	updated, err := time.Parse(time.RFC3339Nano, result.ToolboxServiceUpdatedAt)
+	if err != nil || updated.Before(created) {
+		return false
+	}
+	base := result
+	base.ToolboxServiceID, base.ToolboxServiceName, base.ToolboxServiceState = "", "", ""
+	base.ToolboxServiceCreatedAt, base.ToolboxServiceUpdatedAt = "", ""
+	if !validProjectToolboxResult(base) || result.ToolboxOutput != "" || result.ToolboxOutputTruncated || result.ToolboxRemoved {
+		return false
+	}
+	return true
 }

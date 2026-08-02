@@ -41,6 +41,12 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 		return []byte(runner.state + "\n"), nil
 	case strings.Contains(joined, " create "):
 		return []byte(strings.Repeat("b", 64) + "\n"), nil
+	case strings.Contains(joined, "mcp-toolbox-service-start"):
+		return nil, nil
+	case strings.Contains(joined, "mcp-toolbox-service-status"):
+		return []byte("running\n"), nil
+	case strings.Contains(joined, "mcp-toolbox-service-stop"):
+		return []byte("stopped\n"), nil
 	case strings.Contains(joined, " exec "):
 		return []byte("toolbox-ok\n"), nil
 	case strings.Contains(joined, " start "):
@@ -49,6 +55,83 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 	default:
 		return nil, nil
 	}
+}
+
+func TestProjectToolboxServiceLifecycleAndRepairUseOwnedContainer(t *testing.T) {
+	stateRoot := t.TempDir()
+	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	runner := &recordingToolboxRunner{workspace: workspace.Path}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+		StateRoot:    stateRoot,
+		Endpoint:     &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+		Runner:       runner,
+		NewID:        func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+		NewServiceID: func() (string, error) { return "ts_33333333333333333333333333333333", nil },
+		Now:          func() time.Time { return time.Date(2026, 8, 2, 13, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	}
+	service, reused, err := manager.ServiceStart(t.Context(), ProjectToolboxServiceStartRequest{
+		ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Name: "preview",
+		Argv: []string{"python3", "-m", "http.server", "8080"}, CWD: "public", Environment: map[string]string{"PORT": "8080"},
+	})
+	if err != nil || reused || service.ServiceID != "ts_33333333333333333333333333333333" || service.State != "running" {
+		t.Fatalf("service=%+v reused=%v err=%v", service, reused, err)
+	}
+	var startCall string
+	for _, call := range runner.calls {
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "mcp-toolbox-service-start") {
+			startCall = joined
+		}
+	}
+	if !strings.Contains(startCall, " exec --detach --workdir /workspace/public --env PORT=8080 mcp-toolbox-") || !strings.HasSuffix(startCall, " ts_33333333333333333333333333333333 python3 -m http.server 8080") {
+		t.Fatalf("start call=%q", startCall)
+	}
+	status, err := manager.ServiceStatus(t.Context(), ProjectToolboxServiceRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, ServiceID: service.ServiceID})
+	if err != nil || status.State != "running" || status.Name != "preview" {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+	stopped, err := manager.ServiceStop(t.Context(), ProjectToolboxServiceRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, ServiceID: service.ServiceID})
+	if err != nil || stopped.State != "stopped" {
+		t.Fatalf("stopped=%+v err=%v", stopped, err)
+	}
+	for _, marker := range []string{"mcp-toolbox-service-status", "mcp-toolbox-service-stop"} {
+		var controlCall string
+		for _, call := range runner.calls {
+			joined := strings.Join(call, " ")
+			if strings.Contains(joined, marker) {
+				controlCall = joined
+			}
+		}
+		if !strings.Contains(controlCall, `*[!0-9:]*`) || !strings.Contains(controlCall, `/proc/$pid/stat`) {
+			t.Fatalf("%s did not validate numeric pid/start ticks: %q", marker, controlCall)
+		}
+	}
+	runner.state = "exited|false"
+	startCalls := countToolboxCalls(runner.calls, " start ")
+	status, err = manager.ServiceStatus(t.Context(), ProjectToolboxServiceRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, ServiceID: service.ServiceID})
+	if err != nil || status.State != "stopped" || countToolboxCalls(runner.calls, " start ") != startCalls {
+		t.Fatalf("stopped status=%+v err=%v calls=%v", status, err, runner.calls)
+	}
+	repaired, err := manager.Repair(t.Context(), ProjectToolboxRepairRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+	if err != nil || repaired.State != ProjectToolboxRunning {
+		t.Fatalf("repaired=%+v err=%v", repaired, err)
+	}
+}
+
+func countToolboxCalls(calls [][]string, fragment string) int {
+	count := 0
+	for _, call := range calls {
+		if strings.Contains(" "+strings.Join(call, " ")+" ", fragment) {
+			count++
+		}
+	}
+	return count
 }
 
 func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *testing.T) {

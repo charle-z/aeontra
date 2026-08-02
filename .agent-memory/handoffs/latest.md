@@ -1,28 +1,32 @@
-# Handoff — Hito 4 persistent toolbox core candidate
+# Handoff — Hito 4 persistent toolbox services candidate
 
-Safe Edge checkout sync merged through PR #127 at
-`e7a2e6048c5a7a3a7fec77ee699653babaab244c`, deployed with 125 tools, and reconciled
-through the stable Front Door. Deployment `g13z5dohfncg8r16cv7w4ngn` retired the old
-catalog. OAuth discovery and the unauthenticated MCP challenge are healthy. Brain note
-`edge-safe-checkout-sync-deployed` records the closure and signed-release constraint.
+Hito 4 core merged through PR #128 at
+`010c6091358f62b6fada35dbfc33eeaf50c2ae11`, was deployed with 130 tools, and the
+stable Front Door retired the prior catalog through deployment
+`f5lj9mh5l20zfnh8xjg3jvrg`. OAuth discovery and the unauthenticated MCP challenge are
+healthy. Brain note `gpt-web-direct-edge-h4-toolbox-core` records that closure.
 
-Current branch `codex/persistent-toolbox` is based exactly on that merge. It adds five
-direct tools for a persistent rootless Debian toolbox: create, status, arbitrary exec,
-install and explicit cleanup. The Edge fixes the base and private container identity,
-records exact image identity in owner-only `0600` metadata, mounts only the selected
-workspace at `/workspace`, and uses the already validated rootless Podman/Docker
-endpoint. Callers cannot provide images, host paths, sockets, volumes, container names
-or privileged flags.
+Current branch `codex/toolbox-services-repair` is based exactly on that merge. The
+candidate adds fail-closed toolbox repair and named background service
+start/status/stop. All operations reuse the existing server-owned rootless container,
+exact image identity and one verified workspace bind mount. Public responses contain
+only toolbox metadata plus opaque service id, closed name, lifecycle state and
+timestamps.
 
-Manager tests prove persistence across reopen, project/target ownership, arbitrary argv
-construction, explicit cleanup, missing rootless authority and symlinked metadata
-rejection. Edge operation and MCP tests bind each result to its operation kind and keep
-paths, engine/container identity, argv and environment out of public output. Candidate
-identity is 130 tools at
-`sha256:11697746d4c61b4035c8a6413b4ad63a0b29a50d343cf64d524640fdb719d03d`.
+Private service identity pairs PID with Linux process start ticks. A fixed supervisor
+receives caller argv positionally, never through text interpolation. Status does not
+start a stopped toolbox. Stop revalidates identity, sends TERM, waits a bounded interval
+and uses KILL only if required. Service argv/environment are not persisted or replayed
+after a container or WSL restart; a later explicit start uses a fresh opaque identity.
+Repair restarts only a valid stopped/created toolbox and refuses missing, unknown,
+unowned or unsafe state.
 
-The next safe action is full focused/docs validation, diff review, commit/PR/exact-head
-CI/merge/deploy/catalog retirement. Then add service start/status/stop, repair and
-background integration on the same toolbox identity. The immutable Edge release
-version remains an external authorization constraint; do not infer one after
-`p15.0.12`.
+Candidate identity is 134 tools at
+`sha256:504e6f371de9a46a6e255913a019a9990d8977de286fa4f51d90f27fdf06308b`.
+Focused, ordinary full-suite, coverage, vet and build gates are green in the correct
+non-root Linux/Node 22 environment. Full race was green except one pre-existing
+wall-clock detector that exceeded its limit under the concurrent run and then passed
+alone under `-race` in 1.681 seconds. The next action is commit, PR, exact-head CI and
+dual Front Door transition/retirement deployment. Signed release and real-device restart acceptance
+remain blocked only on an exact operator-supplied release version after installed
+`p15.0.12`; do not infer it.
