@@ -198,8 +198,8 @@ func scanOperationLifecycle(row rowScanner) (Operation, error) {
 		(len(progress) > 0 && (json.Unmarshal(progress, &op.Progress) != nil || !validOperationProgress(op.Progress))) {
 		return Operation{}, errors.New("stored operation is invalid")
 	}
-	normalized, err := validateOperationRequest(op.Kind, op.Request)
-	if err != nil || normalized != op.Request || !validStoredOperationLifecycle(op) {
+	normalized, err := validateOperationRequestWithProjectExec(op.Kind, op.Request)
+	if err != nil || !operationRequestsEqual(normalized, op.Request) || !validStoredOperationLifecycle(op) {
 		return Operation{}, errors.New("stored operation is invalid")
 	}
 	op.CreatedAt = time.Unix(0, created).UTC()
