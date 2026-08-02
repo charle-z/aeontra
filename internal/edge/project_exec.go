@@ -34,6 +34,9 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward {
 		return normalizeProjectGitSyncRequest(kind, request)
 	}
+	if kind == OperationProjectGitHubStatus {
+		return normalizeProjectGitHubRequest(request)
+	}
 	if isToolbox {
 		return normalizeProjectToolboxRequest(kind, request)
 	}

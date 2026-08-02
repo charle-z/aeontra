@@ -64,9 +64,11 @@ to that release. Compatibility links, the fixed systemd units, root-owned update
 polkit rule, reviewed Node/OpenCode/provider/driver components, and the rootless Podman
 prerequisites remain governed by the signed P15 bundle contract.
 
-The package now declares `util-linux` because its lifecycle transaction invokes
-`runuser`; migration must execute as the Edge user who owns the private state, not as
-root.
+The package declares `util-linux` because its lifecycle transaction invokes `runuser`;
+migration must execute as the Edge user who owns the private state, not as root. It also
+declares the official GitHub CLI package `gh`: this supports both the operator's normal
+interactive `gh auth login` and the separate direct-Edge broker import documented in
+[`development-edge-git.md`](development-edge-git.md).
 
 ## Existing P12/P15 state
 

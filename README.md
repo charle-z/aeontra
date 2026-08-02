@@ -117,7 +117,8 @@ fail if the relevant repository, branch, application, target, or configuration c
 - **Validation:** run one configured test command, allowlisted argv, a contained L3
   sandbox when available, or fixed profiles through a private validation runner.
 - **Git and GitHub:** status, diff, commit, safe fetch/fast-forward, owner-bound repository
-  operations, exact-head PR/check diagnostics, planned publication, and green-gated merge.
+  operations, exact-head PR/check diagnostics, planned publication, green-gated merge,
+  and a private direct-Edge broker built on fixed official `gh` operations.
 - **Coolify:** bounded status/log reads and planned application creation or deployment
   under configured server, project, application, domain, and repository boundaries.
 - **Brain:** persistent Markdown truth with owner-curated and agent-working trust levels,

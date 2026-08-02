@@ -118,6 +118,8 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectProcess(ctx, stateRoot, processes, operation)
 	case edge.OperationProjectGitStatus, edge.OperationProjectGitFetch, edge.OperationProjectGitFastForwardPreview, edge.OperationProjectGitFastForward:
 		return executeProjectGitSync(ctx, stateRoot, operation)
+	case edge.OperationProjectGitHubStatus:
+		return executeProjectGitHubStatus(ctx, stateRoot, operation)
 	case edge.OperationProjectToolboxCreate, edge.OperationProjectToolboxStatus, edge.OperationProjectToolboxExec, edge.OperationProjectToolboxInstall, edge.OperationProjectToolboxCleanup,
 		edge.OperationProjectToolboxRepair, edge.OperationProjectToolboxServiceStart, edge.OperationProjectToolboxServiceStatus, edge.OperationProjectToolboxServiceStop:
 		return executeProjectToolbox(ctx, stateRoot, operation)
@@ -128,6 +130,24 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}
+}
+
+func executeProjectGitHubStatus(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
+	credential, workspaces, projects, _, code := openProjectControlState(stateRoot)
+	if code != "" {
+		return edge.OperationResult{}, code
+	}
+	defer workspaces.Close()
+	defer projects.Close()
+	resolved, err := projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
+	if err != nil {
+		return edge.OperationResult{}, "project_github_status_failed"
+	}
+	result, err := collectProjectGitHubStatus(ctx, resolved, credential, edgeclient.NewGitHubCommandRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin"))
+	if err != nil {
+		return edge.OperationResult{}, "project_github_status_failed"
+	}
+	return result, ""
 }
 
 func executeProjectGitSync(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {

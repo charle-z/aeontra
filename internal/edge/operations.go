@@ -49,6 +49,7 @@ const (
 	OperationProjectGitFetch              OperationKind = "project_git_fetch"
 	OperationProjectGitFastForwardPreview OperationKind = "project_git_fast_forward_preview"
 	OperationProjectGitFastForward        OperationKind = "project_git_fast_forward"
+	OperationProjectGitHubStatus          OperationKind = "project_github_status"
 	OperationProjectToolboxCreate         OperationKind = "project_toolbox_create"
 	OperationProjectToolboxStatus         OperationKind = "project_toolbox_status"
 	OperationProjectToolboxExec           OperationKind = "project_toolbox_exec"
@@ -194,6 +195,17 @@ type OperationResult struct {
 	GitFastForwarded          bool                       `json:"git_fast_forwarded,omitempty"`
 	GitPlanID                 string                     `json:"git_plan_id,omitempty"`
 	GitPlanExpiresAt          string                     `json:"git_plan_expires_at,omitempty"`
+	GitHubConfigured          bool                       `json:"github_configured,omitempty"`
+	GitHubVisibility          string                     `json:"github_visibility,omitempty"`
+	GitHubDefaultBranch       string                     `json:"github_default_branch,omitempty"`
+	GitHubArchived            bool                       `json:"github_archived,omitempty"`
+	GitHubMetadataRead        bool                       `json:"github_metadata_read,omitempty"`
+	GitHubContentsRead        bool                       `json:"github_contents_read,omitempty"`
+	GitHubContentsWrite       bool                       `json:"github_contents_write,omitempty"`
+	GitHubPullRequestsRead    bool                       `json:"github_pull_requests_read,omitempty"`
+	GitHubActionsRead         bool                       `json:"github_actions_read,omitempty"`
+	GitHubAdministration      bool                       `json:"github_administration,omitempty"`
+	GitHubPermissionIssues    []string                   `json:"github_permission_issues,omitempty"`
 	ToolboxID                 string                     `json:"toolbox_id,omitempty"`
 	ToolboxState              string                     `json:"toolbox_state,omitempty"`
 	ToolboxBase               string                     `json:"toolbox_base,omitempty"`
@@ -529,6 +541,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if hasProjectGitSyncResult(result) {
 		return code == "" && validProjectGitSyncResult(result)
 	}
+	if hasProjectGitHubResult(result) {
+		return code == "" && validProjectGitHubResult(result)
+	}
 	if hasProjectToolboxServiceResult(result) {
 		return code == "" && validProjectToolboxServiceResult(result)
 	}
@@ -578,6 +593,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectGitSyncResult(result) {
 		return validProjectGitSyncResultForKind(kind, result)
 	}
+	if hasProjectGitHubResult(result) {
+		return kind == OperationProjectGitHubStatus && validProjectGitHubResult(result)
+	}
 	if hasProjectToolboxServiceResult(result) {
 		return validProjectToolboxServiceResultForKind(kind, result)
 	}
@@ -587,7 +605,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
 	}
-	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
+	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")
@@ -666,7 +684,7 @@ func emptyOperationResult(result OperationResult) bool {
 	if hasProjectExecResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
-	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == ""
+	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && !hasProjectGitHubResult(result)
 }
 
 func (s *Store) AutopilotStatus(workspaceID string) (OperationResult, error) {

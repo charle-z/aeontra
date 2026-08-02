@@ -96,6 +96,25 @@ Only `ls-remote` and fetch receive the private askpass credential. Local inspect
 ancestor checks and `merge --ff-only` run with an empty credential environment, so
 repository-controlled filters cannot inherit the GitHub token.
 
+## Private GitHub authority preflight
+
+The first Hito 5 direct GitHub operation reuses the registered project identity without
+starting OpenCode or another model runtime:
+
+- `project_github_status` accepts only project alias and human Edge target;
+- the Edge requires the project to remain a ready `linux-workcell`/`dev` registration
+  whose owner matches the private credential;
+- the broker invokes the official `gh` binary only with server-constructed repository
+  metadata, bounded pull-request and bounded Actions `api` reads;
+- `GH_TOKEN` is present only in that child environment under a private HOME/XDG root;
+- the control plane receives only repository identity, visibility, default branch,
+  archived state and closed metadata/contents/PR/Actions/administration booleans.
+
+There is no caller-selected repository, endpoint, URL, header, token, GraphQL body,
+pagination, raw CLI result or arbitrary `gh` command. Consequential PR, workflow and
+release operations remain separate Hito 5 contracts and are not implied by this
+read-only preflight.
+
 ## Persistent rootless toolbox
 
 The registered development workspace can own one persistent toolbox independently of
