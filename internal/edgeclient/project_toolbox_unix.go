@@ -70,6 +70,9 @@ type ProjectToolboxManager struct {
 type ProjectToolboxCreateRequest struct {
 	ProjectAlias, TargetAlias string
 	Workspace                 Workspace
+	CPUMillis                 int
+	MemoryMiB                 int
+	ProcessLimit              int
 }
 
 type ProjectToolboxStatusRequest struct {
@@ -119,20 +122,24 @@ type ProjectToolboxServiceSnapshot struct {
 }
 
 type ProjectToolboxSnapshot struct {
-	ToolboxID   string
-	State       ProjectToolboxState
-	BaseImage   string
-	BaseImageID string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	Output      string
-	Truncated   bool
+	ToolboxID    string
+	State        ProjectToolboxState
+	BaseImage    string
+	BaseImageID  string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Output       string
+	Truncated    bool
+	CPUMillis    int
+	MemoryMiB    int
+	ProcessLimit int
 }
 
 type projectToolboxRecord struct {
 	ToolboxID, WorkspaceID, ProjectAlias, TargetAlias string
 	ContainerName, BaseImage, BaseImageID             string
 	CreatedAt, UpdatedAt                              time.Time
+	CPUMillis, MemoryMiB, ProcessLimit                int
 	Services                                          []projectToolboxServiceRecord `json:"services,omitempty"`
 }
 
@@ -183,10 +190,17 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
+	request.CPUMillis, request.MemoryMiB, request.ProcessLimit = normalizeProjectToolboxResourceLimits(request.CPUMillis, request.MemoryMiB, request.ProcessLimit)
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return ProjectToolboxSnapshot{}, false, err
 	}
+	if !validProjectToolboxResourceLimits(request.CPUMillis, request.MemoryMiB, request.ProcessLimit) {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
+	}
 	if record, err := manager.load(request.Workspace.ID); err == nil {
+		if record.CPUMillis != request.CPUMillis || record.MemoryMiB != request.MemoryMiB || record.ProcessLimit != request.ProcessLimit {
+			return ProjectToolboxSnapshot{}, true, ErrProjectToolboxUnsafeState
+		}
 		snapshot, statusErr := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
 		if statusErr == nil && (snapshot.State == ProjectToolboxStopped || snapshot.State == ProjectToolboxCreated) {
 			if _, startErr := manager.run(ctx, "start", record.ContainerName); startErr != nil {
@@ -212,6 +226,7 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
 	}
 	createOutput, err := manager.run(ctx, "create", "--name", containerName, "--label", projectToolboxLabelKey+"="+toolboxID,
+		"--cpus", fmt.Sprintf("%.3f", float64(request.CPUMillis)/1000), "--memory", fmt.Sprintf("%dm", request.MemoryMiB), "--pids-limit", fmt.Sprintf("%d", request.ProcessLimit),
 		"--volume", request.Workspace.Path+":/workspace:rw", "--workdir", "/workspace", imageID, "sleep", "infinity")
 	containerID := strings.TrimSpace(string(createOutput))
 	if err != nil || !containerResourceIDPattern.MatchString(containerID) {
@@ -221,6 +236,7 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	record := projectToolboxRecord{
 		ToolboxID: toolboxID, WorkspaceID: request.Workspace.ID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias,
 		ContainerName: containerName, BaseImage: projectToolboxBaseImage, BaseImageID: imageID, CreatedAt: created, UpdatedAt: created,
+		CPUMillis: request.CPUMillis, MemoryMiB: request.MemoryMiB, ProcessLimit: request.ProcessLimit,
 	}
 	if err := manager.save(record); err != nil {
 		_, _ = manager.run(context.Background(), "rm", "-f", containerName)
@@ -576,7 +592,7 @@ func (manager *ProjectToolboxManager) status(ctx context.Context, record project
 	case "exited|false", "stopped|false":
 		state = ProjectToolboxStopped
 	}
-	return ProjectToolboxSnapshot{ToolboxID: record.ToolboxID, State: state, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt}, nil
+	return ProjectToolboxSnapshot{ToolboxID: record.ToolboxID, State: state, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit}, nil
 }
 
 func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
@@ -593,6 +609,11 @@ func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, recor
 		RW                        bool
 	}
 	if err != nil || json.Unmarshal(mountOutput, &mounts) != nil || len(mounts) != 1 || mounts[0].Type != "bind" || mounts[0].Source != workspace.Path || mounts[0].Destination != "/workspace" || !mounts[0].RW {
+		return ErrProjectToolboxNotOwned
+	}
+	resourceOutput, err := manager.run(ctx, "inspect", "--format", "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}", record.ContainerName)
+	wantResources := fmt.Sprintf("%d|%d|%d", int64(record.MemoryMiB)*1024*1024, int64(record.CPUMillis)*1000000, record.ProcessLimit)
+	if err != nil || strings.TrimSpace(string(resourceOutput)) != wantResources {
 		return ErrProjectToolboxNotOwned
 	}
 	return nil
@@ -624,7 +645,7 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	var record projectToolboxRecord
-	if json.Unmarshal(data, &record) != nil || record.WorkspaceID != workspaceID || !projectToolboxIDPattern.MatchString(record.ToolboxID) || !projectToolboxImageIDPattern.MatchString(record.BaseImageID) || record.BaseImage != projectToolboxBaseImage || record.CreatedAt.IsZero() || record.UpdatedAt.IsZero() {
+	if json.Unmarshal(data, &record) != nil || record.WorkspaceID != workspaceID || !projectToolboxIDPattern.MatchString(record.ToolboxID) || !projectToolboxImageIDPattern.MatchString(record.BaseImageID) || record.BaseImage != projectToolboxBaseImage || record.CreatedAt.IsZero() || record.UpdatedAt.IsZero() || !validProjectToolboxResourceLimits(record.CPUMillis, record.MemoryMiB, record.ProcessLimit) {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	if len(record.Services) > 64 {
@@ -639,6 +660,23 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 		seenIDs[service.ServiceID], seenNames[service.Name] = true, true
 	}
 	return record, nil
+}
+
+func validProjectToolboxResourceLimits(cpuMillis, memoryMiB, processLimit int) bool {
+	return cpuMillis >= 250 && cpuMillis <= 32000 && memoryMiB >= 512 && memoryMiB <= 65536 && processLimit >= 128 && processLimit <= 8192
+}
+
+func normalizeProjectToolboxResourceLimits(cpuMillis, memoryMiB, processLimit int) (int, int, int) {
+	if cpuMillis == 0 {
+		cpuMillis = 4000
+	}
+	if memoryMiB == 0 {
+		memoryMiB = 8192
+	}
+	if processLimit == 0 {
+		processLimit = 2048
+	}
+	return cpuMillis, memoryMiB, processLimit
 }
 
 func (manager *ProjectToolboxManager) save(record projectToolboxRecord) error {

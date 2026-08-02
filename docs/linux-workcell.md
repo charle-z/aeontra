@@ -321,6 +321,11 @@ starting an OpenCode/model runtime. Named background services use the same toolb
 their opaque identities survive chat and Edge-daemon restarts while the container is
 running. Service status never starts a stopped container, and service argv/environment
 are deliberately not persisted for automatic replay after a WSL/container restart.
+Creation also binds configurable CPU, memory and process limits to the persistent
+private record. Omitted values use broad server defaults. Each later operation compares
+those values with the engine's live `HostConfig`; drift or a request to reuse the same
+workspace with different limits fails closed. Storage continues to be the rootless
+user's persistent container storage and is removed only by explicit toolbox cleanup.
 
 ## Verification matrix
 

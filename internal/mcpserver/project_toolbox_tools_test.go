@@ -33,6 +33,42 @@ func TestProjectToolboxToolsExposeClosedProjectScopedInputs(t *testing.T) {
 	if status["readOnlyHint"] != true || status["destructiveHint"] != false {
 		t.Fatalf("status annotations=%v", status)
 	}
+	createSchema, err := json.Marshal(server.table["project_toolbox_create"].def.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsAll(string(createSchema), `"cpu_millis"`, `"memory_mib"`, `"process_limit"`, `"minimum":250`, `"maximum":65536`) {
+		t.Fatalf("create schema=%s", createSchema)
+	}
+	for _, name := range []string{"project_toolbox_status", "project_toolbox_exec", "project_toolbox_service_start"} {
+		encoded, err := json.Marshal(server.table[name].def.InputSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(encoded), `"cpu_millis"`) || strings.Contains(string(encoded), `"memory_mib"`) || strings.Contains(string(encoded), `"process_limit"`) {
+			t.Fatalf("%s exposed create-only limits: %s", name, encoded)
+		}
+	}
+}
+
+func TestProjectToolboxCreatePropagatesAndReturnsResourceLimits(t *testing.T) {
+	store := &projectGitSyncToolStore{waitResult: edge.Operation{State: edge.OperationSucceeded, Result: edge.OperationResult{
+		ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
+		ToolboxID: "tb_11111111111111111111111111111111", ToolboxState: "running", ToolboxBase: "debian-bookworm-slim",
+		ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z",
+		ToolboxCPUMillis: 12000, ToolboxMemoryMiB: 24576, ToolboxProcessLimit: 6144,
+	}}}
+	server := New(nil).WithEdgeStore(store)
+	output, err := server.handleProjectToolbox(json.RawMessage(`{"alias":"project","target":"parrot","idempotency_key":"create-limits-1","cpu_millis":12000,"memory_mib":24576,"process_limit":6144}`), edge.OperationProjectToolboxCreate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.createdRequest.ToolboxCPUMillis != 12000 || store.createdRequest.ToolboxMemoryMiB != 24576 || store.createdRequest.ToolboxProcessLimit != 6144 {
+		t.Fatalf("request=%+v", store.createdRequest)
+	}
+	if !containsAll(output, `"cpu_millis":12000`, `"memory_mib":24576`, `"process_limit":6144`) {
+		t.Fatalf("output=%s", output)
+	}
 }
 
 func TestProjectToolboxServiceHandlerUsesOpaqueIdentityAndFiltersProcessState(t *testing.T) {

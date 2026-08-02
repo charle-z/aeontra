@@ -22,7 +22,7 @@ var projectExecEnvironmentKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_
 
 func validateOperationRequestWithProjectExec(kind OperationKind, request OperationRequest) (OperationRequest, error) {
 	isToolbox := kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop
-	if !isToolbox && (request.ToolboxServiceID != "" || request.ToolboxServiceName != "") {
+	if !isToolbox && (request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request)) {
 		return OperationRequest{}, errors.New("project toolbox service fields are invalid for this operation")
 	}
 	if kind == OperationProjectExec {

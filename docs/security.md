@@ -328,6 +328,10 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
   status, TERM or KILL, and caller argv is passed positionally to a fixed internal
   supervisor script rather than interpolated into shell text. Service commands are not
   persisted for unattended replay after a container restart.
+- Persistent toolbox CPU, memory and process limits are closed integer inputs with
+  server-owned defaults and maxima. The applied values are stored in owner-only state
+  and revalidated against the live rootless container before use; limit drift is an
+  ownership failure, not an invitation to update the container implicitly.
 - Target-locking is a closed operational contract, not universal egress filtering.
 - Signed bundles prove artifact identity, not correctness of every dependency or host.
 - A compromised administrator, host kernel, reverse proxy, signing key, or external

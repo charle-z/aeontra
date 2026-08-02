@@ -8,7 +8,18 @@ import (
 	"unicode/utf8"
 )
 
-const MaxProjectToolboxOutputBytes = 24 << 10
+const (
+	MaxProjectToolboxOutputBytes      = 24 << 10
+	MinProjectToolboxCPUMillis        = 250
+	MaxProjectToolboxCPUMillis        = 32000
+	DefaultProjectToolboxCPUMillis    = 4000
+	MinProjectToolboxMemoryMiB        = 512
+	MaxProjectToolboxMemoryMiB        = 65536
+	DefaultProjectToolboxMemoryMiB    = 8192
+	MinProjectToolboxProcessLimit     = 128
+	MaxProjectToolboxProcessLimit     = 8192
+	DefaultProjectToolboxProcessLimit = 2048
+)
 
 var (
 	projectToolboxIDPattern           = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
@@ -34,15 +45,31 @@ func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest
 	}
 	switch kind {
 	case OperationProjectToolboxStatus:
-		if request.IdempotencyKey != "" || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
+		if request.IdempotencyKey != "" || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request) || !emptyProjectExecRequestFields(request) {
 			return OperationRequest{}, errors.New("project toolbox status request is invalid")
 		}
-	case OperationProjectToolboxCreate, OperationProjectToolboxCleanup, OperationProjectToolboxRepair:
+	case OperationProjectToolboxCreate:
 		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
 			return OperationRequest{}, errors.New("project toolbox lifecycle request is invalid")
 		}
+		if request.ToolboxCPUMillis == 0 {
+			request.ToolboxCPUMillis = DefaultProjectToolboxCPUMillis
+		}
+		if request.ToolboxMemoryMiB == 0 {
+			request.ToolboxMemoryMiB = DefaultProjectToolboxMemoryMiB
+		}
+		if request.ToolboxProcessLimit == 0 {
+			request.ToolboxProcessLimit = DefaultProjectToolboxProcessLimit
+		}
+		if !validProjectToolboxResources(request.ToolboxCPUMillis, request.ToolboxMemoryMiB, request.ToolboxProcessLimit) {
+			return OperationRequest{}, errors.New("project toolbox resource limits are invalid")
+		}
+	case OperationProjectToolboxCleanup, OperationProjectToolboxRepair:
+		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request) || !emptyProjectExecRequestFields(request) {
+			return OperationRequest{}, errors.New("project toolbox lifecycle request is invalid")
+		}
 	case OperationProjectToolboxExec, OperationProjectToolboxInstall:
-		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || request.TimeoutSeconds < 1 || request.TimeoutSeconds > 3600 {
+		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request) || request.TimeoutSeconds < 1 || request.TimeoutSeconds > 3600 {
 			return OperationRequest{}, errors.New("project toolbox exec request is invalid")
 		}
 		timeout := request.TimeoutSeconds
@@ -54,7 +81,7 @@ func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest
 		normalized.TimeoutSeconds = timeout
 		return normalized, nil
 	case OperationProjectToolboxServiceStart:
-		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" ||
+		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" || hasProjectToolboxResourceRequest(request) ||
 			!projectToolboxServiceNamePattern.MatchString(request.ToolboxServiceName) || request.TimeoutSeconds != 0 {
 			return OperationRequest{}, errors.New("project toolbox service start request is invalid")
 		}
@@ -66,17 +93,27 @@ func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest
 		normalized.TimeoutSeconds = 0
 		return normalized, nil
 	case OperationProjectToolboxServiceStatus:
-		if request.IdempotencyKey != "" || !projectToolboxServiceIDPattern.MatchString(request.ToolboxServiceID) || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
+		if request.IdempotencyKey != "" || !projectToolboxServiceIDPattern.MatchString(request.ToolboxServiceID) || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request) || !emptyProjectExecRequestFields(request) {
 			return OperationRequest{}, errors.New("project toolbox service status request is invalid")
 		}
 	case OperationProjectToolboxServiceStop:
-		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || !projectToolboxServiceIDPattern.MatchString(request.ToolboxServiceID) || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
+		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || !projectToolboxServiceIDPattern.MatchString(request.ToolboxServiceID) || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request) || !emptyProjectExecRequestFields(request) {
 			return OperationRequest{}, errors.New("project toolbox service stop request is invalid")
 		}
 	default:
 		return OperationRequest{}, errors.New("project toolbox operation is invalid")
 	}
 	return request, nil
+}
+
+func hasProjectToolboxResourceRequest(request OperationRequest) bool {
+	return request.ToolboxCPUMillis != 0 || request.ToolboxMemoryMiB != 0 || request.ToolboxProcessLimit != 0
+}
+
+func validProjectToolboxResources(cpuMillis, memoryMiB, processLimit int) bool {
+	return cpuMillis >= MinProjectToolboxCPUMillis && cpuMillis <= MaxProjectToolboxCPUMillis &&
+		memoryMiB >= MinProjectToolboxMemoryMiB && memoryMiB <= MaxProjectToolboxMemoryMiB &&
+		processLimit >= MinProjectToolboxProcessLimit && processLimit <= MaxProjectToolboxProcessLimit
 }
 
 func hasProjectToolboxResult(result OperationResult) bool {
@@ -92,6 +129,7 @@ func hasProjectToolboxServiceResult(result OperationResult) bool {
 func validProjectToolboxResult(result OperationResult) bool {
 	if !projectToolboxIDPattern.MatchString(result.ToolboxID) || !projectToolboxStatePattern.MatchString(result.ToolboxState) ||
 		result.ToolboxBase != "debian-bookworm-slim" || !projectToolboxImageIDPattern.MatchString(result.ToolboxBaseImageID) ||
+		!validProjectToolboxResources(result.ToolboxCPUMillis, result.ToolboxMemoryMiB, result.ToolboxProcessLimit) ||
 		len(result.ToolboxOutput) > MaxProjectToolboxOutputBytes || !utf8.ValidString(result.ToolboxOutput) || strings.ContainsRune(result.ToolboxOutput, 0) {
 		return false
 	}
@@ -110,6 +148,7 @@ func validProjectToolboxResult(result OperationResult) bool {
 	metadata.ToolboxID, metadata.ToolboxState, metadata.ToolboxBase, metadata.ToolboxBaseImageID = "", "", "", ""
 	metadata.ToolboxCreatedAt, metadata.ToolboxUpdatedAt, metadata.ToolboxOutput = "", "", ""
 	metadata.ToolboxOutputTruncated, metadata.ToolboxRemoved = false, false
+	metadata.ToolboxCPUMillis, metadata.ToolboxMemoryMiB, metadata.ToolboxProcessLimit = 0, 0, 0
 	return validProjectOperationResult(metadata)
 }
 

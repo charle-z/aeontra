@@ -105,6 +105,10 @@ OpenCode or a model runtime:
   validated rootless Podman/Docker endpoint, records its exact image ID, creates a
   labelled container with only the selected workspace mounted at `/workspace`, and
   starts it with an idle process;
+- creation accepts optional CPU millicores, memory MiB and process-count caps. Missing
+  values receive server-owned defaults of 4 CPUs, 8 GiB and 2048 processes; accepted
+  ranges remain broad enough for builds while rejecting zero, negative or excessive
+  caller values;
 - private metadata is one owner-only `0600` record under Edge state. The opaque
   `tb_...` identity, base image identity and timestamps survive chat, backend, Edge and
   WSL restarts as long as the user-owned container storage survives;
@@ -115,7 +119,12 @@ OpenCode or a model runtime:
   pip, Go modules, Cargo and other toolchains can persist without changing the host WSL
   package database;
 - public results are bounded and redacted and expose no host path, socket, container
-  name, raw engine identifier or environment;
+  name, raw engine identifier or environment. The applied CPU, memory and process caps
+  are safe public metadata;
+- every status, execution, service and cleanup path revalidates the actual rootless
+  container's memory bytes, nano-CPU quota and PID cap against the private record.
+  Reusing a toolbox with different requested limits fails closed rather than mutating
+  a long-lived environment implicitly;
 - `project_toolbox_repair` revalidates the recorded image, labels and exact single
   workspace mount before restarting a stopped or created container. It does not create
   a replacement when private state, ownership or container identity is missing or

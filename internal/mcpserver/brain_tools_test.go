@@ -158,7 +158,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 134 || snapshot.Hash != "sha256:504e6f371de9a46a6e255913a019a9990d8977de286fa4f51d90f27fdf06308b" {
+	if snapshot.ToolCount != 134 || snapshot.Hash != "sha256:14de29c2c2c7dca8ba6d0621f57495940f88975d4fea0bd97a72f91848b03b84" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
