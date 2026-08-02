@@ -27,6 +27,10 @@ Focused, ordinary full-suite, coverage, vet and build gates are green in the cor
 non-root Linux/Node 22 environment. Full race was green except one pre-existing
 wall-clock detector that exceeded its limit under the concurrent run and then passed
 alone under `-race` in 1.681 seconds. The next action is commit, PR, exact-head CI and
-dual Front Door transition/retirement deployment. Signed release and real-device restart acceptance
-remain blocked only on an exact operator-supplied release version after installed
-`p15.0.12`; do not infer it.
+dual Front Door transition/retirement deployment. Signed release and real-device
+restart acceptance remain blocked only on an exact operator-supplied release version
+after installed `p15.0.12`; do not infer it.
+
+PR #129 is open and ready for review. Its initial exact head is
+`59b2581a09c5cbf13e2d1cc84b9385e90b17296a`; any documentation follow-up changes that
+head and must be verified again before merge.

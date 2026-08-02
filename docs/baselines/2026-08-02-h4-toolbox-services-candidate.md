@@ -28,6 +28,9 @@ Date: 2026-08-02
 
 ## Acceptance posture
 
+PR #129 is the publication candidate. Initial source head:
+`59b2581a09c5cbf13e2d1cc84b9385e90b17296a`.
+
 Local source validation is green:
 
 - focused Edge/manager/MCP/documentation tests;

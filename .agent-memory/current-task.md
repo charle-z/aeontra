@@ -27,6 +27,7 @@
 
 ## Next exact action
 
-Finish diff review, commit the locally green service slice, publish one PR, require
-exact-head CI, merge/deploy with a bounded Front Door catalog transition and record
-Brain evidence. Do not infer an immutable release number.
+PR #129 is open from `codex/toolbox-services-repair`; its initial exact head is
+`59b2581a09c5cbf13e2d1cc84b9385e90b17296a`. Require exact-head CI, merge/deploy with a
+bounded Front Door catalog transition and record Brain evidence. Do not infer an
+immutable release number.
