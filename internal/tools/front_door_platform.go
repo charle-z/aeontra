@@ -112,10 +112,11 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 		return "", err
 	}
 	sp.Finish(audit.Allow, "preview "+plan.ID, nil, nil)
-	return fmt.Sprintf("action: %s\napplication_name: %s\napplication_uuid: %s\nrepository: %s\nbranch: %s\nbranch_sha: %s\ndockerfile_location: %s\nport: %s\ndomain: %s\nbackend_origin: %s\nexpected_protocol: %s\nexpected_catalog_hash: %s\nauto_deploy: disabled\ninstant_deploy: disabled\nmounts: none\neffect: %s\nplan_id: %s\nexpiry: %s\n",
+	return fmt.Sprintf("action: %s\napplication_name: %s\napplication_uuid: %s\nrepository: %s\nbranch: %s\nbranch_sha: %s\ndockerfile_location: %s\nport: %s\ndomain: %s\nbackend_origin: %s\nexpected_protocol: %s\nexpected_catalog_hash: %s\ncatalog_primary: %s\ncatalog_transition: %s\ncatalog_transition_remove: %t\ncatalog_changed: %t\ncatalog_contract: accept the authenticated primary plus at most one authenticated temporary transition catalog\nauto_deploy: disabled\ninstant_deploy: disabled\nmounts: none\neffect: %s\nplan_id: %s\nexpiry: %s\n",
 		action, managedFrontDoorName, appID, s.managedFrontDoorRepository(), managedFrontDoorBranch, sha,
 		managedFrontDoorDockerfile, managedFrontDoorPort, normalized.Domain, normalized.BackendURL,
-		normalized.ExpectedProtocol, normalized.ExpectedCatalogHash, managedFrontDoorEffect(action), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
+		normalized.ExpectedProtocol, normalized.ExpectedCatalogHash, catalogPlan.Primary, catalogPlan.Transition,
+		catalogPlan.RemoveUUID != "", catalogPlan.Changed, managedFrontDoorEffect(action), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
 func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool) (string, error) {
