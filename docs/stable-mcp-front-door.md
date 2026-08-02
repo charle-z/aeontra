@@ -239,6 +239,17 @@ Published status is retried with a finite budget. If publication or the local jo
 remains unavailable, the worker exits non-zero instead of remaining healthy with a
 stalled transition, so the platform can surface or restart it from the durable journal.
 
+The persistent volume remains the complete authoritative journal. Coolify's application
+description carries only a versioned compact observation envelope capped at 255 ASCII bytes:
+revision, request ID, target, recovery target, state, phase, deployment ID, one reason from the
+fixed transition dictionary and update time. Live domains and facade upstream are read directly
+from the managed applications instead of being duplicated in that envelope. New workers publish
+`mcp-fdc:v2`; readers retain strict compatibility with the previous `v1` JSON description.
+Unknown fields, reason codes, identifiers, trailing data or oversized envelopes fail closed.
+Publication failures preserve only an enumerated safe cause such as request build, private
+gateway transport, response read, HTTP or decode failure; no response body, token or URL is
+reported.
+
 The backend-facing dispatch remains safe if GPT Web temporarily loses the MCP namespace:
 the independent worker continues from its durable journal. The same request ID resumes
 or republishes its existing state; it never restarts a failed transition. Only a new

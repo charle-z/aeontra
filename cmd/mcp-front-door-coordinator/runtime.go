@@ -42,6 +42,18 @@ const (
 	startupTopologyContractInvalid           startupCode = "topology_contract_invalid"
 	startupDurableStateFailed                startupCode = "durable_state_failed"
 	startupStatusPublishFailed               startupCode = "status_publish_failed"
+	startupStatusPublishBuild                startupCode = "status_publish_request_build_failed"
+	startupStatusPublishTransport            startupCode = "status_publish_transport_failed"
+	startupStatusPublishTransportTarget      startupCode = "status_publish_transport_target_failed"
+	startupStatusPublishTransportResolve     startupCode = "status_publish_transport_resolution_failed"
+	startupStatusPublishTransportAddress     startupCode = "status_publish_transport_address_policy_failed"
+	startupStatusPublishTransportRefused     startupCode = "status_publish_transport_connection_refused"
+	startupStatusPublishTransportTimeout     startupCode = "status_publish_transport_connection_timed_out"
+	startupStatusPublishTransportRoute       startupCode = "status_publish_transport_route_unavailable"
+	startupStatusPublishTransportConnect     startupCode = "status_publish_transport_connection_failed"
+	startupStatusPublishRead                 startupCode = "status_publish_response_read_failed"
+	startupStatusPublishHTTP                 startupCode = "status_publish_http_failed"
+	startupStatusPublishDecode               startupCode = "status_publish_response_decode_failed"
 )
 
 type coordinatorRuntimeState struct {
@@ -254,6 +266,37 @@ func topologyStartupCode(err error) startupCode {
 	}
 }
 
+func statusPublishStartupCode(err error) startupCode {
+	switch {
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyRequestBuild):
+		return startupStatusPublishBuild
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateTarget):
+		return startupStatusPublishTransportTarget
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateResolve):
+		return startupStatusPublishTransportResolve
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateAddress):
+		return startupStatusPublishTransportAddress
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateRefused):
+		return startupStatusPublishTransportRefused
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateTimeout):
+		return startupStatusPublishTransportTimeout
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateRoute):
+		return startupStatusPublishTransportRoute
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyPrivateConnect):
+		return startupStatusPublishTransportConnect
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyRequestTransport):
+		return startupStatusPublishTransport
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyResponseRead):
+		return startupStatusPublishRead
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyResponseHTTP):
+		return startupStatusPublishHTTP
+	case errors.Is(err, frontdoorcoordinator.ErrCoolifyResponseDecode):
+		return startupStatusPublishDecode
+	default:
+		return startupStatusPublishFailed
+	}
+}
+
 func initializeCoordinator(ctx context.Context, getenv func(string) string, dependencies coordinatorDependencies) (runtimeConfig, *frontdoorcoordinator.Journal, frontdoorcoordinator.Platform, startupCode) {
 	config, err := loadConfig(getenv)
 	if err != nil {
@@ -301,11 +344,14 @@ func runCoordinatorTransition(ctx context.Context, state *coordinatorRuntimeStat
 		log.Printf("front-door transition terminal: target=%s state=%s revision=%d", status.Target, status.State, status.Revision)
 		return
 	}
-	log.Printf("front-door transition failed: target=%s state=%s phase=%s reason=%s", status.Target, status.State, status.Phase, status.Reason)
+	code := startupCode("")
 	if errors.Is(err, frontdoorcoordinator.ErrStatusPublish) {
-		state.setFailure(startupStatusPublishFailed)
+		code = statusPublishStartupCode(err)
+		state.setFailure(code)
 	}
 	if errors.Is(err, frontdoorcoordinator.ErrDurableState) {
-		state.setFailure(startupDurableStateFailed)
+		code = startupDurableStateFailed
+		state.setFailure(code)
 	}
+	log.Printf("front-door transition failed: code=%s target=%s state=%s phase=%s reason=%s", code, status.Target, status.State, status.Phase, status.Reason)
 }
