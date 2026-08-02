@@ -116,14 +116,26 @@ OpenCode or a model runtime:
   package database;
 - public results are bounded and redacted and expose no host path, socket, container
   name, raw engine identifier or environment;
+- `project_toolbox_repair` revalidates the recorded image, labels and exact single
+  workspace mount before restarting a stopped or created container. It does not create
+  a replacement when private state, ownership or container identity is missing or
+  unsafe;
+- `project_toolbox_service_start/status/stop` manage background argv in that same
+  toolbox. Service names are closed, public identities are opaque `ts_...` values, and
+  private PID plus `/proc` start ticks prevent PID-reuse confusion. Status is read-only
+  and reports stopped when the container is stopped; stop uses TERM, bounded grace and
+  KILL only when necessary;
+- the Edge does not persist service argv or environment. A service survives chat and
+  Edge-daemon restarts while its rootless container keeps running; after the container
+  or WSL itself stops, its durable identity reports `stopped` and a fresh explicit
+  start creates a new opaque service identity rather than silently replaying old argv;
 - `project_toolbox_cleanup` is the only automatic product path that removes the
   toolbox, and it runs only when explicitly called. It removes neither the project
   workspace nor unrelated rootless resources.
 
-The first toolbox slice deliberately uses a server-owned Debian base and one container
-per workspace. Service lifecycle, repair and background-process integration remain the
-next additive slice; they must reuse this identity and storage rather than creating a
-second toolbox family.
+The toolbox deliberately uses a server-owned Debian base and one container per
+workspace. Foreground execution, installation, repair and background service lifecycle
+all reuse that identity and storage rather than creating a second toolbox family.
 
 ## Cancellation
 
