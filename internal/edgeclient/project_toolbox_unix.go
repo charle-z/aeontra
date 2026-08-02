@@ -552,7 +552,7 @@ func (manager *ProjectToolboxManager) ensureRunning(ctx context.Context, record 
 }
 
 func toolboxServiceSnapshot(service projectToolboxServiceRecord) ProjectToolboxServiceSnapshot {
-	return ProjectToolboxServiceSnapshot{ServiceID: service.ServiceID, Name: service.Name, State: service.State, CreatedAt: service.CreatedAt, UpdatedAt: service.UpdatedAt}
+	return ProjectToolboxServiceSnapshot(service)
 }
 
 const projectToolboxServiceStartScript = `service=$1; shift; umask 077; root=/var/lib/mcp-devbox/services/$service; mkdir -p "$root"; printf '%s ' "$$" > "$root/identity"; awk '{print $22}' "/proc/$$/stat" >> "$root/identity"; exec "$@" >> "$root/stdout.log" 2>> "$root/stderr.log"`

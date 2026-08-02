@@ -34,3 +34,8 @@ after installed `p15.0.12`; do not infer it.
 PR #129 is open and ready for review. Its initial exact head is
 `59b2581a09c5cbf13e2d1cc84b9385e90b17296a`; any documentation follow-up changes that
 head and must be verified again before merge.
+
+The documentation follow-up head
+`964cc6a3ae3fa0ef4a2524452a9aba18b7197b39` failed only Staticcheck S1016 for a
+duplicated struct literal. The typed conversion fix passes the focused toolbox test and
+Staticcheck v0.7.0 locally; publish it and require a completely new exact-head run.

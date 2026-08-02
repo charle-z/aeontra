@@ -30,6 +30,10 @@ Date: 2026-08-02
 
 PR #129 is the publication candidate. Initial source head:
 `59b2581a09c5cbf13e2d1cc84b9385e90b17296a`.
+The first documentation follow-up head
+`964cc6a3ae3fa0ef4a2524452a9aba18b7197b39` exposed Staticcheck S1016 in one snapshot
+literal; the equivalent typed conversion passed Staticcheck v0.7.0 locally and is the
+only functional-source correction after that run.
 
 Local source validation is green:
 
