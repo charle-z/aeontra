@@ -34,6 +34,9 @@ do not replace server-side enforcement.
 | `project_process_start` | 0/1/1/1 | Start or reuse one durable background argv through the same Bubblewrap/workcell executor as `project_exec`, keyed by a caller idempotency key. It returns an opaque process id; PID, paths, argv and environment remain private. |
 | `project_process_status` | 1/0/1/0 | Read safe durable state plus bounded incremental redacted stdout/stderr for one owned background process by opaque id and byte offsets. |
 | `project_process_stop` | 0/1/1/0 | Idempotently stop one owned process group after PID/start-time revalidation, using TERM followed by bounded grace and KILL only when needed. |
+| `project_process_signal` | 0/1/0/0 | Send one closed `interrupt`, `terminate`, or `kill` signal to an owned process group after PID/start-time revalidation; arbitrary signals and host-wide targets are rejected. |
+| `project_process_list` | 1/0/1/0 | List at most 100 opaque process identities, states and timestamps for one project/target without exposing PID, argv, environment, paths or log contents. |
+| `project_process_cleanup` | 0/1/1/0 | Explicitly remove terminal journal records and private logs for one process or a project/target; live processes are reported and preserved. |
 | `edge_operation_list` | 1/0/1/0 | List bounded queued/running operation identity, kind, progress and cancellation state for one human Edge target without exposing device/workspace ids, paths, request bodies or raw output. |
 | `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle and progress metadata by operation id. |
 | `edge_operation_cancel` | 0/1/1/0 | Idempotently cancel one queued operation or one interruptible running operation; updater, rollback and repair effects become non-cancellable after pickup. |

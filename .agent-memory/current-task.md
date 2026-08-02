@@ -1,43 +1,54 @@
-# Current task — direct Edge Hito 3A background processes
+# Current task — direct Edge Hito 3B process recovery
 
-## Verified base
+## Verified remote base
 
-- Feature branch: `codex/h3a-background-processes`.
-- Base: `origin/main` at `b419d9dfd888a216813bca05aafa5d4de28f0196`.
-- Stable source release and installed Edge before this candidate: `p15.0.12` at the
-  same base commit.
-- Public backend and official Front Door were healthy on the base contract before
-  implementation. Live identity must be queried again before rollout.
+- Branch: `codex/h3b-process-recovery`.
+- Base: `origin/main` at `84bac0a13bf71078e94e407f49f52e5758f3b872`.
+- Hito 3A code merged through PRs #123/#125 and is deployed behind the stable Front
+  Door with 118 tools and catalog
+  `sha256:d8b6b35f7f3dc7ef13a16d98130c0d129a50cf64f2e6216cecc39e3e1b1829ab`.
+- Real Edge remains on signed `p15.0.12` at `b419d9dfd888a216813bca05aafa5d4de28f0196`.
+  No later release or Edge update has been executed.
 
 ## Candidate scope
 
-- Public tools: `project_process_start`, `project_process_status`,
-  `project_process_stop`.
-- Same trusted-workcell executor and Bubblewrap construction as `project_exec`.
-- Private Edge SQLite metadata and separate bounded redacted stdout/stderr logs.
-- Opaque durable process identity; no PID, argv, environment or host paths publicly.
-- Start idempotency, conflicting-request rejection, closed states, incremental reads,
-  natural exit, process-group TERM/KILL and PID start-time reuse defense.
-- Emergency concurrency and per-stream storage ceilings; no process TTL or automatic
-  cleanup.
+- Public `project_process_signal`, `project_process_list`, and
+  `project_process_cleanup`; candidate catalog is 121 tools at
+  `sha256:feca2e4d163cfcff7e08410d5d5b34a52396430d49515c0f601486ffde0b31e2`.
+- Closed signals only: interrupt, terminate, kill.
+- Bounded metadata-only list by project/target; no PID, argv, env or paths.
+- Explicit individual/project cleanup removes terminal state only and preserves live
+  processes/logs.
+- Reconciliation on manager open and explicit lifecycle calls, without an idle poller.
+- PID/start-ticks/group/current-owner validation and safe classification for missing,
+  reused, foreign or incomplete state.
+- A signed per-process worker owns Bubblewrap pipes, redaction and terminal receipts;
+  it survives the Edge parent, while the service uses `KillMode=process`.
+  Foreground commands and OpenCode retain their parent-death behavior.
 
 ## Verification
 
-- Focused Edge/client/MCP/command suite: green in Parrot WSL2 Go 1.26.5.
-- Catalog/app/integration/docs suite: green.
-- Focused CGO race suite for `internal/edge`, `internal/edgeclient` and
-  `internal/mcpserver`: green.
-- Split-write token and multi-line private-key redaction is tested before persistence.
-- The full suite passed every package except the known DrvFS-only executable-mode
-  assertion in `packaging/builder` (`0777` observed instead of Linux `0755`); Linux CI
-  remains authoritative for that host-specific fixture. Vet and build passed; the final
-  WSL `git diff` command cannot traverse the Windows gitdir, while native Git
-  `diff --check` is green.
-- Exact-head CI, merge, deployment/catalog reconciliation, signed release, Edge update
-  and real-device process acceptance have not occurred yet.
+- Focused manager recovery, list, signal, cleanup, PID reuse, ownership and log
+  corruption regressions are green in Parrot WSL.
+- Edge operation and MCP catalog contracts are green after the 121-tool reconciliation.
+- Full `go test ./... -count=1` passed every package except the known Windows DrvFS
+  executable-mode fixture (`0777` observed, Linux contract `0755`); affected Linux
+  package, Debian/Parrot packaging and docs suites are green.
+- `go vet ./...`, `go build ./...`, focused CGO race for `internal/edge`,
+  `internal/edgeclient`, and `internal/mcpserver`, catalog identity, and
+  `git diff --check` are green.
+- Commit, PR, exact-head CI, merge and production/Edge acceptance are pending.
 
-## Next safe action
+## External release constraint
 
-Review the complete diff, commit the candidate, publish a normal
-PR and require all exact-head checks. Do not claim Hito 3A closed before live release
-and real Edge start/status/output/stop/no-orphan evidence.
+The roadmap authorizes ordinary releases generally but names only installed
+`p15.0.12`. An attempted dispatch for inferred `p15.0.13` was rejected before execution
+because that immutable version was not explicitly authorized. Do not bypass that gate
+or claim real Hito 3A/3B Edge acceptance until an exact next release is authorized and
+published through `.github/workflows/edge-release.yml`.
+
+## Next exact action
+
+Finish candidate documentation and adversarial tests, run the full local gates, review
+the diff, commit and publish the Hito 3B PR. Continue all independent roadmap work while
+the exact immutable release version remains the only external release blocker.

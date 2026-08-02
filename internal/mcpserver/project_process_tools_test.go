@@ -59,6 +59,9 @@ func TestProjectProcessToolsQueueClosedOperationsWithoutLeaks(t *testing.T) {
 		{"project_process_start", `{"alias":"project","target":"parrot","idempotency_key":"process-1","argv":["go","run","."],"cwd":"cmd","stdin":"ready\n","environment":{"PORT":"8080"}}`, edge.OperationProjectProcessStart},
 		{"project_process_status", `{"alias":"project","target":"parrot","process_id":"pr_44444444444444444444444444444444","stdout_offset":0,"stderr_offset":0,"limit_bytes":4096}`, edge.OperationProjectProcessStatus},
 		{"project_process_stop", `{"alias":"project","target":"parrot","process_id":"pr_44444444444444444444444444444444","grace_seconds":5}`, edge.OperationProjectProcessStop},
+		{"project_process_signal", `{"alias":"project","target":"parrot","process_id":"pr_44444444444444444444444444444444","signal":"interrupt"}`, edge.OperationProjectProcessSignal},
+		{"project_process_list", `{"alias":"project","target":"parrot","limit":20}`, edge.OperationProjectProcessList},
+		{"project_process_cleanup", `{"alias":"project","target":"parrot","process_id":"pr_44444444444444444444444444444444"}`, edge.OperationProjectProcessCleanup},
 	}
 	for _, test := range cases {
 		entry, ok := server.table[test.name]

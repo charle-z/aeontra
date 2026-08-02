@@ -24,24 +24,27 @@ const (
 )
 
 const (
-	OperationLabPrepare           OperationKind = "lab_prepare"
-	OperationLabRetarget          OperationKind = "lab_retarget"
-	OperationAutopilotStart       OperationKind = "autopilot_start"
-	OperationAutopilotPause       OperationKind = "autopilot_pause"
-	OperationAutopilotResume      OperationKind = "autopilot_resume"
-	OperationAutopilotCancel      OperationKind = "autopilot_cancel"
-	OperationBundleStatus         OperationKind = "bundle_status"
-	OperationBundleUpdate         OperationKind = "bundle_update"
-	OperationBundleRollback       OperationKind = "bundle_rollback"
-	OperationEdgeRepair           OperationKind = "edge_repair"
-	OperationOnboardingStatus     OperationKind = "onboarding_status"
-	OperationProjectPrepare       OperationKind = "project_prepare"
-	OperationProjectStatus        OperationKind = "project_status"
-	OperationProjectSnapshot      OperationKind = "project_snapshot"
-	OperationProjectExec          OperationKind = "project_exec"
-	OperationProjectProcessStart  OperationKind = "project_process_start"
-	OperationProjectProcessStatus OperationKind = "project_process_status"
-	OperationProjectProcessStop   OperationKind = "project_process_stop"
+	OperationLabPrepare            OperationKind = "lab_prepare"
+	OperationLabRetarget           OperationKind = "lab_retarget"
+	OperationAutopilotStart        OperationKind = "autopilot_start"
+	OperationAutopilotPause        OperationKind = "autopilot_pause"
+	OperationAutopilotResume       OperationKind = "autopilot_resume"
+	OperationAutopilotCancel       OperationKind = "autopilot_cancel"
+	OperationBundleStatus          OperationKind = "bundle_status"
+	OperationBundleUpdate          OperationKind = "bundle_update"
+	OperationBundleRollback        OperationKind = "bundle_rollback"
+	OperationEdgeRepair            OperationKind = "edge_repair"
+	OperationOnboardingStatus      OperationKind = "onboarding_status"
+	OperationProjectPrepare        OperationKind = "project_prepare"
+	OperationProjectStatus         OperationKind = "project_status"
+	OperationProjectSnapshot       OperationKind = "project_snapshot"
+	OperationProjectExec           OperationKind = "project_exec"
+	OperationProjectProcessStart   OperationKind = "project_process_start"
+	OperationProjectProcessStatus  OperationKind = "project_process_status"
+	OperationProjectProcessStop    OperationKind = "project_process_stop"
+	OperationProjectProcessSignal  OperationKind = "project_process_signal"
+	OperationProjectProcessList    OperationKind = "project_process_list"
+	OperationProjectProcessCleanup OperationKind = "project_process_cleanup"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -81,68 +84,84 @@ type OperationRequest struct {
 	StderrOffset        int64             `json:"stderr_offset,omitempty"`
 	OutputLimit         int               `json:"output_limit,omitempty"`
 	GraceSeconds        int               `json:"grace_seconds,omitempty"`
+	BackgroundSignal    string            `json:"background_signal,omitempty"`
+	ProcessLimit        int               `json:"process_limit,omitempty"`
+}
+
+type BackgroundProcessSummary struct {
+	ProcessID      string `json:"process_id"`
+	State          string `json:"state"`
+	StartedAt      string `json:"started_at"`
+	FinishedAt     string `json:"finished_at,omitempty"`
+	ExitKnown      bool   `json:"exit_known"`
+	ExitCode       int    `json:"exit_code"`
+	TerminalSignal string `json:"terminal_signal,omitempty"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 type OperationResult struct {
-	WorkspaceID               string   `json:"workspace_id,omitempty"`
-	AuthorizationRevision     uint64   `json:"authorization_revision,omitempty"`
-	JobID                     string   `json:"job_id,omitempty"`
-	JobState                  string   `json:"job_state,omitempty"`
-	ProgressRevision          uint64   `json:"progress_revision,omitempty"`
-	CycleCount                uint64   `json:"cycle_count,omitempty"`
-	JobSafeCode               string   `json:"job_safe_code,omitempty"`
-	Release                   string   `json:"release,omitempty"`
-	Commit                    string   `json:"commit,omitempty"`
-	ManifestStatus            string   `json:"manifest_status,omitempty"`
-	ComponentsCompatible      bool     `json:"components_compatible,omitempty"`
-	ServiceActive             bool     `json:"service_active,omitempty"`
-	ServiceState              string   `json:"service_state,omitempty"`
-	ProcessState              string   `json:"process_state,omitempty"`
-	LockState                 string   `json:"lock_state,omitempty"`
-	Coherence                 string   `json:"coherence,omitempty"`
-	ProcessRelease            string   `json:"process_release,omitempty"`
-	ProcessCommit             string   `json:"process_commit,omitempty"`
-	UpdateAvailable           bool     `json:"update_available"`
-	Paired                    bool     `json:"paired,omitempty"`
-	BubblewrapValid           bool     `json:"bubblewrap_valid,omitempty"`
-	RootlessValid             bool     `json:"rootless_valid,omitempty"`
-	WorkspaceCount            int      `json:"workspace_count,omitempty"`
-	ProviderValid             bool     `json:"provider_valid,omitempty"`
-	DriverValid               bool     `json:"driver_valid,omitempty"`
-	Blockers                  []string `json:"blockers,omitempty"`
-	ProjectAlias              string   `json:"project_alias,omitempty"`
-	ProjectOwner              string   `json:"project_owner,omitempty"`
-	ProjectRepository         string   `json:"project_repository,omitempty"`
-	ProjectTarget             string   `json:"project_target,omitempty"`
-	ProjectState              string   `json:"project_state,omitempty"`
-	ProjectProfile            string   `json:"project_profile,omitempty"`
-	ProjectMode               string   `json:"project_mode,omitempty"`
-	SnapshotBranch            string   `json:"snapshot_branch,omitempty"`
-	SnapshotHead              string   `json:"snapshot_head,omitempty"`
-	SnapshotClean             bool     `json:"snapshot_clean,omitempty"`
-	ExecCompleted             bool     `json:"exec_completed,omitempty"`
-	ExecExitCode              int      `json:"exec_exit_code,omitempty"`
-	ExecStdout                string   `json:"exec_stdout,omitempty"`
-	ExecStderr                string   `json:"exec_stderr,omitempty"`
-	ExecTimedOut              bool     `json:"exec_timed_out,omitempty"`
-	ExecStdoutTruncated       bool     `json:"exec_stdout_truncated,omitempty"`
-	ExecStderrTruncated       bool     `json:"exec_stderr_truncated,omitempty"`
-	BackgroundProcessID       string   `json:"background_process_id,omitempty"`
-	BackgroundProcessState    string   `json:"background_process_state,omitempty"`
-	BackgroundStartedAt       string   `json:"background_started_at,omitempty"`
-	BackgroundFinishedAt      string   `json:"background_finished_at,omitempty"`
-	BackgroundExitKnown       bool     `json:"background_exit_known,omitempty"`
-	BackgroundExitCode        int      `json:"background_exit_code,omitempty"`
-	BackgroundTerminalSignal  string   `json:"background_terminal_signal,omitempty"`
-	BackgroundReason          string   `json:"background_reason,omitempty"`
-	BackgroundStdout          string   `json:"background_stdout,omitempty"`
-	BackgroundStderr          string   `json:"background_stderr,omitempty"`
-	BackgroundStdoutNext      int64    `json:"background_stdout_next,omitempty"`
-	BackgroundStderrNext      int64    `json:"background_stderr_next,omitempty"`
-	BackgroundStdoutEOF       bool     `json:"background_stdout_eof,omitempty"`
-	BackgroundStderrEOF       bool     `json:"background_stderr_eof,omitempty"`
-	BackgroundStdoutTruncated bool     `json:"background_stdout_truncated,omitempty"`
-	BackgroundStderrTruncated bool     `json:"background_stderr_truncated,omitempty"`
+	WorkspaceID               string                     `json:"workspace_id,omitempty"`
+	AuthorizationRevision     uint64                     `json:"authorization_revision,omitempty"`
+	JobID                     string                     `json:"job_id,omitempty"`
+	JobState                  string                     `json:"job_state,omitempty"`
+	ProgressRevision          uint64                     `json:"progress_revision,omitempty"`
+	CycleCount                uint64                     `json:"cycle_count,omitempty"`
+	JobSafeCode               string                     `json:"job_safe_code,omitempty"`
+	Release                   string                     `json:"release,omitempty"`
+	Commit                    string                     `json:"commit,omitempty"`
+	ManifestStatus            string                     `json:"manifest_status,omitempty"`
+	ComponentsCompatible      bool                       `json:"components_compatible,omitempty"`
+	ServiceActive             bool                       `json:"service_active,omitempty"`
+	ServiceState              string                     `json:"service_state,omitempty"`
+	ProcessState              string                     `json:"process_state,omitempty"`
+	LockState                 string                     `json:"lock_state,omitempty"`
+	Coherence                 string                     `json:"coherence,omitempty"`
+	ProcessRelease            string                     `json:"process_release,omitempty"`
+	ProcessCommit             string                     `json:"process_commit,omitempty"`
+	UpdateAvailable           bool                       `json:"update_available"`
+	Paired                    bool                       `json:"paired,omitempty"`
+	BubblewrapValid           bool                       `json:"bubblewrap_valid,omitempty"`
+	RootlessValid             bool                       `json:"rootless_valid,omitempty"`
+	WorkspaceCount            int                        `json:"workspace_count,omitempty"`
+	ProviderValid             bool                       `json:"provider_valid,omitempty"`
+	DriverValid               bool                       `json:"driver_valid,omitempty"`
+	Blockers                  []string                   `json:"blockers,omitempty"`
+	ProjectAlias              string                     `json:"project_alias,omitempty"`
+	ProjectOwner              string                     `json:"project_owner,omitempty"`
+	ProjectRepository         string                     `json:"project_repository,omitempty"`
+	ProjectTarget             string                     `json:"project_target,omitempty"`
+	ProjectState              string                     `json:"project_state,omitempty"`
+	ProjectProfile            string                     `json:"project_profile,omitempty"`
+	ProjectMode               string                     `json:"project_mode,omitempty"`
+	SnapshotBranch            string                     `json:"snapshot_branch,omitempty"`
+	SnapshotHead              string                     `json:"snapshot_head,omitempty"`
+	SnapshotClean             bool                       `json:"snapshot_clean,omitempty"`
+	ExecCompleted             bool                       `json:"exec_completed,omitempty"`
+	ExecExitCode              int                        `json:"exec_exit_code,omitempty"`
+	ExecStdout                string                     `json:"exec_stdout,omitempty"`
+	ExecStderr                string                     `json:"exec_stderr,omitempty"`
+	ExecTimedOut              bool                       `json:"exec_timed_out,omitempty"`
+	ExecStdoutTruncated       bool                       `json:"exec_stdout_truncated,omitempty"`
+	ExecStderrTruncated       bool                       `json:"exec_stderr_truncated,omitempty"`
+	BackgroundProcessID       string                     `json:"background_process_id,omitempty"`
+	BackgroundProcessState    string                     `json:"background_process_state,omitempty"`
+	BackgroundStartedAt       string                     `json:"background_started_at,omitempty"`
+	BackgroundFinishedAt      string                     `json:"background_finished_at,omitempty"`
+	BackgroundExitKnown       bool                       `json:"background_exit_known,omitempty"`
+	BackgroundExitCode        int                        `json:"background_exit_code,omitempty"`
+	BackgroundTerminalSignal  string                     `json:"background_terminal_signal,omitempty"`
+	BackgroundReason          string                     `json:"background_reason,omitempty"`
+	BackgroundStdout          string                     `json:"background_stdout,omitempty"`
+	BackgroundStderr          string                     `json:"background_stderr,omitempty"`
+	BackgroundStdoutNext      int64                      `json:"background_stdout_next,omitempty"`
+	BackgroundStderrNext      int64                      `json:"background_stderr_next,omitempty"`
+	BackgroundStdoutEOF       bool                       `json:"background_stdout_eof,omitempty"`
+	BackgroundStderrEOF       bool                       `json:"background_stderr_eof,omitempty"`
+	BackgroundStdoutTruncated bool                       `json:"background_stdout_truncated,omitempty"`
+	BackgroundStderrTruncated bool                       `json:"background_stderr_truncated,omitempty"`
+	BackgroundProcesses       []BackgroundProcessSummary `json:"background_processes,omitempty"`
+	BackgroundCleanupRemoved  int                        `json:"background_cleanup_removed,omitempty"`
+	BackgroundCleanupActive   int                        `json:"background_cleanup_active,omitempty"`
 }
 
 type OperationProgress struct {
@@ -486,13 +505,19 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectExecResult(result) {
 		return kind == OperationProjectExec && validOperationCompletion(result, "")
 	}
+	if kind == OperationProjectProcessList {
+		return validProjectProcessListResult(result)
+	}
+	if kind == OperationProjectProcessCleanup {
+		return validProjectProcessCleanupResult(result)
+	}
 	if hasProjectProcessResult(result) {
-		return (kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop) && validOperationCompletion(result, "")
+		return (kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal) && validOperationCompletion(result, "")
 	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
 	}
-	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectSnapshot {
+	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot {
 		return false
 	}
 	return validOperationCompletion(result, "")

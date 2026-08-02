@@ -39,7 +39,8 @@ bounded status calls, so the control-plane journal never becomes an unbounded lo
 
 ## Durable background processes
 
-`project_process_start`, `project_process_status`, and `project_process_stop` extend the
+`project_process_start`, `project_process_status`, `project_process_stop`,
+`project_process_signal`, `project_process_list`, and `project_process_cleanup` extend the
 same trusted-workcell executor as `project_exec`:
 
 - start accepts an argv array, relative workspace cwd, optional stdin and a non-secret
@@ -55,6 +56,18 @@ same trusted-workcell executor as `project_exec`:
   waits the requested bounded grace period, and sends KILL only if the owned group did
   not stop;
 - terminal stop is idempotent and process rows have no TTL or automatic cleanup.
+- each background Bubblewrap instance is owned by a minimal per-process worker from the
+  same signed `mcp-edge` binary. The worker keeps redaction and wait/receipt handling
+  alive independently of the control loop; the Edge systemd unit stops only its main
+  process, so a signed restart or update does not implicitly stop managed groups;
+- manager startup and every bounded list/cleanup recovery pass reconcile active rows
+  against PID, Linux start ticks, process group and owner identity; reused, foreign,
+  incomplete and disappeared identities become safe terminal states instead of being
+  signalled;
+- list returns at most 100 opaque lifecycle summaries and signal accepts only the
+  closed `interrupt`, `terminate`, or `kill` enum;
+- cleanup is explicit, individual or project-scoped, idempotent, and removes only
+  terminal metadata and private logs. Live rows are counted and preserved.
 
 Emergency concurrency and per-stream storage ceilings are administrator-controlled
 Edge flags. They are protection against host exhaustion, not per-command allowlists or
@@ -88,9 +101,9 @@ Device ids, workspace ids, local paths, request bodies, idempotency keys, creden
 ## Deliberate boundary
 
 This layer provides operation identity, queueing, cancellation, bounded result
-transport and direct foreground/background execution. Background process listing,
-explicit signal selection, restart reconciliation and explicit cleanup belong to the
-follow-up lifecycle milestone; the initial start/status/stop surface does not pretend
-those contracts already exist.
+transport and direct foreground/background execution with restart reconciliation.
+It does not expose PID, host paths, arbitrary signals or a host-wide process list.
+An explicit process stop is distinct from cancelling the short-lived Edge operation
+which created or inspected it.
 - Lifecycle responses expose `cancellable` so callers do not have to infer authority from the operation kind or state.
 - `edge_operation_cancel` rejects a leased non-interruptible operation instead of pretending that the effect stopped.

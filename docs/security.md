@@ -286,6 +286,17 @@ revalidated owned process group. Public tools never return PID, argv, environmen
 workspace or log paths. Process state has no product TTL and cleanup is never inferred
 from the end of a chat turn.
 
+Durable process survival is explicit rather than accidental. Foreground Bubblewrap
+keeps parent-death termination; background Bubblewrap omits it, and the Edge unit uses
+`KillMode=process` so a service restart leaves reviewed per-process workers and their
+groups running. The worker, not the restarting control loop, owns the stdout/stderr
+pipes, redacts before writing and creates a private terminal receipt. On
+reopen, the private manager revalidates PID, start ticks, process group, current Unix
+owner and both no-follow private logs before treating a row as live. Reused or foreign
+identities are never signalled. Missing/unsafe logs are demonstrated state corruption;
+the still-owned group is killed fail-closed and the row becomes terminal. Public list
+and cleanup responses remain metadata-only and never disclose the private journal.
+
 Redaction is not a substitute for keeping secrets out of inputs and storage.
 
 ## Secure deployment checklist

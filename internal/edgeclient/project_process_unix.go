@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	ossignal "os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -50,27 +51,32 @@ const (
 	defaultProjectProcessLogBytes = 64 << 20
 	projectProcessDatabaseFile    = "project-processes.db"
 	projectProcessLogDirectory    = "project-process-logs"
+	projectProcessWorkerDirectory = "project-process-workers"
 )
 
 var (
 	projectProcessIDPattern              = regexp.MustCompile(`^pr_[a-f0-9]{32}$`)
 	projectProcessIdempotencyPattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+	projectProcessReasonPattern          = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 	ErrProjectProcessNotFound            = errors.New("project process not found")
 	ErrProjectProcessIdempotencyConflict = errors.New("project process idempotency conflict")
 	ErrProjectProcessIdentityChanged     = errors.New("project process identity changed")
+	ErrProjectProcessNotOwned            = errors.New("project process is not owned")
+	ErrProjectProcessGroupMissing        = errors.New("project process group is missing")
 )
 
 type ProjectProcessIdentity struct {
-	PID            int
-	ProcessGroupID int
-	StartTicks     uint64
+	ProcessID      string `json:"process_id"`
+	PID            int    `json:"pid"`
+	ProcessGroupID int    `json:"process_group_id"`
+	StartTicks     uint64 `json:"start_ticks"`
 }
 
 type ProjectProcessExit struct {
-	ExitKnown      bool
-	ExitCode       int
-	TerminalSignal ProjectProcessSignal
-	Reason         string
+	ExitKnown      bool                 `json:"exit_known"`
+	ExitCode       int                  `json:"exit_code"`
+	TerminalSignal ProjectProcessSignal `json:"terminal_signal,omitempty"`
+	Reason         string               `json:"reason,omitempty"`
 }
 
 type ProjectProcessPlatform interface {
@@ -98,6 +104,25 @@ type ProjectProcessStopRequest struct {
 	GracePeriod                          time.Duration
 }
 
+type ProjectProcessSignalRequest struct {
+	ProcessID, ProjectAlias, TargetAlias string
+	Signal                               ProjectProcessSignal
+}
+
+type ProjectProcessListRequest struct {
+	ProjectAlias, TargetAlias string
+	Limit                     int
+}
+
+type ProjectProcessCleanupRequest struct {
+	ProcessID, ProjectAlias, TargetAlias string
+}
+
+type ProjectProcessCleanupResult struct {
+	Removed int
+	Active  int
+}
+
 type ProjectProcessSnapshot struct {
 	ProcessID                        string
 	State                            ProjectProcessState
@@ -122,16 +147,16 @@ type ProjectProcessManagerConfig struct {
 }
 
 type ProjectProcessManager struct {
-	db                 *sql.DB
-	stateRoot, logRoot string
-	platform           ProjectProcessPlatform
-	resolveExecutable  bool
-	maxProcesses       int
-	maxLogBytes        int64
-	newID              func() (string, error)
-	now                func() time.Time
-	watchMu            sync.Mutex
-	watching           map[string]bool
+	db                             *sql.DB
+	stateRoot, logRoot, workerRoot string
+	platform                       ProjectProcessPlatform
+	resolveExecutable              bool
+	maxProcesses                   int
+	maxLogBytes                    int64
+	newID                          func() (string, error)
+	now                            func() time.Time
+	watchMu                        sync.Mutex
+	watching                       map[string]bool
 }
 
 type projectProcessRecord struct {
@@ -157,6 +182,10 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 	logRoot := filepath.Join(root, projectProcessLogDirectory)
 	if err := os.MkdirAll(logRoot, 0o700); err != nil || os.Chmod(logRoot, 0o700) != nil {
 		return nil, errors.New("project process logs are unavailable")
+	}
+	workerRoot := filepath.Join(root, projectProcessWorkerDirectory)
+	if err := os.MkdirAll(workerRoot, 0o700); err != nil || os.Chmod(workerRoot, 0o700) != nil {
+		return nil, errors.New("project process worker state is unavailable")
 	}
 	databasePath := filepath.Join(root, projectProcessDatabaseFile)
 	if info, err := os.Lstat(databasePath); err == nil {
@@ -206,7 +235,7 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 	platform := config.Platform
 	resolveExecutable := platform == nil
 	if platform == nil {
-		platform = osProjectProcessPlatform{}
+		platform = osProjectProcessPlatform{stateRoot: root, workerRoot: workerRoot}
 	}
 	newID := config.NewID
 	if newID == nil {
@@ -216,7 +245,12 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 	if now == nil {
 		now = time.Now
 	}
-	return &ProjectProcessManager{db: db, stateRoot: root, logRoot: logRoot, platform: platform, resolveExecutable: resolveExecutable, maxProcesses: maxProcesses, maxLogBytes: maxLogBytes, newID: newID, now: now, watching: map[string]bool{}}, nil
+	manager := &ProjectProcessManager{db: db, stateRoot: root, logRoot: logRoot, workerRoot: workerRoot, platform: platform, resolveExecutable: resolveExecutable, maxProcesses: maxProcesses, maxLogBytes: maxLogBytes, newID: newID, now: now, watching: map[string]bool{}}
+	if err := manager.Reconcile(); err != nil {
+		_ = db.Close()
+		return nil, errors.New("project process reconciliation failed")
+	}
+	return manager, nil
 }
 
 func (manager *ProjectProcessManager) Close() error {
@@ -253,46 +287,57 @@ func (manager *ProjectProcessManager) Start(ctx context.Context, request Project
 	if err != nil || !projectProcessIDPattern.MatchString(processID) {
 		return ProjectProcessSnapshot{}, false, errors.New("project process identity generation failed")
 	}
-	stdoutWriter, err := manager.openLogWriter(processID, "stdout")
-	if err != nil {
-		return ProjectProcessSnapshot{}, false, err
-	}
-	stderrWriter, err := manager.openLogWriter(processID, "stderr")
-	if err != nil {
-		_ = stdoutWriter.Close()
-		return ProjectProcessSnapshot{}, false, err
+	var stdoutTarget, stderrTarget io.Writer = io.Discard, io.Discard
+	var stdoutCloser, stderrCloser io.Closer = projectProcessNopCloser{}, projectProcessNopCloser{}
+	if !manager.resolveExecutable {
+		stdoutWriter, openErr := manager.openLogWriter(processID, "stdout")
+		if openErr != nil {
+			return ProjectProcessSnapshot{}, false, openErr
+		}
+		stderrWriter, openErr := manager.openLogWriter(processID, "stderr")
+		if openErr != nil {
+			_ = stdoutWriter.Close()
+			return ProjectProcessSnapshot{}, false, openErr
+		}
+		stdoutTarget, stderrTarget = stdoutWriter, stderrWriter
+		stdoutCloser, stderrCloser = stdoutWriter, stderrWriter
 	}
 	started := manager.now().UTC()
 	record := projectProcessRecord{ProcessID: processID, IdempotencyKey: request.IdempotencyKey, RequestDigest: digest, OperationID: request.OperationID, WorkspaceID: request.Workspace.ID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, State: ProjectProcessStarting, StartedAt: started}
 	if err := manager.insertRecord(record); err != nil {
-		_ = stdoutWriter.Close()
-		_ = stderrWriter.Close()
+		_ = stdoutCloser.Close()
+		_ = stderrCloser.Close()
 		return ProjectProcessSnapshot{}, false, err
 	}
-	spec, err := prepareDirectWorkcellProcessSpec(DirectWorkcellCommandRequest{OperationID: request.OperationID, Workspace: request.Workspace, Argv: request.Argv, CWD: request.CWD, Stdin: request.Stdin, Environment: request.Environment, TimeoutSeconds: 1}, stdoutWriter, stderrWriter, manager.resolveExecutable)
+	spec, err := prepareDirectWorkcellProcessSpec(DirectWorkcellCommandRequest{OperationID: request.OperationID, Workspace: request.Workspace, Argv: request.Argv, CWD: request.CWD, Stdin: request.Stdin, Environment: request.Environment, TimeoutSeconds: 1, Persistent: true}, stdoutTarget, stderrTarget, manager.resolveExecutable)
 	if err != nil {
-		_ = stdoutWriter.Close()
-		_ = stderrWriter.Close()
+		_ = stdoutCloser.Close()
+		_ = stderrCloser.Close()
 		_ = manager.finishFailed(processID, "process_contract_invalid")
 		return ProjectProcessSnapshot{}, false, err
 	}
+	spec.PersistentProcessID = processID
+	if manager.resolveExecutable {
+		spec.PersistentStateRoot = manager.stateRoot
+		spec.PersistentMaxLogBytes = manager.maxLogBytes
+	}
 	if err := ctx.Err(); err != nil {
-		_ = stdoutWriter.Close()
-		_ = stderrWriter.Close()
+		_ = stdoutCloser.Close()
+		_ = stderrCloser.Close()
 		_ = manager.finishFailed(processID, "process_start_cancelled")
 		return ProjectProcessSnapshot{}, false, err
 	}
 	identity, exits, err := manager.platform.Start(spec)
 	if err != nil || identity.PID < 1 || identity.ProcessGroupID < 1 || identity.StartTicks == 0 || exits == nil {
-		_ = stdoutWriter.Close()
-		_ = stderrWriter.Close()
+		_ = stdoutCloser.Close()
+		_ = stderrCloser.Close()
 		_ = manager.finishFailed(processID, "process_start_failed")
 		return ProjectProcessSnapshot{}, false, errors.New("project process start failed")
 	}
 	if _, err := manager.db.Exec(`UPDATE project_processes SET pid=?,process_group_id=?,start_ticks=?,state=? WHERE process_id=? AND state=?`, identity.PID, identity.ProcessGroupID, identity.StartTicks, ProjectProcessRunning, processID, ProjectProcessStarting); err != nil {
 		_ = manager.platform.Signal(identity, ProjectProcessKill)
-		_ = stdoutWriter.Close()
-		_ = stderrWriter.Close()
+		_ = stdoutCloser.Close()
+		_ = stderrCloser.Close()
 		return ProjectProcessSnapshot{}, false, errors.New("project process journal unavailable")
 	}
 	record.Identity = identity
@@ -300,9 +345,13 @@ func (manager *ProjectProcessManager) Start(ctx context.Context, request Project
 	manager.watchMu.Lock()
 	manager.watching[processID] = true
 	manager.watchMu.Unlock()
-	go manager.watch(processID, exits, stdoutWriter, stderrWriter)
+	go manager.watch(processID, exits, stdoutCloser, stderrCloser)
 	return manager.snapshot(record), true, nil
 }
+
+type projectProcessNopCloser struct{}
+
+func (projectProcessNopCloser) Close() error { return nil }
 
 func projectProcessRequestContainsSecret(request ProjectProcessStartRequest) bool {
 	values := append([]string(nil), request.Argv...)
@@ -339,7 +388,11 @@ func (manager *ProjectProcessManager) Status(request ProjectProcessReadRequest) 
 				}
 			}
 			if aliveErr != nil || !alive {
-				_ = manager.finishFailed(record.ProcessID, "process_lost")
+				if watched {
+					_ = manager.finishFailed(record.ProcessID, "process_lost")
+				} else {
+					_ = manager.reconcileRecord(record)
+				}
 				record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
 			}
 		}
@@ -374,7 +427,7 @@ func (manager *ProjectProcessManager) Stop(ctx context.Context, request ProjectP
 		return manager.snapshot(record), nil
 	}
 	if err != nil || !alive {
-		_ = manager.finishFailed(record.ProcessID, "process_lost")
+		_ = manager.reconcileRecord(record)
 		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
 		return manager.snapshot(record), nil
 	}
@@ -392,6 +445,257 @@ func (manager *ProjectProcessManager) Stop(ctx context.Context, request ProjectP
 		return manager.snapshot(terminal), nil
 	}
 	return ProjectProcessSnapshot{}, errors.New("project process did not stop")
+}
+
+func (manager *ProjectProcessManager) Signal(request ProjectProcessSignalRequest) (ProjectProcessSnapshot, error) {
+	if !projectProcessIDPattern.MatchString(request.ProcessID) ||
+		(request.Signal != ProjectProcessInterrupt && request.Signal != ProjectProcessTerminate && request.Signal != ProjectProcessKill) {
+		return ProjectProcessSnapshot{}, errors.New("project process signal request is invalid")
+	}
+	record, err := manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+	if err != nil {
+		return ProjectProcessSnapshot{}, err
+	}
+	if projectProcessTerminal(record.State) {
+		return manager.snapshot(record), nil
+	}
+	alive, err := manager.platform.Alive(record.Identity)
+	if errors.Is(err, ErrProjectProcessIdentityChanged) {
+		_ = manager.finishFailed(record.ProcessID, "process_identity_changed")
+		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+		return manager.snapshot(record), nil
+	}
+	if err != nil || !alive {
+		_ = manager.reconcileRecord(record)
+		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+		return manager.snapshot(record), nil
+	}
+	if request.Signal != ProjectProcessInterrupt {
+		_, _ = manager.db.Exec(`UPDATE project_processes SET state=? WHERE process_id=? AND state IN (?,?)`, ProjectProcessStopping, record.ProcessID, ProjectProcessStarting, ProjectProcessRunning)
+		record.State = ProjectProcessStopping
+	}
+	if err := manager.platform.Signal(record.Identity, request.Signal); err != nil {
+		if errors.Is(err, ErrProjectProcessIdentityChanged) {
+			_ = manager.finishFailed(record.ProcessID, "process_identity_changed")
+			record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+			return manager.snapshot(record), nil
+		}
+		return ProjectProcessSnapshot{}, errors.New("project process signal failed")
+	}
+	return manager.snapshot(record), nil
+}
+
+func (manager *ProjectProcessManager) List(request ProjectProcessListRequest) ([]ProjectProcessSnapshot, error) {
+	if !projectAliasPattern.MatchString(request.ProjectAlias) || !projectTargetPattern.MatchString(request.TargetAlias) || request.Limit < 1 || request.Limit > 100 {
+		return nil, errors.New("project process list request is invalid")
+	}
+	if err := manager.Reconcile(); err != nil {
+		return nil, err
+	}
+	rows, err := manager.db.Query(projectProcessSelect+` WHERE project_alias=? AND target_alias=? ORDER BY started_at DESC LIMIT ?`, request.ProjectAlias, request.TargetAlias, request.Limit)
+	if err != nil {
+		return nil, errors.New("project process journal unavailable")
+	}
+	defer rows.Close()
+	items := make([]ProjectProcessSnapshot, 0)
+	for rows.Next() {
+		record, scanErr := scanProjectProcessRecord(rows)
+		if scanErr != nil {
+			return nil, errors.New("project process journal unavailable")
+		}
+		items = append(items, manager.snapshot(record))
+	}
+	if rows.Err() != nil {
+		return nil, errors.New("project process journal unavailable")
+	}
+	return items, nil
+}
+
+func (manager *ProjectProcessManager) Cleanup(request ProjectProcessCleanupRequest) (ProjectProcessCleanupResult, error) {
+	if !projectAliasPattern.MatchString(request.ProjectAlias) || !projectTargetPattern.MatchString(request.TargetAlias) ||
+		(request.ProcessID != "" && !projectProcessIDPattern.MatchString(request.ProcessID)) {
+		return ProjectProcessCleanupResult{}, errors.New("project process cleanup request is invalid")
+	}
+	if err := manager.Reconcile(); err != nil {
+		return ProjectProcessCleanupResult{}, err
+	}
+	query := projectProcessSelect + ` WHERE project_alias=? AND target_alias=?`
+	arguments := []any{request.ProjectAlias, request.TargetAlias}
+	if request.ProcessID != "" {
+		query += ` AND process_id=?`
+		arguments = append(arguments, request.ProcessID)
+	}
+	rows, err := manager.db.Query(query, arguments...)
+	if err != nil {
+		return ProjectProcessCleanupResult{}, errors.New("project process journal unavailable")
+	}
+	records := make([]projectProcessRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanProjectProcessRecord(rows)
+		if scanErr != nil {
+			_ = rows.Close()
+			return ProjectProcessCleanupResult{}, errors.New("project process journal unavailable")
+		}
+		records = append(records, record)
+	}
+	if err := rows.Close(); err != nil {
+		return ProjectProcessCleanupResult{}, errors.New("project process journal unavailable")
+	}
+	if request.ProcessID != "" && len(records) == 0 {
+		return ProjectProcessCleanupResult{}, ErrProjectProcessNotFound
+	}
+	result := ProjectProcessCleanupResult{}
+	for _, record := range records {
+		if !projectProcessTerminal(record.State) {
+			result.Active++
+			continue
+		}
+		if err := manager.removeLogs(record.ProcessID); err != nil {
+			return result, err
+		}
+		if changed, err := manager.db.Exec(`DELETE FROM project_processes WHERE process_id=? AND state IN (?,?,?)`, record.ProcessID, ProjectProcessExited, ProjectProcessFailed, ProjectProcessStopped); err != nil {
+			return result, errors.New("project process journal unavailable")
+		} else if count, _ := changed.RowsAffected(); count == 1 {
+			result.Removed++
+		}
+	}
+	return result, nil
+}
+
+func (manager *ProjectProcessManager) Reconcile() error {
+	rows, err := manager.db.Query(projectProcessSelect+` WHERE state IN (?,?,?)`, ProjectProcessStarting, ProjectProcessRunning, ProjectProcessStopping)
+	if err != nil {
+		return errors.New("project process journal unavailable")
+	}
+	records := make([]projectProcessRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanProjectProcessRecord(rows)
+		if scanErr != nil {
+			_ = rows.Close()
+			return errors.New("project process journal unavailable")
+		}
+		records = append(records, record)
+	}
+	if err := rows.Close(); err != nil {
+		return errors.New("project process journal unavailable")
+	}
+	for _, record := range records {
+		manager.watchMu.Lock()
+		watched := manager.watching[record.ProcessID]
+		manager.watchMu.Unlock()
+		if watched {
+			continue
+		}
+		if err := manager.reconcileRecord(record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (manager *ProjectProcessManager) reconcileRecord(record projectProcessRecord) error {
+	if record.Identity.PID < 1 || record.Identity.ProcessGroupID < 1 || record.Identity.StartTicks == 0 {
+		identity, identityErr := readProjectProcessWorkerIdentity(manager.workerRoot, record.ProcessID)
+		if identityErr != nil {
+			return manager.finishFailed(record.ProcessID, "process_metadata_incomplete")
+		}
+		record.Identity = identity
+		if _, err := manager.db.Exec(`UPDATE project_processes SET pid=?,process_group_id=?,start_ticks=?,state=? WHERE process_id=? AND state=?`, identity.PID, identity.ProcessGroupID, identity.StartTicks, ProjectProcessRunning, record.ProcessID, ProjectProcessStarting); err != nil {
+			return errors.New("project process journal unavailable")
+		}
+		record.State = ProjectProcessRunning
+	}
+	alive, err := manager.platform.Alive(record.Identity)
+	if errors.Is(err, ErrProjectProcessIdentityChanged) {
+		return manager.finishFailed(record.ProcessID, "process_identity_changed")
+	}
+	if errors.Is(err, ErrProjectProcessNotOwned) {
+		return manager.finishFailed(record.ProcessID, "process_not_owned")
+	}
+	if errors.Is(err, ErrProjectProcessGroupMissing) {
+		return manager.finishFailed(record.ProcessID, "process_group_missing")
+	}
+	if err != nil {
+		return errors.New("project process reconciliation unavailable")
+	}
+	if alive {
+		if err := manager.validateRecoveredLogs(record.ProcessID); err != nil {
+			_ = manager.platform.Signal(record.Identity, ProjectProcessKill)
+			return manager.finishFailed(record.ProcessID, "process_logs_incomplete")
+		}
+		if record.State == ProjectProcessStarting {
+			_, err = manager.db.Exec(`UPDATE project_processes SET state=? WHERE process_id=? AND state=?`, ProjectProcessRunning, record.ProcessID, ProjectProcessStarting)
+		}
+		return err
+	}
+	if exit, receiptErr := readProjectProcessWorkerExit(manager.workerRoot, record.ProcessID); receiptErr == nil {
+		return manager.finishRecoveredExit(record, exit)
+	}
+	state := ProjectProcessExited
+	reason := "process_exited_while_offline"
+	if record.State == ProjectProcessStopping {
+		state = ProjectProcessStopped
+		reason = "process_stopped_while_offline"
+	}
+	_, err = manager.db.Exec(`UPDATE project_processes SET state=?,finished_at=?,reason=? WHERE process_id=? AND state IN (?,?,?)`, state, manager.now().UTC().UnixNano(), reason, record.ProcessID, ProjectProcessStarting, ProjectProcessRunning, ProjectProcessStopping)
+	return err
+}
+
+func (manager *ProjectProcessManager) finishRecoveredExit(record projectProcessRecord, exit ProjectProcessExit) error {
+	state := ProjectProcessExited
+	if record.State == ProjectProcessStopping {
+		state = ProjectProcessStopped
+	}
+	if exit.Reason != "" && !exit.ExitKnown && exit.TerminalSignal == "" {
+		state = ProjectProcessFailed
+	}
+	_, err := manager.db.Exec(`UPDATE project_processes SET state=?,finished_at=?,exit_known=?,exit_code=?,terminal_signal=?,reason=? WHERE process_id=? AND state IN (?,?,?)`,
+		state, manager.now().UTC().UnixNano(), exit.ExitKnown, exit.ExitCode, exit.TerminalSignal, exit.Reason,
+		record.ProcessID, ProjectProcessStarting, ProjectProcessRunning, ProjectProcessStopping)
+	return err
+}
+
+func (manager *ProjectProcessManager) validateRecoveredLogs(processID string) error {
+	for _, stream := range []string{"stdout", "stderr"} {
+		file, _, err := openPrivateProjectProcessLog(filepath.Join(manager.logRoot, processID+"."+stream+".log"))
+		if err != nil {
+			return err
+		}
+		if err := file.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (manager *ProjectProcessManager) removeLogs(processID string) error {
+	for _, suffix := range []string{".stdout.log", ".stdout.log.truncated", ".stderr.log", ".stderr.log.truncated"} {
+		path := filepath.Join(manager.logRoot, processID+suffix)
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) {
+			return errors.New("project process log is unsafe")
+		}
+		if err := os.Remove(path); err != nil {
+			return errors.New("project process log cleanup failed")
+		}
+	}
+	for _, kind := range []string{"request", "identity", "ready", "control", "exit"} {
+		path := projectProcessWorkerPath(manager.workerRoot, processID, kind)
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) {
+			return errors.New("project process worker state is unsafe")
+		}
+		if err := os.Remove(path); err != nil {
+			return errors.New("project process worker cleanup failed")
+		}
+	}
+	return nil
 }
 
 func (manager *ProjectProcessManager) watch(processID string, exits <-chan ProjectProcessExit, stdout, stderr io.Closer) {
@@ -476,6 +780,7 @@ func scanProjectProcessRecord(row projectProcessRow) (projectProcessRecord, erro
 		return projectProcessRecord{}, err
 	}
 	record.StartedAt = time.Unix(0, started).UTC()
+	record.Identity.ProcessID = record.ProcessID
 	record.ExitKnown = exitKnown
 	if finished.Valid {
 		record.FinishedAt = time.Unix(0, finished.Int64).UTC()
@@ -532,12 +837,19 @@ type projectProcessLogWriter struct {
 const maxProjectProcessPendingLine = 64 << 10
 
 func (manager *ProjectProcessManager) openLogWriter(processID, stream string) (*projectProcessLogWriter, error) {
-	path := filepath.Join(manager.logRoot, processID+"."+stream+".log")
+	return openProjectProcessLogWriter(manager.logRoot, processID, stream, manager.maxLogBytes)
+}
+
+func openProjectProcessLogWriter(logRoot, processID, stream string, maxBytes int64) (*projectProcessLogWriter, error) {
+	if !projectProcessIDPattern.MatchString(processID) || (stream != "stdout" && stream != "stderr") || maxBytes < 1 || maxBytes > 1<<30 {
+		return nil, errors.New("project process log unavailable")
+	}
+	path := filepath.Join(logRoot, processID+"."+stream+".log")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, errors.New("project process log unavailable")
 	}
-	return &projectProcessLogWriter{file: file, marker: path + ".truncated", max: manager.maxLogBytes}, nil
+	return &projectProcessLogWriter{file: file, marker: path + ".truncated", max: maxBytes}, nil
 }
 func (writer *projectProcessLogWriter) Write(input []byte) (int, error) {
 	writer.mu.Lock()
@@ -676,9 +988,14 @@ func openPrivateProjectProcessLog(path string) (*os.File, os.FileInfo, error) {
 	return file, after, nil
 }
 
-type osProjectProcessPlatform struct{}
+type osProjectProcessPlatform struct {
+	stateRoot, workerRoot string
+}
 
-func (osProjectProcessPlatform) Start(spec DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
+func (platform osProjectProcessPlatform) Start(spec DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
+	if spec.PersistentProcessID != "" {
+		return platform.startWorker(spec)
+	}
 	command := exec.Command(spec.Executable, spec.Args...)
 	command.Dir = spec.Dir
 	command.Env = append([]string(nil), spec.Env...)
@@ -699,7 +1016,7 @@ func (osProjectProcessPlatform) Start(spec DirectWorkcellProcessSpec) (ProjectPr
 		_ = command.Process.Kill()
 		return ProjectProcessIdentity{}, nil, errors.New("project process group is invalid")
 	}
-	identity := ProjectProcessIdentity{PID: command.Process.Pid, ProcessGroupID: group, StartTicks: startTicks}
+	identity := ProjectProcessIdentity{ProcessID: spec.PersistentProcessID, PID: command.Process.Pid, ProcessGroupID: group, StartTicks: startTicks}
 	exits := make(chan ProjectProcessExit, 1)
 	go func() {
 		err := command.Wait()
@@ -722,6 +1039,302 @@ func (osProjectProcessPlatform) Start(spec DirectWorkcellProcessSpec) (ProjectPr
 	}()
 	return identity, exits, nil
 }
+
+type projectProcessWorkerRequest struct {
+	Executable  string   `json:"executable"`
+	Args        []string `json:"args"`
+	Dir         string   `json:"dir"`
+	Env         []string `json:"env"`
+	Stdin       string   `json:"stdin,omitempty"`
+	MaxLogBytes int64    `json:"max_log_bytes"`
+}
+
+func (platform osProjectProcessPlatform) startWorker(spec DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
+	if !projectProcessIDPattern.MatchString(spec.PersistentProcessID) || filepath.Clean(spec.PersistentStateRoot) != filepath.Clean(platform.stateRoot) ||
+		platform.workerRoot != filepath.Join(platform.stateRoot, projectProcessWorkerDirectory) || spec.PersistentMaxLogBytes < 1 || spec.PersistentMaxLogBytes > 1<<30 {
+		return ProjectProcessIdentity{}, nil, errors.New("project process worker contract is invalid")
+	}
+	request := projectProcessWorkerRequest{
+		Executable: spec.Executable, Args: append([]string(nil), spec.Args...), Dir: spec.Dir,
+		Env: append([]string(nil), spec.Env...), Stdin: spec.PersistentStdin, MaxLogBytes: spec.PersistentMaxLogBytes,
+	}
+	requestBody, err := json.Marshal(request)
+	if err != nil || len(requestBody) > 128<<10 {
+		return ProjectProcessIdentity{}, nil, errors.New("project process worker request is invalid")
+	}
+	requestPath := projectProcessWorkerPath(platform.workerRoot, spec.PersistentProcessID, "request")
+	if err := writePrivateProjectProcessWorkerFile(requestPath, requestBody); err != nil {
+		return ProjectProcessIdentity{}, nil, err
+	}
+	executable, err := os.Executable()
+	if err != nil || !filepath.IsAbs(executable) {
+		_ = os.Remove(requestPath)
+		return ProjectProcessIdentity{}, nil, errors.New("project process worker executable is unavailable")
+	}
+	command := exec.Command(executable, "project-process-worker", "--state", platform.stateRoot, "--process-id", spec.PersistentProcessID)
+	command.Dir = platform.stateRoot
+	command.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=" + platform.stateRoot, "LANG=C.UTF-8", "LC_ALL=C.UTF-8"}
+	command.Stdin = nil
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := command.Start(); err != nil {
+		_ = os.Remove(requestPath)
+		return ProjectProcessIdentity{}, nil, err
+	}
+	startTicks, err := linuxProcessStartTicks(command.Process.Pid)
+	if err != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return ProjectProcessIdentity{}, nil, err
+	}
+	group, err := syscall.Getpgid(command.Process.Pid)
+	if err != nil || group != command.Process.Pid {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return ProjectProcessIdentity{}, nil, errors.New("project process worker group is invalid")
+	}
+	identity := ProjectProcessIdentity{ProcessID: spec.PersistentProcessID, PID: command.Process.Pid, ProcessGroupID: group, StartTicks: startTicks}
+	if err := writeProjectProcessWorkerIdentity(platform.workerRoot, identity); err != nil {
+		_ = syscall.Kill(-identity.ProcessGroupID, syscall.SIGKILL)
+		_ = command.Wait()
+		return ProjectProcessIdentity{}, nil, err
+	}
+	exits := make(chan ProjectProcessExit, 1)
+	go func() {
+		waitErr := command.Wait()
+		exit, receiptErr := readProjectProcessWorkerExit(platform.workerRoot, spec.PersistentProcessID)
+		if receiptErr != nil {
+			exit = ProjectProcessExit{Reason: "process_wait_failed"}
+			if waitErr == nil {
+				exit.Reason = "process_receipt_missing"
+			}
+		}
+		exits <- exit
+		close(exits)
+	}()
+	readyPath := projectProcessWorkerPath(platform.workerRoot, spec.PersistentProcessID, "ready")
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if info, statErr := os.Lstat(readyPath); statErr == nil && info.Mode().IsRegular() && info.Mode().Perm() == 0o600 && ownedByCurrentUIDPortable(info) {
+			_ = os.Remove(readyPath)
+			return identity, exits, nil
+		}
+		select {
+		case <-exits:
+			return ProjectProcessIdentity{}, nil, errors.New("project process worker failed before ready")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	_ = syscall.Kill(-identity.ProcessGroupID, syscall.SIGKILL)
+	return ProjectProcessIdentity{}, nil, errors.New("project process worker readiness timed out")
+}
+
+func RunProjectProcessWorker(stateRoot, processID string) error {
+	root := filepath.Clean(strings.TrimSpace(stateRoot))
+	if !filepath.IsAbs(root) || root == string(filepath.Separator) || !projectProcessIDPattern.MatchString(processID) {
+		return errors.New("project process worker request is invalid")
+	}
+	if err := preparePrivateRoot(root); err != nil {
+		return errors.New("project process worker state is unavailable")
+	}
+	workerRoot := filepath.Join(root, projectProcessWorkerDirectory)
+	logRoot := filepath.Join(root, projectProcessLogDirectory)
+	for _, directory := range []string{workerRoot, logRoot} {
+		info, statErr := os.Lstat(directory)
+		if statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 || !ownedByCurrentUIDPortable(info) {
+			return errors.New("project process worker state is unsafe")
+		}
+	}
+	requestPath := projectProcessWorkerPath(workerRoot, processID, "request")
+	body, err := readPrivateProjectProcessWorkerFile(requestPath, 128<<10)
+	if err != nil {
+		return err
+	}
+	var request projectProcessWorkerRequest
+	decoder := json.NewDecoder(strings.NewReader(string(body)))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&request) != nil || decoder.Decode(&struct{}{}) != io.EOF || request.Executable == "" || !filepath.IsAbs(request.Executable) ||
+		len(request.Args) == 0 || len(request.Args) > 512 || !filepath.IsAbs(request.Dir) || len(request.Env) > 128 || len(request.Stdin) > edge.MaxProjectExecStdinBytes ||
+		request.MaxLogBytes < 1 || request.MaxLogBytes > 1<<30 {
+		return errors.New("project process worker request is invalid")
+	}
+	resolvedExecutable, err := filepath.EvalSymlinks(request.Executable)
+	if err != nil || !filepath.IsAbs(resolvedExecutable) {
+		return errors.New("project process worker executable is unsafe")
+	}
+	executableInfo, err := os.Lstat(resolvedExecutable)
+	if err != nil || !executableInfo.Mode().IsRegular() || executableInfo.Mode()&os.ModeSymlink != 0 || executableInfo.Mode().Perm()&0o111 == 0 || executableInfo.Mode().Perm()&0o022 != 0 ||
+		(!ownedByCurrentUIDPortable(executableInfo) && !ownedByUID(executableInfo, 0)) {
+		return errors.New("project process worker executable is unsafe")
+	}
+	request.Executable = resolvedExecutable
+	if err := os.Remove(requestPath); err != nil {
+		return errors.New("project process worker request cleanup failed")
+	}
+	stdout, err := openProjectProcessLogWriter(logRoot, processID, "stdout", request.MaxLogBytes)
+	if err != nil {
+		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_log_unavailable"})
+		return err
+	}
+	stderr, err := openProjectProcessLogWriter(logRoot, processID, "stderr", request.MaxLogBytes)
+	if err != nil {
+		_ = stdout.Close()
+		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_log_unavailable"})
+		return err
+	}
+	signals := make(chan os.Signal, 4)
+	ossignal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	defer ossignal.Stop(signals)
+	command := exec.Command(request.Executable, request.Args...)
+	command.Dir = request.Dir
+	command.Env = append([]string(nil), request.Env...)
+	command.Stdin = strings.NewReader(request.Stdin)
+	command.Stdout = stdout
+	command.Stderr = stderr
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := command.Start(); err != nil {
+		_ = stdout.Close()
+		_ = stderr.Close()
+		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_start_failed"})
+		return errors.New("project process worker start failed")
+	}
+	if err := writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "ready"), []byte("ready\n")); err != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_ready_failed"})
+		return err
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- command.Wait() }()
+	var waitErr error
+	waiting := true
+	for waiting {
+		select {
+		case waitErr = <-waited:
+			waiting = false
+		case received := <-signals:
+			forward := received.(syscall.Signal)
+			if forward == syscall.SIGUSR1 {
+				controlPath := projectProcessWorkerPath(workerRoot, processID, "control")
+				control, controlErr := readPrivateProjectProcessWorkerFile(controlPath, 64)
+				if controlErr != nil || strings.TrimSpace(string(control)) != "kill" {
+					continue
+				}
+				_ = os.Remove(controlPath)
+				forward = syscall.SIGKILL
+			}
+			_ = syscall.Kill(-command.Process.Pid, forward)
+		}
+	}
+	_ = stdout.Close()
+	_ = stderr.Close()
+	exit := ProjectProcessExit{}
+	if command.ProcessState != nil {
+		code := command.ProcessState.ExitCode()
+		if code >= 0 {
+			exit.ExitKnown = true
+			exit.ExitCode = code
+		}
+		if status, ok := command.ProcessState.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			exit.TerminalSignal = projectProcessSignalFromUnix(status.Signal())
+		}
+	}
+	if waitErr != nil && !exit.ExitKnown && exit.TerminalSignal == "" {
+		exit.Reason = "process_wait_failed"
+	}
+	if err := writeProjectProcessWorkerExit(workerRoot, processID, exit); err != nil {
+		return err
+	}
+	return nil
+}
+
+func projectProcessWorkerPath(workerRoot, processID, kind string) string {
+	return filepath.Join(workerRoot, processID+"."+kind+".json")
+}
+
+func writePrivateProjectProcessWorkerFile(path string, body []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return errors.New("project process worker state is unavailable")
+	}
+	_, writeErr := file.Write(append(append([]byte(nil), body...), '\n'))
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	if writeErr != nil || syncErr != nil || closeErr != nil {
+		_ = os.Remove(path)
+		return errors.New("project process worker state is unavailable")
+	}
+	return nil
+}
+
+func readPrivateProjectProcessWorkerFile(path string, limit int64) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) || info.Size() <= 0 || info.Size() > limit {
+		return nil, errors.New("project process worker state is unsafe")
+	}
+	file, after, err := openPrivateProjectProcessLog(path)
+	if err != nil || after.Size() > limit {
+		return nil, errors.New("project process worker state is unsafe")
+	}
+	defer file.Close()
+	body, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil || int64(len(body)) > limit {
+		return nil, errors.New("project process worker state is unavailable")
+	}
+	return body, nil
+}
+
+func writeProjectProcessWorkerExit(workerRoot, processID string, exit ProjectProcessExit) error {
+	body, err := json.Marshal(exit)
+	if err != nil {
+		return errors.New("project process worker receipt is invalid")
+	}
+	return writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "exit"), body)
+}
+
+func writeProjectProcessWorkerIdentity(workerRoot string, identity ProjectProcessIdentity) error {
+	if !projectProcessIDPattern.MatchString(identity.ProcessID) || identity.PID < 1 || identity.ProcessGroupID < 1 || identity.StartTicks == 0 {
+		return errors.New("project process worker identity is invalid")
+	}
+	body, err := json.Marshal(identity)
+	if err != nil {
+		return errors.New("project process worker identity is invalid")
+	}
+	return writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, identity.ProcessID, "identity"), body)
+}
+
+func readProjectProcessWorkerIdentity(workerRoot, processID string) (ProjectProcessIdentity, error) {
+	body, err := readPrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "identity"), 2048)
+	if err != nil {
+		return ProjectProcessIdentity{}, err
+	}
+	var identity ProjectProcessIdentity
+	decoder := json.NewDecoder(strings.NewReader(string(body)))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&identity) != nil || decoder.Decode(&struct{}{}) != io.EOF || identity.ProcessID != processID || identity.PID < 1 || identity.ProcessGroupID < 1 || identity.StartTicks == 0 {
+		return ProjectProcessIdentity{}, errors.New("project process worker identity is invalid")
+	}
+	return identity, nil
+}
+
+func readProjectProcessWorkerExit(workerRoot, processID string) (ProjectProcessExit, error) {
+	body, err := readPrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "exit"), 2048)
+	if err != nil {
+		return ProjectProcessExit{}, err
+	}
+	var exit ProjectProcessExit
+	decoder := json.NewDecoder(strings.NewReader(string(body)))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&exit) != nil || decoder.Decode(&struct{}{}) != io.EOF || (exit.ExitKnown && (exit.ExitCode < 0 || exit.ExitCode > 255)) ||
+		(exit.TerminalSignal != "" && exit.TerminalSignal != ProjectProcessInterrupt && exit.TerminalSignal != ProjectProcessTerminate && exit.TerminalSignal != ProjectProcessKill) ||
+		(exit.Reason != "" && !projectProcessReasonPattern.MatchString(exit.Reason)) {
+		return ProjectProcessExit{}, errors.New("project process worker receipt is invalid")
+	}
+	return exit, nil
+}
 func (osProjectProcessPlatform) Alive(identity ProjectProcessIdentity) (bool, error) {
 	ticks, err := linuxProcessStartTicks(identity.PID)
 	if errors.Is(err, os.ErrNotExist) {
@@ -730,10 +1343,20 @@ func (osProjectProcessPlatform) Alive(identity ProjectProcessIdentity) (bool, er
 	if err != nil {
 		return false, err
 	}
+	processInfo, err := os.Stat(filepath.Join("/proc", strconv.Itoa(identity.PID)))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !ownedByCurrentUIDPortable(processInfo) {
+		return false, ErrProjectProcessNotOwned
+	}
 	group, err := syscall.Getpgid(identity.PID)
 	if err != nil {
 		if errors.Is(err, syscall.ESRCH) {
-			return false, nil
+			return false, ErrProjectProcessGroupMissing
 		}
 		return false, err
 	}
@@ -757,11 +1380,18 @@ func (platform osProjectProcessPlatform) Signal(identity ProjectProcessIdentity,
 	case ProjectProcessTerminate:
 		unix = syscall.SIGTERM
 	case ProjectProcessKill:
-		unix = syscall.SIGKILL
+		if !projectProcessIDPattern.MatchString(identity.ProcessID) {
+			return errors.New("project process identity is invalid")
+		}
+		controlPath := projectProcessWorkerPath(platform.workerRoot, identity.ProcessID, "control")
+		if err := writePrivateProjectProcessWorkerFile(controlPath, []byte("kill")); err != nil {
+			return err
+		}
+		unix = syscall.SIGUSR1
 	default:
 		return errors.New("project process signal is invalid")
 	}
-	if err := syscall.Kill(-identity.ProcessGroupID, unix); errors.Is(err, syscall.ESRCH) {
+	if err := syscall.Kill(identity.PID, unix); errors.Is(err, syscall.ESRCH) {
 		return ErrProjectProcessIdentityChanged
 	} else {
 		return err
