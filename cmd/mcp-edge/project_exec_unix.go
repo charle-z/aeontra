@@ -29,7 +29,7 @@ func collectProjectExec(ctx context.Context, operation edge.Operation, resolved 
 		OperationID: operation.ID, Workspace: resolved.Workspace,
 		Argv: operation.Request.Argv, CWD: operation.Request.CWD, Stdin: operation.Request.Stdin,
 		Environment: operation.Request.Environment, TimeoutSeconds: operation.Request.TimeoutSeconds,
-	}, nil)
+	}, runner)
 	if err != nil {
 		switch {
 		case errors.Is(err, edgeclient.ErrDirectWorkcellContract):
