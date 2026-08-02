@@ -199,6 +199,11 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 		sp.Finish(audit.Error, planID, nil, err)
 		return "", err
 	}
+	coordinatorTarget, coordinatorRequestID, err := managedFrontDoorCoordinatorDispatch(app.Description, exists)
+	if err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
 	created := false
 	if exists {
 		if plan.Args["action"] != "reconcile" || app.UUID != plan.Args["app"] {
@@ -242,6 +247,10 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 		"MCP_FRONT_DOOR_COORDINATOR_TARGET":      string(frontdoorcoordinator.TargetIdle),
 		"MCP_FRONT_DOOR_COORDINATOR_STATE_ROOT":  managedFrontDoorCoordinatorStateMount,
 		"MCP_FRONT_DOOR_COORDINATOR_ADDR":        "0.0.0.0:" + managedFrontDoorCoordinatorPort,
+	}
+	vars["MCP_FRONT_DOOR_COORDINATOR_TARGET"] = string(coordinatorTarget)
+	if coordinatorRequestID != "" {
+		vars["MCP_FRONT_DOOR_COORDINATOR_REQUEST_ID"] = coordinatorRequestID
 	}
 	keys := make([]string, 0, len(vars))
 	for key := range vars {
