@@ -24,7 +24,7 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if kind == OperationProjectExec {
 		return normalizeProjectExecRequest(request)
 	}
-	if kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop {
+	if kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup {
 		return normalizeProjectProcessRequest(kind, request)
 	}
 	if !emptyProjectExecRequestFields(request) {

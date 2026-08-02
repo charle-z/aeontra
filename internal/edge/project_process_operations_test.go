@@ -62,6 +62,22 @@ func TestProjectProcessRequestsAndResultsAreClosedAndBounded(t *testing.T) {
 	if _, err := validateOperationRequestWithProjectExec(OperationProjectProcessStop, stop); err != nil {
 		t.Fatal(err)
 	}
+	signal := OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", BackgroundProcessID: status.BackgroundProcessID, BackgroundSignal: "interrupt"}
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectProcessSignal, signal); err != nil {
+		t.Fatal(err)
+	}
+	signal.BackgroundSignal = "19"
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectProcessSignal, signal); err == nil {
+		t.Fatal("arbitrary process signal accepted")
+	}
+	list := OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", ProcessLimit: 100}
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectProcessList, list); err != nil {
+		t.Fatal(err)
+	}
+	cleanup := OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell"}
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectProcessCleanup, cleanup); err != nil {
+		t.Fatal(err)
+	}
 	result := OperationResult{
 		WorkspaceID: "ws_0123456789abcdef0123456789abcdef", ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
 		ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
@@ -73,6 +89,21 @@ func TestProjectProcessRequestsAndResultsAreClosedAndBounded(t *testing.T) {
 	}
 	if validOperationCompletionForKind(OperationProjectExec, result, "") {
 		t.Fatal("project process result accepted for foreground execution")
+	}
+	base := OperationResult{
+		WorkspaceID: "ws_0123456789abcdef0123456789abcdef", ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
+		ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
+	}
+	listResult := base
+	listResult.BackgroundProcesses = []BackgroundProcessSummary{{ProcessID: status.BackgroundProcessID, State: "running", StartedAt: time.Unix(1700000000, 0).UTC().Format(time.RFC3339Nano)}}
+	if !validOperationCompletionForKind(OperationProjectProcessList, listResult, "") || validOperationCompletionForKind(OperationProjectProcessCleanup, listResult, "") {
+		t.Fatal("bounded process list result kind validation failed")
+	}
+	cleanupResult := base
+	cleanupResult.BackgroundCleanupRemoved = 1
+	cleanupResult.BackgroundCleanupActive = 2
+	if !validOperationCompletionForKind(OperationProjectProcessCleanup, cleanupResult, "") || validOperationCompletionForKind(OperationProjectProcessList, cleanupResult, "") {
+		t.Fatal("process cleanup result kind validation failed")
 	}
 	result.BackgroundStdout = strings.Repeat("x", MaxProjectProcessReadBytes+1)
 	if validOperationCompletion(result, "") {

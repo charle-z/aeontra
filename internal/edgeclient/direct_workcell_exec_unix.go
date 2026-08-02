@@ -33,6 +33,7 @@ type DirectWorkcellCommandRequest struct {
 	Stdin          string
 	Environment    map[string]string
 	TimeoutSeconds int
+	Persistent     bool
 }
 
 type DirectWorkcellCommandResult struct {
@@ -46,13 +47,17 @@ type DirectWorkcellCommandResult struct {
 }
 
 type DirectWorkcellProcessSpec struct {
-	Executable string
-	Args       []string
-	Dir        string
-	Env        []string
-	Stdin      io.Reader
-	Stdout     io.Writer
-	Stderr     io.Writer
+	Executable            string
+	Args                  []string
+	Dir                   string
+	Env                   []string
+	Stdin                 io.Reader
+	Stdout                io.Writer
+	Stderr                io.Writer
+	PersistentProcessID   string
+	PersistentStateRoot   string
+	PersistentMaxLogBytes int64
+	PersistentStdin       string
 }
 
 type DirectWorkcellCommandRunner interface {
@@ -117,6 +122,7 @@ func prepareDirectWorkcellProcessSpec(request DirectWorkcellCommandRequest, stdo
 	return DirectWorkcellProcessSpec{
 		Executable: bubblewrap, Args: args, Dir: workspace, Env: environment,
 		Stdin: strings.NewReader(request.Stdin), Stdout: stdout, Stderr: stderr,
+		PersistentStdin: request.Stdin,
 	}, nil
 }
 
@@ -234,7 +240,10 @@ func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWo
 		"/workspace/.mcp-devbox/tools/cargo/bin",
 		toolPath,
 	}, ":")
-	args := []string{"--die-with-parent", "--new-session", "--unshare-all", "--share-net", "--clearenv"}
+	args := []string{"--new-session", "--unshare-all", "--share-net", "--clearenv"}
+	if !request.Persistent {
+		args = append([]string{"--die-with-parent"}, args...)
+	}
 	for _, systemPath := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates"} {
 		if info, err := os.Stat(systemPath); err == nil && info.IsDir() {
 			args = append(args, "--ro-bind", systemPath, systemPath)

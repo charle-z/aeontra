@@ -1,24 +1,25 @@
-# Handoff — Hito 3A background-process candidate
+# Handoff — Hito 3B process recovery candidate
 
-Branch `codex/h3a-background-processes` is based on clean `origin/main` at
-`b419d9dfd888a216813bca05aafa5d4de28f0196`.
+Remote `main` and production backend are at
+`84bac0a13bf71078e94e407f49f52e5758f3b872`. The stable Front Door is healthy and the
+public contract is the 118-tool Hito 3A catalog. The real Edge is still the older signed
+`p15.0.12` bundle, so Hito 3A real-device acceptance remains pending.
 
-The candidate adds three direct public tools and three signed Edge operation kinds for
-background start/status/stop. The Edge implementation reuses the foreground workcell
-process-spec builder, stores private durable metadata/logs, redacts before persistence,
-returns bounded incremental output, enforces request idempotency and stops only a
-PID-start-time-verified owned process group. It adds no model runtime and leaves the
-OpenCode fallback intact.
+Current branch `codex/h3b-process-recovery` is based exactly on that remote main. It
+adds closed signal/list/cleanup process operations, bounded public summaries, explicit
+terminal-only cleanup, restart reconciliation, owner/PID/start-ticks/group/log
+validation, a signed per-process redaction/receipt worker, and background process
+survival across Edge service restart. No model
+runtime, OpenCode task, autopilot, subagent or additional authentication path was used.
 
-Focused suites and the focused CGO race matrix are green in Parrot WSL2 Go 1.26.5,
-including catalog contracts and split-chunk secret redaction. The complete suite passed
-apart from the known DrvFS `0777`/Linux `0755` packaging-mode mismatch; vet, build and
-native `git diff --check` are green. No commit, PR, deployment, release or Edge update exists
-for this candidate yet. The next exact action is final diff review and commit. Linux CI
-is authoritative for the known DrvFS executable-mode fixture.
+Focused tests, vet, build and the CGO race matrix are green. The full suite has only
+the known local DrvFS `0777`/Linux `0755` fixture mismatch; Linux CI is authoritative.
+Candidate catalog identity is 121 tools,
+`sha256:feca2e4d163cfcff7e08410d5d5b34a52396430d49515c0f601486ffde0b31e2`.
+The remaining safe sequence is full gates, diff review, commit, publish, exact-head CI,
+merge, Front Door two-catalog transition, backend deployment, old-catalog retirement,
+signed release, one Edge update and real restart recovery acceptance.
 
-The pre-existing real Edge service incident was reconciled before implementation: one
-unmanaged old process held the instance lock while systemd retried. After terminating
-only the verified stale PID, systemd acquired the lock and doctor reported one managed
-active process on `p15.0.12`. Recheck live service identity before real acceptance; do
-not repeat a repair if doctor remains ready.
+The immutable release version is the only known external authorization constraint. An
+attempt to infer `p15.0.13` was rejected before dispatch; no release was created. Obtain
+explicit approval for the exact next version rather than bypassing the workflow gate.

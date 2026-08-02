@@ -33,6 +33,14 @@ redaction before persistence, TERM/KILL escalation, repeated stop, cross-project
 lookup denial, private-log no-follow checks and PID start-time reuse defense. Exact-head CI remains authoritative for
 race, Linux packaging modes and the complete release matrix.
 
+Hito 3B extends that matrix with manager close/reopen recovery, live-process reuse
+without duplication, offline exit classification, incomplete metadata, foreign owner,
+missing process group, unsafe/missing logs, bounded list output, closed signal values,
+live-preserving cleanup and systemd `KillMode=process`. Reconciliation runs only on
+open or an explicit lifecycle request; there is no polling goroutine or idle busy loop.
+The worker regression proves split-stream redaction and an exact non-zero exit receipt
+without storing unredacted pipe output in the Edge control process.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:

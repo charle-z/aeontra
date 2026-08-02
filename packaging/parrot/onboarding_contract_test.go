@@ -74,6 +74,7 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 		"AF_NETLINK",
 		"NoNewPrivileges=yes",
 		"RestrictNamespaces=false",
+		"KillMode=process",
 		"ReadWritePaths=/home/%i/.local/state/mcp-edge /home/%i/workspaces /home/%i/htb-machines",
 	} {
 		if !strings.Contains(unit, expected) {

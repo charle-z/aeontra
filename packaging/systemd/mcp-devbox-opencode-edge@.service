@@ -29,7 +29,9 @@ ExecStart=/usr/local/bin/mcp-edge opencode --bundle-root /opt/mcp-devbox/current
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
-KillMode=control-group
+# The main Edge may restart independently while explicitly managed project
+# process groups continue. Their PID/start-time identity is reconciled on boot.
+KillMode=process
 
 NoNewPrivileges=yes
 PrivateTmp=yes

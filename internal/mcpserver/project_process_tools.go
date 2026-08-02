@@ -35,31 +35,53 @@ type projectProcessStopParams struct {
 	GraceSeconds int    `json:"grace_seconds"`
 }
 
+type projectProcessSignalParams struct {
+	Alias     string `json:"alias"`
+	Target    string `json:"target"`
+	ProcessID string `json:"process_id"`
+	Signal    string `json:"signal"`
+}
+
+type projectProcessListParams struct {
+	Alias  string `json:"alias"`
+	Target string `json:"target"`
+	Limit  int    `json:"limit"`
+}
+
+type projectProcessCleanupParams struct {
+	Alias     string `json:"alias"`
+	Target    string `json:"target"`
+	ProcessID string `json:"process_id,omitempty"`
+}
+
 type projectProcessPublicView struct {
-	OperationID     string              `json:"operation_id"`
-	OperationState  edge.OperationState `json:"operation_state"`
-	ProcessID       string              `json:"process_id,omitempty"`
-	ProcessState    string              `json:"process_state,omitempty"`
-	Alias           string              `json:"alias"`
-	Repository      string              `json:"repository,omitempty"`
-	Target          string              `json:"target"`
-	Profile         string              `json:"profile,omitempty"`
-	Mode            string              `json:"mode,omitempty"`
-	StartedAt       string              `json:"started_at,omitempty"`
-	FinishedAt      string              `json:"finished_at,omitempty"`
-	ExitKnown       bool                `json:"exit_known"`
-	ExitCode        int                 `json:"exit_code"`
-	TerminalSignal  string              `json:"terminal_signal,omitempty"`
-	Stdout          string              `json:"stdout,omitempty"`
-	Stderr          string              `json:"stderr,omitempty"`
-	StdoutNext      int64               `json:"stdout_next"`
-	StderrNext      int64               `json:"stderr_next"`
-	StdoutEOF       bool                `json:"stdout_eof"`
-	StderrEOF       bool                `json:"stderr_eof"`
-	StdoutTruncated bool                `json:"stdout_truncated"`
-	StderrTruncated bool                `json:"stderr_truncated"`
-	Reused          bool                `json:"reused"`
-	Reason          string              `json:"reason,omitempty"`
+	OperationID     string                          `json:"operation_id"`
+	OperationState  edge.OperationState             `json:"operation_state"`
+	ProcessID       string                          `json:"process_id,omitempty"`
+	ProcessState    string                          `json:"process_state,omitempty"`
+	Alias           string                          `json:"alias"`
+	Repository      string                          `json:"repository,omitempty"`
+	Target          string                          `json:"target"`
+	Profile         string                          `json:"profile,omitempty"`
+	Mode            string                          `json:"mode,omitempty"`
+	StartedAt       string                          `json:"started_at,omitempty"`
+	FinishedAt      string                          `json:"finished_at,omitempty"`
+	ExitKnown       bool                            `json:"exit_known"`
+	ExitCode        int                             `json:"exit_code"`
+	TerminalSignal  string                          `json:"terminal_signal,omitempty"`
+	Stdout          string                          `json:"stdout,omitempty"`
+	Stderr          string                          `json:"stderr,omitempty"`
+	StdoutNext      int64                           `json:"stdout_next"`
+	StderrNext      int64                           `json:"stderr_next"`
+	StdoutEOF       bool                            `json:"stdout_eof"`
+	StderrEOF       bool                            `json:"stderr_eof"`
+	StdoutTruncated bool                            `json:"stdout_truncated"`
+	StderrTruncated bool                            `json:"stderr_truncated"`
+	Reused          bool                            `json:"reused"`
+	Reason          string                          `json:"reason,omitempty"`
+	Processes       []edge.BackgroundProcessSummary `json:"processes,omitempty"`
+	Removed         int                             `json:"removed,omitempty"`
+	Active          int                             `json:"active,omitempty"`
 }
 
 func (s *Server) addProjectProcessTools(projectSchema map[string]any) {
@@ -93,6 +115,28 @@ func (s *Server) addProjectProcessTools(projectSchema map[string]any) {
 		}, []string{"alias", "target", "process_id", "grace_seconds"}), Version: "1",
 		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false},
 	}, s.handleProjectProcessStop)
+	s.addDirectTool(toolDef{
+		Name: "project_process_signal", Description: "Send one closed, workspace-owned signal (interrupt, terminate, or kill) to a durable project process group after PID/start-time identity revalidation. Arbitrary signal numbers and host-wide targets are rejected.",
+		InputSchema: closedObject(map[string]any{
+			"alias": projectSchema["alias"], "target": projectSchema["target"], "process_id": processID,
+			"signal": map[string]any{"type": "string", "enum": []string{"interrupt", "terminate", "kill"}},
+		}, []string{"alias", "target", "process_id", "signal"}), Version: "1",
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false},
+	}, s.handleProjectProcessSignal)
+	s.addDirectTool(toolDef{
+		Name: "project_process_list", Description: "List bounded durable process metadata for one project and Edge target. Results expose only opaque ids, lifecycle states, timestamps and safe terminal metadata; never PID, argv, environment or paths.",
+		InputSchema: closedObject(map[string]any{
+			"alias": projectSchema["alias"], "target": projectSchema["target"], "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
+		}, []string{"alias", "target", "limit"}), Version: "1",
+		Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+	}, s.handleProjectProcessList)
+	s.addDirectTool(toolDef{
+		Name: "project_process_cleanup", Description: "Explicitly remove terminal durable process metadata and private logs for one process or all terminal processes in one project/target. Live processes and their logs are preserved.",
+		InputSchema: closedObject(map[string]any{
+			"alias": projectSchema["alias"], "target": projectSchema["target"], "process_id": processID,
+		}, []string{"alias", "target"}), Version: "1",
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false},
+	}, s.handleProjectProcessCleanup)
 }
 
 func (s *Server) handleProjectProcessStart(arguments json.RawMessage) (string, error) {
@@ -127,6 +171,36 @@ func (s *Server) handleProjectProcessStop(arguments json.RawMessage) (string, er
 	}, params.Alias, params.Target)
 }
 
+func (s *Server) handleProjectProcessSignal(arguments json.RawMessage) (string, error) {
+	var params projectProcessSignalParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	return s.runProjectProcessOperation(params.Target, edge.OperationProjectProcessSignal, edge.OperationRequest{
+		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", BackgroundProcessID: params.ProcessID, BackgroundSignal: params.Signal,
+	}, params.Alias, params.Target)
+}
+
+func (s *Server) handleProjectProcessList(arguments json.RawMessage) (string, error) {
+	var params projectProcessListParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	return s.runProjectProcessOperation(params.Target, edge.OperationProjectProcessList, edge.OperationRequest{
+		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", ProcessLimit: params.Limit,
+	}, params.Alias, params.Target)
+}
+
+func (s *Server) handleProjectProcessCleanup(arguments json.RawMessage) (string, error) {
+	var params projectProcessCleanupParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	return s.runProjectProcessOperation(params.Target, edge.OperationProjectProcessCleanup, edge.OperationRequest{
+		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", BackgroundProcessID: params.ProcessID,
+	}, params.Alias, params.Target)
+}
+
 func (s *Server) runProjectProcessOperation(target string, kind edge.OperationKind, request edge.OperationRequest, alias, publicTarget string) (string, error) {
 	if s.edgeOperations == nil || s.edgeDevices == nil {
 		return "", errEdgeStoreUnavailable
@@ -153,7 +227,8 @@ func (s *Server) runProjectProcessOperation(target string, kind edge.OperationKi
 		StdoutNext: result.BackgroundStdoutNext, StderrNext: result.BackgroundStderrNext,
 		StdoutEOF: result.BackgroundStdoutEOF, StderrEOF: result.BackgroundStderrEOF,
 		StdoutTruncated: result.BackgroundStdoutTruncated, StderrTruncated: result.BackgroundStderrTruncated,
-		Reused: err == nil && !created,
+		Reused:    err == nil && !created,
+		Processes: result.BackgroundProcesses, Removed: result.BackgroundCleanupRemoved, Active: result.BackgroundCleanupActive,
 	}
 	if operation.State == edge.OperationSucceeded {
 		view.Alias = result.ProjectAlias

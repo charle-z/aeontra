@@ -57,6 +57,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = lifecycleCommand(args[1:], stdout, stderr)
 	case "doctor":
 		err = doctorCommand(args[1:], stdout, stderr)
+	case "project-process-worker":
+		err = projectProcessWorkerCommand(args[1:], stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -70,6 +72,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func projectProcessWorkerCommand(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("project-process-worker", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	state := fs.String("state", "", "private Edge state root")
+	processID := fs.String("process-id", "", "opaque project process id")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
+		return errors.New("project process worker arguments are invalid")
+	}
+	return edgeclient.RunProjectProcessWorker(*state, *processID)
 }
 
 func pair(args []string, stdin io.Reader, stdout, stderr io.Writer) error {

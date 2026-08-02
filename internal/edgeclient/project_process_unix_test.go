@@ -4,6 +4,7 @@ package edgeclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -20,6 +21,7 @@ type fakeProjectProcess struct {
 	exit     chan ProjectProcessExit
 	alive    bool
 	termExit bool
+	aliveErr error
 }
 
 type fakeProjectProcessPlatform struct {
@@ -40,7 +42,7 @@ func (platform *fakeProjectProcessPlatform) Start(spec DirectWorkcellProcessSpec
 	platform.mu.Lock()
 	defer platform.mu.Unlock()
 	platform.nextPID++
-	identity := ProjectProcessIdentity{PID: platform.nextPID, ProcessGroupID: platform.nextPID, StartTicks: uint64(platform.nextPID * 10)}
+	identity := ProjectProcessIdentity{ProcessID: spec.PersistentProcessID, PID: platform.nextPID, ProcessGroupID: platform.nextPID, StartTicks: uint64(platform.nextPID * 10)}
 	process := &fakeProjectProcess{identity: identity, exit: make(chan ProjectProcessExit, 1), alive: true, termExit: true}
 	platform.processes[identity.PID] = process
 	platform.specs = append(platform.specs, spec)
@@ -53,6 +55,9 @@ func (platform *fakeProjectProcessPlatform) Alive(identity ProjectProcessIdentit
 	platform.mu.Lock()
 	defer platform.mu.Unlock()
 	process := platform.processes[identity.PID]
+	if process != nil && process.aliveErr != nil {
+		return false, process.aliveErr
+	}
 	if process != nil && process.alive && process.identity != identity {
 		return false, ErrProjectProcessIdentityChanged
 	}
@@ -142,6 +147,9 @@ func TestProjectProcessManagerStartsOnceAndReadsRedactedSeparatedOutput(t *testi
 		t.Fatalf("incremental status=%+v err=%v", next, err)
 	}
 	joined := strings.Join(platform.specs[0].Args, "\n")
+	if strings.Contains(joined, "--die-with-parent") {
+		t.Fatalf("durable process remained parent-bound: %s", joined)
+	}
 	for _, forbidden := range []string{"sh\n-c", "/root", "/mnt/c", "/var/run/docker.sock"} {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("sandbox spec exposed %q: %s", forbidden, joined)
@@ -306,6 +314,210 @@ func TestProjectProcessManagerRejectsSecretMaterialBeforeStarting(t *testing.T) 
 	if len(platform.specs) != 0 {
 		t.Fatalf("secret request started %d processes", len(platform.specs))
 	}
+}
+
+func TestProjectProcessManagerReconcilesLiveAndExitedProcessesAfterRestart(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	stateRoot := t.TempDir()
+	next := 0
+	open := func() *ProjectProcessManager {
+		manager, err := OpenProjectProcessManager(ProjectProcessManagerConfig{
+			StateRoot: stateRoot, Platform: platform, MaxProcesses: 16, MaxLogBytes: 1 << 20,
+			NewID: func() (string, error) {
+				next++
+				return "pr_0123456789abcdef0123456789abcde" + string(rune('0'+next)), nil
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return manager
+	}
+	first := open()
+	request := testProjectProcessRequest(t, "restart-live")
+	started, _, err := first.Start(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	recovered := open()
+	status, err := recovered.Status(ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 1024})
+	if err != nil || status.State != ProjectProcessRunning {
+		t.Fatalf("recovered live status=%+v err=%v", status, err)
+	}
+	platform.mu.Lock()
+	platform.processes[startedProcessPID(platform)].alive = false
+	platform.mu.Unlock()
+	status, err = recovered.Status(ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 1024})
+	if err != nil || status.State != ProjectProcessExited || status.ExitKnown || status.Reason != "process_exited_while_offline" {
+		t.Fatalf("reconciled exited status=%+v err=%v", status, err)
+	}
+	_ = recovered.Close()
+}
+
+func TestProjectProcessManagerListsSignalsAndCleansOnlyTerminalRecords(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	first, _, _ := manager.Start(context.Background(), testProjectProcessRequest(t, "list-1"))
+	second, _, _ := manager.Start(context.Background(), testProjectProcessRequest(t, "list-2"))
+
+	items, err := manager.List(ProjectProcessListRequest{ProjectAlias: "project", TargetAlias: "parrot", Limit: 10})
+	if err != nil || len(items) != 2 || items[0].ProcessID == "" || items[0].StartedAt.IsZero() {
+		t.Fatalf("items=%+v err=%v", items, err)
+	}
+	if _, err := manager.Signal(ProjectProcessSignalRequest{ProcessID: first.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", Signal: ProjectProcessInterrupt}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(platform.signals, []ProjectProcessSignal{ProjectProcessInterrupt}) {
+		t.Fatalf("signals=%v", platform.signals)
+	}
+	cleaned, err := manager.Cleanup(ProjectProcessCleanupRequest{ProcessID: first.ProcessID, ProjectAlias: "project", TargetAlias: "parrot"})
+	if err != nil || cleaned.Removed != 0 || cleaned.Active != 1 {
+		t.Fatalf("live cleanup=%+v err=%v", cleaned, err)
+	}
+	platform.naturalExit(platform.nextPID, 0)
+	waitProjectProcessState(t, manager, second.ProcessID, ProjectProcessExited)
+	cleaned, err = manager.Cleanup(ProjectProcessCleanupRequest{ProjectAlias: "project", TargetAlias: "parrot"})
+	if err != nil || cleaned.Removed != 1 || cleaned.Active != 1 {
+		t.Fatalf("project cleanup=%+v err=%v", cleaned, err)
+	}
+	if _, err := manager.Status(ProjectProcessReadRequest{ProcessID: second.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 1024}); !errors.Is(err, ErrProjectProcessNotFound) {
+		t.Fatalf("cleaned process remained: %v", err)
+	}
+}
+
+func TestProjectProcessManagerRestartRejectsReusedPID(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, _ := manager.Start(context.Background(), testProjectProcessRequest(t, "restart-reuse"))
+	manager.watchMu.Lock()
+	delete(manager.watching, started.ProcessID)
+	manager.watchMu.Unlock()
+	platform.mu.Lock()
+	platform.processes[platform.nextPID].identity.StartTicks++
+	platform.mu.Unlock()
+	if err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	status, err := manager.Status(ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 1024})
+	if err != nil || status.State != ProjectProcessFailed || status.Reason != "process_identity_changed" {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+}
+
+func TestProjectProcessManagerReconciliationClassifiesUnsafeOwnershipAndLogs(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	owned, _, _ := manager.Start(context.Background(), testProjectProcessRequest(t, "restart-owner"))
+	manager.watchMu.Lock()
+	delete(manager.watching, owned.ProcessID)
+	manager.watchMu.Unlock()
+	platform.mu.Lock()
+	platform.processes[platform.nextPID].aliveErr = ErrProjectProcessNotOwned
+	platform.mu.Unlock()
+	if err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	status, _ := manager.Status(ProjectProcessReadRequest{ProcessID: owned.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 1024})
+	if status.State != ProjectProcessFailed || status.Reason != "process_not_owned" {
+		t.Fatalf("ownership status=%+v", status)
+	}
+
+	missing, _, _ := manager.Start(context.Background(), testProjectProcessRequest(t, "restart-logs"))
+	manager.watchMu.Lock()
+	delete(manager.watching, missing.ProcessID)
+	manager.watchMu.Unlock()
+	if err := os.Remove(filepath.Join(manager.logRoot, missing.ProcessID+".stdout.log")); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	record, err := manager.boundRecord(missing.ProcessID, "project", "parrot")
+	if err != nil || record.State != ProjectProcessFailed || record.Reason != "process_logs_incomplete" {
+		t.Fatalf("log record=%+v err=%v", record, err)
+	}
+}
+
+func TestProjectProcessWorkerPersistsRedactedLogsAndExactExitReceipt(t *testing.T) {
+	stateRoot := t.TempDir()
+	workerRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory)
+	logRoot := filepath.Join(stateRoot, projectProcessLogDirectory)
+	if err := os.MkdirAll(workerRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(logRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	processID := "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	request := projectProcessWorkerRequest{
+		Executable: "/bin/sh", Args: []string{"-c", "printf 'token=ghp_abcdefghijklmnopqrstuvwxyz0123456789AB\\n'; printf 'warning\\n' >&2; exit 7"},
+		Dir: "/tmp", Env: []string{"PATH=/usr/bin:/bin", "LANG=C"}, MaxLogBytes: 1 << 20,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "request"), body); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunProjectProcessWorker(stateRoot, processID); err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := os.ReadFile(filepath.Join(logRoot, processID+".stdout.log"))
+	if err != nil || strings.Contains(string(stdout), "ghp_") || !strings.Contains(string(stdout), "***REDACTED-SECRET***") {
+		t.Fatalf("stdout=%q err=%v", stdout, err)
+	}
+	stderr, err := os.ReadFile(filepath.Join(logRoot, processID+".stderr.log"))
+	if err != nil || string(stderr) != "warning\n" {
+		t.Fatalf("stderr=%q err=%v", stderr, err)
+	}
+	exit, err := readProjectProcessWorkerExit(workerRoot, processID)
+	if err != nil || !exit.ExitKnown || exit.ExitCode != 7 || exit.Reason != "" {
+		t.Fatalf("exit=%+v err=%v", exit, err)
+	}
+}
+
+func TestProjectProcessManagerRecoversIdentityWrittenBeforeJournalUpdate(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	processID := "pr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	identity := ProjectProcessIdentity{ProcessID: processID, PID: 9001, ProcessGroupID: 9001, StartTicks: 123456}
+	platform.processes[identity.PID] = &fakeProjectProcess{identity: identity, exit: make(chan ProjectProcessExit, 1), alive: true, termExit: true}
+	record := projectProcessRecord{
+		ProcessID: processID, IdempotencyKey: "crash-window", RequestDigest: strings.Repeat("a", 64),
+		OperationID: "eo_0123456789abcdef0123456789abcdef", WorkspaceID: "ws_0123456789abcdef0123456789abcdef",
+		ProjectAlias: "project", TargetAlias: "parrot", State: ProjectProcessStarting, StartedAt: time.Now().UTC(),
+	}
+	if err := manager.insertRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	for _, stream := range []string{"stdout", "stderr"} {
+		writer, err := manager.openLogWriter(processID, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writeProjectProcessWorkerIdentity(manager.workerRoot, identity); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := manager.boundRecord(processID, "project", "parrot")
+	if err != nil || recovered.State != ProjectProcessRunning || recovered.Identity != identity {
+		t.Fatalf("recovered=%+v err=%v", recovered, err)
+	}
+}
+
+func startedProcessPID(platform *fakeProjectProcessPlatform) int {
+	return platform.nextPID
 }
 
 func waitProjectProcessState(t *testing.T, manager *ProjectProcessManager, processID string, state ProjectProcessState) ProjectProcessSnapshot {

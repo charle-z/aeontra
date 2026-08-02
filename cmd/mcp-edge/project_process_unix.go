@@ -43,6 +43,33 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
 			GracePeriod: time.Duration(operation.Request.GraceSeconds) * time.Second,
 		})
+	case edge.OperationProjectProcessSignal:
+		snapshot, err = processes.Signal(edgeclient.ProjectProcessSignalRequest{
+			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
+			Signal: edgeclient.ProjectProcessSignal(operation.Request.BackgroundSignal),
+		})
+	case edge.OperationProjectProcessList:
+		items, listErr := processes.List(edgeclient.ProjectProcessListRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Limit: operation.Request.ProcessLimit})
+		if listErr != nil {
+			err = listErr
+			break
+		}
+		result := projectProcessBaseResult(resolved)
+		result.BackgroundProcesses = make([]edge.BackgroundProcessSummary, 0, len(items))
+		for _, item := range items {
+			result.BackgroundProcesses = append(result.BackgroundProcesses, projectProcessSummary(item))
+		}
+		return result, ""
+	case edge.OperationProjectProcessCleanup:
+		cleanup, cleanupErr := processes.Cleanup(edgeclient.ProjectProcessCleanupRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias})
+		if cleanupErr != nil {
+			err = cleanupErr
+			break
+		}
+		result := projectProcessBaseResult(resolved)
+		result.BackgroundCleanupRemoved = cleanup.Removed
+		result.BackgroundCleanupActive = cleanup.Active
+		return result, ""
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}
@@ -62,21 +89,44 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 }
 
 func projectProcessOperationResult(resolved edgeclient.ProjectResolution, snapshot edgeclient.ProjectProcessSnapshot) edge.OperationResult {
-	result := edge.OperationResult{
-		WorkspaceID:  resolved.Workspace.ID,
-		ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository,
-		ProjectTarget: resolved.TargetAlias, ProjectState: "ready", ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
-		BackgroundProcessID: snapshot.ProcessID, BackgroundProcessState: string(snapshot.State),
-		BackgroundStartedAt: snapshot.StartedAt.UTC().Format(time.RFC3339Nano),
-		BackgroundExitKnown: snapshot.ExitKnown, BackgroundExitCode: snapshot.ExitCode,
-		BackgroundTerminalSignal: string(snapshot.TerminalSignal), BackgroundReason: snapshot.Reason,
-		BackgroundStdout: snapshot.Stdout, BackgroundStderr: snapshot.Stderr,
-		BackgroundStdoutNext: snapshot.StdoutNext, BackgroundStderrNext: snapshot.StderrNext,
-		BackgroundStdoutEOF: snapshot.StdoutEOF, BackgroundStderrEOF: snapshot.StderrEOF,
-		BackgroundStdoutTruncated: snapshot.StdoutTruncated, BackgroundStderrTruncated: snapshot.StderrTruncated,
-	}
+	result := projectProcessBaseResult(resolved)
+	result.BackgroundProcessID = snapshot.ProcessID
+	result.BackgroundProcessState = string(snapshot.State)
+	result.BackgroundStartedAt = snapshot.StartedAt.UTC().Format(time.RFC3339Nano)
+	result.BackgroundExitKnown = snapshot.ExitKnown
+	result.BackgroundExitCode = snapshot.ExitCode
+	result.BackgroundTerminalSignal = string(snapshot.TerminalSignal)
+	result.BackgroundReason = snapshot.Reason
+	result.BackgroundStdout = snapshot.Stdout
+	result.BackgroundStderr = snapshot.Stderr
+	result.BackgroundStdoutNext = snapshot.StdoutNext
+	result.BackgroundStderrNext = snapshot.StderrNext
+	result.BackgroundStdoutEOF = snapshot.StdoutEOF
+	result.BackgroundStderrEOF = snapshot.StderrEOF
+	result.BackgroundStdoutTruncated = snapshot.StdoutTruncated
+	result.BackgroundStderrTruncated = snapshot.StderrTruncated
 	if !snapshot.FinishedAt.IsZero() {
 		result.BackgroundFinishedAt = snapshot.FinishedAt.UTC().Format(time.RFC3339Nano)
 	}
 	return result
+}
+
+func projectProcessBaseResult(resolved edgeclient.ProjectResolution) edge.OperationResult {
+	return edge.OperationResult{
+		WorkspaceID: resolved.Workspace.ID, ProjectAlias: resolved.Project.Alias,
+		ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository,
+		ProjectTarget: resolved.TargetAlias, ProjectState: "ready",
+		ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
+	}
+}
+
+func projectProcessSummary(snapshot edgeclient.ProjectProcessSnapshot) edge.BackgroundProcessSummary {
+	item := edge.BackgroundProcessSummary{
+		ProcessID: snapshot.ProcessID, State: string(snapshot.State), StartedAt: snapshot.StartedAt.UTC().Format(time.RFC3339Nano),
+		ExitKnown: snapshot.ExitKnown, ExitCode: snapshot.ExitCode, TerminalSignal: string(snapshot.TerminalSignal), Reason: snapshot.Reason,
+	}
+	if !snapshot.FinishedAt.IsZero() {
+		item.FinishedAt = snapshot.FinishedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return item
 }

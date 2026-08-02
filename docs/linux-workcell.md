@@ -303,7 +303,7 @@ The lease timeout remains bounded to at most 3600 seconds. OpenCode runs in a ne
 
 This version deliberately does not add Goal Runtime, 24-hour jobs, a scheduler, durable remote jobs, Windows access, Active Directory, an overlay network, or nftables target filtering. A human-operated Parrot onboarding flow is now packaged and documented; it does not automate pairing codes, sudo, or remote trust decisions.
 
-Direct foreground `project_exec` and durable `project_process_start/status/stop` are a
+Direct foreground `project_exec` and durable `project_process_start/status/stop/signal/list/cleanup` are a
 separate GPT Web execution path from the legacy OpenCode runtime. Both direct paths use
 the trusted-workcell Bubblewrap construction, workspace-local writable state and
 host-shared network posture. Background processes receive an opaque durable identity,

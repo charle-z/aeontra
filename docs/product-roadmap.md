@@ -13,8 +13,8 @@ runtime; OpenCode remains a tested optional fallback.
 | 1 direct vertical slice | Deployed | Direct signed control operations reached the paired Edge without a second model session. |
 | 2 durable Edge operations | Deployed | Server-owned operation identity, leases, progress, cancellation and restart-safe queue state are in production. |
 | 3 foreground execution | Deployed | `project_exec` uses arbitrary argv without an implicit shell in the trusted workcell. |
-| 3A background start/status/stop | In progress | Candidate branch adds the same-executor process surface, durable private journal/logs, opaque identity, incremental redacted output and TERM/KILL lifecycle. Exact-head CI, merge, release and real-Edge acceptance remain required. |
-| 3B recovery/list/signal/cleanup | Planned | Must reconcile live and terminal process identity after Edge restart without duplication or busy polling. |
+| 3A background start/status/stop | Merged and deployed; device acceptance pending | PRs #123/#125 produced `main` `84bac0a13bf71078e94e407f49f52e5758f3b872`; backend and stable Front Door serve the 118-tool catalog. The next signed Edge release/version still requires explicit release authorization before real-device acceptance. |
+| 3B recovery/list/signal/cleanup | In progress | `codex/h3b-process-recovery` adds closed signal/list/cleanup, restart reconciliation, live-preserving explicit cleanup and process survival across Edge service restarts. CI, merge, signed release and real restart acceptance remain required. |
 | Safe Edge checkout synchronization | Planned | Closed brokered fetch/status/fast-forward surface; no dirty, detached, diverged, forced or arbitrary-ref operations. |
 | 4 persistent universal toolbox | Planned | Rootless persistent rootfs, package/tool/service lifecycle and explicit cleanup. |
 | 5 complete persistent GitHub broker | Planned | Extend the owner-bound broker for repository, PR, Actions, release and bounded API workflows without exposing the credential. |
