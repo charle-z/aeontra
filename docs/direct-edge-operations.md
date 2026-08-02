@@ -73,6 +73,29 @@ Emergency concurrency and per-stream storage ceilings are administrator-controll
 Edge flags. They are protection against host exhaustion, not per-command allowlists or
 process expiration.
 
+## Safe checkout synchronization
+
+The registered development checkout has a separate closed Git synchronization path:
+
+- `project_git_status` reads the attached branch, HEAD, fixed upstream, live remote
+  HEAD, fetched relation and clean/dirty/diverged state without returning paths or URLs;
+- `project_git_fetch` runs `git fetch --no-tags origin` with only the Edge-constructed
+  current-branch tracking refspec through the existing owner-bound private credential
+  runner; callers cannot supply URLs, tags or refspecs;
+- `project_git_fast_forward_preview` requires a clean attached branch, current
+  remote-tracking state, zero local-only commits and an ancestor relationship, then
+  persists a private `0600` five-minute plan bound to the exact two commits;
+- `project_git_fast_forward` consumes that plan once, revalidates every bound field and
+  runs only `git merge --ff-only` of the recorded remote commit.
+
+Fetch does not touch the working tree. Fast-forward rejects dirty, detached, ahead,
+diverged, owner-mismatched, stale-remote, expired, replayed, malformed or symlinked
+state. There is no `reset --hard`, checkout mutation, force, tag fetch, arbitrary
+remote, arbitrary refspec or credential-bearing output.
+Only `ls-remote` and fetch receive the private askpass credential. Local inspection,
+ancestor checks and `merge --ff-only` run with an empty credential environment, so
+repository-controlled filters cannot inherit the GitHub token.
+
 ## Cancellation
 
 `edge_operation_cancel` is idempotent for an already cancelled operation.

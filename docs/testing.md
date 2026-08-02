@@ -41,6 +41,16 @@ open or an explicit lifecycle request; there is no polling goroutine or idle bus
 The worker regression proves split-stream redaction and an exact non-zero exit receipt
 without storing unredacted pipe output in the Edge control process.
 
+Safe checkout synchronization adds focused tests for fixed owner-bound remotes, live
+versus fetched remote identity, ahead/behind parsing, no-tag fetch, clean attached
+preview, ancestor proof, exact `merge --ff-only`, single-use replay rejection, dirty
+tree rejection, malformed plan state, private ownership/modes, and operation-kind
+result binding. The focused command is:
+
+```text
+go test ./internal/edge ./cmd/mcp-edge ./internal/mcpserver -count=1
+```
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:
