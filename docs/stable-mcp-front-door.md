@@ -121,7 +121,10 @@ MCP Devbox exposes three narrow operations for the first independent deployment:
 
 1. `platform_front_door_create_preview` validates the temporary public origin, fixed
    backend origin, exact protocol and catalog hash, then binds the current commit of
-   `front-door-stable` into an expiring single-use plan.
+   `front-door-stable` into an expiring single-use plan. Its safe preview prints the
+   authenticated primary hash, optional authenticated transition hash, whether a
+   transition removal is pending, and whether catalog state changes; approval never
+   relies on an implicit single-hash summary.
 2. `platform_front_door_create` creates or reconciles exactly one application named
    `mcp-devbox-front-door-managed`, upserts the managed non-secret compatibility
    variables, and deploys only when the pinned commit and catalog state are already
