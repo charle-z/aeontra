@@ -75,10 +75,12 @@ jobs:
           commit="$(git rev-parse HEAD)"
           catalog="$(go run ./cmd/mcp-catalog-id)"
           public_key="$(go run ./cmd/mcp-bundle-public-key "$RUNNER_TEMP/release/edge.key")"
+          bash packaging/github-cli/stage-pinned.sh --output "$RUNNER_TEMP/release/gh"
           bash packaging/parrot/stage-edge-bundle.sh \
             --output "$RUNNER_TEMP/release/bundle" --release "$RELEASE" --commit "$commit" \
             --catalog "$catalog" --private-key "$RUNNER_TEMP/release/edge.key" --public-key "$public_key" \
             --node-bin "$(command -v node)" \
+            --gh-bin "$RUNNER_TEMP/release/gh" \
             --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode" \
             --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
           go build -trimpath -o "$RUNNER_TEMP/release/mcp-release-channel" ./cmd/mcp-release-channel

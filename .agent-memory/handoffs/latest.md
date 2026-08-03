@@ -1,4 +1,4 @@
-# Handoff — Hito 5 device import complete; signed CLI transition active
+# Handoff — v2 bridge installed; v3 bundle and legacy retirement active
 
 Production backend commit `f8c0ce6a25ed46ae4bc4031656b04eb4c3e88603` serves
 protocol `2024-11-05`, 135 tools and catalog
@@ -23,10 +23,14 @@ once on the paired Parrot Edge. Bundle and service are healthy. The human login 
 `charle-z` and `mcp-edge github import-gh --owner charle-z` completed without exposing
 the credential.
 
-Device acceptance exposed one lifecycle gap: the archive updater does not resolve the
-Debian `gh` dependency. A direct manifest-v3 release is not consumable by the installed
-v2 updater. The active change is therefore a v2 bridge that adds v3 verification and
-future managed-link reconciliation. Merge, publish and install that bridge first;
-then land and install the separate v3 bundle containing pinned official `gh`. Continue
-with the real `project_github_status` preflight and consequential Hito 5 operations
-only afterward. Hito 9 multiagent/task-graph work is deferred explicitly.
+PR #134 merged the v2 bridge at `e78436da697db634be4159ce86a7116871bb7c4f`
+after 16/16 checks, and official run `30776878699` published `p15.0.14`. Its files and
+current link installed successfully. A previously enabled legacy
+`mcp-devbox-edge.service` kept the old `p15.0.13` process and state lock, so the
+templated managed unit failed closed instead of creating a duplicate.
+
+The active v3 change signs pinned official `gh` 2.97.0 as a required component and
+teaches the root updater to inspect, stop and disable only the two fixed legacy Edge
+unit names before restarting the managed unit. Finish its gates, merge, next signed
+release and one real update; then require one managed current process and run the live
+GitHub preflight. Hito 9 multiagent/task-graph work remains deferred explicitly.

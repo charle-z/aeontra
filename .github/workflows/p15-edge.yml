@@ -76,6 +76,7 @@ jobs:
       - name: Stage one indivisible signed bundle
         run: |
           catalog="$(go run ./cmd/mcp-catalog-id)"
+          bash packaging/github-cli/stage-pinned.sh --output "$RUNNER_TEMP/release/gh"
           bash packaging/parrot/stage-edge-bundle.sh \
             --output "$RUNNER_TEMP/release/bundle" \
             --release p15.0.0 \
@@ -84,6 +85,7 @@ jobs:
             --private-key "$RUNNER_TEMP/release/edge.key" \
             --public-key "$PUBLIC_KEY" \
             --node-bin "$(command -v node)" \
+            --gh-bin "$RUNNER_TEMP/release/gh" \
             --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode" \
             --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
 

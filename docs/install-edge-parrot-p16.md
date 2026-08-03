@@ -70,11 +70,18 @@ declares the official GitHub CLI package `gh`: this supports both the operator's
 interactive `gh auth login` and the separate direct-Edge broker import documented in
 [`development-edge-git.md`](development-edge-git.md).
 
-Archive-only updates do not invoke APT. The signed manifest-v3 layout therefore owns a
+Archive-only updates do not invoke APT. The signed manifest-v3 layout owns a
 pinned official `gh` at `libexec/gh` and a managed `/usr/local/bin/gh` compatibility
 link. A manifest-v2 bridge release must be installed first on older devices so their
 updater can verify v3. Rollback to a v1/v2 release removes only that exact managed link
 and preserves any unrelated system installation.
+
+During package configuration and archive activation, the privileged lifecycle inspects exactly
+`mcp-devbox-edge.service` and `mcp-devbox-opencode-edge.service`. If either known
+legacy unit is loaded, it is stopped and disabled before the current templated unit is
+restarted. No caller-controlled service name is accepted. This prevents an older
+orphaned Edge process from retaining the state lock while preserving fail-closed
+single-process behavior.
 
 ## Existing P12/P15 state
 

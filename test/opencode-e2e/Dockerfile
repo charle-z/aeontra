@@ -17,7 +17,8 @@ COPY . .
 COPY --from=opencode /usr/local/bin/node /tmp/opencode-e2e-node
 COPY --from=opencode /opt/opencode/opencode-1.18.1 /tmp/opencode-e2e-opencode
 RUN BUNDLE_PUBLIC_KEY="$(go run ./cmd/mcp-bundle-keygen --output /tmp/opencode-e2e-release.key)" \
-    && ./packaging/parrot/stage-edge-bundle.sh --output /out/release --release p15.0.0 --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --private-key /tmp/opencode-e2e-release.key --public-key "$BUNDLE_PUBLIC_KEY" --node-bin /tmp/opencode-e2e-node --opencode-bin /tmp/opencode-e2e-opencode --opencode-lock /workspace/test/opencode-e2e/package-lock.json \
+    && install -m 0755 /bin/true /tmp/opencode-e2e-gh \
+    && ./packaging/parrot/stage-edge-bundle.sh --output /out/release --release p15.0.0 --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --private-key /tmp/opencode-e2e-release.key --public-key "$BUNDLE_PUBLIC_KEY" --node-bin /tmp/opencode-e2e-node --gh-bin /tmp/opencode-e2e-gh --opencode-bin /tmp/opencode-e2e-opencode --opencode-lock /workspace/test/opencode-e2e/package-lock.json \
     && rm /out/release/manifest.json /out/release/manifest.sig \
     && E2E_LDFLAGS="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleRelease=p15.0.0 -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleCatalogHash=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundlePublicKey=$BUNDLE_PUBLIC_KEY" \
     && go build -trimpath -buildvcs=false -tags=opencode_e2e -ldflags "$E2E_LDFLAGS" -o /out/release/bin/mcp-edge ./cmd/mcp-edge \

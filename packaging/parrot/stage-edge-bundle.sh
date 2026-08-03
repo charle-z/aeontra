@@ -2,11 +2,11 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: stage-edge-bundle.sh --output <ABS_DIR> --release p15.x.y --commit <SHA> --catalog <SHA256> --private-key <ABS_FILE> --public-key <HEX> --node-bin <ABS_FILE> --opencode-bin <ABS_FILE> --opencode-lock <ABS_FILE>\n' >&2
+  printf 'usage: stage-edge-bundle.sh --output <ABS_DIR> --release p15.x.y --commit <SHA> --catalog <SHA256> --private-key <ABS_FILE> --public-key <HEX> --node-bin <ABS_FILE> --gh-bin <ABS_FILE> --opencode-bin <ABS_FILE> --opencode-lock <ABS_FILE>\n' >&2
   exit 2
 }
 
-OUTPUT=''; RELEASE=''; COMMIT=''; CATALOG=''; PRIVATE_KEY=''; PUBLIC_KEY=''; NODE_BIN=''; OPENCODE_BIN=''; OPENCODE_LOCK=''
+OUTPUT=''; RELEASE=''; COMMIT=''; CATALOG=''; PRIVATE_KEY=''; PUBLIC_KEY=''; NODE_BIN=''; GH_BIN=''; OPENCODE_BIN=''; OPENCODE_LOCK=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output) OUTPUT="${2:-}"; shift 2 ;;
@@ -16,19 +16,21 @@ while [ "$#" -gt 0 ]; do
     --private-key) PRIVATE_KEY="${2:-}"; shift 2 ;;
     --public-key) PUBLIC_KEY="${2:-}"; shift 2 ;;
     --node-bin) NODE_BIN="${2:-}"; shift 2 ;;
+    --gh-bin) GH_BIN="${2:-}"; shift 2 ;;
     --opencode-bin) OPENCODE_BIN="${2:-}"; shift 2 ;;
     --opencode-lock) OPENCODE_LOCK="${2:-}"; shift 2 ;;
     *) usage ;;
   esac
 done
 
-[[ "$OUTPUT" = /* && "$PRIVATE_KEY" = /* && "$NODE_BIN" = /* && "$OPENCODE_BIN" = /* && "$OPENCODE_LOCK" = /* ]] || usage
+[[ "$OUTPUT" = /* && "$PRIVATE_KEY" = /* && "$NODE_BIN" = /* && "$GH_BIN" = /* && "$OPENCODE_BIN" = /* && "$OPENCODE_LOCK" = /* ]] || usage
 [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ ]] || usage
 [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] || usage
 [[ "$CATALOG" =~ ^sha256:[a-f0-9]{64}$ ]] || usage
 [[ "$PUBLIC_KEY" =~ ^[a-f0-9]{64}$ ]] || usage
 [ -f "$PRIVATE_KEY" ] && [ ! -L "$PRIVATE_KEY" ] || usage
 [ -x "$NODE_BIN" ] && [ ! -L "$NODE_BIN" ] || usage
+[ -x "$GH_BIN" ] && [ ! -L "$GH_BIN" ] || usage
 [ -x "$OPENCODE_BIN" ] && [ ! -L "$OPENCODE_BIN" ] || usage
 [ -f "$OPENCODE_LOCK" ] && [ ! -L "$OPENCODE_LOCK" ] || usage
 [ ! -e "$OUTPUT" ] || { printf 'output already exists\n' >&2; exit 1; }
@@ -47,6 +49,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflag
 
 install -m 0755 "$OPENCODE_BIN" "$OUTPUT/opencode/opencode"
 install -m 0755 "$NODE_BIN" "$OUTPUT/libexec/node"
+install -m 0755 "$GH_BIN" "$OUTPUT/libexec/gh"
 install -m 0644 "$OPENCODE_LOCK" "$OUTPUT/opencode/package-lock.json"
 install -m 0644 integrations/opencode/provider/index.js "$OUTPUT/opencode-provider/index.js"
 install -m 0644 integrations/opencode/provider/htb-actions.js "$OUTPUT/opencode-provider/htb-actions.js"

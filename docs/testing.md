@@ -436,7 +436,9 @@ The first direct GitHub broker slice is deterministic and credential-free in tes
 - Debian package contract tests retain the official `gh` dependency for package
   installs. Bundle tests separately prove manifest-v2 rollback compatibility,
   manifest-v3 `github-cli` integrity, fixed safe executable resolution and managed-link
-  creation/removal across upgrade and rollback.
+  creation/removal across upgrade and rollback. Updater tests also require inspection
+  and retirement of only the two fixed legacy Edge units and propagate any systemd
+  failure.
 
 Real-device acceptance has completed interactive `gh auth login`, safe
 `mcp-edge github import-gh` and installation of official release `p15.0.13`. A live

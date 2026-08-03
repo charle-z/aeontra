@@ -183,6 +183,7 @@ jobs:
           bundle="$RUNNER_TEMP/p15-opencode-e2e-bundle"
           release_key="$RUNNER_TEMP/p15-opencode-e2e-release.key"
           public_key="$(go run ./cmd/mcp-bundle-keygen --output "$release_key")"
+          bash packaging/github-cli/stage-pinned.sh --output "$bin/gh-2.97.0"
           ./packaging/parrot/stage-edge-bundle.sh \
             --output "$bundle" \
             --release p15.0.0 \
@@ -191,6 +192,7 @@ jobs:
             --private-key "$release_key" \
             --public-key "$public_key" \
             --node-bin "$(command -v node)" \
+            --gh-bin "$bin/gh-2.97.0" \
             --opencode-bin "$bin/opencode-1.18.1" \
             --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
           rm "$release_key"
