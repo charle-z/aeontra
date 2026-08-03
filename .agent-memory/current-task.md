@@ -179,3 +179,14 @@ short real H3B restart/interrupt/stop/cleanup acceptance. Hito 9 remains exclude
 Functional commit `2a847b8337bf13cd5e89e751d8c607a0e1959a3e` passed the full
 test suite, vet, build and diff check from isolated ext4 with Go 1.26.5. Publish this
 behavior by normal PR, then use one next signed release/update and repeat only H3B.
+
+## 2026-08-03 p15.0.22 identity-readiness follow-up
+
+PR #142 merged at `e6dfb77b5bcf74db3760705ec5fe7bec1c5b042c`; official run
+`30812656084` published signed `p15.0.22`, and one stable update installed it. The Edge
+is ready, single, managed and at zero restarts. A fresh H3B start failed before public
+readiness although its bounded probe ran to completion. Bubblewrap reports the inner
+child before `--new-session` necessarily completes `setsid`, so the immediate
+`PGID == PID` validation raced the host. The active branch adds a two-second bounded
+wait that preserves owner and start-time revalidation. Publish it normally, release
+the next signed bundle once and repeat only H3B; Hito 9 remains excluded.
