@@ -110,9 +110,10 @@ type ProjectRegistry struct {
 }
 
 type ProjectResolution struct {
-	Project     Project
-	TargetAlias string
-	Workspace   Workspace
+	Project       Project
+	TargetAlias   string
+	Workspace     Workspace
+	CheckoutState ProjectCheckoutState
 }
 
 type ProjectStatus struct {
@@ -381,26 +382,36 @@ func (r *ProjectRegistry) Resolve(ctx context.Context, rawAlias, rawTarget strin
 	if !containsProjectProfile(profiles, workspace.Profile) {
 		return ProjectResolution{}, projectErr(ProjectErrorProfileDenied, errors.New("workspace profile is no longer allowed"))
 	}
-	if err := r.inspectCheckout(ctx, workspace, project.Owner, project.Repository); err != nil {
+	checkoutState, err := r.inspectCheckoutState(ctx, workspace, project.Owner, project.Repository)
+	if err != nil {
 		return ProjectResolution{}, err
 	}
-	return ProjectResolution{Project: project, TargetAlias: target, Workspace: workspace}, nil
+	return ProjectResolution{Project: project, TargetAlias: target, Workspace: workspace, CheckoutState: checkoutState}, nil
 }
 
 func (r *ProjectRegistry) inspectCheckout(ctx context.Context, workspace Workspace, owner, repository string) error {
+	state, err := r.inspectCheckoutState(ctx, workspace, owner, repository)
+	if err != nil {
+		return err
+	}
+	if state == ProjectCheckoutDirty {
+		return projectErr(ProjectErrorCheckoutDirty, errors.New("project checkout has local changes"))
+	}
+	return nil
+}
+
+func (r *ProjectRegistry) inspectCheckoutState(ctx context.Context, workspace Workspace, owner, repository string) (ProjectCheckoutState, error) {
 	state, err := r.inspector.Inspect(ctx, workspace.Path, owner, repository)
 	if err != nil {
-		return projectErr(ProjectErrorCheckoutUnsafe, err)
+		return "", projectErr(ProjectErrorCheckoutUnsafe, err)
 	}
 	switch state {
-	case ProjectCheckoutReady:
-		return nil
-	case ProjectCheckoutDirty:
-		return projectErr(ProjectErrorCheckoutDirty, errors.New("project checkout has local changes"))
+	case ProjectCheckoutReady, ProjectCheckoutDirty:
+		return state, nil
 	case ProjectCheckoutRemoteMismatch:
-		return projectErr(ProjectErrorRepositoryMismatch, errors.New("project checkout remote does not match"))
+		return "", projectErr(ProjectErrorRepositoryMismatch, errors.New("project checkout remote does not match"))
 	default:
-		return projectErr(ProjectErrorCheckoutUnsafe, errors.New("project checkout is unsafe"))
+		return "", projectErr(ProjectErrorCheckoutUnsafe, errors.New("project checkout is unsafe"))
 	}
 }
 
@@ -416,10 +427,17 @@ func (resolution ProjectResolution) SafeStatus() ProjectStatus {
 		Alias:      resolution.Project.Alias,
 		Repository: resolution.Project.Owner + "/" + resolution.Project.Repository,
 		Target:     resolution.TargetAlias,
-		State:      "ready",
+		State:      resolution.SafeState(),
 		Profile:    resolution.Workspace.Profile,
 		Mode:       resolution.Workspace.Mode,
 	}
+}
+
+func (resolution ProjectResolution) SafeState() string {
+	if resolution.CheckoutState == ProjectCheckoutDirty {
+		return string(ProjectCheckoutDirty)
+	}
+	return string(ProjectCheckoutReady)
 }
 
 func normalizeProjectProfiles(input []WorkspaceProfile) ([]WorkspaceProfile, error) {

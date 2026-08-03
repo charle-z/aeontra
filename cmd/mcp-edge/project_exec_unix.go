@@ -46,7 +46,7 @@ func collectProjectExec(ctx context.Context, operation edge.Operation, resolved 
 		ProjectOwner:        resolved.Project.Owner,
 		ProjectRepository:   resolved.Project.Repository,
 		ProjectTarget:       resolved.TargetAlias,
-		ProjectState:        "ready",
+		ProjectState:        resolved.SafeState(),
 		ProjectProfile:      string(resolved.Workspace.Profile),
 		ProjectMode:         string(resolved.Workspace.Mode),
 		ExecCompleted:       execution.Completed,

@@ -169,7 +169,7 @@ func executeProjectGitFastForward(ctx context.Context, stateRoot string, resolve
 }
 
 func projectGitMetadata(resolved edgeclient.ProjectResolution) edge.OperationResult {
-	return edge.OperationResult{WorkspaceID: resolved.Workspace.ID, ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository, ProjectTarget: resolved.TargetAlias, ProjectState: "ready", ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode)}
+	return edge.OperationResult{WorkspaceID: resolved.Workspace.ID, ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository, ProjectTarget: resolved.TargetAlias, ProjectState: resolved.SafeState(), ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode)}
 }
 
 func runProjectGitLocal(ctx context.Context, runner edgeclient.DevGitCommandRunner, resolved edgeclient.ProjectResolution, args ...string) (string, error) {

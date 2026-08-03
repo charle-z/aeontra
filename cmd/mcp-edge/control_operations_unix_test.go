@@ -120,7 +120,7 @@ func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
 	}
 }
 
-func TestCollectProjectSnapshotFailsClosedForDirtyOrWrongWorkspace(t *testing.T) {
+func TestCollectProjectSnapshotReportsDirtyAndFailsClosedForWrongWorkspace(t *testing.T) {
 	resolved := edgeclient.ProjectResolution{
 		Project:     edgeclient.Project{Alias: "project", Owner: "charle-z", Repository: "repo"},
 		TargetAlias: "parrot",
@@ -135,7 +135,7 @@ func TestCollectProjectSnapshotFailsClosedForDirtyOrWrongWorkspace(t *testing.T)
 		"status --porcelain=v1 --untracked-files=all": " M changed.go\n",
 	}}
 	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
-	if code != "project_checkout_dirty" || !reflect.DeepEqual(result, edge.OperationResult{}) {
+	if code != "" || result.SnapshotClean || result.ProjectState != "dirty" || result.SnapshotBranch != "main" || result.SnapshotHead == "" {
 		t.Fatalf("result=%+v code=%q", result, code)
 	}
 	resolved.Workspace.Mode = edgeclient.WorkspaceModeHTBLinux

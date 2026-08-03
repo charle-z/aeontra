@@ -250,15 +250,17 @@ func collectProjectSnapshot(ctx context.Context, resolved edgeclient.ProjectReso
 	if err != nil {
 		return edge.OperationResult{}, "project_snapshot_failed"
 	}
-	if strings.TrimSpace(statusOutput) != "" {
-		return edge.OperationResult{}, "project_checkout_dirty"
+	clean := strings.TrimSpace(statusOutput) == ""
+	projectState := string(edgeclient.ProjectCheckoutReady)
+	if !clean {
+		projectState = string(edgeclient.ProjectCheckoutDirty)
 	}
 	return edge.OperationResult{
 		WorkspaceID:  resolved.Workspace.ID,
 		ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner,
 		ProjectRepository: resolved.Project.Repository, ProjectTarget: resolved.TargetAlias,
-		ProjectState: "ready", ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
-		SnapshotBranch: branch, SnapshotHead: head, SnapshotClean: true,
+		ProjectState: projectState, ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
+		SnapshotBranch: branch, SnapshotHead: head, SnapshotClean: clean,
 	}, ""
 }
 
@@ -303,7 +305,7 @@ func projectControlResult(ctx context.Context, projects *edgeclient.ProjectRegis
 		ProjectOwner:      resolved.Project.Owner,
 		ProjectRepository: resolved.Project.Repository,
 		ProjectTarget:     resolved.TargetAlias,
-		ProjectState:      "ready",
+		ProjectState:      resolved.SafeState(),
 		ProjectProfile:    string(resolved.Workspace.Profile),
 		ProjectMode:       string(resolved.Workspace.Mode),
 	}, ""

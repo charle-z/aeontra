@@ -615,7 +615,7 @@ func validProjectOperationResult(result OperationResult) bool {
 	if !workspaceIDPattern.MatchString(result.WorkspaceID) ||
 		!projectOperationAliasPattern.MatchString(result.ProjectAlias) || !githubOwnerOperationPattern.MatchString(result.ProjectOwner) ||
 		!projectOperationRepositoryPattern.MatchString(result.ProjectRepository) || strings.ContainsAny(result.ProjectRepository, `/\\`) ||
-		!projectOperationTargetPattern.MatchString(result.ProjectTarget) || result.ProjectState != "ready" ||
+		!projectOperationTargetPattern.MatchString(result.ProjectTarget) || (result.ProjectState != "ready" && result.ProjectState != "dirty") ||
 		result.ProjectProfile != "linux-workcell" || result.ProjectMode != "dev" {
 		return false
 	}
@@ -636,7 +636,7 @@ var projectSnapshotCommitPattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
 
 func validProjectSnapshotResult(result OperationResult) bool {
 	branch := result.SnapshotBranch
-	if !result.SnapshotClean || !projectSnapshotBranchPattern.MatchString(branch) ||
+	if result.SnapshotClean != (result.ProjectState == "ready") || !projectSnapshotBranchPattern.MatchString(branch) ||
 		strings.HasPrefix(branch, "-") || strings.Contains(branch, "..") || strings.Contains(branch, "//") ||
 		strings.Contains(branch, "@{") || strings.HasSuffix(branch, "/") || strings.HasSuffix(branch, ".") ||
 		strings.HasSuffix(branch, ".lock") || !projectSnapshotCommitPattern.MatchString(result.SnapshotHead) {

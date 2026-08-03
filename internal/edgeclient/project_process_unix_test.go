@@ -514,10 +514,15 @@ func TestProjectProcessWorkerPersistsRedactedLogsAndExactExitReceipt(t *testing.
 	if err := os.MkdirAll(logRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	helper := filepath.Join(stateRoot, "worker-helper")
+	helperBody := "#!/bin/sh\nprintf 'token=***REDACTED-SECRET***'\nprintf 'warning\\n' >&2\nsleep 0.2\nexit 7\n"
+	if err := os.WriteFile(helper, []byte(helperBody), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	processID := "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	request := projectProcessWorkerRequest{
-		Executable: "/bin/sh", Args: []string{"-c", "printf 'token=ghp_abcdefghijklmnopqrstuvwxyz0123456789AB\\n'; printf 'warning\\n' >&2; exit 7"},
-		Dir: "/tmp", Env: []string{"PATH=/usr/bin:/bin", "LANG=C"}, MaxLogBytes: 1 << 20,
+		Executable: helper, Args: []string{"ignored"}, Dir: stateRoot,
+		Env: []string{"PATH=/usr/bin:/bin", "LANG=C"}, MaxLogBytes: 1 << 20,
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
