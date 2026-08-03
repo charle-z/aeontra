@@ -105,3 +105,33 @@ func TestActionPlanPeekDoesNotConsumeOrExposeMutableArgs(t *testing.T) {
 		t.Fatal("single-use action plan was replayed")
 	}
 }
+
+func TestDecodeManagedRuntimeIdentityAcceptsCanonicalVersionEnvelope(t *testing.T) {
+	commit := strings.Repeat("a", 40)
+	catalog := "sha256:" + strings.Repeat("b", 64)
+	headers := http.Header{}
+	headers.Set("X-MCP-Server-Commit", commit)
+	headers.Set("X-MCP-Catalog-Hash", catalog)
+	body := []byte(`{"status":"ok","version":"0.2.0","protocol_version":"2024-11-05","commit":"` + commit + `","built_at":"unknown","tool_count":137,"catalog_hash":"` + catalog + `"}`)
+
+	identity, err := decodeManagedRuntimeIdentity(body, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.Commit != commit || identity.ProtocolVersion != "2024-11-05" || identity.ToolCount != 137 || identity.CatalogHash != catalog {
+		t.Fatalf("identity=%+v", identity)
+	}
+
+	unknown := []byte(`{"status":"ok","version":"0.2.0","protocol_version":"2024-11-05","commit":"` + commit + `","built_at":"unknown","tool_count":137,"catalog_hash":"` + catalog + `","future":true}`)
+	if _, err := decodeManagedRuntimeIdentity(unknown, headers); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("unknown field accepted: %v", err)
+	}
+	if _, err := decodeManagedRuntimeIdentity(append(append([]byte{}, body...), []byte(`{}`)...), headers); err == nil || !strings.Contains(err.Error(), "trailing") {
+		t.Fatalf("trailing JSON accepted: %v", err)
+	}
+	mismatched := headers.Clone()
+	mismatched.Set("X-MCP-Server-Commit", strings.Repeat("c", 40))
+	if _, err := decodeManagedRuntimeIdentity(body, mismatched); err == nil || !strings.Contains(err.Error(), "headers") {
+		t.Fatalf("mismatched headers accepted: %v", err)
+	}
+}

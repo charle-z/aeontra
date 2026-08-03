@@ -86,8 +86,10 @@ func (c *GitHubClient) repositoryFileAtRef(ctx context.Context, repo, path, ref 
 
 type managedRuntimeIdentityResponse struct {
 	Status          string `json:"status"`
+	Version         string `json:"version"`
 	ProtocolVersion string `json:"protocol_version"`
 	Commit          string `json:"commit"`
+	BuiltAt         string `json:"built_at,omitempty"`
 	ToolCount       int    `json:"tool_count"`
 	CatalogHash     string `json:"catalog_hash"`
 }
@@ -98,6 +100,27 @@ func managedIdentityHTTPClient() *http.Client {
 	transport.ForceAttemptHTTP2 = false
 	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	return &http.Client{Transport: transport, Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+}
+
+func decodeManagedRuntimeIdentity(body []byte, headers http.Header) (catalogrollout.Identity, error) {
+	var info managedRuntimeIdentityResponse
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&info); err != nil {
+		return catalogrollout.Identity{}, errors.New("managed backend identity is invalid")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return catalogrollout.Identity{}, errors.New("managed backend identity has trailing data")
+	}
+	identity := catalogrollout.Identity{Commit: info.Commit, ProtocolVersion: info.ProtocolVersion, ToolCount: info.ToolCount, CatalogHash: info.CatalogHash}
+	if info.Status != "ok" || headers.Get("X-MCP-Server-Commit") != identity.Commit || headers.Get("X-MCP-Catalog-Hash") != identity.CatalogHash {
+		return catalogrollout.Identity{}, errors.New("managed backend identity headers do not match")
+	}
+	if err := identity.Validate(); err != nil {
+		return catalogrollout.Identity{}, err
+	}
+	return identity, nil
 }
 
 func readManagedRuntimeIdentity(ctx context.Context, origin string) (catalogrollout.Identity, error) {
@@ -117,24 +140,7 @@ func readManagedRuntimeIdentity(ctx context.Context, origin string) (catalogroll
 	if err != nil || response.StatusCode != http.StatusOK || response.Header.Get("Location") != "" {
 		return catalogrollout.Identity{}, errors.New("managed backend identity is unavailable")
 	}
-	var info managedRuntimeIdentityResponse
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&info); err != nil {
-		return catalogrollout.Identity{}, errors.New("managed backend identity is invalid")
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return catalogrollout.Identity{}, errors.New("managed backend identity has trailing data")
-	}
-	identity := catalogrollout.Identity{Commit: info.Commit, ProtocolVersion: info.ProtocolVersion, ToolCount: info.ToolCount, CatalogHash: info.CatalogHash}
-	if info.Status != "ok" || response.Header.Get("X-MCP-Server-Commit") != identity.Commit || response.Header.Get("X-MCP-Catalog-Hash") != identity.CatalogHash {
-		return catalogrollout.Identity{}, errors.New("managed backend identity headers do not match")
-	}
-	if err := identity.Validate(); err != nil {
-		return catalogrollout.Identity{}, err
-	}
-	return identity, nil
+	return decodeManagedRuntimeIdentity(body, response.Header)
 }
 
 func (s *PlatformCapability) managedBackendRolloutIdentity(ctx context.Context, app platformApplication) (managedBackendRolloutIdentity, error) {
