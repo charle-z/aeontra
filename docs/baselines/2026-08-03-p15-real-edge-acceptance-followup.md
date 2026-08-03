@@ -85,3 +85,9 @@ liveness barrier. Reconciliation may repair a stale database identity only when 
 private worker tuple revalidates as live. Cleanup revalidates the journal, worker and
 child tuples and refuses removal while any exact identity remains active. It never
 adopts a reused PID or an unowned/unsafe identity.
+
+The exact candidate commit `f98f635d84080f26f885e8988192ed026423599b` passed
+`go test ./... -count=1`, `go vet ./...`, `go build ./...` and `git diff --check` from
+an isolated ext4 clone with Go 1.26.5. The mounted NTFS run passed every package except
+the documented builder permission-mode contract (`0777` observed instead of `0755`);
+the same package passed from ext4, so no production permission expectation was relaxed.

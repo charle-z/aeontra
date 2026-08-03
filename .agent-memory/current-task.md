@@ -153,3 +153,8 @@ candidate recovers a revalidated live worker identity before offline classificat
 and makes cleanup refuse removal while the exact journal, worker or child identity is
 still alive. Finish normal gates, PR, signed release and one short real restart/signal
 acceptance. Hito 9 remains excluded.
+
+Candidate `f98f635d84080f26f885e8988192ed026423599b` passed the full test suite,
+vet, build and diff check from an isolated ext4 clone with Go 1.26.5. The only mounted
+NTFS failure was the known `0777` versus `0755` builder-mode mismatch, and that package
+passed unchanged on ext4. Publish this exact behavior through the normal PR/CI path.
