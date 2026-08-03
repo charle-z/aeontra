@@ -79,6 +79,17 @@ record as active while either the worker or child identity remains live. PID reu
 foreign ownership, malformed private state and genuinely dead terminal records retain
 their fail-closed behavior.
 
+The `p15.0.21` real retry proved that the private worker identity repair preserves a
+running process and continuous non-duplicated stdout/stderr across an Edge restart.
+It also isolated the remaining signal defect: Bubblewrap's `--new-session` reports an
+inner sandbox leader distinct from the outer supervisor returned by `exec.Start`.
+Signalling the outer group terminated the supervisor but left the inner Bubblewrap and
+workload alive. The new worker regression uses a separate-session helper and fails if
+the persisted identity is the launcher rather than the reported leader. The GREEN
+matrix reserves Bubblewrap `--info-fd`, accepts only a positive reported child PID,
+revalidates its exact owner/start-ticks/PGID tuple before readiness, targets that group,
+and keeps `--die-with-parent` bound to the durable worker to close crash-time orphans.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:

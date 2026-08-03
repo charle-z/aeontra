@@ -158,3 +158,24 @@ Candidate `f98f635d84080f26f885e8988192ed026423599b` passed the full test suite,
 vet, build and diff check from an isolated ext4 clone with Go 1.26.5. The only mounted
 NTFS failure was the known `0777` versus `0755` builder-mode mismatch, and that package
 passed unchanged on ext4. Publish this exact behavior through the normal PR/CI path.
+
+## 2026-08-03 p15.0.21 sandbox-leader follow-up
+
+PR #141 merged at `7ce6ebd4e35b8c3325395155c30deb4f98c8a99a`; official run
+`30810209878` published signed `p15.0.21`, and exactly one stable update installed it.
+The private identity repair passed its real restart gate: the fresh H3B process stayed
+running and cursor output remained continuous. Closed interrupt and bounded stop still
+failed to stop the workload because Bubblewrap's `--new-session` inner leader owned a
+different process group from the outer supervisor recorded at `exec.Start`. The exact
+inner test group was terminated and exclusively cleaned; no orphan remains, doctor is
+ready and `NRestarts=0`.
+
+The active candidate reserves Bubblewrap `--info-fd`, persists only the revalidated
+inner leader and targets that exact group. Bubblewrap is now parent-bound to the
+durable worker, not to the restartable Edge service, preserving restart recovery while
+closing worker-crash orphans. Finish gates, normal PR, next signed release and one
+short real H3B restart/interrupt/stop/cleanup acceptance. Hito 9 remains excluded.
+
+Functional commit `2a847b8337bf13cd5e89e751d8c607a0e1959a3e` passed the full
+test suite, vet, build and diff check from isolated ext4 with Go 1.26.5. Publish this
+behavior by normal PR, then use one next signed release/update and repeat only H3B.
