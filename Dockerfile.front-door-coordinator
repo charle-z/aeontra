@@ -5,6 +5,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd/mcp-front-door-coordinator ./cmd/mcp-front-door-coordinator
 COPY internal/frontdoorcoordinator ./internal/frontdoorcoordinator
+COPY internal/catalogrollout ./internal/catalogrollout
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \

@@ -187,7 +187,7 @@ func testCatalogPlatform(t *testing.T, fixture *rolloutFixture) (*CatalogPlatfor
 	client.http = coolify.Client()
 	probeURL, _ := url.Parse(probe.URL)
 	client.probeHTTP = &http.Client{
-		Transport: rewriteProbeTransport{target: probeURL, transport: probe.Client().Transport},
+		Transport:     rewriteProbeTransport{target: probeURL, transport: probe.Client().Transport},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	client.sleep = func(time.Duration) {}

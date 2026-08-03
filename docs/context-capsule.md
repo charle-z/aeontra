@@ -150,21 +150,15 @@ Use “validation pending” for a missing environment-specific proof. A green s
 tag, or automatic deployment is not evidence of a real-device installation.
 
 ## Persistent state
-
 - `/repos`: repository jail and project data.
-- `/state`: OAuth stores, audit, observability, telemetry, tasks, results, console,
-  model-turn, queue, and Edge/control-plane coordination.
+- `/state`: OAuth stores, audit, observability, telemetry, tasks, results, console, model-turn, queue, and Edge/control-plane coordination.
 - `/brain`: optional Brain Markdown truth and local Git; search cache is disposable.
-- `~/.local/state/mcp-edge`: private installed Edge identity, registry, journal, results,
-  and optional local Git authority.
-- `/coordinator-state/catalog-rollout`: private atomic backend rollout journal inside the
-  existing coordinator persistent volume.
+- `~/.local/state/mcp-edge`: private installed Edge identity, registry, journal, results, and optional local Git authority.
+- `/coordinator-state/catalog-rollout`: private atomic backend rollout journal inside the existing coordinator persistent volume.
 
-Keep `/state`, `/brain`, OAuth stores, Edge private state, credentials, and engine sockets
-outside the repository jail. Preserve owner-only modes and reviewed backups.
+Keep `/state`, `/brain`, OAuth stores, Edge private state, credentials, and engine sockets outside the repository jail. Preserve owner-only modes and reviewed backups.
 
 ## Known limitations
-
 - A Layer-1 allowed command inherits the daemon user's ambient OS access.
 - Content secret detection is heuristic.
 - The trusted workcell shares host networking.
@@ -175,7 +169,6 @@ outside the repository jail. Preserve owner-only modes and reviewed backups.
 - No formal verification or universal cross-platform OS sandbox is claimed.
 
 ## Resuming safely
-
 1. Read `AGENTS.md` and this capsule.
 2. Read `.agent-memory/current-task.md` and the latest handoff.
 3. Verify branch, HEAD, upstream, and working tree.
@@ -183,5 +176,4 @@ outside the repository jail. Preserve owner-only modes and reviewed backups.
 5. Confirm live identity only when the task depends on deployment state.
 6. Preserve historical evidence instead of rewriting it to match the present.
 
-If documentation conflicts, use `documentation-map.md` to identify the owner and fix the
-canonical source rather than adding another copy.
+If documentation conflicts, use `documentation-map.md` to identify the owner and fix the canonical source rather than adding another copy.

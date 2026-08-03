@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
-	"github.com/charle-z/mcp-devbox/internal/catalogrollout"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/resultstore"
 )
@@ -49,7 +48,6 @@ type PlatformCapability struct {
 	*SourceCapability
 	coolify                             *CoolifyClient
 	managedFrontDoorProbe               func(context.Context, string, bool, string, string, string) error
-	managedBackendIdentityFn            func(context.Context, string) (catalogrollout.Identity, error)
 	managedFrontDoorSleepFn             func(time.Duration)
 	managedFrontDoorExternalCoordinator bool
 	managedMCPToken                     string

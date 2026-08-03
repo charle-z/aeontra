@@ -33,8 +33,8 @@ func TestLoadCatalogRuntimeConfigIsStrictAndBoundToPreviousIdentity(t *testing.T
 	}
 	for name, mutate := range map[string]func(map[string]string){
 		"previous mismatch": func(values map[string]string) { values[backendCommitEnv] = strings.Repeat("c", 40) },
-		"missing token": func(values map[string]string) { values[catalogMCPTokenEnv] = "" },
-		"trailing JSON": func(values map[string]string) { values[catalogRequestEnv] += "{}" },
+		"missing token":     func(values map[string]string) { values[catalogMCPTokenEnv] = "" },
+		"trailing JSON":     func(values map[string]string) { values[catalogRequestEnv] += "{}" },
 		"topology target": func(values map[string]string) {
 			values[targetEnv] = "cutover"
 			values[requestIDEnv] = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"

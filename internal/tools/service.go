@@ -60,7 +60,7 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 	platform := &PlatformCapability{
 		serviceCore:      core,
 		SourceCapability: source,
-		managedMCPToken: strings.TrimSpace(os.Getenv("MCP_DEVBOX_TOKEN")),
+		managedMCPToken:  strings.TrimSpace(os.Getenv("MCP_DEVBOX_TOKEN")),
 	}
 	return &Service{
 		serviceCore:                 core,
