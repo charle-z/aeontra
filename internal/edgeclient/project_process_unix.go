@@ -17,6 +17,7 @@ import (
 	ossignal "os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -377,7 +378,7 @@ func (manager *ProjectProcessManager) Status(request ProjectProcessReadRequest) 
 		manager.watchMu.Unlock()
 		alive, aliveErr := manager.platform.Alive(record.Identity)
 		if errors.Is(aliveErr, ErrProjectProcessIdentityChanged) {
-			_ = manager.finishFailed(record.ProcessID, "process_identity_changed")
+			_ = manager.reconcileRecord(record)
 			record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
 		} else if aliveErr != nil || !alive {
 			if watched {
@@ -422,7 +423,7 @@ func (manager *ProjectProcessManager) Stop(ctx context.Context, request ProjectP
 	}
 	alive, err := manager.platform.Alive(record.Identity)
 	if errors.Is(err, ErrProjectProcessIdentityChanged) {
-		_ = manager.finishFailed(record.ProcessID, "process_identity_changed")
+		_ = manager.reconcileRecord(record)
 		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
 		return manager.snapshot(record), nil
 	}
@@ -461,7 +462,7 @@ func (manager *ProjectProcessManager) Signal(request ProjectProcessSignalRequest
 	}
 	alive, err := manager.platform.Alive(record.Identity)
 	if errors.Is(err, ErrProjectProcessIdentityChanged) {
-		_ = manager.finishFailed(record.ProcessID, "process_identity_changed")
+		_ = manager.reconcileRecord(record)
 		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
 		return manager.snapshot(record), nil
 	}
@@ -476,7 +477,7 @@ func (manager *ProjectProcessManager) Signal(request ProjectProcessSignalRequest
 	}
 	if err := manager.platform.Signal(record.Identity, request.Signal); err != nil {
 		if errors.Is(err, ErrProjectProcessIdentityChanged) {
-			_ = manager.finishFailed(record.ProcessID, "process_identity_changed")
+			_ = manager.reconcileRecord(record)
 			record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
 			return manager.snapshot(record), nil
 		}
@@ -550,6 +551,14 @@ func (manager *ProjectProcessManager) Cleanup(request ProjectProcessCleanupReque
 			result.Active++
 			continue
 		}
+		active, err := manager.privateProcessActive(record)
+		if err != nil {
+			return result, errors.New("project process cleanup liveness unavailable")
+		}
+		if active {
+			result.Active++
+			continue
+		}
 		if err := manager.removeLogs(record.ProcessID); err != nil {
 			return result, err
 		}
@@ -605,6 +614,11 @@ func (manager *ProjectProcessManager) reconcileRecord(record projectProcessRecor
 		}
 		record.State = ProjectProcessRunning
 	}
+	if recovered, alive, recoveryErr := manager.recoverPrivateWorkerIdentity(record); recoveryErr != nil {
+		return recoveryErr
+	} else if alive {
+		record = recovered
+	}
 	alive, err := manager.platform.Alive(record.Identity)
 	if errors.Is(err, ErrProjectProcessIdentityChanged) {
 		return manager.finishFailed(record.ProcessID, "process_identity_changed")
@@ -640,6 +654,77 @@ func (manager *ProjectProcessManager) reconcileRecord(record projectProcessRecor
 	}
 	_, err = manager.db.Exec(`UPDATE project_processes SET state=?,finished_at=?,reason=? WHERE process_id=? AND state IN (?,?,?)`, state, manager.now().UTC().UnixNano(), reason, record.ProcessID, ProjectProcessStarting, ProjectProcessRunning, ProjectProcessStopping)
 	return err
+}
+
+func (manager *ProjectProcessManager) recoverPrivateWorkerIdentity(record projectProcessRecord) (projectProcessRecord, bool, error) {
+	identity, exists, err := manager.optionalPrivateProcessIdentity(record.ProcessID, "identity")
+	if err != nil || !exists {
+		return record, false, err
+	}
+	alive, err := manager.platform.Alive(identity)
+	if errors.Is(err, ErrProjectProcessIdentityChanged) || errors.Is(err, ErrProjectProcessGroupMissing) {
+		return record, false, nil
+	}
+	if err != nil {
+		return record, false, errors.New("project process reconciliation unavailable")
+	}
+	if !alive {
+		return record, false, nil
+	}
+	if record.Identity != identity {
+		state := record.State
+		if state == ProjectProcessStarting {
+			state = ProjectProcessRunning
+		}
+		if _, err := manager.db.Exec(`UPDATE project_processes SET pid=?,process_group_id=?,start_ticks=?,state=? WHERE process_id=? AND state IN (?,?,?)`,
+			identity.PID, identity.ProcessGroupID, identity.StartTicks, state, record.ProcessID,
+			ProjectProcessStarting, ProjectProcessRunning, ProjectProcessStopping); err != nil {
+			return record, false, errors.New("project process journal unavailable")
+		}
+		record.Identity = identity
+		record.State = state
+	}
+	return record, true, nil
+}
+
+func (manager *ProjectProcessManager) privateProcessActive(record projectProcessRecord) (bool, error) {
+	identities := []ProjectProcessIdentity{record.Identity}
+	for _, kind := range []string{"identity", "child"} {
+		identity, exists, err := manager.optionalPrivateProcessIdentity(record.ProcessID, kind)
+		if err != nil {
+			return false, err
+		}
+		if exists && !slices.Contains(identities, identity) {
+			identities = append(identities, identity)
+		}
+	}
+	for _, identity := range identities {
+		if identity.PID < 1 || identity.ProcessGroupID < 1 || identity.StartTicks == 0 {
+			continue
+		}
+		alive, err := manager.platform.Alive(identity)
+		if err == nil && alive {
+			return true, nil
+		}
+		if err != nil && !errors.Is(err, ErrProjectProcessIdentityChanged) && !errors.Is(err, ErrProjectProcessGroupMissing) {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
+func (manager *ProjectProcessManager) optionalPrivateProcessIdentity(processID, kind string) (ProjectProcessIdentity, bool, error) {
+	path := projectProcessWorkerPath(manager.workerRoot, processID, kind)
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		return ProjectProcessIdentity{}, false, nil
+	} else if err != nil {
+		return ProjectProcessIdentity{}, false, errors.New("project process worker state is unsafe")
+	}
+	identity, err := readProjectProcessWorkerIdentityKind(manager.workerRoot, processID, kind)
+	if err != nil {
+		return ProjectProcessIdentity{}, false, err
+	}
+	return identity, true, nil
 }
 
 func (manager *ProjectProcessManager) finishRecoveredExit(record projectProcessRecord, exit ProjectProcessExit) error {

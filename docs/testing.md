@@ -68,6 +68,17 @@ replacement between every rune. Focused tests now cover both the second bare ide
 and unchanged local output while retaining exact non-empty credential redaction. See
 `docs/baselines/2026-08-03-p15-real-edge-acceptance-followup.md`.
 
+The subsequent Hito 3B retry proved log continuity across the managed update but also
+exposed a terminal-cleanup gap. A stale journal identity could be classified
+`process_identity_changed` while the owner-only worker/child identity artifacts still
+resolved to live exact PID/start-tick/process-group tuples. Cleanup trusted the
+terminal row and removed metadata even though the worker and Bubblewrap child remained
+alive. The focused matrix now proves that reconciliation can restore the exact live
+private worker identity before offline classification, and that cleanup counts the
+record as active while either the worker or child identity remains live. PID reuse,
+foreign ownership, malformed private state and genuinely dead terminal records retain
+their fail-closed behavior.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:
