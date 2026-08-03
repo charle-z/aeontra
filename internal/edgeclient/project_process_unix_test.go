@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -149,8 +150,8 @@ func TestProjectProcessManagerStartsOnceAndReadsRedactedSeparatedOutput(t *testi
 		t.Fatalf("incremental status=%+v err=%v", next, err)
 	}
 	joined := strings.Join(platform.specs[0].Args, "\n")
-	if strings.Contains(joined, "--die-with-parent") {
-		t.Fatalf("durable process remained parent-bound: %s", joined)
+	if !strings.Contains(joined, "--die-with-parent") {
+		t.Fatalf("durable sandbox was not bound to its restart-safe worker: %s", joined)
 	}
 	for _, forbidden := range []string{"sh\n-c", "/root", "/mnt/c", "/var/run/docker.sock"} {
 		if strings.Contains(joined, forbidden) {
@@ -539,6 +540,125 @@ func TestProjectProcessWorkerPersistsRedactedLogsAndExactExitReceipt(t *testing.
 	exit, err := readProjectProcessWorkerExit(workerRoot, processID)
 	if err != nil || !exit.ExitKnown || exit.ExitCode != 7 || exit.Reason != "" {
 		t.Fatalf("exit=%+v err=%v", exit, err)
+	}
+}
+
+func TestProjectProcessWorkerPersistsActualSandboxLeaderIdentity(t *testing.T) {
+	stateRoot := t.TempDir()
+	workerRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory)
+	logRoot := filepath.Join(stateRoot, projectProcessLogDirectory)
+	if err := os.MkdirAll(workerRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(logRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	helper := filepath.Join(stateRoot, "sandbox-helper")
+	expectedPIDPath := filepath.Join(stateRoot, "sandbox-child.pid")
+	helperBody := `#!/bin/sh
+info_fd=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --info-fd) info_fd="$2"; shift 2 ;;
+    --new-session) shift ;;
+    --) shift; break ;;
+    *) shift ;;
+  esac
+done
+setsid "$@" &
+child=$!
+while [ "$(ps -o pgid= -p "$child" | tr -d ' ')" != "$child" ]; do sleep 0.01; done
+printf '%s\n' "$child" > "$EXPECTED_PID_FILE"
+if [ -n "$info_fd" ]; then
+  [ "$info_fd" = 3 ] || exit 2
+  printf '{"child-pid":%s}\n' "$child" >&3
+fi
+wait "$child"
+`
+	if err := os.WriteFile(helper, []byte(helperBody), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	processID := "pr_dddddddddddddddddddddddddddddddd"
+	request := projectProcessWorkerRequest{
+		Executable: helper, Args: []string{"--new-session", "--", "/bin/sleep", "30"}, Dir: stateRoot,
+		Env: []string{"PATH=/usr/bin:/bin", "EXPECTED_PID_FILE=" + expectedPIDPath}, MaxLogBytes: 1 << 20,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "request"), body); err != nil {
+		t.Fatal(err)
+	}
+	workerDone := make(chan error, 1)
+	go func() { workerDone <- RunProjectProcessWorker(stateRoot, processID) }()
+	var expectedPID int
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		content, readErr := os.ReadFile(expectedPIDPath)
+		if readErr == nil {
+			expectedPID, err = strconv.Atoi(strings.TrimSpace(string(content)))
+			if err == nil && expectedPID > 0 {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if expectedPID < 1 {
+		t.Fatal("sandbox child identity was not published")
+	}
+	defer func() { _ = syscall.Kill(-expectedPID, syscall.SIGKILL) }()
+	var identity ProjectProcessIdentity
+	for time.Now().Before(deadline) {
+		identity, err = readProjectProcessWorkerChildIdentity(workerRoot, processID)
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("sandbox identity was not persisted: %v", err)
+	}
+	defer func() { _ = syscall.Kill(-identity.ProcessGroupID, syscall.SIGKILL) }()
+	if identity.PID != expectedPID || identity.ProcessGroupID != expectedPID {
+		t.Fatalf("persisted launcher identity=%+v want sandbox leader pid=%d", identity, expectedPID)
+	}
+	if err := syscall.Kill(-identity.ProcessGroupID, syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-workerDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker did not observe sandbox leader exit")
+	}
+}
+
+func TestProjectProcessWorkerCommandArgsOwnsSandboxInfoFD(t *testing.T) {
+	arguments, usesInfo, err := projectProcessWorkerCommandArgs([]string{"--new-session", "--", "/bin/echo", "--info-fd"})
+	if err != nil || !usesInfo || !slices.Equal(arguments, []string{"--info-fd", "3", "--new-session", "--", "/bin/echo", "--info-fd"}) {
+		t.Fatalf("arguments=%q uses_info=%t err=%v", arguments, usesInfo, err)
+	}
+	if _, _, err := projectProcessWorkerCommandArgs([]string{"--info-fd", "9", "--new-session", "--", "/bin/true"}); err == nil {
+		t.Fatal("caller-controlled Bubblewrap info fd was accepted")
+	}
+	plain, usesInfo, err := projectProcessWorkerCommandArgs([]string{"-c", "printf ok"})
+	if err != nil || usesInfo || !slices.Equal(plain, []string{"-c", "printf ok"}) {
+		t.Fatalf("plain=%q uses_info=%t err=%v", plain, usesInfo, err)
+	}
+}
+
+func TestReadProjectProcessSandboxInfoRequiresPositiveChildPID(t *testing.T) {
+	valid := readProjectProcessSandboxInfo(strings.NewReader(`{"child-pid":42,"pid-namespace":7}`))
+	if valid.Err != nil || valid.ChildPID != 42 {
+		t.Fatalf("valid=%+v", valid)
+	}
+	for _, body := range []string{`{}`, `{"child-pid":0}`, `{"child-pid":"42"}`, `not-json`} {
+		if result := readProjectProcessSandboxInfo(strings.NewReader(body)); result.Err == nil {
+			t.Fatalf("invalid sandbox info accepted: %q", body)
+		}
 	}
 }
 

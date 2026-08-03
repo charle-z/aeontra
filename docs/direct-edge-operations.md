@@ -60,6 +60,12 @@ same trusted-workcell executor as `project_exec`:
   same signed `mcp-edge` binary. The worker keeps redaction and wait/receipt handling
   alive independently of the control loop; the Edge systemd unit stops only its main
   process, so a signed restart or update does not implicitly stop managed groups;
+- the worker owns Bubblewrap's reserved `--info-fd`, revalidates the reported sandbox
+  child PID, start ticks, process group and owner before readiness, and persists that
+  inner session leader rather than the short-lived outer Bubblewrap supervisor. Closed
+  signals target only that exact group. Bubblewrap is parent-bound to the durable
+  worker, so an Edge restart remains transparent while a worker crash cannot orphan
+  its sandbox;
 - manager startup and every bounded list/cleanup recovery pass reconcile active rows
   against PID, Linux start ticks, process group and owner identity; reused, foreign,
   incomplete and disappeared identities become safe terminal states instead of being
@@ -67,7 +73,8 @@ same trusted-workcell executor as `project_exec`:
 - list returns at most 100 opaque lifecycle summaries and signal accepts only the
   closed `interrupt`, `terminate`, or `kill` enum;
 - cleanup is explicit, individual or project-scoped, idempotent, and removes only
-  terminal metadata and private logs. Live rows are counted and preserved.
+  terminal metadata and private logs. Journal, worker and sandbox identities are all
+  revalidated before removal; any exact live identity is counted and preserved.
 
 Emergency concurrency and per-stream storage ceilings are administrator-controlled
 Edge flags. They are protection against host exhaustion, not per-command allowlists or

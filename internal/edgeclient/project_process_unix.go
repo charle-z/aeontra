@@ -1272,25 +1272,89 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 	signals := make(chan os.Signal, 4)
 	ossignal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 	defer ossignal.Stop(signals)
-	command := exec.Command(request.Executable, request.Args...)
+	commandArgs, needsSandboxInfo, err := projectProcessWorkerCommandArgs(request.Args)
+	if err != nil {
+		_ = stdout.Close()
+		_ = stderr.Close()
+		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
+		return err
+	}
+	var sandboxInfoReader, sandboxInfoWriter *os.File
+	if needsSandboxInfo {
+		sandboxInfoReader, sandboxInfoWriter, err = os.Pipe()
+		if err != nil {
+			_ = stdout.Close()
+			_ = stderr.Close()
+			_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
+			return errors.New("project process sandbox identity unavailable")
+		}
+	}
+	command := exec.Command(request.Executable, commandArgs...)
 	command.Dir = request.Dir
 	command.Env = append([]string(nil), request.Env...)
 	command.Stdin = strings.NewReader(request.Stdin)
 	command.Stdout = stdout
 	command.Stderr = stderr
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if sandboxInfoWriter != nil {
+		command.ExtraFiles = []*os.File{sandboxInfoWriter}
+	}
 	if err := command.Start(); err != nil {
+		if sandboxInfoReader != nil {
+			_ = sandboxInfoReader.Close()
+			_ = sandboxInfoWriter.Close()
+		}
 		_ = stdout.Close()
 		_ = stderr.Close()
 		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_start_failed"})
 		return errors.New("project process worker start failed")
 	}
-	childTicks, childTicksErr := linuxProcessStartTicks(command.Process.Pid)
-	childGroup, childGroupErr := syscall.Getpgid(command.Process.Pid)
-	childIdentity := ProjectProcessIdentity{ProcessID: processID, PID: command.Process.Pid, ProcessGroupID: childGroup, StartTicks: childTicks}
-	if childTicksErr != nil || childGroupErr != nil || childGroup != command.Process.Pid || writeProjectProcessWorkerChildIdentity(workerRoot, childIdentity) != nil {
+	if sandboxInfoWriter != nil {
+		_ = sandboxInfoWriter.Close()
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- command.Wait() }()
+	childPID := command.Process.Pid
+	if sandboxInfoReader != nil {
+		info := make(chan projectProcessSandboxInfoResult, 1)
+		go func() {
+			defer sandboxInfoReader.Close()
+			info <- readProjectProcessSandboxInfo(sandboxInfoReader)
+		}()
+		select {
+		case result := <-info:
+			if result.Err != nil {
+				_ = command.Process.Kill()
+				<-waited
+				_ = stdout.Close()
+				_ = stderr.Close()
+				_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
+				return result.Err
+			}
+			childPID = result.ChildPID
+		case <-waited:
+			_ = sandboxInfoReader.Close()
+			_ = stdout.Close()
+			_ = stderr.Close()
+			_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
+			return errors.New("project process sandbox exited before identity")
+		case <-time.After(5 * time.Second):
+			_ = sandboxInfoReader.Close()
+			_ = command.Process.Kill()
+			<-waited
+			_ = stdout.Close()
+			_ = stderr.Close()
+			_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
+			return errors.New("project process sandbox identity timed out")
+		}
+	}
+	childTicks, childTicksErr := linuxProcessStartTicks(childPID)
+	childGroup, childGroupErr := syscall.Getpgid(childPID)
+	childIdentity := ProjectProcessIdentity{ProcessID: processID, PID: childPID, ProcessGroupID: childGroup, StartTicks: childTicks}
+	childAlive, childAliveErr := (osProjectProcessPlatform{}).Alive(childIdentity)
+	if childTicksErr != nil || childGroupErr != nil || childGroup != childPID || childAliveErr != nil || !childAlive || writeProjectProcessWorkerChildIdentity(workerRoot, childIdentity) != nil {
 		_ = command.Process.Kill()
-		_ = command.Wait()
+		<-waited
 		_ = stdout.Close()
 		_ = stderr.Close()
 		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
@@ -1304,8 +1368,6 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_ready_failed"})
 		return err
 	}
-	waited := make(chan error, 1)
-	go func() { waited <- command.Wait() }()
 	var waitErr error
 	waiting := true
 	for waiting {
@@ -1323,7 +1385,7 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 				_ = os.Remove(controlPath)
 				forward = syscall.SIGKILL
 			}
-			_ = syscall.Kill(-command.Process.Pid, forward)
+			_ = syscall.Kill(-childIdentity.ProcessGroupID, forward)
 		}
 	}
 	_ = stdout.Close()
@@ -1346,6 +1408,41 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 		return err
 	}
 	return nil
+}
+
+type projectProcessSandboxInfoResult struct {
+	ChildPID int
+	Err      error
+}
+
+func projectProcessWorkerCommandArgs(arguments []string) ([]string, bool, error) {
+	needsSandboxInfo := false
+	for index := 0; index < len(arguments); index++ {
+		if arguments[index] == "--" {
+			break
+		}
+		switch arguments[index] {
+		case "--new-session":
+			needsSandboxInfo = true
+		case "--info-fd", "--json-status-fd":
+			return nil, false, errors.New("project process sandbox identity arguments are reserved")
+		}
+	}
+	if !needsSandboxInfo {
+		return append([]string(nil), arguments...), false, nil
+	}
+	return append([]string{"--info-fd", "3"}, arguments...), true, nil
+}
+
+func readProjectProcessSandboxInfo(reader io.Reader) projectProcessSandboxInfoResult {
+	var info struct {
+		ChildPID int `json:"child-pid"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(reader, 4096))
+	if decoder.Decode(&info) != nil || info.ChildPID < 1 {
+		return projectProcessSandboxInfoResult{Err: errors.New("project process sandbox identity is invalid")}
+	}
+	return projectProcessSandboxInfoResult{ChildPID: info.ChildPID}
 }
 
 func projectProcessWorkerPath(workerRoot, processID, kind string) string {

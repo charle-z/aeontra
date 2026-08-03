@@ -119,3 +119,19 @@ classification and refuses terminal cleanup while either exact private identity 
 alive. Finish the full gates and normal PR, publish the next signed release, update the
 Edge once, and repeat Hito 3B from a fresh process. Do not accept H3B from
 `p15.0.20` or from the removed `pr_33ae97c1002ecadb66b9366b3a2c69a7` workload.
+
+## 2026-08-03 p15.0.21 sandbox-leader follow-up
+
+PR #141, signed `p15.0.21`, production deployment and one official Edge update are
+complete at `7ce6ebd4e35b8c3325395155c30deb4f98c8a99a`. Git and Hito 4 are
+accepted and H4 was exclusively cleaned. The new H3B process recovered across one Edge
+restart with continuous output, proving the prior reconciliation fix, but interrupt
+targeted Bubblewrap's outer supervisor while its `--new-session` inner process group
+kept running. Bounded stop failed. The operator terminated only the revalidated inner
+test group, then repeated stop and exclusive cleanup succeeded; doctor is ready with
+zero restarts and no matching workload.
+
+The active branch must finish the `--info-fd` correction: persist the exact reported
+inner leader after owner/start-ticks/PGID validation, signal that group, and bind
+Bubblewrap to the independent durable worker with `--die-with-parent`. Publish through
+normal PR and the next signed release, then repeat only the short H3B real acceptance.

@@ -91,3 +91,31 @@ The exact candidate commit `f98f635d84080f26f885e8988192ed026423599b` passed
 an isolated ext4 clone with Go 1.26.5. The mounted NTFS run passed every package except
 the documented builder permission-mode contract (`0777` observed instead of `0755`);
 the same package passed from ext4, so no production permission expectation was relaxed.
+
+## p15.0.21 sandbox-leader finding
+
+PR #141 merged at `7ce6ebd4e35b8c3325395155c30deb4f98c8a99a`; 16 exact-head
+checks passed after one package job was rerun unchanged following an external GitHub
+API HTTP 500. Official workflow run `30810209878` published signed `p15.0.21`, and one
+stable update operation installed that exact release/commit. Production and the Edge
+served the same merge; doctor remained ready with one process, held lock, managed
+coherence, empty journal and `NRestarts=0`.
+
+Git and Hito 4 are accepted from `p15.0.20` evidence. The toolbox retained its marker,
+tools, rootless Podman socket and durable service across restart; repeated stop was
+idempotent and exclusive cleanup removed only that toolbox and service.
+
+The fresh Hito 3B process on `p15.0.21` recovered as `running` after one managed Edge
+restart. Incremental stdout/stderr continued monotonically from 0 through more than
+2,500 paired records without replay. A closed `interrupt` returned success but did not
+stop the workload; bounded stop then failed. Host inspection proved Bubblewrap's outer
+supervisor and its `--new-session` inner leader had different process groups. The
+operator revalidated and sent TERM only to the exact inner test group. The worker then
+wrote a stopped receipt, repeated stop was idempotent, exclusive cleanup succeeded,
+no matching workload remained and doctor stayed ready.
+
+Hito 3B therefore remains unaccepted. The next candidate consumes Bubblewrap's
+server-owned `--info-fd`, persists the reported inner leader only after exact
+PID/start-ticks/process-group/owner validation, signals that group and adds
+`--die-with-parent` relative to the independent durable worker. This retains restart
+survival while making a worker failure kill its sandbox instead of orphaning it.
