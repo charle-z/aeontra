@@ -98,6 +98,13 @@ child PID before the delayed `setsid`; RED fails to persist readiness, while GRE
 waits at most two seconds and still requires an unchanged start time, current-user
 ownership and `PGID == PID`. The affected Edge/docs matrix passes on Linux.
 
+Signed `p15.0.23` closes the real gate. A fresh process resumed after exactly one
+managed Edge restart at the next sequential stdout/stderr record, with no replay. A
+public closed `interrupt` terminated the inner sandbox without operator help and
+produced known exit code 130. Repeated interrupt and stop remained idempotent;
+exclusive cleanup removed the record, the final list was empty, no marked workload
+remained and doctor reported ready with an empty journal and `NRestarts=0`.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:
