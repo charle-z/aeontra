@@ -52,8 +52,8 @@ func isFrontDoorPlatform(name string) bool {
 
 func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 135 {
-		t.Fatalf("tool order length=%d want=135", len(server.order))
+	if len(server.order) != 137 {
+		t.Fatalf("tool order length=%d want=137", len(server.order))
 	}
 	if server.order[49] != "workspace_checkpoint" {
 		t.Fatalf("workspace checkpoint position=%v", server.order[:49])
@@ -63,15 +63,15 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
-		if name != "mcp_client_capabilities" && !strings.HasPrefix(name, "model_") && !strings.HasPrefix(name, "opencode_") && name != "workspace_checkpoint" && name != "workspace_runtime_continue" && !strings.HasPrefix(name, "workspace_htb_") && !isP15Control(name) && !isP16Project(name) && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") && !strings.HasPrefix(name, "source_pull_request_") && !strings.HasPrefix(name, "source_default_branch_") && !isFrontDoorPlatform(name) {
+		if name != "mcp_client_capabilities" && !strings.HasPrefix(name, "model_") && !strings.HasPrefix(name, "opencode_") && name != "workspace_checkpoint" && name != "workspace_runtime_continue" && !strings.HasPrefix(name, "workspace_htb_") && !isP15Control(name) && !isP16Project(name) && !strings.HasPrefix(name, "result_") && !strings.HasPrefix(name, "brain_") && !strings.HasPrefix(name, "source_pull_request_") && !strings.HasPrefix(name, "source_default_branch_") && !strings.HasPrefix(name, "source_workflow_") && !isFrontDoorPlatform(name) {
 			historical = append(historical, name)
 		}
 	}
 	if !reflect.DeepEqual(historical, p8ToolOrder) {
 		t.Fatalf("P8 compatibility tool order changed\ngot=%v\nwant=%v", historical, p8ToolOrder)
 	}
-	if !reflect.DeepEqual(server.order[130:], brainToolOrder) {
-		t.Fatalf("Brain suffix=%v want=%v", server.order[130:], brainToolOrder)
+	if !reflect.DeepEqual(server.order[132:], brainToolOrder) {
+		t.Fatalf("Brain suffix=%v want=%v", server.order[132:], brainToolOrder)
 	}
 
 	// Compatibility slices below are rebuilt from current tool contracts. Dated
@@ -82,7 +82,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	}
 	legacy := make([]CatalogTool, 0, 62)
 	for _, tool := range snapshot.Tools {
-		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "workspace_htb_") && !isP15Control(tool.Name) && !isP16Project(tool.Name) && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") && !isFrontDoorPlatform(tool.Name) && tool.Name != "workspace_checkpoint" && tool.Name != "workspace_runtime_continue" {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "workspace_htb_") && !isP15Control(tool.Name) && !isP16Project(tool.Name) && !strings.HasPrefix(tool.Name, "brain_") && !strings.HasPrefix(tool.Name, "result_") && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") && !strings.HasPrefix(tool.Name, "source_workflow_") && !isFrontDoorPlatform(tool.Name) && tool.Name != "workspace_checkpoint" && tool.Name != "workspace_runtime_continue" {
 			legacy = append(legacy, tool)
 		}
 	}
@@ -98,7 +98,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	}
 	previous := make([]CatalogTool, 0, 71)
 	for _, tool := range snapshot.Tools {
-		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "workspace_htb_") && !isP15Control(tool.Name) && !isP16Project(tool.Name) && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") && !isFrontDoorPlatform(tool.Name) && tool.Name != "workspace_runtime_continue" {
+		if tool.Name != "mcp_client_capabilities" && !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "workspace_htb_") && !isP15Control(tool.Name) && !isP16Project(tool.Name) && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") && !strings.HasPrefix(tool.Name, "source_workflow_") && !isFrontDoorPlatform(tool.Name) && tool.Name != "workspace_runtime_continue" {
 			previous = append(previous, tool)
 		}
 	}
@@ -114,7 +114,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	}
 	step1 := make([]CatalogTool, 0, 72)
 	for _, tool := range snapshot.Tools {
-		if !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "workspace_htb_") && !isP15Control(tool.Name) && !isP16Project(tool.Name) && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") && !isFrontDoorPlatform(tool.Name) && tool.Name != "workspace_runtime_continue" {
+		if !strings.HasPrefix(tool.Name, "model_") && !strings.HasPrefix(tool.Name, "opencode_") && !strings.HasPrefix(tool.Name, "workspace_htb_") && !isP15Control(tool.Name) && !isP16Project(tool.Name) && !strings.HasPrefix(tool.Name, "source_pull_request_") && !strings.HasPrefix(tool.Name, "source_default_branch_") && !strings.HasPrefix(tool.Name, "source_workflow_") && !isFrontDoorPlatform(tool.Name) && tool.Name != "workspace_runtime_continue" {
 			step1 = append(step1, tool)
 		}
 	}
@@ -131,7 +131,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	}
 	step4 := make([]CatalogTool, 0, 77)
 	for _, tool := range snapshot.Tools {
-		if strings.HasPrefix(tool.Name, "source_pull_request_") || strings.HasPrefix(tool.Name, "source_default_branch_") || isFrontDoorPlatform(tool.Name) || strings.HasPrefix(tool.Name, "workspace_htb_") || isP15Control(tool.Name) || isP16Project(tool.Name) {
+		if strings.HasPrefix(tool.Name, "source_pull_request_") || strings.HasPrefix(tool.Name, "source_default_branch_") || strings.HasPrefix(tool.Name, "source_workflow_") || isFrontDoorPlatform(tool.Name) || strings.HasPrefix(tool.Name, "workspace_htb_") || isP15Control(tool.Name) || isP16Project(tool.Name) {
 			continue
 		}
 		if tool.Name == "workspace_runtime_continue" {
@@ -158,7 +158,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 135 || snapshot.Hash != "sha256:557d3cbb956a311429dbcf893b329b5b0d0dea5e38a0c8dbae96abac52b1e7dd" {
+	if snapshot.ToolCount != 137 || snapshot.Hash != "sha256:3a1bab74e895c03e734c43748dbf48e16a909d9697fbfe39bc76fe4a23ca1669" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }
