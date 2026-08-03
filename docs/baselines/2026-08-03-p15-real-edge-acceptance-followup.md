@@ -147,3 +147,26 @@ ticks and current-user ownership; disappearance, reuse, foreign ownership or tim
 still fail closed. The RED helper now reports its PID before a delayed `setsid`; GREEN
 persists the exact leader and the affected Linux Edge/docs matrix passes. Hito 3B is
 still unaccepted pending publication and the fresh real restart/signal/cleanup gate.
+
+## p15.0.23 Hito 3B acceptance
+
+PR #143 merged at `b235d2040aa2c62e2b4a134fbf0e2763baf1c246` after all 16
+exact-head checks passed. Official workflow run `30814454726` published signed
+`p15.0.23`; exactly one stable update installed that release and commit. Bundle status
+and host doctor were valid before the gate with a single active Edge, held lock,
+managed coherence, empty journal and `NRestarts=0`.
+
+A new durable process emitted paired sequential output. After exactly one managed Edge
+restart, the same opaque process remained running and the next bounded read began at
+the immediately following record without replay. Public `interrupt` stopped the inner
+sandbox without operator signalling; the terminal record had known exit code 130.
+Repeated interrupt and two repeated stops were idempotent. Exclusive cleanup removed
+the process and its status then returned not found. The earlier terminal `p15.0.22`
+failed-start record was also removed explicitly, the final process list was empty and
+no marked host workload remained.
+
+Final doctor stayed ready on `p15.0.23` with valid bundle/layout/identity, active
+service, one Edge process, held lock, managed coherence, rootless Podman, empty journal
+and `NRestarts=0`. Hito 3B is accepted. Durable evidence is in Brain as
+`p15-0-23-parrot-trusted-linux-h3b-acceptance-2026-08-03`. Hito 4 and direct Git remain
+accepted from their `p15.0.20` evidence; Hito 9 was not started.

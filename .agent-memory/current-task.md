@@ -190,3 +190,14 @@ child before `--new-session` necessarily completes `setsid`, so the immediate
 `PGID == PID` validation raced the host. The active branch adds a two-second bounded
 wait that preserves owner and start-time revalidation. Publish it normally, release
 the next signed bundle once and repeat only H3B; Hito 9 remains excluded.
+
+## 2026-08-03 p15.0.23 H3B closure
+
+PR #143 merged at `b235d2040aa2c62e2b4a134fbf0e2763baf1c246`; official run
+`30814454726` published signed `p15.0.23`, and exactly one stable update installed it.
+The fresh process survived one managed Edge restart with continuous non-replayed
+stdout/stderr, then public `interrupt` stopped the inner sandbox with known exit code
+130 and no operator help. Repeated interrupt/stop were idempotent, exclusive cleanup
+completed, the final list was empty and doctor remained ready with `NRestarts=0`.
+H3B, H4 and direct Git are accepted. Brain note:
+`p15-0-23-parrot-trusted-linux-h3b-acceptance-2026-08-03`. Hito 9 remains excluded.

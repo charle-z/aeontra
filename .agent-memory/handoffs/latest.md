@@ -146,3 +146,14 @@ immediate `PGID == PID` check lost that race. The bounded harmless probe ended a
 matching workload remains. The current candidate waits at most two seconds for the
 same owned, unchanged-start-time child to become group leader. Publish by normal PR,
 release/update once, then repeat only H3B restart, signal, idempotent stop and cleanup.
+
+## 2026-08-03 p15.0.23 accepted handoff
+
+PR #143, signed release `p15.0.23`, production commit
+`b235d2040aa2c62e2b4a134fbf0e2763baf1c246` and exactly one official Edge update are
+complete. H3B is accepted on the real Parrot Edge: continuity survived one restart,
+public interrupt stopped the actual inner workload with known code 130, repeated
+signal/stop were idempotent, cleanup was exclusive, the final list was empty, no marker
+remained and doctor was ready with zero restarts. Brain evidence is
+`p15-0-23-parrot-trusted-linux-h3b-acceptance-2026-08-03`. H4 and Git remain accepted;
+do not repeat these gates unless behavior changes. Hito 9 was not started.
