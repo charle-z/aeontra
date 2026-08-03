@@ -43,6 +43,18 @@ credential value was read or printed.
 - Retain fail-closed behavior for malformed image identities, ownership drift and all
   Git state/remote mismatches.
 
+## Source verification
+
+- RED: the new focused matrix failed to compile because the guarded redaction helper
+  did not exist; the toolbox ownership fixture also exercises the real bare Podman
+  form.
+- GREEN: the focused H3/H4/Git Edge matrix and documentation consistency tests pass.
+- `go vet ./...`, `go build ./...` and `git diff --check` pass.
+- The Windows-mounted full suite reaches only the documented NTFS executable-mode
+  mismatch in `packaging/builder`. A clean ext4 clone of the exact candidate commit,
+  preserving Git modes, passes `go test ./... -count=1`, `go vet ./...` and
+  `go build ./...`.
+
 ## Remaining acceptance
 
 After exact-head CI, merge, signed release and one official update, reuse the existing
