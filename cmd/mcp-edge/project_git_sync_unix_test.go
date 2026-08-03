@@ -16,6 +16,7 @@ import (
 
 type projectGitSyncRunner struct {
 	head, remote    string
+	status          string
 	dirty           bool
 	relation        string
 	calls           []string
@@ -37,7 +38,7 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 		if r.dirty {
 			return " M dirty.go", nil
 		}
-		return "", nil
+		return r.status, nil
 	case "remote get-url origin", "remote get-url --push origin":
 		return "https://github.com/charle-z/repo.git", nil
 	case "rev-parse --abbrev-ref --symbolic-full-name @{upstream}":
@@ -101,7 +102,10 @@ func projectGitResolution() edgeclient.ProjectResolution {
 }
 
 func TestInspectProjectGitCheckoutReportsOnlyBoundedRelation(t *testing.T) {
-	runner := &projectGitSyncRunner{head: "0123456789abcdef0123456789abcdef01234567", remote: "1123456789abcdef0123456789abcdef01234567"}
+	runner := &projectGitSyncRunner{
+		head: "0123456789abcdef0123456789abcdef01234567", remote: "1123456789abcdef0123456789abcdef01234567",
+		status: "?? .mcp-devbox/runtime/home/.config/go/telemetry/local/weekends\n",
+	}
 	result, err := inspectProjectGitCheckout(context.Background(), projectGitResolution(), runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"})
 	if err != nil || result.GitBranch != "main" || result.GitHead != runner.head || result.GitRemoteHead != runner.remote || result.GitAhead != 0 || result.GitBehind != 1 || !result.GitClean || result.GitDirty || !result.GitFetched {
 		t.Fatalf("result=%+v err=%v", result, err)

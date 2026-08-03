@@ -250,7 +250,7 @@ func collectProjectSnapshot(ctx context.Context, resolved edgeclient.ProjectReso
 	if err != nil {
 		return edge.OperationResult{}, "project_snapshot_failed"
 	}
-	clean := strings.TrimSpace(statusOutput) == ""
+	clean := edgeclient.ProjectCheckoutStatusClean(statusOutput)
 	projectState := string(edgeclient.ProjectCheckoutReady)
 	if !clean {
 		projectState = string(edgeclient.ProjectCheckoutDirty)

@@ -103,7 +103,7 @@ func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
 	runner := &projectSnapshotRunner{outputs: map[string]string{
 		"rev-parse --verify HEAD":                     "0123456789abcdef0123456789abcdef01234567\n",
 		"branch --show-current":                       "main\n",
-		"status --porcelain=v1 --untracked-files=all": "",
+		"status --porcelain=v1 --untracked-files=all": "?? .mcp-devbox/runtime/home/.config/go/telemetry/local/weekends\n",
 	}}
 	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
 	if code != "" || result.SnapshotHead != "0123456789abcdef0123456789abcdef01234567" ||

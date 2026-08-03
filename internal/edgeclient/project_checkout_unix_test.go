@@ -17,6 +17,17 @@ func TestLocalProjectCheckoutInspectorClassifiesReadyDirtyAndRemoteDrift(t *test
 	if err != nil || state != ProjectCheckoutReady {
 		t.Fatalf("ready state=%s err=%v", state, err)
 	}
+	managedRuntime := filepath.Join(repository, ".mcp-devbox", "runtime", "home", ".config", "go", "telemetry", "local")
+	if err := os.MkdirAll(managedRuntime, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(managedRuntime, "weekends"), []byte("managed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err = inspector.Inspect(context.Background(), repository, "charle-z", "ekoparty-trip-agent")
+	if err != nil || state != ProjectCheckoutReady {
+		t.Fatalf("managed runtime must not dirty checkout: state=%s err=%v", state, err)
+	}
 	if err := os.WriteFile(filepath.Join(repository, "untracked.txt"), []byte("local\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

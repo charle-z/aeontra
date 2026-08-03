@@ -153,7 +153,16 @@ A checkout is ready only when:
 - `.git` is a real directory, not a symlink;
 - the top-level checkout equals the registered workspace path;
 - fetch and push remotes are owner-bound HTTPS GitHub URLs for the exact repository;
-- tracked and untracked status is clean.
+- tracked and untracked status is clean, except for untracked files below the
+  Edge-owned `.mcp-devbox/` runtime namespace.
+
+The Edge creates `.mcp-devbox/tools`, `.mcp-devbox/cache`, and
+`.mcp-devbox/runtime` inside trusted development workspaces. Those untracked runtime
+artifacts do not make a checkout dirty. The exception is deliberately narrow: a
+tracked, staged, renamed, deleted, or otherwise changed path remains dirty even when
+it is below `.mcp-devbox/`, and similarly named paths outside that exact namespace are
+not ignored. This prevents the Edge's own tool caches and runtime HOME from blocking
+project resolution without hiding repository changes.
 
 Stable resolution blockers include:
 

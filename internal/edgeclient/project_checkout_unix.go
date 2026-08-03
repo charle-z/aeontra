@@ -50,7 +50,7 @@ func (localProjectCheckoutInspector) Inspect(ctx context.Context, path, owner, r
 	if err != nil {
 		return ProjectCheckoutUnsafe, errors.New("project checkout status is unavailable")
 	}
-	if strings.TrimSpace(status) != "" {
+	if !ProjectCheckoutStatusClean(status) {
 		return ProjectCheckoutDirty, nil
 	}
 	return ProjectCheckoutReady, nil
