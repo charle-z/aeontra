@@ -26,6 +26,15 @@
 
 ## Verified real-device state
 
+- Official `p15.0.18` is installed on the real Parrot Edge at commit
+  `d1ea0781984a531eb70126f256e5326215d90c87`. Doctor reports ready, valid bundle,
+  one managed process, held lock, rootless Podman and an empty lifecycle journal;
+  the managed unit has `NRestarts=0` and the manual legacy unit remains
+  inactive/disabled.
+- Real Hito 3A acceptance passed. Hito 3B and Hito 4 exposed the two defects recorded
+  in `docs/baselines/2026-08-03-p15-real-edge-acceptance-fixes.md`; their corrective
+  candidate is the active task. Git synchronization rejected safely and the normal
+  `gh` login was reimported before its next direct retry.
 - Official release `p15.0.13` was published from `f8c0ce6a25ed46ae4bc4031656b04eb4c3e88603`
   and installed once on the paired Parrot Edge. Bundle, service, pairing and process
   coherence were verified healthy.
@@ -98,12 +107,10 @@ directory to the two closed root lifecycle units; it does not grant root to the 
 
 ## Next exact action
 
-Finish full verification, PR and exact-head gates for the lifecycle sandbox correction,
-publish signed `p15.0.18`, then install its official signed Debian package once so the
-host receives the corrected root units as well as the bundle. Require the managed unit
-to own one process on the new release, with no active legacy unit and a signed
-`/usr/local/bin/gh`. A later archive update must be proven separately through the
-normal closed updater; do not repeat the already failed `p15.0.17` operation.
-Re-run `project_github_status`, then continue Hito 5 consequential operations and
-real-device acceptance for Hitos 3A, 3B and 4. Hito 9 multiagent/task-graph work is
-explicitly outside the current authorization and must not be started.
+Publish the real-acceptance corrections through a normal PR after exact-head gates.
+The next signed release must be installed through one normal closed archive update,
+which simultaneously proves the corrected updater sandbox and delivers the H3B/H4
+fixes. Re-run Hito 3B signal/restart/cleanup, Hito 4 toolbox/service/restart/cleanup and
+successful direct Git status/fetch on the real Edge. Do not repeat the already failed
+`p15.0.17` operation or use a manual package install for the next release. Hito 9
+multiagent/task-graph work remains outside the current authorization.

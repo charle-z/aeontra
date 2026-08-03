@@ -683,7 +683,7 @@ func (manager *ProjectProcessManager) removeLogs(processID string) error {
 			return errors.New("project process log cleanup failed")
 		}
 	}
-	for _, kind := range []string{"request", "identity", "ready", "control", "exit"} {
+	for _, kind := range []string{"request", "identity", "child", "ready", "control", "exit"} {
 		path := projectProcessWorkerPath(manager.workerRoot, processID, kind)
 		info, err := os.Lstat(path)
 		if errors.Is(err, os.ErrNotExist) {
@@ -1200,6 +1200,17 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_start_failed"})
 		return errors.New("project process worker start failed")
 	}
+	childTicks, childTicksErr := linuxProcessStartTicks(command.Process.Pid)
+	childGroup, childGroupErr := syscall.Getpgid(command.Process.Pid)
+	childIdentity := ProjectProcessIdentity{ProcessID: processID, PID: command.Process.Pid, ProcessGroupID: childGroup, StartTicks: childTicks}
+	if childTicksErr != nil || childGroupErr != nil || childGroup != command.Process.Pid || writeProjectProcessWorkerChildIdentity(workerRoot, childIdentity) != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
+		return errors.New("project process worker child identity failed")
+	}
 	if err := writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "ready"), []byte("ready\n")); err != nil {
 		_ = command.Process.Kill()
 		_ = command.Wait()
@@ -1297,6 +1308,14 @@ func writeProjectProcessWorkerExit(workerRoot, processID string, exit ProjectPro
 }
 
 func writeProjectProcessWorkerIdentity(workerRoot string, identity ProjectProcessIdentity) error {
+	return writeProjectProcessWorkerIdentityKind(workerRoot, identity, "identity")
+}
+
+func writeProjectProcessWorkerChildIdentity(workerRoot string, identity ProjectProcessIdentity) error {
+	return writeProjectProcessWorkerIdentityKind(workerRoot, identity, "child")
+}
+
+func writeProjectProcessWorkerIdentityKind(workerRoot string, identity ProjectProcessIdentity, kind string) error {
 	if !projectProcessIDPattern.MatchString(identity.ProcessID) || identity.PID < 1 || identity.ProcessGroupID < 1 || identity.StartTicks == 0 {
 		return errors.New("project process worker identity is invalid")
 	}
@@ -1304,11 +1323,19 @@ func writeProjectProcessWorkerIdentity(workerRoot string, identity ProjectProces
 	if err != nil {
 		return errors.New("project process worker identity is invalid")
 	}
-	return writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, identity.ProcessID, "identity"), body)
+	return writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, identity.ProcessID, kind), body)
 }
 
 func readProjectProcessWorkerIdentity(workerRoot, processID string) (ProjectProcessIdentity, error) {
-	body, err := readPrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "identity"), 2048)
+	return readProjectProcessWorkerIdentityKind(workerRoot, processID, "identity")
+}
+
+func readProjectProcessWorkerChildIdentity(workerRoot, processID string) (ProjectProcessIdentity, error) {
+	return readProjectProcessWorkerIdentityKind(workerRoot, processID, "child")
+}
+
+func readProjectProcessWorkerIdentityKind(workerRoot, processID, kind string) (ProjectProcessIdentity, error) {
+	body, err := readPrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, kind), 2048)
 	if err != nil {
 		return ProjectProcessIdentity{}, err
 	}
@@ -1381,16 +1408,40 @@ func (platform osProjectProcessPlatform) Signal(identity ProjectProcessIdentity,
 	case ProjectProcessTerminate:
 		unix = syscall.SIGTERM
 	case ProjectProcessKill:
-		if !projectProcessIDPattern.MatchString(identity.ProcessID) {
-			return errors.New("project process identity is invalid")
+		unix = syscall.SIGKILL
+	default:
+		return errors.New("project process signal is invalid")
+	}
+	if !projectProcessIDPattern.MatchString(identity.ProcessID) {
+		return errors.New("project process identity is invalid")
+	}
+	childPath := projectProcessWorkerPath(platform.workerRoot, identity.ProcessID, "child")
+	if _, statErr := os.Lstat(childPath); statErr == nil {
+		child, err := readProjectProcessWorkerChildIdentity(platform.workerRoot, identity.ProcessID)
+		if err != nil {
+			return err
 		}
+		childAlive, err := platform.Alive(child)
+		if err != nil || !childAlive {
+			return ErrProjectProcessIdentityChanged
+		}
+		if err := syscall.Kill(-child.ProcessGroupID, unix); errors.Is(err, syscall.ESRCH) {
+			return ErrProjectProcessIdentityChanged
+		} else {
+			return err
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return errors.New("project process worker state is unsafe")
+	}
+	// Workers started by an earlier signed release have no child identity file.
+	// Retain the closed relay solely so those live processes remain controllable
+	// across an Edge update.
+	if signal == ProjectProcessKill {
 		controlPath := projectProcessWorkerPath(platform.workerRoot, identity.ProcessID, "control")
 		if err := writePrivateProjectProcessWorkerFile(controlPath, []byte("kill")); err != nil {
 			return err
 		}
 		unix = syscall.SIGUSR1
-	default:
-		return errors.New("project process signal is invalid")
 	}
 	if err := syscall.Kill(identity.PID, unix); errors.Is(err, syscall.ESRCH) {
 		return ErrProjectProcessIdentityChanged
