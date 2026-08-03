@@ -116,10 +116,11 @@ project alias and Edge target; the Edge constructs fixed `gh api` calls for repo
 metadata, one bounded PR probe and one bounded Actions probe. The public response has
 closed capability booleans and safe issue codes, not CLI output.
 
-This first slice does not yet create PRs, dispatch workflows, publish releases or
-provide arbitrary `gh`, URLs, endpoints, headers, GraphQL, pagination or free shell.
-Those Hito 5 writes require their own closed schemas, previews/revalidation where
-consequential, durable operation tests and release proof.
+The local direct-Edge broker slice still does not create PRs, dispatch workflows,
+publish releases or provide arbitrary `gh`, URLs, endpoints, headers, GraphQL,
+pagination or free shell. The public VPS catalog separately exposes planned PR writes
+and one owner-bound `source_workflow_dispatch_preview` / `source_workflow_dispatch`
+pair with exact workflow/ref revalidation and no arbitrary endpoint or token access.
 
 ## Prompt for ChatGPT web
 
