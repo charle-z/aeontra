@@ -113,8 +113,6 @@ do not replace server-side enforcement.
 | `source_pull_request_merge` | 0/1/0/1 | Revalidate head, mergeability and checks, then merge with `merge_method=merge`. |
 | `source_default_branch_update_preview` | 1/0/1/1 | Bind the existing target branch SHA and plan a default-branch update. |
 | `source_default_branch_update` | 0/1/0/1 | Revalidate the target SHA and update the owner-bound repository default branch. |
-| `source_workflow_dispatch_preview` | 1/0/1/1 | Verify one active workflow file and exact branch SHA, reject secret-like bounded inputs, and plan one dispatch. |
-| `source_workflow_dispatch` | 0/1/0/1 | Revalidate workflow identity and branch SHA, then dispatch the reviewed owner-bound workflow once. |
 | `repo_remote_preview` | 1/0/1/0 | Plan an owner-restricted credential-free remote add/update. |
 | `repo_remote_set` | 0/1/0/0 | Revalidate and add or replace the planned named remote. |
 | `repo_publish_preview` | 1/0/1/1 | Inspect the exact remote branch and plan one safe push. |
@@ -123,8 +121,8 @@ do not replace server-side enforcement.
 
 The public catalog GitHub tools use the VPS/Coolify `GITHUB_TOKEN` for API operations
 such as repository metadata, exact-head PR/check status, Actions diagnostics and merge.
-Actions runs/jobs/logs require `Actions: Read`; workflow dispatch requires
-`Actions: Write`; check-run annotations require `Checks: Read`. Job-log downloads follow exactly one GitHub-issued redirect, omit the
+Actions runs/jobs/logs require `Actions: Read`; check-run annotations require
+`Checks: Read`. Job-log downloads follow exactly one GitHub-issued redirect, omit the
 Authorization header on the signed download request, redact returned content and expose
 at most 1 MiB per call within a 16 MiB per-job read window. A configured local
 development Edge separately injects `workspace_dev_git_clone`,
