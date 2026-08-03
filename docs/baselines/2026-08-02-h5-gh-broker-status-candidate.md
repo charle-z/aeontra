@@ -58,3 +58,11 @@ but `p15.0.16` still failed activation and restored `p15.0.14`. The exact unit d
 was only that conflict/order pair, so the post-handoff release removes it and leaves
 an active unpackaged legacy service as an explicit fail-closed operator migration.
 This note records the later findings without changing the baseline's original claims.
+
+PR #137 later removed the obsolete conflict pair and official run `30782426563`
+published signed `p15.0.17`. Its one real activation still restored `p15.0.14`, now
+before new-unit installation. The v2 root updater sandbox omitted `/usr/local/bin` from
+its strict write paths because its own bundle did not carry `gh`; manifest-v3 was the
+first activation to require the fixed managed link. The package correction adds only
+that path to the closed update and rollback units and requires one signed package
+upgrade so the already-running root sandbox is actually replaced.

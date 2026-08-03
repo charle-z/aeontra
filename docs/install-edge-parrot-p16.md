@@ -74,7 +74,12 @@ Archive-only updates do not invoke APT. The signed manifest-v3 layout owns a
 pinned official `gh` at `libexec/gh` and a managed `/usr/local/bin/gh` compatibility
 link. A manifest-v2 bridge release must be installed first on older devices so their
 updater can verify v3. Rollback to a v1/v2 release removes only that exact managed link
-and preserves any unrelated system installation.
+and preserves any unrelated system installation. The fixed root update and rollback
+units include `/usr/local/bin` in `ReadWritePaths` solely for this link; their
+`ProtectSystem=strict`, closed operation and empty capability set remain unchanged.
+Older package installations whose unit predates that permission need one signed Debian
+package upgrade because an archive cannot enlarge the sandbox of the updater process
+that is already running.
 
 During package configuration, the privileged lifecycle inspects exactly
 `mcp-devbox-edge.service` and `mcp-devbox-opencode-edge.service`. A loaded legacy unit

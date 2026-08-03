@@ -53,7 +53,21 @@ forbids them. It also records that `mcp-devbox-edge-onboard@<user>.path` must st
 disabled throughout a forward handoff or a rollback, because the existing identity
 otherwise relaunches the templated service.
 
-Finish gates, merge, publish `p15.0.17`, perform one official update and require one
-managed current process plus the live GitHub preflight. Do not add a privileged
-pre-start bridge, delete the manual legacy unit or run an OpenCode latency benchmark.
-Hito 9 multiagent/task-graph work remains deferred explicitly.
+PR #137 merged at `c4cf14669a845935a785e442047571fcfbeab0a0` after 16/16
+checks; production serves that exact merge. Official run `30782426563` published
+signed `p15.0.17`. Real operation `eo_8f6258eb03477a442199fc65c1642bc3`
+attempted it once and failed before new-unit installation, then restored healthy
+`p15.0.14`.
+
+The root cause is now exact: the fixed updater service has `ProtectSystem=strict` but
+did not include `/usr/local/bin` in `ReadWritePaths`. The v2 bridge contains no bundled
+`gh`, so this was latent; a v3 activation must create the fixed managed
+`/usr/local/bin/gh` link before installing the Edge unit. The update and rollback
+services now receive only that exact additional write directory, matching the existing
+repair service. A signed Debian package must be installed once to replace those root
+unit files; an archive cannot change the sandbox of the updater already executing.
+
+Finish gates, merge, publish `p15.0.18`, install its signed Debian package once and
+require one managed current process plus the live GitHub preflight. Do not add a
+privileged pre-start bridge, delete the manual legacy unit, retry `p15.0.17` or run an
+OpenCode latency benchmark. Hito 9 multiagent/task-graph work remains deferred.
