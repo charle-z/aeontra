@@ -46,23 +46,28 @@ func TestProjectStatusAndResolveOutputContainsNoOpaqueIdentifiersOrPaths(t *test
 	}
 }
 
-func TestProjectStatusReportsStableBlockedReasonAndResolveFails(t *testing.T) {
-	stores, workspace, inspector := newProjectCommandFixture(t)
-	oldOpen := openLocalProjectStores
-	openLocalProjectStores = func() (*localProjectStores, error) { return stores, nil }
-	t.Cleanup(func() { openLocalProjectStores = oldOpen })
-	inspector.state = edgeclient.ProjectCheckoutDirty
-	var stdout bytes.Buffer
-	if err := projectCommand([]string{"status", "--alias", "ekoparty"}, &stdout, &bytes.Buffer{}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stdout.String(), `"state":"blocked"`) || !strings.Contains(stdout.String(), `"reason":"checkout_dirty"`) {
-		t.Fatalf("blocked status=%q", stdout.String())
-	}
-	for _, forbidden := range []string{workspace.ID, workspace.Path} {
-		if strings.Contains(stdout.String(), forbidden) {
-			t.Fatalf("blocked status exposed %q: %s", forbidden, stdout.String())
-		}
+func TestProjectStatusAndResolveReportDirtyCheckoutWithoutExposingPaths(t *testing.T) {
+	for _, operation := range []string{"status", "resolve"} {
+		t.Run(operation, func(t *testing.T) {
+			stores, workspace, inspector := newProjectCommandFixture(t)
+			oldOpen := openLocalProjectStores
+			openLocalProjectStores = func() (*localProjectStores, error) { return stores, nil }
+			t.Cleanup(func() { openLocalProjectStores = oldOpen })
+			inspector.state = edgeclient.ProjectCheckoutDirty
+
+			var stdout bytes.Buffer
+			if err := projectCommand([]string{operation, "--alias", "ekoparty"}, &stdout, &bytes.Buffer{}); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(stdout.String(), `"state":"dirty"`) || strings.Contains(stdout.String(), `"reason"`) {
+				t.Fatalf("dirty %s=%q", operation, stdout.String())
+			}
+			for _, forbidden := range []string{workspace.ID, workspace.Path} {
+				if strings.Contains(stdout.String(), forbidden) {
+					t.Fatalf("dirty %s exposed %q: %s", operation, forbidden, stdout.String())
+				}
+			}
+		})
 	}
 }
 

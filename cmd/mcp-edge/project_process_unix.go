@@ -115,7 +115,7 @@ func projectProcessBaseResult(resolved edgeclient.ProjectResolution) edge.Operat
 	return edge.OperationResult{
 		WorkspaceID: resolved.Workspace.ID, ProjectAlias: resolved.Project.Alias,
 		ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository,
-		ProjectTarget: resolved.TargetAlias, ProjectState: "ready",
+		ProjectTarget: resolved.TargetAlias, ProjectState: resolved.SafeState(),
 		ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
 	}
 }

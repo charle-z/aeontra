@@ -287,8 +287,10 @@ git status --porcelain=v1 --untracked-files=all
 
 The response is bounded to operation identity, reuse state, project/repository/target,
 profile/mode, branch, commit and clean state. Device identity, workspace identity, paths,
-command output and credentials are not returned. A dirty checkout fails with the stable
-`project_checkout_dirty` code.
+command output and credentials are not returned. A dirty checkout is reported as project
+state `dirty` with `clean=false`; it remains resolvable so later status, execution, process,
+toolbox and Git inspection calls can continue. Registration and fast-forward keep their
+explicit clean-tree preconditions and never overwrite local changes.
 
 Repeating the same normalized request and idempotency key returns the original durable
 operation, including a terminal result. This allows the same GPT conversation to retry

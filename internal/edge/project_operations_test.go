@@ -110,6 +110,17 @@ func TestProjectSnapshotOperationIsDurablyIdempotent(t *testing.T) {
 	if validOperationCompletion(unsafe, "") {
 		t.Fatal("unsafe project snapshot result accepted")
 	}
+	dirty := result
+	dirty.ProjectState = "dirty"
+	dirty.SnapshotClean = false
+	if !validOperationCompletion(dirty, "") {
+		t.Fatal("dirty project snapshot result rejected")
+	}
+	inconsistent := dirty
+	inconsistent.SnapshotClean = true
+	if validOperationCompletion(inconsistent, "") {
+		t.Fatal("inconsistent dirty project snapshot result accepted")
+	}
 }
 
 func TestResolveActiveDeviceNameRequiresUniqueActiveAlias(t *testing.T) {
