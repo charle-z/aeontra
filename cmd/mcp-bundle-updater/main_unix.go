@@ -112,11 +112,7 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 		return resolver.UpdateStable(ctx, engine)
 	}
 	for component, relative := range bundle.DefaultLayout() {
-		mode := os.FileMode(0o644)
-		if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentOpenCode {
-			mode = 0o755
-		}
-		if err := os.Chmod(filepath.Join(releaseRoot, filepath.FromSlash(relative)), mode); err != nil {
+		if err := repairComponentPermissions(releaseRoot, component, relative); err != nil {
 			return edgeupdate.Status{}, errors.New("official component permissions repair failed")
 		}
 	}
@@ -134,6 +130,9 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 			return edgeupdate.Status{}, err
 		}
 	}
+	if err := reconcileBundledGitHubCLI(releaseRoot); err != nil {
+		return edgeupdate.Status{}, err
+	}
 	if err := service.InstallUnit(releaseRoot); err != nil {
 		return edgeupdate.Status{}, err
 	}
@@ -143,6 +142,18 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 		}
 	}
 	return engine.Status()
+}
+
+func repairComponentPermissions(releaseRoot, component, relative string) error {
+	mode := os.FileMode(0o644)
+	if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentGitHubCLI || component == bundle.ComponentOpenCode {
+		mode = 0o755
+	}
+	err := os.Chmod(filepath.Join(releaseRoot, filepath.FromSlash(relative)), mode)
+	if component == bundle.ComponentGitHubCLI && errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func repairOfficialLink(destination, target string) error {
@@ -176,6 +187,9 @@ func repairOfficialLink(destination, target string) error {
 }
 
 func (s *systemdService) InstallUnit(releaseRoot string) error {
+	if err := reconcileBundledGitHubCLI(releaseRoot); err != nil {
+		return err
+	}
 	source := releaseRoot + "/systemd/mcp-devbox-opencode-edge@.service"
 	info, err := os.Lstat(source)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
@@ -203,6 +217,31 @@ func (s *systemdService) InstallUnit(releaseRoot string) error {
 		return err
 	}
 	return exec.Command("systemctl", "daemon-reload").Run()
+}
+
+func reconcileBundledGitHubCLI(releaseRoot string) error {
+	return reconcileBundledGitHubCLIAt(releaseRoot, "/usr/local/bin/gh", "/opt/mcp-devbox/current/libexec/gh")
+}
+
+func reconcileBundledGitHubCLIAt(releaseRoot, destination, target string) error {
+	info, err := os.Lstat(filepath.Join(releaseRoot, "libexec/gh"))
+	if err == nil {
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
+			return errors.New("signed GitHub CLI is unsafe")
+		}
+		return repairOfficialLink(destination, target)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return errors.New("signed GitHub CLI is unavailable")
+	}
+	existing, readErr := os.Readlink(destination)
+	if readErr == nil && existing == target {
+		return os.Remove(destination)
+	}
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return nil
+	}
+	return nil
 }
 
 func (s *systemdService) RestartEdge() error {

@@ -22,7 +22,7 @@ func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 		}
 	}
 	manifest := Manifest{
-		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 3, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}
@@ -92,13 +92,54 @@ func TestLegacyVersionOneBundleRemainsVerifiableForRollback(t *testing.T) {
 	}
 }
 
+func TestVersionTwoBundleWithoutBundledGitHubCLIRemainsVerifiableForRollback(t *testing.T) {
+	paths, ok := layoutForVersion(2)
+	if !ok {
+		t.Fatal("version two layout unavailable")
+	}
+	if _, exists := paths[ComponentGitHubCLI]; exists {
+		t.Fatal("version two unexpectedly requires bundled GitHub CLI")
+	}
+}
+
+func TestBuildEmitsVersionTwoBridgeBeforeBundledGitHubCLI(t *testing.T) {
+	root := t.TempDir()
+	layout, ok := layoutForVersion(2)
+	if !ok {
+		t.Fatal("version two layout unavailable")
+	}
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest, err := Build(root, Metadata{
+		Release: "p15.0.14", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Architecture: "amd64",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Version != 2 {
+		t.Fatalf("version=%d, want bridge version 2", manifest.Version)
+	}
+	if _, exists := manifest.Components[ComponentGitHubCLI]; exists {
+		t.Fatal("bridge manifest unexpectedly contains GitHub CLI")
+	}
+}
+
 func TestBundleVerificationFailsBeforeRuntimeWithPreciseSafeCodes(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	base := Manifest{
-		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 3, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}
@@ -154,7 +195,7 @@ func TestBundleVerificationRejectsTamperingAndIncompatibleCatalog(t *testing.T) 
 		t.Fatal(err)
 	}
 	manifest := Manifest{
-		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 3, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}

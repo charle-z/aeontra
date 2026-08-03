@@ -16,6 +16,7 @@ import (
 )
 
 var readGitHubCLIToken = loadGitHubCLIToken
+var githubCLIPaths = []string{"/opt/mcp-devbox/current/libexec/gh", "/usr/local/bin/gh", "/usr/bin/gh"}
 
 func githubCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
@@ -86,7 +87,11 @@ func githubCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) err
 func loadGitHubCLIToken() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, "/usr/bin/gh", "auth", "token", "--hostname", "github.com")
+	ghPath, err := githubCLIPath()
+	if err != nil {
+		return nil, err
+	}
+	command := exec.CommandContext(ctx, ghPath, "auth", "token", "--hostname", "github.com")
 	command.Env = filteredGitHubCLIEnvironment(os.Environ())
 	pipe, err := command.StdoutPipe()
 	if err != nil || command.Start() != nil {
@@ -101,6 +106,16 @@ func loadGitHubCLIToken() ([]byte, error) {
 		return nil, errors.New("GitHub CLI login is unavailable")
 	}
 	return body, nil
+}
+
+func githubCLIPath() (string, error) {
+	for _, path := range githubCLIPaths {
+		info, err := os.Stat(path)
+		if err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 && info.Mode().Perm()&0o022 == 0 {
+			return path, nil
+		}
+	}
+	return "", errors.New("GitHub CLI login is unavailable")
 }
 
 func filteredGitHubCLIEnvironment(environment []string) []string {

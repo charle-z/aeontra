@@ -18,6 +18,8 @@ import (
 )
 
 const (
+	CurrentManifestVersion = 2
+
 	ManifestFile  = "manifest.json"
 	SignatureFile = "manifest.sig"
 )
@@ -28,6 +30,7 @@ const (
 	ComponentWorker          = "mcp-autopilot-worker"
 	ComponentUpdater         = "mcp-bundle-updater"
 	ComponentNode            = "runtime-node"
+	ComponentGitHubCLI       = "github-cli"
 	ComponentProvider        = "provider-index"
 	ComponentHTBActions      = "provider-htb-actions"
 	ComponentDevActions      = "provider-dev-actions"
@@ -90,11 +93,15 @@ type VerificationError struct {
 func (e *VerificationError) Error() string { return string(e.Code) }
 
 func RequiredComponents() []string {
-	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentGitHubCLI, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
 }
 
 func legacyRequiredComponents() []string {
 	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+}
+
+func versionTwoRequiredComponents() []string {
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
 }
 
 func requiredComponentsForVersion(version int) ([]string, bool) {
@@ -102,6 +109,8 @@ func requiredComponentsForVersion(version int) ([]string, bool) {
 	case 1:
 		return legacyRequiredComponents(), true
 	case 2:
+		return versionTwoRequiredComponents(), true
+	case 3:
 		return RequiredComponents(), true
 	default:
 		return nil, false
@@ -115,6 +124,7 @@ func DefaultLayout() map[string]string {
 		ComponentWorker:          "libexec/mcp-autopilot-worker",
 		ComponentUpdater:         "libexec/mcp-bundle-updater",
 		ComponentNode:            "libexec/node",
+		ComponentGitHubCLI:       "libexec/gh",
 		ComponentProvider:        "opencode-provider/index.js",
 		ComponentHTBActions:      "opencode-provider/htb-actions.js",
 		ComponentDevActions:      "opencode-provider/dev-actions.js",
@@ -129,9 +139,14 @@ func layoutForVersion(version int) (map[string]string, bool) {
 	layout := DefaultLayout()
 	if version == 1 {
 		delete(layout, ComponentDevActions)
+		delete(layout, ComponentGitHubCLI)
 		return layout, true
 	}
 	if version == 2 {
+		delete(layout, ComponentGitHubCLI)
+		return layout, true
+	}
+	if version == 3 {
 		return layout, true
 	}
 	return nil, false
@@ -139,11 +154,12 @@ func layoutForVersion(version int) (map[string]string, bool) {
 
 func Build(root string, metadata Metadata) (Manifest, error) {
 	manifest := Manifest{
-		Version: 2, Release: metadata.Release, Commit: metadata.Commit,
+		Version: CurrentManifestVersion, Release: metadata.Release, Commit: metadata.Commit,
 		ProtocolVersion: metadata.ProtocolVersion, CatalogHash: metadata.CatalogHash,
 		Architecture: metadata.Architecture, Components: map[string]string{},
 	}
-	for component, relative := range DefaultLayout() {
+	layout, _ := layoutForVersion(manifest.Version)
+	for component, relative := range layout {
 		path, err := containedComponentPath(root, relative)
 		if err != nil {
 			return Manifest{}, componentError(component)

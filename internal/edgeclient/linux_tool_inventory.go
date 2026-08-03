@@ -109,7 +109,7 @@ func findSafeLinuxTool(name, toolPath string) (string, bool) {
 }
 
 func safeLinuxToolRoot(path string) bool {
-	for _, root := range []string{"/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin", openCodeManagedToolRoot} {
+	for _, root := range []string{"/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin", "/opt/mcp-devbox/releases", openCodeManagedToolRoot} {
 		if pathInside(root, path) {
 			return true
 		}

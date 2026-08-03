@@ -1,9 +1,9 @@
 # Development Edge Git authority
 
-Status: clone, safe publication and registered-checkout synchronization are deployed.
-The `codex/persistent-github-broker` candidate adds the first Hito 5 direct GitHub
-API slice through the official GitHub CLI. Exact-head gates, deployment, a signed
-release and real-device acceptance remain separate evidence.
+Status: clone, safe publication, registered-checkout synchronization and the first
+read-only Hito 5 GitHub API slice are deployed. A real normal login and private import
+were verified on `p15.0.13`. Archive-updater parity is under a two-release signed
+transition because an installed v2 updater cannot verify a v3 manifest directly.
 
 This flow lets an active ChatGPT web task develop in a private repository through
 the authenticated local Edge. It separates two uses of GitHub authority:
@@ -38,7 +38,9 @@ argument.
 
 ## Configure the local Edge copy
 
-The signed Debian package installs the official `gh` CLI. You may keep a complete,
+The Debian package installs the official `gh` CLI. The archive-update path is being
+transitioned to a manifest-v3 bundle that cryptographically binds the same executable;
+the required preceding v2 bridge teaches installed updaters to verify v3. You may keep a complete,
 normal GitHub CLI login for your own interactive work and import it into the separate
 Edge store:
 
@@ -50,7 +52,9 @@ mcp-edge github import-gh --owner charle-z \
 mcp-edge github status --state "$HOME/.local/state/mcp-edge"
 ```
 
-`import-gh` invokes only the packaged `/usr/bin/gh auth token --hostname github.com`,
+`import-gh` invokes only a fixed safe official CLI path, preferring the signed
+`/opt/mcp-devbox/current/libexec/gh` once available and retaining `/usr/bin/gh` as the
+package-transition fallback. It runs `auth token --hostname github.com`,
 ignores ambient GitHub token variables so the stored login is authoritative, copies
 the token into the existing owner-only `0600` Edge credential file, clears its capture
 buffer, and returns only `{configured, owner}`. It does not delete, replace or otherwise

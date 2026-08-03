@@ -3,10 +3,32 @@ package main
 import (
 	"bytes"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestGitHubCLIPathPrefersFixedSafeExecutable(t *testing.T) {
+	original := githubCLIPaths
+	t.Cleanup(func() { githubCLIPaths = original })
+	unsafe := filepath.Join(t.TempDir(), "unsafe-gh")
+	if err := os.WriteFile(unsafe, []byte("unsafe"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unsafe, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	safe := filepath.Join(t.TempDir(), "gh")
+	if err := os.WriteFile(safe, []byte("safe"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	githubCLIPaths = []string{unsafe, safe}
+	got, err := githubCLIPath()
+	if err != nil || got != safe {
+		t.Fatalf("path=%q err=%v", got, err)
+	}
+}
 
 func TestGitHubConfigureReadsTokenOnlyFromStdinAndStatusIsSafe(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")

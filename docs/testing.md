@@ -433,12 +433,16 @@ The first direct GitHub broker slice is deterministic and credential-free in tes
   project and validate restart-safe operation persistence without a model runtime;
 - MCP tests prove the public schema accepts only project alias and Edge target and
   that the response omits token, URL, path, header and raw CLI output;
-- Debian package contract tests require the official `gh` dependency.
+- Debian package contract tests retain the official `gh` dependency for package
+  installs. Bundle tests separately prove manifest-v2 rollback compatibility,
+  manifest-v3 `github-cli` integrity, fixed safe executable resolution and managed-link
+  creation/removal across upgrade and rollback.
 
-Real-device acceptance additionally requires an interactive `gh auth login`, safe
-`mcp-edge github import-gh`, one official signed Edge release, and a live
-`project_github_status` against an owner-bound private repository. No test fixture or
-CI artifact contains a real account credential.
+Real-device acceptance has completed interactive `gh auth login`, safe
+`mcp-edge github import-gh` and installation of official release `p15.0.13`. A live
+`project_github_status` against an owner-bound private repository remains required
+after the v2 bridge and v3 bundled-CLI releases. No test fixture or CI artifact
+contains a real account credential.
 
 ## Rootless PostgreSQL fixture identity
 
