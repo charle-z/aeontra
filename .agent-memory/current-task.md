@@ -1,4 +1,4 @@
-# Current task — atomic legacy-to-managed Edge handoff
+# Current task — clean post-handoff Edge release
 
 ## Verified production base
 
@@ -38,7 +38,7 @@
 - `project_github_status` returns safe repository metadata and closed contents, PR and
   Actions capability probes without accepting token, URL, endpoint, path or raw CLI.
 
-## Confirmed updater gap and safe transition
+## Confirmed updater history and completed operator handoff
 
 `p15.0.13` still obtains `gh` only through the Debian dependency path. The signed
 archive updater does not invoke APT, so a clean archive update cannot guarantee the
@@ -60,19 +60,34 @@ correctly failed closed and restored `p15.0.14`: the root updater used
 waiting for that updater. The managed unit never reached a healthy handoff and the
 legacy process retained the lock.
 
-The corrective slice separates persistence from process replacement. The updater
-disables only the two fixed legacy unit names without stopping its caller; the newly
-installed managed unit declares `Conflicts` plus explicit `After` ordering for those
-units, so its normal restart asks systemd to stop the legacy process and start the
-managed process as one transaction. Version 1/2 rollback and exact managed-link
-cleanup remain unchanged.
+PR #136 merged at `78e438972c80f616f18acce079400f2ee034e846` after 16/16
+exact-head checks. Official workflow run `30779857409` published signed `p15.0.16`.
+The operator then disabled the onboarding path, stopped both processes, proved the
+lock free, started the managed templated unit and re-enabled the path. The legacy
+`mcp-devbox-edge.service` is a manually installed, non-dpkg unit and remains
+`inactive/disabled` as a temporary rollback artifact. Identity, workspaces, GitHub
+authority and installed bundle state were preserved.
+
+Real operation `eo_a4753d4f76261c026aad08bd5cba7a41` attempted `p15.0.16`
+exactly once after that handoff. Activation still failed closed and restored
+`p15.0.14`; status operation `eo_e7985e48fb445715a6c9701f04a112d8` verified the
+rollback as valid, active, single-process and managed. The exact signed-unit diff from
+`p15.0.14` to `p15.0.16` consists only of `Conflicts` and `After` against the two
+legacy names. The clean correction removes those transitional directives. It does not
+add privileged pre-start code, stop arbitrary units or delete the operator's legacy
+file.
+
+The exceptional runbook now includes the previously missing trigger rule:
+`mcp-devbox-edge-onboard@<user>.path` must be disabled during both the forward handoff
+and a legacy rollback because `identity.json` always exists and otherwise relaunches
+the templated service.
 
 ## Next exact action
 
-Finish full verification, PR and exact-head gates for the atomic-handoff correction,
-publish the next immutable signed release, then perform one official update. Require
-the managed unit to own one process on the new release, with no active legacy unit and
-a signed `/usr/local/bin/gh`.
+Finish full verification, PR and exact-head gates for the clean post-handoff unit,
+publish signed `p15.0.17`, then perform one official update. Require the managed unit
+to own one process on the new release, with no active legacy unit and a signed
+`/usr/local/bin/gh`.
 Re-run `project_github_status`, then continue Hito 5 consequential operations and
 real-device acceptance for Hitos 3A, 3B and 4. Hito 9 multiagent/task-graph work is
 explicitly outside the current authorization and must not be started.

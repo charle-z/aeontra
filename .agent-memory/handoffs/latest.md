@@ -1,4 +1,4 @@
-# Handoff — p15.0.15 rolled back; atomic Edge handoff corrective active
+# Handoff — operator handoff complete; clean signed Edge release active
 
 Production backend commit `f8c0ce6a25ed46ae4bc4031656b04eb4c3e88603` serves
 protocol `2024-11-05`, 135 tools and catalog
@@ -36,8 +36,24 @@ failed closed and restored `p15.0.14`. The updater attempted `disable --now` aga
 the legacy service whose Edge process had launched and was awaiting that updater, so
 the managed unit never completed the handoff and the old process retained the lock.
 
-The active corrective disables persistence without stopping the caller and gives the
-managed unit fixed `Conflicts` plus `After` ordering for the two legacy unit names.
-Finish its gates, merge, next signed release and one real update; then require one
-managed current process and run the live GitHub preflight. Hito 9
-multiagent/task-graph work remains deferred explicitly.
+PR #136 merged at `78e438972c80f616f18acce079400f2ee034e846` after 16/16
+checks, and official run `30779857409` published signed `p15.0.16`. Before its real
+update, the operator disabled the onboarding path, stopped both fixed Edge services,
+proved no `mcp-edge` process remained, started the templated service, verified it held
+the single state lock and re-enabled the path. The legacy unit is an unpackaged manual
+artifact and remains inactive/disabled for rollback; no identity, workspace, GitHub
+authority or bundle state was lost.
+
+Real operation `eo_a4753d4f76261c026aad08bd5cba7a41` still failed closed and
+restored `p15.0.14`. Follow-up status
+`eo_e7985e48fb445715a6c9701f04a112d8` verified the rollback healthy. The only signed
+unit delta between `p15.0.14` and `p15.0.16` is the transitional `Conflicts`/`After`
+pair. The current branch removes only those directives and adds a regression that
+forbids them. It also records that `mcp-devbox-edge-onboard@<user>.path` must stay
+disabled throughout a forward handoff or a rollback, because the existing identity
+otherwise relaunches the templated service.
+
+Finish gates, merge, publish `p15.0.17`, perform one official update and require one
+managed current process plus the live GitHub preflight. Do not add a privileged
+pre-start bridge, delete the manual legacy unit or run an OpenCode latency benchmark.
+Hito 9 multiagent/task-graph work remains deferred explicitly.

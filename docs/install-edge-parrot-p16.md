@@ -76,12 +76,13 @@ link. A manifest-v2 bridge release must be installed first on older devices so t
 updater can verify v3. Rollback to a v1/v2 release removes only that exact managed link
 and preserves any unrelated system installation.
 
-During package configuration and archive activation, the privileged lifecycle inspects exactly
-`mcp-devbox-edge.service` and `mcp-devbox-opencode-edge.service`. If either known
-legacy unit is loaded, it is stopped and disabled before the current templated unit is
-restarted. No caller-controlled service name is accepted. This prevents an older
-orphaned Edge process from retaining the state lock while preserving fail-closed
-single-process behavior.
+During package configuration, the privileged lifecycle inspects exactly
+`mcp-devbox-edge.service` and `mcp-devbox-opencode-edge.service`. A loaded legacy unit
+is stopped and disabled before the current templated unit is restarted. Archive
+activation can disable persistence for those same fixed names, but it does not stop an
+active legacy Edge that is also the caller waiting for the update. No caller-controlled
+service name is accepted. If such an unpackaged historical unit exists, archive update
+fails closed until the one-host handoff below is completed.
 
 ## Existing P12/P15 state
 
@@ -214,6 +215,49 @@ release pointing at a state path whose prior contents disappeared.
 A normal update does not require another pairing or manual workspace registration.
 Verify this separately in package CI and on the intended real device. Do not transfer
 proof from one environment to another.
+
+## Exceptional unpackaged legacy-unit handoff
+
+This procedure is only for a host where a historical unit was installed manually and
+is not owned by the Debian package. Package upgrade cannot remove such a file. Do not
+add root privilege to the signed Edge service to compensate for this one-host state.
+
+First stop the identity watcher, because its always-present `identity.json` condition
+otherwise starts the templated service again during the handoff. Then stop both fixed
+Edge services and prove the state lock has no live owner:
+
+```bash
+EDGE_USER="$(id -un)"
+sudo systemctl disable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
+sudo systemctl disable --now "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+sudo systemctl disable --now mcp-devbox-edge.service
+pgrep -a mcp-edge
+```
+
+`pgrep` must return no process. Start the templated service explicitly, verify it, and
+only then restore the watcher:
+
+```bash
+sudo systemctl start "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+systemctl is-active "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+mcp-edge doctor
+sudo systemctl enable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
+```
+
+The healthy result must report one process, the lock held, managed coherence and a
+valid bundle. If the templated service does not become healthy, keep the watcher
+disabled while restoring the legacy rollback service:
+
+```bash
+sudo systemctl disable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
+sudo systemctl disable --now "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+sudo systemctl enable --now mcp-devbox-edge.service
+```
+
+Stopping these units does not remove the Edge identity, workspace registry, GitHub
+credential store, repositories, checkpoints, installed releases or the `current`
+bundle link. Deleting an unpackaged legacy unit file is a separate operator decision
+after a stability window; this handoff only disables it.
 
 ## Uninstallation posture
 

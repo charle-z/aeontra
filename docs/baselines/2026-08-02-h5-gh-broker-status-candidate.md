@@ -51,6 +51,10 @@ enabled `mcp-devbox-edge.service` that retained the `p15.0.13` process and state
 the managed templated unit failed closed rather than duplicating the Edge. PR #135 and
 signed `p15.0.15` added exact retirement plus the bundled CLI, but the first real
 activation rolled back because stopping the legacy caller inside its own updater
-prevented a complete handoff. The follow-up uses disable-only persistence retirement
-and fixed systemd conflict ordering. This note records the later findings without
-changing the baseline's original claims.
+prevented a complete handoff. PR #136 and signed `p15.0.16` changed that to
+disable-only persistence retirement plus fixed systemd conflict ordering. The operator
+completed the one-host handoff manually, including disabling the identity watcher,
+but `p15.0.16` still failed activation and restored `p15.0.14`. The exact unit delta
+was only that conflict/order pair, so the post-handoff release removes it and leaves
+an active unpackaged legacy service as an explicit fail-closed operator migration.
+This note records the later findings without changing the baseline's original claims.

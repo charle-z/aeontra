@@ -238,10 +238,10 @@ func retireLegacyEdgeServices() error {
 		default:
 			return errors.New("legacy Edge service state is invalid")
 		}
-		// The legacy Edge may be the process that requested this updater. Keep it
-		// alive until RestartEdge starts the managed unit; the managed unit's
-		// Conflicts ordering then performs one atomic handoff without leaving the
-		// updater waiting on its own caller to stop.
+		// The legacy Edge may be the process that requested this updater. Disable
+		// only its boot persistence: stopping that caller here can orphan the
+		// control operation. If it is still active, managed activation fails
+		// closed until the operator completes the fixed one-host handoff.
 		if _, err := systemctlCommand("disable", unit); err != nil {
 			return errors.New("legacy Edge service retirement failed")
 		}
