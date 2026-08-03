@@ -101,3 +101,21 @@ with the empty credential used by local commands, corrupting otherwise valid Git
 output. The active follow-up has RED/GREEN regressions for both boundaries. Finish
 gates and normal PR, publish the next signed release, update once, prepare the existing
 toolbox/service, then perform the single coordinated restart and final cleanup.
+
+## 2026-08-03 p15.0.20 orphan-reconciliation follow-up
+
+PR #140 merged at `4612fd80208717e9749174663c2995f612eaf56f`, official run
+`30788597266` published signed `p15.0.20`, and one stable update installed it. Direct
+Git status/fetch passed and the Hito 4 toolbox plus its durable service survived the
+single coordinated Edge restart. Final H4 service/marker validation and scoped cleanup
+remain with the caller that owns the direct tools.
+
+Hito 3B did preserve continuous output across the restart, but the server classified
+the process as `process_identity_changed` and accepted cleanup while the old private
+worker and Bubblewrap child were still live. The exact orphan workload groups were
+terminated on the host without touching the Edge or H4 toolbox. The active candidate
+adds RED/GREEN coverage that recovers a live owner-only worker identity before offline
+classification and refuses terminal cleanup while either exact private identity is
+alive. Finish the full gates and normal PR, publish the next signed release, update the
+Edge once, and repeat Hito 3B from a fresh process. Do not accept H3B from
+`p15.0.20` or from the removed `pr_33ae97c1002ecadb66b9366b3a2c69a7` workload.

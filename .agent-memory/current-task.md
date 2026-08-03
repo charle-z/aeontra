@@ -136,3 +136,20 @@ replacement only when the credential is empty. Publish it through a normal PR an
 next signed Edge release, update once, then reuse the existing toolbox/process state
 to finish H3B/H4 and repeat direct Git status/fetch. Do not restart the Edge before
 the toolbox and service are prepared.
+
+## 2026-08-03 p15.0.20 orphan follow-up
+
+PR #140 merged at `4612fd80208717e9749174663c2995f612eaf56f`, official run
+`30788597266` published signed `p15.0.20`, and one stable update installed it. Direct
+Git status/fetch now passes with a clean synchronized checkout. Hito 4 recovered the
+existing toolbox, persisted state and tools, verified the real rootless Podman socket
+and started a durable service; its container survived the coordinated Edge restart.
+
+Hito 3B preserved continuous output across the managed update, but its row was marked
+`process_identity_changed` and public cleanup removed metadata while the private worker
+and Bubblewrap child remained alive. The operator verified and terminated only those
+two H3B groups; Edge doctor remained ready and Hito 4 was unaffected. The active final
+candidate recovers a revalidated live worker identity before offline classification
+and makes cleanup refuse removal while the exact journal, worker or child identity is
+still alive. Finish normal gates, PR, signed release and one short real restart/signal
+acceptance. Hito 9 remains excluded.

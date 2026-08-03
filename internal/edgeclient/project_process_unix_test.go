@@ -410,6 +410,65 @@ func TestProjectProcessManagerRestartRejectsReusedPID(t *testing.T) {
 	}
 }
 
+func TestProjectProcessManagerRecoversTrustedWorkerIdentityBeforeOfflineClassification(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "restart-private-identity"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform.mu.Lock()
+	identity := platform.processes[platform.nextPID].identity
+	platform.mu.Unlock()
+	if err := writeProjectProcessWorkerIdentity(manager.workerRoot, identity); err != nil {
+		t.Fatal(err)
+	}
+	manager.watchMu.Lock()
+	delete(manager.watching, started.ProcessID)
+	manager.watchMu.Unlock()
+	if _, err := manager.db.Exec(`UPDATE project_processes SET pid=?,process_group_id=?,start_ticks=? WHERE process_id=?`, identity.PID+100, identity.ProcessGroupID+100, identity.StartTicks+100, started.ProcessID); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := manager.boundRecord(started.ProcessID, "project", "parrot")
+	if err != nil || recovered.State != ProjectProcessRunning || recovered.Identity != identity {
+		t.Fatalf("recovered=%+v err=%v", recovered, err)
+	}
+}
+
+func TestProjectProcessCleanupRefusesTerminalRecordWithLivePrivateIdentity(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "cleanup-private-identity"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform.mu.Lock()
+	workerIdentity := platform.processes[platform.nextPID].identity
+	platform.processes[platform.nextPID].alive = false
+	childIdentity := ProjectProcessIdentity{ProcessID: started.ProcessID, PID: platform.nextPID + 1, ProcessGroupID: platform.nextPID + 1, StartTicks: uint64((platform.nextPID + 1) * 10)}
+	platform.processes[childIdentity.PID] = &fakeProjectProcess{identity: childIdentity, exit: make(chan ProjectProcessExit, 1), alive: true}
+	platform.mu.Unlock()
+	if err := writeProjectProcessWorkerIdentity(manager.workerRoot, workerIdentity); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeProjectProcessWorkerChildIdentity(manager.workerRoot, childIdentity); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.finishFailed(started.ProcessID, "process_identity_changed"); err != nil {
+		t.Fatal(err)
+	}
+	cleaned, err := manager.Cleanup(ProjectProcessCleanupRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot"})
+	if err != nil || cleaned.Active != 1 || cleaned.Removed != 0 {
+		t.Fatalf("cleanup=%+v err=%v", cleaned, err)
+	}
+	if _, err := manager.boundRecord(started.ProcessID, "project", "parrot"); err != nil {
+		t.Fatalf("live process record was removed: %v", err)
+	}
+}
+
 func TestProjectProcessManagerReconciliationClassifiesUnsafeOwnershipAndLogs(t *testing.T) {
 	platform := newFakeProjectProcessPlatform()
 	manager := openTestProjectProcessManager(t, platform, 1<<20)

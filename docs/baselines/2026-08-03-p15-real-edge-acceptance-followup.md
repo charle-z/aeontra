@@ -63,3 +63,25 @@ operator restart, verify Hito 3B recovery/signal/stop/cleanup, verify Hito 4
 rootfs/service/Podman persistence and cleanup, and repeat direct Git status/fetch plus
 safe fast-forward behavior. Do not claim those gates complete before the real-device
 results exist.
+
+## p15.0.20 restart finding
+
+PR #140 merged at `4612fd80208717e9749174663c2995f612eaf56f`; all exact-head
+checks passed, official workflow run `30788597266` published signed `p15.0.20`, and
+one stable update installed it. The real Git retry then passed status/fetch as a clean
+synchronized no-op. Hito 4 recovered the existing toolbox, persisted a marker and
+installed tools, reached Podman 5.4.2 through the managed rootless socket and started a
+durable service. The toolbox container survived the coordinated Edge restart.
+
+Hito 3B retained monotonic non-duplicated output across the update, but the public
+record became terminal with `process_identity_changed`. Cleanup removed the row, while
+operator inspection proved both the exact old-release worker and its separate
+Bubblewrap workload group were still alive. The operator verified both owner/group
+identities, terminated only the workload group; the worker observed that exit and
+terminated, leaving the managed Edge and Hito 4 toolbox untouched.
+
+The final candidate treats private owner-only worker/child identities as an additional
+liveness barrier. Reconciliation may repair a stale database identity only when the
+private worker tuple revalidates as live. Cleanup revalidates the journal, worker and
+child tuples and refuses removal while any exact identity remains active. It never
+adopts a reused PID or an unowned/unsafe identity.
