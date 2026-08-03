@@ -1,23 +1,24 @@
-# Handoff — Hito 5 official GitHub CLI broker candidate
+# Handoff — Hito 5 read-only GitHub broker deployed
 
-Production is `1b6b2073ab4090ba899cb2294104a679fbcb2d99`, 134 tools and catalog
-`sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
-The managed Front Door has retired all older catalogs and OAuth/MCP are healthy.
-
-Branch `codex/persistent-github-broker` starts Hito 5 without OpenCode or another model
-runtime. It adds the official `gh` package dependency, lets a human keep a full normal
-GitHub CLI login, and adds `mcp-edge github import-gh` to copy its token into separate
-private Edge state. The import returns only configured/owner and does not alter the
-normal CLI profile.
-
-The direct Edge broker uses only constructed `gh api` argv for the repository already
-bound to the selected development project. The token exists only in the child process
-environment under a private runtime root. `project_github_status` exposes bounded
-repository identity and closed metadata/contents/PR/Actions capability booleans; it
-does not accept or return token, URL, endpoint, headers, path or arbitrary CLI text.
-
-Candidate identity is 135 tools at
+Production backend commit `08070734b9827c8efda8d67e922b057f70f7b3d0` serves
+protocol `2024-11-05`, 135 tools and catalog
 `sha256:557d3cbb956a311429dbcf893b329b5b0d0dea5e38a0c8dbae96abac52b1e7dd`.
-Focused TDD tests are green. Run complete gates, publish/merge with the managed
-dual-catalog transition, then continue Hito 5 writes as separate closed operations.
-Do not infer the next immutable signed release after installed `p15.0.12`.
+PR #131 and its integration head passed 16/16 exact-head checks before merge.
+
+The official `gh` package dependency, normal full-account `gh auth login`, private
+`mcp-edge github import-gh`, fixed bounded `gh api` broker and read-only
+`project_github_status` operation are in source and backend production. Credentials
+remain outside the model workcell and only bounded parsed metadata reaches MCP.
+
+Front Door commit `489a64f40cbbde014986ff130662a485f9513d6c` stayed healthy
+through the managed two-deployment transition. Deployment
+`x5a11ixcdfeo8c3e46ofry38` temporarily accepted both authenticated catalogs while the
+backend changed; deployment `thvv358cgxkzu4qv87z8hfp8` then retired the previous
+134-tool catalog. A final managed preview reports an empty transition catalog and no
+pending catalog mutation. Public MCP challenge and OAuth discovery return the new
+identity.
+
+Continue Hito 5 with separate closed preview/execute operations for PR writes,
+workflow dispatch and official signed-release publication. Do not infer the next
+immutable signed Edge release after installed `p15.0.12`; real-device import and broker
+acceptance wait for an explicitly named release.
