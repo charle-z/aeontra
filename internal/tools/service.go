@@ -5,6 +5,7 @@ package tools
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
@@ -64,6 +65,7 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		PlatformCapability: &PlatformCapability{
 			serviceCore:      core,
 			SourceCapability: source,
+			managedMCPToken: strings.TrimSpace(os.Getenv("MCP_DEVBOX_TOKEN")),
 		},
 		ExecutionCapability: &ExecutionCapability{
 			serviceCore: core,
@@ -110,6 +112,12 @@ func (s *Service) WithTestCommand(cmd []string) *Service {
 // WithCoolify sets the optional Coolify deploy client (nil disables coolify_deploy).
 func (s *Service) WithCoolify(c *CoolifyClient) *Service {
 	s.PlatformCapability.configureCoolify(c)
+	return s
+}
+
+// WithManagedMCPToken overrides the server-owned MCP smoke token for deterministic tests.
+func (s *Service) WithManagedMCPToken(token string) *Service {
+	s.PlatformCapability.managedMCPToken = strings.TrimSpace(token)
 	return s
 }
 
