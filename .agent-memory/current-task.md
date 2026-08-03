@@ -1,4 +1,4 @@
-# Current task — manifest-v3 bundled GitHub CLI and legacy-service retirement
+# Current task — atomic legacy-to-managed Edge handoff
 
 ## Verified production base
 
@@ -11,6 +11,8 @@
   same public catalog.
 - Production serves protocol `2024-11-05`, 135 tools and catalog
   `sha256:557d3cbb956a311429dbcf893b329b5b0d0dea5e38a0c8dbae96abac52b1e7dd`.
+- PR #135 merged at `6b6c3bcf7c019ebad4568baca8114ad7407d0565` after
+  16/16 exact-head checks, and production serves that exact commit.
 - Managed Front Door deployment `x5a11ixcdfeo8c3e46ofry38` accepted the previous
   catalog only as one temporary authenticated transition catalog. After the backend
   replacement, deployment `thvv358cgxkzu4qv87z8hfp8` removed it. The final preview
@@ -51,17 +53,26 @@ device inspection found the older enabled `mcp-devbox-edge.service` still runnin
 the `p15.0.13` process outside the managed templated unit. It retained the state lock
 while the current unit restarted and failed closed.
 
-The active v3 change embeds pinned official `gh` 2.97.0 with its reviewed SHA-256,
-signs it as the required `github-cli` manifest component, exposes only the managed
-compatibility link, and retires exactly the two known legacy Edge services from the
-root updater before restarting the current unit. Version 1/2 rollback remains
-supported and removes only the exact managed link.
+PR #135 delivered manifest v3 with pinned official `gh` 2.97.0 and its reviewed
+SHA-256. Official run `30778625101` published signed `p15.0.15`. The first real update
+correctly failed closed and restored `p15.0.14`: the root updater used
+`systemctl disable --now` while the legacy Edge being stopped was also the caller
+waiting for that updater. The managed unit never reached a healthy handoff and the
+legacy process retained the lock.
+
+The corrective slice separates persistence from process replacement. The updater
+disables only the two fixed legacy unit names without stopping its caller; the newly
+installed managed unit declares `Conflicts` plus explicit `After` ordering for those
+units, so its normal restart asks systemd to stop the legacy process and start the
+managed process as one transaction. Version 1/2 rollback and exact managed-link
+cleanup remain unchanged.
 
 ## Next exact action
 
-Finish tests, PR and exact-head gates for the v3 change, publish the next immutable
-signed release, then perform one official update. Require the managed unit to own one
-process on the new release, with no active legacy unit and a signed `/usr/local/bin/gh`.
+Finish full verification, PR and exact-head gates for the atomic-handoff correction,
+publish the next immutable signed release, then perform one official update. Require
+the managed unit to own one process on the new release, with no active legacy unit and
+a signed `/usr/local/bin/gh`.
 Re-run `project_github_status`, then continue Hito 5 consequential operations and
 real-device acceptance for Hitos 3A, 3B and 4. Hito 9 multiagent/task-graph work is
 explicitly outside the current authorization and must not be started.

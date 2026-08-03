@@ -2,8 +2,10 @@
 
 Status: clone, safe publication, registered-checkout synchronization and the first
 read-only Hito 5 GitHub API slice are deployed. A real normal login and private import
-were verified on `p15.0.13`. PR #134 and signed `p15.0.14` delivered the required
-manifest-v2 bridge; the current candidate is the separately reviewed v3 bundle.
+were verified on `p15.0.13`. PR #134 and signed `p15.0.14` delivered the manifest-v2
+bridge. PR #135 and signed `p15.0.15` delivered manifest v3, but real activation
+failed closed and rolled back while replacing the legacy caller; the atomic-handoff
+corrective is pending release.
 
 This flow lets an active ChatGPT web task develop in a private repository through
 the authenticated local Edge. It separates two uses of GitHub authority:
@@ -40,7 +42,9 @@ argument.
 
 The Debian package installs the official `gh` CLI. The manifest-v3 archive path
 cryptographically binds pinned official `gh` 2.97.0; the preceding `p15.0.14` bridge
-teaches installed updaters to verify v3. You may keep a complete,
+teaches installed updaters to verify v3. Signed `p15.0.15` contains that component,
+but the real device remains on `p15.0.14` after the service handoff failed closed.
+You may keep a complete,
 normal GitHub CLI login for your own interactive work and import it into the separate
 Edge store:
 

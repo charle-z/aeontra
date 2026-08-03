@@ -31,7 +31,7 @@ func TestInstallRetiresOnlyFixedLegacyEdgeUnits(t *testing.T) {
 	}
 	want := [][]string{
 		{"show", "mcp-devbox-edge.service", "--property=LoadState", "--value"},
-		{"disable", "--now", "mcp-devbox-edge.service"},
+		{"disable", "mcp-devbox-edge.service"},
 		{"show", "mcp-devbox-opencode-edge.service", "--property=LoadState", "--value"},
 	}
 	if !reflect.DeepEqual(calls, want) {
