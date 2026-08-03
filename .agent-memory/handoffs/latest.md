@@ -85,3 +85,19 @@ from ext4 with exact Git modes. Publish by normal PR, then use the next signed r
 to prove one ordinary archive update plus real H3B/H4/Git acceptance. The complete
 operation ledger is in Brain note
 `p15-0-18-parrot-trusted-linux-real-acceptance-2026-08-03`.
+
+## 2026-08-03 p15.0.19 acceptance follow-up
+
+PR #139 merged at `52370dceb9bb6d829d8c7ab88e659239677047b8`, official run
+`30786403458` published signed `p15.0.19`, and one stable archive update installed it
+successfully. Doctor is ready with one managed process, held lock, empty journal and
+zero restarts. A new Hito 3B process remains active with cursor-based output proven
+non-duplicated; do not restart it until Hito 4 preparation succeeds.
+
+The real Hito 4 retry proved container creation actually succeeds. Its final ownership
+check rejected Podman's second bare `.Image` identity against the canonical prefixed
+record. Direct Git failed because the isolated runner called `strings.ReplaceAll`
+with the empty credential used by local commands, corrupting otherwise valid Git
+output. The active follow-up has RED/GREEN regressions for both boundaries. Finish
+gates and normal PR, publish the next signed release, update once, prepare the existing
+toolbox/service, then perform the single coordinated restart and final cleanup.

@@ -624,7 +624,9 @@ func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, recor
 		return ErrProjectToolboxNotOwned
 	}
 	output, err := manager.run(ctx, "inspect", "--format", `{{index .Config.Labels "`+projectToolboxLabelKey+`"}}|{{.Image}}`, record.ContainerName)
-	if err != nil || strings.TrimSpace(string(output)) != record.ToolboxID+"|"+record.BaseImageID {
+	label, rawImageID, found := strings.Cut(strings.TrimSpace(string(output)), "|")
+	imageID, normalizeErr := normalizeProjectToolboxImageID(rawImageID)
+	if err != nil || !found || label != record.ToolboxID || normalizeErr != nil || imageID != record.BaseImageID {
 		return ErrProjectToolboxNotOwned
 	}
 	mountOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Mounts}}", record.ContainerName)
