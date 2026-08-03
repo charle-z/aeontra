@@ -175,3 +175,7 @@ inner leader and targets that exact group. Bubblewrap is now parent-bound to the
 durable worker, not to the restartable Edge service, preserving restart recovery while
 closing worker-crash orphans. Finish gates, normal PR, next signed release and one
 short real H3B restart/interrupt/stop/cleanup acceptance. Hito 9 remains excluded.
+
+Functional commit `2a847b8337bf13cd5e89e751d8c607a0e1959a3e` passed the full
+test suite, vet, build and diff check from isolated ext4 with Go 1.26.5. Publish this
+behavior by normal PR, then use one next signed release/update and repeat only H3B.

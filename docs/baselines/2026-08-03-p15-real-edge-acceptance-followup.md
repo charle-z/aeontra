@@ -119,3 +119,9 @@ server-owned `--info-fd`, persists the reported inner leader only after exact
 PID/start-ticks/process-group/owner validation, signals that group and adds
 `--die-with-parent` relative to the independent durable worker. This retains restart
 survival while making a worker failure kill its sandbox instead of orphaning it.
+
+The exact functional candidate `2a847b8337bf13cd5e89e751d8c607a0e1959a3e`
+passed `go test ./... -count=1`, `go vet ./...`, `go build ./...` and
+`git diff --check` from an isolated ext4 clone with Go 1.26.5. Focused RED/GREEN
+evidence proves the launcher PID differs from the reported inner leader and that TERM
+to the persisted inner group is observed by the receipt-writing worker.
