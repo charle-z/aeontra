@@ -36,3 +36,12 @@ catalog above. Managed Front Door deployments first allowed the previous catalog
 single temporary transition identity and then removed it after public MCP and OAuth
 continuity checks. Live account login, signed bundle installation and real
 private-repository verification remain device acceptance, not source claims.
+
+## Post-baseline lifecycle finding
+
+Later real-device acceptance installed `p15.0.13`, completed the normal `gh` login and
+import, and found that archive-only updates do not resolve this baseline's Debian
+dependency. Historical evidence above is unchanged. The corrective design uses one
+manifest-v2 bridge release followed by a manifest-v3 release that cryptographically
+binds pinned official `gh`; private-repository status remains pending until that
+transition is installed.

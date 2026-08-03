@@ -1,6 +1,6 @@
-# Handoff — Hito 5 read-only GitHub broker deployed
+# Handoff — Hito 5 device import complete; signed CLI transition active
 
-Production backend commit `08070734b9827c8efda8d67e922b057f70f7b3d0` serves
+Production backend commit `f8c0ce6a25ed46ae4bc4031656b04eb4c3e88603` serves
 protocol `2024-11-05`, 135 tools and catalog
 `sha256:557d3cbb956a311429dbcf893b329b5b0d0dea5e38a0c8dbae96abac52b1e7dd`.
 PR #131 and its integration head passed 16/16 exact-head checks before merge.
@@ -18,7 +18,15 @@ backend changed; deployment `thvv358cgxkzu4qv87z8hfp8` then retired the previous
 pending catalog mutation. Public MCP challenge and OAuth discovery return the new
 identity.
 
-Continue Hito 5 with separate closed preview/execute operations for PR writes,
-workflow dispatch and official signed-release publication. Do not infer the next
-immutable signed Edge release after installed `p15.0.12`; real-device import and broker
-acceptance wait for an explicitly named release.
+Official release `p15.0.13` was published from the production commit and installed
+once on the paired Parrot Edge. Bundle and service are healthy. The human login as
+`charle-z` and `mcp-edge github import-gh --owner charle-z` completed without exposing
+the credential.
+
+Device acceptance exposed one lifecycle gap: the archive updater does not resolve the
+Debian `gh` dependency. A direct manifest-v3 release is not consumable by the installed
+v2 updater. The active change is therefore a v2 bridge that adds v3 verification and
+future managed-link reconciliation. Merge, publish and install that bridge first;
+then land and install the separate v3 bundle containing pinned official `gh`. Continue
+with the real `project_github_status` preflight and consequential Hito 5 operations
+only afterward. Hito 9 multiagent/task-graph work is deferred explicitly.
