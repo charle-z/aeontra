@@ -51,6 +51,14 @@ result binding. The focused command is:
 go test ./internal/edge ./cmd/mcp-edge ./internal/mcpserver -count=1
 ```
 
+The first `p15.0.18` real-device pass accepted Hito 3A and exposed two host-specific
+gaps that fake runners did not reproduce: the worker and Bubblewrap workload use
+separate process groups, and Podman 5.4 returns a bare 64-hex image ID. The corrective
+matrix additionally proves that a signal targets the recorded workload group without
+killing the receipt-writing worker and that Docker-prefixed and Podman-bare SHA-256
+identities canonicalize identically while malformed forms fail closed. See
+`docs/baselines/2026-08-03-p15-real-edge-acceptance-fixes.md`.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:

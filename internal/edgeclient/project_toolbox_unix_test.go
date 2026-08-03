@@ -287,3 +287,18 @@ func TestProjectToolboxFailsClosedOnUnsafeStateAndMissingRootlessEngine(t *testi
 		t.Fatalf("unsafe state err=%v", err)
 	}
 }
+
+func TestNormalizeProjectToolboxImageIDAcceptsDockerAndPodmanForms(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	for _, input := range []string{digest, "sha256:" + digest} {
+		normalized, err := normalizeProjectToolboxImageID(input)
+		if err != nil || normalized != "sha256:"+digest {
+			t.Fatalf("input=%q normalized=%q err=%v", input, normalized, err)
+		}
+	}
+	for _, input := range []string{"", "sha256:", strings.Repeat("a", 63), strings.Repeat("A", 64), "sha512:" + digest} {
+		if _, err := normalizeProjectToolboxImageID(input); err == nil {
+			t.Fatalf("unsafe image identity accepted: %q", input)
+		}
+	}
+}

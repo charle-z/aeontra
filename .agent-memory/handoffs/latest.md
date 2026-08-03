@@ -71,3 +71,17 @@ Finish gates, merge, publish `p15.0.18`, install its signed Debian package once 
 require one managed current process plus the live GitHub preflight. Do not add a
 privileged pre-start bridge, delete the manual legacy unit, retry `p15.0.17` or run an
 OpenCode latency benchmark. Hito 9 multiagent/task-graph work remains deferred.
+
+## 2026-08-03 continuation
+
+Official `p15.0.18` is installed and stable on the real Parrot Edge. The managed unit
+is active with one process, held lock, managed coherence and `NRestarts=0`; the manual
+legacy unit remains inactive/disabled. Hito 3A passed. Hito 3B exposed that the durable
+worker could consume a kill request while its separate Bubblewrap workload group kept
+running. Hito 4 exposed Podman 5.4's bare 64-hex image identity. The candidate branch
+records and revalidates the private workload-group identity for direct signaling and
+canonicalizes both valid Docker and Podman SHA-256 forms. Full tests, vet and build pass
+from ext4 with exact Git modes. Publish by normal PR, then use the next signed release
+to prove one ordinary archive update plus real H3B/H4/Git acceptance. The complete
+operation ledger is in Brain note
+`p15-0-18-parrot-trusted-linux-real-acceptance-2026-08-03`.

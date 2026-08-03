@@ -8,10 +8,12 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -478,6 +480,65 @@ func TestProjectProcessWorkerPersistsRedactedLogsAndExactExitReceipt(t *testing.
 	exit, err := readProjectProcessWorkerExit(workerRoot, processID)
 	if err != nil || !exit.ExitKnown || exit.ExitCode != 7 || exit.Reason != "" {
 		t.Fatalf("exit=%+v err=%v", exit, err)
+	}
+}
+
+func TestOSProjectProcessPlatformSignalsRecordedWorkloadGroupWithoutKillingWorker(t *testing.T) {
+	stateRoot := t.TempDir()
+	workerRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory)
+	if err := os.MkdirAll(workerRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	start := func() (*exec.Cmd, ProjectProcessIdentity, <-chan error) {
+		command := exec.Command("/bin/sleep", "30")
+		command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		ticks, err := linuxProcessStartTicks(command.Process.Pid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		group, err := syscall.Getpgid(command.Process.Pid)
+		if err != nil || group != command.Process.Pid {
+			t.Fatalf("group=%d err=%v", group, err)
+		}
+		waited := make(chan error, 1)
+		go func() { waited <- command.Wait() }()
+		return command, ProjectProcessIdentity{ProcessID: "pr_cccccccccccccccccccccccccccccccc", PID: command.Process.Pid, ProcessGroupID: group, StartTicks: ticks}, waited
+	}
+	worker, workerIdentity, workerWait := start()
+	child, childIdentity, childWait := start()
+	defer func() {
+		_ = syscall.Kill(-workerIdentity.ProcessGroupID, syscall.SIGKILL)
+		_ = syscall.Kill(-childIdentity.ProcessGroupID, syscall.SIGKILL)
+		select {
+		case <-workerWait:
+		case <-time.After(time.Second):
+		}
+		select {
+		case <-childWait:
+		case <-time.After(time.Second):
+		}
+		_ = worker
+		_ = child
+	}()
+	if err := writeProjectProcessWorkerChildIdentity(workerRoot, childIdentity); err != nil {
+		t.Fatal(err)
+	}
+	platform := osProjectProcessPlatform{stateRoot: stateRoot, workerRoot: workerRoot}
+	if err := platform.Signal(workerIdentity, ProjectProcessKill); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-childWait:
+	case <-time.After(2 * time.Second):
+		t.Fatal("recorded workload group survived kill")
+	}
+	select {
+	case <-workerWait:
+		t.Fatal("worker was killed instead of the recorded workload group")
+	default:
 	}
 }
 

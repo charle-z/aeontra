@@ -226,8 +226,8 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
 	}
 	imageOutput, err := manager.run(ctx, "image", "inspect", "--format", "{{.Id}}", projectToolboxBaseImage)
-	imageID := strings.TrimSpace(string(imageOutput))
-	if err != nil || !projectToolboxImageIDPattern.MatchString(imageID) {
+	imageID, normalizeErr := normalizeProjectToolboxImageID(string(imageOutput))
+	if err != nil || normalizeErr != nil {
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
 	}
 	createOutput, err := manager.run(ctx, "create", "--name", containerName, "--label", projectToolboxLabelKey+"="+toolboxID,
@@ -256,6 +256,17 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	}
 	snapshot, err := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
 	return snapshot, false, err
+}
+
+func normalizeProjectToolboxImageID(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if len(value) == 64 {
+		value = "sha256:" + value
+	}
+	if !projectToolboxImageIDPattern.MatchString(value) {
+		return "", ErrProjectToolboxUnavailable
+	}
+	return value, nil
 }
 
 func (manager *ProjectToolboxManager) Status(ctx context.Context, request ProjectToolboxStatusRequest) (ProjectToolboxSnapshot, error) {
