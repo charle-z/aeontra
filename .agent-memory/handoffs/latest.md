@@ -1,4 +1,4 @@
-# Handoff — v2 bridge installed; v3 bundle and legacy retirement active
+# Handoff — p15.0.15 rolled back; atomic Edge handoff corrective active
 
 Production backend commit `f8c0ce6a25ed46ae4bc4031656b04eb4c3e88603` serves
 protocol `2024-11-05`, 135 tools and catalog
@@ -29,8 +29,15 @@ current link installed successfully. A previously enabled legacy
 `mcp-devbox-edge.service` kept the old `p15.0.13` process and state lock, so the
 templated managed unit failed closed instead of creating a duplicate.
 
-The active v3 change signs pinned official `gh` 2.97.0 as a required component and
-teaches the root updater to inspect, stop and disable only the two fixed legacy Edge
-unit names before restarting the managed unit. Finish its gates, merge, next signed
-release and one real update; then require one managed current process and run the live
-GitHub preflight. Hito 9 multiagent/task-graph work remains deferred explicitly.
+PR #135 merged at `6b6c3bcf7c019ebad4568baca8114ad7407d0565` after
+16/16 checks and official run `30778625101` published signed `p15.0.15` with pinned
+official `gh` 2.97.0. Real operation `eo_a5b534df08797bd152d018d5fc1a65be`
+failed closed and restored `p15.0.14`. The updater attempted `disable --now` against
+the legacy service whose Edge process had launched and was awaiting that updater, so
+the managed unit never completed the handoff and the old process retained the lock.
+
+The active corrective disables persistence without stopping the caller and gives the
+managed unit fixed `Conflicts` plus `After` ordering for the two legacy unit names.
+Finish its gates, merge, next signed release and one real update; then require one
+managed current process and run the live GitHub preflight. Hito 9
+multiagent/task-graph work remains deferred explicitly.

@@ -48,7 +48,9 @@ transition is installed.
 
 Signed `p15.0.14` later installed the v2 bridge. Its real activation exposed an older
 enabled `mcp-devbox-edge.service` that retained the `p15.0.13` process and state lock;
-the managed templated unit failed closed rather than duplicating the Edge. The v3
-candidate therefore includes exact legacy-unit retirement in the privileged updater
-alongside the signed bundled CLI. This note records the later finding without changing
-the baseline's original claims.
+the managed templated unit failed closed rather than duplicating the Edge. PR #135 and
+signed `p15.0.15` added exact retirement plus the bundled CLI, but the first real
+activation rolled back because stopping the legacy caller inside its own updater
+prevented a complete handoff. The follow-up uses disable-only persistence retirement
+and fixed systemd conflict ordering. This note records the later findings without
+changing the baseline's original claims.

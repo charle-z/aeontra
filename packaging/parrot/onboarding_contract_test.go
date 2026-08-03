@@ -68,6 +68,8 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	unit := readRepositoryFile(t, "packaging/systemd/mcp-devbox-opencode-edge@.service")
 	for _, expected := range []string{
 		"User=%i",
+		"Conflicts=mcp-devbox-edge.service mcp-devbox-opencode-edge.service",
+		"After=mcp-devbox-edge.service mcp-devbox-opencode-edge.service",
 		"/usr/local/bin/mcp-edge opencode",
 		"--bundle-root /opt/mcp-devbox/current",
 		"--driver /opt/mcp-devbox/current/libexec/model-turn-driver",
