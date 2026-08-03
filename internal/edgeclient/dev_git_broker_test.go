@@ -14,6 +14,7 @@ import (
 
 type fakeDevGitRunner struct {
 	workspace, owner, repository, branch, head, remoteHead, token string
+	status                                                        string
 	calls                                                         [][]string
 }
 
@@ -40,7 +41,7 @@ func (runner *fakeDevGitRunner) Run(_ context.Context, dir string, args []string
 	case joined == "rev-parse HEAD":
 		return runner.head + "\n", nil
 	case joined == "status --porcelain=v1 --untracked-files=all":
-		return "", nil
+		return runner.status, nil
 	case strings.HasPrefix(joined, "ls-remote --heads origin "):
 		if runner.remoteHead == "" {
 			return "", nil
@@ -85,6 +86,7 @@ func TestDevGitBrokerClonesPrivateOwnerBoundRepositoryWithoutExposingToken(t *te
 
 func TestDevGitPublishRequiresSingleUsePlanAndRevalidatesRemote(t *testing.T) {
 	broker, runner := newDevGitBrokerTest(t)
+	runner.status = "?? .mcp-devbox/runtime/home/.config/go/telemetry/local/weekends\n"
 	dir := filepath.Join(broker.config.Workspace.Path, "project")
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o700); err != nil {
 		t.Fatal(err)

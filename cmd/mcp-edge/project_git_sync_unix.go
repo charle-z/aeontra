@@ -60,7 +60,7 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 	if err != nil {
 		return edge.OperationResult{}, errors.New("project Git status is unavailable")
 	}
-	result.GitDirty = status != ""
+	result.GitDirty = !edgeclient.ProjectCheckoutStatusClean(status)
 	result.GitClean = !result.GitDirty
 	if result.GitDetached {
 		return result, nil

@@ -253,7 +253,7 @@ func (broker *devGitBroker) revalidate(ctx context.Context, directory, branch st
 		return "", "", "", "", errors.New("development repository metadata is unsafe")
 	}
 	status, err := broker.git(ctx, dir, "status", "--porcelain=v1", "--untracked-files=all")
-	if err != nil || strings.TrimSpace(status) != "" {
+	if err != nil || !ProjectCheckoutStatusClean(status) {
 		return "", "", "", "", errors.New("development repository must be clean")
 	}
 	current, err := broker.git(ctx, dir, "branch", "--show-current")

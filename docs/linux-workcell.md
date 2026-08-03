@@ -172,6 +172,12 @@ tickets/
 
 Directories are private (`0700`). Atomic replacement rejects symlinked or unsafe parents and targets.
 
+Project cleanliness checks treat only untracked files inside this exact
+`.mcp-devbox/` namespace as Edge-owned runtime state. They still fail closed for all
+tracked or staged changes there and for every change outside the namespace. This keeps
+tool caches and the isolated runtime HOME from blocking the registered project while
+preserving dirty-checkout protection for repository work.
+
 ## User-scoped dependencies
 
 The workcell environment points package managers to the workspace:
