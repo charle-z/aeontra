@@ -1,37 +1,23 @@
-# Handoff — Hito 4 resource controls candidate
+# Handoff — Hito 5 official GitHub CLI broker candidate
 
-PR #129 merged as `f902fc4a229503a05eb47fa9ac4b3137b55d46f2`, production
-serves 134 tools at
-`sha256:504e6f371de9a46a6e255913a019a9990d8977de286fa4f51d90f27fdf06308b`,
-and stable Front Door deployment `vll165rrqplfulnw8oyh1ucs` retired the previous
-catalog. Public OAuth discovery and the unauthenticated MCP challenge are healthy.
-
-Branch `codex/toolbox-container-controls` adds optional CPU millicores, memory MiB and
-process-count limits to `project_toolbox_create`. Defaults are 4000/8192/2048 and
-ranges are closed. Private owner-only metadata binds them to the persistent container;
-every operation checks live memory bytes, nano-CPU quota and PID cap. A caller cannot
-silently resize an existing toolbox, and drift fails as an ownership error.
-
-Focused tests pass and a real temporary rootless Podman container returned exactly
-8589934592 memory bytes, 4000000000 NanoCpus and PidsLimit 2048 before cleanup. The
-resource-limit-only commit kept 134 tools at
-`sha256:14de29c2c2c7dca8ba6d0621f57495940f88975d4fea0bd97a72f91848b03b84`.
-The combined rootless-engine candidate is 134 tools at
+Production is `1b6b2073ab4090ba899cb2294104a679fbcb2d99`, 134 tools and catalog
 `sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
+The managed Front Door has retired all older catalogs and OAuth/MCP are healthy.
 
-PR #130 at head `c4645faf6b5a68561e1fe889cbe600d056a65757` contains the two
-committed slices. A real toolbox-shaped container installed Podman, reported its remote
-engine as rootless and launched an auto-removed Alpine child returning `nested-ok`;
-all temporary resources were removed.
+Branch `codex/persistent-github-broker` starts Hito 5 without OpenCode or another model
+runtime. It adds the official `gh` package dependency, lets a human keep a full normal
+GitHub CLI login, and adds `mcp-edge github import-gh` to copy its token into separate
+private Edge state. The import returns only configured/owner and does not alter the
+normal CLI profile.
 
-The first CI run exposed an existing ordering race in project-process reconciliation:
-the kill receipt could win over the intended `process_logs_incomplete` failure. The
-minimal candidate correction persists the terminal failure before killing the unsafe
-process. The exact failing test is green 20/20 under `-race`; the full race run passed
-`internal/edgeclient`, while an independent policy performance assertion later exceeded
-its wall-clock threshold under host load and passed three isolated repetitions.
+The direct Edge broker uses only constructed `gh api` argv for the repository already
+bound to the selected development project. The token exists only in the child process
+environment under a private runtime root. `project_github_status` exposes bounded
+repository identity and closed metadata/contents/PR/Actions capability booleans; it
+does not accept or return token, URL, endpoint, headers, path or arbitrary CLI text.
 
-Commit and publish that correction, obtain exact-head green gates, perform the managed
-dual-catalog Front Door transition, merge and deploy, then retire the previous catalog.
-Hito 4 still needs real-device release proof. The installed Edge remains `p15.0.12`;
-do not infer the next immutable release number.
+Candidate identity is 135 tools at
+`sha256:557d3cbb956a311429dbcf893b329b5b0d0dea5e38a0c8dbae96abac52b1e7dd`.
+Focused TDD tests are green. Run complete gates, publish/merge with the managed
+dual-catalog transition, then continue Hito 5 writes as separate closed operations.
+Do not infer the next immutable signed release after installed `p15.0.12`.

@@ -68,8 +68,9 @@ Do not collapse these surfaces into one “sandbox” claim:
   `trusted_host_shared_network`; not universal egress isolation.
 - **Authorized target-locked workspace:** closed local actions bound to one private target
   and validated VPN route; not a host firewall.
-- **Development Edge Git broker:** owner-bound Git transport outside the model workcell;
-  credentials remain in private local state.
+- **Development Edge Git/GitHub broker:** owner-bound Git transport and fixed official
+  `gh` operations outside the model workcell; credentials remain in private local state
+  and only bounded parsed metadata returns to the control plane.
 - **Private validation runner:** fixed profiles in a separate service that owns the
   reviewed container-engine authority. The public MCP container has no Docker socket.
 

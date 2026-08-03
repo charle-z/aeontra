@@ -257,6 +257,7 @@ Usage:
   mcp-edge lab ssh-exec --username <USER> --source <FILE> --extract-after <PREFIX> --command <COMMAND> [--save-output <FILE>]
   mcp-edge bundle verify
   mcp-edge github configure --owner <GITHUB_OWNER> [--state <ABS_PATH>]  # token on stdin
+  mcp-edge github import-gh --owner <GITHUB_OWNER> [--state <ABS_PATH>]  # import active gh auth login
   mcp-edge github status [--state <ABS_PATH>]
 
 The pairing code is read from stdin and is never accepted as a command-line flag.

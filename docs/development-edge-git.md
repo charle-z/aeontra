@@ -1,7 +1,9 @@
 # Development Edge Git authority
 
-Status: implemented on `codex/p15-dev-edge-git`; release and Parrot installation
-remain pending until the exact-head gates, merge, signed release, and update finish.
+Status: clone, safe publication and registered-checkout synchronization are deployed.
+The `codex/persistent-github-broker` candidate adds the first Hito 5 direct GitHub
+API slice through the official GitHub CLI. Exact-head gates, deployment, a signed
+release and real-device acceptance remain separate evidence.
 
 This flow lets an active ChatGPT web task develop in a private repository through
 the authenticated local Edge. It separates two uses of GitHub authority:
@@ -9,7 +11,7 @@ the authenticated local Edge. It separates two uses of GitHub authority:
 | Authority | Location | Purpose |
 |---|---|---|
 | Public MCP GitHub API | VPS/Coolify `GITHUB_TOKEN` | Repository/PR metadata, exact-head checks and workflows, PR creation/merge, and default-branch operations. |
-| Local Git transport | Edge private `github.json` | Clone an owner-bound private repository and publish one reviewed branch from a registered `dev` workcell. |
+| Local Git and GitHub broker | Edge private `github.json` | Clone/publish one owner-bound repository and execute only server-constructed `gh api` reads for its registered `dev` project. |
 
 The same fine-grained PAT may be entered in both places, but it is stored separately
 because the VPS and PC are separate trust domains. Neither copy is returned to the
@@ -35,6 +37,27 @@ Never paste the token into ChatGPT, a prompt, a repository file, or a command-li
 argument.
 
 ## Configure the local Edge copy
+
+The signed Debian package installs the official `gh` CLI. You may keep a complete,
+normal GitHub CLI login for your own interactive work and import it into the separate
+Edge store:
+
+```bash
+gh auth login --hostname github.com --git-protocol https --web
+gh auth status --hostname github.com
+mcp-edge github import-gh --owner charle-z \
+  --state "$HOME/.local/state/mcp-edge"
+mcp-edge github status --state "$HOME/.local/state/mcp-edge"
+```
+
+`import-gh` invokes only the packaged `/usr/bin/gh auth token --hostname github.com`,
+ignores ambient GitHub token variables so the stored login is authoritative, copies
+the token into the existing owner-only `0600` Edge credential file, clears its capture
+buffer, and returns only `{configured, owner}`. It does not delete, replace or otherwise
+modify the normal `gh` profile, so both uses remain available.
+
+Alternatively, configure the Edge copy directly from stdin. Run this as the same
+non-root user that owns the Edge service:
 
 Run this as the same non-root user that owns the Edge service. The command reads only
 stdin and returns `{configured, owner}` without returning the token:
@@ -76,9 +99,17 @@ output is bounded and token-redacted. Code editing, tests, dependency installati
 rootless containers, commits, and checkpoint updates still happen inside the normal
 Linux workcell.
 
-Workflow logs and PR/check state remain public-MCP GitHub API work. The local broker
-does not grow a general GitHub API, arbitrary URL, arbitrary command, or free-push
-surface.
+The Hito 5 direct broker also invokes the installed official `gh` binary outside the
+workcell. `GH_TOKEN` exists only in that child environment, with a private HOME and
+XDG config root. The model can request `project_github_status` only by registered
+project alias and Edge target; the Edge constructs fixed `gh api` calls for repository
+metadata, one bounded PR probe and one bounded Actions probe. The public response has
+closed capability booleans and safe issue codes, not CLI output.
+
+This first slice does not yet create PRs, dispatch workflows, publish releases or
+provide arbitrary `gh`, URLs, endpoints, headers, GraphQL, pagination or free shell.
+Those Hito 5 writes require their own closed schemas, previews/revalidation where
+consequential, durable operation tests and release proof.
 
 ## Prompt for ChatGPT web
 
@@ -103,6 +134,8 @@ an old runtime for a later chat.
 ## Recovery
 
 - `github status` reports only whether authority exists and the fixed owner.
+- `github import-gh` fails with a generic safe error when no complete GitHub CLI login
+  exists; it never prints the login token or raw CLI error.
 - `not configured` means the development runtime starts normally but receives no
   private clone/publish tools.
 - An unsafe mode, symlink, malformed credential file, broker failure, changed remote,

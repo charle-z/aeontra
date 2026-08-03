@@ -420,6 +420,26 @@ On 2026-07-20 the candidate passed under Parrot WSL2 Go 1.26.5: `go test ./...
 shell syntax, and `git diff --check`. Exact-head GitHub gates and live signed-release
 installation remain separate closure requirements.
 
+## Hito 5 official GitHub CLI broker candidate
+
+The first direct GitHub broker slice is deterministic and credential-free in tests:
+
+- CLI-import tests inject a synthetic `gh auth token` reader, verify atomic private
+  storage and assert that neither stdout nor errors contain the token;
+- broker tests inject the command runner, require the exact fixed repository, pull
+  request and Actions `gh api` argv, reject malformed or cross-owner metadata, bound
+  responses and expose only closed permission issue codes;
+- direct-operation tests bind the request to an existing `linux-workcell`/`dev`
+  project and validate restart-safe operation persistence without a model runtime;
+- MCP tests prove the public schema accepts only project alias and Edge target and
+  that the response omits token, URL, path, header and raw CLI output;
+- Debian package contract tests require the official `gh` dependency.
+
+Real-device acceptance additionally requires an interactive `gh auth login`, safe
+`mcp-edge github import-gh`, one official signed Edge release, and a live
+`project_github_status` against an owner-bound private repository. No test fixture or
+CI artifact contains a real account credential.
+
 ## Rootless PostgreSQL fixture identity
 
 The `Rootless Podman, PostgreSQL and Chromium` gate stages the pinned PostgreSQL

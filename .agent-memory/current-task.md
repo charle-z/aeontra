@@ -1,38 +1,33 @@
-# Current task — Hito 4 resource controls
+# Current task — Hito 5 official GitHub CLI broker
 
 ## Verified production base
 
-- Branch base: `origin/main` at `f902fc4a229503a05eb47fa9ac4b3137b55d46f2`.
-- PR #129 passed 16/16 exact-head checks, merged and auto-deployed.
+- Branch base: `origin/main` at `1b6b2073ab4090ba899cb2294104a679fbcb2d99`.
+- PR #130 passed 16/16 exact-head checks, merged and auto-deployed.
 - Backend serves 134 tools at
-  `sha256:504e6f371de9a46a6e255913a019a9990d8977de286fa4f51d90f27fdf06308b`.
-- Front Door retirement deployment `vll165rrqplfulnw8oyh1ucs` finished with only the
+  `sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
+- Front Door retirement deployment `ur9orp1o903bwfbbtl6xxp7f` finished with only the
   current catalog allowed. Public MCP challenge and OAuth discovery are healthy.
-- Brain note `gpt-web-direct-edge-h4-toolbox-services` records the closure.
+- Brain note `gpt-web-direct-edge-h4-rootless-controls` records the Hito 4 source
+  closure; real-device acceptance still awaits an explicitly named signed release.
 
 ## Active source candidate
 
-- Branch: `codex/toolbox-container-controls`.
-- PR #130 is open at exact head `c4645faf6b5a68561e1fe889cbe600d056a65757`.
-- `project_toolbox_create` now accepts optional bounded CPU, memory and process limits.
-- Defaults are 4000 millicores, 8192 MiB and 2048 processes.
-- The limits persist in owner-only state, appear as safe public metadata and are
-  revalidated against live rootless `HostConfig` on every operation.
-- Reuse with different limits and live drift fail closed.
-- The toolbox also receives the validated user-owned rootless engine at a fixed private
-  path with server-owned client variables and reports bounded storage usage.
-- Combined candidate catalog remains 134 tools at
-  `sha256:9d8bea913bb9c0da9467dc0cfff414e02acd3893f1246f7a7e8e3d6a5a859236`.
-- CI exposed an existing terminal-state ordering bug in project-process recovery:
-  an unsafe process could publish `exited` after reconciliation detected incomplete
-  logs but before `failed` was persisted. The candidate now persists the failure
-  before sending the mandatory kill. The failing test passes 20/20 under `-race` and
-  the complete race suite passed through `internal/edgeclient`; a later independent
-  policy timing assertion was green when repeated three times in isolation.
+- Branch: `codex/persistent-github-broker`.
+- Debian Edge packages now depend on the official `gh` CLI.
+- A human may retain a complete normal `gh auth login`; `mcp-edge github import-gh`
+  copies that authority into the separate owner-only Edge store without exposing it.
+- The private direct broker executes only fixed `gh api` reads with `GH_TOKEN` in the
+  bounded child environment and a private HOME/XDG root.
+- `project_github_status` accepts only registered project alias and Edge target and
+  returns safe repository metadata plus contents, PR and Actions capability probes.
+- Candidate catalog: 135 tools at
+  `sha256:557d3cbb956a311429dbcf893b329b5b0d0dea5e38a0c8dbae96abac52b1e7dd`.
 
 ## Next exact action
 
-Commit and publish the terminal-state ordering correction, wait for PR #130 exact-head
-gates, then use the managed dual-catalog Front Door transition before merging and
-deploying the 134-tool candidate. Retire the old catalog only after the new backend is
-healthy. Do not infer a signed Edge release number after installed `p15.0.12`.
+Complete full gates and exact documentation consistency, commit the Hito 5 read-only
+slice, publish a PR, perform the managed dual-catalog Front Door transition, merge and
+deploy, then retire the previous catalog. Continue Hito 5 consequential PR, workflow
+and release operations in later reviewable slices. Do not infer a signed Edge release
+number after installed `p15.0.12`.
