@@ -24,7 +24,9 @@ func TestManagedDeploymentCapabilityBlocksForceBackendDeployment(t *testing.T) {
 	defer server.Close()
 
 	service, _ := newTestService(t, config.ModeAllow)
-	service.WithCoolify(&CoolifyClient{baseURL: server.URL, token: "token", http: server.Client()})
+	client := NewCoolifyClient(server.URL, "token", nil)
+	client.do = server.Client().Do
+	service.WithCoolify(client)
 	if _, err := service.PlatformDeployWithoutCachePreview(managedBackendAppUUID); err == nil || !strings.Contains(err.Error(), "forbidden") {
 		t.Fatalf("managed backend force deployment was not blocked: %v", err)
 	}
@@ -84,8 +86,8 @@ func TestManagedBackendRolloutRejectsIncompleteExactHeadChecks(t *testing.T) {
 }
 
 func TestActionPlanPeekDoesNotConsumeOrExposeMutableArgs(t *testing.T) {
-	service, logger := newTestService(t, config.ModeAllow)
-	store := NewActionPlanStore(logger)
+	service, _ := newTestService(t, config.ModeAllow)
+	store := service.plans
 	plan, err := store.Create("platform-deploy", map[string]string{"app": managedBackendAppUUID, "rollout": managedBackendRolloutMarker})
 	if err != nil {
 		t.Fatal(err)
@@ -102,5 +104,4 @@ func TestActionPlanPeekDoesNotConsumeOrExposeMutableArgs(t *testing.T) {
 	if _, err := store.Consume(plan.ID, "platform-deploy"); err == nil {
 		t.Fatal("single-use action plan was replayed")
 	}
-	_ = service
 }
