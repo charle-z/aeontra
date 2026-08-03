@@ -89,7 +89,6 @@ Use this short map before scanning the complete catalog in `docs/tools.md`.
 | Inspect Git state or changes | `repo_status` / `repo_diff` |
 | Publish the current branch | `repo_publish_preview`, then `repo_publish` |
 | Create a pull request | `source_pull_request_create_preview`, then `source_pull_request_create` |
-| Dispatch a GitHub Actions workflow | `source_workflow_dispatch_preview`, then `source_workflow_dispatch` |
 | Read a pull request and its exact-head checks | `source_pull_request_status` |
 | Diagnose GitHub Actions failures | `source_pull_request_failure_diagnostics`; use `source_pull_request_job_log` for an exact bounded job log |
 | Merge a completely green pull request | `source_pull_request_merge_preview`, then `source_pull_request_merge` |
