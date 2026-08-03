@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
-	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
 	"github.com/charle-z/mcp-devbox/internal/catalogrollout"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 	"github.com/charle-z/mcp-devbox/internal/resultstore"
