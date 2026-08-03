@@ -50,6 +50,7 @@ type PlatformCapability struct {
 	managedFrontDoorProbe               func(context.Context, string, bool, string, string, string) error
 	managedFrontDoorSleepFn             func(time.Duration)
 	managedFrontDoorExternalCoordinator bool
+	managedMCPToken                     string
 }
 
 // ExecutionCapability owns process, sandbox, validation, and privileged-profile
