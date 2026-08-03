@@ -63,9 +63,15 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	}
 
 	updaterUnit := repoFile(t, "packaging/systemd/mcp-devbox-bundle-updater.service")
-	for _, required := range []string{"User=root", "update stable", "ProtectSystem=strict", "ReadWritePaths=/opt/mcp-devbox /etc/systemd/system", "CapabilityBoundingSet="} {
+	for _, required := range []string{"User=root", "update stable", "ProtectSystem=strict", "ReadWritePaths=/opt/mcp-devbox /etc/systemd/system /usr/local/bin", "CapabilityBoundingSet="} {
 		if !strings.Contains(updaterUnit, required) {
 			t.Fatalf("updater unit missing %q", required)
+		}
+	}
+	rollbackUnit := repoFile(t, "packaging/systemd/mcp-devbox-bundle-rollback.service")
+	for _, required := range []string{"rollback", "ProtectSystem=strict", "ReadWritePaths=/opt/mcp-devbox /etc/systemd/system /usr/local/bin", "CapabilityBoundingSet="} {
+		if !strings.Contains(rollbackUnit, required) {
+			t.Fatalf("rollback unit missing %q", required)
 		}
 	}
 	for _, forbidden := range []string{"/bin/sh", "/bin/bash", "sudo", "ExecStart=/usr/bin/env"} {

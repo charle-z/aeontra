@@ -82,12 +82,28 @@ The exceptional runbook now includes the previously missing trigger rule:
 and a legacy rollback because `identity.json` always exists and otherwise relaunches
 the templated service.
 
+PR #137 merged at `c4cf14669a845935a785e442047571fcfbeab0a0` after 16/16
+exact-head checks, and production serves that merge with the unchanged 135-tool
+catalog. Official workflow run `30782426563` published signed `p15.0.17`. Real update
+operation `eo_8f6258eb03477a442199fc65c1642bc3` attempted it exactly once and
+failed closed before unit installation, restoring healthy `p15.0.14`.
+
+The confirmed blocker is the root updater sandbox, not the managed Edge unit. Its
+`ProtectSystem=strict` policy omitted `/usr/local/bin` from `ReadWritePaths`. The
+installed v2 bridge had never exercised that write because its own bundle contains no
+`libexec/gh`; every v3 bundle requires the updater to create the fixed managed
+`/usr/local/bin/gh` link before installing the Edge unit. Update and rollback need
+that same exact path. Repair already owns it. The correction grants only that fixed
+directory to the two closed root lifecycle units; it does not grant root to the Edge.
+
 ## Next exact action
 
-Finish full verification, PR and exact-head gates for the clean post-handoff unit,
-publish signed `p15.0.17`, then perform one official update. Require the managed unit
+Finish full verification, PR and exact-head gates for the lifecycle sandbox correction,
+publish signed `p15.0.18`, then install its official signed Debian package once so the
+host receives the corrected root units as well as the bundle. Require the managed unit
 to own one process on the new release, with no active legacy unit and a signed
-`/usr/local/bin/gh`.
+`/usr/local/bin/gh`. A later archive update must be proven separately through the
+normal closed updater; do not repeat the already failed `p15.0.17` operation.
 Re-run `project_github_status`, then continue Hito 5 consequential operations and
 real-device acceptance for Hitos 3A, 3B and 4. Hito 9 multiagent/task-graph work is
 explicitly outside the current authorization and must not be started.

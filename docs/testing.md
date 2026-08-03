@@ -446,6 +446,12 @@ The first direct GitHub broker slice is deterministic and credential-free in tes
   directive. An active unpackaged legacy unit remains a fail-closed operator migration,
   not a reason to add privileged pre-start logic to the signed service.
 
+  Signed `p15.0.17` then isolated a separate pre-unit failure: the v2 updater service
+  ran with `ProtectSystem=strict` and could not create the manifest-v3 managed
+  `/usr/local/bin/gh` link. Package contracts now require both update and rollback to
+  own exactly `/opt/mcp-devbox`, `/etc/systemd/system` and `/usr/local/bin`; repair
+  already had that closed authority. No Edge service receives the added write path.
+
 Real-device acceptance has completed interactive `gh auth login`, safe
 `mcp-edge github import-gh` and installation of official release `p15.0.13`. A live
 `project_github_status` against an owner-bound private repository remains required
