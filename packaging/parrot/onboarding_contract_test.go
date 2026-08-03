@@ -68,8 +68,6 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	unit := readRepositoryFile(t, "packaging/systemd/mcp-devbox-opencode-edge@.service")
 	for _, expected := range []string{
 		"User=%i",
-		"Conflicts=mcp-devbox-edge.service mcp-devbox-opencode-edge.service",
-		"After=mcp-devbox-edge.service mcp-devbox-opencode-edge.service",
 		"/usr/local/bin/mcp-edge opencode",
 		"--bundle-root /opt/mcp-devbox/current",
 		"--driver /opt/mcp-devbox/current/libexec/model-turn-driver",
@@ -81,6 +79,14 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	} {
 		if !strings.Contains(unit, expected) {
 			t.Fatalf("OpenCode Edge unit missing %q", expected)
+		}
+	}
+	for _, forbidden := range []string{
+		"Conflicts=mcp-devbox-edge.service mcp-devbox-opencode-edge.service",
+		"After=mcp-devbox-edge.service mcp-devbox-opencode-edge.service",
+	} {
+		if strings.Contains(unit, forbidden) {
+			t.Fatalf("OpenCode Edge unit must not manage unpackaged legacy units through %q", forbidden)
 		}
 	}
 	if strings.Contains(unit, "/var/run/docker.sock") || strings.Contains(unit, "/run/docker.sock") {

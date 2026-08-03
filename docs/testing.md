@@ -438,9 +438,13 @@ The first direct GitHub broker slice is deterministic and credential-free in tes
   manifest-v3 `github-cli` integrity, fixed safe executable resolution and managed-link
   creation/removal across upgrade and rollback. Updater tests also require inspection
   and retirement of only the two fixed legacy Edge units and propagate any systemd
-  failure. The real `p15.0.15` rollback added a regression requiring the updater to
-  disable legacy persistence without stopping its own Edge caller and requiring the
-  managed unit to declare fixed conflict and stop-before-start ordering.
+  failure. The real `p15.0.15` rollback proved that an archive updater must not stop
+  the legacy Edge caller that is waiting for it. The subsequent `p15.0.16` attempt,
+  after the operator completed a manual process handoff, proved that retaining fixed
+  `Conflicts`/`After` directives in the signed managed unit still prevented activation.
+  The post-handoff regression therefore requires the managed unit to contain neither
+  directive. An active unpackaged legacy unit remains a fail-closed operator migration,
+  not a reason to add privileged pre-start logic to the signed service.
 
 Real-device acceptance has completed interactive `gh auth login`, safe
 `mcp-edge github import-gh` and installation of official release `p15.0.13`. A live

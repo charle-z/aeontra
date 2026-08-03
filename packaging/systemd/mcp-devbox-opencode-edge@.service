@@ -2,8 +2,6 @@
 Description=MCP Devbox Trusted Linux Workcell Edge for %i
 After=network-online.target
 Wants=network-online.target
-Conflicts=mcp-devbox-edge.service mcp-devbox-opencode-edge.service
-After=mcp-devbox-edge.service mcp-devbox-opencode-edge.service
 ConditionPathExists=/home/%i/.local/state/mcp-edge/identity.json
 ConditionPathExists=!/home/%i/.local/state/mcp-edge/STOP
 
