@@ -108,7 +108,7 @@ jobs:
             -v "$RUNNER_TEMP/deb-a:/artifacts:ro" \
             -v "$RUNNER_TEMP/legacy-state:/fixtures/legacy-state:ro" \
             debian:bookworm-slim sh -euxc '
-              printf "#!/bin/sh\nif [ -e /tmp/fail-edge-service ] && [ \"\${1:-}\" = is-active ]; then exit 1; fi\nexit 0\n" >/usr/bin/systemctl
+              printf "#!/bin/sh\nif [ \"\${1:-}\" = show ]; then printf \"not-found\\\\n\"; exit 0; fi\nif [ -e /tmp/fail-edge-service ] && [ \"\${1:-}\" = is-active ]; then exit 1; fi\nexit 0\n" >/usr/bin/systemctl
               chmod 0755 /usr/bin/systemctl
               printf "#!/bin/sh\nexit 0\n" >/usr/bin/loginctl
               chmod 0755 /usr/bin/loginctl
