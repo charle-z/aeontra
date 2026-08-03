@@ -5,6 +5,7 @@ package tools
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
@@ -33,7 +34,7 @@ type Service struct {
 	*RepositoryCapability
 	*GitCapability
 	*SourceCapability
-	*PlatformCapability
+	*ManagedDeploymentCapability
 	*ExecutionCapability
 	*ResultCapability
 	*BrainCapability
@@ -56,15 +57,17 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		githubRun:        execGitHubHTTPSRunner,
 	}
 	repository := &RepositoryCapability{serviceCore: core, GitCapability: git}
+	platform := &PlatformCapability{
+		serviceCore:      core,
+		SourceCapability: source,
+		managedMCPToken:  strings.TrimSpace(os.Getenv("MCP_DEVBOX_TOKEN")),
+	}
 	return &Service{
-		serviceCore:          core,
-		RepositoryCapability: repository,
-		GitCapability:        git,
-		SourceCapability:     source,
-		PlatformCapability: &PlatformCapability{
-			serviceCore:      core,
-			SourceCapability: source,
-		},
+		serviceCore:                 core,
+		RepositoryCapability:        repository,
+		GitCapability:               git,
+		SourceCapability:            source,
+		ManagedDeploymentCapability: &ManagedDeploymentCapability{PlatformCapability: platform},
 		ExecutionCapability: &ExecutionCapability{
 			serviceCore: core,
 			sandbox:     disabledSandboxRunner{},

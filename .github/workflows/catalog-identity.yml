@@ -1,0 +1,22 @@
+name: Catalog Identity
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify catalog identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify checked-in identity against source
+        run: go run ./cmd/mcp-catalog-id --verify deploy/catalog-identity.json

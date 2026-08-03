@@ -43,7 +43,11 @@ type runtimeConfig struct {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := runCoordinator(ctx, os.Getenv, defaultCoordinatorDependencies()); err != nil {
+	run := runCoordinator
+	if catalogRolloutRequested(os.Getenv) {
+		run = runCatalogCoordinator
+	}
+	if err := run(ctx, os.Getenv, defaultCoordinatorDependencies()); err != nil {
 		log.Fatal("front-door coordinator stopped")
 	}
 }
