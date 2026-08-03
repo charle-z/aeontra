@@ -12,6 +12,9 @@ sources of truth.
 - [`docs/security.md`](security.md) — technical threat, trust, authority, isolation, and
   persistence model.
 - [`docs/tools.md`](tools.md) — canonical public tool catalog and workflows.
+- [`catalog-aware-backend-rollout.md`](catalog-aware-backend-rollout.md) — managed
+  catalog comparison, Front Door transition, exact backend deployment, compensation,
+  and operator runbook.
 - [`documentation-map.md`](documentation-map.md) — source ownership and status terms.
 - [`product-roadmap.md`](product-roadmap.md) — evidence-based product direction.
 - [`docs/baselines/`](baselines/) — dated historical evidence.
@@ -73,6 +76,9 @@ Do not collapse these surfaces into one “sandbox” claim:
   and only bounded parsed metadata returns to the control plane.
 - **Private validation runner:** fixed profiles in a separate service that owns the
   reviewed container-engine authority. The public MCP container has no Docker socket.
+- **Catalog rollout coordinator:** private server-owned Coolify authority, exact commit
+  pins, a two-catalog maximum, and a persistent journal. It does not add a public
+  deployment endpoint or expose tokens to the MCP client.
 
 Source release, package artifact, VPS deployment, and installed Edge are separate
 facts. Verify each with separate evidence.
@@ -90,6 +96,12 @@ facts. Verify each with separate evidence.
   credential surface.
 - OAuth is preferred publicly; static bearer is header-only recovery. Query-string
   credentials are rejected.
+- The managed MCP backend keeps Coolify auto-deploy and instant-deploy disabled. Its
+  `platform_deploy` path requires an exact candidate SHA, a CI-verified catalog identity,
+  complete exact-head green checks, and a durable coordinator rollout.
+- A Front Door transition admits only the previous and candidate catalog. Wildcards, a
+  third catalog, malformed hashes, direct force deployment, and concurrent topology and
+  catalog transitions fail closed.
 - Audit and observability are bounded and exclude prompts, content, credentials, paths,
   targets, and raw errors.
 - Signed Edge bundles bind the authority-bearing components; installed-device state must
@@ -145,6 +157,8 @@ tag, or automatic deployment is not evidence of a real-device installation.
 - `/brain`: optional Brain Markdown truth and local Git; search cache is disposable.
 - `~/.local/state/mcp-edge`: private installed Edge identity, registry, journal, results,
   and optional local Git authority.
+- `/coordinator-state/catalog-rollout`: private atomic backend rollout journal inside the
+  existing coordinator persistent volume.
 
 Keep `/state`, `/brain`, OAuth stores, Edge private state, credentials, and engine sockets
 outside the repository jail. Preserve owner-only modes and reviewed backups.
