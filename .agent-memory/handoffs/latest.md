@@ -135,3 +135,14 @@ The active branch must finish the `--info-fd` correction: persist the exact repo
 inner leader after owner/start-ticks/PGID validation, signal that group, and bind
 Bubblewrap to the independent durable worker with `--die-with-parent`. Publish through
 normal PR and the next signed release, then repeat only the short H3B real acceptance.
+
+## 2026-08-03 p15.0.22 identity-readiness follow-up
+
+PR #142, signed `p15.0.22`, production deployment and exactly one Edge update are
+complete at `e6dfb77b5bcf74db3760705ec5fe7bec1c5b042c`. Doctor is ready and
+`NRestarts=0`. The first new H3B start failed before returning an opaque process because
+Bubblewrap published `child-pid` just before `--new-session` completed `setsid`; the
+immediate `PGID == PID` check lost that race. The bounded harmless probe ended and no
+matching workload remains. The current candidate waits at most two seconds for the
+same owned, unchanged-start-time child to become group leader. Publish by normal PR,
+release/update once, then repeat only H3B restart, signal, idempotent stop and cleanup.

@@ -565,9 +565,8 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-setsid "$@" &
+(sleep 0.2; exec setsid "$@") &
 child=$!
-while [ "$(ps -o pgid= -p "$child" | tr -d ' ')" != "$child" ]; do sleep 0.01; done
 printf '%s\n' "$child" > "$EXPECTED_PID_FILE"
 if [ -n "$info_fd" ]; then
   [ "$info_fd" = 3 ] || exit 2

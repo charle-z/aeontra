@@ -125,3 +125,25 @@ passed `go test ./... -count=1`, `go vet ./...`, `go build ./...` and
 `git diff --check` from an isolated ext4 clone with Go 1.26.5. Focused RED/GREEN
 evidence proves the launcher PID differs from the reported inner leader and that TERM
 to the persisted inner group is observed by the receipt-writing worker.
+
+## p15.0.22 identity-readiness finding
+
+PR #142 merged at `e6dfb77b5bcf74db3760705ec5fe7bec1c5b042c` after 16/16
+exact-head checks. Official workflow run `30812656084` published signed `p15.0.22`,
+and exactly one stable update operation installed that release and commit. Bundle and
+onboarding status were valid with one active process, held lock, managed coherence and
+no pending update; host doctor was ready with an empty journal and `NRestarts=0`.
+
+The first fresh Hito 3B start returned `project_process_failed` before exposing a
+durable process. Its harmless bounded workload nevertheless ran to its natural end.
+Focused host reproduction confirmed that Bubblewrap's `--info-fd` publishes the host
+child PID before `--new-session` is guaranteed to finish establishing the new process
+group. The immediate `PGID == PID` check therefore lost a real scheduling race and
+failed readiness closed; no matching workload remains.
+
+The correction preserves every identity barrier and waits at most two seconds for the
+reported child to become its own group leader. Each poll requires the same Linux start
+ticks and current-user ownership; disappearance, reuse, foreign ownership or timeout
+still fail closed. The RED helper now reports its PID before a delayed `setsid`; GREEN
+persists the exact leader and the affected Linux Edge/docs matrix passes. Hito 3B is
+still unaccepted pending publication and the fresh real restart/signal/cleanup gate.

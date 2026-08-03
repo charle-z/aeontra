@@ -1348,11 +1348,8 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 			return errors.New("project process sandbox identity timed out")
 		}
 	}
-	childTicks, childTicksErr := linuxProcessStartTicks(childPID)
-	childGroup, childGroupErr := syscall.Getpgid(childPID)
-	childIdentity := ProjectProcessIdentity{ProcessID: processID, PID: childPID, ProcessGroupID: childGroup, StartTicks: childTicks}
-	childAlive, childAliveErr := (osProjectProcessPlatform{}).Alive(childIdentity)
-	if childTicksErr != nil || childGroupErr != nil || childGroup != childPID || childAliveErr != nil || !childAlive || writeProjectProcessWorkerChildIdentity(workerRoot, childIdentity) != nil {
+	childIdentity, childIdentityErr := waitProjectProcessSandboxLeader(processID, childPID, 2*time.Second)
+	if childIdentityErr != nil || writeProjectProcessWorkerChildIdentity(workerRoot, childIdentity) != nil {
 		_ = command.Process.Kill()
 		<-waited
 		_ = stdout.Close()
@@ -1408,6 +1405,39 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 		return err
 	}
 	return nil
+}
+
+func waitProjectProcessSandboxLeader(processID string, childPID int, timeout time.Duration) (ProjectProcessIdentity, error) {
+	if !projectProcessIDPattern.MatchString(processID) || childPID < 1 || timeout <= 0 {
+		return ProjectProcessIdentity{}, errors.New("project process sandbox identity is invalid")
+	}
+	deadline := time.Now().Add(timeout)
+	var expectedTicks uint64
+	for {
+		ticks, ticksErr := linuxProcessStartTicks(childPID)
+		processInfo, statErr := os.Stat(filepath.Join("/proc", strconv.Itoa(childPID)))
+		group, groupErr := syscall.Getpgid(childPID)
+		if ticksErr != nil || statErr != nil || groupErr != nil || !ownedByCurrentUIDPortable(processInfo) {
+			return ProjectProcessIdentity{}, errors.New("project process sandbox identity is invalid")
+		}
+		if expectedTicks == 0 {
+			expectedTicks = ticks
+		} else if ticks != expectedTicks {
+			return ProjectProcessIdentity{}, errors.New("project process sandbox identity changed")
+		}
+		if group == childPID {
+			identity := ProjectProcessIdentity{ProcessID: processID, PID: childPID, ProcessGroupID: group, StartTicks: ticks}
+			alive, aliveErr := (osProjectProcessPlatform{}).Alive(identity)
+			if aliveErr == nil && alive {
+				return identity, nil
+			}
+			return ProjectProcessIdentity{}, errors.New("project process sandbox identity is invalid")
+		}
+		if !time.Now().Before(deadline) {
+			return ProjectProcessIdentity{}, errors.New("project process sandbox session timed out")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 type projectProcessSandboxInfoResult struct {

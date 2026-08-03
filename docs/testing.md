@@ -90,6 +90,14 @@ matrix reserves Bubblewrap `--info-fd`, accepts only a positive reported child P
 revalidates its exact owner/start-ticks/PGID tuple before readiness, targets that group,
 and keeps `--die-with-parent` bound to the durable worker to close crash-time orphans.
 
+The first `p15.0.22` real start then exposed a readiness race hidden by the original
+helper: Bubblewrap writes `child-pid` before `--new-session` necessarily finishes
+`setsid`. Immediate `PGID == PID` validation failed closed while the harmless bounded
+probe continued and exited normally. The regression now deliberately publishes the
+child PID before the delayed `setsid`; RED fails to persist readiness, while GREEN
+waits at most two seconds and still requires an unchanged start time, current-user
+ownership and `PGID == PID`. The affected Edge/docs matrix passes on Linux.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:

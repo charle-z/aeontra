@@ -61,7 +61,10 @@ same trusted-workcell executor as `project_exec`:
   alive independently of the control loop; the Edge systemd unit stops only its main
   process, so a signed restart or update does not implicitly stop managed groups;
 - the worker owns Bubblewrap's reserved `--info-fd`, revalidates the reported sandbox
-  child PID, start ticks, process group and owner before readiness, and persists that
+  child PID, stable start ticks, process group and owner before readiness. Bubblewrap
+  may publish the child before `--new-session` has completed `setsid`, so the worker
+  waits a short fixed interval for `PGID == PID` while rejecting disappearance, PID
+  reuse or foreign ownership. It then persists that
   inner session leader rather than the short-lived outer Bubblewrap supervisor. Closed
   signals target only that exact group. Bubblewrap is parent-bound to the durable
   worker, so an Edge restart remains transparent while a worker crash cannot orphan
