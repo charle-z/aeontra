@@ -34,7 +34,7 @@ type Service struct {
 	*RepositoryCapability
 	*GitCapability
 	*SourceCapability
-	*PlatformCapability
+	*ManagedDeploymentCapability
 	*ExecutionCapability
 	*ResultCapability
 	*BrainCapability
@@ -57,16 +57,17 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		githubRun:        execGitHubHTTPSRunner,
 	}
 	repository := &RepositoryCapability{serviceCore: core, GitCapability: git}
+	platform := &PlatformCapability{
+		serviceCore:      core,
+		SourceCapability: source,
+		managedMCPToken: strings.TrimSpace(os.Getenv("MCP_DEVBOX_TOKEN")),
+	}
 	return &Service{
-		serviceCore:          core,
-		RepositoryCapability: repository,
-		GitCapability:        git,
-		SourceCapability:     source,
-		PlatformCapability: &PlatformCapability{
-			serviceCore:      core,
-			SourceCapability: source,
-			managedMCPToken: strings.TrimSpace(os.Getenv("MCP_DEVBOX_TOKEN")),
-		},
+		serviceCore:                 core,
+		RepositoryCapability:        repository,
+		GitCapability:               git,
+		SourceCapability:            source,
+		ManagedDeploymentCapability: &ManagedDeploymentCapability{PlatformCapability: platform},
 		ExecutionCapability: &ExecutionCapability{
 			serviceCore: core,
 			sandbox:     disabledSandboxRunner{},
@@ -112,12 +113,6 @@ func (s *Service) WithTestCommand(cmd []string) *Service {
 // WithCoolify sets the optional Coolify deploy client (nil disables coolify_deploy).
 func (s *Service) WithCoolify(c *CoolifyClient) *Service {
 	s.PlatformCapability.configureCoolify(c)
-	return s
-}
-
-// WithManagedMCPToken overrides the server-owned MCP smoke token for deterministic tests.
-func (s *Service) WithManagedMCPToken(token string) *Service {
-	s.PlatformCapability.managedMCPToken = strings.TrimSpace(token)
 	return s
 }
 
