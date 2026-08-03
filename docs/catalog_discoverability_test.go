@@ -28,6 +28,8 @@ func TestAgentCatalogIntentIndexContract(t *testing.T) {
 		"`source_pull_request_job_log`",
 		"`source_pull_request_merge_preview`",
 		"`source_pull_request_merge`",
+		"`source_workflow_dispatch_preview`",
+		"`source_workflow_dispatch`",
 		"`platform_apps_list`",
 		"`platform_deploy_preview`",
 		"`platform_deploy`",
