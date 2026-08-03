@@ -368,6 +368,13 @@ func (runner execDevGitCommandRunner) Run(ctx context.Context, dir string, args 
 	command.Stdout = output
 	command.Stderr = output
 	err = command.Run()
-	text := strings.ReplaceAll(output.buffer.String(), credential.Token, "[REDACTED]")
+	text := redactDevGitCommandOutput(output.buffer.String(), credential.Token)
 	return text, err
+}
+
+func redactDevGitCommandOutput(output, token string) string {
+	if token == "" {
+		return output
+	}
+	return strings.ReplaceAll(output, token, "[REDACTED]")
 }

@@ -1,6 +1,6 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 
 ## Direct GPT Web to Edge roadmap
 
@@ -14,10 +14,10 @@ runtime; OpenCode remains a tested optional fallback.
 | 2 durable Edge operations | Deployed | Server-owned operation identity, leases, progress, cancellation and restart-safe queue state are in production. |
 | 3 foreground execution | Deployed | `project_exec` uses arbitrary argv without an implicit shell in the trusted workcell. |
 | 3A background start/status/stop | Real-device accepted on p15.0.18 | The real Parrot Edge passed idempotent start, incremental split output, repeated stop and explicit cleanup without OpenCode or a model runtime. |
-| 3B recovery/list/signal/cleanup | Corrective candidate after real-device rejection | The real restart preserved the worker but exposed that signals relayed through it could leave a separate Bubblewrap workload group in `stopping`. The candidate records and revalidates the private workload-group identity and signals it directly while preserving the receipt-writing worker. |
-| Safe Edge checkout synchronization | Merged and deployed; successful device acceptance pending | The first real pass failed closed without checkout mutation. The checkout itself is clean, attached, owner-bound and synchronized; the local `gh` authority was safely reimported before the next signed-release retry. |
-| 4 persistent universal toolbox | Corrective candidate after real-device rejection | Real Podman 5.4 returns a bare 64-hex image ID where the candidate expected a `sha256:` prefix. Strict canonical normalization now supports both engine forms; full toolbox/service/restart acceptance follows the next signed release. |
-| 5 complete persistent GitHub broker | Read-only slice deployed; login/import verified; consequential operations pending | Signed `p15.0.18` is stable with managed `gh` and the normal login has been safely reimported into the private Edge store. A successful direct Git/GitHub retry and closed consequential PR, workflow and release operations remain. |
+| 3B recovery/list/signal/cleanup | Corrected in p15.0.19; restart acceptance in progress | The direct workload-group correction is installed. A new durable process is producing non-duplicated incremental output and remains active for the single coordinated restart gate. |
+| Safe Edge checkout synchronization | Follow-up correction after real-device rejection | The isolated runner redacted an empty credential during local Git commands, which inserted the redaction marker between every output character and invalidated HEAD. The candidate now leaves output unchanged when no credential is present while retaining exact token redaction for remote commands. |
+| 4 persistent universal toolbox | Follow-up correction after real-device rejection | `p15.0.19` canonicalized the initial Podman image inspection, but ownership verification compared a second bare Podman image ID directly with the canonical prefixed record. The candidate canonicalizes that second identity before comparison; full toolbox/service/restart acceptance remains pending. |
+| 5 complete persistent GitHub broker | Read-only slice deployed; login/import verified; consequential operations pending | Signed `p15.0.19` is stable with managed `gh` and the normal login remains safely imported into the private Edge store. Successful direct Git synchronization and closed consequential PR, workflow and release operations remain. |
 | 6 direct GPT Web parity | Planned | Workspace-scoped filesystem, Git, process, toolbox, container and durable-result coverage. |
 | 7 worktrees and deterministic parallelism | Planned | Durable isolated worktrees, ownership, fairness, recovery and explicit cleanup. |
 | 8 full benchmark | Planned | Complete project delivery through the direct path with retained latency/resource/CI evidence. |

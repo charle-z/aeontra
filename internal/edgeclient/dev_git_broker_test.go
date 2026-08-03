@@ -114,3 +114,13 @@ func TestDevGitBrokerRejectsTraversalAndCredentialsInRequest(t *testing.T) {
 		}
 	}
 }
+
+func TestDevGitOutputRedactionPreservesLocalOutputWithoutCredential(t *testing.T) {
+	const output = "b70efb6c12fe15d7138ea40d033043092c32fc66\n"
+	if got := redactDevGitCommandOutput(output, ""); got != output {
+		t.Fatalf("local output corrupted: %q", got)
+	}
+	if got := redactDevGitCommandOutput("prefix-private-suffix", "private"); got != "prefix-[REDACTED]-suffix" {
+		t.Fatalf("credential was not redacted: %q", got)
+	}
+}

@@ -14,11 +14,12 @@ import (
 )
 
 type recordingToolboxRunner struct {
-	calls     [][]string
-	fail      string
-	workspace string
-	socket    string
-	state     string
+	calls          [][]string
+	fail           string
+	workspace      string
+	socket         string
+	state          string
+	inspectImageID string
 }
 
 func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, args, _ []string) ([]byte, error) {
@@ -32,7 +33,11 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 	case strings.Contains(joined, "image inspect"):
 		return []byte("sha256:" + strings.Repeat("a", 64) + "\n"), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "Config.Labels"):
-		return []byte("tb_11111111111111111111111111111111|sha256:" + strings.Repeat("a", 64) + "\n"), nil
+		imageID := runner.inspectImageID
+		if imageID == "" {
+			imageID = "sha256:" + strings.Repeat("a", 64)
+		}
+		return []byte("tb_11111111111111111111111111111111|" + imageID + "\n"), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "json .Mounts"):
 		return []byte(`[{"Type":"bind","Source":"` + runner.workspace + `","Destination":"/workspace","RW":true},{"Type":"bind","Source":"` + runner.socket + `","Destination":"/run/mcp-devbox/container.sock","RW":true}]`), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "HostConfig.Memory"):
@@ -300,5 +305,28 @@ func TestNormalizeProjectToolboxImageIDAcceptsDockerAndPodmanForms(t *testing.T)
 		if _, err := normalizeProjectToolboxImageID(input); err == nil {
 			t.Fatalf("unsafe image identity accepted: %q", input)
 		}
+	}
+}
+
+func TestProjectToolboxOwnershipAcceptsBarePodmanImageIdentity(t *testing.T) {
+	stateRoot := t.TempDir()
+	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	runner := &recordingToolboxRunner{
+		workspace:      workspace.Path,
+		socket:         filepath.Join(stateRoot, "podman.sock"),
+		inspectImageID: strings.Repeat("a", 64),
+	}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+		StateRoot: stateRoot,
+		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"},
+		Runner:    runner,
+		NewID:     func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+	if err != nil || created.State != ProjectToolboxRunning {
+		t.Fatalf("created=%+v err=%v", created, err)
 	}
 }

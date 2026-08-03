@@ -59,6 +59,15 @@ killing the receipt-writing worker and that Docker-prefixed and Podman-bare SHA-
 identities canonicalize identically while malformed forms fail closed. See
 `docs/baselines/2026-08-03-p15-real-edge-acceptance-fixes.md`.
 
+The `p15.0.19` retry exposed two additional format-boundary regressions. Podman also
+returns the container inspect `.Image` identity as bare lowercase hexadecimal during
+ownership verification, so that second engine value must pass through the same strict
+canonicalizer. Local Git commands deliberately receive an empty credential, and Go's
+`strings.ReplaceAll` must not be called with that empty value because it inserts the
+replacement between every rune. Focused tests now cover both the second bare identity
+and unchanged local output while retaining exact non-empty credential redaction. See
+`docs/baselines/2026-08-03-p15-real-edge-acceptance-followup.md`.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:

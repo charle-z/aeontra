@@ -114,3 +114,25 @@ fixes. Re-run Hito 3B signal/restart/cleanup, Hito 4 toolbox/service/restart/cle
 successful direct Git status/fetch on the real Edge. Do not repeat the already failed
 `p15.0.17` operation or use a manual package install for the next release. Hito 9
 multiagent/task-graph work remains outside the current authorization.
+
+## 2026-08-03 p15.0.19 acceptance follow-up
+
+PR #139 merged at `52370dceb9bb6d829d8c7ab88e659239677047b8`; official
+workflow run `30786403458` published signed `p15.0.19`, and exactly one normal stable
+update installed it. Doctor reports ready, one process, held lock, managed coherence,
+empty journal and `NRestarts=0`.
+
+The Hito 3B retry is deliberately paused before its single operator restart with one
+durable workload still running and incremental output proven non-duplicated. Hito 4
+created and started the rootless toolbox container, but the public operation failed
+while verifying ownership: Podman returns the container `.Image` as bare 64-hex and
+the second comparison did not reuse the canonicalizer added for image inspection.
+Direct Git status failed before mutation because local Git calls pass an empty
+credential into the runner and `strings.ReplaceAll` with an empty old value corrupts
+every output character. Both causes were reproduced without reading a credential.
+
+The active candidate canonicalizes the ownership image identity and bypasses token
+replacement only when the credential is empty. Publish it through a normal PR and the
+next signed Edge release, update once, then reuse the existing toolbox/process state
+to finish H3B/H4 and repeat direct Git status/fetch. Do not restart the Edge before
+the toolbox and service are prepared.
