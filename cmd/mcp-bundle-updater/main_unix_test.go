@@ -3,12 +3,45 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
+
+func TestInstallRetiresOnlyFixedLegacyEdgeUnits(t *testing.T) {
+	original := systemctlCommand
+	t.Cleanup(func() { systemctlCommand = original })
+	var calls [][]string
+	systemctlCommand = func(args ...string) ([]byte, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) >= 3 && args[0] == "show" && args[1] == "mcp-devbox-opencode-edge.service" {
+			return []byte("not-found\n"), nil
+		}
+		if len(args) >= 3 && args[0] == "show" {
+			return []byte("loaded\n"), nil
+		}
+		return nil, nil
+	}
+	if err := retireLegacyEdgeServices(); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"show", "mcp-devbox-edge.service", "--property=LoadState", "--value"},
+		{"disable", "--now", "mcp-devbox-edge.service"},
+		{"show", "mcp-devbox-opencode-edge.service", "--property=LoadState", "--value"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls=%v want=%v", calls, want)
+	}
+	systemctlCommand = func(args ...string) ([]byte, error) { return nil, errors.New("failed") }
+	if err := retireLegacyEdgeServices(); err == nil {
+		t.Fatal("legacy service inspection failure accepted")
+	}
+}
 
 func TestUpdaterAcceptsOnlyClosedOperations(t *testing.T) {
 	for _, args := range [][]string{{"status"}, {"update", "stable"}, {"rollback"}, {"repair"}} {

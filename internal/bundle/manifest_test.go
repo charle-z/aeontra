@@ -102,11 +102,11 @@ func TestVersionTwoBundleWithoutBundledGitHubCLIRemainsVerifiableForRollback(t *
 	}
 }
 
-func TestBuildEmitsVersionTwoBridgeBeforeBundledGitHubCLI(t *testing.T) {
+func TestBuildEmitsVersionThreeWithBundledGitHubCLI(t *testing.T) {
 	root := t.TempDir()
-	layout, ok := layoutForVersion(2)
+	layout, ok := layoutForVersion(3)
 	if !ok {
-		t.Fatal("version two layout unavailable")
+		t.Fatal("version three layout unavailable")
 	}
 	for component, relative := range layout {
 		path := filepath.Join(root, filepath.FromSlash(relative))
@@ -125,11 +125,11 @@ func TestBuildEmitsVersionTwoBridgeBeforeBundledGitHubCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Version != 2 {
-		t.Fatalf("version=%d, want bridge version 2", manifest.Version)
+	if manifest.Version != 3 {
+		t.Fatalf("version=%d, want version 3", manifest.Version)
 	}
-	if _, exists := manifest.Components[ComponentGitHubCLI]; exists {
-		t.Fatal("bridge manifest unexpectedly contains GitHub CLI")
+	if _, exists := manifest.Components[ComponentGitHubCLI]; !exists {
+		t.Fatal("version three manifest is missing GitHub CLI")
 	}
 }
 

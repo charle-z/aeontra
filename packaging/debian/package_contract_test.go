@@ -27,7 +27,7 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	for _, required := range []string{
 		"SOURCE_DATE_EPOCH", "dpkg-deb --root-owner-group", "gpg --batch", "sha256sum",
 		"mcp-autopilot-worker", "model-turn-driver", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js",
-		"libexec/node", "gh", "golang-go", "podman", "util-linux",
+		"libexec/node", "libexec/gh", "gh", "golang-go", "podman", "util-linux",
 		"mcp-bundle-updater", "mcp-devbox-bundle-updater.service",
 		"mcp-devbox-edge-onboard@.path",
 		"autopilot-model.json", "DEBIAN/conffiles",
@@ -41,7 +41,8 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 
 	postinst := repoFile(t, "packaging/debian/postinst.in")
 	for _, required := range []string{
-		"mv -Tf", "/opt/mcp-devbox", "/usr/local/bin/mcp-edge",
+		"mv -Tf", "/opt/mcp-devbox", "/usr/local/bin/mcp-edge", "/usr/local/bin/gh",
+		"mcp-devbox-edge.service mcp-devbox-opencode-edge.service", "systemctl disable --now \"$LEGACY_UNIT\"",
 		"/usr/local/libexec/mcp-devbox/mcp-autopilot-worker", "systemctl enable",
 		"mcp-edge bundle verify", "rollback_install", "onboarding-preflight",
 		"edge_lifecycle recover-state", "edge_lifecycle prepare-state-migration",
@@ -97,9 +98,15 @@ func TestPrivilegedUpdaterAuthorityIsLimitedToFixedUnits(t *testing.T) {
 
 func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 	stage := repoFile(t, "packaging/parrot/stage-edge-bundle.sh")
-	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js", "--node-bin", "libexec/node"} {
+	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js", "--node-bin", "libexec/node", "--gh-bin", "libexec/gh"} {
 		if !strings.Contains(stage, required) {
 			t.Fatalf("bundle staging missing %q", required)
+		}
+	}
+	pinnedGH := repoFile(t, "packaging/github-cli/stage-pinned.sh")
+	for _, required := range []string{"v2.97.0", "gh_2.97.0_linux_amd64.tar.gz", "a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112", "gh release download", "sha256sum --check", "gh version 2.97.0"} {
+		if !strings.Contains(pinnedGH, required) {
+			t.Fatalf("pinned GitHub CLI acquisition missing %q", required)
 		}
 	}
 	for _, forbidden := range []string{"curl ", "wget ", "eval ", "bash -c", "go get"} {

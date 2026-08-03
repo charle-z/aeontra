@@ -12,6 +12,7 @@ BWRAP="${MCP_DEVBOX_BWRAP:-/usr/bin/bwrap}"
 BUNDLE_ROOT="${MCP_DEVBOX_BUNDLE_ROOT:-/opt/mcp-devbox/current}"
 AUTOPILOT_MODEL="${MCP_DEVBOX_AUTOPILOT_MODEL:-/etc/mcp-devbox/autopilot-model.json}"
 NODE="${MCP_DEVBOX_NODE:-/usr/local/libexec/mcp-devbox/node}"
+GH="${MCP_DEVBOX_GH:-/usr/local/bin/gh}"
 REQUIRE_ROOTLESS="${MCP_DEVBOX_REQUIRE_ROOTLESS:-1}"
 
 fail() {
@@ -27,10 +28,11 @@ for command in bwrap curl git go python3; do
 done
 [ -r "$AUTOPILOT_MODEL" ] && [ ! -L "$AUTOPILOT_MODEL" ] || fail "local autopilot model configuration is missing"
 
-for path in /usr/local/bin/mcp-edge "$DRIVER" "$NODE" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker" "$BUNDLE_ROOT/libexec/mcp-bundle-updater"; do
+for path in /usr/local/bin/mcp-edge "$DRIVER" "$NODE" "$GH" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker" "$BUNDLE_ROOT/libexec/mcp-bundle-updater"; do
   [ -e "$path" ] || fail "missing reviewed installation path: $path"
 done
 [ -x /usr/local/bin/mcp-edge ] || fail "mcp-edge is not executable"
+[ -x "$GH" ] || fail "GitHub CLI is not executable"
 [ -x "$DRIVER" ] || fail "model-turn-driver is not executable"
 [ -x "$NODE" ] || fail "reviewed Node runtime is not executable"
 [ -x "$OPENCODE" ] || fail "OpenCode is not executable"

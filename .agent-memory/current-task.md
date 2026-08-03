@@ -1,4 +1,4 @@
-# Current task — signed bundled GitHub CLI transition
+# Current task — manifest-v3 bundled GitHub CLI and legacy-service retirement
 
 ## Verified production base
 
@@ -44,16 +44,24 @@ broker executable. The correction must not put an unsigned extra file beside a v
 manifest and cannot jump directly to manifest v3 because the installed v2 updater
 does not understand it.
 
-The active bridge change therefore keeps emitted bundles at manifest v2 while adding
-v3 verification, the future `github-cli` component contract, fixed safe executable
-resolution, and rollback-safe reconciliation of the future managed compatibility
-link. After its exact-head gates, merge and one signed bridge release, the real Edge
-can safely consume a second signed v3 release that embeds pinned official `gh`.
+PR #134 merged the bridge at `e78436da697db634be4159ce86a7116871bb7c4f`
+after 16/16 exact-head checks. Official workflow run `30776878699` published signed
+`p15.0.14`. The update installed that release under `/opt/mcp-devbox/current`, but
+device inspection found the older enabled `mcp-devbox-edge.service` still running
+the `p15.0.13` process outside the managed templated unit. It retained the state lock
+while the current unit restarted and failed closed.
+
+The active v3 change embeds pinned official `gh` 2.97.0 with its reviewed SHA-256,
+signs it as the required `github-cli` manifest component, exposes only the managed
+compatibility link, and retires exactly the two known legacy Edge services from the
+root updater before restarting the current unit. Version 1/2 rollback remains
+supported and removes only the exact managed link.
 
 ## Next exact action
 
-Finish the v2-to-v3 bridge, publish and install its immutable signed release, then land
-the separate v3 packaging change and install that release. Re-run the real
-`project_github_status` preflight, then continue Hito 5 consequential operations and
+Finish tests, PR and exact-head gates for the v3 change, publish the next immutable
+signed release, then perform one official update. Require the managed unit to own one
+process on the new release, with no active legacy unit and a signed `/usr/local/bin/gh`.
+Re-run `project_github_status`, then continue Hito 5 consequential operations and
 real-device acceptance for Hitos 3A, 3B and 4. Hito 9 multiagent/task-graph work is
 explicitly outside the current authorization and must not be started.

@@ -23,6 +23,9 @@ import (
 )
 
 var servicePattern = regexp.MustCompile(`^mcp-devbox-opencode-edge@[a-z_][a-z0-9_-]{0,31}\.service$`)
+var systemctlCommand = func(args ...string) ([]byte, error) {
+	return exec.Command("systemctl", args...).CombinedOutput()
+}
 
 func main() { os.Exit(run(os.Args[1:])) }
 
@@ -216,7 +219,30 @@ func (s *systemdService) InstallUnit(releaseRoot string) error {
 		_ = os.Remove(temporary)
 		return err
 	}
-	return exec.Command("systemctl", "daemon-reload").Run()
+	if _, err := systemctlCommand("daemon-reload"); err != nil {
+		return errors.New("systemd reload failed")
+	}
+	return retireLegacyEdgeServices()
+}
+
+func retireLegacyEdgeServices() error {
+	for _, unit := range []string{"mcp-devbox-edge.service", "mcp-devbox-opencode-edge.service"} {
+		output, err := systemctlCommand("show", unit, "--property=LoadState", "--value")
+		if err != nil {
+			return errors.New("legacy Edge service inspection failed")
+		}
+		switch strings.TrimSpace(string(output)) {
+		case "not-found":
+			continue
+		case "loaded":
+		default:
+			return errors.New("legacy Edge service state is invalid")
+		}
+		if _, err := systemctlCommand("disable", "--now", unit); err != nil {
+			return errors.New("legacy Edge service retirement failed")
+		}
+	}
+	return nil
 }
 
 func reconcileBundledGitHubCLI(releaseRoot string) error {
