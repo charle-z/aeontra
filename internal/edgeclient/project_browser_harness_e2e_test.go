@@ -13,6 +13,28 @@ import (
 	"time"
 )
 
+type browserHarnessE2EDiagnosticRunner struct {
+	command string
+	output  string
+	err     error
+}
+
+func (runner *browserHarnessE2EDiagnosticRunner) Run(ctx context.Context, executable string, args, environment []string) ([]byte, error) {
+	output, err := (execContainerCommandRunner{}).Run(ctx, executable, args, environment)
+	runner.command = executable + " " + strings.Join(args, " ")
+	runner.output = boundedBrowserHarnessDiagnostic(string(output))
+	runner.err = err
+	return output, err
+}
+
+func boundedBrowserHarnessDiagnostic(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 2048 {
+		value = value[:2048]
+	}
+	return value
+}
+
 func TestProjectBrowserHarnessRealPlaywrightE2E(t *testing.T) {
 	if os.Getenv("MCP_DEVBOX_BROWSER_HARNESS_E2E") != "1" {
 		t.Skip("real rootless browser harness acceptance is opt-in")
@@ -30,13 +52,17 @@ func TestProjectBrowserHarnessRealPlaywrightE2E(t *testing.T) {
 	if err := os.WriteFile(hostSentinel, []byte("host-only"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint})
+	if _, err := rootlessContainerClientEnvironment(endpoint, openCodeDefaultToolPath); err != nil {
+		t.Fatalf("rootless environment validation failed: %v", err)
+	}
+	diagnosticRunner := &browserHarnessE2EDiagnosticRunner{}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, Runner: diagnosticRunner})
 	if err != nil {
 		t.Fatal(err)
 	}
 	created, reused, err := manager.Create(ctx, ProjectToolboxCreateRequest{ProjectAlias: "browser-e2e", TargetAlias: "parrot", Workspace: workspace, CPUMillis: 4000, MemoryMiB: 4096, ProcessLimit: 2048})
 	if err != nil || reused || created.State != ProjectToolboxRunning || created.CPUMillis != 4000 || created.MemoryMiB != 4096 || created.ProcessLimit != 2048 {
-		t.Fatalf("created=%+v reused=%v err=%v", created, reused, err)
+		t.Fatalf("created=%+v reused=%v err=%v last_command=%q last_error=%v last_output=%q", created, reused, err, diagnosticRunner.command, diagnosticRunner.err, diagnosticRunner.output)
 	}
 	defer func() {
 		_, _ = manager.Cleanup(context.Background(), ProjectToolboxCleanupRequest{ProjectAlias: "browser-e2e", TargetAlias: "parrot", Workspace: workspace})
