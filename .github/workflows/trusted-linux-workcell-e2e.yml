@@ -217,6 +217,7 @@ jobs:
           socket="$runtime_root/podman/podman.sock"
           service_pid=""
           service_unit="p12-rootless-podman-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.service"
+          linger_was_enabled="$(loginctl show-user "$USER" --property=Linger --value 2>/dev/null || printf 'no')"
           cleanup_failed=0
           declare -a rootful_paths=()
           declare -a rootful_modes=()
@@ -239,18 +240,24 @@ jobs:
           export P12_RUNTIME_ID_CYCLE_1="${runtime_ids[0]}"
           export P12_RUNTIME_ID_CYCLE_2="${runtime_ids[1]}"
 
+          user_systemctl() {
+            XDG_RUNTIME_DIR="$runtime_root" \
+              DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_root/bus" \
+              systemctl --user "$@"
+          }
+
           stop_service() {
-            if sudo systemctl is-active --quiet "$service_unit"; then
-              sudo systemctl stop "$service_unit"
+            if user_systemctl is-active --quiet "$service_unit"; then
+              user_systemctl stop "$service_unit"
               deadline=$((SECONDS + 10))
-              while sudo systemctl is-active --quiet "$service_unit" && [ "$SECONDS" -lt "$deadline" ]; do
+              while user_systemctl is-active --quiet "$service_unit" && [ "$SECONDS" -lt "$deadline" ]; do
                 sleep 0.1
               done
-              if sudo systemctl is-active --quiet "$service_unit"; then
-                sudo systemctl kill --kill-who=all --signal=SIGKILL "$service_unit" || true
+              if user_systemctl is-active --quiet "$service_unit"; then
+                user_systemctl kill --kill-who=all --signal=SIGKILL "$service_unit" || true
               fi
             fi
-            sudo systemctl reset-failed "$service_unit" 2>/dev/null || true
+            user_systemctl reset-failed "$service_unit" 2>/dev/null || true
             service_pid=""
             rm -f "$socket"
             test ! -e "$socket"
@@ -259,35 +266,47 @@ jobs:
           start_service() {
             rm -f "$socket"
             export XDG_RUNTIME_DIR="$runtime_root"
+            export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_root/bus"
             mkdir -p "$runtime_root/podman"
+            if [ "$linger_was_enabled" != "yes" ]; then
+              sudo loginctl enable-linger "$USER"
+            fi
+            sudo systemctl start "user@$(id -u).service"
+            deadline=$((SECONDS + 30))
+            while [ ! -S "$runtime_root/bus" ] && [ "$SECONDS" -lt "$deadline" ]; do
+              sleep 0.25
+            done
+            test -S "$runtime_root/bus"
             podman system migrate
-            sudo systemctl stop "$service_unit" 2>/dev/null || true
-            sudo systemctl reset-failed "$service_unit" 2>/dev/null || true
-            sudo systemd-run \
+            user_systemctl stop "$service_unit" 2>/dev/null || true
+            user_systemctl reset-failed "$service_unit" 2>/dev/null || true
+            systemd-run --user \
               --unit="${service_unit%.service}" \
               --property=Type=simple \
-              --property="User=$(id -un)" \
-              --property="Group=$(id -gn)" \
               --property=Delegate=yes \
+              --property=CPUAccounting=yes \
+              --property=MemoryAccounting=yes \
+              --property=TasksAccounting=yes \
               --property=KillMode=mixed \
-              --property="Environment=XDG_RUNTIME_DIR=$runtime_root" \
-              --property="Environment=HOME=$HOME" \
+              --setenv="XDG_RUNTIME_DIR=$runtime_root" \
+              --setenv="DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" \
+              --setenv="HOME=$HOME" \
               --property="StandardOutput=append:$RUNNER_TEMP/p12-podman-service.log" \
               --property="StandardError=append:$RUNNER_TEMP/p12-podman-service.log" \
-              /usr/bin/podman --cgroup-manager=cgroupfs system service --time=0 "unix://$socket"
+              /usr/bin/podman system service --time=0 "unix://$socket"
             deadline=$((SECONDS + 60))
             while [ "$SECONDS" -lt "$deadline" ]; do
-              if ! sudo systemctl is-active --quiet "$service_unit"; then
+              if ! user_systemctl is-active --quiet "$service_unit"; then
                 echo "P12 rootless category=service_exit"
                 return 1
               fi
-              service_pid="$(sudo systemctl show --property=MainPID --value "$service_unit")"
+              service_pid="$(user_systemctl show --property=MainPID --value "$service_unit")"
               if [ -S "$socket" ] && podman --url "unix://$socket" info >/dev/null 2>&1; then
                 test "$service_pid" -gt 1
                 test "$(stat -c '%u' "$socket")" = "$(id -u)"
                 mode="$(stat -c '%a' "$socket")"
                 test "${mode: -1}" = "0"
-                control_group="$(sudo systemctl show --property=ControlGroup --value "$service_unit")"
+                control_group="$(user_systemctl show --property=ControlGroup --value "$service_unit")"
                 controllers="/sys/fs/cgroup${control_group}/cgroup.controllers"
                 test -r "$controllers"
                 grep -qw cpu "$controllers"
@@ -316,18 +335,21 @@ jobs:
             resource_cleanup_failed=0
             stop_failed=0
             restore_failed=0
-            if sudo systemctl is-active --quiet "$service_unit"; then
+            if user_systemctl is-active --quiet "$service_unit"; then
               P12_ROOTLESS_CLEANUP_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
                 -test.run=^TestTrustedLinuxWorkcellRootlessCleanupE2E$ -test.count=1 >/dev/null 2>&1 \
                 || resource_cleanup_failed=1
             fi
             stop_service || stop_failed=1
+            if [ "$linger_was_enabled" != "yes" ]; then
+              sudo loginctl disable-linger "$USER" || restore_failed=1
+            fi
             restore_rootful_sockets || restore_failed=1
             service_stopped=true
             socket_removed=true
             resources_cleaned=true
             permissions_restored=true
-            if sudo systemctl is-active --quiet "$service_unit"; then
+            if user_systemctl is-active --quiet "$service_unit"; then
               service_stopped=false
             fi
             if [ -e "$socket" ]; then
