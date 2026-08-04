@@ -217,6 +217,9 @@ jobs:
           socket="$runtime_root/podman/podman.sock"
           service_pid=""
           service_unit="p12-rootless-podman-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.service"
+          user_uid="$(id -u)"
+          user_manager_unit="user@${user_uid}.service"
+          delegate_dropin="/run/systemd/system/${user_manager_unit}.d/50-p12-rootless-delegate.conf"
           linger_was_enabled="$(loginctl show-user "$USER" --property=Linger --value 2>/dev/null || printf 'no')"
           cleanup_failed=0
           declare -a rootful_paths=()
@@ -271,12 +274,24 @@ jobs:
             if [ "$linger_was_enabled" != "yes" ]; then
               sudo loginctl enable-linger "$USER"
             fi
-            sudo systemctl start "user@$(id -u).service"
+            sudo install -d -m 0755 "$(dirname "$delegate_dropin")"
+            printf '%s\n' \
+              '[Service]' \
+              'Delegate=cpu memory pids' \
+              'CPUAccounting=yes' \
+              'MemoryAccounting=yes' \
+              'TasksAccounting=yes' \
+              | sudo tee "$delegate_dropin" >/dev/null
+            sudo systemctl daemon-reload
+            sudo systemctl restart "$user_manager_unit"
             deadline=$((SECONDS + 30))
             while [ ! -S "$runtime_root/bus" ] && [ "$SECONDS" -lt "$deadline" ]; do
               sleep 0.25
             done
-            test -S "$runtime_root/bus"
+            if [ ! -S "$runtime_root/bus" ]; then
+              echo "P12 rootless category=user_bus_unavailable"
+              return 1
+            fi
             podman system migrate
             user_systemctl stop "$service_unit" 2>/dev/null || true
             user_systemctl reset-failed "$service_unit" 2>/dev/null || true
@@ -302,16 +317,31 @@ jobs:
               fi
               service_pid="$(user_systemctl show --property=MainPID --value "$service_unit")"
               if [ -S "$socket" ] && podman --url "unix://$socket" info >/dev/null 2>&1; then
-                test "$service_pid" -gt 1
-                test "$(stat -c '%u' "$socket")" = "$(id -u)"
+                if [ "$service_pid" -le 1 ]; then
+                  echo "P12 rootless category=service_identity"
+                  return 1
+                fi
+                if [ "$(stat -c '%u' "$socket")" != "$(id -u)" ]; then
+                  echo "P12 rootless category=socket_owner"
+                  return 1
+                fi
                 mode="$(stat -c '%a' "$socket")"
-                test "${mode: -1}" = "0"
+                if [ "${mode: -1}" != "0" ]; then
+                  echo "P12 rootless category=socket_mode"
+                  return 1
+                fi
                 control_group="$(user_systemctl show --property=ControlGroup --value "$service_unit")"
                 controllers="/sys/fs/cgroup${control_group}/cgroup.controllers"
-                test -r "$controllers"
-                grep -qw cpu "$controllers"
-                grep -qw memory "$controllers"
-                grep -qw pids "$controllers"
+                if [ ! -r "$controllers" ]; then
+                  echo "P12 rootless category=cgroup_inventory"
+                  return 1
+                fi
+                for controller in cpu memory pids; do
+                  if ! grep -qw "$controller" "$controllers"; then
+                    echo "P12 rootless category=cgroup_${controller}"
+                    return 1
+                  fi
+                done
                 return 0
               fi
               sleep 0.25
@@ -341,6 +371,8 @@ jobs:
                 || resource_cleanup_failed=1
             fi
             stop_service || stop_failed=1
+            sudo rm -f "$delegate_dropin" || restore_failed=1
+            sudo systemctl daemon-reload || restore_failed=1
             if [ "$linger_was_enabled" != "yes" ]; then
               sudo loginctl disable-linger "$USER" || restore_failed=1
             fi
