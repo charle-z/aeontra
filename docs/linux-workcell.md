@@ -194,7 +194,7 @@ GOPATH=<workspace>/.mcp-devbox/tools/go
 GOBIN=<workspace>/.mcp-devbox/tools/bin
 CARGO_HOME=<workspace>/.mcp-devbox/tools/cargo
 RUSTUP_HOME=<workspace>/.mcp-devbox/tools/rustup
-TMPDIR=<workspace>/.mcp-devbox/runtime/tmp
+TMPDIR=/tmp (private Bubblewrap tmpfs for each direct command)
 ```
 
 This supports virtualenv/pip, pipx, npm/pnpm, `go install`, Cargo, downloads, compilers, child processes, and temporary services without general sudo. Host `apt` dependencies remain an owner-controlled setup action or a future exact local approval profile.

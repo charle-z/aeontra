@@ -12,6 +12,7 @@
 node_modules/
 
 # Local runtime / audit artifacts
+/.mcp-devbox/
 *.log
 audit.log
 .agent-memory/handoffs/local-*

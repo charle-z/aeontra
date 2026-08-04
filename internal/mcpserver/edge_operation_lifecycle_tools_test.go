@@ -61,7 +61,8 @@ func TestEdgeOperationLifecycleToolsAreBoundedAndHideInternalState(t *testing.T)
 		Request:   edge.OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", IdempotencyKey: "private-key"},
 		Result:    edge.OperationResult{WorkspaceID: "ws_33333333333333333333333333333333"},
 		Progress:  edge.OperationProgress{Revision: 3, Phase: "running", CompletedUnits: 1, TotalUnits: 4},
-		CreatedAt: created, UpdatedAt: created.Add(time.Second),
+		CreatedAt: created, LeasedAt: created.Add(100 * time.Millisecond), RunningAt: created.Add(150 * time.Millisecond),
+		FinalizingAt: created.Add(700 * time.Millisecond), UpdatedAt: created.Add(800 * time.Millisecond),
 	}}
 	server := New(nil).WithEdgeStore(store)
 
@@ -106,6 +107,11 @@ func TestEdgeOperationLifecycleToolsAreBoundedAndHideInternalState(t *testing.T)
 		}
 		if !strings.Contains(output, "cancellable") {
 			t.Fatalf("%s output omitted cancellation authority: %s", name, output)
+		}
+		for _, timing := range []string{`"queue_us":100000`, `"pickup_us":50000`, `"edge_work_us":550000`, `"completion_us":100000`, `"total_us":800000`} {
+			if !strings.Contains(output, timing) {
+				t.Fatalf("%s output missing timing %q: %s", name, timing, output)
+			}
 		}
 		for _, forbidden := range []string{"device_id", "workspace_id", "ed_111", "ws_333", "private-key", "linux-workcell"} {
 			if strings.Contains(output, forbidden) {

@@ -30,7 +30,7 @@ do not replace server-side enforcement.
 | `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |
 | `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning only safe repository, profile, mode, readiness or blocker metadata. |
 | `project_snapshot` | 1/0/1/0 | Queue or reuse one durable Edge operation by caller idempotency key, resolve the selected development workspace locally, run only fixed read-only Git identity/cleanliness commands, and return bounded repository, branch, commit and operation metadata without starting another model. |
-| `project_exec` | 0/1/1/1 | Execute one durable bounded foreground argv inside the selected trusted development workcell through Bubblewrap, with workspace-only writable state, relative cwd, optional stdin and non-secret environment, process-group cancellation, a 120-second maximum timeout, and separate bounded redacted stdout/stderr. No implicit shell is added. |
+| `project_exec` | 0/1/1/1 | Execute one durable bounded foreground argv inside the selected trusted development workcell through Bubblewrap, with workspace-only writable state, relative cwd, optional stdin and non-secret environment, process-group cancellation, a 120-second maximum timeout, separate bounded redacted stdout/stderr, and safe preflight/execution/result durations. No implicit shell is added. |
 | `project_process_start` | 0/1/1/1 | Start or reuse one durable background argv through the same Bubblewrap/workcell executor as `project_exec`, keyed by a caller idempotency key. It returns an opaque process id; PID, paths, argv and environment remain private. |
 | `project_process_status` | 1/0/1/0 | Read safe durable state plus bounded incremental redacted stdout/stderr for one owned background process by opaque id and byte offsets. |
 | `project_process_stop` | 0/1/1/0 | Idempotently stop one owned process group after PID/start-time revalidation, using TERM followed by bounded grace and KILL only when needed. |
@@ -52,7 +52,7 @@ do not replace server-side enforcement.
 | `project_toolbox_service_stop` | 0/1/1/1 | Stop one owned service after PID/start-tick revalidation using TERM, a bounded grace period and KILL only when necessary; repeated requests are idempotent. |
 | `project_toolbox_cleanup` | 0/1/1/1 | Explicitly remove only the project's toolbox rootfs and its private metadata. Cleanup is idempotent, never automatic, and does not delete the project workspace. |
 | `edge_operation_list` | 1/0/1/0 | List bounded queued/running operation identity, kind, progress and cancellation state for one human Edge target without exposing device/workspace ids, paths, request bodies or raw output. |
-| `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle and progress metadata by operation id. |
+| `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle, progress and derived queue/pickup/work/completion/total durations by operation id; internal absolute phase timestamps remain private. |
 | `edge_operation_cancel` | 0/1/1/0 | Idempotently cancel one queued operation or one interruptible running operation; updater, rollback and repair effects become non-cancellable after pickup. |
 | `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
 | `workspace_autopilot_start` | 0/0/1/0 | Start or reuse one durable local job with `run_until=completed_or_cancelled`; no free-form objective is accepted. |
@@ -60,11 +60,11 @@ do not replace server-side enforcement.
 | `workspace_autopilot_pause` | 0/0/1/0 | Pause the local job after its current bounded cycle without discarding checkpoint or evidence. |
 | `workspace_autopilot_resume` | 0/0/1/0 | Resume a paused or safely blocked job using the existing local state and provider configuration. |
 | `workspace_autopilot_cancel` | 0/1/1/0 | Cancel the durable job and prevent further local cycles while preserving collected evidence. |
-| `edge_bundle_status` | 1/0/1/0 | Return only signed release, commit, manifest/component compatibility, service health and update availability metadata from one paired Edge. |
+| `edge_bundle_status` | 1/0/1/0 | Return only signed release, commit, manifest/component compatibility, service health, known systemd restart count and update availability metadata from one paired Edge. |
 | `edge_bundle_update` | 0/0/1/0 | Request only `release=stable`; the restricted root updater resolves and verifies the official signed channel. |
 | `edge_bundle_rollback` | 0/1/1/0 | Activate only the previous locally known signed release and verify Edge health. |
 | `edge_repair` | 0/0/1/0 | Restore only reviewed signed components, permissions, fixed symlinks, packaged unit and Edge health. |
-| `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, bundle, provider, driver, Bubblewrap, rootless, workspace count and blocker metadata. |
+| `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, known systemd restart count, bundle, provider, driver, Bubblewrap, rootless, workspace count and blocker metadata. |
 | `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, optional result ref, and the bounded server-owned startup phase timeline. |
 | `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
 | `model_turn_respond` | 0/0/0/0 | Submit one bounded text/tool-call response after runtime, sequence, digest and offered-tool validation. |

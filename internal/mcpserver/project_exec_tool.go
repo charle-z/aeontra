@@ -35,6 +35,9 @@ type projectExecPublicView struct {
 	TimedOut        bool                `json:"timed_out"`
 	StdoutTruncated bool                `json:"stdout_truncated"`
 	StderrTruncated bool                `json:"stderr_truncated"`
+	PreflightUS     *int64              `json:"preflight_us,omitempty"`
+	ExecutionUS     *int64              `json:"execution_us,omitempty"`
+	ResultUS        *int64              `json:"result_us,omitempty"`
 	Reused          bool                `json:"reused"`
 	Reason          string              `json:"reason,omitempty"`
 }
@@ -107,8 +110,17 @@ func (s *Server) handleProjectExec(arguments json.RawMessage) (string, error) {
 		view.Completed = operation.Result.ExecCompleted
 		view.Stdout = operation.Result.ExecStdout
 		view.Stderr = operation.Result.ExecStderr
+		if operation.Result.ExecTimingKnown {
+			view.PreflightUS = int64Pointer(operation.Result.ExecPreflightUS)
+			view.ExecutionUS = int64Pointer(operation.Result.ExecExecutionUS)
+			view.ResultUS = int64Pointer(operation.Result.ExecResultUS)
+		}
 	} else if operation.State == edge.OperationFailed || operation.State == edge.OperationCancelled {
 		view.Reason = operation.SafeCode
 	}
 	return marshalToolValue(view, err)
+}
+
+func int64Pointer(value int64) *int64 {
+	return &value
 }

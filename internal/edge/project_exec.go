@@ -166,7 +166,8 @@ func projectOperationUsesIdempotency(kind OperationKind) bool {
 
 func hasProjectExecResult(result OperationResult) bool {
 	return result.ExecCompleted || result.ExecExitCode != 0 || result.ExecStdout != "" || result.ExecStderr != "" ||
-		result.ExecTimedOut || result.ExecStdoutTruncated || result.ExecStderrTruncated
+		result.ExecTimedOut || result.ExecStdoutTruncated || result.ExecStderrTruncated || result.ExecTimingKnown ||
+		result.ExecPreflightUS != 0 || result.ExecExecutionUS != 0 || result.ExecResultUS != 0
 }
 
 func validProjectExecResult(result OperationResult) bool {
@@ -174,6 +175,11 @@ func validProjectExecResult(result OperationResult) bool {
 		result.ExecTimedOut != (result.ExecExitCode == -1) || len(result.ExecStdout) > MaxProjectExecStreamBytes ||
 		len(result.ExecStderr) > MaxProjectExecStreamBytes || !utf8.ValidString(result.ExecStdout) || !utf8.ValidString(result.ExecStderr) ||
 		strings.ContainsRune(result.ExecStdout, 0) || strings.ContainsRune(result.ExecStderr, 0) {
+		return false
+	}
+	if (!result.ExecTimingKnown && (result.ExecPreflightUS != 0 || result.ExecExecutionUS != 0 || result.ExecResultUS != 0)) ||
+		(result.ExecTimingKnown && (result.ExecPreflightUS < 0 || result.ExecExecutionUS < 0 || result.ExecResultUS < 0 ||
+			result.ExecPreflightUS > 600_000_000 || result.ExecExecutionUS > 600_000_000 || result.ExecResultUS > 600_000_000)) {
 		return false
 	}
 	metadata := result
@@ -184,5 +190,9 @@ func validProjectExecResult(result OperationResult) bool {
 	metadata.ExecTimedOut = false
 	metadata.ExecStdoutTruncated = false
 	metadata.ExecStderrTruncated = false
+	metadata.ExecTimingKnown = false
+	metadata.ExecPreflightUS = 0
+	metadata.ExecExecutionUS = 0
+	metadata.ExecResultUS = 0
 	return validProjectOperationResult(metadata)
 }

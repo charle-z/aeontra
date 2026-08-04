@@ -14,6 +14,9 @@ func (s *Store) ensureOperationLifecycleSchema() error {
 		"progress_json":    `ALTER TABLE edge_operations ADD COLUMN progress_json BLOB`,
 		"lease_attempts":   `ALTER TABLE edge_operations ADD COLUMN lease_attempts INTEGER NOT NULL DEFAULT 0`,
 		"first_leased_at":  `ALTER TABLE edge_operations ADD COLUMN first_leased_at INTEGER`,
+		"leased_at":        `ALTER TABLE edge_operations ADD COLUMN leased_at INTEGER`,
+		"running_at":       `ALTER TABLE edge_operations ADD COLUMN running_at INTEGER`,
+		"finalizing_at":    `ALTER TABLE edge_operations ADD COLUMN finalizing_at INTEGER`,
 	} {
 		if columns[name] {
 			continue

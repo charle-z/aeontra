@@ -13,6 +13,14 @@ fail() {
   exit 2
 }
 
+if command -v awk >/dev/null 2>&1; then
+  AWK_BIN=awk
+elif command -v mawk >/dev/null 2>&1; then
+  AWK_BIN=mawk
+else
+  fail "awk implementation is unavailable"
+fi
+
 [ "$#" -eq 1 ] || fail "exactly one evidence directory is required"
 evidence=$1
 [ -d "$evidence" ] && [ ! -L "$evidence" ] || fail "evidence directory is unsafe"
@@ -61,7 +69,7 @@ temporary=$(mktemp "$evidence/.selection.XXXXXX")
 trap 'rm -f -- "$temporary"' EXIT HUP INT TERM
 
 status=0
-awk -F '\t' \
+"$AWK_BIN" -F '\t' \
   -v expected_commit="$commit" \
   -v max_cache="$MAX_CACHE_BYTES" \
   -v max_artifact="$MAX_ARTIFACT_BYTES" \
@@ -168,7 +176,7 @@ fi
 
 chmod 0600 "$temporary"
 mv -f -- "$temporary" "$selection"
-selected=$(awk -F '\t' 'NR > 1 && $4 == "yes" {print $2; exit}' "$selection")
+selected=$("$AWK_BIN" -F '\t' 'NR > 1 && $4 == "yes" {print $2; exit}' "$selection")
 if [ "$status" -eq 0 ]; then
   case "$selected" in
     50|65|80) : ;;

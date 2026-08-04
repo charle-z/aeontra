@@ -42,6 +42,9 @@ func TestGitHubCredentialRejectsInvalidInputAndUnsafeFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"schema_version":1,"owner":"charle-z","token":"github_pat_abcdefghijklmnopqrstuvwxyz"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := LoadGitHubCredential(root); err == nil {
 		t.Fatal("accepted world-readable credential")
 	}

@@ -5,12 +5,14 @@ package main
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
 func executeProjectExec(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
+	preflightStarted := time.Now()
 	_, workspaces, projects, _, code := openProjectControlState(stateRoot)
 	if code != "" {
 		return edge.OperationResult{}, code
@@ -21,10 +23,14 @@ func executeProjectExec(ctx context.Context, stateRoot string, operation edge.Op
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
 	}
-	return collectProjectExec(ctx, operation, resolved, nil)
+	return collectProjectExecWithResolution(ctx, operation, resolved, nil, time.Since(preflightStarted).Microseconds())
 }
 
 func collectProjectExec(ctx context.Context, operation edge.Operation, resolved edgeclient.ProjectResolution, runner edgeclient.DirectWorkcellCommandRunner) (edge.OperationResult, string) {
+	return collectProjectExecWithResolution(ctx, operation, resolved, runner, 0)
+}
+
+func collectProjectExecWithResolution(ctx context.Context, operation edge.Operation, resolved edgeclient.ProjectResolution, runner edgeclient.DirectWorkcellCommandRunner, resolutionUS int64) (edge.OperationResult, string) {
 	execution, err := edgeclient.RunDirectWorkcellCommand(ctx, edgeclient.DirectWorkcellCommandRequest{
 		OperationID: operation.ID, Workspace: resolved.Workspace,
 		Argv: operation.Request.Argv, CWD: operation.Request.CWD, Stdin: operation.Request.Stdin,
@@ -56,5 +62,9 @@ func collectProjectExec(ctx context.Context, operation edge.Operation, resolved 
 		ExecTimedOut:        execution.TimedOut,
 		ExecStdoutTruncated: execution.StdoutTruncated,
 		ExecStderrTruncated: execution.StderrTruncated,
+		ExecTimingKnown:     execution.TimingKnown,
+		ExecPreflightUS:     execution.PreflightUS + resolutionUS,
+		ExecExecutionUS:     execution.ExecutionUS,
+		ExecResultUS:        execution.ResultUS,
 	}, ""
 }

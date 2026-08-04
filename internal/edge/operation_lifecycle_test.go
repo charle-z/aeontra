@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -246,4 +247,150 @@ func TestOperationProgressRejectsReplayAndUnsafeBounds(t *testing.T) {
 			t.Fatalf("unsafe progress accepted: %+v", invalid)
 		}
 	}
+}
+
+func TestOperationLifecyclePersistsAuthoritativeTiming(t *testing.T) {
+	now := time.Date(2026, 8, 3, 23, 0, 0, 0, time.UTC)
+	root := filepath.Join(t.TempDir(), "edge")
+	store, err := Open(Config{Root: root, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, err := store.Pair(code, "parrot-edge", publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, fresh, err := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if err != nil || !fresh {
+		t.Fatalf("operation=%+v fresh=%t err=%v", operation, fresh, err)
+	}
+	now = now.Add(1250 * time.Millisecond)
+	lease, err := store.LeaseOperation(device.ID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(25 * time.Millisecond)
+	if _, err := store.ReportOperationProgress(device.ID, operation.ID, lease.LeaseID, OperationProgress{Revision: 1, Phase: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(40 * time.Millisecond)
+	if _, err := store.ReportOperationProgress(device.ID, operation.ID, lease.LeaseID, OperationProgress{Revision: 2, Phase: "finalizing"}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(15 * time.Millisecond)
+	commit := strings.Repeat("0", 40)
+	result := OperationResult{
+		Release: "p15.0.24", Commit: commit, ManifestStatus: "valid", ComponentsCompatible: true,
+		ServiceActive: true, ServiceState: "active", ProcessState: "single", LockState: "held", Coherence: "managed",
+		ProcessRelease: "p15.0.24", ProcessCommit: commit, Paired: true, BubblewrapValid: true, RootlessValid: true,
+		ProviderValid: true, DriverValid: true,
+	}
+	completed, err := store.CompleteOperation(device.ID, operation.ID, lease.LeaseID, result, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := time.Date(2026, 8, 3, 23, 0, 0, 0, time.UTC)
+	if !completed.LeasedAt.Equal(created.Add(1250*time.Millisecond)) ||
+		!completed.RunningAt.Equal(created.Add(1275*time.Millisecond)) ||
+		!completed.FinalizingAt.Equal(created.Add(1315*time.Millisecond)) ||
+		!completed.UpdatedAt.Equal(created.Add(1330*time.Millisecond)) {
+		t.Fatalf("unexpected timing: %+v", completed)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(Config{Root: root, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	persisted, err := reopened.OperationLifecycleStatus(operation.ID)
+	if err != nil || !persisted.LeasedAt.Equal(completed.LeasedAt) || !persisted.RunningAt.Equal(completed.RunningAt) || !persisted.FinalizingAt.Equal(completed.FinalizingAt) {
+		t.Fatalf("persisted=%+v completed=%+v err=%v", persisted, completed, err)
+	}
+}
+
+func TestOperationLifecycleRejectsInvalidTimingOrder(t *testing.T) {
+	operation := Operation{
+		CreatedAt:    time.Date(2026, 8, 3, 23, 0, 0, 0, time.UTC),
+		LeasedAt:     time.Date(2026, 8, 3, 23, 0, 2, 0, time.UTC),
+		RunningAt:    time.Date(2026, 8, 3, 23, 0, 1, 0, time.UTC),
+		FinalizingAt: time.Date(2026, 8, 3, 23, 0, 3, 0, time.UTC),
+		UpdatedAt:    time.Date(2026, 8, 3, 23, 0, 4, 0, time.UTC),
+	}
+	if validOperationTiming(operation) {
+		t.Fatalf("invalid timing order accepted: %+v", operation)
+	}
+	operation.RunningAt = operation.LeasedAt
+	if !validOperationTiming(operation) {
+		t.Fatalf("valid timing order rejected: %+v", operation)
+	}
+	operation.LeasedAt = time.Time{}
+	if validOperationTiming(operation) {
+		t.Fatalf("partial timing accepted: %+v", operation)
+	}
+}
+
+func TestOperationTimingIgnoresOutOfOrderPhases(t *testing.T) {
+	now := time.Date(2026, 8, 4, 1, 0, 0, 0, time.UTC)
+	store := openOperationTimingTestStore(t, &now)
+	device := pairOperationTimingTestDevice(t, store)
+	operation, fresh, err := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if err != nil || !fresh {
+		t.Fatalf("operation=%+v fresh=%t err=%v", operation, fresh, err)
+	}
+	now = now.Add(time.Second)
+	lease, err := store.LeaseOperation(device.ID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(10 * time.Millisecond)
+	if _, err := store.ReportOperationProgress(device.ID, operation.ID, lease.LeaseID, OperationProgress{Revision: 1, Phase: "finalizing"}); err != nil {
+		t.Fatal(err)
+	}
+	status, err := store.OperationLifecycleStatus(operation.ID)
+	if err != nil || !status.RunningAt.IsZero() || !status.FinalizingAt.IsZero() {
+		t.Fatalf("out-of-order finalizing was recorded: %+v err=%v", status, err)
+	}
+	now = now.Add(10 * time.Millisecond)
+	if _, err := store.ReportOperationProgress(device.ID, operation.ID, lease.LeaseID, OperationProgress{Revision: 2, Phase: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(10 * time.Millisecond)
+	if _, err := store.ReportOperationProgress(device.ID, operation.ID, lease.LeaseID, OperationProgress{Revision: 3, Phase: "finalizing"}); err != nil {
+		t.Fatal(err)
+	}
+	status, err = store.OperationLifecycleStatus(operation.ID)
+	if err != nil || status.RunningAt.IsZero() || status.FinalizingAt.IsZero() || status.FinalizingAt.Before(status.RunningAt) {
+		t.Fatalf("ordered timing was not recorded: %+v err=%v", status, err)
+	}
+}
+
+func openOperationTimingTestStore(t *testing.T, now *time.Time) *Store {
+	t.Helper()
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return *now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+func pairOperationTimingTestDevice(t *testing.T, store *Store) Device {
+	t.Helper()
+	code, err := store.CreatePairing(time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device, err := store.Pair(code, "parrot-edge", publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return device
 }

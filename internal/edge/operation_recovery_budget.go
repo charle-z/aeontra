@@ -36,6 +36,9 @@ func recoverExpiredOperationLeases(executor operationLeaseRecoveryExecutor, now 
 			ELSE ''
 		END,
 		progress_json=CASE WHEN cancel_requested=1 THEN progress_json ELSE NULL END,
+		leased_at=CASE WHEN cancel_requested=1 THEN leased_at ELSE NULL END,
+		running_at=CASE WHEN cancel_requested=1 THEN running_at ELSE NULL END,
+		finalizing_at=CASE WHEN cancel_requested=1 THEN finalizing_at ELSE NULL END,
 		lease_id=NULL,lease_until=NULL,updated_at=?
 		WHERE `+scopeColumn+`=? AND state='leased' AND lease_until<=?`,
 		maxPrivilegedOperationLeaseAttempts, cutoff,

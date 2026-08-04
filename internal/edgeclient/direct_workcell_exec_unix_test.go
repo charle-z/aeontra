@@ -21,10 +21,14 @@ type fakeDirectWorkcellRunner struct {
 	customOutput bool
 	stdout       string
 	stderr       string
+	delay        time.Duration
 }
 
 func (runner *fakeDirectWorkcellRunner) Run(ctx context.Context, spec DirectWorkcellProcessSpec) (int, error) {
 	runner.spec = spec
+	if runner.delay > 0 {
+		time.Sleep(runner.delay)
+	}
 	if runner.wait {
 		<-ctx.Done()
 		return -1, ctx.Err()
@@ -49,7 +53,7 @@ func TestRunDirectWorkcellCommandUsesTrustedWorkspaceSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := Workspace{ID: "ws_0123456789abcdef0123456789abcdef", Path: workspacePath, Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
-	runner := &fakeDirectWorkcellRunner{exit: 7}
+	runner := &fakeDirectWorkcellRunner{exit: 7, delay: 5 * time.Millisecond}
 	result, err := RunDirectWorkcellCommand(context.Background(), DirectWorkcellCommandRequest{
 		OperationID: "eo_0123456789abcdef0123456789abcdef", Workspace: workspace,
 		Argv: []string{"go", "test", "./..."}, CWD: "internal", Stdin: "input\n",
@@ -60,6 +64,9 @@ func TestRunDirectWorkcellCommandUsesTrustedWorkspaceSandbox(t *testing.T) {
 	}
 	if !result.Completed || result.ExitCode != 7 || result.Stdout != "ok\n" || result.Stderr != "warning\n" || result.TimedOut {
 		t.Fatalf("result=%+v", result)
+	}
+	if !result.TimingKnown || result.PreflightUS < 0 || result.ExecutionUS < 5000 || result.ResultUS < 0 {
+		t.Fatalf("timing=%+v", result)
 	}
 	args := runner.spec.Args
 	for _, required := range []string{"--die-with-parent", "--new-session", "--unshare-all", "--share-net", "--clearenv", "--bind", workspacePath, "/workspace", "--chdir", "/workspace/internal", "--setenv", "CI", "true", "--", "go", "test", "./..."} {
@@ -75,6 +82,12 @@ func TestRunDirectWorkcellCommandUsesTrustedWorkspaceSandbox(t *testing.T) {
 		t.Fatalf("stdin=%q err=%v", stdin, err)
 	}
 	joined := strings.Join(args, "\n")
+	if !strings.Contains(joined, "--setenv\nTMPDIR\n/tmp") || strings.Contains(joined, "--setenv\nTMPDIR\n/workspace/.mcp-devbox/runtime/tmp") {
+		t.Fatalf("workcell did not use private short tmpfs: %v", args)
+	}
+	if _, err := os.Stat(filepath.Join(workspacePath, ".mcp-devbox", "runtime", "tmp")); !os.IsNotExist(err) {
+		t.Fatalf("workspace runtime tmp should not be created: %v", err)
+	}
 	for _, forbidden := range []string{"/var/run/docker.sock", "/run/docker.sock", "/mnt/c", "/mnt/d", "/root"} {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("sandbox exposed forbidden path %s: %v", forbidden, args)

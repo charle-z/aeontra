@@ -18,22 +18,26 @@ import (
 )
 
 type edgeServiceObservation struct {
-	State   string
-	Active  bool
-	MainPID int
+	State         string
+	Active        bool
+	MainPID       int
+	Restarts      uint64
+	RestartsKnown bool
 }
 
 type edgeRuntimeObservation struct {
-	ServiceState   string
-	ServiceActive  bool
-	ServicePID     int
-	ProcessState   string
-	LockState      string
-	Coherence      string
-	ProcessRelease string
-	ProcessCommit  string
-	Healthy        bool
-	Blockers       []string
+	ServiceState         string
+	ServiceActive        bool
+	ServicePID           int
+	ServiceRestarts      uint64
+	ServiceRestartsKnown bool
+	ProcessState         string
+	LockState            string
+	Coherence            string
+	ProcessRelease       string
+	ProcessCommit        string
+	Healthy              bool
+	Blockers             []string
 }
 
 var edgeServiceUserPattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
@@ -50,6 +54,8 @@ func inspectEdgeRuntime(stateRoot, service string) edgeRuntimeObservation {
 	observation.ServiceState = serviceObservation.State
 	observation.ServiceActive = serviceObservation.Active
 	observation.ServicePID = serviceObservation.MainPID
+	observation.ServiceRestarts = serviceObservation.Restarts
+	observation.ServiceRestartsKnown = serviceObservation.RestartsKnown
 
 	lockReport, err := edgeclient.InspectEdgeInstanceLock(stateRoot)
 	if err != nil {
@@ -147,7 +153,7 @@ func systemdEdgeServiceObservation(service string) edgeServiceObservation {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, "/usr/bin/systemctl", "show", service, "--property=ActiveState", "--property=MainPID")
+	command := exec.CommandContext(ctx, "/usr/bin/systemctl", "show", service, "--property=ActiveState", "--property=MainPID", "--property=NRestarts")
 	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
 	command.Stdin = nil
 	command.Stderr = io.Discard
@@ -155,6 +161,10 @@ func systemdEdgeServiceObservation(service string) edgeServiceObservation {
 	if err != nil {
 		return edgeServiceObservation{State: "inactive"}
 	}
+	return parseSystemdEdgeServiceObservation(output)
+}
+
+func parseSystemdEdgeServiceObservation(output []byte) edgeServiceObservation {
 	values := map[string]string{}
 	for _, line := range bytes.Split(output, []byte{'\n'}) {
 		key, value, found := bytes.Cut(line, []byte{'='})
@@ -170,7 +180,11 @@ func systemdEdgeServiceObservation(service string) edgeServiceObservation {
 	if pid < 0 {
 		pid = 0
 	}
-	return edgeServiceObservation{State: state, Active: state == "active", MainPID: pid}
+	restarts, restartErr := strconv.ParseUint(values["NRestarts"], 10, 64)
+	return edgeServiceObservation{
+		State: state, Active: state == "active", MainPID: pid,
+		Restarts: restarts, RestartsKnown: restartErr == nil,
+	}
 }
 
 func appendUniqueBlockers(target []string, blockers ...string) []string {

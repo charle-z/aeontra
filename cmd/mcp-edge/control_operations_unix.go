@@ -539,6 +539,8 @@ func collectEdgeDiagnostic(stateRoot string, allowInvalid bool) (edge.OperationR
 	}
 	result := edge.OperationResult{Release: verified.Release, Commit: verified.Commit, ManifestStatus: manifestStatus, ComponentsCompatible: componentsCompatible, ServiceActive: serviceActive, UpdateAvailable: available, Paired: paired, BubblewrapValid: bubble, RootlessValid: rootless, WorkspaceCount: count, ProviderValid: providerValid, DriverValid: driverValid, Blockers: blockers}
 	result.ServiceState = runtime.ServiceState
+	result.ServiceRestarts = runtime.ServiceRestarts
+	result.ServiceRestartsKnown = runtime.ServiceRestartsKnown
 	result.ProcessState = runtime.ProcessState
 	result.LockState = runtime.LockState
 	result.Coherence = runtime.Coherence
