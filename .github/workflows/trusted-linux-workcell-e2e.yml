@@ -219,7 +219,11 @@ jobs:
           service_unit="p12-rootless-podman-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.service"
           user_uid="$(id -u)"
           user_manager_unit="user@${user_uid}.service"
-          delegate_dropin="/run/systemd/system/${user_manager_unit}.d/50-p12-rootless-delegate.conf"
+          delegate_controllers_before=""
+          cpu_accounting_before=""
+          memory_accounting_before=""
+          tasks_accounting_before=""
+          delegation_runtime_applied=false
           linger_was_enabled="$(loginctl show-user "$USER" --property=Linger --value 2>/dev/null || printf 'no')"
           cleanup_failed=0
           declare -a rootful_paths=()
@@ -274,16 +278,7 @@ jobs:
             if [ "$linger_was_enabled" != "yes" ]; then
               sudo loginctl enable-linger "$USER"
             fi
-            sudo install -d -m 0755 "$(dirname "$delegate_dropin")"
-            printf '%s\n' \
-              '[Service]' \
-              'Delegate=cpu memory pids' \
-              'CPUAccounting=yes' \
-              'MemoryAccounting=yes' \
-              'TasksAccounting=yes' \
-              | sudo tee "$delegate_dropin" >/dev/null
-            sudo systemctl daemon-reload
-            sudo systemctl restart "$user_manager_unit"
+            sudo systemctl start "$user_manager_unit"
             deadline=$((SECONDS + 30))
             while [ ! -S "$runtime_root/bus" ] && [ "$SECONDS" -lt "$deadline" ]; do
               sleep 0.25
@@ -292,6 +287,19 @@ jobs:
               echo "P12 rootless category=user_bus_unavailable"
               return 1
             fi
+            delegate_controllers_before="$(sudo systemctl show "$user_manager_unit" --property=DelegateControllers --value)"
+            cpu_accounting_before="$(sudo systemctl show "$user_manager_unit" --property=CPUAccounting --value)"
+            memory_accounting_before="$(sudo systemctl show "$user_manager_unit" --property=MemoryAccounting --value)"
+            tasks_accounting_before="$(sudo systemctl show "$user_manager_unit" --property=TasksAccounting --value)"
+            if ! sudo systemctl set-property --runtime "$user_manager_unit" \
+              'Delegate=cpu memory pids' \
+              CPUAccounting=yes \
+              MemoryAccounting=yes \
+              TasksAccounting=yes; then
+              echo "P12 rootless category=cgroup_delegation"
+              return 1
+            fi
+            delegation_runtime_applied=true
             podman system migrate
             user_systemctl stop "$service_unit" 2>/dev/null || true
             user_systemctl reset-failed "$service_unit" 2>/dev/null || true
@@ -371,8 +379,18 @@ jobs:
                 || resource_cleanup_failed=1
             fi
             stop_service || stop_failed=1
-            sudo rm -f "$delegate_dropin" || restore_failed=1
-            sudo systemctl daemon-reload || restore_failed=1
+            if [ "$delegation_runtime_applied" = true ]; then
+              restore_delegate="Delegate=no"
+              if [ -n "$delegate_controllers_before" ]; then
+                restore_delegate="Delegate=$delegate_controllers_before"
+              fi
+              sudo systemctl set-property --runtime "$user_manager_unit" \
+                "$restore_delegate" \
+                "CPUAccounting=$cpu_accounting_before" \
+                "MemoryAccounting=$memory_accounting_before" \
+                "TasksAccounting=$tasks_accounting_before" \
+                || restore_failed=1
+            fi
             if [ "$linger_was_enabled" != "yes" ]; then
               sudo loginctl disable-linger "$USER" || restore_failed=1
             fi

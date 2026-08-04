@@ -24,14 +24,19 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		"trap cleanup EXIT",
 		"systemd-run --user",
 		"--property=Delegate=yes",
-		`sudo systemctl restart "$user_manager_unit"`,
+		`sudo systemctl start "$user_manager_unit"`,
+		`sudo systemctl set-property --runtime "$user_manager_unit"`,
+		`'Delegate=cpu memory pids'`,
+		`delegate_controllers_before="$(sudo systemctl show "$user_manager_unit" --property=DelegateControllers --value)"`,
+		`delegation_runtime_applied=true`,
+		`restore_delegate="Delegate=no"`,
+		`"CPUAccounting=$cpu_accounting_before"`,
+		`"MemoryAccounting=$memory_accounting_before"`,
+		`"TasksAccounting=$tasks_accounting_before"`,
 		`DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_root/bus"`,
-		`Delegate=cpu memory pids`,
-		`delegate_dropin="/run/systemd/system/${user_manager_unit}.d/50-p12-rootless-delegate.conf"`,
 		`P12 rootless category=cgroup_${controller}`,
 		`for controller in cpu memory pids; do`,
 		`grep -qw "$controller" "$controllers"`,
-		`sudo rm -f "$delegate_dropin"`,
 		`service_unit="p12-rootless-podman-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.service"`,
 		"Stage PostgreSQL fixture image",
 		`archive="$RUNNER_TEMP/p12-postgres-17-alpine.tar"`,
@@ -89,6 +94,8 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 	for _, forbidden := range []string{
 		"tail -n 30 artifacts/p12-rootless-test.log",
 		"artifacts/p12-podman-service.log\n          if-no-files-found",
+		`systemctl restart "$user_manager_unit"`,
+		"delegate_dropin=",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("unsafe rootless diagnostic workflow contains %q", forbidden)

@@ -146,6 +146,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	providerPath := requiredAbsoluteDirectory(t, "OPENCODE_PROVIDER_E2E_PATH")
 	edgeBinary := requiredAbsoluteFile(t, "MCP_EDGE_E2E_BIN")
 	driverBinary := requiredAbsoluteFile(t, "MODEL_TURN_DRIVER_E2E_BIN")
+	t.Log("slice_code=remote_stage_inputs")
 	reportMode := "combined_opencode_sandbox_e2e"
 	bubblewrapPath := edgeBinary
 	if os.Getenv("MCP_DEVBOX_RELAY_CONTAINER_E2E") == "1" {
@@ -180,6 +181,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	wire := &remoteWireMeter{paths: make(map[string]int64)}
 	httpServer := httptest.NewTLSServer(wire.Handler(edge.NewHTTPHandler(devices, turns)))
 	defer httpServer.Close()
+	t.Log("slice_code=remote_stage_authority")
 	caPath := filepath.Join(t.TempDir(), "relay-ca.pem")
 	caBody := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: httpServer.Certificate().Raw})
 	if err := os.WriteFile(caPath, caBody, 0o644); err != nil {
@@ -218,6 +220,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if err := registry.Close(); err != nil {
 		t.Fatal(err)
 	}
+	t.Log("slice_code=remote_stage_workspace")
 	wire.Reset()
 
 	server, _, _ := e2eServer(t, authoritativeRoot, turns)
@@ -241,6 +244,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if runtime.State != modelturn.RuntimeStateAwaitingEdge || runtime.DeviceID != identity.DeviceID || runtime.WorkspaceID != workspace.ID {
 		t.Fatalf("runtime=%+v", runtime)
 	}
+	t.Log("slice_code=remote_stage_runtime")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -287,6 +291,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	t.Log("slice_code=remote_stage_edge_started")
 	processDone := make(chan error, 1)
 	go func() { processDone <- cmd.Wait() }()
 
@@ -318,9 +323,11 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		}
 		offer := envelope.Turn
 		if sequence == 1 {
+			t.Log("slice_code=remote_stage_first_turn")
 			processPIDs = assertRemoteProcessIsolation(t, os.Getpid(), cmd.Process.Pid, driverBinary, opencodeBinary)
 			distinctProcessCount = int64(len(processPIDs))
 			processIsolationVerified = true
+			t.Log("slice_code=remote_stage_processes")
 		}
 		if int64(len(offer.RequestPayload)) > modelturn.MaxInlineRequestBytes && strings.HasPrefix(offer.RequestRef, "mb_") {
 			largeRequestReferenced = true

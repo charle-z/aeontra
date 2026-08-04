@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -32,5 +33,30 @@ func TestSafeRemoteEdgeFailureCodeIsClosedAndRedacted(t *testing.T) {
 				t.Fatalf("safe code leaked %q: %q", forbidden, got)
 			}
 		}
+	}
+}
+
+func TestRemoteOpenCodeE2EEmitsSafeStageMarkers(t *testing.T) {
+	body, err := os.ReadFile("opencode_remote_e2e_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+	stages := []string{
+		"remote_stage_inputs",
+		"remote_stage_authority",
+		"remote_stage_workspace",
+		"remote_stage_runtime",
+		"remote_stage_edge_started",
+		"remote_stage_first_turn",
+		"remote_stage_processes",
+	}
+	last := -1
+	for _, stage := range stages {
+		index := strings.Index(text, "slice_code="+stage)
+		if index < 0 || index <= last {
+			t.Fatalf("missing or unordered safe stage %s index=%d last=%d", stage, index, last)
+		}
+		last = index
 	}
 }
