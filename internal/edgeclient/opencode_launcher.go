@@ -1468,6 +1468,17 @@ func safeProviderMessageSignal(message string) string {
 	if signal := safePermissionSignal(text); signal != "" {
 		return signal
 	}
+	missing := strings.Contains(text, "enoent") || strings.Contains(text, "no such file or directory") || strings.Contains(text, "not found") || strings.Contains(text, "does not exist") || strings.Contains(text, "missing file") || strings.Contains(text, "missing directory")
+	if missing {
+		switch {
+		case strings.Contains(text, "ripgrep") || strings.Contains(text, "spawn rg") || strings.Contains(text, "exec rg") || strings.Contains(text, "`rg`"):
+			return "not_found_ripgrep"
+		case strings.Contains(text, "/workspace") || strings.Contains(text, "calc.go"):
+			return "not_found_workspace"
+		case strings.Contains(text, "/bin/sh") || strings.Contains(text, "/bin/bash") || strings.Contains(text, "spawn sh") || strings.Contains(text, "spawn bash"):
+			return "not_found_shell"
+		}
+	}
 	checks := []struct {
 		code    string
 		phrases []string
