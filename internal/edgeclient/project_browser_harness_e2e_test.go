@@ -35,6 +35,33 @@ func boundedBrowserHarnessDiagnostic(value string) string {
 	return value
 }
 
+func browserHarnessE2EInstallScript(installBrowser string) string {
+	return `set -eu
+export DEBIAN_FRONTEND=noninteractive
+install -d -m 0700 /var/lib/mcp-devbox
+install_log=/var/lib/mcp-devbox/browser-install.log
+{
+apt-get update
+apt-get install -y --no-install-recommends python3 python3-venv python3-pip ca-certificates curl file
+python3 -m venv /var/lib/mcp-devbox/browser-python
+/var/lib/mcp-devbox/browser-python/bin/pip install --disable-pip-version-check --no-input playwright==1.61.0
+` + installBrowser + `
+PLAYWRIGHT_BROWSERS_PATH=/var/lib/mcp-devbox/browser-browsers /var/lib/mcp-devbox/browser-python/bin/playwright install --dry-run firefox
+} >"$install_log" 2>&1
+/var/lib/mcp-devbox/browser-python/bin/python -c 'from playwright.sync_api import sync_playwright; print("dependency-installed")'`
+}
+
+func TestProjectBrowserHarnessInstallFixtureCreatesPrivateRootBeforeLogging(t *testing.T) {
+	script := browserHarnessE2EInstallScript("playwright install-deps chromium")
+	root := strings.Index(script, "install -d -m 0700 /var/lib/mcp-devbox")
+	log := strings.Index(script, "install_log=/var/lib/mcp-devbox/browser-install.log")
+	redirect := strings.Index(script, `>"$install_log" 2>&1`)
+	venv := strings.Index(script, "python3 -m venv /var/lib/mcp-devbox/browser-python")
+	if root < 0 || log < 0 || redirect < 0 || venv < 0 || root >= log || log >= redirect || root >= venv {
+		t.Fatalf("unsafe install fixture ordering root=%d log=%d redirect=%d venv=%d", root, log, redirect, venv)
+	}
+}
+
 func TestProjectBrowserHarnessRealPlaywrightE2E(t *testing.T) {
 	if os.Getenv("MCP_DEVBOX_BROWSER_HARNESS_E2E") != "1" {
 		t.Skip("real rootless browser harness acceptance is opt-in")
@@ -86,18 +113,7 @@ func TestProjectBrowserHarnessRealPlaywrightE2E(t *testing.T) {
 		browserExecutable = "/workspace/browser-runtime/" + filepath.Base(hostChromium)
 		installBrowser = "/var/lib/mcp-devbox/browser-python/bin/playwright install-deps chromium"
 	}
-	installScript := `set -eu
-export DEBIAN_FRONTEND=noninteractive
-install_log=/var/lib/mcp-devbox/browser-install.log
-{
-apt-get update
-apt-get install -y --no-install-recommends python3 python3-venv python3-pip ca-certificates curl file
-python3 -m venv /var/lib/mcp-devbox/browser-python
-/var/lib/mcp-devbox/browser-python/bin/pip install --disable-pip-version-check --no-input playwright==1.61.0
-` + installBrowser + `
-PLAYWRIGHT_BROWSERS_PATH=/var/lib/mcp-devbox/browser-browsers /var/lib/mcp-devbox/browser-python/bin/playwright install --dry-run firefox
-} >"$install_log" 2>&1
-/var/lib/mcp-devbox/browser-python/bin/python -c 'from playwright.sync_api import sync_playwright; print("dependency-installed")'`
+	installScript := browserHarnessE2EInstallScript(installBrowser)
 	install := []string{"/bin/sh", "-lc", installScript}
 	installed, err := manager.Exec(ctx, ProjectToolboxExecRequest{ProjectAlias: "browser-e2e", TargetAlias: "parrot", Workspace: workspace, Argv: install})
 	if err != nil || !strings.Contains(installed.Output, "dependency-installed") {
