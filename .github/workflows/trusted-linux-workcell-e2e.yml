@@ -219,11 +219,10 @@ jobs:
           service_unit="p12-rootless-podman-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.service"
           user_uid="$(id -u)"
           user_manager_unit="user@${user_uid}.service"
-          delegate_controllers_before=""
-          cpu_accounting_before=""
-          memory_accounting_before=""
-          tasks_accounting_before=""
+          user_subtree_control=""
+          subtree_control_before=""
           delegation_runtime_applied=false
+          declare -a delegated_controllers_added=()
           linger_was_enabled="$(loginctl show-user "$USER" --property=Linger --value 2>/dev/null || printf 'no')"
           cleanup_failed=0
           declare -a rootful_paths=()
@@ -287,19 +286,41 @@ jobs:
               echo "P12 rootless category=user_bus_unavailable"
               return 1
             fi
-            delegate_controllers_before="$(sudo systemctl show "$user_manager_unit" --property=DelegateControllers --value)"
-            cpu_accounting_before="$(sudo systemctl show "$user_manager_unit" --property=CPUAccounting --value)"
-            memory_accounting_before="$(sudo systemctl show "$user_manager_unit" --property=MemoryAccounting --value)"
-            tasks_accounting_before="$(sudo systemctl show "$user_manager_unit" --property=TasksAccounting --value)"
-            if ! sudo systemctl set-property --runtime "$user_manager_unit" \
-              'Delegate=cpu memory pids' \
-              CPUAccounting=yes \
-              MemoryAccounting=yes \
-              TasksAccounting=yes; then
-              echo "P12 rootless category=cgroup_delegation"
+            user_control_group="$(sudo systemctl show "$user_manager_unit" --property=ControlGroup --value)"
+            case "$user_control_group" in
+              /user.slice/*/user@*.service) ;;
+              *) echo "P12 rootless category=cgroup_path"; return 1 ;;
+            esac
+            user_cgroup="/sys/fs/cgroup${user_control_group}"
+            user_controllers="$user_cgroup/cgroup.controllers"
+            user_subtree_control="$user_cgroup/cgroup.subtree_control"
+            if [ ! -r "$user_controllers" ] || [ ! -r "$user_subtree_control" ]; then
+              echo "P12 rootless category=cgroup_inventory"
               return 1
             fi
+            available_controllers="$(cat "$user_controllers")"
+            subtree_control_before="$(cat "$user_subtree_control")"
+            for controller in cpu memory pids; do
+              if ! grep -qw "$controller" <<<"$available_controllers"; then
+                echo "P12 rootless category=cgroup_${controller}"
+                return 1
+              fi
+              if ! grep -qw "$controller" <<<"$subtree_control_before"; then
+                if ! printf '+%s\n' "$controller" | sudo tee "$user_subtree_control" >/dev/null; then
+                  echo "P12 rootless category=cgroup_delegation"
+                  return 1
+                fi
+                delegated_controllers_added+=("$controller")
+              fi
+            done
             delegation_runtime_applied=true
+            delegated_now="$(cat "$user_subtree_control")"
+            for controller in cpu memory pids; do
+              if ! grep -qw "$controller" <<<"$delegated_now"; then
+                echo "P12 rootless category=cgroup_${controller}"
+                return 1
+              fi
+            done
             podman system migrate
             user_systemctl stop "$service_unit" 2>/dev/null || true
             user_systemctl reset-failed "$service_unit" 2>/dev/null || true
@@ -380,16 +401,16 @@ jobs:
             fi
             stop_service || stop_failed=1
             if [ "$delegation_runtime_applied" = true ]; then
-              restore_delegate="Delegate=no"
-              if [ -n "$delegate_controllers_before" ]; then
-                restore_delegate="Delegate=$delegate_controllers_before"
+              for ((index=${#delegated_controllers_added[@]}-1; index>=0; index--)); do
+                controller="${delegated_controllers_added[$index]}"
+                printf -- '-%s\n' "$controller" | sudo tee "$user_subtree_control" >/dev/null \
+                  || restore_failed=1
+              done
+              normalized_before="$(tr ' ' '\n' <<<"$subtree_control_before" | sed '/^$/d' | sort | paste -sd' ' -)"
+              normalized_after="$(tr ' ' '\n' <"$user_subtree_control" | sed '/^$/d' | sort | paste -sd' ' -)"
+              if [ "$normalized_after" != "$normalized_before" ]; then
+                restore_failed=1
               fi
-              sudo systemctl set-property --runtime "$user_manager_unit" \
-                "$restore_delegate" \
-                "CPUAccounting=$cpu_accounting_before" \
-                "MemoryAccounting=$memory_accounting_before" \
-                "TasksAccounting=$tasks_accounting_before" \
-                || restore_failed=1
             fi
             if [ "$linger_was_enabled" != "yes" ]; then
               sudo loginctl disable-linger "$USER" || restore_failed=1

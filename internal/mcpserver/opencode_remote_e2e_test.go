@@ -347,6 +347,9 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		if err := json.Unmarshal(offer.RequestPayload, &payload); err != nil {
 			t.Fatal(err)
 		}
+		if sequence == 1 {
+			t.Log("slice_code=remote_stage_payload")
+		}
 		if sequence > 1 && !containsToolResult(payload, fmt.Sprintf("turn-%d", sequence-1)) {
 			t.Fatalf("turn %d omitted prior tool result", sequence)
 		}
@@ -365,14 +368,23 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			}
 			executedCalls[callID] = result.Name
 		}
+		if sequence == 1 {
+			t.Log("slice_code=remote_stage_results")
+		}
 		response, err := scriptedResponse(sequence, payload, modelWorkspace)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if sequence == 1 {
+			t.Log("slice_code=remote_stage_response")
 		}
 		mcpTool(t, server, meter, "model_turn_respond", map[string]any{
 			"runtime_id": runtime.RuntimeID, "turn_id": string(offer.TurnID),
 			"expected_sequence": offer.Sequence, "request_digest": offer.RequestDigest, "response": response,
 		})
+		if sequence == 1 {
+			t.Log("slice_code=remote_stage_responded")
+		}
 		lastResponded = time.Now()
 	}
 

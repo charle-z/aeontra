@@ -25,14 +25,13 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		"systemd-run --user",
 		"--property=Delegate=yes",
 		`sudo systemctl start "$user_manager_unit"`,
-		`sudo systemctl set-property --runtime "$user_manager_unit"`,
-		`'Delegate=cpu memory pids'`,
-		`delegate_controllers_before="$(sudo systemctl show "$user_manager_unit" --property=DelegateControllers --value)"`,
+		`user_subtree_control="$user_cgroup/cgroup.subtree_control"`,
+		`subtree_control_before="$(cat "$user_subtree_control")"`,
+		`delegated_controllers_added+=("$controller")`,
+		`printf '+%s\n' "$controller" | sudo tee "$user_subtree_control"`,
+		`printf -- '-%s\n' "$controller" | sudo tee "$user_subtree_control"`,
+		`normalized_after="$(tr ' ' '\n' <"$user_subtree_control"`,
 		`delegation_runtime_applied=true`,
-		`restore_delegate="Delegate=no"`,
-		`"CPUAccounting=$cpu_accounting_before"`,
-		`"MemoryAccounting=$memory_accounting_before"`,
-		`"TasksAccounting=$tasks_accounting_before"`,
 		`DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_root/bus"`,
 		`P12 rootless category=cgroup_${controller}`,
 		`for controller in cpu memory pids; do`,
@@ -96,6 +95,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		"artifacts/p12-podman-service.log\n          if-no-files-found",
 		`systemctl restart "$user_manager_unit"`,
 		"delegate_dropin=",
+		`systemctl set-property --runtime "$user_manager_unit"`,
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("unsafe rootless diagnostic workflow contains %q", forbidden)

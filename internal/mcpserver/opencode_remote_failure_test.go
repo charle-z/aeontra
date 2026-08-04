@@ -50,6 +50,10 @@ func TestRemoteOpenCodeE2EEmitsSafeStageMarkers(t *testing.T) {
 		"remote_stage_edge_started",
 		"remote_stage_first_turn",
 		"remote_stage_processes",
+		"remote_stage_payload",
+		"remote_stage_results",
+		"remote_stage_response",
+		"remote_stage_responded",
 	}
 	last := -1
 	for _, stage := range stages {
