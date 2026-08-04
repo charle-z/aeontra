@@ -24,6 +24,7 @@ The system has several distinct authorities. They must not be collapsed into one
 | Development Edge Git broker | Owner-bound clone and planned publication for a registered `dev` workcell | Git transport runs outside the model namespace through a closed local broker | Only constructed owner-bound GitHub transport | Credential is stored in private `0600` Edge state, passed only to a fixed askpass child, and never enters workspace, argv, model schemas, or logs |
 | Direct Edge checkout sync | Registered project checkout and fixed `origin` only | Read status/fetch plus exact single-use fast-forward plans; dirty, detached, ahead, diverged, stale or replayed state fails closed | Existing owner-bound GitHub transport only | Reuses the private askpass authority; public results omit credential, URL, path, argv and PID |
 | Direct Edge GitHub broker | Repository already bound to a registered development project | Only server-constructed official `gh api` argv execute outside the workcell; no arbitrary endpoint, header, command or caller repository is accepted | GitHub API for the exact owner/repository only | `GH_TOKEN` exists only in the bounded child process environment under a private HOME; results are parsed, bounded and token-redacted before safe capability metadata leaves the Edge |
+| Managed Edge browser | One project-bound logical session, Edge-private Chromium profile, private cookie jar and private JPEG artifacts | Every browser run launches fixed Chromium inside a narrower Bubblewrap namespace that mounts only the profile and read-only system runtime; the workspace, host home, Docker/rootless sockets, browser debug endpoint and arbitrary flags remain unavailable | Public scope is restricted by an Edge-local pinning proxy to public HTTP(S) ports 80/443; loopback scope is pinned to one exact initial high-port loopback origin | Full URLs, cookies, proxy identity, CDP endpoint, profile/artifact paths and process identity stay private; public URLs drop credentials, query and fragment, text is redacted/bounded, and artifacts use opaque handles |
 
 Additional boundaries:
 
@@ -219,6 +220,36 @@ The ordinary Edge `sandbox` profile runs OpenCode inside mandatory networkless
 Bubblewrap. Only the selected workspace and a private runtime area are writable. Edge
 identity, home, unrelated repositories, and private control sockets are excluded. There
 is no direct-execution fallback.
+
+### Managed Edge browser
+
+The managed browser is not a general remote-debugging service. Public tools expose only
+closed session lifecycle, closed navigation/locator steps, bounded text and opaque JPEG
+artifact reads. Callers cannot supply JavaScript, browser executables, flags, extensions,
+headers, cookies, downloads, filesystem paths, proxy configuration or CDP endpoints.
+
+Each run starts the fixed `/usr/lib/chromium/chromium` binary through a private subcommand
+of the signed Edge and then through Bubblewrap. The namespace shares host networking only
+so Chromium can reach an ephemeral proxy bound to `127.0.0.1`; it mounts the exact `0700`
+profile at `/browser-profile`, read-only system runtime, `/proc`, `/dev` and a private
+`/tmp`. It does not mount the project checkout, Edge state root, host home, WSL mounts,
+Docker/rootless sockets or unrelated repositories. Downloads are denied through CDP.
+
+The proxy resolves and pins each destination before connecting. Public sessions reject
+literal or DNS-resolved private, loopback, link-local, multicast and unspecified
+addresses, reject mixed public/private DNS answers and permit only HTTP(S) ports 80/443.
+Loopback sessions require an initial URL and remain on that exact scheme/host/port with a
+port of at least 1024. HTTPS verification can be disabled only for loopback sessions.
+This reduces SSRF authority but is not a defense against a compromised host kernel or a
+public destination that changes behavior after connection.
+
+Logical sessions survive Edge and chat reconnects through an owner-only SQLite journal.
+Cookies are captured and restored explicitly inside that private journal; they never
+enter the control plane. A run receipt is written before external interaction. A
+completed receipt is replayed without repeating clicks or submits after an ACK loss; a
+crash while a run is active becomes `indeterminate` and fails closed rather than
+re-executing an uncertain external effect. Cleanup is explicit and accepts only exact
+closed-session profile/artifact identities under their fixed private roots.
 
 ### Trusted Linux workcell
 

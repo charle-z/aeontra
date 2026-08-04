@@ -395,3 +395,23 @@ MCP_DEVBOX_PRIVILEGED_TASKS=false
 Switch production to `ask` only when the operator deliberately wants reviewed
 patch/test/commit/publication/deployment workflows. `allow` is not a general deployment
 recommendation.
+
+
+## Managed browser runtime
+
+The direct managed browser introduces no caller-configurable executable, flag, proxy,
+path or CDP setting. The signed Edge expects the distribution-managed Chromium runtime
+at `/usr/lib/chromium/chromium`; missing or non-executable state fails closed at browser
+startup. The Edge release does not download a browser at runtime.
+
+Browser state is derived from the existing Edge state root under `project-browser/`:
+
+- `browser.db`: owner-only SQLite session, cookie and run-receipt journal;
+- `profiles/br_<id>/`: exact `0700` Chromium profiles;
+- `artifacts/ba_<id>.jpg`: exact `0600` JPEG captures.
+
+There is no browser-specific environment-variable or command-line surface. Public scope
+requires normal DNS and HTTP(S) connectivity from the Edge host. Loopback scope requires
+an explicit initial `http` or `https` URL on a port from 1024 through 65535. Browser
+artifacts and profiles have no automatic TTL; only `project_browser_cleanup` removes
+closed sessions.

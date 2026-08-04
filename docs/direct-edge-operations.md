@@ -57,6 +57,37 @@ Bundle and onboarding diagnostics include systemd `NRestarts` only when the fixe
 `systemctl show` response supplied a valid non-negative counter. The public result has
 an explicit `service_restarts_known` bit; an unknown value is never presented as zero.
 
+## Durable managed browser sessions
+
+`project_browser_create`, `project_browser_status`, `project_browser_list`,
+`project_browser_run`, `project_browser_artifact_read`, `project_browser_close`, and
+`project_browser_cleanup` reuse the signed `edge_operations` lifecycle without starting
+another model runtime:
+
+- a logical session is bound to one resolved project workspace and human Edge target;
+- the private Edge journal stores exact URLs, cookies, profile identity and artifact
+  paths, while public results expose only opaque ids and safe URLs without credentials,
+  query or fragment;
+- every run launches a fresh fixed Chromium process inside a narrower Bubblewrap
+  namespace, then closes it after at most 120 seconds; the logical profile and explicit
+  cookie jar survive reconnects and Edge restarts;
+- one run accepts at most 32 closed actions and 32 KiB of combined caller text. There is
+  no arbitrary JavaScript, executable, browser flag, header, cookie, proxy, extension,
+  filesystem path or CDP endpoint input;
+- a durable receipt is inserted before page interaction. Completed receipts return the
+  saved bounded result without repeating effects; interrupted receipts become
+  `indeterminate` and are never automatically retried;
+- text capture is redacted and bounded to 16 KiB. JPEG artifacts are limited to 2 MiB,
+  persisted with `0600`, and read in exact chunks of at most 24 KiB;
+- close preserves the private state, and cleanup removes only exact closed-session
+  profiles and artifacts after path and symlink revalidation. There is no chat-based TTL
+  or automatic cleanup.
+
+Public and loopback network scopes are separate. Public scope uses a local pinning proxy
+and permits only public HTTP(S) destinations on ports 80/443. Loopback scope is pinned to
+one exact initial high-port origin and may optionally ignore HTTPS errors for local
+self-signed development endpoints.
+
 ## Durable background processes
 
 `project_process_start`, `project_process_status`, `project_process_stop`,

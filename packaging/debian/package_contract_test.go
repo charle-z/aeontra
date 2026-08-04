@@ -27,7 +27,7 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	for _, required := range []string{
 		"SOURCE_DATE_EPOCH", "dpkg-deb --root-owner-group", "gpg --batch", "sha256sum",
 		"mcp-autopilot-worker", "model-turn-driver", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js",
-		"libexec/node", "libexec/gh", "gh", "golang-go", "podman", "util-linux",
+		"libexec/node", "libexec/gh", "gh", "golang-go", "chromium", "podman", "util-linux",
 		"mcp-bundle-updater", "mcp-devbox-bundle-updater.service",
 		"mcp-devbox-edge-onboard@.path",
 		"autopilot-model.json", "DEBIAN/conffiles",

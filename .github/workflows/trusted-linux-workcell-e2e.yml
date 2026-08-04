@@ -166,6 +166,17 @@ jobs:
           test -x "$chromium_bin"
           echo "P12_CHROMIUM_BIN=$chromium_bin" >> "$GITHUB_ENV"
 
+      - name: Verify managed browser with production Chromium path
+        run: |
+          set -Eeuo pipefail
+          chromium_dir="$(dirname "$P12_CHROMIUM_BIN")"
+          chromium_name="$(basename "$P12_CHROMIUM_BIN")"
+          sudo install -d -m 0755 /usr/lib/chromium
+          sudo cp -a "$chromium_dir"/. /usr/lib/chromium/
+          sudo ln -sfn "$chromium_name" /usr/lib/chromium/chromium
+          test -x /usr/lib/chromium/chromium
+          MCP_DEVBOX_BROWSER_E2E=1 go test ./internal/edgeclient             -run 'TestProjectBrowser.*RealChromium' -count=1 -v
+
       - name: Build tagged P12 E2E and redactor binaries
         run: |
           mkdir -p "$RUNNER_TEMP/p12-bin" artifacts

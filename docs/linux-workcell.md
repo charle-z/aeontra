@@ -534,3 +534,19 @@ Revoca primero desde producción con mcp-devbox edge revoke --state-root /state 
 ### 16. Desinstalación
 
 Revoca antes de borrar identidad. Deshabilita y detén el servicio, elimina su unidad, los binarios instalados, provider, OpenCode y el state root local. Los repositorios y evidencias bajo /home/charles/workspaces y /home/charles/htb-machines se conservan hasta una revisión humana separada.
+
+
+## Managed browser sub-boundary
+
+Managed browser operations do not launch Chromium in the ordinary project workcell.
+The signed Edge creates a narrower Bubblewrap namespace that deliberately omits the
+project checkout, rootless engine endpoint, WSL mounts and host home. Only the fixed
+Chromium runtime, read-only system files, the exact private browser profile, `/proc`,
+`/dev`, and a private `/tmp` are visible. Host networking is shared solely so Chromium
+can reach an ephemeral proxy bound to loopback; the proxy applies the selected public or
+exact-loopback-origin policy before opening any destination connection.
+
+Development servers may be started separately through the existing durable process or
+toolbox surfaces, then reached by a loopback browser session on the exact chosen high
+port. The browser tool never starts, discovers or trusts an arbitrary local service by
+itself.

@@ -89,7 +89,7 @@ Package: mcp-devbox-edge
 Version: ${RELEASE#p}
 Architecture: amd64
 Maintainer: MCP Devbox Release Engineering
-Depends: bubblewrap, curl, git, golang-go, podman, policykit-1 | polkitd, python3, systemd, util-linux
+Depends: bubblewrap, chromium, curl, git, golang-go, podman, policykit-1 | polkitd, python3, systemd, util-linux
 Section: devel
 Priority: optional
 Description: Signed MCP Devbox Edge and local autopilot bundle

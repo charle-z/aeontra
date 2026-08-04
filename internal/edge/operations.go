@@ -59,6 +59,13 @@ const (
 	OperationProjectToolboxServiceStart   OperationKind = "project_toolbox_service_start"
 	OperationProjectToolboxServiceStatus  OperationKind = "project_toolbox_service_status"
 	OperationProjectToolboxServiceStop    OperationKind = "project_toolbox_service_stop"
+	OperationProjectBrowserCreate         OperationKind = "project_browser_create"
+	OperationProjectBrowserStatus         OperationKind = "project_browser_status"
+	OperationProjectBrowserList           OperationKind = "project_browser_list"
+	OperationProjectBrowserRun            OperationKind = "project_browser_run"
+	OperationProjectBrowserArtifactRead   OperationKind = "project_browser_artifact_read"
+	OperationProjectBrowserClose          OperationKind = "project_browser_close"
+	OperationProjectBrowserCleanup        OperationKind = "project_browser_cleanup"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -75,37 +82,50 @@ var projectOperationIdempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z
 var operationProgressPhasePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 
 type OperationRequest struct {
-	Platform            string            `json:"platform,omitempty"`
-	Machine             string            `json:"machine,omitempty"`
-	Target              string            `json:"target"`
-	Difficulty          string            `json:"difficulty,omitempty"`
-	OperatingSystem     string            `json:"operating_system,omitempty"`
-	WorkspaceID         string            `json:"workspace_id,omitempty"`
-	RunUntil            string            `json:"run_until,omitempty"`
-	Release             string            `json:"release,omitempty"`
-	Alias               string            `json:"alias,omitempty"`
-	Repository          string            `json:"repository,omitempty"`
-	TargetAlias         string            `json:"target_alias,omitempty"`
-	Profile             string            `json:"profile,omitempty"`
-	IdempotencyKey      string            `json:"idempotency_key,omitempty"`
-	Argv                []string          `json:"argv,omitempty"`
-	CWD                 string            `json:"cwd,omitempty"`
-	Stdin               string            `json:"stdin,omitempty"`
-	Environment         map[string]string `json:"environment,omitempty"`
-	TimeoutSeconds      int               `json:"timeout_seconds,omitempty"`
-	BackgroundProcessID string            `json:"background_process_id,omitempty"`
-	StdoutOffset        int64             `json:"stdout_offset,omitempty"`
-	StderrOffset        int64             `json:"stderr_offset,omitempty"`
-	OutputLimit         int               `json:"output_limit,omitempty"`
-	GraceSeconds        int               `json:"grace_seconds,omitempty"`
-	BackgroundSignal    string            `json:"background_signal,omitempty"`
-	ProcessLimit        int               `json:"process_limit,omitempty"`
-	GitPlanID           string            `json:"git_plan_id,omitempty"`
-	ToolboxServiceID    string            `json:"toolbox_service_id,omitempty"`
-	ToolboxServiceName  string            `json:"toolbox_service_name,omitempty"`
-	ToolboxCPUMillis    int               `json:"toolbox_cpu_millis,omitempty"`
-	ToolboxMemoryMiB    int               `json:"toolbox_memory_mib,omitempty"`
-	ToolboxProcessLimit int               `json:"toolbox_process_limit,omitempty"`
+	Platform                 string            `json:"platform,omitempty"`
+	Machine                  string            `json:"machine,omitempty"`
+	Target                   string            `json:"target"`
+	Difficulty               string            `json:"difficulty,omitempty"`
+	OperatingSystem          string            `json:"operating_system,omitempty"`
+	WorkspaceID              string            `json:"workspace_id,omitempty"`
+	RunUntil                 string            `json:"run_until,omitempty"`
+	Release                  string            `json:"release,omitempty"`
+	Alias                    string            `json:"alias,omitempty"`
+	Repository               string            `json:"repository,omitempty"`
+	TargetAlias              string            `json:"target_alias,omitempty"`
+	Profile                  string            `json:"profile,omitempty"`
+	IdempotencyKey           string            `json:"idempotency_key,omitempty"`
+	Argv                     []string          `json:"argv,omitempty"`
+	CWD                      string            `json:"cwd,omitempty"`
+	Stdin                    string            `json:"stdin,omitempty"`
+	Environment              map[string]string `json:"environment,omitempty"`
+	TimeoutSeconds           int               `json:"timeout_seconds,omitempty"`
+	BackgroundProcessID      string            `json:"background_process_id,omitempty"`
+	StdoutOffset             int64             `json:"stdout_offset,omitempty"`
+	StderrOffset             int64             `json:"stderr_offset,omitempty"`
+	OutputLimit              int               `json:"output_limit,omitempty"`
+	GraceSeconds             int               `json:"grace_seconds,omitempty"`
+	BackgroundSignal         string            `json:"background_signal,omitempty"`
+	ProcessLimit             int               `json:"process_limit,omitempty"`
+	GitPlanID                string            `json:"git_plan_id,omitempty"`
+	ToolboxServiceID         string            `json:"toolbox_service_id,omitempty"`
+	ToolboxServiceName       string            `json:"toolbox_service_name,omitempty"`
+	ToolboxCPUMillis         int               `json:"toolbox_cpu_millis,omitempty"`
+	ToolboxMemoryMiB         int               `json:"toolbox_memory_mib,omitempty"`
+	ToolboxProcessLimit      int               `json:"toolbox_process_limit,omitempty"`
+	BrowserSessionID         string            `json:"browser_session_id,omitempty"`
+	BrowserNetworkScope      string            `json:"browser_network_scope,omitempty"`
+	BrowserInitialURL        string            `json:"browser_initial_url,omitempty"`
+	BrowserViewportWidth     int               `json:"browser_viewport_width,omitempty"`
+	BrowserViewportHeight    int               `json:"browser_viewport_height,omitempty"`
+	BrowserIgnoreHTTPSErrors bool              `json:"browser_ignore_https_errors,omitempty"`
+	BrowserSteps             []BrowserStep     `json:"browser_steps,omitempty"`
+	BrowserCapture           string            `json:"browser_capture,omitempty"`
+	BrowserFullPage          bool              `json:"browser_full_page,omitempty"`
+	BrowserTimeoutSeconds    int               `json:"browser_timeout_seconds,omitempty"`
+	BrowserArtifactID        string            `json:"browser_artifact_id,omitempty"`
+	BrowserArtifactOffset    int64             `json:"browser_artifact_offset,omitempty"`
+	BrowserArtifactLimit     int               `json:"browser_artifact_limit,omitempty"`
 }
 
 type BackgroundProcessSummary struct {
@@ -232,6 +252,29 @@ type OperationResult struct {
 	ToolboxContainerAccess    bool                       `json:"toolbox_container_access,omitempty"`
 	ToolboxWritableBytes      int64                      `json:"toolbox_writable_bytes,omitempty"`
 	ToolboxRootFSBytes        int64                      `json:"toolbox_rootfs_bytes,omitempty"`
+	BrowserSessionID          string                     `json:"browser_session_id,omitempty"`
+	BrowserState              string                     `json:"browser_state,omitempty"`
+	BrowserNetworkScope       string                     `json:"browser_network_scope,omitempty"`
+	BrowserSafeURL            string                     `json:"browser_safe_url,omitempty"`
+	BrowserTitle              string                     `json:"browser_title,omitempty"`
+	BrowserRevision           uint64                     `json:"browser_revision,omitempty"`
+	BrowserCreatedAt          string                     `json:"browser_created_at,omitempty"`
+	BrowserUpdatedAt          string                     `json:"browser_updated_at,omitempty"`
+	BrowserText               string                     `json:"browser_text,omitempty"`
+	BrowserTextTruncated      bool                       `json:"browser_text_truncated,omitempty"`
+	BrowserArtifactID         string                     `json:"browser_artifact_id,omitempty"`
+	BrowserArtifactMediaType  string                     `json:"browser_artifact_media_type,omitempty"`
+	BrowserArtifactBytes      int64                      `json:"browser_artifact_bytes,omitempty"`
+	BrowserArtifactSHA256     string                     `json:"browser_artifact_sha256,omitempty"`
+	BrowserArtifactOffset     int64                      `json:"browser_artifact_offset,omitempty"`
+	BrowserArtifactNext       int64                      `json:"browser_artifact_next,omitempty"`
+	BrowserArtifactEOF        bool                       `json:"browser_artifact_eof,omitempty"`
+	BrowserArtifactDataBase64 string                     `json:"browser_artifact_data_base64,omitempty"`
+	BrowserSessions           []BrowserSessionSummary    `json:"browser_sessions,omitempty"`
+	BrowserListComplete       bool                       `json:"browser_list_complete,omitempty"`
+	BrowserCleanupCompleted   bool                       `json:"browser_cleanup_completed,omitempty"`
+	BrowserCleanupRemoved     int                        `json:"browser_cleanup_removed,omitempty"`
+	BrowserCleanupArtifacts   int                        `json:"browser_cleanup_artifacts,omitempty"`
 }
 
 type OperationProgress struct {
@@ -590,6 +633,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectExecResult(result) {
 		return kind == OperationProjectExec && validOperationCompletion(result, "")
 	}
+	if hasProjectBrowserResult(result) {
+		return validProjectBrowserResultForKind(kind, result)
+	}
 	if kind == OperationProjectProcessList {
 		return validProjectProcessListResult(result)
 	}
@@ -614,7 +660,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
 	}
-	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
+	if kind == OperationProjectExec || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")
