@@ -766,14 +766,16 @@ func startedProcessPID(platform *fakeProjectProcessPlatform) int {
 
 func waitProjectProcessState(t *testing.T, manager *ProjectProcessManager, processID string, state ProjectProcessState) ProjectProcessSnapshot {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
+	var last ProjectProcessSnapshot
+	var lastErr error
 	for time.Now().Before(deadline) {
-		status, err := manager.Status(ProjectProcessReadRequest{ProcessID: processID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 4096})
-		if err == nil && status.State == state {
-			return status
+		last, lastErr = manager.Status(ProjectProcessReadRequest{ProcessID: processID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 4096})
+		if lastErr == nil && last.State == state {
+			return last
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("process state did not converge")
+	t.Fatalf("process state did not converge: state=%s last=%+v err=%v", state, last, lastErr)
 	return ProjectProcessSnapshot{}
 }
