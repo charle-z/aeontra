@@ -49,7 +49,7 @@ func (chromiumProjectBrowserRunner) Run(parent context.Context, request BrowserP
 	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return cdpbrowser.SetDownloadBehavior(cdpbrowser.SetDownloadBehaviorBehaviorAllow).WithDownloadPath("/browser-profile/downloads").WithEventsEnabled(true).Do(ctx)
 	})); err != nil {
-		return BrowserPageResult{}, errors.New("project browser startup failed")
+		return BrowserPageResult{}, fmt.Errorf("project browser startup failed: %w", err)
 	}
 	if len(request.Cookies) > 0 {
 		if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
