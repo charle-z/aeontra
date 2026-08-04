@@ -15,6 +15,7 @@ import (
 
 type recordingToolboxRunner struct {
 	calls          [][]string
+	environments   [][]string
 	fail           string
 	workspace      string
 	socket         string
@@ -23,9 +24,10 @@ type recordingToolboxRunner struct {
 	harnessState   string
 }
 
-func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, args, _ []string) ([]byte, error) {
+func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, args, environment []string) ([]byte, error) {
 	call := append([]string{executable}, args...)
 	runner.calls = append(runner.calls, call)
+	runner.environments = append(runner.environments, append([]string(nil), environment...))
 	joined := strings.Join(args, " ")
 	if runner.fail != "" && strings.Contains(joined, runner.fail) {
 		return nil, errors.New("runner failed")
@@ -89,6 +91,7 @@ func TestProjectToolboxServiceLifecycleAndRepairUseOwnedContainer(t *testing.T) 
 		StateRoot:    stateRoot,
 		Endpoint:     &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
 		Runner:       runner,
+		environment:  testRootlessContainerEnvironment,
 		NewID:        func() (string, error) { return "tb_11111111111111111111111111111111", nil },
 		NewServiceID: func() (string, error) { return "ts_33333333333333333333333333333333", nil },
 		Now:          func() time.Time { return time.Date(2026, 8, 2, 13, 0, 0, 0, time.UTC) },
@@ -163,11 +166,12 @@ func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *test
 	workspaceRoot := t.TempDir()
 	runner := &recordingToolboxRunner{workspace: workspaceRoot, socket: filepath.Join(stateRoot, "podman.sock")}
 	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
-		StateRoot: stateRoot,
-		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
-		Runner:    runner,
-		NewID:     func() (string, error) { return "tb_11111111111111111111111111111111", nil },
-		Now:       func() time.Time { return time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC) },
+		StateRoot:   stateRoot,
+		Endpoint:    &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+		Runner:      runner,
+		environment: testRootlessContainerEnvironment,
+		NewID:       func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+		Now:         func() time.Time { return time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -196,7 +200,7 @@ func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *test
 		t.Fatalf("metadata info=%+v err=%v", info, err)
 	}
 
-	manager, err = OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: manager.endpoint, Runner: runner})
+	manager, err = OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: manager.endpoint, Runner: runner, environment: testRootlessContainerEnvironment})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +236,7 @@ func TestProjectToolboxRejectsLimitDriftOnReuse(t *testing.T) {
 	stateRoot := t.TempDir()
 	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
 	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
-	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"}, Runner: runner, NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil }})
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"}, Runner: runner, environment: testRootlessContainerEnvironment, NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,10 +255,11 @@ func TestProjectToolboxRejectsCrossProjectAccessAndCleansUpOnlyExplicitly(t *tes
 	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
 	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
 	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
-		StateRoot: stateRoot,
-		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
-		Runner:    runner,
-		NewID:     func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+		StateRoot:   stateRoot,
+		Endpoint:    &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+		Runner:      runner,
+		environment: testRootlessContainerEnvironment,
+		NewID:       func() (string, error) { return "tb_11111111111111111111111111111111", nil },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -292,9 +297,10 @@ func TestProjectToolboxFailsClosedOnUnsafeStateAndMissingRootlessEngine(t *testi
 		t.Fatal(err)
 	}
 	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
-		StateRoot: stateRoot,
-		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
-		Runner:    &recordingToolboxRunner{},
+		StateRoot:   stateRoot,
+		Endpoint:    &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+		Runner:      &recordingToolboxRunner{},
+		environment: testRootlessContainerEnvironment,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -329,10 +335,11 @@ func TestProjectToolboxOwnershipAcceptsBarePodmanImageIdentity(t *testing.T) {
 		inspectImageID: strings.Repeat("a", 64),
 	}
 	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
-		StateRoot: stateRoot,
-		Endpoint:  &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"},
-		Runner:    runner,
-		NewID:     func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+		StateRoot:   stateRoot,
+		Endpoint:    &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"},
+		Runner:      runner,
+		environment: testRootlessContainerEnvironment,
+		NewID:       func() (string, error) { return "tb_11111111111111111111111111111111", nil },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -340,5 +347,79 @@ func TestProjectToolboxOwnershipAcceptsBarePodmanImageIdentity(t *testing.T) {
 	created, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
 	if err != nil || created.State != ProjectToolboxRunning {
 		t.Fatalf("created=%+v err=%v", created, err)
+	}
+}
+
+func TestProjectToolboxManagerUsesValidatedRootlessSocketForPullAndCreate(t *testing.T) {
+	runtimeRoot, socketPath := testOwnedRootlessSocket(t)
+	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: socketPath}
+	environment := func(endpoint *RootlessContainerEndpoint, toolPath string) ([]string, error) {
+		return rootlessContainerClientEnvironmentFor(endpoint, toolPath, runtimeRoot, os.Geteuid())
+	}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+		StateRoot:   t.TempDir(),
+		Endpoint:    &RootlessContainerEndpoint{Engine: "podman", SocketPath: socketPath, Executable: "/usr/bin/podman"},
+		Runner:      runner,
+		environment: environment,
+		NewID:       func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	}
+
+	wantEndpoint := "unix://" + socketPath
+	pullSeen, createSeen := false, false
+	for index, call := range runner.calls {
+		joined := " " + strings.Join(call, " ") + " "
+		if !strings.Contains(joined, " pull ") && !strings.Contains(joined, " create ") {
+			continue
+		}
+		values := environmentMap(runner.environments[index])
+		if values["CONTAINER_HOST"] != wantEndpoint || values["DOCKER_HOST"] != wantEndpoint || values["XDG_RUNTIME_DIR"] != runtimeRoot {
+			t.Fatalf("command=%q environment=%q", call, runner.environments[index])
+		}
+		if strings.Contains(strings.Join(runner.environments[index], "\n"), "/var/run/docker.sock") {
+			t.Fatalf("rootful fallback in command environment: %q", runner.environments[index])
+		}
+		if strings.Contains(joined, " pull ") {
+			pullSeen = true
+		}
+		if strings.Contains(joined, " create ") {
+			createSeen = true
+			if !strings.Contains(joined, " --volume "+socketPath+":"+projectToolboxContainerSocket+":rw ") || strings.Contains(joined, "/var/run/docker.sock") {
+				t.Fatalf("create authority=%q", call)
+			}
+		}
+	}
+	if !pullSeen || !createSeen {
+		t.Fatalf("pull/create not observed: %v", runner.calls)
+	}
+}
+
+func TestProjectToolboxRejectsContainerEndpointEnvironmentOverrides(t *testing.T) {
+	manager, runner, workspace := testBrowserHarnessManager(t)
+	for _, key := range []string{"CONTAINER_HOST", "DOCKER_HOST"} {
+		value := "unix:///var/run/docker.sock"
+		if _, err := manager.Exec(t.Context(), ProjectToolboxExecRequest{
+			ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace,
+			Argv: []string{"true"}, Environment: map[string]string{key: value},
+		}); !errors.Is(err, ErrProjectToolboxUnsafeState) {
+			t.Fatalf("exec override %s err=%v", key, err)
+		}
+		if _, _, err := manager.ServiceStart(t.Context(), ProjectToolboxServiceStartRequest{
+			ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace,
+			Name: "override-" + strings.ToLower(strings.TrimSuffix(key, "_HOST")), Argv: []string{"sleep", "1"}, Environment: map[string]string{key: value},
+		}); !errors.Is(err, ErrProjectToolboxUnsafeState) {
+			t.Fatalf("service override %s err=%v", key, err)
+		}
+	}
+	for _, call := range runner.calls {
+		if strings.Contains(strings.Join(call, " "), "/var/run/docker.sock") {
+			t.Fatalf("rejected rootful endpoint reached runner: %q", call)
+		}
 	}
 }

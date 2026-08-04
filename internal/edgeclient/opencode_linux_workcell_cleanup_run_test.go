@@ -19,6 +19,7 @@ func TestOpenCodeLauncherCleansRootlessResourcesAndRecordsCompletion(t *testing.
 	}
 	runner := &fakeContainerRunner{}
 	fixture.launcher.containerRunner = runner
+	fixture.launcher.rootlessEnvironment = testRootlessContainerEnvironment
 	fixture.launcher.runProcess = func(_ context.Context, spec openCodeProcessSpec) openCodeProcessResult {
 		if spec.Sandbox.Environment["MCP_DEVBOX_CONTAINER_LABEL"] != rootlessRuntimeLabelKey+"="+lease.RuntimeID {
 			t.Fatalf("missing runtime label: %+v", spec.Sandbox.Environment)

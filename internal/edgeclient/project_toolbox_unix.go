@@ -54,6 +54,7 @@ type ProjectToolboxManagerConfig struct {
 	StateRoot    string
 	Endpoint     *RootlessContainerEndpoint
 	Runner       ContainerCommandRunner
+	environment  rootlessContainerEnvironmentBuilder
 	NewID        func() (string, error)
 	NewServiceID func() (string, error)
 	NewHarnessID func() (string, error)
@@ -64,6 +65,7 @@ type ProjectToolboxManager struct {
 	stateRoot    string
 	endpoint     *RootlessContainerEndpoint
 	runner       ContainerCommandRunner
+	environment  rootlessContainerEnvironmentBuilder
 	newID        func() (string, error)
 	newServiceID func() (string, error)
 	newHarnessID func() (string, error)
@@ -180,6 +182,10 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 	if runner == nil {
 		runner = execContainerCommandRunner{}
 	}
+	environment := config.environment
+	if environment == nil {
+		environment = rootlessContainerClientEnvironment
+	}
 	newID := config.NewID
 	if newID == nil {
 		newID = newProjectToolboxID
@@ -196,7 +202,7 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 	if now == nil {
 		now = time.Now
 	}
-	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, newID: newID, newServiceID: newServiceID, newHarnessID: newHarnessID, now: now}, nil
+	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, environment: environment, newID: newID, newServiceID: newServiceID, newHarnessID: newHarnessID, now: now}, nil
 }
 
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
@@ -716,7 +722,11 @@ func (manager *ProjectToolboxManager) storage(ctx context.Context, containerName
 
 func (manager *ProjectToolboxManager) run(ctx context.Context, args ...string) ([]byte, error) {
 	prefixed := append(rootlessEnginePrefix(manager.endpoint), args...)
-	return manager.runner.Run(ctx, manager.endpoint.Executable, prefixed, rootlessContainerClientEnvironment(manager.endpoint, openCodeDefaultToolPath))
+	environment, err := manager.environment(manager.endpoint, openCodeDefaultToolPath)
+	if err != nil {
+		return nil, err
+	}
+	return manager.runner.Run(ctx, manager.endpoint.Executable, prefixed, environment)
 }
 
 func (manager *ProjectToolboxManager) recordPath(workspaceID string) string {

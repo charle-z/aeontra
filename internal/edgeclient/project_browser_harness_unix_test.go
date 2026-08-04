@@ -21,6 +21,7 @@ func testBrowserHarnessManager(t *testing.T) (*ProjectToolboxManager, *recording
 		StateRoot:    stateRoot,
 		Endpoint:     &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"},
 		Runner:       runner,
+		environment:  testRootlessContainerEnvironment,
 		NewID:        func() (string, error) { return "tb_11111111111111111111111111111111", nil },
 		NewHarnessID: func() (string, error) { return "bh_44444444444444444444444444444444", nil },
 		Now:          func() time.Time { return time.Date(2026, 8, 4, 4, 0, 0, 0, time.UTC) },
@@ -89,7 +90,7 @@ func TestProjectBrowserHarnessRunsArbitraryArgvAndPersistsManagedState(t *testin
 		t.Fatalf("chunk=%+v err=%v", chunk, err)
 	}
 
-	reopened, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: filepath.Dir(manager.stateRoot), Endpoint: manager.endpoint, Runner: runner})
+	reopened, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: filepath.Dir(manager.stateRoot), Endpoint: manager.endpoint, Runner: runner, environment: testRootlessContainerEnvironment})
 	if err != nil {
 		t.Fatal(err)
 	}
