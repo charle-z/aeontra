@@ -101,7 +101,7 @@ PLAYWRIGHT_BROWSERS_PATH=/var/lib/mcp-devbox/browser-browsers /var/lib/mcp-devbo
 	install := []string{"/bin/sh", "-lc", installScript}
 	installed, err := manager.Exec(ctx, ProjectToolboxExecRequest{ProjectAlias: "browser-e2e", TargetAlias: "parrot", Workspace: workspace, Argv: install})
 	if err != nil || !strings.Contains(installed.Output, "dependency-installed") {
-		t.Fatalf("install output=%q err=%v", installed.Output, err)
+		t.Fatalf("install output=%q err=%v last_command=%q last_error=%v last_output=%q", installed.Output, err, diagnosticRunner.command, diagnosticRunner.err, diagnosticRunner.output)
 	}
 
 	fixtures := filepath.Join(workspaceRoot, "browser-e2e")
