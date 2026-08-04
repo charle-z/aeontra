@@ -37,7 +37,7 @@ func TestProjectBrowserManagerPersistsSessionAndArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, reused, err := manager.Create(context.Background(), ProjectBrowserCreateRequest{IdempotencyKey: "create-1", Resolution: resolution, NetworkScope: "public", InitialURL: "https://example.com", ViewportWidth: 1280, ViewportHeight: 720})
+	created, reused, err := manager.Create(context.Background(), ProjectBrowserCreateRequest{IdempotencyKey: "create-1", Resolution: resolution, NetworkScope: "general", InitialURL: "https://example.com", ViewportWidth: 1280, ViewportHeight: 720})
 	if err != nil || reused || created.SessionID == "" || created.SafeURL != "https://example.com" {
 		t.Fatalf("created=%+v reused=%v err=%v", created, reused, err)
 	}
@@ -68,18 +68,16 @@ func TestProjectBrowserManagerPersistsSessionAndArtifact(t *testing.T) {
 	}
 }
 
-func TestBrowserURLPolicySeparatesPublicAndLoopback(t *testing.T) {
-	if err := ValidateBrowserURL(context.Background(), "public", "", "https://example.com", nil); err != nil {
-		t.Fatal(err)
+func TestBrowserURLPolicyUsesGeneralWorkcellNetwork(t *testing.T) {
+	for _, raw := range []string{"https://example.com", "http://127.0.0.1:3000", "http://10.0.0.5:8080", "https://localhost:9443"} {
+		if err := ValidateBrowserURL(context.Background(), "general", "", raw, nil); err != nil {
+			t.Fatalf("url=%s err=%v", raw, err)
+		}
 	}
-	if err := ValidateBrowserURL(context.Background(), "public", "", "http://127.0.0.1:3000", nil); err == nil {
-		t.Fatal("public scope reached loopback")
-	}
-	if err := ValidateBrowserURL(context.Background(), "loopback", "http://127.0.0.1:3000", "http://127.0.0.1:3000/ready", nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := ValidateBrowserURL(context.Background(), "loopback", "http://127.0.0.1:3000", "http://127.0.0.1:4000/", nil); err == nil {
-		t.Fatal("loopback origin changed")
+	for _, raw := range []string{"file:///etc/passwd", "javascript:alert(1)"} {
+		if err := ValidateBrowserURL(context.Background(), "general", "", raw, nil); err == nil {
+			t.Fatalf("url=%s accepted", raw)
+		}
 	}
 }
 
@@ -88,12 +86,12 @@ func TestProjectBrowserLauncherUsesNarrowBubblewrapBoundary(t *testing.T) {
 	if err := os.Mkdir(profile, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	args, err := projectBrowserBubblewrapArgs(profile, []string{"--remote-debugging-port=0", "--user-data-dir=" + profile, "--proxy-server=http://127.0.0.1:45678"})
+	args, err := projectBrowserBubblewrapArgs(profile, []string{"--remote-debugging-port=0", "--user-data-dir=" + profile})
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, "\n")
-	for _, required := range []string{"--unshare-all", "--share-net", "--tmpfs", "/tmp", "--bind", profile, "/browser-profile", "/usr/lib/chromium/chromium", "--user-data-dir=/browser-profile", "--disable-quic", "--dns-prefetch-disable", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"} {
+	for _, required := range []string{"--unshare-all", "--share-net", "--tmpfs", "/tmp", "--bind", profile, "/browser-profile", "/usr/lib/chromium/chromium", "--user-data-dir=/browser-profile"} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("missing %q in %v", required, args)
 		}
@@ -110,7 +108,7 @@ func TestProjectBrowserLauncherRejectsUnsafeChromeFlags(t *testing.T) {
 	if err := os.Mkdir(profile, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"--user-data-dir=/tmp/other"}, {"--remote-debugging-address=0.0.0.0"}, {"--load-extension=/tmp/x"}, {"--proxy-server=socks5://127.0.0.1:9"}} {
+	for _, args := range [][]string{{"--user-data-dir=/tmp/other"}, {"--remote-debugging-address=0.0.0.0"}, {"--load-extension=/tmp/x"}} {
 		if _, err := projectBrowserBubblewrapArgs(profile, args); err == nil {
 			t.Fatalf("accepted %v", args)
 		}
@@ -157,7 +155,7 @@ func TestProjectBrowserRunFailureBecomesIndeterminate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer manager.Close()
-	created, _, err := manager.Create(context.Background(), ProjectBrowserCreateRequest{IdempotencyKey: "create-failure", Resolution: resolution, NetworkScope: "public", InitialURL: "https://example.com", ViewportWidth: 1280, ViewportHeight: 720})
+	created, _, err := manager.Create(context.Background(), ProjectBrowserCreateRequest{IdempotencyKey: "create-failure", Resolution: resolution, NetworkScope: "general", InitialURL: "https://example.com", ViewportWidth: 1280, ViewportHeight: 720})
 	if err != nil {
 		t.Fatal(err)
 	}

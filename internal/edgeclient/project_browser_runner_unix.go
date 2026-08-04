@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"time"
@@ -29,17 +28,12 @@ func (chromiumProjectBrowserRunner) Run(parent context.Context, request BrowserP
 	if request.ProfilePath == "" || request.TimeoutSeconds < 1 || request.TimeoutSeconds > 120 {
 		return BrowserPageResult{}, errors.New("project browser runner request is invalid")
 	}
-	proxy, err := startProjectBrowserProxy(request.NetworkScope, request.InitialOrigin)
-	if err != nil {
-		return BrowserPageResult{}, err
-	}
-	defer proxy.Close()
 	executable, err := os.Executable()
 	if err != nil {
 		return BrowserPageResult{}, errors.New("project browser launcher unavailable")
 	}
 	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
-	opts = append(opts, chromedp.ExecPath(executable), chromedp.UserDataDir(request.ProfilePath), chromedp.ProxyServer(proxy.URL()), chromedp.Flag("proxy-bypass-list", "<-loopback>"), chromedp.WindowSize(request.ViewportWidth, request.ViewportHeight), chromedp.Flag("no-sandbox", true), chromedp.Flag("disable-gpu", true), chromedp.Flag("hide-scrollbars", true), chromedp.Flag("mute-audio", true))
+	opts = append(opts, chromedp.ExecPath(executable), chromedp.UserDataDir(request.ProfilePath), chromedp.WindowSize(request.ViewportWidth, request.ViewportHeight), chromedp.Flag("no-sandbox", true), chromedp.Flag("disable-gpu", true), chromedp.Flag("hide-scrollbars", true), chromedp.Flag("mute-audio", true))
 	if request.IgnoreHTTPSErrors {
 		opts = append(opts, chromedp.IgnoreCertErrors)
 	}
@@ -53,7 +47,7 @@ func (chromiumProjectBrowserRunner) Run(parent context.Context, request BrowserP
 	browserCtx, cancelBrowser := chromedp.NewContext(allocatorCtx)
 	defer cancelBrowser()
 	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-		return cdpbrowser.SetDownloadBehavior(cdpbrowser.SetDownloadBehaviorBehaviorDeny).Do(ctx)
+		return cdpbrowser.SetDownloadBehavior(cdpbrowser.SetDownloadBehaviorBehaviorAllow).WithDownloadPath("/browser-profile/downloads").WithEventsEnabled(true).Do(ctx)
 	})); err != nil {
 		return BrowserPageResult{}, errors.New("project browser startup failed")
 	}
@@ -69,7 +63,7 @@ func (chromiumProjectBrowserRunner) Run(parent context.Context, request BrowserP
 		}
 	}
 	if request.CurrentURL != "" && (len(request.Steps) == 0 || request.Steps[0].Action != "navigate") {
-		if err := ValidateBrowserURL(browserCtx, request.NetworkScope, request.InitialOrigin, request.CurrentURL, netDefaultResolver()); err != nil {
+		if err := ValidateBrowserURL(browserCtx, request.NetworkScope, request.InitialOrigin, request.CurrentURL, nil); err != nil {
 			return BrowserPageResult{}, err
 		}
 		if err := chromedp.Run(browserCtx, chromedp.Navigate(request.CurrentURL)); err != nil {
@@ -122,7 +116,7 @@ func runProjectBrowserStep(ctx context.Context, request BrowserPageRequest, step
 	query := projectBrowserQueryOption(step.SelectorType)
 	switch step.Action {
 	case "navigate":
-		if err := ValidateBrowserURL(ctx, request.NetworkScope, request.InitialOrigin, step.URL, netDefaultResolver()); err != nil {
+		if err := ValidateBrowserURL(ctx, request.NetworkScope, request.InitialOrigin, step.URL, nil); err != nil {
 			return err
 		}
 		if err := chromedp.Run(ctx, chromedp.Navigate(step.URL)); err != nil {
@@ -211,8 +205,6 @@ func projectBrowserKey(name string) string {
 	}
 	return ""
 }
-func netDefaultResolver() *net.Resolver { return net.DefaultResolver }
-
 func projectBrowserCookieParams(cookies []*network.Cookie) []*network.CookieParam {
 	result := make([]*network.CookieParam, 0, len(cookies))
 	for _, cookie := range cookies {

@@ -56,6 +56,7 @@ type ProjectToolboxManagerConfig struct {
 	Runner       ContainerCommandRunner
 	NewID        func() (string, error)
 	NewServiceID func() (string, error)
+	NewHarnessID func() (string, error)
 	Now          func() time.Time
 }
 
@@ -65,6 +66,7 @@ type ProjectToolboxManager struct {
 	runner       ContainerCommandRunner
 	newID        func() (string, error)
 	newServiceID func() (string, error)
+	newHarnessID func() (string, error)
 	now          func() time.Time
 	mu           sync.Mutex
 }
@@ -146,6 +148,7 @@ type projectToolboxRecord struct {
 	CreatedAt, UpdatedAt                              time.Time
 	CPUMillis, MemoryMiB, ProcessLimit                int
 	Services                                          []projectToolboxServiceRecord `json:"services,omitempty"`
+	BrowserHarnessRuns                                []projectBrowserHarnessRecord `json:"browser_harness_runs,omitempty"`
 }
 
 type projectToolboxServiceRecord struct {
@@ -185,11 +188,15 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 	if newServiceID == nil {
 		newServiceID = newProjectToolboxServiceID
 	}
+	newHarnessID := config.NewHarnessID
+	if newHarnessID == nil {
+		newHarnessID = newProjectBrowserHarnessID
+	}
 	now := config.Now
 	if now == nil {
 		now = time.Now
 	}
-	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, newID: newID, newServiceID: newServiceID, now: now}, nil
+	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, newID: newID, newServiceID: newServiceID, newHarnessID: newHarnessID, now: now}, nil
 }
 
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
@@ -725,7 +732,7 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 	if errors.Is(err, os.ErrNotExist) {
 		return projectToolboxRecord{}, ErrProjectToolboxNotFound
 	}
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) || info.Size() < 2 || info.Size() > 16<<10 {
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) || info.Size() < 2 || info.Size() > 64<<10 {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	data, err := os.ReadFile(file)
@@ -736,7 +743,7 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 	if json.Unmarshal(data, &record) != nil || record.WorkspaceID != workspaceID || !projectToolboxIDPattern.MatchString(record.ToolboxID) || !projectToolboxImageIDPattern.MatchString(record.BaseImageID) || record.BaseImage != projectToolboxBaseImage || record.CreatedAt.IsZero() || record.UpdatedAt.IsZero() || !validProjectToolboxResourceLimits(record.CPUMillis, record.MemoryMiB, record.ProcessLimit) {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
-	if len(record.Services) > 64 {
+	if len(record.Services) > 64 || len(record.BrowserHarnessRuns) > 128 {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	seenIDs, seenNames := map[string]bool{}, map[string]bool{}
@@ -746,6 +753,9 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 			return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 		}
 		seenIDs[service.ServiceID], seenNames[service.Name] = true, true
+	}
+	if !validProjectBrowserHarnessRecords(record.BrowserHarnessRuns) {
+		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	return record, nil
 }
@@ -769,7 +779,7 @@ func normalizeProjectToolboxResourceLimits(cpuMillis, memoryMiB, processLimit in
 
 func (manager *ProjectToolboxManager) save(record projectToolboxRecord) error {
 	data, err := json.Marshal(record)
-	if err != nil || len(data) > 16<<10 {
+	if err != nil || len(data) > 64<<10 {
 		return ErrProjectToolboxUnsafeState
 	}
 	temporary, err := os.CreateTemp(manager.stateRoot, ".toolbox-*.tmp")

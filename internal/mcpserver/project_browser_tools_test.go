@@ -38,7 +38,7 @@ func (*browserToolStore) AutopilotStatus(string) (edge.OperationResult, error) {
 	return edge.OperationResult{}, nil
 }
 func (s *browserToolStore) WaitOperation(_ context.Context, id string, _ time.Duration) (edge.Operation, error) {
-	return edge.Operation{ID: id, Kind: s.kind, State: edge.OperationSucceeded, Result: edge.OperationResult{WorkspaceID: "ws_33333333333333333333333333333333", ProjectAlias: "mcp-devbox", ProjectOwner: "charle-z", ProjectRepository: "mcp-devbox", ProjectTarget: "parrot-trusted-linux", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev", BrowserSessionID: "br_44444444444444444444444444444444", BrowserState: "ready", BrowserNetworkScope: "public", BrowserSafeURL: "https://example.com", BrowserRevision: 1, BrowserCreatedAt: "2026-08-04T02:00:00Z", BrowserUpdatedAt: "2026-08-04T02:00:01Z"}}, nil
+	return edge.Operation{ID: id, Kind: s.kind, State: edge.OperationSucceeded, Result: edge.OperationResult{WorkspaceID: "ws_33333333333333333333333333333333", ProjectAlias: "mcp-devbox", ProjectOwner: "charle-z", ProjectRepository: "mcp-devbox", ProjectTarget: "parrot-trusted-linux", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev", BrowserSessionID: "br_44444444444444444444444444444444", BrowserState: "ready", BrowserNetworkScope: "general", BrowserSafeURL: "https://example.com", BrowserRevision: 1, BrowserCreatedAt: "2026-08-04T02:00:00Z", BrowserUpdatedAt: "2026-08-04T02:00:01Z"}}, nil
 }
 
 func TestProjectBrowserToolsAreClosedAndDurable(t *testing.T) {

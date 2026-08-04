@@ -62,14 +62,14 @@ func TestProjectBrowserRunnerAgainstRealChromium(t *testing.T) {
 	}
 	runner := NewProjectBrowserRunner()
 	origin := browserOrigin(server.URL)
-	first, err := runner.Run(context.Background(), BrowserPageRequest{ProfilePath: profile, NetworkScope: "loopback", InitialOrigin: origin, ViewportWidth: 900, ViewportHeight: 700, TimeoutSeconds: 60, Capture: "both", Steps: []BrowserStep{{Action: "navigate", URL: server.URL}, {Action: "type", Selector: "#name", SelectorType: "css", Text: "Charlie", Clear: true}, {Action: "click", Selector: "#go", SelectorType: "css"}, {Action: "wait", Selector: "#result", SelectorType: "css"}}})
+	first, err := runner.Run(context.Background(), BrowserPageRequest{ProfilePath: profile, NetworkScope: "general", InitialOrigin: origin, ViewportWidth: 900, ViewportHeight: 700, TimeoutSeconds: 60, Capture: "both", Steps: []BrowserStep{{Action: "navigate", URL: server.URL}, {Action: "type", Selector: "#name", SelectorType: "css", Text: "Charlie", Clear: true}, {Action: "click", Selector: "#go", SelectorType: "css"}, {Action: "wait", Selector: "#result", SelectorType: "css"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.URL != server.URL+"/" || first.Title != "Managed Browser E2E" || !strings.Contains(first.Text, "hello Charlie") || len(first.Screenshot) < 2 || first.Screenshot[0] != 0xff || first.Screenshot[1] != 0xd8 || len(first.Cookies) == 0 {
 		t.Fatalf("first=%+v screenshot=%d cookies=%d", first, len(first.Screenshot), len(first.Cookies))
 	}
-	second, err := runner.Run(context.Background(), BrowserPageRequest{ProfilePath: profile, NetworkScope: "loopback", InitialOrigin: origin, ViewportWidth: 900, ViewportHeight: 700, TimeoutSeconds: 60, Capture: "text", Cookies: first.Cookies, Steps: []BrowserStep{{Action: "navigate", URL: server.URL + "/cookie"}, {Action: "wait", Selector: "#cookie", SelectorType: "css"}}})
+	second, err := runner.Run(context.Background(), BrowserPageRequest{ProfilePath: profile, NetworkScope: "general", InitialOrigin: origin, ViewportWidth: 900, ViewportHeight: 700, TimeoutSeconds: 60, Capture: "text", Cookies: first.Cookies, Steps: []BrowserStep{{Action: "navigate", URL: server.URL + "/cookie"}, {Action: "wait", Selector: "#cookie", SelectorType: "css"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestProjectBrowserManagerAgainstRealChromium(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, _, err := manager.Create(context.Background(), ProjectBrowserCreateRequest{IdempotencyKey: "create-real", Resolution: resolution, NetworkScope: "loopback", InitialURL: server.URL, ViewportWidth: 900, ViewportHeight: 700})
+	created, _, err := manager.Create(context.Background(), ProjectBrowserCreateRequest{IdempotencyKey: "create-real", Resolution: resolution, NetworkScope: "general", InitialURL: server.URL, ViewportWidth: 900, ViewportHeight: 700})
 	if err != nil {
 		t.Fatal(err)
 	}

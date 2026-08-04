@@ -112,6 +112,7 @@ func (s *Server) addEdgeControlTools() {
 	s.addProjectGitSyncTools(projectSchema)
 	s.addProjectGitHubTools(projectSchema)
 	s.addProjectToolboxTools(projectSchema)
+	s.addProjectBrowserHarnessTools(projectSchema)
 	s.addProjectBrowserTools(projectSchema)
 	s.addEdgeOperationLifecycleTools(projectSchema)
 	s.addDirectTool(toolDef{

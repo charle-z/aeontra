@@ -57,36 +57,45 @@ Bundle and onboarding diagnostics include systemd `NRestarts` only when the fixe
 `systemctl show` response supplied a valid non-negative counter. The public result has
 an explicit `service_restarts_known` bit; an unknown value is never presented as zero.
 
-## Durable managed browser sessions
+## Durable general browser harness
 
-`project_browser_create`, `project_browser_status`, `project_browser_list`,
-`project_browser_run`, `project_browser_artifact_read`, `project_browser_close`, and
-`project_browser_cleanup` reuse the signed `edge_operations` lifecycle without starting
-another model runtime:
+`project_browser_harness_start`, `project_browser_harness_status`,
+`project_browser_harness_list`, `project_browser_harness_stop`,
+`project_browser_harness_cleanup`, `project_browser_harness_artifact_list`, and
+`project_browser_harness_artifact_read` extend the persistent toolbox rather than expose
+one MCP tool for every browser interaction:
 
-- a logical session is bound to one resolved project workspace and human Edge target;
-- the private Edge journal stores exact URLs, cookies, profile identity and artifact
-  paths, while public results expose only opaque ids and safe URLs without credentials,
-  query or fragment;
-- every run launches a fresh fixed Chromium process inside a narrower Bubblewrap
-  namespace, then closes it after at most 120 seconds; the logical profile and explicit
-  cookie jar survive reconnects and Edge restarts;
-- one run accepts at most 32 closed actions and 32 KiB of combined caller text. There is
-  no arbitrary JavaScript, executable, browser flag, header, cookie, proxy, extension,
-  filesystem path or CDP endpoint input;
-- a durable receipt is inserted before page interaction. Completed receipts return the
-  saved bounded result without repeating effects; interrupted receipts become
-  `indeterminate` and are never automatically retried;
-- text capture is redacted and bounded to 16 KiB. JPEG artifacts are limited to 2 MiB,
-  persisted with `0600`, and read in exact chunks of at most 24 KiB;
-- close preserves the private state, and cleanup removes only exact closed-session
-  profiles and artifacts after path and symlink revalidation. There is no chat-based TTL
-  or automatic cleanup.
+- start accepts arbitrary argv, a relative workspace cwd and a bounded non-secret
+  environment overlay. The argv may invoke any language, test runner or browser framework
+  installed in the toolbox; no implicit browser action or JavaScript allowlist is added;
+- the toolbox rootfs persists package-manager installations, browser binaries, drivers,
+  libraries and caches until explicit toolbox cleanup;
+- each run receives `MCP_BROWSER_RUN_DIR`, `MCP_BROWSER_ARTIFACTS_DIR`,
+  `MCP_BROWSER_DOWNLOADS_DIR`, `MCP_BROWSER_PROFILE_DIR`,
+  `PLAYWRIGHT_BROWSERS_PATH`, `PUPPETEER_CACHE_DIR`, and
+  `SELENIUM_MANAGER_CACHE` without exposing host paths to the public result;
+- profiles are stable named directories, so cookies, browser storage and authentication
+  can survive browser-process and Edge-process restarts;
+- general workcell networking permits ordinary HTTP/HTTPS Internet, private development
+  endpoints and localhost services started in the same project toolbox;
+- the toolbox's configured CPU, memory and process limits apply to all runs. Start also
+  accepts a timeout up to seven days and a combined run/profile storage ceiling from
+  64 MiB through 64 GiB;
+- a private supervisor writes state, Linux PID/start ticks and separate logs, monitors
+  timeout/storage, and owns TERM/KILL of the process tree. Reopening the Edge manager
+  revalidates the same process instead of replaying its argv;
+- status returns only bounded redacted incremental logs, safe lifecycle and aggregate
+  artifact counts. It never returns argv, environment, PID, container identity, cookies,
+  profiles or host paths;
+- artifacts and downloads are arbitrary regular files beneath the managed run roots.
+  Lists are bounded; reads use relative paths and exact chunks of at most 24 KiB;
+- cleanup is explicit, terminal-only and symlink/root checked. A shared profile is not
+  removed while any retained run still references it.
 
-Public and loopback network scopes are separate. Public scope uses a local pinning proxy
-and permits only public HTTP(S) destinations on ports 80/443. Loopback scope is pinned to
-one exact initial high-port origin and may optionally ignore HTTPS errors for local
-self-signed development endpoints.
+The existing `project_browser_create/status/list/run/artifact_read/close/cleanup` tools are
+optional convenience wrappers for common Chromium operations. They use the same general
+workcell HTTP/HTTPS network and allow downloads, but arbitrary automation, uploads,
+JavaScript, alternate browsers, traces and custom frameworks use the general harness.
 
 ## Durable background processes
 

@@ -10,12 +10,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -206,7 +204,7 @@ func (m *ProjectBrowserManager) Create(ctx context.Context, request ProjectBrows
 	if request.InitialURL != "" {
 		origin = browserOrigin(request.InitialURL)
 	}
-	if err := ValidateBrowserURL(ctx, request.NetworkScope, origin, request.InitialURL, net.DefaultResolver); request.InitialURL != "" && err != nil {
+	if err := ValidateBrowserURL(ctx, request.NetworkScope, origin, request.InitialURL, nil); request.InitialURL != "" && err != nil {
 		return ProjectBrowserSnapshot{}, false, err
 	}
 	digestBody, _ := json.Marshal(struct {
@@ -232,6 +230,9 @@ func (m *ProjectBrowserManager) Create(ctx context.Context, request ProjectBrows
 	}
 	profilePath := filepath.Join(m.profileRoot, sessionID)
 	if err := ensurePrivateBrowserDirectory(profilePath); err != nil {
+		return ProjectBrowserSnapshot{}, false, err
+	}
+	if err := ensurePrivateBrowserDirectory(filepath.Join(profilePath, "downloads")); err != nil {
 		return ProjectBrowserSnapshot{}, false, err
 	}
 	now := m.now().UTC()
@@ -366,7 +367,7 @@ func (m *ProjectBrowserManager) Run(ctx context.Context, request ProjectBrowserR
 		return ProjectBrowserSnapshot{}, runErr
 	}
 	if page.URL != "" {
-		if err := ValidateBrowserURL(ctx, record.NetworkScope, record.InitialOrigin, page.URL, net.DefaultResolver); err != nil {
+		if err := ValidateBrowserURL(ctx, record.NetworkScope, record.InitialOrigin, page.URL, nil); err != nil {
 			markIndeterminate()
 			return ProjectBrowserSnapshot{}, err
 		}
@@ -534,70 +535,17 @@ func (m *ProjectBrowserManager) Cleanup(request ProjectBrowserCleanupRequest) (P
 	return result, nil
 }
 
-func ValidateBrowserURL(ctx context.Context, scope, initialOrigin, raw string, resolver *net.Resolver) error {
+func ValidateBrowserURL(_ context.Context, scope, _ string, raw string, _ any) error {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return errors.New("browser URL is invalid")
 	}
-	host := strings.ToLower(parsed.Hostname())
-	if scope == "loopback" {
-		if !isLoopbackBrowserHost(host) {
-			return errors.New("browser loopback host is invalid")
-		}
-		if browserOrigin(raw) != initialOrigin {
-			return errors.New("browser loopback origin changed")
-		}
-		port := parsed.Port()
-		if port == "" {
-			if parsed.Scheme == "http" {
-				port = "80"
-			} else {
-				port = "443"
-			}
-		}
-		number, e := strconv.Atoi(port)
-		if e != nil || number < 1024 || number > 65535 {
-			return errors.New("browser loopback port is invalid")
-		}
-		return nil
-	}
-	if scope != "public" {
+	if scope != "general" {
 		return errors.New("browser network scope is invalid")
-	}
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return errors.New("browser public host is invalid")
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return validatePublicBrowserIP(ip)
-	}
-	if resolver == nil {
-		return nil
-	}
-	ips, err := resolver.LookupIP(ctx, "ip", host)
-	if err != nil || len(ips) == 0 {
-		return errors.New("browser public DNS resolution failed")
-	}
-	for _, ip := range ips {
-		if err := validatePublicBrowserIP(ip); err != nil {
-			return err
-		}
 	}
 	return nil
 }
 
-func validatePublicBrowserIP(ip net.IP) error {
-	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
-		return errors.New("browser public address is not allowed")
-	}
-	return nil
-}
-func isLoopbackBrowserHost(host string) bool {
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
 func browserOrigin(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {

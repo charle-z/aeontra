@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -76,8 +75,7 @@ func normalizeProjectBrowserRequest(kind OperationKind, request OperationRequest
 	switch kind {
 	case OperationProjectBrowserCreate:
 		if request.BrowserSessionID != "" || request.BrowserArtifactID != "" || len(request.BrowserSteps) != 0 || request.BrowserCapture != "" || request.BrowserFullPage ||
-			request.BrowserArtifactOffset != 0 || request.BrowserArtifactLimit != 0 || request.BrowserTimeoutSeconds != 0 ||
-			(request.BrowserNetworkScope != "public" && request.BrowserNetworkScope != "loopback") {
+			request.BrowserArtifactOffset != 0 || request.BrowserArtifactLimit != 0 || request.BrowserTimeoutSeconds != 0 || request.BrowserNetworkScope != "general" {
 			return OperationRequest{}, errors.New("project browser create request is invalid")
 		}
 		if request.BrowserViewportWidth == 0 {
@@ -89,16 +87,10 @@ func normalizeProjectBrowserRequest(kind OperationKind, request OperationRequest
 		if request.BrowserViewportWidth < 320 || request.BrowserViewportWidth > 1920 || request.BrowserViewportHeight < 240 || request.BrowserViewportHeight > 1080 {
 			return OperationRequest{}, errors.New("project browser viewport is invalid")
 		}
-		if request.BrowserIgnoreHTTPSErrors && request.BrowserNetworkScope != "loopback" {
-			return OperationRequest{}, errors.New("project browser TLS posture is invalid")
-		}
 		if request.BrowserInitialURL != "" {
 			if err := validateBrowserTopLevelURLSyntax(request.BrowserInitialURL, request.BrowserNetworkScope); err != nil {
 				return OperationRequest{}, err
 			}
-		}
-		if request.BrowserNetworkScope == "loopback" && request.BrowserInitialURL == "" {
-			return OperationRequest{}, errors.New("loopback browser requires an initial URL")
 		}
 		return request, nil
 	case OperationProjectBrowserStatus:
@@ -211,22 +203,8 @@ func validateBrowserTopLevelURLSyntax(raw, scope string) error {
 	if err != nil || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return errors.New("browser URL is invalid")
 	}
-	if scope == "public" && parsed.Port() != "" && parsed.Port() != "80" && parsed.Port() != "443" {
-		return errors.New("browser public port is invalid")
-	}
-	if scope == "loopback" {
-		port := parsed.Port()
-		if port == "" {
-			if parsed.Scheme == "http" {
-				port = "80"
-			} else {
-				port = "443"
-			}
-		}
-		number, err := strconv.Atoi(port)
-		if err != nil || number < 1024 || number > 65535 {
-			return errors.New("browser loopback port is invalid")
-		}
+	if scope != "" && scope != "general" {
+		return errors.New("browser network scope is invalid")
 	}
 	return nil
 }
@@ -304,7 +282,7 @@ func validBrowserRunExtras(r OperationResult) bool {
 	return browserArtifactIDPattern.MatchString(r.BrowserArtifactID) && r.BrowserArtifactMediaType == "image/jpeg" && r.BrowserArtifactBytes > 0 && r.BrowserArtifactBytes <= MaxBrowserArtifactBytes && browserSHA256Pattern.MatchString(r.BrowserArtifactSHA256)
 }
 func validBrowserSessionSummary(s BrowserSessionSummary) bool {
-	if !browserSessionIDPattern.MatchString(s.SessionID) || (s.State != "ready" && s.State != "busy" && s.State != "closed") || (s.NetworkScope != "public" && s.NetworkScope != "loopback") || s.Revision < 1 || len(s.Title) > 512 || !utf8.ValidString(s.Title) {
+	if !browserSessionIDPattern.MatchString(s.SessionID) || (s.State != "ready" && s.State != "busy" && s.State != "closed") || s.NetworkScope != "general" || s.Revision < 1 || len(s.Title) > 512 || !utf8.ValidString(s.Title) {
 		return false
 	}
 	if s.SafeURL != "" {

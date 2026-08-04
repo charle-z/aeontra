@@ -399,19 +399,40 @@ recommendation.
 
 ## Managed browser runtime
 
-The direct managed browser introduces no caller-configurable executable, flag, proxy,
-path or CDP setting. The signed Edge expects the distribution-managed Chromium runtime
-at `/usr/lib/chromium/chromium`; missing or non-executable state fails closed at browser
-startup. The Edge release does not download a browser at runtime.
+The general browser harness has no separate owner mode. It is available to every
+registered `dev` project that resolves to the existing `linux-workcell` toolbox. Browser
+engines, drivers, libraries and language packages are installed with
+`project_toolbox_install` or normal project package managers and persist in the toolbox
+rootfs until `project_toolbox_cleanup`.
 
-Browser state is derived from the existing Edge state root under `project-browser/`:
+Harness runs need no server environment variables. The Edge supplies these fixed paths
+inside the toolbox:
 
-- `browser.db`: owner-only SQLite session, cookie and run-receipt journal;
-- `profiles/br_<id>/`: exact `0700` Chromium profiles;
-- `artifacts/ba_<id>.jpg`: exact `0600` JPEG captures.
+- `MCP_BROWSER_RUN_ID`: opaque `bh_...` run identity;
+- `MCP_BROWSER_RUN_DIR`: private managed directory for the run;
+- `MCP_BROWSER_ARTIFACTS_DIR`: arbitrary screenshots, PDFs, traces, videos, HARs and logs;
+- `MCP_BROWSER_DOWNLOADS_DIR`: browser downloads;
+- `MCP_BROWSER_PROFILE_DIR`: named persistent profile for cookies/auth/browser storage;
+- `PLAYWRIGHT_BROWSERS_PATH`, `PUPPETEER_CACHE_DIR`, and
+  `SELENIUM_MANAGER_CACHE`: persistent rootfs locations for installed browser tooling.
 
-There is no browser-specific environment-variable or command-line surface. Public scope
-requires normal DNS and HTTP(S) connectivity from the Edge host. Loopback scope requires
-an explicit initial `http` or `https` URL on a port from 1024 through 65535. Browser
-artifacts and profiles have no automatic TTL; only `project_browser_cleanup` removes
-closed sessions.
+All paths are under the project workspace or toolbox rootfs; public MCP responses never
+return the corresponding host paths. `.mcp-devbox/` is repository-ignored. Managed run
+and profile directories use owner-only parents and have no automatic chat TTL.
+
+Resource limits are configured at two layers:
+
+- `project_toolbox_create`: CPU milliseconds, memory MiB and process count;
+- `project_browser_harness_start`: wall-clock timeout and combined managed run/profile
+  storage MiB.
+
+The harness uses the toolbox's ordinary network namespace. No browser-specific domain,
+port, action, JavaScript, upload, download or engine allowlist is configured. Localhost
+means the toolbox itself, so project services started with
+`project_toolbox_service_start` are directly reachable. Public Internet and private
+project endpoints follow the same network posture as other trusted-workcell commands.
+
+The signed Edge package still depends on distribution Chromium at
+`/usr/lib/chromium/chromium` for the optional convenience `project_browser_*` wrapper.
+The general harness does not depend on that fixed binary and may install or select other
+engines through project tooling.

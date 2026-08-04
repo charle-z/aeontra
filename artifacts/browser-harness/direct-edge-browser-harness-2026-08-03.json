@@ -1,0 +1,74 @@
+{
+  "acceptance": {
+    "arbitrary_playwright_script": true,
+    "convenience_chromium_real_e2e": true,
+    "durable_process_cancelled": true,
+    "full_javascript": true,
+    "localhost_application": true,
+    "managed_download": true,
+    "pdf": true,
+    "persistent_login_cookie_after_browser_reopen": true,
+    "public_https_navigation": true,
+    "rootful_docker_socket_absent": true,
+    "screenshot": true,
+    "trace": true,
+    "video": true,
+    "windows_mount_absent": true,
+    "workspace_upload": true
+  },
+  "artifacts": [
+    {
+      "bytes": 10105,
+      "path": "runs/first/artifacts/localhost.png"
+    },
+    {
+      "bytes": 17432,
+      "path": "runs/first/artifacts/localhost.pdf"
+    },
+    {
+      "bytes": 15909,
+      "path": "runs/first/artifacts/public.png"
+    },
+    {
+      "bytes": 84969,
+      "path": "runs/first/artifacts/trace.zip"
+    },
+    {
+      "bytes": 16,
+      "path": "runs/first/downloads/sample.txt"
+    },
+    {
+      "bytes": 5506,
+      "path": "runs/resume/artifacts/resumed.png"
+    },
+    {
+      "bytes": 19691,
+      "path": "runs/first/artifacts/page@28e31c17b54d54f4ed98f1b11676bf6a.webm"
+    }
+  ],
+  "base_commit": "954ee978dd791360780fa5d4d07fd4ffb7f3d6c9",
+  "branch": "feat/direct-edge-browser",
+  "candidate_catalog_hash": "sha256:d02bc196de5829ec8ea529a4f8cd1b684e94af72305600b74f46413bd2a13f13",
+  "candidate_protocol": "2024-11-05",
+  "candidate_tool_count": 151,
+  "installation": {
+    "chromium_installed_in_persistent_rootfs": true,
+    "firefox_install_plan_resolved": true,
+    "playwright_version": "1.61.0",
+    "python_venv": true
+  },
+  "notes": [
+    "Profile and cookie contents remained local and were not read.",
+    "The rootless CI job contains the full manager create/reopen/stop/cleanup E2E and runs only where the host-owned rootless endpoint is available."
+  ],
+  "observed_at": "2026-08-04T05:16:40Z",
+  "schema_version": 1,
+  "sensitive_content_collected": false,
+  "toolbox": {
+    "base": "debian-bookworm-slim",
+    "cpu_millis": 4000,
+    "memory_mib": 4096,
+    "process_limit": 2048,
+    "rootless_engine_access": true
+  }
+}

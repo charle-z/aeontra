@@ -4,8 +4,6 @@ package edgeclient
 
 import (
 	"errors"
-	"net"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,7 +37,6 @@ func projectBrowserBubblewrapArgs(profile string, chromeArgs []string) ([]string
 	if err != nil {
 		return nil, err
 	}
-	validated = append(validated, "--disable-quic", "--dns-prefetch-disable", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp")
 	args := []string{"--die-with-parent", "--new-session", "--unshare-all", "--share-net", "--clearenv"}
 	for _, path := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/etc/passwd", "/etc/group", "/etc/services", "/etc/protocols"} {
 		if _, err := os.Stat(path); err == nil {
@@ -65,12 +62,12 @@ func validateBrowserChromeArgs(profile string, input []string) ([]string, error)
 		"disable-extensions": true, "disable-features": true, "disable-hang-monitor": true, "disable-ipc-flooding-protection": true,
 		"disable-popup-blocking": true, "disable-prompt-on-repost": true, "disable-renderer-backgrounding": true, "disable-sync": true,
 		"force-color-profile": true, "metrics-recording-only": true, "safebrowsing-disable-auto-update": true, "enable-automation": true,
-		"password-store": true, "use-mock-keychain": true, "remote-debugging-port": true, "user-data-dir": true, "proxy-server": true,
-		"proxy-bypass-list": true, "window-size": true, "no-sandbox": true, "disable-gpu": true, "hide-scrollbars": true, "mute-audio": true,
-		"ignore-certificate-errors": true, "disable-quic": true, "dns-prefetch-disable": true, "force-webrtc-ip-handling-policy": true,
+		"password-store": true, "use-mock-keychain": true, "remote-debugging-port": true, "user-data-dir": true,
+		"window-size": true, "no-sandbox": true, "disable-gpu": true, "hide-scrollbars": true, "mute-audio": true,
+		"ignore-certificate-errors": true,
 	}
 	output := make([]string, 0, len(input))
-	seenProfile, seenDebug, seenProxy := false, false, false
+	seenProfile, seenDebug := false, false
 	for _, argument := range input {
 		if argument == "about:blank" {
 			output = append(output, argument)
@@ -96,15 +93,6 @@ func validateBrowserChromeArgs(profile string, input []string) ([]string, error)
 				return nil, errors.New("project browser debugging flag is invalid")
 			}
 			seenDebug = true
-		case "proxy-server":
-			if !has || seenProxy || !validBrowserLoopbackProxy(value) {
-				return nil, errors.New("project browser proxy flag is invalid")
-			}
-			seenProxy = true
-		case "proxy-bypass-list":
-			if !has || value != "<-loopback>" {
-				return nil, errors.New("project browser proxy bypass is invalid")
-			}
 		case "window-size":
 			parts := strings.Split(value, ",")
 			if !has || len(parts) != 2 {
@@ -118,21 +106,8 @@ func validateBrowserChromeArgs(profile string, input []string) ([]string, error)
 		}
 		output = append(output, argument)
 	}
-	if !seenProfile || !seenDebug || !seenProxy {
+	if !seenProfile || !seenDebug {
 		return nil, errors.New("project browser required Chrome flags are missing")
 	}
 	return output, nil
-}
-
-func validBrowserLoopbackProxy(raw string) bool {
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "http" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return false
-	}
-	ip := net.ParseIP(parsed.Hostname())
-	if ip == nil || !ip.IsLoopback() {
-		return false
-	}
-	port, err := strconv.Atoi(parsed.Port())
-	return err == nil && port >= 1024 && port <= 65535
 }

@@ -1,79 +1,117 @@
-# Direct Edge managed browser baseline — 2026-08-03
+# Direct Edge general browser harness baseline — 2026-08-03
 
 This dated baseline records the Hito 2 candidate developed and validated on
-`parrot-trusted-linux` from accepted base `954ee978dd791360780fa5d4d07fd4ffb7f3d6c9`.
-It is historical evidence, not live deployment state.
+`parrot-trusted-linux` from accepted base
+`954ee978dd791360780fa5d4d07fd4ffb7f3d6c9`. It is historical evidence, not live
+deployment state.
 
 ## Candidate public identity
 
 - Protocol: `2024-11-05`.
-- Tool count: `144`.
-- Catalog: `sha256:a8da24675ce4f365b9ac9e5809087d225ddba8f86417fbed628d6bcde5ffa005`.
-- Added tools: `project_browser_create`, `project_browser_status`,
-  `project_browser_list`, `project_browser_run`,
-  `project_browser_artifact_read`, `project_browser_close`, and
-  `project_browser_cleanup`.
+- Tool count: `151`.
+- Catalog: `sha256:d02bc196de5829ec8ea529a4f8cd1b684e94af72305600b74f46413bd2a13f13`.
+- General harness tools:
+  - `project_browser_harness_start`;
+  - `project_browser_harness_status`;
+  - `project_browser_harness_list`;
+  - `project_browser_harness_stop`;
+  - `project_browser_harness_cleanup`;
+  - `project_browser_harness_artifact_list`;
+  - `project_browser_harness_artifact_read`.
+- Convenience Chromium tools retained:
+  - `project_browser_create`, `project_browser_status`, `project_browser_list`;
+  - `project_browser_run`, `project_browser_artifact_read`;
+  - `project_browser_close`, `project_browser_cleanup`.
 
-## Closed authority
+## Programming model
 
-The caller chooses only a registered project alias, human Edge target, opaque session
-or artifact ids, one of two network scopes, bounded viewport/timeout/capture options,
-and up to 32 closed steps: navigate, click, type, press, select, or wait. There is no
-input for JavaScript, browser executable, flags, extension, download, header, cookie,
-proxy, filesystem path, debugging address, CDP endpoint, arbitrary port in public scope,
-or arbitrary loopback origin.
+The general harness accepts arbitrary argv inside the persistent rootless project toolbox.
+It is not an action DSL and it does not require a separate owner mode. A project may use
+Playwright, Puppeteer, Selenium, WebDriver, browser CLIs or any custom automation in any
+installed language/framework. JavaScript and normal browser APIs are available through
+that code. Browser engines, drivers, libraries and utilities are installed in the
+persistent toolbox rootfs by the existing installation/package-manager surfaces.
 
-Each run executes the fixed `/usr/lib/chromium/chromium` binary through a private
-subcommand of the signed Edge and a nested Bubblewrap namespace. The namespace exposes
-only read-only system runtime, `/proc`, `/dev`, private `/tmp`, and one exact `0700`
-profile mounted at `/browser-profile`. It does not mount the project checkout, Edge
-state root, host home, WSL mounts, Docker/rootless sockets, or unrelated repositories.
-Downloads are denied through CDP.
+Every run receives stable managed locations for its run tree, arbitrary artifacts,
+downloads and a named persistent profile. Workspace files are available for uploads.
+Profiles retain cookies, local/session storage and authentication across browser and Edge
+process restarts. Chromium is not mandatory for the harness; alternate engines are
+installable when project tooling supports them.
 
-An ephemeral proxy bound to `127.0.0.1` resolves and pins every destination. Public
-scope accepts only HTTP(S) ports 80/443 and rejects literal, DNS-resolved, or mixed DNS
-answers containing private, loopback, link-local, multicast, or unspecified addresses.
-Loopback scope is fixed to the initial scheme/host/high port and cannot pivot to another
-origin. HTTPS errors may be ignored only in loopback scope.
+The existing seven Chromium tools are convenience only. They use the workcell's general
+HTTP/HTTPS network and allow managed downloads, but arbitrary code, uploads, traces,
+videos, alternate browsers and custom workflows use the harness.
 
-## Durable state
+## Network and security boundary
 
-Owner-only Edge state contains:
+The toolbox/workcell is the boundary. Browser code may use ordinary HTTP/HTTPS Internet,
+private development endpoints and localhost services in the toolbox. MCP Devbox does not
+add a browser-specific domain, port, action, JavaScript, upload, download or engine
+allowlist.
 
-- SQLite session, explicit cookie jar, operation receipt, and artifact metadata;
-- exact `0700` profiles named by `br_...`;
-- exact `0600` JPEG artifacts named by `ba_...`.
+The harness does not add Windows mounts, the general host home, rootful Docker sockets,
+Edge identity/state or a public debugging endpoint. It reuses only the authorities already
+assigned to the authorized toolbox, including its validated user-owned rootless engine.
+Caller argv is positional to a fixed supervisor. Public results exclude argv, environment,
+PID, container identity, cookies, profile contents and host paths.
 
-Public results expose only opaque ids, safe URLs without credentials/query/fragment,
-bounded redacted text, title, state/revision/timestamps, artifact size/hash/media type,
-and exact bounded base64 artifact chunks. A completed run receipt replays its saved
-result after ACK loss without repeating page effects. An interrupted run becomes
-`indeterminate` and fails closed on retry. Close preserves state; cleanup is explicit
-and removes only exact closed-session profile and artifact paths after symlink and root
-validation.
+Managed directories reject traversal, symlinks, foreign ownership and root escape. Logs
+are separate, bounded and redacted. Artifact/download enumeration is relative and bounded;
+reads use exact base64 chunks. `.mcp-devbox/` is repository-ignored.
 
-## Real Edge acceptance
+## Durability and limits
 
-Two opt-in tests ran against the actual Edge Chromium runtime inside Bubblewrap:
+Toolbox CPU, memory and process limits apply to the harness. Each run also selects a
+wall-clock timeout and a combined run/profile storage ceiling. The private supervisor
+records state and Linux PID/start ticks, monitors timeout/storage, stops only its owned
+process tree and persists terminal metadata. Reopening the Edge manager revalidates the
+same live process rather than replaying argv. Lost process identity becomes
+`indeterminate`. Cleanup is explicit and terminal-only; shared profiles remain while any
+retained run uses them.
 
-1. Runner acceptance: loopback navigation, visible locator wait, keyboard entry,
-   click-driven SPA update, body text/title/location capture, JPEG capture, cookie
-   extraction, and cookie restoration in a second ephemeral Chromium process.
-2. Manager acceptance: create, SQLite persistence, run receipt, private JPEG artifact
-   read, manager close/reopen, durable cookie restoration, session close, and explicit
-   cleanup.
+## Real Edge evidence
 
-Both passed on the Edge. Unit tests also cover request/result validation, secret-shaped
-input rejection, public-versus-loopback URL policy, launcher flag allowlist, narrow
-Bubblewrap mounts, durable result replay, indeterminate failure behavior, and cleanup
-escape/symlink rejection. Exact-head CI runs the real acceptance using the Playwright
-Chromium distribution copied to the same fixed production path before the test.
+A persistent toolbox was created on the Edge with 4 CPU, 4096 MiB and 2048-process limits.
+Inside that rootfs the acceptance installed Python, a virtual environment, Playwright
+`1.61.0`, browser dependencies and Playwright Chromium. The same mechanism reported the
+install plan for Firefox, demonstrating that alternate engines are not blocked.
+
+An arbitrary Python Playwright script then passed all of these real checks:
+
+- public navigation to `https://example.com`;
+- project localhost application on `127.0.0.1:18765`;
+- arbitrary `page.evaluate` JavaScript;
+- workspace file upload and server-side confirmation;
+- browser download saved into the managed download tree;
+- persistent login cookie across Chromium close/reopen;
+- screenshots, PDF, Playwright trace and WebM video;
+- no `/mnt/c` and no rootful `/var/run/docker.sock`;
+- durable long-running toolbox process start and idempotent stop.
+
+Produced evidence included `localhost.png`, `localhost.pdf`, `public.png`, `trace.zip`, a
+WebM video, `downloads/sample.txt` and `resumed.png`. Cookie/profile content remained local
+and was not read through MCP.
+
+## Automated acceptance
+
+Unit/integration tests cover arbitrary argv, no action/selector schema, request/result
+validation, persistent manager reopen, idempotency, indeterminate state, configurable
+limits, incremental logs, total artifact counts, arbitrary artifact reads, traversal and
+symlink rejection, shared-profile cleanup, safe result mapping, convenience general
+network and real Chromium behavior.
+
+The rootless CI job runs `TestProjectBrowserHarnessRealPlaywrightE2E` against an actual
+Podman service. It creates a real toolbox, installs Playwright and dependencies, executes
+arbitrary automation, verifies Internet/localhost/upload/download/auth/artifacts, reopens
+the manager while the run is active, cancels a long run and cleans run/profile state. CI
+reuses its already staged Chromium binary to avoid a duplicate large download; the real
+Edge acceptance separately verified browser download/installation in the persistent
+rootfs.
 
 ## Rollout requirement
 
-This candidate is the first intentional productive catalog change after the stable Front
-Door work. Acceptance requires catalog-aware overlap of previous and candidate catalogs,
-new backend deployment, OAuth discovery and authenticated MCP verification through the
-public Front Door, Edge signed-release update, candidate cutover, real browser calls from
-GPT Web, retirement of the previous catalog, and evidence of no HTTP 503 during the
-transition.
+This candidate is the first productive catalog change after the stable Front Door work.
+Acceptance requires previous+candidate catalog overlap, candidate backend deployment,
+OAuth discovery and authenticated MCP verification through the public Front Door, one
+signed Edge release/update, real harness invocation from GPT Web, retirement of the
+previous catalog and evidence of no HTTP 503 during the transition.

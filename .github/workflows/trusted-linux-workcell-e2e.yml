@@ -387,6 +387,10 @@ jobs:
           PY
 
           start_service
+
+          MCP_DEVBOX_BROWSER_HARNESS_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
+            -test.run=^TestProjectBrowserHarnessRealPlaywrightE2E$ -test.count=1 -test.v
+
           archive="$RUNNER_TEMP/p12-postgres-17-alpine.tar"
           podman --url "unix://$socket" load --input "$archive" >/dev/null
           postgres_image_id="$(python3 - "$archive" <<'PY'

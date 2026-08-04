@@ -24,7 +24,7 @@ The system has several distinct authorities. They must not be collapsed into one
 | Development Edge Git broker | Owner-bound clone and planned publication for a registered `dev` workcell | Git transport runs outside the model namespace through a closed local broker | Only constructed owner-bound GitHub transport | Credential is stored in private `0600` Edge state, passed only to a fixed askpass child, and never enters workspace, argv, model schemas, or logs |
 | Direct Edge checkout sync | Registered project checkout and fixed `origin` only | Read status/fetch plus exact single-use fast-forward plans; dirty, detached, ahead, diverged, stale or replayed state fails closed | Existing owner-bound GitHub transport only | Reuses the private askpass authority; public results omit credential, URL, path, argv and PID |
 | Direct Edge GitHub broker | Repository already bound to a registered development project | Only server-constructed official `gh api` argv execute outside the workcell; no arbitrary endpoint, header, command or caller repository is accepted | GitHub API for the exact owner/repository only | `GH_TOKEN` exists only in the bounded child process environment under a private HOME; results are parsed, bounded and token-redacted before safe capability metadata leaves the Edge |
-| Managed Edge browser | One project-bound logical session, Edge-private Chromium profile, private cookie jar and private JPEG artifacts | Every browser run launches fixed Chromium inside a narrower Bubblewrap namespace that mounts only the profile and read-only system runtime; the workspace, host home, Docker/rootless sockets, browser debug endpoint and arbitrary flags remain unavailable | Public scope is restricted by an Edge-local pinning proxy to public HTTP(S) ports 80/443; loopback scope is pinned to one exact initial high-port loopback origin | Full URLs, cookies, proxy identity, CDP endpoint, profile/artifact paths and process identity stay private; public URLs drop credentials, query and fragment, text is redacted/bounded, and artifacts use opaque handles |
+| Managed browser harness | Any authorized `dev` workcell and its persistent rootless toolbox, project workspace, installed browser/tooling rootfs, managed run trees and named persistent profiles | Arbitrary caller argv runs inside the existing workcell/toolbox boundary; no new host terminal, Windows mount, host home, rootful socket or external Edge state is added. The validated user-owned rootless engine remains the workcell authority already documented for toolbox use | General workcell networking: ordinary HTTP/HTTPS Internet, private development endpoints and localhost services are available. MCP Devbox does not impose a browser-domain/action/JavaScript allowlist | Caller code, cookies, authentication stores, downloads and artifacts stay on the Edge. Public tools return only opaque lifecycle, bounded redacted logs, relative artifact metadata and exact bounded chunks; argv, environment, PID, container identity, profile content and host paths remain private |
 
 Additional boundaries:
 
@@ -221,35 +221,56 @@ Bubblewrap. Only the selected workspace and a private runtime area are writable.
 identity, home, unrelated repositories, and private control sockets are excluded. There
 is no direct-execution fallback.
 
-### Managed Edge browser
+### Managed browser harness
 
-The managed browser is not a general remote-debugging service. Public tools expose only
-closed session lifecycle, closed navigation/locator steps, bounded text and opaque JPEG
-artifact reads. Callers cannot supply JavaScript, browser executables, flags, extensions,
-headers, cookies, downloads, filesystem paths, proxy configuration or CDP endpoints.
+The browser capability is a general programming harness for every authorized development
+workcell. It is not a remote-debugging endpoint and it is not limited to a fixed set of
+click/type/select operations. `project_browser_harness_start` accepts an arbitrary argv
+array in the persistent rootless toolbox, so a project may run Playwright, Puppeteer,
+Selenium, WebDriver, browser CLIs, test runners, or custom automation in any installed
+language. JavaScript and normal browser APIs are available through that project code.
+The seven `project_browser_*` tools remain only a convenience wrapper for common Chromium
+actions.
 
-Each run starts the fixed `/usr/lib/chromium/chromium` binary through a private subcommand
-of the signed Edge and then through Bubblewrap. The namespace shares host networking only
-so Chromium can reach an ephemeral proxy bound to `127.0.0.1`; it mounts the exact `0700`
-profile at `/browser-profile`, read-only system runtime, `/proc`, `/dev` and a private
-`/tmp`. It does not mount the project checkout, Edge state root, host home, WSL mounts,
-Docker/rootless sockets or unrelated repositories. Downloads are denied through CDP.
+The harness reuses the existing toolbox boundary. The workspace is mounted at
+`/workspace`; package managers may install browsers, drivers, libraries and utilities in
+the persistent toolbox rootfs. The caller receives standard environment variables for a
+run directory, arbitrary artifacts, downloads and a named persistent profile. Uploads
+come from normal workspace files. Chromium, Firefox, WebKit or another engine may be used
+when the installed framework supports it. MCP Devbox adds no domain allowlist, browser
+action allowlist, JavaScript ban, download ban, upload ban or fixed-browser requirement.
 
-The proxy resolves and pins each destination before connecting. Public sessions reject
-literal or DNS-resolved private, loopback, link-local, multicast and unspecified
-addresses, reject mixed public/private DNS answers and permit only HTTP(S) ports 80/443.
-Loopback sessions require an initial URL and remain on that exact scheme/host/port with a
-port of at least 1024. HTTPS verification can be disabled only for loopback sessions.
-This reduces SSRF authority but is not a defense against a compromised host kernel or a
-public destination that changes behavior after connection.
+The workcell remains the security boundary:
 
-Logical sessions survive Edge and chat reconnects through an owner-only SQLite journal.
-Cookies are captured and restored explicitly inside that private journal; they never
-enter the control plane. A run receipt is written before external interaction. A
-completed receipt is replayed without repeating clicks or submits after an ACK loss; a
-crash while a run is active becomes `indeterminate` and fails closed rather than
-re-executing an uncertain external effect. Cleanup is explicit and accepts only exact
-closed-session profile/artifact identities under their fixed private roots.
+- Windows mounts and the general host home are not added;
+- rootful Docker sockets and unrelated Edge state remain excluded;
+- the toolbox may retain its already validated user-owned rootless engine socket, whose
+  authority and limitations are the same as for all other toolbox workloads;
+- caller argv is passed positionally to a fixed internal supervisor rather than
+  interpolated into generated shell text;
+- each run is bound to one project, target, toolbox and opaque `bh_...` identity;
+- process status and stop revalidate Linux PID/start ticks before signaling;
+- managed directories reject traversal, symlinks, foreign ownership and root escape.
+
+The toolbox controls CPU, memory and process limits. Each harness run additionally has a
+caller-selected timeout and combined managed run/profile storage ceiling. The supervisor
+records bounded state and private logs, terminates the owned process tree on timeout or
+storage exhaustion, and never infers cleanup from a chat ending. Completed/terminal run
+metadata survives Edge restart; reopening the manager revalidates the live process in the
+unchanged toolbox. An unexpected loss of process identity becomes `indeterminate` rather
+than replaying uncertain browser effects.
+
+Profiles and browser authentication data live under the ignored `.mcp-devbox/` workspace
+state with owner-only parent directories. Public MCP output never returns cookie stores,
+local/session storage, full profile trees, argv, environment, browser debugging addresses,
+container names or host paths. Stdout/stderr are bounded and redacted. Screenshots, PDFs,
+traces, videos, HARs, downloads and other files are enumerated only from relative
+`artifacts/` and `downloads/` paths and read in exact bounded base64 chunks.
+
+The convenience Chromium session uses the authorized workcell's general HTTP/HTTPS
+network and permits downloads to its managed profile. It retains a narrower filesystem
+namespace for that convenience process, but it is not the programming boundary and does
+not replace the arbitrary toolbox harness.
 
 ### Trusted Linux workcell
 

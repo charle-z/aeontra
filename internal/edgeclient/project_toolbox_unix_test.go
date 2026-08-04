@@ -20,6 +20,7 @@ type recordingToolboxRunner struct {
 	socket         string
 	state          string
 	inspectImageID string
+	harnessState   string
 }
 
 func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, args, _ []string) ([]byte, error) {
@@ -53,6 +54,17 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 		return []byte(runner.state + "\n"), nil
 	case strings.Contains(joined, " create "):
 		return []byte(strings.Repeat("b", 64) + "\n"), nil
+	case strings.Contains(joined, "mcp-browser-harness-start"):
+		return nil, nil
+	case strings.Contains(joined, "mcp-browser-harness-status"):
+		state := runner.harnessState
+		if state == "" {
+			state = "running"
+		}
+		return []byte(state + "\n"), nil
+	case strings.Contains(joined, "mcp-browser-harness-stop"):
+		runner.harnessState = "stopped"
+		return []byte("stopped\n"), nil
 	case strings.Contains(joined, "mcp-toolbox-service-start"):
 		return nil, nil
 	case strings.Contains(joined, "mcp-toolbox-service-status"):

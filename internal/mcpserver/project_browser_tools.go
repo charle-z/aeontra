@@ -107,12 +107,12 @@ func (s *Server) addProjectBrowserTools(projectSchema map[string]any) {
 
 	createProps := copySchema(common)
 	createProps["idempotency_key"] = idempotency
-	createProps["network_scope"] = map[string]any{"type": "string", "enum": []string{"public", "loopback"}}
+	createProps["network_scope"] = map[string]any{"type": "string", "enum": []string{"general"}}
 	createProps["initial_url"] = map[string]any{"type": "string", "maxLength": 2048}
 	createProps["viewport_width"] = map[string]any{"type": "integer", "minimum": 320, "maximum": 1920}
 	createProps["viewport_height"] = map[string]any{"type": "integer", "minimum": 240, "maximum": 1080}
 	createProps["ignore_https_errors"] = map[string]any{"type": "boolean"}
-	s.addDirectTool(toolDef{Name: "project_browser_create", Description: "Create or reuse one durable managed browser session on the selected trusted Edge project. The private profile stays on the Edge; public scope permits only public HTTP(S), while loopback scope is pinned to the exact initial high-port loopback origin.", InputSchema: closedObject(createProps, []string{"alias", "target", "idempotency_key", "network_scope"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, s.handleProjectBrowserCreate)
+	s.addDirectTool(toolDef{Name: "project_browser_create", Description: "Create or reuse one durable managed browser session on the selected trusted Edge project. The private profile stays on the Edge and the browser uses the authorized workcell network for general HTTP(S), including Internet, private development endpoints and localhost.", InputSchema: closedObject(createProps, []string{"alias", "target", "idempotency_key", "network_scope"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, s.handleProjectBrowserCreate)
 
 	statusProps := copySchema(common)
 	statusProps["session_id"] = session
