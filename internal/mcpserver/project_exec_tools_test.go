@@ -52,7 +52,8 @@ func (store *projectExecToolStore) WaitOperation(_ context.Context, operationID 
 			WorkspaceID:  "ws_33333333333333333333333333333333",
 			ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
 			ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
-			ExecCompleted: true, ExecExitCode: 0, ExecStdout: "ok\n",
+			ExecCompleted: true, ExecExitCode: 0, ExecStdout: "ok\n", ExecTimingKnown: true,
+			ExecPreflightUS: 1100, ExecExecutionUS: 2200, ExecResultUS: 300,
 		},
 	}, nil
 }
@@ -87,6 +88,7 @@ func TestProjectExecQueuesOneBoundedWorkcellCommand(t *testing.T) {
 		`"operation_id":"eo_22222222222222222222222222222222"`, `"state":"succeeded"`,
 		`"alias":"project"`, `"repository":"charle-z/repo"`, `"target":"parrot"`,
 		`"exit_code":0`, `"stdout":"ok\n"`, `"timed_out":false`,
+		`"preflight_us":1100`, `"execution_us":2200`, `"result_us":300`,
 	} {
 		if !strings.Contains(output, required) {
 			t.Fatalf("execution output missing %q: %s", required, output)

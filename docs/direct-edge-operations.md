@@ -37,6 +37,26 @@ persistence. Foreground output is bounded in the operation result. Background ou
 redacted before it reaches private Edge log files and is returned incrementally through
 bounded status calls, so the control-plane journal never becomes an unbounded log store.
 
+## Authoritative direct-operation timing
+
+The private journal records operation creation, current lease, signed `running`, signed
+`finalizing` and terminal timestamps. Public lifecycle status derives only bounded
+microsecond durations: queue, pickup, Edge work, completion and total. It never returns
+absolute lease/phase timestamps, device internals, request bodies or raw results.
+Expired normal leases clear current-attempt timing before requeue so a later attempt is
+not presented as one continuous execution. Legacy terminal rows without timing remain
+readable and simply omit unavailable durations.
+
+`project_exec` additionally measures project/workcell preflight, actual child execution
+and local result capture/redaction with the Edge monotonic clock. The terminal
+`completion_us` interval covers the remaining transfer and persistence path. This
+separation is evidence only: it does not add a model runtime, widen the workcell, change
+timeouts or expose command content.
+
+Bundle and onboarding diagnostics include systemd `NRestarts` only when the fixed
+`systemctl show` response supplied a valid non-negative counter. The public result has
+an explicit `service_restarts_known` bit; an unknown value is never presented as zero.
+
 ## Durable background processes
 
 `project_process_start`, `project_process_status`, `project_process_stop`,

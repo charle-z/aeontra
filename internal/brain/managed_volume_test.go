@@ -16,6 +16,9 @@ func TestEmptyManagedVolumeRootCanBeHardened(t *testing.T) {
 	if err := os.Mkdir(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := ensurePrivateRootDirectory(root); err != nil {
 		t.Fatal(err)
@@ -36,6 +39,9 @@ func TestNonEmptyUnsafeRootCannotBeHardened(t *testing.T) {
 	}
 	root := filepath.Join(t.TempDir(), "brain")
 	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "unexpected"), []byte("data"), 0o600); err != nil {

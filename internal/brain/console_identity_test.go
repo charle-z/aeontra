@@ -124,6 +124,9 @@ func TestConsoleIdentityRejectsUnsafePathsWithoutRepair(t *testing.T) {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.Chmod(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		path := filepath.Join(directory, "console-node.key")
 		if err := newStore(t).ConfigureConsoleIdentity(path); err == nil || strings.Contains(err.Error(), path) {
 			t.Fatalf("error=%v", err)
@@ -141,6 +144,9 @@ func TestConsoleIdentityRejectsUnsafePathsWithoutRepair(t *testing.T) {
 		}
 		path := filepath.Join(directory, "console-node.key")
 		if err := os.WriteFile(path, bytes.Repeat([]byte{0x41}, consoleIdentityBytes), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if err := newStore(t).ConfigureConsoleIdentity(path); err == nil || strings.Contains(err.Error(), path) {

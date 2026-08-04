@@ -21,7 +21,7 @@ func TestInspectEdgeRuntimeReportsManagedSingleProcess(t *testing.T) {
 	}
 	defer lock.Close()
 	inspectEdgeSystemdService = func(string) edgeServiceObservation {
-		return edgeServiceObservation{State: "active", Active: true, MainPID: os.Getpid()}
+		return edgeServiceObservation{State: "active", Active: true, MainPID: os.Getpid(), Restarts: 0, RestartsKnown: true}
 	}
 
 	report := inspectEdgeRuntime(stateRoot, "mcp-devbox-opencode-edge@charles.service")
@@ -30,6 +30,20 @@ func TestInspectEdgeRuntimeReportsManagedSingleProcess(t *testing.T) {
 	}
 	if report.ProcessRelease != runtimeTestRelease || report.ProcessCommit != runtimeTestCommit || len(report.Blockers) != 0 {
 		t.Fatalf("unexpected managed identity: %+v", report)
+	}
+	if !report.ServiceRestartsKnown || report.ServiceRestarts != 0 {
+		t.Fatalf("unexpected managed restart counter: %+v", report)
+	}
+}
+
+func TestParseSystemdEdgeServiceObservationIncludesRestarts(t *testing.T) {
+	observation := parseSystemdEdgeServiceObservation([]byte("ActiveState=active\nMainPID=123\nNRestarts=4\n"))
+	if !observation.Active || observation.State != "active" || observation.MainPID != 123 || !observation.RestartsKnown || observation.Restarts != 4 {
+		t.Fatalf("unexpected observation: %+v", observation)
+	}
+	unknown := parseSystemdEdgeServiceObservation([]byte("ActiveState=active\nMainPID=123\nNRestarts=invalid\n"))
+	if unknown.RestartsKnown {
+		t.Fatalf("invalid restart counter was accepted: %+v", unknown)
 	}
 }
 

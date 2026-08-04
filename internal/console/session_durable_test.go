@@ -157,6 +157,9 @@ func TestSessionStoreRejectsUnsafePathsPermissionsAndCorruption(t *testing.T) {
 	if err := os.Mkdir(unsafeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(unsafeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := NewSessionStore(SessionConfig{Path: filepath.Join(unsafeDir, "sessions.db")}); err == nil {
 		t.Fatal("unsafe directory permissions accepted")
 	}

@@ -44,6 +44,10 @@ type DirectWorkcellCommandResult struct {
 	TimedOut        bool
 	StdoutTruncated bool
 	StderrTruncated bool
+	TimingKnown     bool
+	PreflightUS     int64
+	ExecutionUS     int64
+	ResultUS        int64
 }
 
 type DirectWorkcellProcessSpec struct {
@@ -67,6 +71,7 @@ type DirectWorkcellCommandRunner interface {
 type directWorkcellExecRunner struct{}
 
 func RunDirectWorkcellCommand(ctx context.Context, request DirectWorkcellCommandRequest, runner DirectWorkcellCommandRunner) (DirectWorkcellCommandResult, error) {
+	preflightStarted := time.Now()
 	stdout := newBoundedCapture(edge.MaxProjectExecStreamBytes)
 	stderr := newBoundedCapture(edge.MaxProjectExecStreamBytes)
 	resolveExecutable := runner == nil
@@ -77,15 +82,21 @@ func RunDirectWorkcellCommand(ctx context.Context, request DirectWorkcellCommand
 	if err != nil {
 		return DirectWorkcellCommandResult{}, err
 	}
+	preflightUS := time.Since(preflightStarted).Microseconds()
 	executionCtx, cancel := context.WithTimeout(ctx, time.Duration(request.TimeoutSeconds)*time.Second)
 	defer cancel()
+	executionStarted := time.Now()
 	exitCode, runErr := runner.Run(executionCtx, spec)
+	executionUS := time.Since(executionStarted).Microseconds()
+	resultStarted := time.Now()
 	result := DirectWorkcellCommandResult{
 		Completed: true, ExitCode: exitCode,
 		Stdout:          boundedRedactedWorkcellOutput(stdout.String(), edge.MaxProjectExecStreamBytes),
 		Stderr:          boundedRedactedWorkcellOutput(stderr.String(), edge.MaxProjectExecStreamBytes),
 		StdoutTruncated: stdout.Truncated(), StderrTruncated: stderr.Truncated(),
+		TimingKnown: true, PreflightUS: preflightUS, ExecutionUS: executionUS,
 	}
+	result.ResultUS = time.Since(resultStarted).Microseconds()
 	if errors.Is(executionCtx.Err(), context.DeadlineExceeded) {
 		result.ExitCode = -1
 		result.TimedOut = true
@@ -204,7 +215,7 @@ func prepareDirectWorkcellRuntime(workspace string) error {
 	for _, relative := range []string{
 		".mcp-devbox", ".mcp-devbox/tools", ".mcp-devbox/tools/bin", ".mcp-devbox/tools/go",
 		".mcp-devbox/tools/cargo", ".mcp-devbox/cache", ".mcp-devbox/runtime",
-		".mcp-devbox/runtime/home", ".mcp-devbox/runtime/tmp",
+		".mcp-devbox/runtime/home",
 	} {
 		if err := ensurePrivateWorkspaceDir(workspace, filepath.Join(workspace, filepath.FromSlash(relative))); err != nil {
 			return errors.New("direct workcell runtime is unavailable")
@@ -266,7 +277,7 @@ func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWo
 	baseline := map[string]string{
 		"PATH": persistentPath, "HOME": "/workspace/.mcp-devbox/runtime/home", "USER": "mcpedge",
 		"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TERM": "dumb", "SHELL": "/bin/sh",
-		"XDG_CACHE_HOME": "/workspace/.mcp-devbox/cache", "TMPDIR": "/workspace/.mcp-devbox/runtime/tmp",
+		"XDG_CACHE_HOME": "/workspace/.mcp-devbox/cache", "TMPDIR": "/tmp",
 		"MCP_DEVBOX_PROFILE": string(request.Workspace.Profile), "MCP_DEVBOX_MODE": string(request.Workspace.Mode),
 		"MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 	}

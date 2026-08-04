@@ -50,6 +50,9 @@ func TestCollectProjectExecMapsBoundedWorkcellResult(t *testing.T) {
 	if code != "" || !result.ExecCompleted || result.ExecExitCode != 7 || result.ExecStdout != "ok\n" || result.ExecStderr != "warning\n" {
 		t.Fatalf("result=%+v code=%q", result, code)
 	}
+	if !result.ExecTimingKnown || result.ExecPreflightUS < 0 || result.ExecExecutionUS < 0 || result.ExecResultUS < 0 {
+		t.Fatalf("execution timing=%+v", result)
+	}
 	if result.WorkspaceID != resolved.Workspace.ID || result.ProjectAlias != "mcp-devbox" || result.ProjectOwner != "charle-z" ||
 		result.ProjectRepository != "mcp-devbox" || result.ProjectTarget != "parrot" || result.ProjectState != "ready" ||
 		result.ProjectProfile != "linux-workcell" || result.ProjectMode != "dev" {

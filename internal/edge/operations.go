@@ -133,6 +133,8 @@ type OperationResult struct {
 	ComponentsCompatible      bool                       `json:"components_compatible,omitempty"`
 	ServiceActive             bool                       `json:"service_active,omitempty"`
 	ServiceState              string                     `json:"service_state,omitempty"`
+	ServiceRestarts           uint64                     `json:"service_restarts,omitempty"`
+	ServiceRestartsKnown      bool                       `json:"service_restarts_known,omitempty"`
 	ProcessState              string                     `json:"process_state,omitempty"`
 	LockState                 string                     `json:"lock_state,omitempty"`
 	Coherence                 string                     `json:"coherence,omitempty"`
@@ -163,6 +165,10 @@ type OperationResult struct {
 	ExecTimedOut              bool                       `json:"exec_timed_out,omitempty"`
 	ExecStdoutTruncated       bool                       `json:"exec_stdout_truncated,omitempty"`
 	ExecStderrTruncated       bool                       `json:"exec_stderr_truncated,omitempty"`
+	ExecTimingKnown           bool                       `json:"exec_timing_known,omitempty"`
+	ExecPreflightUS           int64                      `json:"exec_preflight_us,omitempty"`
+	ExecExecutionUS           int64                      `json:"exec_execution_us,omitempty"`
+	ExecResultUS              int64                      `json:"exec_result_us,omitempty"`
 	BackgroundProcessID       string                     `json:"background_process_id,omitempty"`
 	BackgroundProcessState    string                     `json:"background_process_state,omitempty"`
 	BackgroundStartedAt       string                     `json:"background_started_at,omitempty"`
@@ -250,6 +256,9 @@ type Operation struct {
 	Progress        OperationProgress `json:"progress,omitempty"`
 	CancelRequested bool              `json:"cancel_requested,omitempty"`
 	CreatedAt       time.Time         `json:"created_at"`
+	LeasedAt        time.Time         `json:"-"`
+	RunningAt       time.Time         `json:"-"`
+	FinalizingAt    time.Time         `json:"-"`
 	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
@@ -364,10 +373,10 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
 	expires := now.Add(ttl)
-	if _, err := tx.Exec(`UPDATE edge_operations SET state=?,lease_id=?,lease_until=?,lease_attempts=lease_attempts+1,first_leased_at=COALESCE(first_leased_at,?),updated_at=? WHERE operation_id=? AND state=?`, OperationLeased, leaseID, expires.UnixNano(), now.UnixNano(), now.UnixNano(), id, OperationQueued); err != nil {
+	if _, err := tx.Exec(`UPDATE edge_operations SET state=?,lease_id=?,lease_until=?,lease_attempts=lease_attempts+1,first_leased_at=COALESCE(first_leased_at,?),leased_at=?,running_at=NULL,finalizing_at=NULL,updated_at=? WHERE operation_id=? AND state=?`, OperationLeased, leaseID, expires.UnixNano(), now.UnixNano(), now.UnixNano(), now.UnixNano(), id, OperationQueued); err != nil {
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
-	op, err := scanOperation(tx.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,created_at,updated_at FROM edge_operations WHERE operation_id=?`, id))
+	op, err := scanOperation(tx.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,created_at,leased_at,running_at,finalizing_at,updated_at FROM edge_operations WHERE operation_id=?`, id))
 	if err != nil || tx.Commit() != nil {
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
@@ -664,7 +673,7 @@ func validDiagnosticBlockers(blockers []string) bool {
 }
 
 func validRuntimeDiagnostic(result OperationResult) bool {
-	legacy := result.ServiceState == "" && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == ""
+	legacy := result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == ""
 	if legacy {
 		return true
 	}
@@ -674,7 +683,7 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 		!regexp.MustCompile(`^(stopped|managed|manual|duplicate|incoherent)$`).MatchString(result.Coherence) {
 		return false
 	}
-	if result.ServiceActive != (result.ServiceState == "active") {
+	if result.ServiceActive != (result.ServiceState == "active") || (!result.ServiceRestartsKnown && result.ServiceRestarts != 0) {
 		return false
 	}
 	return validRuntimeDiagnosticState(result)
@@ -684,7 +693,7 @@ func emptyOperationResult(result OperationResult) bool {
 	if hasProjectExecResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
-	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && !hasProjectGitHubResult(result)
+	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && !hasProjectGitHubResult(result)
 }
 
 func (s *Store) AutopilotStatus(workspaceID string) (OperationResult, error) {
@@ -720,17 +729,28 @@ func (s *Store) ReportAutopilot(deviceID string, result OperationResult) error {
 	return nil
 }
 
+func nullableOperationTime(value sql.NullInt64) time.Time {
+	if !value.Valid || value.Int64 <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, value.Int64).UTC()
+}
+
 func scanOperation(row rowScanner) (Operation, error) {
 	var op Operation
 	var request, result []byte
 	var created, updated int64
-	if err := row.Scan(&op.ID, &op.DeviceID, &op.Kind, &request, &op.State, &result, &op.SafeCode, &created, &updated); err != nil {
+	var leased, running, finalizing sql.NullInt64
+	if err := row.Scan(&op.ID, &op.DeviceID, &op.Kind, &request, &op.State, &result, &op.SafeCode, &created, &leased, &running, &finalizing, &updated); err != nil {
 		return Operation{}, err
 	}
 	if json.Unmarshal(request, &op.Request) != nil || (len(result) > 0 && json.Unmarshal(result, &op.Result) != nil) {
 		return Operation{}, errors.New("stored operation is invalid")
 	}
 	op.CreatedAt = time.Unix(0, created).UTC()
+	op.LeasedAt = nullableOperationTime(leased)
+	op.RunningAt = nullableOperationTime(running)
+	op.FinalizingAt = nullableOperationTime(finalizing)
 	op.UpdatedAt = time.Unix(0, updated).UTC()
 	return op, nil
 }
