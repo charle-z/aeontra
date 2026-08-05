@@ -5,10 +5,12 @@ package edgeclient
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -33,6 +35,54 @@ func boundedBrowserHarnessDiagnostic(value string) string {
 		value = value[:2048]
 	}
 	return value
+}
+
+func browserHarnessE2ERootlessEnvironment(endpoint *RootlessContainerEndpoint, toolPath string) ([]string, error) {
+	environment, err := rootlessContainerClientEnvironment(endpoint, toolPath)
+	if err != nil {
+		return nil, err
+	}
+	path := strings.TrimSpace(os.Getenv("P12_ROOTLESS_CLIENT_CONTAINERS_CONF"))
+	if path == "" {
+		return environment, nil
+	}
+	path = filepath.Clean(path)
+	info, err := os.Lstat(path)
+	if err != nil || !filepath.IsAbs(path) || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		return nil, ErrProjectToolboxUnsafeState
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) {
+		return nil, ErrProjectToolboxUnsafeState
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "[engine]\ncgroup_manager=\"cgroupfs\"\n" {
+		return nil, ErrProjectToolboxUnsafeState
+	}
+	return append(environment, "CONTAINERS_CONF="+path), nil
+}
+
+func TestBrowserHarnessE2ERootlessEnvironmentAcceptsOnlyManagedCgroupfsConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "containers.conf")
+	if err := os.WriteFile(path, []byte("[engine]\ncgroup_manager=\"cgroupfs\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("P12_ROOTLESS_CLIENT_CONTAINERS_CONF", path)
+	environment, err := browserHarnessE2ERootlessEnvironment(nil, openCodeDefaultToolPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(environment, "\n"), "CONTAINERS_CONF="+path) {
+		t.Fatalf("managed config missing from environment: %v", environment)
+	}
+	invalid := filepath.Join(t.TempDir(), "invalid.conf")
+	if err := os.WriteFile(invalid, []byte("[engine]\ncgroup_manager=\"systemd\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("P12_ROOTLESS_CLIENT_CONTAINERS_CONF", invalid)
+	if _, err := browserHarnessE2ERootlessEnvironment(nil, openCodeDefaultToolPath); !errors.Is(err, ErrProjectToolboxUnsafeState) {
+		t.Fatalf("invalid managed config err=%v", err)
+	}
 }
 
 func browserHarnessE2EInstallScript(installBrowser string) string {
@@ -83,7 +133,7 @@ func TestProjectBrowserHarnessRealPlaywrightE2E(t *testing.T) {
 		t.Fatalf("rootless environment validation failed: %v", err)
 	}
 	diagnosticRunner := &browserHarnessE2EDiagnosticRunner{}
-	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, Runner: diagnosticRunner, cgroupParent: os.Getenv("P12_TOOLBOX_CGROUP_PARENT")})
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, Runner: diagnosticRunner, environment: browserHarnessE2ERootlessEnvironment, cgroupParent: os.Getenv("P12_TOOLBOX_CGROUP_PARENT")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +261,7 @@ print(json.dumps({'cookie_persisted':True,'resumed':True}),flush=True)
 	if err != nil || reused {
 		t.Fatalf("first=%+v reused=%v err=%v", first, reused, err)
 	}
-	reopened, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, cgroupParent: os.Getenv("P12_TOOLBOX_CGROUP_PARENT")})
+	reopened, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, environment: browserHarnessE2ERootlessEnvironment, cgroupParent: os.Getenv("P12_TOOLBOX_CGROUP_PARENT")})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -225,9 +225,14 @@ jobs:
           service_unit_base="p12-rootless-podman-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           service_generation=0
           delegated_wrapper="$RUNNER_TEMP/p12-podman-delegated-wrapper.sh"
+          client_containers_conf="$RUNNER_TEMP/p12-rootless-client-containers.conf"
           cleanup_failed=0
           declare -a rootful_paths=()
           declare -a rootful_modes=()
+
+          printf '%s\n' '[engine]' 'cgroup_manager="cgroupfs"' >"$client_containers_conf"
+          chmod 0600 "$client_containers_conf"
+          export P12_ROOTLESS_CLIENT_CONTAINERS_CONF="$client_containers_conf"
 
           cat >"$delegated_wrapper" <<'WRAPPER'
           #!/usr/bin/env bash
@@ -239,6 +244,10 @@ jobs:
           run_uid="$5"
           run_gid="$6"
           run_home="$7"
+          containers_conf="$8"
+          if [ ! -f "$containers_conf" ] || [ -L "$containers_conf" ] || [ "$(stat -c '%u:%a' "$containers_conf")" != "$run_uid:600" ]; then
+            exit 73
+          fi
           control_group="$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)"
           case "$control_group" in
             /system.slice/p12-rootless-podman-*.service) ;;
@@ -264,7 +273,8 @@ jobs:
           exec /usr/bin/setpriv \
             --reuid="$run_user" --regid="$run_group" --init-groups \
             /usr/bin/env XDG_RUNTIME_DIR="$runtime_root" HOME="$run_home" USER="$run_user" \
-            /usr/bin/podman --cgroup-manager=cgroupfs system service --time=0 "unix://$socket"
+            CONTAINERS_CONF="$containers_conf" \
+            /usr/bin/podman system service --time=0 "unix://$socket"
           WRAPPER
           chmod 0700 "$delegated_wrapper"
           command -v setpriv >/dev/null
@@ -329,7 +339,7 @@ jobs:
               --property=KillMode=mixed \
               --property="StandardOutput=append:$RUNNER_TEMP/p12-podman-service.log" \
               --property="StandardError=append:$RUNNER_TEMP/p12-podman-service.log" \
-              "$delegated_wrapper" "$runtime_root" "$socket" "$(id -un)" "$(id -gn)" "$(id -u)" "$(id -g)" "$HOME"
+              "$delegated_wrapper" "$runtime_root" "$socket" "$(id -un)" "$(id -gn)" "$(id -u)" "$(id -g)" "$HOME" "$client_containers_conf"
             deadline=$((SECONDS + 60))
             while [ "$SECONDS" -lt "$deadline" ]; do
               if ! sudo systemctl is-active --quiet "$service_unit"; then
@@ -370,6 +380,14 @@ jobs:
                   echo "P12 rootless category=socket_mode"
                   return 1
                 fi
+                if ! cgroup_manager="$(podman --url "unix://$socket" info --format '{{.Host.CgroupManager}}')"; then
+                  echo "P12 rootless category=cgroup_manager_query"
+                  return 1
+                fi
+                if [ "$cgroup_manager" != "cgroupfs" ]; then
+                  echo "P12 rootless category=cgroup_manager"
+                  return 1
+                fi
                 return 0
               fi
               sleep 0.25
@@ -389,7 +407,8 @@ jobs:
             original_status=$?
             trap - EXIT
             set +e
-            rm -f "$RUNNER_TEMP/p12-podman-images.txt" "$delegated_wrapper"
+            unset P12_ROOTLESS_CLIENT_CONTAINERS_CONF || true
+            rm -f "$RUNNER_TEMP/p12-podman-images.txt" "$delegated_wrapper" "$client_containers_conf"
             resource_cleanup_failed=0
             stop_failed=0
             restore_failed=0
