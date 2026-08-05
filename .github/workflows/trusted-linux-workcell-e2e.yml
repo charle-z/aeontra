@@ -318,6 +318,7 @@ jobs:
               chown "$run_uid:$run_gid" "$containers/$delegated_file"
             fi
           done
+          chown "$run_uid:$run_gid" "$root/cgroup.procs"
           exec /usr/bin/setpriv \
             --reuid="$run_user" --regid="$run_group" --init-groups \
             /usr/bin/env XDG_RUNTIME_DIR="$runtime_root" HOME="$run_home" USER="$run_user" \

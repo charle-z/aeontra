@@ -63,6 +63,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`printf '+%s\n' "$controller" >"$root/cgroup.subtree_control"`,
 		`printf '+%s\n' "$controller" >"$containers/cgroup.subtree_control"`,
 		`chown "$run_uid:$run_gid" "$containers"`,
+		`chown "$run_uid:$run_gid" "$root/cgroup.procs"`,
 		`/usr/bin/setpriv`,
 		`/usr/bin/podman system service`,
 		`containers_subtree="$containers_cgroup/cgroup.subtree_control"`,
