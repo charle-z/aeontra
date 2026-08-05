@@ -100,13 +100,23 @@ limits, incremental logs, total artifact counts, arbitrary artifact reads, trave
 symlink rejection, shared-profile cleanup, safe result mapping, convenience general
 network and real Chromium behavior.
 
-The rootless CI job runs `TestProjectBrowserHarnessRealPlaywrightE2E` against an actual
-Podman service. It creates a real toolbox, installs Playwright and dependencies, executes
-arbitrary automation, verifies Internet/localhost/upload/download/auth/artifacts, reopens
-the manager while the run is active, cancels a long run and cleans run/profile state. CI
-reuses its already staged Chromium binary to avoid a duplicate large download; the real
-Edge acceptance separately verified browser download/installation in the persistent
-rootfs.
+GitHub Actions keeps the deterministic rootless Podman/PostgreSQL lifecycle and a real
+Chromium convenience-process smoke. It does not run the complete toolbox harness on the
+hosted runner: that runner executes below a root-owned `/system.slice` unit without the
+user-owned delegated cgroup subtree available on `parrot-trusted-linux`. The workflow
+records that exact posture as `not-reproducible`, bound to the checked-out commit and
+tree; a different posture or failure remains blocking.
+
+The authoritative runtime acceptance was completed on
+`c27053c56b6214e52862ead675b874670f322295`: the exact
+`TestProjectBrowserHarnessRealPlaywrightE2E` passed on `parrot-trusted-linux` in 295.87
+seconds. That evidence may be carried forward only while the candidate changes no Edge,
+server, toolbox or browser-harness runtime code. The candidate diff from that accepted
+commit is restricted to this workflow, documentation and its workflow-policy contract,
+and a fresh real-browser smoke on the Edge reconfirmed Internet, localhost, JavaScript,
+upload/download, persistent authentication, screenshots, PDF, trace and video. Any
+runtime change invalidates this evidence and requires a new exact E2E before publication
+or merge.
 
 ## Rollout requirement
 

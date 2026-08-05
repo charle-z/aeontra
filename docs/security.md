@@ -267,6 +267,17 @@ container names or host paths. Stdout/stderr are bounded and redacted. Screensho
 traces, videos, HARs, downloads and other files are enumerated only from relative
 `artifacts/` and `downloads/` paths and read in exact bounded base64 chunks.
 
+Full harness acceptance is host-specific because rootless container creation depends on
+the target user's delegated systemd/cgroup-v2 subtree. GitHub Actions must not create a
+root-owned transient unit, chown cgroup control files or pin a replacement engine merely
+to imitate that authority. It records the exact hosted-runner limitation and fails on any
+unexpected posture instead. Runtime acceptance is anchored to the owner-approved Edge
+execution at `c27053c56b6214e52862ead675b874670f322295` and may be carried forward only
+when the candidate changes no Edge, server, toolbox or browser-harness runtime code and a
+fresh real-browser smoke still passes on `parrot-trusted-linux`. Any runtime change
+requires a new exact E2E. The tested code receives no Edge identity or control-plane
+credential.
+
 The convenience Chromium session uses the authorized workcell's general HTTP/HTTPS
 network and permits downloads to its managed profile. It retains a narrower filesystem
 namespace for that convenience process, but it is not the programming boundary and does

@@ -512,6 +512,30 @@ Real-device acceptance has completed interactive `gh auth login`, safe
 after the v2 bridge and v3 bundled-CLI releases. No test fixture or CI artifact
 contains a real account credential.
 
+## Browser harness host-specific acceptance
+
+The hosted workflow still blocks on deterministic source, package, catalog, security,
+real Chromium and rootless Podman/PostgreSQL lifecycle checks. It does not attempt to
+manufacture the Edge's cgroup authority. GitHub's Ubuntu 22.04 runner is inside a
+root-owned `/system.slice` unit and does not expose the user-owned delegated subtree that
+the real Edge receives below `/user.slice`.
+
+The workflow writes one bounded TSV record containing schema version, checked-out commit,
+tree, `not-reproducible` status, the accepted runtime commit and the exact host
+limitation. The record is verified and uploaded. Any different cgroup posture, missing
+record, malformed identity or unrelated failure remains red; there is no
+`continue-on-error` path.
+
+The publication gate is the owner-controlled Edge evidence. Commit
+`c27053c56b6214e52862ead675b874670f322295` ran the exact
+`TestProjectBrowserHarnessRealPlaywrightE2E` on `parrot-trusted-linux`, including real
+rootless Podman, toolbox limits, Playwright/Chromium, FFmpeg video, Internet, localhost,
+upload/download, persistent authentication, artifacts, restart-safe manager reopen,
+cancellation and cleanup. A later candidate may reuse that acceptance only when its diff
+contains no Edge, server, toolbox or browser-harness runtime change and a fresh real
+browser smoke passes on the same Edge. Any runtime change requires a new exact E2E. Source
+CI and real-device acceptance are reported separately.
+
 ## Rootless PostgreSQL fixture identity
 
 The `Rootless Podman, PostgreSQL and Chromium` gate stages the pinned PostgreSQL
