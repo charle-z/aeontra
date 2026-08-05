@@ -47,6 +47,8 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`P12 rootless category=cgroup_manager`,
 		`CONTAINERS_CONF="$client_containers_conf" podman system migrate`,
 		`module="github.com/containers/podman/v5@v5.4.2"`,
+		`package="github.com/containers/podman/v5/cmd/podman@v5.4.2"`,
+		`go install "$package"`,
 		`h1:r1Rv6GiH0YCFS91B+f0DEgEZK8yfzzkjiECVLjLjcuQ=`,
 		`be85287fcf4590961614ee37be65eeb315e5d9ff`,
 		`GOFLAGS="-tags=seccomp,exclude_graphdriver_btrfs,exclude_graphdriver_devicemapper,containers_image_openpgp"`,

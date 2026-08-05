@@ -159,6 +159,7 @@ jobs:
           set -Eeuo pipefail
           podman_root="$RUNNER_TEMP/podman-5.4.2"
           module="github.com/containers/podman/v5@v5.4.2"
+          package="github.com/containers/podman/v5/cmd/podman@v5.4.2"
           install -d -m 0700 "$podman_root/bin" "$podman_root/gopath" "$podman_root/mod"
           export GOBIN="$podman_root/bin"
           export GOPATH="$podman_root/gopath"
@@ -175,7 +176,7 @@ jobs:
           assert data["Origin"]["Hash"] == "be85287fcf4590961614ee37be65eeb315e5d9ff"
           assert data["Origin"]["Ref"] == "refs/tags/v5.4.2"
           PY
-          go install "$module"
+          go install "$package"
           test "$("$GOBIN/podman" --version)" = "podman version 5.4.2"
           sudo install -o root -g root -m 0755 "$GOBIN/podman" /usr/bin/podman
           test "$(podman --version)" = "podman version 5.4.2"
