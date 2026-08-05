@@ -157,7 +157,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            podman uidmap slirp4netns fuse-overlayfs python3-venv
+            bubblewrap podman uidmap slirp4netns fuse-overlayfs python3-venv
           podman --version
           command -v setsid
 

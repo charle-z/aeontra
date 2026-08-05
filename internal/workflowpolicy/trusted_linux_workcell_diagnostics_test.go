@@ -25,6 +25,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		"TestTrustedLinuxWorkcellRootlessCleanupE2E",
 		"trap cleanup EXIT",
 		"setsid podman system service",
+		"bubblewrap podman uidmap slirp4netns fuse-overlayfs python3-venv",
 		"Verify managed browser with production Chromium path",
 		`go test -c -o "$RUNNER_TEMP/p12-browser.test" ./internal/edgeclient`,
 		`MCP_DEVBOX_BROWSER_E2E=1 "$RUNNER_TEMP/p12-browser.test"`,
