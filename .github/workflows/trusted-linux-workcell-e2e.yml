@@ -184,6 +184,23 @@ jobs:
           chmod -R u+w "$podman_root"
           rm -rf "$podman_root"
 
+      - name: Install pinned crun 1.21
+        run: |
+          set -Eeuo pipefail
+          crun_root="$RUNNER_TEMP/crun-1.21"
+          install -d -m 0700 "$crun_root"
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            --output "$crun_root/crun" \
+            https://github.com/containers/crun/releases/download/1.21/crun-1.21-linux-amd64
+          printf '%s  %s\n' \
+            322c6c94b33a749ccd9f6f5ad48b0dd976eef559bbcfe15afd507a289dcdbe91 \
+            "$crun_root/crun" | sha256sum --check --strict -
+          chmod 0755 "$crun_root/crun"
+          test "$("$crun_root/crun" --version | head -n 1)" = "crun version 1.21"
+          sudo install -o root -g root -m 0755 "$crun_root/crun" /usr/bin/crun
+          test "$(crun --version | head -n 1)" = "crun version 1.21"
+          rm -rf "$crun_root"
+
       - name: Install pinned podman-compose
         run: |
           python3 -m venv "$RUNNER_TEMP/podman-compose"
