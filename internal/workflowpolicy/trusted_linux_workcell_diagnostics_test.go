@@ -34,7 +34,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`source_sha="$P12_SOURCE_SHA"`,
 		`tree="$(git rev-parse "${source_sha}^{tree}")"`,
 		`/system.slice/*`,
-		"GitHub-hosted Ubuntu 22.04 runs in a root-owned /system.slice cgroup without a user-owned delegated subtree",
+		"GitHub-hosted Ubuntu 22.04 runs the job in a root-owned /system.slice cgroup whose cgroup.procs is not writable by the job user",
 		"not-reproducible",
 		"c27053c56b6214e52862ead675b874670f322295",
 		"Host-specific browser harness acceptance moved to Edge",
@@ -115,6 +115,8 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		"github.com/containers/crun/releases/download/1.21",
 		"continue-on-error",
 		"MCP_DEVBOX_BROWSER_E2E=1 go test ./internal/edgeclient",
+		"user_manager=",
+		"hosted runner now exposes a user-owned cgroup subtree",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("unsafe rootless diagnostic workflow contains %q", forbidden)

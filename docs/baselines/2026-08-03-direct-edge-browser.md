@@ -102,10 +102,11 @@ network and real Chromium behavior.
 
 GitHub Actions keeps the deterministic rootless Podman/PostgreSQL lifecycle and a real
 Chromium convenience-process smoke. It does not run the complete toolbox harness on the
-hosted runner: that runner executes below a root-owned `/system.slice` unit without the
-user-owned delegated cgroup subtree available on `parrot-trusted-linux`. The workflow
-records that exact posture as `not-reproducible`, bound to the checked-out commit and
-tree; a different posture or failure remains blocking.
+hosted runner: the job executes below a root-owned `/system.slice` unit whose
+`cgroup.procs` is not writable by the job user. A separate user-manager subtree, when
+present, does not transfer that authority to the job cgroup. The workflow records that
+exact posture as `not-reproducible`, bound to the checked-out commit and tree; a different
+posture or failure remains blocking.
 
 The authoritative runtime acceptance was completed on
 `c27053c56b6214e52862ead675b874670f322295`: the exact

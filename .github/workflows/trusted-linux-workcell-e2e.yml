@@ -209,14 +209,8 @@ jobs:
             exit 1
           fi
 
-          user_manager="/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service"
-          if [ -d "$user_manager" ] && [ "$(stat -c '%u' "$user_manager")" = "$(id -u)" ]; then
-            echo "hosted runner now exposes a user-owned cgroup subtree; review real harness execution" >&2
-            exit 1
-          fi
-
           accepted_runtime_commit='c27053c56b6214e52862ead675b874670f322295'
-          reason='GitHub-hosted Ubuntu 22.04 runs in a root-owned /system.slice cgroup without a user-owned delegated subtree'
+          reason='GitHub-hosted Ubuntu 22.04 runs the job in a root-owned /system.slice cgroup whose cgroup.procs is not writable by the job user'
           printf 'schema_version\tcommit\ttree\tstatus\taccepted_runtime_commit\treason\n1\t%s\t%s\tnot-reproducible\t%s\t%s\n' \
             "$source_sha" "$tree" "$accepted_runtime_commit" "$reason" >"$temporary"
           mv -Tf "$temporary" "$classification"
@@ -237,7 +231,7 @@ jobs:
               "tree": tree,
               "status": "not-reproducible",
               "accepted_runtime_commit": "c27053c56b6214e52862ead675b874670f322295",
-              "reason": "GitHub-hosted Ubuntu 22.04 runs in a root-owned /system.slice cgroup without a user-owned delegated subtree",
+              "reason": "GitHub-hosted Ubuntu 22.04 runs the job in a root-owned /system.slice cgroup whose cgroup.procs is not writable by the job user",
           }]
           PY
 

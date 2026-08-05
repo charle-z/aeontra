@@ -516,9 +516,10 @@ contains a real account credential.
 
 The hosted workflow still blocks on deterministic source, package, catalog, security,
 real Chromium and rootless Podman/PostgreSQL lifecycle checks. It does not attempt to
-manufacture the Edge's cgroup authority. GitHub's Ubuntu 22.04 runner is inside a
-root-owned `/system.slice` unit and does not expose the user-owned delegated subtree that
-the real Edge receives below `/user.slice`.
+manufacture the Edge's cgroup authority. GitHub's Ubuntu 22.04 job runs inside a
+root-owned `/system.slice` unit whose `cgroup.procs` is not writable by the job user. A
+separate user-manager subtree, when present, does not transfer that authority to the job
+cgroup; the real Edge instead executes under its owner-controlled delegated subtree.
 
 The workflow writes one bounded TSV record containing schema version, checked-out commit,
 tree, `not-reproducible` status, the accepted runtime commit and the exact host
