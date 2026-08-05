@@ -400,10 +400,18 @@ func TestProjectToolboxManagerUsesValidatedRootlessSocketForPullAndCreate(t *tes
 	}
 }
 
-func TestProjectToolboxRejectsContainerEndpointEnvironmentOverrides(t *testing.T) {
+func TestProjectToolboxRejectsContainerEngineAuthorityEnvironmentOverrides(t *testing.T) {
 	manager, runner, workspace := testBrowserHarnessManager(t)
-	for _, key := range []string{"CONTAINER_HOST", "DOCKER_HOST"} {
-		value := "unix:///var/run/docker.sock"
+	cases := map[string]string{
+		"CONTAINER_HOST":               "unix:///var/run/docker.sock",
+		"DOCKER_HOST":                  "unix:///var/run/docker.sock",
+		"CONTAINERS_HELPER_BINARY_DIR": "/workspace/untrusted-helpers",
+		"CONTAINERS_CONF":              "/workspace/untrusted-containers.conf",
+		"CONTAINERS_CONF_OVERRIDE":     "/workspace/untrusted-override.conf",
+		"CONTAINERS_CONF_MODULES":      "/workspace/untrusted-module.conf",
+		"CONTAINERS_STORAGE_CONF":      "/workspace/untrusted-storage.conf",
+	}
+	for key, value := range cases {
 		if _, err := manager.Exec(t.Context(), ProjectToolboxExecRequest{
 			ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace,
 			Argv: []string{"true"}, Environment: map[string]string{key: value},
@@ -412,14 +420,55 @@ func TestProjectToolboxRejectsContainerEndpointEnvironmentOverrides(t *testing.T
 		}
 		if _, _, err := manager.ServiceStart(t.Context(), ProjectToolboxServiceStartRequest{
 			ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace,
-			Name: "override-" + strings.ToLower(strings.TrimSuffix(key, "_HOST")), Argv: []string{"sleep", "1"}, Environment: map[string]string{key: value},
+			Name: "override-" + strings.ToLower(strings.ReplaceAll(key, "_", "-")), Argv: []string{"sleep", "1"}, Environment: map[string]string{key: value},
 		}); !errors.Is(err, ErrProjectToolboxUnsafeState) {
 			t.Fatalf("service override %s err=%v", key, err)
 		}
+		if _, _, err := manager.BrowserHarnessStart(t.Context(), ProjectBrowserHarnessStartRequest{
+			ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace,
+			IdempotencyKey: "override-" + strings.ToLower(strings.ReplaceAll(key, "_", "-")), Profile: "default",
+			Argv: []string{"true"}, Environment: map[string]string{key: value}, TimeoutSeconds: 60, StorageMiB: 128,
+		}); !errors.Is(err, ErrProjectToolboxUnsafeState) {
+			t.Fatalf("browser harness override %s err=%v", key, err)
+		}
 	}
 	for _, call := range runner.calls {
-		if strings.Contains(strings.Join(call, " "), "/var/run/docker.sock") {
-			t.Fatalf("rejected rootful endpoint reached runner: %q", call)
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "/var/run/docker.sock") || strings.Contains(joined, "untrusted-") {
+			t.Fatalf("rejected container authority reached runner: %q", call)
+		}
+	}
+}
+
+func TestProjectToolboxUsesOnlyValidatedLocalCgroupParent(t *testing.T) {
+	stateRoot := t.TempDir()
+	workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
+	const parent = "/system.slice/p12-rootless-podman-12345-1-2.service/containers"
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+		StateRoot: stateRoot, Endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"},
+		Runner: runner, environment: testRootlessContainerEnvironment, cgroupParent: parent,
+		NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	}
+	var create string
+	for _, call := range runner.calls {
+		joined := strings.Join(call, " ")
+		if strings.Contains(" "+joined+" ", " create ") {
+			create = joined
+		}
+	}
+	if !strings.Contains(create, "--cgroup-parent "+parent) {
+		t.Fatalf("create call=%q", create)
+	}
+	for _, invalid := range []string{"/user.slice/user-1000.slice", "/system.slice/docker.service", parent + "/child", "../containers"} {
+		if _, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: t.TempDir(), Endpoint: manager.endpoint, Runner: runner, environment: testRootlessContainerEnvironment, cgroupParent: invalid}); !errors.Is(err, ErrProjectToolboxUnsafeState) {
+			t.Fatalf("invalid cgroup parent %q err=%v", invalid, err)
 		}
 	}
 }

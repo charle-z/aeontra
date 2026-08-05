@@ -144,8 +144,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bubblewrap podman uidmap slirp4netns fuse-overlayfs python3-venv
+            bubblewrap catatonit podman uidmap slirp4netns fuse-overlayfs python3-venv
           podman --version
+          catatonit_path="$(command -v catatonit)"
+          test -f "$catatonit_path"
+          test ! -L "$catatonit_path"
+          test -x "$catatonit_path"
+          catatonit --version
           command -v setsid
 
       - name: Install pinned podman-compose
@@ -219,9 +224,50 @@ jobs:
           service_unit=""
           service_unit_base="p12-rootless-podman-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           service_generation=0
+          delegated_wrapper="$RUNNER_TEMP/p12-podman-delegated-wrapper.sh"
           cleanup_failed=0
           declare -a rootful_paths=()
           declare -a rootful_modes=()
+
+          cat >"$delegated_wrapper" <<'WRAPPER'
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
+          runtime_root="$1"
+          socket="$2"
+          run_user="$3"
+          run_group="$4"
+          run_uid="$5"
+          run_gid="$6"
+          run_home="$7"
+          control_group="$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)"
+          case "$control_group" in
+            /system.slice/p12-rootless-podman-*.service) ;;
+            *) exit 71 ;;
+          esac
+          root="/sys/fs/cgroup${control_group}"
+          daemon="$root/daemon"
+          containers="$root/containers"
+          mkdir "$daemon" "$containers"
+          printf '%s\n' "$$" >"$daemon/cgroup.procs"
+          available="$(cat "$root/cgroup.controllers")"
+          for controller in cpu memory pids; do
+            grep -qw "$controller" <<<"$available" || exit 72
+            printf '+%s\n' "$controller" >"$root/cgroup.subtree_control"
+            printf '+%s\n' "$controller" >"$containers/cgroup.subtree_control"
+          done
+          chown "$run_uid:$run_gid" "$containers"
+          for delegated_file in cgroup.procs cgroup.threads cgroup.subtree_control; do
+            if [ -e "$containers/$delegated_file" ]; then
+              chown "$run_uid:$run_gid" "$containers/$delegated_file"
+            fi
+          done
+          exec /usr/bin/setpriv \
+            --reuid="$run_user" --regid="$run_group" --init-groups \
+            /usr/bin/env XDG_RUNTIME_DIR="$runtime_root" HOME="$run_home" USER="$run_user" \
+            /usr/bin/podman --cgroup-manager=cgroupfs system service --time=0 "unix://$socket"
+          WRAPPER
+          chmod 0700 "$delegated_wrapper"
+          command -v setpriv >/dev/null
 
           mapfile -t runtime_ids < <(python3 - <<'PY'
           import hashlib
@@ -259,6 +305,7 @@ jobs:
             sudo systemctl reset-failed "$service_unit" 2>/dev/null || true
             service_pid=""
             service_unit=""
+            unset P12_TOOLBOX_CGROUP_PARENT || true
             rm -f "$socket"
             test ! -e "$socket"
           }
@@ -275,18 +322,14 @@ jobs:
               --collect \
               --unit="${service_unit%.service}" \
               --property=Type=simple \
-              --property="User=$(id -un)" \
-              --property="Group=$(id -gn)" \
               --property=Delegate=yes \
               --property=CPUAccounting=yes \
               --property=MemoryAccounting=yes \
               --property=TasksAccounting=yes \
               --property=KillMode=mixed \
-              --property="Environment=XDG_RUNTIME_DIR=$runtime_root" \
-              --property="Environment=HOME=$HOME" \
               --property="StandardOutput=append:$RUNNER_TEMP/p12-podman-service.log" \
               --property="StandardError=append:$RUNNER_TEMP/p12-podman-service.log" \
-              /usr/bin/podman --cgroup-manager=cgroupfs system service --time=0 "unix://$socket"
+              "$delegated_wrapper" "$runtime_root" "$socket" "$(id -un)" "$(id -gn)" "$(id -u)" "$(id -g)" "$HOME"
             deadline=$((SECONDS + 60))
             while [ "$SECONDS" -lt "$deadline" ]; do
               if ! sudo systemctl is-active --quiet "$service_unit"; then
@@ -296,39 +339,23 @@ jobs:
               service_pid="$(sudo systemctl show --property=MainPID --value "$service_unit")"
               control_group="$(sudo systemctl show --property=ControlGroup --value "$service_unit")"
               case "$control_group" in
-                /system.slice/${service_unit}) ;;
+                /system.slice/"${service_unit}") ;;
                 *) echo "P12 rootless category=cgroup_path"; return 1 ;;
               esac
-              service_cgroup="/sys/fs/cgroup${control_group}"
-              controllers="$service_cgroup/cgroup.controllers"
-              subtree_control="$service_cgroup/cgroup.subtree_control"
-              if [ ! -r "$controllers" ] || [ ! -r "$subtree_control" ]; then
-                echo "P12 rootless category=cgroup_inventory"
-                return 1
+              containers_cgroup="/sys/fs/cgroup${control_group}/containers"
+              containers_subtree="$containers_cgroup/cgroup.subtree_control"
+              if [ ! -r "$containers_subtree" ]; then
+                sleep 0.25
+                continue
               fi
-              available_controllers="$(cat "$controllers")"
-              for controller in cpu memory pids; do
-                if ! grep -qw "$controller" <<<"$available_controllers"; then
-                  echo "P12 rootless category=cgroup_${controller}"
-                  return 1
-                fi
-              done
-              delegated_now="$(cat "$subtree_control")"
-              for controller in cpu memory pids; do
-                if ! grep -qw "$controller" <<<"$delegated_now"; then
-                  if ! printf '+%s\n' "$controller" | sudo tee "$subtree_control" >/dev/null; then
-                    echo "P12 rootless category=cgroup_delegation"
-                    return 1
-                  fi
-                fi
-              done
-              delegated_now="$(cat "$subtree_control")"
+              delegated_now="$(cat "$containers_subtree")"
               for controller in cpu memory pids; do
                 if ! grep -qw "$controller" <<<"$delegated_now"; then
                   echo "P12 rootless category=cgroup_${controller}"
                   return 1
                 fi
               done
+              export P12_TOOLBOX_CGROUP_PARENT="$control_group/containers"
               if [ -S "$socket" ] && podman --url "unix://$socket" info >/dev/null 2>&1; then
                 if [ "$service_pid" -le 1 ]; then
                   echo "P12 rootless category=service_identity"
@@ -362,7 +389,7 @@ jobs:
             original_status=$?
             trap - EXIT
             set +e
-            rm -f "$RUNNER_TEMP/p12-podman-images.txt"
+            rm -f "$RUNNER_TEMP/p12-podman-images.txt" "$delegated_wrapper"
             resource_cleanup_failed=0
             stop_failed=0
             restore_failed=0

@@ -83,7 +83,7 @@ func TestProjectBrowserHarnessRealPlaywrightE2E(t *testing.T) {
 		t.Fatalf("rootless environment validation failed: %v", err)
 	}
 	diagnosticRunner := &browserHarnessE2EDiagnosticRunner{}
-	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, Runner: diagnosticRunner})
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, Runner: diagnosticRunner, cgroupParent: os.Getenv("P12_TOOLBOX_CGROUP_PARENT")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ print(json.dumps({'cookie_persisted':True,'resumed':True}),flush=True)
 	if err != nil || reused {
 		t.Fatalf("first=%+v reused=%v err=%v", first, reused, err)
 	}
-	reopened, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint})
+	reopened, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, cgroupParent: os.Getenv("P12_TOOLBOX_CGROUP_PARENT")})
 	if err != nil {
 		t.Fatal(err)
 	}

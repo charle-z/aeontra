@@ -64,3 +64,28 @@ func TestRemoteOpenCodeE2EEmitsSafeStageMarkers(t *testing.T) {
 		last = index
 	}
 }
+
+func TestAccumulateDirectoryBytesIgnoresOnlyVanishedDescendants(t *testing.T) {
+	root := "/evidence"
+	var total int64
+	for _, suffix := range []string{"browser.db-wal", "browser.db-shm"} {
+		vanished := &os.PathError{Op: "lstat", Path: root + "/project-browser/" + suffix, Err: os.ErrNotExist}
+		if err := stableDirectoryWalkError(root, vanished.Path, vanished); err != nil {
+			t.Fatalf("vanished %s should be ignored by shared walker policy: %v", suffix, err)
+		}
+		if err := accumulateDirectoryBytes(root, vanished.Path, nil, vanished, &total); err != nil {
+			t.Fatalf("vanished %s should be ignored by byte inventory: %v", suffix, err)
+		}
+	}
+	if total != 0 {
+		t.Fatalf("vanished sidecar changed total: %d", total)
+	}
+	missingRoot := &os.PathError{Op: "lstat", Path: root, Err: os.ErrNotExist}
+	if err := accumulateDirectoryBytes(root, root, nil, missingRoot, &total); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing root error=%v", err)
+	}
+	permission := &os.PathError{Op: "lstat", Path: root + "/blocked", Err: os.ErrPermission}
+	if err := accumulateDirectoryBytes(root, permission.Path, nil, permission, &total); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("permission error=%v", err)
+	}
+}

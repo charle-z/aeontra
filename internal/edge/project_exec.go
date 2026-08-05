@@ -141,7 +141,9 @@ func projectExecReservedEnvironmentKey(key string) bool {
 	upper := strings.ToUpper(key)
 	switch upper {
 	case "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR",
-		"DOCKER_HOST", "CONTAINER_HOST", "DOCKER_CONFIG":
+		"DOCKER_HOST", "CONTAINER_HOST", "DOCKER_CONFIG",
+		"CONTAINERS_HELPER_BINARY_DIR", "CONTAINERS_CONF", "CONTAINERS_CONF_OVERRIDE", "CONTAINERS_CONF_MODULES",
+		"CONTAINERS_STORAGE_CONF":
 		return true
 	}
 	if strings.HasPrefix(upper, "XDG_") || strings.HasPrefix(upper, "MCP_DEVBOX_") {

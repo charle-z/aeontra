@@ -137,3 +137,24 @@ func TestRunDirectWorkcellCommandRejectsEscapingCWD(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+func TestRunDirectWorkcellCommandRejectsContainerHelperAuthorityEnvironment(t *testing.T) {
+	workspacePath := filepath.Join(t.TempDir(), "project")
+	if err := os.Mkdir(workspacePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace := Workspace{ID: "ws_0123456789abcdef0123456789abcdef", Path: workspacePath, Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	for _, key := range []string{"CONTAINERS_HELPER_BINARY_DIR", "CONTAINERS_CONF", "CONTAINERS_CONF_OVERRIDE", "CONTAINERS_CONF_MODULES", "CONTAINERS_STORAGE_CONF"} {
+		runner := &fakeDirectWorkcellRunner{}
+		_, err := RunDirectWorkcellCommand(context.Background(), DirectWorkcellCommandRequest{
+			OperationID: "eo_0123456789abcdef0123456789abcdef", Workspace: workspace,
+			Argv: []string{"true"}, Environment: map[string]string{key: "/workspace/untrusted"}, TimeoutSeconds: 10,
+		}, runner)
+		if !errors.Is(err, ErrDirectWorkcellContract) {
+			t.Fatalf("reserved environment %s err=%v", key, err)
+		}
+		if len(runner.spec.Args) != 0 {
+			t.Fatalf("reserved environment %s reached runner: %v", key, runner.spec.Args)
+		}
+	}
+}

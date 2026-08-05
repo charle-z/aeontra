@@ -578,10 +578,10 @@ func forbiddenEdgeSQLiteTables(t *testing.T, root string) []string {
 	forbidden := map[string]struct{}{"model_turns": {}, "turn_bodies": {}, "model_runtimes": {}}
 	found := make(map[string]struct{})
 	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+		if err := stableDirectoryWalkError(root, path, err); err != nil {
 			return err
 		}
-		if !info.Mode().IsRegular() || filepath.Ext(info.Name()) != ".db" {
+		if info == nil || !info.Mode().IsRegular() || filepath.Ext(info.Name()) != ".db" {
 			return nil
 		}
 		db, err := sql.Open("sqlite", path)
@@ -775,10 +775,10 @@ func namedFileExists(t *testing.T, root, name string) bool {
 	t.Helper()
 	found := false
 	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+		if err := stableDirectoryWalkError(root, path, err); err != nil {
 			return err
 		}
-		if info.Mode().IsRegular() && info.Name() == name {
+		if info != nil && info.Mode().IsRegular() && info.Name() == name {
 			found = true
 		}
 		return nil
@@ -863,18 +863,32 @@ func requiredAbsoluteDirectory(t *testing.T, env string) string {
 func directoryBytes(t *testing.T, root string) int64 {
 	t.Helper()
 	var total int64
-	if err := filepath.Walk(root, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.Mode().IsRegular() {
-			total += info.Size()
-		}
-		return nil
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		return accumulateDirectoryBytes(root, path, info, err, &total)
 	}); err != nil {
 		t.Fatal(err)
 	}
 	return total
+}
+
+func accumulateDirectoryBytes(root, path string, info os.FileInfo, err error, total *int64) error {
+	if err := stableDirectoryWalkError(root, path, err); err != nil {
+		return err
+	}
+	if info != nil && info.Mode().IsRegular() {
+		*total += info.Size()
+	}
+	return nil
+}
+
+func stableDirectoryWalkError(root, path string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if path != root && errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 var _ io.Writer = remoteCountingWriter{}
