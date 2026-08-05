@@ -56,7 +56,7 @@ func browserHarnessE2ERootlessEnvironment(endpoint *RootlessContainerEndpoint, t
 		return nil, ErrProjectToolboxUnsafeState
 	}
 	content, err := os.ReadFile(path)
-	if err != nil || string(content) != "[engine]\ncgroup_manager=\"cgroupfs\"\n[network]\nnetwork_backend=\"cni\"\n" {
+	if err != nil || string(content) != "[engine]\ncgroup_manager=\"cgroupfs\"\n[network]\nnetwork_backend=\"cni\"\ndefault_rootless_network_cmd=\"slirp4netns\"\n" {
 		return nil, ErrProjectToolboxUnsafeState
 	}
 	return append(environment, "CONTAINERS_CONF="+path), nil
@@ -64,7 +64,7 @@ func browserHarnessE2ERootlessEnvironment(endpoint *RootlessContainerEndpoint, t
 
 func TestBrowserHarnessE2ERootlessEnvironmentAcceptsOnlyManagedCgroupfsCNIConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "containers.conf")
-	if err := os.WriteFile(path, []byte("[engine]\ncgroup_manager=\"cgroupfs\"\n[network]\nnetwork_backend=\"cni\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("[engine]\ncgroup_manager=\"cgroupfs\"\n[network]\nnetwork_backend=\"cni\"\ndefault_rootless_network_cmd=\"slirp4netns\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("P12_ROOTLESS_CLIENT_CONTAINERS_CONF", path)
@@ -161,7 +161,8 @@ func TestProjectBrowserHarnessRealPlaywrightE2E(t *testing.T) {
 			t.Fatalf("copy Chromium: %v %s", copyErr, output)
 		}
 		browserExecutable = "/workspace/browser-runtime/" + filepath.Base(hostChromium)
-		installBrowser = "/var/lib/mcp-devbox/browser-python/bin/playwright install-deps chromium"
+		installBrowser = "/var/lib/mcp-devbox/browser-python/bin/playwright install-deps chromium\n" +
+			"PLAYWRIGHT_BROWSERS_PATH=/var/lib/mcp-devbox/browser-browsers /var/lib/mcp-devbox/browser-python/bin/playwright install ffmpeg"
 	}
 	installScript := browserHarnessE2EInstallScript(installBrowser)
 	install := []string{"/bin/sh", "-lc", installScript}

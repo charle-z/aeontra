@@ -37,7 +37,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`delegated_wrapper="$RUNNER_TEMP/p12-podman-delegated-wrapper.sh"`,
 		`printf '%s\n' "$$" >"$daemon/cgroup.procs"`,
 		`client_containers_conf="$RUNNER_TEMP/p12-rootless-client-containers.conf"`,
-		`printf '%s\n' '[engine]' 'cgroup_manager="cgroupfs"' '[network]' 'network_backend="cni"' >"$client_containers_conf"`,
+		`printf '%s\n' '[engine]' 'cgroup_manager="cgroupfs"' '[network]' 'network_backend="cni"' 'default_rootless_network_cmd="slirp4netns"' >"$client_containers_conf"`,
 		`containernetworking-plugins`,
 		`export P12_ROOTLESS_CLIENT_CONTAINERS_CONF="$client_containers_conf"`,
 		`rm -f "$RUNNER_TEMP/p12-podman-images.txt" "$delegated_wrapper" "$client_containers_conf"`,

@@ -261,7 +261,7 @@ jobs:
           declare -a rootful_paths=()
           declare -a rootful_modes=()
 
-          printf '%s\n' '[engine]' 'cgroup_manager="cgroupfs"' '[network]' 'network_backend="cni"' >"$client_containers_conf"
+          printf '%s\n' '[engine]' 'cgroup_manager="cgroupfs"' '[network]' 'network_backend="cni"' 'default_rootless_network_cmd="slirp4netns"' >"$client_containers_conf"
           chmod 0600 "$client_containers_conf"
           export P12_ROOTLESS_CLIENT_CONTAINERS_CONF="$client_containers_conf"
 
