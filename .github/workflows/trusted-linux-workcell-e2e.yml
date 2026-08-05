@@ -498,6 +498,11 @@ jobs:
                   client.close()
           PY
 
+          if ! podman system reset --force >/dev/null; then
+            echo "P12 rootless category=storage_reset"
+            exit 1
+          fi
+
           start_service
 
           MCP_DEVBOX_BROWSER_HARNESS_E2E=1 "$RUNNER_TEMP/p12-bin/trusted-linux-workcell.test" \
