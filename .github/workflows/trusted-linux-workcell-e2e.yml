@@ -325,7 +325,7 @@ jobs:
             rm -f "$socket"
             export XDG_RUNTIME_DIR="$runtime_root"
             mkdir -p "$runtime_root/podman"
-            podman system migrate
+            CONTAINERS_CONF="$client_containers_conf" podman system migrate
             service_generation=$((service_generation + 1))
             service_unit="${service_unit_base}-${service_generation}.service"
             sudo systemd-run \

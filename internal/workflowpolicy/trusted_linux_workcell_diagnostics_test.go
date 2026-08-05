@@ -45,6 +45,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`"$HOME" "$client_containers_conf"`,
 		`info --format '{{.Host.CgroupManager}}'`,
 		`P12 rootless category=cgroup_manager`,
+		`CONTAINERS_CONF="$client_containers_conf" podman system migrate`,
 		`printf '+%s\n' "$controller" >"$root/cgroup.subtree_control"`,
 		`printf '+%s\n' "$controller" >"$containers/cgroup.subtree_control"`,
 		`chown "$run_uid:$run_gid" "$containers"`,
@@ -90,6 +91,10 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 			t.Errorf("rootless diagnostic workflow missing %q", required)
 		}
 	}
+	if strings.Count(text, "podman system migrate") != 1 {
+		t.Error("rootless workflow must perform exactly one configured Podman migration")
+	}
+
 	stageImage := strings.Index(text, "Stage PostgreSQL fixture image")
 	disableRootful := strings.Index(text, "sudo chmod 000")
 	startRootless := strings.Index(text, "start_service\n")
