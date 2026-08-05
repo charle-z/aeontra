@@ -144,8 +144,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bubblewrap build-essential catatonit fuse-overlayfs libseccomp-dev pkg-config \
-            podman python3-venv slirp4netns uidmap
+            bubblewrap build-essential catatonit containernetworking-plugins fuse-overlayfs \
+            libseccomp-dev pkg-config podman python3-venv slirp4netns uidmap
           test -x /usr/bin/podman
           catatonit_path="$(command -v catatonit)"
           test -f "$catatonit_path"
@@ -261,7 +261,7 @@ jobs:
           declare -a rootful_paths=()
           declare -a rootful_modes=()
 
-          printf '%s\n' '[engine]' 'cgroup_manager="cgroupfs"' >"$client_containers_conf"
+          printf '%s\n' '[engine]' 'cgroup_manager="cgroupfs"' '[network]' 'network_backend="cni"' >"$client_containers_conf"
           chmod 0600 "$client_containers_conf"
           export P12_ROOTLESS_CLIENT_CONTAINERS_CONF="$client_containers_conf"
 

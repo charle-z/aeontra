@@ -56,15 +56,15 @@ func browserHarnessE2ERootlessEnvironment(endpoint *RootlessContainerEndpoint, t
 		return nil, ErrProjectToolboxUnsafeState
 	}
 	content, err := os.ReadFile(path)
-	if err != nil || string(content) != "[engine]\ncgroup_manager=\"cgroupfs\"\n" {
+	if err != nil || string(content) != "[engine]\ncgroup_manager=\"cgroupfs\"\n[network]\nnetwork_backend=\"cni\"\n" {
 		return nil, ErrProjectToolboxUnsafeState
 	}
 	return append(environment, "CONTAINERS_CONF="+path), nil
 }
 
-func TestBrowserHarnessE2ERootlessEnvironmentAcceptsOnlyManagedCgroupfsConfig(t *testing.T) {
+func TestBrowserHarnessE2ERootlessEnvironmentAcceptsOnlyManagedCgroupfsCNIConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "containers.conf")
-	if err := os.WriteFile(path, []byte("[engine]\ncgroup_manager=\"cgroupfs\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("[engine]\ncgroup_manager=\"cgroupfs\"\n[network]\nnetwork_backend=\"cni\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("P12_ROOTLESS_CLIENT_CONTAINERS_CONF", path)
