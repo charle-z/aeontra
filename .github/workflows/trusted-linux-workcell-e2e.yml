@@ -15,14 +15,22 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  P12_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   trusted-host:
     name: Trusted host and HTB fixture
     runs-on: ubuntu-22.04
     timeout-minutes: 35
     steps:
-      - name: Checkout
+      - name: Checkout exact source head
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$P12_SOURCE_SHA"
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -106,7 +114,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: p12-trusted-host-e2e-${{ github.sha }}
+          name: p12-trusted-host-e2e-${{ env.P12_SOURCE_SHA }}
           path: |
             artifacts/p12-trusted-linux-workcell-host-report.json
             artifacts/p12-trusted-linux-workcell-htb-fixture-report.json
@@ -118,8 +126,13 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 55
     steps:
-      - name: Checkout
+      - name: Checkout exact source head
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$P12_SOURCE_SHA"
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -144,7 +157,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            podman uidmap slirp4netns fuse-overlayfs python3-venv
+            bubblewrap podman uidmap slirp4netns fuse-overlayfs python3-venv
           podman --version
           command -v setsid
 
@@ -165,6 +178,84 @@ jobs:
           chromium_bin="$(pnpm --dir web/console exec node -e 'console.log(require("@playwright/test").chromium.executablePath())')"
           test -x "$chromium_bin"
           echo "P12_CHROMIUM_BIN=$chromium_bin" >> "$GITHUB_ENV"
+
+      - name: Classify hosted-runner browser harness acceptance
+        run: |
+          set -Eeuo pipefail
+          classification="$RUNNER_TEMP/browser-harness-acceptance.tsv"
+          temporary="${classification}.tmp"
+          source_sha="$P12_SOURCE_SHA"
+          tree="$(git rev-parse "${source_sha}^{tree}")"
+          test "$(git rev-parse HEAD)" = "$source_sha"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$tree"
+
+          control_group="$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)"
+          case "$control_group" in
+            /system.slice/*) ;;
+            *)
+              echo "unexpected hosted-runner cgroup: $control_group" >&2
+              exit 1
+              ;;
+          esac
+          cgroup_root="/sys/fs/cgroup${control_group}"
+          test -d "$cgroup_root"
+          test -r "$cgroup_root/cgroup.procs"
+          if [ "$(stat -c '%u:%g' "$cgroup_root")" != "0:0" ]; then
+            echo "hosted-runner cgroup is no longer root-owned" >&2
+            exit 1
+          fi
+          if [ -w "$cgroup_root/cgroup.procs" ]; then
+            echo "hosted-runner cgroup.procs unexpectedly became writable" >&2
+            exit 1
+          fi
+
+          accepted_runtime_commit='c27053c56b6214e52862ead675b874670f322295'
+          reason='GitHub-hosted Ubuntu 22.04 runs the job in a root-owned /system.slice cgroup whose cgroup.procs is not writable by the job user'
+          printf 'schema_version\tcommit\ttree\tstatus\taccepted_runtime_commit\treason\n1\t%s\t%s\tnot-reproducible\t%s\t%s\n' \
+            "$source_sha" "$tree" "$accepted_runtime_commit" "$reason" >"$temporary"
+          mv -Tf "$temporary" "$classification"
+          printf '::warning title=Host-specific browser harness acceptance moved to Edge::%s. Owner-controlled runtime acceptance is required on parrot-trusted-linux before publication.\n' "$reason"
+
+      - name: Require explicit browser harness acceptance boundary
+        run: |
+          python3 - "$RUNNER_TEMP/browser-harness-acceptance.tsv" "$P12_SOURCE_SHA" "$(git rev-parse "${P12_SOURCE_SHA}^{tree}")" <<'PY'
+          import csv
+          import sys
+
+          path, commit, tree = sys.argv[1:]
+          with open(path, encoding="utf-8", newline="") as source:
+              rows = list(csv.DictReader(source, delimiter="\t"))
+          assert rows == [{
+              "schema_version": "1",
+              "commit": commit,
+              "tree": tree,
+              "status": "not-reproducible",
+              "accepted_runtime_commit": "c27053c56b6214e52862ead675b874670f322295",
+              "reason": "GitHub-hosted Ubuntu 22.04 runs the job in a root-owned /system.slice cgroup whose cgroup.procs is not writable by the job user",
+          }]
+          PY
+
+      - name: Verify managed browser with production Chromium path
+        run: |
+          set -Eeuo pipefail
+          chromium_dir="$(dirname "$P12_CHROMIUM_BIN")"
+          chromium_name="$(basename "$P12_CHROMIUM_BIN")"
+          sudo install -d -m 0755 /usr/lib/chromium
+          sudo cp -a "$chromium_dir"/. /usr/lib/chromium/
+          sudo ln -sfn "$chromium_name" /usr/lib/chromium/chromium
+          test -x /usr/lib/chromium/chromium
+          go test -c -o "$RUNNER_TEMP/p12-browser.test" ./internal/edgeclient
+          MCP_DEVBOX_BROWSER_E2E=1 "$RUNNER_TEMP/p12-browser.test" \
+            -test.run='^TestProjectBrowser(Runner|Manager)AgainstRealChromium$' -test.count=1 -test.v
+
+      - name: Upload browser harness acceptance boundary
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-harness-acceptance-${{ env.P12_SOURCE_SHA }}
+          path: ${{ runner.temp }}/browser-harness-acceptance.tsv
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Build tagged P12 E2E and redactor binaries
         run: |
@@ -521,7 +612,7 @@ jobs:
         if: ${{ failure() && hashFiles('artifacts/p12-rootless-test.log') != '' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: p12-rootless-failure-${{ github.sha }}-${{ github.run_attempt }}
+          name: p12-rootless-failure-${{ env.P12_SOURCE_SHA }}-${{ github.run_attempt }}
           path: artifacts/p12-rootless-test.log
           if-no-files-found: error
           retention-days: 14
@@ -578,7 +669,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: p12-rootless-runtime-e2e-${{ github.sha }}
+          name: p12-rootless-runtime-e2e-${{ env.P12_SOURCE_SHA }}
           path: |
             artifacts/p12-trusted-linux-workcell-rootless-cycle-1-report.json
             artifacts/p12-trusted-linux-workcell-rootless-cycle-2-report.json

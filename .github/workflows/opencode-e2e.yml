@@ -242,13 +242,25 @@ jobs:
 
       - name: Run combined OpenCode sandbox E2E
         run: |
+          run_combined_e2e() {
+            "$MCP_E2E_BIN" \
+              -test.run=TestRemoteOpenCodeDistributedRelay \
+              -test.count=1 -test.v 2>&1 \
+              | "$REDACTOR_BIN" \
+              | tee artifacts/opencode-combined-sandbox-redacted.log
+            return "${PIPESTATUS[0]}"
+          }
+
           set +e
-          "$MCP_E2E_BIN" \
-            -test.run=TestRemoteOpenCodeDistributedRelay \
-            -test.count=1 -test.v 2>&1 \
-            | "$REDACTOR_BIN" \
-            | tee artifacts/opencode-combined-sandbox-redacted.log
-          status=${PIPESTATUS[0]}
+          run_combined_e2e
+          status=$?
+          if [ "$status" -ne 0 ] \
+            && grep -Fxq 'E2E category=not_found' artifacts/opencode-combined-sandbox-redacted.log; then
+            echo 'E2E bounded retry=not_found'
+            rm -f artifacts/opencode-combined-sandbox-report.json
+            run_combined_e2e
+            status=$?
+          fi
           set -e
           exit "$status"
 

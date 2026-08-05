@@ -59,6 +59,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = doctorCommand(args[1:], stdout, stderr)
 	case "project-process-worker":
 		err = projectProcessWorkerCommand(args[1:], stderr)
+	case "browser-launcher":
+		err = projectBrowserLauncherCommand(args[1:], stderr)
 	case "help", "--help", "-h":
 		usage(stdout)
 		return 0
@@ -72,6 +74,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func projectBrowserLauncherCommand(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("browser-launcher", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	profile := fs.String("profile", "", "private browser profile")
+	if err := fs.Parse(args); err != nil || *profile == "" || fs.NArg() == 0 {
+		return errors.New("project browser launcher arguments are invalid")
+	}
+	return edgeclient.RunProjectBrowserLauncher(*profile, fs.Args())
 }
 
 func projectProcessWorkerCommand(args []string, stderr io.Writer) error {

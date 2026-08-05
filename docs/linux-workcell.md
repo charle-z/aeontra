@@ -534,3 +534,33 @@ Revoca primero desde producción con mcp-devbox edge revoke --state-root /state 
 ### 16. Desinstalación
 
 Revoca antes de borrar identidad. Deshabilita y detén el servicio, elimina su unidad, los binarios instalados, provider, OpenCode y el state root local. Los repositorios y evidencias bajo /home/charles/workspaces y /home/charles/htb-machines se conservan hasta una revisión humana separada.
+
+
+## General browser harness in the workcell
+
+The browser harness runs inside the ordinary authorized development toolbox; it does not
+introduce a separate owner mode. Arbitrary automation code sees `/workspace`, the
+persistent toolbox rootfs and the same general network available to other trusted
+workcell commands. Projects install Playwright, Puppeteer, Selenium, WebDriver, browsers,
+drivers and supporting libraries through the existing toolbox installation surface.
+
+The workcell boundary remains unchanged. Windows mounts and the general host home are not
+added. Rootful Docker sockets and Edge-private identity/state remain excluded. The
+validated user-owned rootless engine endpoint already assigned to the toolbox remains
+available under its fixed private mount and retains the broad owner-user authority
+documented elsewhere; the harness does not add another socket or host control channel.
+
+Project services started inside the toolbox share its localhost, so browser scripts can
+test a local web server directly. Browser code may also reach normal HTTP/HTTPS Internet
+and private development endpoints. MCP Devbox does not add browser-specific domain,
+JavaScript, upload, download, action or engine restrictions.
+
+Each run receives managed directories below ignored `.mcp-devbox/browser-harness/` for
+artifacts, downloads and named persistent profiles. This allows cookies/authentication,
+screenshots, PDFs, traces, videos, HARs and arbitrary test output to survive Edge
+reconnects while remaining local. Public results contain only opaque lifecycle,
+redacted/bounded logs and relative artifact metadata/chunks.
+
+The optional convenience Chromium wrapper still launches its fixed process in a narrower
+filesystem namespace, but it uses the general workcell HTTP/HTTPS network and permits
+managed downloads. It is an ergonomic shortcut, not the only browser automation path.

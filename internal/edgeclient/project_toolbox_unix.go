@@ -39,23 +39,27 @@ const (
 )
 
 var (
-	projectToolboxIDPattern          = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
-	projectToolboxImageIDPattern     = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
-	projectToolboxEnvKeyPattern      = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
-	projectToolboxServiceIDPattern   = regexp.MustCompile(`^ts_[a-f0-9]{32}$`)
-	projectToolboxServiceNamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
-	ErrProjectToolboxNotFound        = errors.New("project toolbox not found")
-	ErrProjectToolboxNotOwned        = errors.New("project toolbox is not owned")
-	ErrProjectToolboxUnsafeState     = errors.New("project toolbox state is unsafe")
-	ErrProjectToolboxUnavailable     = errors.New("project toolbox rootless engine is unavailable")
+	projectToolboxIDPattern           = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
+	projectToolboxImageIDPattern      = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	projectToolboxEnvKeyPattern       = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
+	projectToolboxServiceIDPattern    = regexp.MustCompile(`^ts_[a-f0-9]{32}$`)
+	projectToolboxServiceNamePattern  = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	projectToolboxCgroupParentPattern = regexp.MustCompile(`^/system\.slice/p12-rootless-podman-[0-9]+-[0-9]+-[0-9]+\.service/containers$`)
+	ErrProjectToolboxNotFound         = errors.New("project toolbox not found")
+	ErrProjectToolboxNotOwned         = errors.New("project toolbox is not owned")
+	ErrProjectToolboxUnsafeState      = errors.New("project toolbox state is unsafe")
+	ErrProjectToolboxUnavailable      = errors.New("project toolbox rootless engine is unavailable")
 )
 
 type ProjectToolboxManagerConfig struct {
 	StateRoot    string
 	Endpoint     *RootlessContainerEndpoint
 	Runner       ContainerCommandRunner
+	environment  rootlessContainerEnvironmentBuilder
+	cgroupParent string
 	NewID        func() (string, error)
 	NewServiceID func() (string, error)
+	NewHarnessID func() (string, error)
 	Now          func() time.Time
 }
 
@@ -63,8 +67,11 @@ type ProjectToolboxManager struct {
 	stateRoot    string
 	endpoint     *RootlessContainerEndpoint
 	runner       ContainerCommandRunner
+	environment  rootlessContainerEnvironmentBuilder
+	cgroupParent string
 	newID        func() (string, error)
 	newServiceID func() (string, error)
+	newHarnessID func() (string, error)
 	now          func() time.Time
 	mu           sync.Mutex
 }
@@ -146,6 +153,7 @@ type projectToolboxRecord struct {
 	CreatedAt, UpdatedAt                              time.Time
 	CPUMillis, MemoryMiB, ProcessLimit                int
 	Services                                          []projectToolboxServiceRecord `json:"services,omitempty"`
+	BrowserHarnessRuns                                []projectBrowserHarnessRecord `json:"browser_harness_runs,omitempty"`
 }
 
 type projectToolboxServiceRecord struct {
@@ -177,6 +185,17 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 	if runner == nil {
 		runner = execContainerCommandRunner{}
 	}
+	environment := config.environment
+	if environment == nil {
+		environment = rootlessContainerClientEnvironment
+	}
+	cgroupParent := path.Clean(strings.TrimSpace(config.cgroupParent))
+	if cgroupParent == "." {
+		cgroupParent = ""
+	}
+	if cgroupParent != "" && !projectToolboxCgroupParentPattern.MatchString(cgroupParent) {
+		return nil, ErrProjectToolboxUnsafeState
+	}
 	newID := config.NewID
 	if newID == nil {
 		newID = newProjectToolboxID
@@ -185,11 +204,15 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 	if newServiceID == nil {
 		newServiceID = newProjectToolboxServiceID
 	}
+	newHarnessID := config.NewHarnessID
+	if newHarnessID == nil {
+		newHarnessID = newProjectBrowserHarnessID
+	}
 	now := config.Now
 	if now == nil {
 		now = time.Now
 	}
-	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, newID: newID, newServiceID: newServiceID, now: now}, nil
+	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, environment: environment, cgroupParent: cgroupParent, newID: newID, newServiceID: newServiceID, newHarnessID: newHarnessID, now: now}, nil
 }
 
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
@@ -230,13 +253,18 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	if err != nil || normalizeErr != nil {
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
 	}
-	createOutput, err := manager.run(ctx, "create", "--name", containerName, "--label", projectToolboxLabelKey+"="+toolboxID,
-		"--cpus", fmt.Sprintf("%.3f", float64(request.CPUMillis)/1000), "--memory", fmt.Sprintf("%dm", request.MemoryMiB), "--pids-limit", fmt.Sprintf("%d", request.ProcessLimit),
+	createArgs := []string{"create", "--name", containerName, "--label", projectToolboxLabelKey + "=" + toolboxID,
+		"--cpus", fmt.Sprintf("%.3f", float64(request.CPUMillis)/1000), "--memory", fmt.Sprintf("%dm", request.MemoryMiB), "--pids-limit", fmt.Sprintf("%d", request.ProcessLimit)}
+	if manager.cgroupParent != "" {
+		createArgs = append(createArgs, "--cgroup-parent", manager.cgroupParent)
+	}
+	createArgs = append(createArgs,
 		"--volume", manager.endpoint.SocketPath+":"+projectToolboxContainerSocket+":rw",
 		"--env", "DOCKER_HOST=unix://"+projectToolboxContainerSocket, "--env", "CONTAINER_HOST=unix://"+projectToolboxContainerSocket,
 		"--env", "MCP_DEVBOX_CONTAINER_ENGINE="+manager.endpoint.Engine, "--env", "MCP_DEVBOX_CONTAINER_LABEL=mcp.devbox.toolbox.parent="+toolboxID,
 		"--env", "COMPOSE_PROJECT_NAME="+projectToolboxComposeProject(toolboxID),
 		"--volume", request.Workspace.Path+":/workspace:rw", "--workdir", "/workspace", imageID, "sleep", "infinity")
+	createOutput, err := manager.run(ctx, createArgs...)
 	containerID := strings.TrimSpace(string(createOutput))
 	if err != nil || !containerResourceIDPattern.MatchString(containerID) {
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
@@ -709,7 +737,11 @@ func (manager *ProjectToolboxManager) storage(ctx context.Context, containerName
 
 func (manager *ProjectToolboxManager) run(ctx context.Context, args ...string) ([]byte, error) {
 	prefixed := append(rootlessEnginePrefix(manager.endpoint), args...)
-	return manager.runner.Run(ctx, manager.endpoint.Executable, prefixed, rootlessContainerClientEnvironment(manager.endpoint, openCodeDefaultToolPath))
+	environment, err := manager.environment(manager.endpoint, openCodeDefaultToolPath)
+	if err != nil {
+		return nil, err
+	}
+	return manager.runner.Run(ctx, manager.endpoint.Executable, prefixed, environment)
 }
 
 func (manager *ProjectToolboxManager) recordPath(workspaceID string) string {
@@ -725,7 +757,7 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 	if errors.Is(err, os.ErrNotExist) {
 		return projectToolboxRecord{}, ErrProjectToolboxNotFound
 	}
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) || info.Size() < 2 || info.Size() > 16<<10 {
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) || info.Size() < 2 || info.Size() > 64<<10 {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	data, err := os.ReadFile(file)
@@ -736,7 +768,7 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 	if json.Unmarshal(data, &record) != nil || record.WorkspaceID != workspaceID || !projectToolboxIDPattern.MatchString(record.ToolboxID) || !projectToolboxImageIDPattern.MatchString(record.BaseImageID) || record.BaseImage != projectToolboxBaseImage || record.CreatedAt.IsZero() || record.UpdatedAt.IsZero() || !validProjectToolboxResourceLimits(record.CPUMillis, record.MemoryMiB, record.ProcessLimit) {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
-	if len(record.Services) > 64 {
+	if len(record.Services) > 64 || len(record.BrowserHarnessRuns) > 128 {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	seenIDs, seenNames := map[string]bool{}, map[string]bool{}
@@ -746,6 +778,9 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 			return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 		}
 		seenIDs[service.ServiceID], seenNames[service.Name] = true, true
+	}
+	if !validProjectBrowserHarnessRecords(record.BrowserHarnessRuns) {
+		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	return record, nil
 }
@@ -769,7 +804,7 @@ func normalizeProjectToolboxResourceLimits(cpuMillis, memoryMiB, processLimit in
 
 func (manager *ProjectToolboxManager) save(record projectToolboxRecord) error {
 	data, err := json.Marshal(record)
-	if err != nil || len(data) > 16<<10 {
+	if err != nil || len(data) > 64<<10 {
 		return ErrProjectToolboxUnsafeState
 	}
 	temporary, err := os.CreateTemp(manager.stateRoot, ".toolbox-*.tmp")
@@ -839,7 +874,9 @@ func projectToolboxReservedEnvironmentKey(key string) bool {
 	upper := strings.ToUpper(key)
 	switch upper {
 	case "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR",
-		"DOCKER_HOST", "CONTAINER_HOST", "DOCKER_CONFIG":
+		"DOCKER_HOST", "CONTAINER_HOST", "DOCKER_CONFIG",
+		"CONTAINERS_HELPER_BINARY_DIR", "CONTAINERS_CONF", "CONTAINERS_CONF_OVERRIDE", "CONTAINERS_CONF_MODULES",
+		"CONTAINERS_STORAGE_CONF":
 		return true
 	}
 	if strings.HasPrefix(upper, "XDG_") || strings.HasPrefix(upper, "MCP_DEVBOX_") {

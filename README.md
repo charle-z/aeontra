@@ -125,6 +125,7 @@ fail if the relevant repository, branch, application, target, or configuration c
   local Git history, and a disposable search index.
 - **Control plane and Edge:** durable opaque coordination with signed releases and local
   private workspace contracts on Linux/Parrot/WSL.
+- **Browser harness:** arbitrary Playwright, Puppeteer, Selenium, WebDriver or custom automation in any authorized persistent development toolbox, with installable browser engines, general HTTP/HTTPS and localhost access, durable profiles, managed downloads/artifacts, cancellation and resource limits.
 - **Large results:** bounded redacted output can be persisted and continued through an
   opaque `result_ref` instead of flooding one MCP response.
 
