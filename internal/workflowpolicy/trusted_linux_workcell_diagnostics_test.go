@@ -52,7 +52,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`go install "$package"`,
 		`h1:r1Rv6GiH0YCFS91B+f0DEgEZK8yfzzkjiECVLjLjcuQ=`,
 		`be85287fcf4590961614ee37be65eeb315e5d9ff`,
-		`GOFLAGS="-tags=seccomp,exclude_graphdriver_btrfs,exclude_graphdriver_devicemapper,containers_image_openpgp"`,
+		`GOFLAGS="-tags=cni,seccomp,exclude_graphdriver_btrfs,exclude_graphdriver_devicemapper,containers_image_openpgp"`,
 		`sudo install -o root -g root -m 0755 "$GOBIN/podman" /usr/bin/podman`,
 		`test "$(podman --version)" = "podman version 5.4.2"`,
 		`printf '+%s\n' "$controller" >"$root/cgroup.subtree_control"`,

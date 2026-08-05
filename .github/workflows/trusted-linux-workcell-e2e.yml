@@ -164,7 +164,7 @@ jobs:
           export GOBIN="$podman_root/bin"
           export GOPATH="$podman_root/gopath"
           export GOMODCACHE="$podman_root/mod"
-          export GOFLAGS="-tags=seccomp,exclude_graphdriver_btrfs,exclude_graphdriver_devicemapper,containers_image_openpgp"
+          export GOFLAGS="-tags=cni,seccomp,exclude_graphdriver_btrfs,exclude_graphdriver_devicemapper,containers_image_openpgp"
           go mod download -json "$module" >"$podman_root/module.json"
           python3 - "$podman_root/module.json" <<'PY'
           import json
