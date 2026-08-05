@@ -24,6 +24,7 @@ The system has several distinct authorities. They must not be collapsed into one
 | Development Edge Git broker | Owner-bound clone and planned publication for a registered `dev` workcell | Git transport runs outside the model namespace through a closed local broker | Only constructed owner-bound GitHub transport | Credential is stored in private `0600` Edge state, passed only to a fixed askpass child, and never enters workspace, argv, model schemas, or logs |
 | Direct Edge checkout sync | Registered project checkout and fixed `origin` only | Read status/fetch plus exact single-use fast-forward plans; dirty, detached, ahead, diverged, stale or replayed state fails closed | Existing owner-bound GitHub transport only | Reuses the private askpass authority; public results omit credential, URL, path, argv and PID |
 | Direct Edge GitHub broker | Repository already bound to a registered development project | Only server-constructed official `gh api` argv execute outside the workcell; no arbitrary endpoint, header, command or caller repository is accepted | GitHub API for the exact owner/repository only | `GH_TOKEN` exists only in the bounded child process environment under a private HOME; results are parsed, bounded and token-redacted before safe capability metadata leaves the Edge |
+| Managed browser harness | Any authorized `dev` workcell and its persistent rootless toolbox, project workspace, installed browser/tooling rootfs, managed run trees and named persistent profiles | Arbitrary caller argv runs inside the existing workcell/toolbox boundary; no new host terminal, Windows mount, host home, rootful socket or external Edge state is added. The validated user-owned rootless engine remains the workcell authority already documented for toolbox use | General workcell networking: ordinary HTTP/HTTPS Internet, private development endpoints and localhost services are available. MCP Devbox does not impose a browser-domain/action/JavaScript allowlist | Caller code, cookies, authentication stores, downloads and artifacts stay on the Edge. Public tools return only opaque lifecycle, bounded redacted logs, relative artifact metadata and exact bounded chunks; argv, environment, PID, container identity, profile content and host paths remain private |
 
 Additional boundaries:
 
@@ -219,6 +220,68 @@ The ordinary Edge `sandbox` profile runs OpenCode inside mandatory networkless
 Bubblewrap. Only the selected workspace and a private runtime area are writable. Edge
 identity, home, unrelated repositories, and private control sockets are excluded. There
 is no direct-execution fallback.
+
+### Managed browser harness
+
+The browser capability is a general programming harness for every authorized development
+workcell. It is not a remote-debugging endpoint and it is not limited to a fixed set of
+click/type/select operations. `project_browser_harness_start` accepts an arbitrary argv
+array in the persistent rootless toolbox, so a project may run Playwright, Puppeteer,
+Selenium, WebDriver, browser CLIs, test runners, or custom automation in any installed
+language. JavaScript and normal browser APIs are available through that project code.
+The seven `project_browser_*` tools remain only a convenience wrapper for common Chromium
+actions.
+
+The harness reuses the existing toolbox boundary. The workspace is mounted at
+`/workspace`; package managers may install browsers, drivers, libraries and utilities in
+the persistent toolbox rootfs. The caller receives standard environment variables for a
+run directory, arbitrary artifacts, downloads and a named persistent profile. Uploads
+come from normal workspace files. Chromium, Firefox, WebKit or another engine may be used
+when the installed framework supports it. MCP Devbox adds no domain allowlist, browser
+action allowlist, JavaScript ban, download ban, upload ban or fixed-browser requirement.
+
+The workcell remains the security boundary:
+
+- Windows mounts and the general host home are not added;
+- rootful Docker sockets and unrelated Edge state remain excluded;
+- the toolbox may retain its already validated user-owned rootless engine socket, whose
+  authority and limitations are the same as for all other toolbox workloads;
+- caller argv is passed positionally to a fixed internal supervisor rather than
+  interpolated into generated shell text;
+- each run is bound to one project, target, toolbox and opaque `bh_...` identity;
+- process status and stop revalidate Linux PID/start ticks before signaling;
+- managed directories reject traversal, symlinks, foreign ownership and root escape.
+
+The toolbox controls CPU, memory and process limits. Each harness run additionally has a
+caller-selected timeout and combined managed run/profile storage ceiling. The supervisor
+records bounded state and private logs, terminates the owned process tree on timeout or
+storage exhaustion, and never infers cleanup from a chat ending. Completed/terminal run
+metadata survives Edge restart; reopening the manager revalidates the live process in the
+unchanged toolbox. An unexpected loss of process identity becomes `indeterminate` rather
+than replaying uncertain browser effects.
+
+Profiles and browser authentication data live under the ignored `.mcp-devbox/` workspace
+state with owner-only parent directories. Public MCP output never returns cookie stores,
+local/session storage, full profile trees, argv, environment, browser debugging addresses,
+container names or host paths. Stdout/stderr are bounded and redacted. Screenshots, PDFs,
+traces, videos, HARs, downloads and other files are enumerated only from relative
+`artifacts/` and `downloads/` paths and read in exact bounded base64 chunks.
+
+Full harness acceptance is host-specific because rootless container creation depends on
+the target user's delegated systemd/cgroup-v2 subtree. GitHub Actions must not create a
+root-owned transient unit, chown cgroup control files or pin a replacement engine merely
+to imitate that authority. It records the exact hosted-runner limitation and fails on any
+unexpected posture instead. Runtime acceptance is anchored to the owner-approved Edge
+execution at `c27053c56b6214e52862ead675b874670f322295` and may be carried forward only
+when the candidate changes no Edge, server, toolbox or browser-harness runtime code and a
+fresh real-browser smoke still passes on `parrot-trusted-linux`. Any runtime change
+requires a new exact E2E. The tested code receives no Edge identity or control-plane
+credential.
+
+The convenience Chromium session uses the authorized workcell's general HTTP/HTTPS
+network and permits downloads to its managed profile. It retains a narrower filesystem
+namespace for that convenience process, but it is not the programming boundary and does
+not replace the arbitrary toolbox harness.
 
 ### Trusted Linux workcell
 

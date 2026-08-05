@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,35 @@ func (*fakeProjectToolboxManager) ServiceStop(context.Context, edgeclient.Projec
 	service.State = "stopped"
 	return service, nil
 }
+func (*fakeProjectToolboxManager) BrowserHarnessStart(context.Context, edgeclient.ProjectBrowserHarnessStartRequest) (edgeclient.ProjectBrowserHarnessSnapshot, bool, error) {
+	return browserHarnessFixtureSnapshot(), false, nil
+}
+func (*fakeProjectToolboxManager) BrowserHarnessStatus(context.Context, edgeclient.ProjectBrowserHarnessStatusRequest) (edgeclient.ProjectBrowserHarnessSnapshot, error) {
+	return browserHarnessFixtureSnapshot(), nil
+}
+func (*fakeProjectToolboxManager) BrowserHarnessList(context.Context, edgeclient.ProjectBrowserHarnessListRequest) ([]edgeclient.ProjectBrowserHarnessSummary, error) {
+	snapshot := browserHarnessFixtureSnapshot()
+	return []edgeclient.ProjectBrowserHarnessSummary{{RunID: snapshot.RunID, State: snapshot.State, Profile: snapshot.Profile, CreatedAt: snapshot.CreatedAt, UpdatedAt: snapshot.UpdatedAt, TimeoutSeconds: snapshot.TimeoutSeconds, StorageMiB: snapshot.StorageMiB}}, nil
+}
+func (*fakeProjectToolboxManager) BrowserHarnessStop(context.Context, edgeclient.ProjectBrowserHarnessStopRequest) (edgeclient.ProjectBrowserHarnessSnapshot, error) {
+	snapshot := browserHarnessFixtureSnapshot()
+	snapshot.State = "stopped"
+	return snapshot, nil
+}
+func (*fakeProjectToolboxManager) BrowserHarnessCleanup(edgeclient.ProjectBrowserHarnessCleanupRequest) (edgeclient.ProjectBrowserHarnessCleanupResult, error) {
+	return edgeclient.ProjectBrowserHarnessCleanupResult{Runs: 1, Artifacts: 1, Profiles: 1}, nil
+}
+func (*fakeProjectToolboxManager) BrowserHarnessArtifactList(edgeclient.ProjectBrowserHarnessArtifactListRequest) ([]edgeclient.ProjectBrowserHarnessArtifactSummary, error) {
+	return []edgeclient.ProjectBrowserHarnessArtifactSummary{{Path: "artifacts/trace.zip", MediaType: "application/zip", Bytes: 10, SHA256: strings.Repeat("a", 64), UpdatedAt: time.Date(2026, 8, 4, 4, 0, 1, 0, time.UTC)}}, nil
+}
+func (*fakeProjectToolboxManager) BrowserHarnessArtifactRead(edgeclient.ProjectBrowserHarnessArtifactReadRequest) (edgeclient.ProjectBrowserHarnessArtifactChunk, error) {
+	return edgeclient.ProjectBrowserHarnessArtifactChunk{RunID: "bh_44444444444444444444444444444444", Path: "artifacts/trace.zip", MediaType: "application/zip", Bytes: 10, SHA256: strings.Repeat("a", 64), Next: 10, EOF: true, DataBase64: "dHJhY2UtYm9keQ=="}, nil
+}
+
+func browserHarnessFixtureSnapshot() edgeclient.ProjectBrowserHarnessSnapshot {
+	return edgeclient.ProjectBrowserHarnessSnapshot{RunID: "bh_44444444444444444444444444444444", State: "running", Profile: "default", CreatedAt: time.Date(2026, 8, 4, 4, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 8, 4, 4, 0, 1, 0, time.UTC), TimeoutSeconds: 3600, StorageMiB: 2048, StdoutEOF: true, StderrEOF: true}
+}
+
 func (manager *fakeProjectToolboxManager) Cleanup(context.Context, edgeclient.ProjectToolboxCleanupRequest) (bool, error) {
 	manager.removed = true
 	return true, nil
@@ -122,5 +152,21 @@ func TestCollectProjectToolboxMapsExecAndCleanupWithoutInternalIdentity(t *testi
 	result, code = collectProjectToolbox(t.Context(), manager, resolved, operation)
 	if code != "" || !manager.removed || !result.ToolboxRemoved || result.ToolboxState != "removed" {
 		t.Fatalf("cleanup result=%+v code=%q", result, code)
+	}
+}
+
+func TestCollectProjectBrowserHarnessMapsOnlySafeLifecycleMetadata(t *testing.T) {
+	resolved := edgeclient.ProjectResolution{Project: edgeclient.Project{Alias: "project", Owner: "charle-z", Repository: "repo"}, TargetAlias: "parrot", Workspace: edgeclient.Workspace{ID: "ws_22222222222222222222222222222222", Path: "/private/workspace", Profile: edgeclient.WorkspaceProfileLinuxWorkcell, Mode: edgeclient.WorkspaceModeDev}}
+	manager := &fakeProjectToolboxManager{}
+	operation := edge.Operation{Kind: edge.OperationProjectBrowserHarnessStart, Request: edge.OperationRequest{IdempotencyKey: "harness-1", Argv: []string{"node", "secret-script.mjs"}, BrowserHarnessProfile: "default", BrowserHarnessTimeoutSeconds: 3600, BrowserHarnessStorageMiB: 2048}}
+	result, code := collectProjectBrowserHarness(t.Context(), manager, resolved, operation)
+	if code != "" || result.BrowserHarnessRunID != "bh_44444444444444444444444444444444" || result.BrowserHarnessState != "running" || result.BrowserHarnessProfile != "default" || result.BrowserHarnessTimeoutSeconds != 3600 || result.BrowserHarnessStorageMiB != 2048 {
+		t.Fatalf("result=%+v code=%q", result, code)
+	}
+	encoded := fmt.Sprintf("%+v", result)
+	for _, forbidden := range []string{"secret-script.mjs", "/private/workspace", "node"} {
+		if strings.Contains(encoded, forbidden) {
+			t.Fatalf("result leaked %q: %s", forbidden, encoded)
+		}
 	}
 }

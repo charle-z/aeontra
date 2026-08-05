@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -30,6 +31,12 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 		return
 	}
 	defer processes.Close()
+	browsers, err := edgeclient.OpenProjectBrowserManager(edgeclient.ProjectBrowserManagerConfig{Root: filepath.Join(stateRoot, "project-browser"), Runner: edgeclient.NewProjectBrowserRunner()})
+	if err != nil {
+		fmt.Fprintln(stderr, "mcp-edge: project browser journal failed safely")
+		return
+	}
+	defer browsers.Close()
 	for {
 		if ctx.Err() != nil {
 			return
@@ -48,7 +55,7 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 			}
 			continue
 		}
-		result, code, cancelRequested, lifecycleErr := executeControlOperationWithProgress(ctx, stateRoot, transport, processes, *lease)
+		result, code, cancelRequested, lifecycleErr := executeControlOperationWithProgress(ctx, stateRoot, transport, processes, browsers, *lease)
 		if lifecycleErr != nil {
 			fmt.Fprintln(stderr, "mcp-edge: control operation progress failed safely")
 			continue
@@ -88,7 +95,7 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 	}
 }
 
-func executeControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, operation edge.Operation) (edge.OperationResult, string) {
+func executeControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, operation edge.Operation) (edge.OperationResult, string) {
 	var output strings.Builder
 	switch operation.Kind {
 	case edge.OperationLabPrepare:
@@ -116,12 +123,15 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectExec(ctx, stateRoot, operation)
 	case edge.OperationProjectProcessStart, edge.OperationProjectProcessStatus, edge.OperationProjectProcessStop, edge.OperationProjectProcessSignal, edge.OperationProjectProcessList, edge.OperationProjectProcessCleanup:
 		return executeProjectProcess(ctx, stateRoot, processes, operation)
+	case edge.OperationProjectBrowserCreate, edge.OperationProjectBrowserStatus, edge.OperationProjectBrowserList, edge.OperationProjectBrowserRun, edge.OperationProjectBrowserArtifactRead, edge.OperationProjectBrowserClose, edge.OperationProjectBrowserCleanup:
+		return executeProjectBrowser(ctx, stateRoot, browsers, operation)
 	case edge.OperationProjectGitStatus, edge.OperationProjectGitFetch, edge.OperationProjectGitFastForwardPreview, edge.OperationProjectGitFastForward:
 		return executeProjectGitSync(ctx, stateRoot, operation)
 	case edge.OperationProjectGitHubStatus:
 		return executeProjectGitHubStatus(ctx, stateRoot, operation)
 	case edge.OperationProjectToolboxCreate, edge.OperationProjectToolboxStatus, edge.OperationProjectToolboxExec, edge.OperationProjectToolboxInstall, edge.OperationProjectToolboxCleanup,
-		edge.OperationProjectToolboxRepair, edge.OperationProjectToolboxServiceStart, edge.OperationProjectToolboxServiceStatus, edge.OperationProjectToolboxServiceStop:
+		edge.OperationProjectToolboxRepair, edge.OperationProjectToolboxServiceStart, edge.OperationProjectToolboxServiceStatus, edge.OperationProjectToolboxServiceStop,
+		edge.OperationProjectBrowserHarnessStart, edge.OperationProjectBrowserHarnessStatus, edge.OperationProjectBrowserHarnessList, edge.OperationProjectBrowserHarnessStop, edge.OperationProjectBrowserHarnessCleanup, edge.OperationProjectBrowserHarnessArtifactList, edge.OperationProjectBrowserHarnessArtifactRead:
 		return executeProjectToolbox(ctx, stateRoot, operation)
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectEdgeDiagnostic(stateRoot, true)

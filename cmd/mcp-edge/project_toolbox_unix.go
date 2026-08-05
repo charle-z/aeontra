@@ -20,6 +20,13 @@ type projectToolboxOperations interface {
 	ServiceStart(context.Context, edgeclient.ProjectToolboxServiceStartRequest) (edgeclient.ProjectToolboxServiceSnapshot, bool, error)
 	ServiceStatus(context.Context, edgeclient.ProjectToolboxServiceRequest) (edgeclient.ProjectToolboxServiceSnapshot, error)
 	ServiceStop(context.Context, edgeclient.ProjectToolboxServiceRequest) (edgeclient.ProjectToolboxServiceSnapshot, error)
+	BrowserHarnessStart(context.Context, edgeclient.ProjectBrowserHarnessStartRequest) (edgeclient.ProjectBrowserHarnessSnapshot, bool, error)
+	BrowserHarnessStatus(context.Context, edgeclient.ProjectBrowserHarnessStatusRequest) (edgeclient.ProjectBrowserHarnessSnapshot, error)
+	BrowserHarnessList(context.Context, edgeclient.ProjectBrowserHarnessListRequest) ([]edgeclient.ProjectBrowserHarnessSummary, error)
+	BrowserHarnessStop(context.Context, edgeclient.ProjectBrowserHarnessStopRequest) (edgeclient.ProjectBrowserHarnessSnapshot, error)
+	BrowserHarnessCleanup(edgeclient.ProjectBrowserHarnessCleanupRequest) (edgeclient.ProjectBrowserHarnessCleanupResult, error)
+	BrowserHarnessArtifactList(edgeclient.ProjectBrowserHarnessArtifactListRequest) ([]edgeclient.ProjectBrowserHarnessArtifactSummary, error)
+	BrowserHarnessArtifactRead(edgeclient.ProjectBrowserHarnessArtifactReadRequest) (edgeclient.ProjectBrowserHarnessArtifactChunk, error)
 	Cleanup(context.Context, edgeclient.ProjectToolboxCleanupRequest) (bool, error)
 }
 
@@ -73,6 +80,8 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 				snapshot.State = edgeclient.ProjectToolboxState("removed")
 			}
 		}
+	case edge.OperationProjectBrowserHarnessStart, edge.OperationProjectBrowserHarnessStatus, edge.OperationProjectBrowserHarnessList, edge.OperationProjectBrowserHarnessStop, edge.OperationProjectBrowserHarnessCleanup, edge.OperationProjectBrowserHarnessArtifactList, edge.OperationProjectBrowserHarnessArtifactRead:
+		return collectProjectBrowserHarness(ctx, manager, resolved, operation)
 	case edge.OperationProjectToolboxServiceStart, edge.OperationProjectToolboxServiceStatus, edge.OperationProjectToolboxServiceStop:
 		snapshot, err = manager.Status(ctx, edgeclient.ProjectToolboxStatusRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 		if err == nil {

@@ -130,6 +130,7 @@ type OpenCodeLauncher struct {
 	resolveWorkspaceRecord func(string) (Workspace, error)
 	linuxNetworkProbe      LinuxNetworkProbe
 	rootlessEndpoint       func(int, string) (*RootlessContainerEndpoint, error)
+	rootlessEnvironment    rootlessContainerEnvironmentBuilder
 	containerRunner        ContainerCommandRunner
 	effectiveUID           func() int
 	now                    func() time.Time
@@ -239,6 +240,7 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 	launcher.resolveWorkspace = config.Workspaces.Resolve
 	launcher.resolveWorkspaceRecord = config.Workspaces.Get
 	launcher.rootlessEndpoint = DiscoverRootlessContainerEndpoint
+	launcher.rootlessEnvironment = rootlessContainerClientEnvironment
 	launcher.remoteFactory = func(lease ModelRuntimeLease) (OpenCodeRemoteTransport, error) {
 		return NewRemoteEdgeTransport(RemoteEdgeTransportOptions{StateRoot: config.StateRoot, Lease: lease, HTTPClient: config.HTTPClient})
 	}
@@ -551,7 +553,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	}
 	var cleanupErr error
 	if preparation != nil {
-		cleanupErr = CleanupRootlessContainerResources(context.Background(), preparation.RootlessContainer, lease.RuntimeID, l.config.ToolPath, l.containerRunner)
+		cleanupErr = cleanupRootlessContainerResources(context.Background(), preparation.RootlessContainer, lease.RuntimeID, l.config.ToolPath, l.containerRunner, l.rootlessEnvironment)
 	}
 	cleanupState := LinuxWorkcellContainerCleanupState(preparation, cleanupErr)
 	terminalCheckpoint := "failed"
@@ -1465,6 +1467,17 @@ func safeProviderMessageSignal(message string) string {
 	text := strings.ToLower(message)
 	if signal := safePermissionSignal(text); signal != "" {
 		return signal
+	}
+	missing := strings.Contains(text, "enoent") || strings.Contains(text, "no such file or directory") || strings.Contains(text, "not found") || strings.Contains(text, "does not exist") || strings.Contains(text, "missing file") || strings.Contains(text, "missing directory")
+	if missing {
+		switch {
+		case strings.Contains(text, "ripgrep") || strings.Contains(text, "spawn rg") || strings.Contains(text, "exec rg") || strings.Contains(text, "`rg`"):
+			return "not_found_ripgrep"
+		case strings.Contains(text, "/workspace") || strings.Contains(text, "calc.go"):
+			return "not_found_workspace"
+		case strings.Contains(text, "/bin/sh") || strings.Contains(text, "/bin/bash") || strings.Contains(text, "spawn sh") || strings.Contains(text, "spawn bash"):
+			return "not_found_shell"
+		}
 	}
 	checks := []struct {
 		code    string

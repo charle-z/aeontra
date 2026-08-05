@@ -99,6 +99,10 @@ func validateRootlessContainerSocket(path, runtimeRoot string, uid int) error {
 }
 
 func CleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessContainerEndpoint, runtimeID, toolPath string, runner ContainerCommandRunner) error {
+	return cleanupRootlessContainerResources(ctx, endpoint, runtimeID, toolPath, runner, rootlessContainerClientEnvironment)
+}
+
+func cleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessContainerEndpoint, runtimeID, toolPath string, runner ContainerCommandRunner, environmentBuilder rootlessContainerEnvironmentBuilder) error {
 	if endpoint == nil {
 		return nil
 	}
@@ -111,8 +115,14 @@ func CleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessCo
 	if runner == nil {
 		runner = execContainerCommandRunner{}
 	}
+	if environmentBuilder == nil {
+		environmentBuilder = rootlessContainerClientEnvironment
+	}
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
-	environment := rootlessContainerClientEnvironment(endpoint, toolPath)
+	environment, err := environmentBuilder(endpoint, toolPath)
+	if err != nil {
+		return err
+	}
 	resources := []string{"container"}
 	if endpoint.Engine == "podman" {
 		resources = []string{"pod", "container"}

@@ -57,6 +57,46 @@ Bundle and onboarding diagnostics include systemd `NRestarts` only when the fixe
 `systemctl show` response supplied a valid non-negative counter. The public result has
 an explicit `service_restarts_known` bit; an unknown value is never presented as zero.
 
+## Durable general browser harness
+
+`project_browser_harness_start`, `project_browser_harness_status`,
+`project_browser_harness_list`, `project_browser_harness_stop`,
+`project_browser_harness_cleanup`, `project_browser_harness_artifact_list`, and
+`project_browser_harness_artifact_read` extend the persistent toolbox rather than expose
+one MCP tool for every browser interaction:
+
+- start accepts arbitrary argv, a relative workspace cwd and a bounded non-secret
+  environment overlay. The argv may invoke any language, test runner or browser framework
+  installed in the toolbox; no implicit browser action or JavaScript allowlist is added;
+- the toolbox rootfs persists package-manager installations, browser binaries, drivers,
+  libraries and caches until explicit toolbox cleanup;
+- each run receives `MCP_BROWSER_RUN_DIR`, `MCP_BROWSER_ARTIFACTS_DIR`,
+  `MCP_BROWSER_DOWNLOADS_DIR`, `MCP_BROWSER_PROFILE_DIR`,
+  `PLAYWRIGHT_BROWSERS_PATH`, `PUPPETEER_CACHE_DIR`, and
+  `SELENIUM_MANAGER_CACHE` without exposing host paths to the public result;
+- profiles are stable named directories, so cookies, browser storage and authentication
+  can survive browser-process and Edge-process restarts;
+- general workcell networking permits ordinary HTTP/HTTPS Internet, private development
+  endpoints and localhost services started in the same project toolbox;
+- the toolbox's configured CPU, memory and process limits apply to all runs. Start also
+  accepts a timeout up to seven days and a combined run/profile storage ceiling from
+  64 MiB through 64 GiB;
+- a private supervisor writes state, Linux PID/start ticks and separate logs, monitors
+  timeout/storage, and owns TERM/KILL of the process tree. Reopening the Edge manager
+  revalidates the same process instead of replaying its argv;
+- status returns only bounded redacted incremental logs, safe lifecycle and aggregate
+  artifact counts. It never returns argv, environment, PID, container identity, cookies,
+  profiles or host paths;
+- artifacts and downloads are arbitrary regular files beneath the managed run roots.
+  Lists are bounded; reads use relative paths and exact chunks of at most 24 KiB;
+- cleanup is explicit, terminal-only and symlink/root checked. A shared profile is not
+  removed while any retained run still references it.
+
+The existing `project_browser_create/status/list/run/artifact_read/close/cleanup` tools are
+optional convenience wrappers for common Chromium operations. They use the same general
+workcell HTTP/HTTPS network and allow downloads, but arbitrary automation, uploads,
+JavaScript, alternate browsers, traces and custom frameworks use the general harness.
+
 ## Durable background processes
 
 `project_process_start`, `project_process_status`, `project_process_stop`,

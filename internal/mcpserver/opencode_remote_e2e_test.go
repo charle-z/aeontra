@@ -146,6 +146,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	providerPath := requiredAbsoluteDirectory(t, "OPENCODE_PROVIDER_E2E_PATH")
 	edgeBinary := requiredAbsoluteFile(t, "MCP_EDGE_E2E_BIN")
 	driverBinary := requiredAbsoluteFile(t, "MODEL_TURN_DRIVER_E2E_BIN")
+	t.Log("slice_code=remote_stage_inputs")
 	reportMode := "combined_opencode_sandbox_e2e"
 	bubblewrapPath := edgeBinary
 	if os.Getenv("MCP_DEVBOX_RELAY_CONTAINER_E2E") == "1" {
@@ -180,6 +181,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	wire := &remoteWireMeter{paths: make(map[string]int64)}
 	httpServer := httptest.NewTLSServer(wire.Handler(edge.NewHTTPHandler(devices, turns)))
 	defer httpServer.Close()
+	t.Log("slice_code=remote_stage_authority")
 	caPath := filepath.Join(t.TempDir(), "relay-ca.pem")
 	caBody := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: httpServer.Certificate().Raw})
 	if err := os.WriteFile(caPath, caBody, 0o644); err != nil {
@@ -218,6 +220,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if err := registry.Close(); err != nil {
 		t.Fatal(err)
 	}
+	t.Log("slice_code=remote_stage_workspace")
 	wire.Reset()
 
 	server, _, _ := e2eServer(t, authoritativeRoot, turns)
@@ -241,6 +244,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if runtime.State != modelturn.RuntimeStateAwaitingEdge || runtime.DeviceID != identity.DeviceID || runtime.WorkspaceID != workspace.ID {
 		t.Fatalf("runtime=%+v", runtime)
 	}
+	t.Log("slice_code=remote_stage_runtime")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -287,6 +291,7 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	t.Log("slice_code=remote_stage_edge_started")
 	processDone := make(chan error, 1)
 	go func() { processDone <- cmd.Wait() }()
 
@@ -318,9 +323,11 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		}
 		offer := envelope.Turn
 		if sequence == 1 {
+			t.Log("slice_code=remote_stage_first_turn")
 			processPIDs = assertRemoteProcessIsolation(t, os.Getpid(), cmd.Process.Pid, driverBinary, opencodeBinary)
 			distinctProcessCount = int64(len(processPIDs))
 			processIsolationVerified = true
+			t.Log("slice_code=remote_stage_processes")
 		}
 		if int64(len(offer.RequestPayload)) > modelturn.MaxInlineRequestBytes && strings.HasPrefix(offer.RequestRef, "mb_") {
 			largeRequestReferenced = true
@@ -340,6 +347,9 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		if err := json.Unmarshal(offer.RequestPayload, &payload); err != nil {
 			t.Fatal(err)
 		}
+		if sequence == 1 {
+			t.Log("slice_code=remote_stage_payload")
+		}
 		if sequence > 1 && !containsToolResult(payload, fmt.Sprintf("turn-%d", sequence-1)) {
 			t.Fatalf("turn %d omitted prior tool result", sequence)
 		}
@@ -358,14 +368,23 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 			}
 			executedCalls[callID] = result.Name
 		}
+		if sequence == 1 {
+			t.Log("slice_code=remote_stage_results")
+		}
 		response, err := scriptedResponse(sequence, payload, modelWorkspace)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if sequence == 1 {
+			t.Log("slice_code=remote_stage_response")
 		}
 		mcpTool(t, server, meter, "model_turn_respond", map[string]any{
 			"runtime_id": runtime.RuntimeID, "turn_id": string(offer.TurnID),
 			"expected_sequence": offer.Sequence, "request_digest": offer.RequestDigest, "response": response,
 		})
+		if sequence == 1 {
+			t.Log("slice_code=remote_stage_responded")
+		}
 		lastResponded = time.Now()
 	}
 
@@ -524,7 +543,8 @@ var allowedRemoteEdgeFailures = map[string]struct{}{
 	"opencode_driver_connect": {}, "opencode_permission_ptrace": {}, "opencode_permission_connect": {}, "opencode_permission_spawn": {},
 	"opencode_permission_mkdir": {}, "opencode_permission_open": {}, "opencode_permission_rename": {}, "opencode_permission_remove": {},
 	"opencode_permission_chmod": {}, "opencode_permission_read_dir": {}, "opencode_permission_stat": {}, "opencode_permission_write": {},
-	"opencode_permission_read": {}, "opencode_permission_other": {}, "opencode_config": {}, "opencode_model": {}, "opencode_not_found": {}, "opencode_provider": {},
+	"opencode_permission_read": {}, "opencode_permission_other": {}, "opencode_config": {}, "opencode_model": {}, "opencode_not_found": {},
+	"opencode_not_found_ripgrep": {}, "opencode_not_found_workspace": {}, "opencode_not_found_shell": {}, "opencode_provider": {},
 	"opencode_provider_auth": {}, "opencode_output_length": {}, "opencode_unknown_type": {}, "opencode_unknown_api": {},
 	"opencode_unknown_timeout": {}, "opencode_unknown_connection": {}, "opencode_prompt_shape": {}, "opencode_prompt_role": {},
 	"opencode_tool_shape": {}, "opencode_request_limit": {}, "opencode_runtime_status": {}, "opencode_driver_invalid_request": {},
@@ -558,10 +578,10 @@ func forbiddenEdgeSQLiteTables(t *testing.T, root string) []string {
 	forbidden := map[string]struct{}{"model_turns": {}, "turn_bodies": {}, "model_runtimes": {}}
 	found := make(map[string]struct{})
 	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+		if err := stableDirectoryWalkError(root, path, err); err != nil {
 			return err
 		}
-		if !info.Mode().IsRegular() || filepath.Ext(info.Name()) != ".db" {
+		if info == nil || !info.Mode().IsRegular() || filepath.Ext(info.Name()) != ".db" {
 			return nil
 		}
 		db, err := sql.Open("sqlite", path)
@@ -755,10 +775,10 @@ func namedFileExists(t *testing.T, root, name string) bool {
 	t.Helper()
 	found := false
 	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+		if err := stableDirectoryWalkError(root, path, err); err != nil {
 			return err
 		}
-		if info.Mode().IsRegular() && info.Name() == name {
+		if info != nil && info.Mode().IsRegular() && info.Name() == name {
 			found = true
 		}
 		return nil
@@ -843,18 +863,32 @@ func requiredAbsoluteDirectory(t *testing.T, env string) string {
 func directoryBytes(t *testing.T, root string) int64 {
 	t.Helper()
 	var total int64
-	if err := filepath.Walk(root, func(_ string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.Mode().IsRegular() {
-			total += info.Size()
-		}
-		return nil
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		return accumulateDirectoryBytes(root, path, info, err, &total)
 	}); err != nil {
 		t.Fatal(err)
 	}
 	return total
+}
+
+func accumulateDirectoryBytes(root, path string, info os.FileInfo, err error, total *int64) error {
+	if err := stableDirectoryWalkError(root, path, err); err != nil {
+		return err
+	}
+	if info != nil && info.Mode().IsRegular() {
+		*total += info.Size()
+	}
+	return nil
+}
+
+func stableDirectoryWalkError(root, path string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if path != root && errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 var _ io.Writer = remoteCountingWriter{}

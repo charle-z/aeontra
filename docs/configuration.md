@@ -395,3 +395,44 @@ MCP_DEVBOX_PRIVILEGED_TASKS=false
 Switch production to `ask` only when the operator deliberately wants reviewed
 patch/test/commit/publication/deployment workflows. `allow` is not a general deployment
 recommendation.
+
+
+## Managed browser runtime
+
+The general browser harness has no separate owner mode. It is available to every
+registered `dev` project that resolves to the existing `linux-workcell` toolbox. Browser
+engines, drivers, libraries and language packages are installed with
+`project_toolbox_install` or normal project package managers and persist in the toolbox
+rootfs until `project_toolbox_cleanup`.
+
+Harness runs need no server environment variables. The Edge supplies these fixed paths
+inside the toolbox:
+
+- `MCP_BROWSER_RUN_ID`: opaque `bh_...` run identity;
+- `MCP_BROWSER_RUN_DIR`: private managed directory for the run;
+- `MCP_BROWSER_ARTIFACTS_DIR`: arbitrary screenshots, PDFs, traces, videos, HARs and logs;
+- `MCP_BROWSER_DOWNLOADS_DIR`: browser downloads;
+- `MCP_BROWSER_PROFILE_DIR`: named persistent profile for cookies/auth/browser storage;
+- `PLAYWRIGHT_BROWSERS_PATH`, `PUPPETEER_CACHE_DIR`, and
+  `SELENIUM_MANAGER_CACHE`: persistent rootfs locations for installed browser tooling.
+
+All paths are under the project workspace or toolbox rootfs; public MCP responses never
+return the corresponding host paths. `.mcp-devbox/` is repository-ignored. Managed run
+and profile directories use owner-only parents and have no automatic chat TTL.
+
+Resource limits are configured at two layers:
+
+- `project_toolbox_create`: CPU milliseconds, memory MiB and process count;
+- `project_browser_harness_start`: wall-clock timeout and combined managed run/profile
+  storage MiB.
+
+The harness uses the toolbox's ordinary network namespace. No browser-specific domain,
+port, action, JavaScript, upload, download or engine allowlist is configured. Localhost
+means the toolbox itself, so project services started with
+`project_toolbox_service_start` are directly reachable. Public Internet and private
+project endpoints follow the same network posture as other trusted-workcell commands.
+
+The signed Edge package still depends on distribution Chromium at
+`/usr/lib/chromium/chromium` for the optional convenience `project_browser_*` wrapper.
+The general harness does not depend on that fixed binary and may install or select other
+engines through project tooling.

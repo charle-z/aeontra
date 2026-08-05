@@ -21,6 +21,20 @@ const (
 var projectExecEnvironmentKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
 
 func validateOperationRequestWithProjectExec(kind OperationKind, request OperationRequest) (OperationRequest, error) {
+	isBrowserHarness := kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead
+	if isBrowserHarness {
+		return normalizeProjectBrowserHarnessRequest(kind, request)
+	}
+	if !emptyProjectBrowserHarnessRequestFields(request) {
+		return OperationRequest{}, errors.New("project browser harness fields are invalid for this operation")
+	}
+	isBrowser := kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup
+	if isBrowser {
+		return normalizeProjectBrowserRequest(kind, request)
+	}
+	if !emptyProjectBrowserRequestFields(request) {
+		return OperationRequest{}, errors.New("project browser fields are invalid for this operation")
+	}
 	isToolbox := kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop
 	if !isToolbox && (request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request)) {
 		return OperationRequest{}, errors.New("project toolbox service fields are invalid for this operation")
@@ -127,7 +141,9 @@ func projectExecReservedEnvironmentKey(key string) bool {
 	upper := strings.ToUpper(key)
 	switch upper {
 	case "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR",
-		"DOCKER_HOST", "CONTAINER_HOST", "DOCKER_CONFIG":
+		"DOCKER_HOST", "CONTAINER_HOST", "DOCKER_CONFIG",
+		"CONTAINERS_HELPER_BINARY_DIR", "CONTAINERS_CONF", "CONTAINERS_CONF_OVERRIDE", "CONTAINERS_CONF_MODULES",
+		"CONTAINERS_STORAGE_CONF":
 		return true
 	}
 	if strings.HasPrefix(upper, "XDG_") || strings.HasPrefix(upper, "MCP_DEVBOX_") {
@@ -159,6 +175,8 @@ func operationRequestsEqual(left, right OperationRequest) bool {
 
 func projectOperationUsesIdempotency(kind OperationKind) bool {
 	return kind == OperationProjectSnapshot || kind == OperationProjectExec || kind == OperationProjectProcessStart ||
+		kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup ||
+		kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup ||
 		kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward ||
 		kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup ||
 		kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStop

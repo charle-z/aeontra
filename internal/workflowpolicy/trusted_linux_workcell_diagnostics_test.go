@@ -13,6 +13,8 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 	}
 	text := string(body)
 	for _, required := range []string{
+		`P12_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}`,
+		`ref: ${{ github.event.pull_request.head.sha || github.sha }}`,
 		"rootless-e2e-log-redactor",
 		`pipeline_status=("${PIPESTATUS[@]}")`,
 		`test_status="${pipeline_status[0]}"`,
@@ -23,6 +25,23 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		"TestTrustedLinuxWorkcellRootlessCleanupE2E",
 		"trap cleanup EXIT",
 		"setsid podman system service",
+		"bubblewrap podman uidmap slirp4netns fuse-overlayfs python3-venv",
+		"Verify managed browser with production Chromium path",
+		`go test -c -o "$RUNNER_TEMP/p12-browser.test" ./internal/edgeclient`,
+		`MCP_DEVBOX_BROWSER_E2E=1 "$RUNNER_TEMP/p12-browser.test"`,
+		`-test.run='^TestProjectBrowser(Runner|Manager)AgainstRealChromium$'`,
+		"Classify hosted-runner browser harness acceptance",
+		`classification="$RUNNER_TEMP/browser-harness-acceptance.tsv"`,
+		`source_sha="$P12_SOURCE_SHA"`,
+		`tree="$(git rev-parse "${source_sha}^{tree}")"`,
+		`/system.slice/*`,
+		"GitHub-hosted Ubuntu 22.04 runs the job in a root-owned /system.slice cgroup whose cgroup.procs is not writable by the job user",
+		"not-reproducible",
+		"c27053c56b6214e52862ead675b874670f322295",
+		"Host-specific browser harness acceptance moved to Edge",
+		"Upload browser harness acceptance boundary",
+		`browser-harness-acceptance-${{ env.P12_SOURCE_SHA }}`,
+		`${{ runner.temp }}/browser-harness-acceptance.tsv`,
 		"Stage PostgreSQL fixture image",
 		`archive="$RUNNER_TEMP/p12-postgres-17-alpine.tar"`,
 		`docker image inspect --format '{{.Id}}' docker.io/library/postgres:17-alpine`,
@@ -59,6 +78,14 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 			t.Errorf("rootless diagnostic workflow missing %q", required)
 		}
 	}
+	if strings.Count(text, `ref: ${{ github.event.pull_request.head.sha || github.sha }}`) != 2 {
+		t.Error("trusted host and rootless jobs must both check out the exact source head")
+	}
+	classification := strings.Index(text, "Classify hosted-runner browser harness acceptance")
+	browserSmoke := strings.Index(text, "Verify managed browser with production Chromium path")
+	if classification < 0 || browserSmoke < 0 || classification >= browserSmoke {
+		t.Errorf("host-specific classification must precede Chromium smoke: classification=%d smoke=%d", classification, browserSmoke)
+	}
 	stageImage := strings.Index(text, "Stage PostgreSQL fixture image")
 	disableRootful := strings.Index(text, "sudo chmod 000")
 	startRootless := strings.Index(text, "start_service\n")
@@ -79,6 +106,18 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 	for _, forbidden := range []string{
 		"tail -n 30 artifacts/p12-rootless-test.log",
 		"artifacts/p12-podman-service.log\n          if-no-files-found",
+		"MCP_DEVBOX_BROWSER_HARNESS_E2E=1",
+		"sudo systemd-run",
+		"--property=Delegate=yes",
+		"P12_TOOLBOX_CGROUP_PARENT",
+		"p12-podman-delegated-wrapper.sh",
+		`chown "$run_uid:$run_gid" "$root/cgroup.procs"`,
+		"github.com/containers/podman/v5@v5.4.2",
+		"github.com/containers/crun/releases/download/1.21",
+		"continue-on-error",
+		"MCP_DEVBOX_BROWSER_E2E=1 go test ./internal/edgeclient",
+		"user_manager=",
+		"hosted runner now exposes a user-owned cgroup subtree",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("unsafe rootless diagnostic workflow contains %q", forbidden)

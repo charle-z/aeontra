@@ -24,41 +24,55 @@ const (
 )
 
 const (
-	OperationLabPrepare                   OperationKind = "lab_prepare"
-	OperationLabRetarget                  OperationKind = "lab_retarget"
-	OperationAutopilotStart               OperationKind = "autopilot_start"
-	OperationAutopilotPause               OperationKind = "autopilot_pause"
-	OperationAutopilotResume              OperationKind = "autopilot_resume"
-	OperationAutopilotCancel              OperationKind = "autopilot_cancel"
-	OperationBundleStatus                 OperationKind = "bundle_status"
-	OperationBundleUpdate                 OperationKind = "bundle_update"
-	OperationBundleRollback               OperationKind = "bundle_rollback"
-	OperationEdgeRepair                   OperationKind = "edge_repair"
-	OperationOnboardingStatus             OperationKind = "onboarding_status"
-	OperationProjectPrepare               OperationKind = "project_prepare"
-	OperationProjectStatus                OperationKind = "project_status"
-	OperationProjectSnapshot              OperationKind = "project_snapshot"
-	OperationProjectExec                  OperationKind = "project_exec"
-	OperationProjectProcessStart          OperationKind = "project_process_start"
-	OperationProjectProcessStatus         OperationKind = "project_process_status"
-	OperationProjectProcessStop           OperationKind = "project_process_stop"
-	OperationProjectProcessSignal         OperationKind = "project_process_signal"
-	OperationProjectProcessList           OperationKind = "project_process_list"
-	OperationProjectProcessCleanup        OperationKind = "project_process_cleanup"
-	OperationProjectGitStatus             OperationKind = "project_git_status"
-	OperationProjectGitFetch              OperationKind = "project_git_fetch"
-	OperationProjectGitFastForwardPreview OperationKind = "project_git_fast_forward_preview"
-	OperationProjectGitFastForward        OperationKind = "project_git_fast_forward"
-	OperationProjectGitHubStatus          OperationKind = "project_github_status"
-	OperationProjectToolboxCreate         OperationKind = "project_toolbox_create"
-	OperationProjectToolboxStatus         OperationKind = "project_toolbox_status"
-	OperationProjectToolboxExec           OperationKind = "project_toolbox_exec"
-	OperationProjectToolboxInstall        OperationKind = "project_toolbox_install"
-	OperationProjectToolboxCleanup        OperationKind = "project_toolbox_cleanup"
-	OperationProjectToolboxRepair         OperationKind = "project_toolbox_repair"
-	OperationProjectToolboxServiceStart   OperationKind = "project_toolbox_service_start"
-	OperationProjectToolboxServiceStatus  OperationKind = "project_toolbox_service_status"
-	OperationProjectToolboxServiceStop    OperationKind = "project_toolbox_service_stop"
+	OperationLabPrepare                        OperationKind = "lab_prepare"
+	OperationLabRetarget                       OperationKind = "lab_retarget"
+	OperationAutopilotStart                    OperationKind = "autopilot_start"
+	OperationAutopilotPause                    OperationKind = "autopilot_pause"
+	OperationAutopilotResume                   OperationKind = "autopilot_resume"
+	OperationAutopilotCancel                   OperationKind = "autopilot_cancel"
+	OperationBundleStatus                      OperationKind = "bundle_status"
+	OperationBundleUpdate                      OperationKind = "bundle_update"
+	OperationBundleRollback                    OperationKind = "bundle_rollback"
+	OperationEdgeRepair                        OperationKind = "edge_repair"
+	OperationOnboardingStatus                  OperationKind = "onboarding_status"
+	OperationProjectPrepare                    OperationKind = "project_prepare"
+	OperationProjectStatus                     OperationKind = "project_status"
+	OperationProjectSnapshot                   OperationKind = "project_snapshot"
+	OperationProjectExec                       OperationKind = "project_exec"
+	OperationProjectProcessStart               OperationKind = "project_process_start"
+	OperationProjectProcessStatus              OperationKind = "project_process_status"
+	OperationProjectProcessStop                OperationKind = "project_process_stop"
+	OperationProjectProcessSignal              OperationKind = "project_process_signal"
+	OperationProjectProcessList                OperationKind = "project_process_list"
+	OperationProjectProcessCleanup             OperationKind = "project_process_cleanup"
+	OperationProjectGitStatus                  OperationKind = "project_git_status"
+	OperationProjectGitFetch                   OperationKind = "project_git_fetch"
+	OperationProjectGitFastForwardPreview      OperationKind = "project_git_fast_forward_preview"
+	OperationProjectGitFastForward             OperationKind = "project_git_fast_forward"
+	OperationProjectGitHubStatus               OperationKind = "project_github_status"
+	OperationProjectToolboxCreate              OperationKind = "project_toolbox_create"
+	OperationProjectToolboxStatus              OperationKind = "project_toolbox_status"
+	OperationProjectToolboxExec                OperationKind = "project_toolbox_exec"
+	OperationProjectToolboxInstall             OperationKind = "project_toolbox_install"
+	OperationProjectToolboxCleanup             OperationKind = "project_toolbox_cleanup"
+	OperationProjectToolboxRepair              OperationKind = "project_toolbox_repair"
+	OperationProjectToolboxServiceStart        OperationKind = "project_toolbox_service_start"
+	OperationProjectToolboxServiceStatus       OperationKind = "project_toolbox_service_status"
+	OperationProjectToolboxServiceStop         OperationKind = "project_toolbox_service_stop"
+	OperationProjectBrowserCreate              OperationKind = "project_browser_create"
+	OperationProjectBrowserStatus              OperationKind = "project_browser_status"
+	OperationProjectBrowserList                OperationKind = "project_browser_list"
+	OperationProjectBrowserRun                 OperationKind = "project_browser_run"
+	OperationProjectBrowserArtifactRead        OperationKind = "project_browser_artifact_read"
+	OperationProjectBrowserClose               OperationKind = "project_browser_close"
+	OperationProjectBrowserCleanup             OperationKind = "project_browser_cleanup"
+	OperationProjectBrowserHarnessStart        OperationKind = "project_browser_harness_start"
+	OperationProjectBrowserHarnessStatus       OperationKind = "project_browser_harness_status"
+	OperationProjectBrowserHarnessList         OperationKind = "project_browser_harness_list"
+	OperationProjectBrowserHarnessStop         OperationKind = "project_browser_harness_stop"
+	OperationProjectBrowserHarnessCleanup      OperationKind = "project_browser_harness_cleanup"
+	OperationProjectBrowserHarnessArtifactList OperationKind = "project_browser_harness_artifact_list"
+	OperationProjectBrowserHarnessArtifactRead OperationKind = "project_browser_harness_artifact_read"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -75,37 +89,59 @@ var projectOperationIdempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z
 var operationProgressPhasePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 
 type OperationRequest struct {
-	Platform            string            `json:"platform,omitempty"`
-	Machine             string            `json:"machine,omitempty"`
-	Target              string            `json:"target"`
-	Difficulty          string            `json:"difficulty,omitempty"`
-	OperatingSystem     string            `json:"operating_system,omitempty"`
-	WorkspaceID         string            `json:"workspace_id,omitempty"`
-	RunUntil            string            `json:"run_until,omitempty"`
-	Release             string            `json:"release,omitempty"`
-	Alias               string            `json:"alias,omitempty"`
-	Repository          string            `json:"repository,omitempty"`
-	TargetAlias         string            `json:"target_alias,omitempty"`
-	Profile             string            `json:"profile,omitempty"`
-	IdempotencyKey      string            `json:"idempotency_key,omitempty"`
-	Argv                []string          `json:"argv,omitempty"`
-	CWD                 string            `json:"cwd,omitempty"`
-	Stdin               string            `json:"stdin,omitempty"`
-	Environment         map[string]string `json:"environment,omitempty"`
-	TimeoutSeconds      int               `json:"timeout_seconds,omitempty"`
-	BackgroundProcessID string            `json:"background_process_id,omitempty"`
-	StdoutOffset        int64             `json:"stdout_offset,omitempty"`
-	StderrOffset        int64             `json:"stderr_offset,omitempty"`
-	OutputLimit         int               `json:"output_limit,omitempty"`
-	GraceSeconds        int               `json:"grace_seconds,omitempty"`
-	BackgroundSignal    string            `json:"background_signal,omitempty"`
-	ProcessLimit        int               `json:"process_limit,omitempty"`
-	GitPlanID           string            `json:"git_plan_id,omitempty"`
-	ToolboxServiceID    string            `json:"toolbox_service_id,omitempty"`
-	ToolboxServiceName  string            `json:"toolbox_service_name,omitempty"`
-	ToolboxCPUMillis    int               `json:"toolbox_cpu_millis,omitempty"`
-	ToolboxMemoryMiB    int               `json:"toolbox_memory_mib,omitempty"`
-	ToolboxProcessLimit int               `json:"toolbox_process_limit,omitempty"`
+	Platform                     string            `json:"platform,omitempty"`
+	Machine                      string            `json:"machine,omitempty"`
+	Target                       string            `json:"target"`
+	Difficulty                   string            `json:"difficulty,omitempty"`
+	OperatingSystem              string            `json:"operating_system,omitempty"`
+	WorkspaceID                  string            `json:"workspace_id,omitempty"`
+	RunUntil                     string            `json:"run_until,omitempty"`
+	Release                      string            `json:"release,omitempty"`
+	Alias                        string            `json:"alias,omitempty"`
+	Repository                   string            `json:"repository,omitempty"`
+	TargetAlias                  string            `json:"target_alias,omitempty"`
+	Profile                      string            `json:"profile,omitempty"`
+	IdempotencyKey               string            `json:"idempotency_key,omitempty"`
+	Argv                         []string          `json:"argv,omitempty"`
+	CWD                          string            `json:"cwd,omitempty"`
+	Stdin                        string            `json:"stdin,omitempty"`
+	Environment                  map[string]string `json:"environment,omitempty"`
+	TimeoutSeconds               int               `json:"timeout_seconds,omitempty"`
+	BackgroundProcessID          string            `json:"background_process_id,omitempty"`
+	StdoutOffset                 int64             `json:"stdout_offset,omitempty"`
+	StderrOffset                 int64             `json:"stderr_offset,omitempty"`
+	OutputLimit                  int               `json:"output_limit,omitempty"`
+	GraceSeconds                 int               `json:"grace_seconds,omitempty"`
+	BackgroundSignal             string            `json:"background_signal,omitempty"`
+	ProcessLimit                 int               `json:"process_limit,omitempty"`
+	GitPlanID                    string            `json:"git_plan_id,omitempty"`
+	ToolboxServiceID             string            `json:"toolbox_service_id,omitempty"`
+	ToolboxServiceName           string            `json:"toolbox_service_name,omitempty"`
+	ToolboxCPUMillis             int               `json:"toolbox_cpu_millis,omitempty"`
+	ToolboxMemoryMiB             int               `json:"toolbox_memory_mib,omitempty"`
+	ToolboxProcessLimit          int               `json:"toolbox_process_limit,omitempty"`
+	BrowserSessionID             string            `json:"browser_session_id,omitempty"`
+	BrowserNetworkScope          string            `json:"browser_network_scope,omitempty"`
+	BrowserInitialURL            string            `json:"browser_initial_url,omitempty"`
+	BrowserViewportWidth         int               `json:"browser_viewport_width,omitempty"`
+	BrowserViewportHeight        int               `json:"browser_viewport_height,omitempty"`
+	BrowserIgnoreHTTPSErrors     bool              `json:"browser_ignore_https_errors,omitempty"`
+	BrowserSteps                 []BrowserStep     `json:"browser_steps,omitempty"`
+	BrowserCapture               string            `json:"browser_capture,omitempty"`
+	BrowserFullPage              bool              `json:"browser_full_page,omitempty"`
+	BrowserTimeoutSeconds        int               `json:"browser_timeout_seconds,omitempty"`
+	BrowserArtifactID            string            `json:"browser_artifact_id,omitempty"`
+	BrowserArtifactOffset        int64             `json:"browser_artifact_offset,omitempty"`
+	BrowserArtifactLimit         int               `json:"browser_artifact_limit,omitempty"`
+	BrowserHarnessRunID          string            `json:"browser_harness_run_id,omitempty"`
+	BrowserHarnessProfile        string            `json:"browser_harness_profile,omitempty"`
+	BrowserHarnessTimeoutSeconds int               `json:"browser_harness_timeout_seconds,omitempty"`
+	BrowserHarnessStorageMiB     int               `json:"browser_harness_storage_mib,omitempty"`
+	BrowserHarnessListLimit      int               `json:"browser_harness_list_limit,omitempty"`
+	BrowserHarnessRemoveProfile  bool              `json:"browser_harness_remove_profile,omitempty"`
+	BrowserHarnessArtifactPath   string            `json:"browser_harness_artifact_path,omitempty"`
+	BrowserHarnessArtifactOffset int64             `json:"browser_harness_artifact_offset,omitempty"`
+	BrowserHarnessArtifactLimit  int               `json:"browser_harness_artifact_limit,omitempty"`
 }
 
 type BackgroundProcessSummary struct {
@@ -119,119 +155,200 @@ type BackgroundProcessSummary struct {
 	Reason         string `json:"reason,omitempty"`
 }
 
+type BrowserHarnessSummary struct {
+	RunID          string `json:"run_id"`
+	State          string `json:"state"`
+	Profile        string `json:"profile"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+	StartedAt      string `json:"started_at,omitempty"`
+	FinishedAt     string `json:"finished_at,omitempty"`
+	ExitKnown      bool   `json:"exit_known"`
+	ExitCode       int    `json:"exit_code"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+	StorageMiB     int    `json:"storage_mib"`
+}
+
+type BrowserHarnessArtifactSummary struct {
+	Path      string `json:"path"`
+	MediaType string `json:"media_type"`
+	Bytes     int64  `json:"bytes"`
+	SHA256    string `json:"sha256"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 type OperationResult struct {
-	WorkspaceID               string                     `json:"workspace_id,omitempty"`
-	AuthorizationRevision     uint64                     `json:"authorization_revision,omitempty"`
-	JobID                     string                     `json:"job_id,omitempty"`
-	JobState                  string                     `json:"job_state,omitempty"`
-	ProgressRevision          uint64                     `json:"progress_revision,omitempty"`
-	CycleCount                uint64                     `json:"cycle_count,omitempty"`
-	JobSafeCode               string                     `json:"job_safe_code,omitempty"`
-	Release                   string                     `json:"release,omitempty"`
-	Commit                    string                     `json:"commit,omitempty"`
-	ManifestStatus            string                     `json:"manifest_status,omitempty"`
-	ComponentsCompatible      bool                       `json:"components_compatible,omitempty"`
-	ServiceActive             bool                       `json:"service_active,omitempty"`
-	ServiceState              string                     `json:"service_state,omitempty"`
-	ServiceRestarts           uint64                     `json:"service_restarts,omitempty"`
-	ServiceRestartsKnown      bool                       `json:"service_restarts_known,omitempty"`
-	ProcessState              string                     `json:"process_state,omitempty"`
-	LockState                 string                     `json:"lock_state,omitempty"`
-	Coherence                 string                     `json:"coherence,omitempty"`
-	ProcessRelease            string                     `json:"process_release,omitempty"`
-	ProcessCommit             string                     `json:"process_commit,omitempty"`
-	UpdateAvailable           bool                       `json:"update_available"`
-	Paired                    bool                       `json:"paired,omitempty"`
-	BubblewrapValid           bool                       `json:"bubblewrap_valid,omitempty"`
-	RootlessValid             bool                       `json:"rootless_valid,omitempty"`
-	WorkspaceCount            int                        `json:"workspace_count,omitempty"`
-	ProviderValid             bool                       `json:"provider_valid,omitempty"`
-	DriverValid               bool                       `json:"driver_valid,omitempty"`
-	Blockers                  []string                   `json:"blockers,omitempty"`
-	ProjectAlias              string                     `json:"project_alias,omitempty"`
-	ProjectOwner              string                     `json:"project_owner,omitempty"`
-	ProjectRepository         string                     `json:"project_repository,omitempty"`
-	ProjectTarget             string                     `json:"project_target,omitempty"`
-	ProjectState              string                     `json:"project_state,omitempty"`
-	ProjectProfile            string                     `json:"project_profile,omitempty"`
-	ProjectMode               string                     `json:"project_mode,omitempty"`
-	SnapshotBranch            string                     `json:"snapshot_branch,omitempty"`
-	SnapshotHead              string                     `json:"snapshot_head,omitempty"`
-	SnapshotClean             bool                       `json:"snapshot_clean,omitempty"`
-	ExecCompleted             bool                       `json:"exec_completed,omitempty"`
-	ExecExitCode              int                        `json:"exec_exit_code,omitempty"`
-	ExecStdout                string                     `json:"exec_stdout,omitempty"`
-	ExecStderr                string                     `json:"exec_stderr,omitempty"`
-	ExecTimedOut              bool                       `json:"exec_timed_out,omitempty"`
-	ExecStdoutTruncated       bool                       `json:"exec_stdout_truncated,omitempty"`
-	ExecStderrTruncated       bool                       `json:"exec_stderr_truncated,omitempty"`
-	ExecTimingKnown           bool                       `json:"exec_timing_known,omitempty"`
-	ExecPreflightUS           int64                      `json:"exec_preflight_us,omitempty"`
-	ExecExecutionUS           int64                      `json:"exec_execution_us,omitempty"`
-	ExecResultUS              int64                      `json:"exec_result_us,omitempty"`
-	BackgroundProcessID       string                     `json:"background_process_id,omitempty"`
-	BackgroundProcessState    string                     `json:"background_process_state,omitempty"`
-	BackgroundStartedAt       string                     `json:"background_started_at,omitempty"`
-	BackgroundFinishedAt      string                     `json:"background_finished_at,omitempty"`
-	BackgroundExitKnown       bool                       `json:"background_exit_known,omitempty"`
-	BackgroundExitCode        int                        `json:"background_exit_code,omitempty"`
-	BackgroundTerminalSignal  string                     `json:"background_terminal_signal,omitempty"`
-	BackgroundReason          string                     `json:"background_reason,omitempty"`
-	BackgroundStdout          string                     `json:"background_stdout,omitempty"`
-	BackgroundStderr          string                     `json:"background_stderr,omitempty"`
-	BackgroundStdoutNext      int64                      `json:"background_stdout_next,omitempty"`
-	BackgroundStderrNext      int64                      `json:"background_stderr_next,omitempty"`
-	BackgroundStdoutEOF       bool                       `json:"background_stdout_eof,omitempty"`
-	BackgroundStderrEOF       bool                       `json:"background_stderr_eof,omitempty"`
-	BackgroundStdoutTruncated bool                       `json:"background_stdout_truncated,omitempty"`
-	BackgroundStderrTruncated bool                       `json:"background_stderr_truncated,omitempty"`
-	BackgroundProcesses       []BackgroundProcessSummary `json:"background_processes,omitempty"`
-	BackgroundCleanupRemoved  int                        `json:"background_cleanup_removed,omitempty"`
-	BackgroundCleanupActive   int                        `json:"background_cleanup_active,omitempty"`
-	GitBranch                 string                     `json:"git_branch,omitempty"`
-	GitHead                   string                     `json:"git_head,omitempty"`
-	GitRemoteHead             string                     `json:"git_remote_head,omitempty"`
-	GitAhead                  int                        `json:"git_ahead,omitempty"`
-	GitBehind                 int                        `json:"git_behind,omitempty"`
-	GitDiverged               bool                       `json:"git_diverged,omitempty"`
-	GitDetached               bool                       `json:"git_detached,omitempty"`
-	GitDirty                  bool                       `json:"git_dirty,omitempty"`
-	GitClean                  bool                       `json:"git_clean,omitempty"`
-	GitFetched                bool                       `json:"git_fetched,omitempty"`
-	GitFastForwarded          bool                       `json:"git_fast_forwarded,omitempty"`
-	GitPlanID                 string                     `json:"git_plan_id,omitempty"`
-	GitPlanExpiresAt          string                     `json:"git_plan_expires_at,omitempty"`
-	GitHubConfigured          bool                       `json:"github_configured,omitempty"`
-	GitHubVisibility          string                     `json:"github_visibility,omitempty"`
-	GitHubDefaultBranch       string                     `json:"github_default_branch,omitempty"`
-	GitHubArchived            bool                       `json:"github_archived,omitempty"`
-	GitHubMetadataRead        bool                       `json:"github_metadata_read,omitempty"`
-	GitHubContentsRead        bool                       `json:"github_contents_read,omitempty"`
-	GitHubContentsWrite       bool                       `json:"github_contents_write,omitempty"`
-	GitHubPullRequestsRead    bool                       `json:"github_pull_requests_read,omitempty"`
-	GitHubActionsRead         bool                       `json:"github_actions_read,omitempty"`
-	GitHubAdministration      bool                       `json:"github_administration,omitempty"`
-	GitHubPermissionIssues    []string                   `json:"github_permission_issues,omitempty"`
-	ToolboxID                 string                     `json:"toolbox_id,omitempty"`
-	ToolboxState              string                     `json:"toolbox_state,omitempty"`
-	ToolboxBase               string                     `json:"toolbox_base,omitempty"`
-	ToolboxBaseImageID        string                     `json:"toolbox_base_image_id,omitempty"`
-	ToolboxCreatedAt          string                     `json:"toolbox_created_at,omitempty"`
-	ToolboxUpdatedAt          string                     `json:"toolbox_updated_at,omitempty"`
-	ToolboxOutput             string                     `json:"toolbox_output,omitempty"`
-	ToolboxOutputTruncated    bool                       `json:"toolbox_output_truncated,omitempty"`
-	ToolboxRemoved            bool                       `json:"toolbox_removed,omitempty"`
-	ToolboxServiceID          string                     `json:"toolbox_service_id,omitempty"`
-	ToolboxServiceName        string                     `json:"toolbox_service_name,omitempty"`
-	ToolboxServiceState       string                     `json:"toolbox_service_state,omitempty"`
-	ToolboxServiceCreatedAt   string                     `json:"toolbox_service_created_at,omitempty"`
-	ToolboxServiceUpdatedAt   string                     `json:"toolbox_service_updated_at,omitempty"`
-	ToolboxCPUMillis          int                        `json:"toolbox_cpu_millis,omitempty"`
-	ToolboxMemoryMiB          int                        `json:"toolbox_memory_mib,omitempty"`
-	ToolboxProcessLimit       int                        `json:"toolbox_process_limit,omitempty"`
-	ToolboxContainerAccess    bool                       `json:"toolbox_container_access,omitempty"`
-	ToolboxWritableBytes      int64                      `json:"toolbox_writable_bytes,omitempty"`
-	ToolboxRootFSBytes        int64                      `json:"toolbox_rootfs_bytes,omitempty"`
+	WorkspaceID                      string                          `json:"workspace_id,omitempty"`
+	AuthorizationRevision            uint64                          `json:"authorization_revision,omitempty"`
+	JobID                            string                          `json:"job_id,omitempty"`
+	JobState                         string                          `json:"job_state,omitempty"`
+	ProgressRevision                 uint64                          `json:"progress_revision,omitempty"`
+	CycleCount                       uint64                          `json:"cycle_count,omitempty"`
+	JobSafeCode                      string                          `json:"job_safe_code,omitempty"`
+	Release                          string                          `json:"release,omitempty"`
+	Commit                           string                          `json:"commit,omitempty"`
+	ManifestStatus                   string                          `json:"manifest_status,omitempty"`
+	ComponentsCompatible             bool                            `json:"components_compatible,omitempty"`
+	ServiceActive                    bool                            `json:"service_active,omitempty"`
+	ServiceState                     string                          `json:"service_state,omitempty"`
+	ServiceRestarts                  uint64                          `json:"service_restarts,omitempty"`
+	ServiceRestartsKnown             bool                            `json:"service_restarts_known,omitempty"`
+	ProcessState                     string                          `json:"process_state,omitempty"`
+	LockState                        string                          `json:"lock_state,omitempty"`
+	Coherence                        string                          `json:"coherence,omitempty"`
+	ProcessRelease                   string                          `json:"process_release,omitempty"`
+	ProcessCommit                    string                          `json:"process_commit,omitempty"`
+	UpdateAvailable                  bool                            `json:"update_available"`
+	Paired                           bool                            `json:"paired,omitempty"`
+	BubblewrapValid                  bool                            `json:"bubblewrap_valid,omitempty"`
+	RootlessValid                    bool                            `json:"rootless_valid,omitempty"`
+	WorkspaceCount                   int                             `json:"workspace_count,omitempty"`
+	ProviderValid                    bool                            `json:"provider_valid,omitempty"`
+	DriverValid                      bool                            `json:"driver_valid,omitempty"`
+	Blockers                         []string                        `json:"blockers,omitempty"`
+	ProjectAlias                     string                          `json:"project_alias,omitempty"`
+	ProjectOwner                     string                          `json:"project_owner,omitempty"`
+	ProjectRepository                string                          `json:"project_repository,omitempty"`
+	ProjectTarget                    string                          `json:"project_target,omitempty"`
+	ProjectState                     string                          `json:"project_state,omitempty"`
+	ProjectProfile                   string                          `json:"project_profile,omitempty"`
+	ProjectMode                      string                          `json:"project_mode,omitempty"`
+	SnapshotBranch                   string                          `json:"snapshot_branch,omitempty"`
+	SnapshotHead                     string                          `json:"snapshot_head,omitempty"`
+	SnapshotClean                    bool                            `json:"snapshot_clean,omitempty"`
+	ExecCompleted                    bool                            `json:"exec_completed,omitempty"`
+	ExecExitCode                     int                             `json:"exec_exit_code,omitempty"`
+	ExecStdout                       string                          `json:"exec_stdout,omitempty"`
+	ExecStderr                       string                          `json:"exec_stderr,omitempty"`
+	ExecTimedOut                     bool                            `json:"exec_timed_out,omitempty"`
+	ExecStdoutTruncated              bool                            `json:"exec_stdout_truncated,omitempty"`
+	ExecStderrTruncated              bool                            `json:"exec_stderr_truncated,omitempty"`
+	ExecTimingKnown                  bool                            `json:"exec_timing_known,omitempty"`
+	ExecPreflightUS                  int64                           `json:"exec_preflight_us,omitempty"`
+	ExecExecutionUS                  int64                           `json:"exec_execution_us,omitempty"`
+	ExecResultUS                     int64                           `json:"exec_result_us,omitempty"`
+	BackgroundProcessID              string                          `json:"background_process_id,omitempty"`
+	BackgroundProcessState           string                          `json:"background_process_state,omitempty"`
+	BackgroundStartedAt              string                          `json:"background_started_at,omitempty"`
+	BackgroundFinishedAt             string                          `json:"background_finished_at,omitempty"`
+	BackgroundExitKnown              bool                            `json:"background_exit_known,omitempty"`
+	BackgroundExitCode               int                             `json:"background_exit_code,omitempty"`
+	BackgroundTerminalSignal         string                          `json:"background_terminal_signal,omitempty"`
+	BackgroundReason                 string                          `json:"background_reason,omitempty"`
+	BackgroundStdout                 string                          `json:"background_stdout,omitempty"`
+	BackgroundStderr                 string                          `json:"background_stderr,omitempty"`
+	BackgroundStdoutNext             int64                           `json:"background_stdout_next,omitempty"`
+	BackgroundStderrNext             int64                           `json:"background_stderr_next,omitempty"`
+	BackgroundStdoutEOF              bool                            `json:"background_stdout_eof,omitempty"`
+	BackgroundStderrEOF              bool                            `json:"background_stderr_eof,omitempty"`
+	BackgroundStdoutTruncated        bool                            `json:"background_stdout_truncated,omitempty"`
+	BackgroundStderrTruncated        bool                            `json:"background_stderr_truncated,omitempty"`
+	BackgroundProcesses              []BackgroundProcessSummary      `json:"background_processes,omitempty"`
+	BackgroundCleanupRemoved         int                             `json:"background_cleanup_removed,omitempty"`
+	BackgroundCleanupActive          int                             `json:"background_cleanup_active,omitempty"`
+	GitBranch                        string                          `json:"git_branch,omitempty"`
+	GitHead                          string                          `json:"git_head,omitempty"`
+	GitRemoteHead                    string                          `json:"git_remote_head,omitempty"`
+	GitAhead                         int                             `json:"git_ahead,omitempty"`
+	GitBehind                        int                             `json:"git_behind,omitempty"`
+	GitDiverged                      bool                            `json:"git_diverged,omitempty"`
+	GitDetached                      bool                            `json:"git_detached,omitempty"`
+	GitDirty                         bool                            `json:"git_dirty,omitempty"`
+	GitClean                         bool                            `json:"git_clean,omitempty"`
+	GitFetched                       bool                            `json:"git_fetched,omitempty"`
+	GitFastForwarded                 bool                            `json:"git_fast_forwarded,omitempty"`
+	GitPlanID                        string                          `json:"git_plan_id,omitempty"`
+	GitPlanExpiresAt                 string                          `json:"git_plan_expires_at,omitempty"`
+	GitHubConfigured                 bool                            `json:"github_configured,omitempty"`
+	GitHubVisibility                 string                          `json:"github_visibility,omitempty"`
+	GitHubDefaultBranch              string                          `json:"github_default_branch,omitempty"`
+	GitHubArchived                   bool                            `json:"github_archived,omitempty"`
+	GitHubMetadataRead               bool                            `json:"github_metadata_read,omitempty"`
+	GitHubContentsRead               bool                            `json:"github_contents_read,omitempty"`
+	GitHubContentsWrite              bool                            `json:"github_contents_write,omitempty"`
+	GitHubPullRequestsRead           bool                            `json:"github_pull_requests_read,omitempty"`
+	GitHubActionsRead                bool                            `json:"github_actions_read,omitempty"`
+	GitHubAdministration             bool                            `json:"github_administration,omitempty"`
+	GitHubPermissionIssues           []string                        `json:"github_permission_issues,omitempty"`
+	ToolboxID                        string                          `json:"toolbox_id,omitempty"`
+	ToolboxState                     string                          `json:"toolbox_state,omitempty"`
+	ToolboxBase                      string                          `json:"toolbox_base,omitempty"`
+	ToolboxBaseImageID               string                          `json:"toolbox_base_image_id,omitempty"`
+	ToolboxCreatedAt                 string                          `json:"toolbox_created_at,omitempty"`
+	ToolboxUpdatedAt                 string                          `json:"toolbox_updated_at,omitempty"`
+	ToolboxOutput                    string                          `json:"toolbox_output,omitempty"`
+	ToolboxOutputTruncated           bool                            `json:"toolbox_output_truncated,omitempty"`
+	ToolboxRemoved                   bool                            `json:"toolbox_removed,omitempty"`
+	ToolboxServiceID                 string                          `json:"toolbox_service_id,omitempty"`
+	ToolboxServiceName               string                          `json:"toolbox_service_name,omitempty"`
+	ToolboxServiceState              string                          `json:"toolbox_service_state,omitempty"`
+	ToolboxServiceCreatedAt          string                          `json:"toolbox_service_created_at,omitempty"`
+	ToolboxServiceUpdatedAt          string                          `json:"toolbox_service_updated_at,omitempty"`
+	ToolboxCPUMillis                 int                             `json:"toolbox_cpu_millis,omitempty"`
+	ToolboxMemoryMiB                 int                             `json:"toolbox_memory_mib,omitempty"`
+	ToolboxProcessLimit              int                             `json:"toolbox_process_limit,omitempty"`
+	ToolboxContainerAccess           bool                            `json:"toolbox_container_access,omitempty"`
+	ToolboxWritableBytes             int64                           `json:"toolbox_writable_bytes,omitempty"`
+	ToolboxRootFSBytes               int64                           `json:"toolbox_rootfs_bytes,omitempty"`
+	BrowserSessionID                 string                          `json:"browser_session_id,omitempty"`
+	BrowserState                     string                          `json:"browser_state,omitempty"`
+	BrowserNetworkScope              string                          `json:"browser_network_scope,omitempty"`
+	BrowserSafeURL                   string                          `json:"browser_safe_url,omitempty"`
+	BrowserTitle                     string                          `json:"browser_title,omitempty"`
+	BrowserRevision                  uint64                          `json:"browser_revision,omitempty"`
+	BrowserCreatedAt                 string                          `json:"browser_created_at,omitempty"`
+	BrowserUpdatedAt                 string                          `json:"browser_updated_at,omitempty"`
+	BrowserText                      string                          `json:"browser_text,omitempty"`
+	BrowserTextTruncated             bool                            `json:"browser_text_truncated,omitempty"`
+	BrowserArtifactID                string                          `json:"browser_artifact_id,omitempty"`
+	BrowserArtifactMediaType         string                          `json:"browser_artifact_media_type,omitempty"`
+	BrowserArtifactBytes             int64                           `json:"browser_artifact_bytes,omitempty"`
+	BrowserArtifactSHA256            string                          `json:"browser_artifact_sha256,omitempty"`
+	BrowserArtifactOffset            int64                           `json:"browser_artifact_offset,omitempty"`
+	BrowserArtifactNext              int64                           `json:"browser_artifact_next,omitempty"`
+	BrowserArtifactEOF               bool                            `json:"browser_artifact_eof,omitempty"`
+	BrowserArtifactDataBase64        string                          `json:"browser_artifact_data_base64,omitempty"`
+	BrowserSessions                  []BrowserSessionSummary         `json:"browser_sessions,omitempty"`
+	BrowserListComplete              bool                            `json:"browser_list_complete,omitempty"`
+	BrowserCleanupCompleted          bool                            `json:"browser_cleanup_completed,omitempty"`
+	BrowserCleanupRemoved            int                             `json:"browser_cleanup_removed,omitempty"`
+	BrowserCleanupArtifacts          int                             `json:"browser_cleanup_artifacts,omitempty"`
+	BrowserHarnessRunID              string                          `json:"browser_harness_run_id,omitempty"`
+	BrowserHarnessState              string                          `json:"browser_harness_state,omitempty"`
+	BrowserHarnessProfile            string                          `json:"browser_harness_profile,omitempty"`
+	BrowserHarnessCreatedAt          string                          `json:"browser_harness_created_at,omitempty"`
+	BrowserHarnessUpdatedAt          string                          `json:"browser_harness_updated_at,omitempty"`
+	BrowserHarnessStartedAt          string                          `json:"browser_harness_started_at,omitempty"`
+	BrowserHarnessFinishedAt         string                          `json:"browser_harness_finished_at,omitempty"`
+	BrowserHarnessExitKnown          bool                            `json:"browser_harness_exit_known,omitempty"`
+	BrowserHarnessExitCode           int                             `json:"browser_harness_exit_code,omitempty"`
+	BrowserHarnessTimeoutSeconds     int                             `json:"browser_harness_timeout_seconds,omitempty"`
+	BrowserHarnessStorageMiB         int                             `json:"browser_harness_storage_mib,omitempty"`
+	BrowserHarnessStdout             string                          `json:"browser_harness_stdout,omitempty"`
+	BrowserHarnessStderr             string                          `json:"browser_harness_stderr,omitempty"`
+	BrowserHarnessStdoutNext         int64                           `json:"browser_harness_stdout_next,omitempty"`
+	BrowserHarnessStderrNext         int64                           `json:"browser_harness_stderr_next,omitempty"`
+	BrowserHarnessStdoutEOF          bool                            `json:"browser_harness_stdout_eof,omitempty"`
+	BrowserHarnessStderrEOF          bool                            `json:"browser_harness_stderr_eof,omitempty"`
+	BrowserHarnessStdoutTruncated    bool                            `json:"browser_harness_stdout_truncated,omitempty"`
+	BrowserHarnessStderrTruncated    bool                            `json:"browser_harness_stderr_truncated,omitempty"`
+	BrowserHarnessArtifactCount      int                             `json:"browser_harness_artifact_count,omitempty"`
+	BrowserHarnessArtifactBytes      int64                           `json:"browser_harness_artifact_bytes,omitempty"`
+	BrowserHarnessRuns               []BrowserHarnessSummary         `json:"browser_harness_runs,omitempty"`
+	BrowserHarnessListComplete       bool                            `json:"browser_harness_list_complete,omitempty"`
+	BrowserHarnessArtifacts          []BrowserHarnessArtifactSummary `json:"browser_harness_artifacts,omitempty"`
+	BrowserHarnessArtifactsComplete  bool                            `json:"browser_harness_artifacts_complete,omitempty"`
+	BrowserHarnessArtifactPath       string                          `json:"browser_harness_artifact_path,omitempty"`
+	BrowserHarnessArtifactMediaType  string                          `json:"browser_harness_artifact_media_type,omitempty"`
+	BrowserHarnessArtifactSHA256     string                          `json:"browser_harness_artifact_sha256,omitempty"`
+	BrowserHarnessArtifactOffset     int64                           `json:"browser_harness_artifact_offset,omitempty"`
+	BrowserHarnessArtifactNext       int64                           `json:"browser_harness_artifact_next,omitempty"`
+	BrowserHarnessArtifactEOF        bool                            `json:"browser_harness_artifact_eof,omitempty"`
+	BrowserHarnessArtifactDataBase64 string                          `json:"browser_harness_artifact_data_base64,omitempty"`
+	BrowserHarnessCleanupComplete    bool                            `json:"browser_harness_cleanup_complete,omitempty"`
+	BrowserHarnessCleanupRuns        int                             `json:"browser_harness_cleanup_runs,omitempty"`
+	BrowserHarnessCleanupArtifacts   int                             `json:"browser_harness_cleanup_artifacts,omitempty"`
+	BrowserHarnessCleanupProfiles    int                             `json:"browser_harness_cleanup_profiles,omitempty"`
 }
 
 type OperationProgress struct {
@@ -544,6 +661,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if hasProjectExecResult(result) {
 		return code == "" && validProjectExecResult(result)
 	}
+	if hasProjectBrowserHarnessResult(result) {
+		return false
+	}
 	if hasProjectProcessResult(result) {
 		return code == "" && validProjectProcessResult(result)
 	}
@@ -590,6 +710,12 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectExecResult(result) {
 		return kind == OperationProjectExec && validOperationCompletion(result, "")
 	}
+	if hasProjectBrowserHarnessResult(result) {
+		return validProjectBrowserHarnessResultForKind(kind, result)
+	}
+	if hasProjectBrowserResult(result) {
+		return validProjectBrowserResultForKind(kind, result)
+	}
 	if kind == OperationProjectProcessList {
 		return validProjectProcessListResult(result)
 	}
@@ -614,7 +740,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
 	}
-	if kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
+	if kind == OperationProjectExec || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")
