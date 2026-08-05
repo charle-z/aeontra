@@ -46,8 +46,12 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`info --format '{{.Host.CgroupManager}}'`,
 		`P12 rootless category=cgroup_manager`,
 		`CONTAINERS_CONF="$client_containers_conf" podman system migrate`,
-		`podman system reset --force`,
-		`P12 rootless category=storage_reset`,
+		`module="github.com/containers/podman/v5@v5.4.2"`,
+		`h1:r1Rv6GiH0YCFS91B+f0DEgEZK8yfzzkjiECVLjLjcuQ=`,
+		`be85287fcf4590961614ee37be65eeb315e5d9ff`,
+		`GOFLAGS="-tags=seccomp,exclude_graphdriver_btrfs,exclude_graphdriver_devicemapper,containers_image_openpgp"`,
+		`sudo install -o root -g root -m 0755 "$GOBIN/podman" /usr/bin/podman`,
+		`test "$(podman --version)" = "podman version 5.4.2"`,
 		`printf '+%s\n' "$controller" >"$root/cgroup.subtree_control"`,
 		`printf '+%s\n' "$controller" >"$containers/cgroup.subtree_control"`,
 		`chown "$run_uid:$run_gid" "$containers"`,
@@ -96,13 +100,9 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 	if strings.Count(text, "podman system migrate") != 1 {
 		t.Error("rootless workflow must perform exactly one configured Podman migration")
 	}
-	if strings.Count(text, "podman system reset --force") != 1 {
-		t.Error("rootless workflow must reset ephemeral Podman storage exactly once")
-	}
 
 	stageImage := strings.Index(text, "Stage PostgreSQL fixture image")
 	disableRootful := strings.Index(text, "sudo chmod 000")
-	resetRootless := strings.Index(text, "podman system reset --force")
 	startRootless := strings.Index(text, "start_service\n")
 	loadRootless := strings.Index(text, `podman --url "unix://$socket" load --input`)
 	deriveImage := strings.Index(text, `postgres_image_id="$(python3 - "$archive"`)
@@ -115,8 +115,8 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 	if stageImage < 0 || disableRootful < 0 || stageImage >= disableRootful {
 		t.Error("PostgreSQL fixture image must be staged before rootful socket isolation")
 	}
-	if resetRootless < 0 || startRootless < 0 || loadRootless < 0 || deriveImage < 0 || localImage < 0 || inventoryImage < 0 || tagImage < 0 || verifyTag < 0 || exportImage < 0 || runCycles < 0 || resetRootless >= startRootless || startRootless >= loadRootless || loadRootless >= deriveImage || deriveImage >= localImage || localImage >= inventoryImage || inventoryImage >= tagImage || tagImage >= verifyTag || verifyTag >= exportImage || exportImage >= runCycles {
-		t.Errorf("PostgreSQL fixture ordering invalid: reset=%d start=%d load=%d derive=%d local=%d inventory=%d tag=%d inspect=%d export=%d run=%d", resetRootless, startRootless, loadRootless, deriveImage, localImage, inventoryImage, tagImage, verifyTag, exportImage, runCycles)
+	if startRootless < 0 || loadRootless < 0 || deriveImage < 0 || localImage < 0 || inventoryImage < 0 || tagImage < 0 || verifyTag < 0 || exportImage < 0 || runCycles < 0 || startRootless >= loadRootless || loadRootless >= deriveImage || deriveImage >= localImage || localImage >= inventoryImage || inventoryImage >= tagImage || tagImage >= verifyTag || verifyTag >= exportImage || exportImage >= runCycles {
+		t.Errorf("PostgreSQL fixture ordering invalid: start=%d load=%d derive=%d local=%d inventory=%d tag=%d inspect=%d export=%d run=%d", startRootless, loadRootless, deriveImage, localImage, inventoryImage, tagImage, verifyTag, exportImage, runCycles)
 	}
 	for _, forbidden := range []string{
 		"tail -n 30 artifacts/p12-rootless-test.log",
@@ -130,6 +130,7 @@ func TestTrustedLinuxWorkcellRootlessDiagnosticsAreFailureOnlyAndRedacted(t *tes
 		`--property="User=$(id -un)"`,
 		`--property="Group=$(id -gn)"`,
 		`--cgroup-manager=cgroupfs`,
+		`podman system reset --force`,
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("unsafe rootless diagnostic workflow contains %q", forbidden)

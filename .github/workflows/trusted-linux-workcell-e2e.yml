@@ -144,14 +144,44 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bubblewrap catatonit podman uidmap slirp4netns fuse-overlayfs python3-venv
-          podman --version
+            bubblewrap build-essential catatonit fuse-overlayfs libseccomp-dev pkg-config \
+            podman python3-venv slirp4netns uidmap
+          test -x /usr/bin/podman
           catatonit_path="$(command -v catatonit)"
           test -f "$catatonit_path"
           test ! -L "$catatonit_path"
           test -x "$catatonit_path"
           catatonit --version
           command -v setsid
+
+      - name: Build pinned Podman 5.4.2
+        run: |
+          set -Eeuo pipefail
+          podman_root="$RUNNER_TEMP/podman-5.4.2"
+          module="github.com/containers/podman/v5@v5.4.2"
+          install -d -m 0700 "$podman_root/bin" "$podman_root/gopath" "$podman_root/mod"
+          export GOBIN="$podman_root/bin"
+          export GOPATH="$podman_root/gopath"
+          export GOMODCACHE="$podman_root/mod"
+          export GOFLAGS="-tags=seccomp,exclude_graphdriver_btrfs,exclude_graphdriver_devicemapper,containers_image_openpgp"
+          go mod download -json "$module" >"$podman_root/module.json"
+          python3 - "$podman_root/module.json" <<'PY'
+          import json
+          import sys
+
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert data["Version"] == "v5.4.2"
+          assert data["Sum"] == "h1:r1Rv6GiH0YCFS91B+f0DEgEZK8yfzzkjiECVLjLjcuQ="
+          assert data["Origin"]["Hash"] == "be85287fcf4590961614ee37be65eeb315e5d9ff"
+          assert data["Origin"]["Ref"] == "refs/tags/v5.4.2"
+          PY
+          go install "$module"
+          test "$("$GOBIN/podman" --version)" = "podman version 5.4.2"
+          sudo install -o root -g root -m 0755 "$GOBIN/podman" /usr/bin/podman
+          test "$(podman --version)" = "podman version 5.4.2"
+          go version -m /usr/bin/podman | grep -F $'mod	github.com/containers/podman/v5	v5.4.2'
+          chmod -R u+w "$podman_root"
+          rm -rf "$podman_root"
 
       - name: Install pinned podman-compose
         run: |
@@ -497,11 +527,6 @@ jobs:
               finally:
                   client.close()
           PY
-
-          if ! podman system reset --force >/dev/null; then
-            echo "P12 rootless category=storage_reset"
-            exit 1
-          fi
 
           start_service
 
