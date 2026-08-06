@@ -13,20 +13,42 @@ the authenticated local Edge. It separates two uses of GitHub authority:
 
 | Authority | Location | Purpose |
 |---|---|---|
-| Public MCP GitHub API | VPS/Coolify `GITHUB_TOKEN` | Repository/PR metadata, exact-head checks and workflows, PR creation/merge, and default-branch operations. |
+| Public MCP GitHub API | VPS/Coolify `GITHUB_TOKEN` | Owner-bound repositories plus planned public forks, upstream issue/PR comments, cross-repository PRs, exact-head checks and workflows. |
+| Public OSS GitHub broker | Same VPS/Coolify `GITHUB_TOKEN` | Public external upstreams only; fork under the configured owner, publish only to that fork, and open/read upstream PRs without external merge authority. |
 | Local Git and GitHub broker | Edge private `github.json` | Clone/publish one owner-bound repository and execute only server-constructed `gh api` reads for its registered `dev` project. |
 
-The same fine-grained PAT may be entered in both places, but it is stored separately
-because the VPS and PC are separate trust domains. Neither copy is returned to the
-model, written into a workspace, placed in Git argv, or mounted into Bubblewrap.
+The same existing GitHub credential may be entered in both places, but it is stored
+separately because the VPS and PC are separate trust domains. Public OSS API writes
+reuse the VPS copy; fork Git transport reuses the Edge copy. Neither copy is returned
+to the model, written into a workspace, placed in Git argv, or mounted into Bubblewrap.
 
 ## Required GitHub permission
 
-Restrict a fine-grained PAT to the intended owner and repositories. For the complete
-development flow it needs repository Contents read/write and Metadata read. Give it
-Actions read and Pull requests read/write when ChatGPT must inspect workflows/checks
-and manage the existing PR. Do not add administration or organization-wide access
-unless a later explicit operation requires it.
+Use the existing token only when GitHub grants it the operations required by the
+selected workflow. Owner-bound development needs repository Contents read/write and
+Metadata read. Public OSS automation additionally needs permission to create a public
+fork, comment on the selected public issue/PR, and open a PR against that upstream.
+Checks and workflow diagnostics need Actions/Checks read. MCP Devbox probes each action
+through its closed API call and fails without exposing the token when GitHub denies it.
+Do not broaden the credential merely to bypass a failed policy check.
+
+## Public OSS broker contract
+
+The public control plane exposes a closed contribution path using the same configured
+GitHub client:
+
+- only public external upstream repositories are accepted;
+- a fork must live under `GITHUB_OWNER` and retain the exact upstream parent;
+- issue comments and cross-repository PRs require preview, short expiry, one-time use
+  and state revalidation;
+- fork head and upstream base SHAs are bound before PR creation;
+- duplicate PRs and changed issue conversations fail closed;
+- external PR state includes exact-head checks, reviews, inline review comments and conversation comments;
+- inline review replies bind the PR head, comment ID and comment timestamp before posting;
+- no tool merges an external upstream PR.
+
+The token remains in the public broker process. It is not copied into the Edge toolbox
+or made available to an arbitrary `gh` command.
 
 Configure the public copy as private Coolify variables and redeploy the existing MCP:
 

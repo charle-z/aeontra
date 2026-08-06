@@ -89,6 +89,12 @@ Use this short map before scanning the complete catalog in `docs/tools.md`.
 | Inspect Git state or changes | `repo_status` / `repo_diff` |
 | Publish the current branch | `repo_publish_preview`, then `repo_publish` |
 | Create a pull request | `source_pull_request_create_preview`, then `source_pull_request_create` |
+| Inspect a public upstream issue | `source_public_issue_status` |
+| Create the configured-owner fork | `source_public_fork_create_preview`, then `source_public_fork_create` |
+| Comment on a public issue or PR | `source_public_issue_comment_preview`, then `source_public_issue_comment` |
+| Reply to an inline public review | `source_public_review_reply_preview`, then `source_public_review_reply` |
+| Open a PR from the fork | `source_cross_repo_pull_request_create_preview`, then `source_cross_repo_pull_request_create` |
+| Read public PR checks/reviews | `source_public_pull_request_status` |
 | Dispatch a GitHub Actions workflow | `source_workflow_dispatch_preview`, then `source_workflow_dispatch` |
 | Read a pull request and its exact-head checks | `source_pull_request_status` |
 | Diagnose GitHub Actions failures | `source_pull_request_failure_diagnostics`; use `source_pull_request_job_log` for an exact bounded job log |
