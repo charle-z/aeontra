@@ -255,7 +255,7 @@ remain unavailable until a tool is called.
 
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
 |---|---|---|---|---|---|
-| `GITHUB_TOKEN` | GitHub API and HTTPS publication | Required to enable adapter; secret | none; fine-grained token | `REPLACE_WITH_FINE_GRAINED_GITHUB_VALUE`; secret manager | Missing disables the adapter. Incomplete owner/type makes GitHub tools fail closed when called. |
+| `GITHUB_TOKEN` | GitHub API and HTTPS publication | Required to enable adapter; secret | none; existing GitHub token with only the permissions needed for owner-bound work and selected public OSS operations | `REPLACE_WITH_GITHUB_VALUE`; secret manager | Missing disables the adapter. Incomplete owner/type or denied fork/comment/PR permission makes the exact operation fail closed. |
 | `GITHUB_OWNER` | owner boundary | Required with token; not secret | none; exact user/org login | `example-owner`; platform env | Missing leaves client unconfigured and tools fail closed. |
 | `GITHUB_OWNER_TYPE` | API routing | Required by documented setup; not secret | constructor default `user`; `user` or `org` | `user`; platform env | Invalid value makes the client unconfigured and tools fail closed. |
 | `GITHUB_DEFAULT_VISIBILITY` | repo creation | Optional; not secret | `private`; `private` or `public` | `private`; platform env | Missing stays private. Invalid requested visibility is rejected. |

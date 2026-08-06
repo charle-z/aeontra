@@ -118,6 +118,16 @@ do not replace server-side enforcement.
 | `source_repo_create_preview` | 1/0/1/1 | Confirm absence and plan private-by-default creation. |
 | `github_create_repo` | 0/0/0/1 | Compatibility name for planned `source_repo_create`. |
 | `source_repo_create` | 0/0/0/1 | Revalidate and create the planned owner-bound repository. |
+| `source_public_issue_status` | 1/0/1/1 | Read one public upstream issue, assignees, bounded conversation and linked PRs. |
+| `source_public_fork_create_preview` | 1/0/1/1 | Verify one public external repository and plan a fork under the configured owner. |
+| `source_public_fork_create` | 0/0/0/1 | Revalidate and create the planned public fork, then verify its parent and write permission. |
+| `source_public_issue_comment_preview` | 1/0/1/1 | Freeze one open public issue/PR conversation and plan an exact comment. |
+| `source_public_issue_comment` | 0/0/0/1 | Require the conversation to remain unchanged and post the planned comment. |
+| `source_public_review_reply_preview` | 1/0/1/1 | Bind one exact inline review comment, PR head and reply body. |
+| `source_public_review_reply` | 0/0/0/1 | Revalidate the PR and comment timestamp, then post one threaded reply. |
+| `source_cross_repo_pull_request_create_preview` | 1/0/1/1 | Bind fork/upstream SHAs, ancestry and duplicate state for one public PR. |
+| `source_cross_repo_pull_request_create` | 0/0/0/1 | Revalidate the fork, SHAs and duplicate state, then open the public upstream PR. |
+| `source_public_pull_request_status` | 1/0/1/1 | Read one public PR, exact-head checks, reviews and conversation comments. |
 | `source_pull_request_create_preview` | 1/0/1/1 | Bind head/base SHAs and plan one non-draft pull request. |
 | `source_pull_request_create` | 0/0/0/1 | Revalidate branch SHAs and create the planned pull request. |
 | `source_pull_request_status` | 1/0/1/1 | Read PR state and every check/status context for the exact head SHA. |
@@ -136,7 +146,11 @@ do not replace server-side enforcement.
 | `repo_publish` | 0/0/0/1 | Revalidate and push one branch; no force/tags/mirror/refspecs. |
 
 The public catalog GitHub tools use the VPS/Coolify `GITHUB_TOKEN` for API operations
-such as repository metadata, exact-head PR/check status, Actions diagnostics and merge.
+such as repository metadata, owner-bound publication, public fork creation, issue/PR
+comments, cross-repository pull requests, exact-head checks, Actions diagnostics and
+owner-bound merge. Public OSS operations accept only a public external upstream, create
+forks under the configured owner, keep upstream read-only, use expiring single-use
+plans for every write, and do not expose an external merge operation.
 Actions runs/jobs/logs require `Actions: Read`; workflow dispatch requires
 `Actions: Write`; check-run annotations require `Checks: Read`. Job-log downloads follow exactly one GitHub-issued redirect, omit the
 Authorization header on the signed download request, redact returned content and expose
@@ -236,6 +250,20 @@ message sequencing:
 
 Steps 7-10 are needed only when creating/configuring a new GitHub repository.
 `git_commit` does not push. External writes require explicit approval in ask mode.
+
+## Recommended public OSS contribution workflow
+
+1. `source_public_issue_status`
+2. repeat issue/comment/linked-PR review before claiming work
+3. `source_public_fork_create_preview`, then `source_public_fork_create`
+4. prepare the configured-owner fork locally, implement, verify and commit with DCO
+5. publish one branch through `repo_publish_preview` / `repo_publish`
+6. `source_public_issue_comment_preview`, then `source_public_issue_comment` when the project requires a claim
+7. `source_cross_repo_pull_request_create_preview`, then `source_cross_repo_pull_request_create`
+8. `source_public_pull_request_status` for checks, reviews, inline review comments and conversation
+9. use `source_public_review_reply_preview` / `source_public_review_reply` for an exact inline thread
+
+The broker never merges an external upstream PR. Maintainers retain merge authority.
 
 ## Recommended Coolify workflow
 
