@@ -60,7 +60,7 @@ func p12RootlessRuntimeIDs(t *testing.T) []string {
 
 func p12RootlessEndpoint(t *testing.T) *RootlessContainerEndpoint {
 	t.Helper()
-	endpoint, err := DiscoverRootlessContainerEndpoint(os.Geteuid(), openCodeDefaultToolPath)
+	endpoint, err := DiscoverRootlessContainerEndpoint(os.Geteuid(), p12RootlessToolPath())
 	if err != nil || endpoint == nil || endpoint.Engine != "podman" {
 		t.Fatalf("rootless Podman endpoint unavailable: endpoint=%+v err=%v", endpoint, err)
 	}
@@ -106,7 +106,7 @@ func p12AssertNoRuntimeResources(t *testing.T, endpoint *RootlessContainerEndpoi
 func p12CleanupRuntime(endpoint *RootlessContainerEndpoint, runtimeID, image string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cleanupErr := CleanupRootlessContainerResources(ctx, endpoint, runtimeID, openCodeDefaultToolPath, nil)
+	cleanupErr := CleanupRootlessContainerResources(ctx, endpoint, runtimeID, p12RootlessToolPath(), nil)
 	if image != "" {
 		prefix := rootlessEnginePrefix(endpoint)
 		_, _ = execContainerCommandRunner{}.Run(ctx, endpoint.Executable, append(prefix, "image", "rm", "--force", image), p12RootlessEnv(endpoint))

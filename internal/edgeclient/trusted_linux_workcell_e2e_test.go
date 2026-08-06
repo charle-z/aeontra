@@ -476,11 +476,18 @@ func p12Engine(t *testing.T, endpoint *RootlessContainerEndpoint, args ...string
 	return strings.TrimSpace(string(output))
 }
 
+func p12RootlessToolPath() string {
+	if toolPath := strings.TrimSpace(os.Getenv("P12_ROOTLESS_TOOL_PATH")); toolPath != "" {
+		return toolPath
+	}
+	return openCodeDefaultToolPath
+}
+
 func p12RootlessEnv(endpoint *RootlessContainerEndpoint) []string {
 	home, _ := os.UserHomeDir()
 	runtimeRoot := filepath.Join("/run/user", strconv.Itoa(os.Geteuid()))
 	return []string{
-		"PATH=" + openCodeDefaultToolPath,
+		"PATH=" + p12RootlessToolPath(),
 		"HOME=" + home,
 		"XDG_RUNTIME_DIR=" + runtimeRoot,
 		"CONTAINER_HOST=unix://" + endpoint.SocketPath,
