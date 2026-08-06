@@ -245,6 +245,9 @@ func (s *SourceCapability) SourcePublicIssueComment(planID string, approve bool)
 	}
 	number, _ := strconv.Atoi(plan.Args["number"])
 	ctx := context.Background()
+	if _, err := s.github.publicRepo(ctx, plan.Args["upstream_owner"], plan.Args["repo"]); err != nil {
+		return "", err
+	}
 	issue, err := s.github.publicIssue(ctx, plan.Args["upstream_owner"], plan.Args["repo"], number)
 	if err != nil {
 		return "", err
@@ -356,6 +359,10 @@ func (s *SourceCapability) SourceCrossRepoPullRequestCreate(planID string, appro
 		return "", fmt.Errorf("configured GitHub owner changed after preview")
 	}
 	ctx := context.Background()
+	upstream, err := s.github.publicRepo(ctx, plan.Args["upstream_owner"], plan.Args["repo"])
+	if err != nil || upstream.FullName != plan.Args["upstream"] {
+		return "", fmt.Errorf("upstream repository changed after preview")
+	}
 	if _, exists, err := s.github.configuredFork(ctx, plan.Args["upstream_owner"], plan.Args["repo"]); err != nil {
 		return "", err
 	} else if !exists {
@@ -405,6 +412,9 @@ func (s *SourceCapability) SourcePublicReviewReplyPreview(upstreamOwner, repo st
 		return "", fmt.Errorf("invalid pull request, review comment, or reply body")
 	}
 	ctx := context.Background()
+	if _, err := s.github.publicRepo(ctx, upstreamOwner, repo); err != nil {
+		return "", err
+	}
 	pull, err := s.github.publicPullRequest(ctx, upstreamOwner, repo, number)
 	if err != nil {
 		return "", err
@@ -459,6 +469,9 @@ func (s *SourceCapability) SourcePublicReviewReply(planID string, approve bool) 
 	number, _ := strconv.Atoi(plan.Args["number"])
 	commentID, _ := strconv.ParseInt(plan.Args["comment_id"], 10, 64)
 	ctx := context.Background()
+	if _, err := s.github.publicRepo(ctx, plan.Args["upstream_owner"], plan.Args["repo"]); err != nil {
+		return "", err
+	}
 	pull, err := s.github.publicPullRequest(ctx, plan.Args["upstream_owner"], plan.Args["repo"], number)
 	if err != nil {
 		return "", err

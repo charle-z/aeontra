@@ -186,6 +186,41 @@ func TestGitHubPublicIssueCommentRevalidatesConversation(t *testing.T) {
 	}
 }
 
+func TestGitHubPublicIssueCommentRevalidatesPublicUpstream(t *testing.T) {
+	public := true
+	posted := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo":
+			if public {
+				_, _ = w.Write([]byte(`{"full_name":"upstream/demo","private":false,"visibility":"public"}`))
+			} else {
+				_, _ = w.Write([]byte(`{"full_name":"upstream/demo","private":true,"visibility":"private"}`))
+			}
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/issues/9":
+			_, _ = w.Write([]byte(`{"number":9,"state":"open","updated_at":"2026-08-05T20:00:00Z","comments":0}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/issues/9/comments":
+			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/upstream/demo/issues/9/comments":
+			posted = true
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithGitHub(NewGitHubClient(server.URL, "token", "acme", "user", "private"))
+	preview, err := svc.SourcePublicIssueCommentPreview("upstream", "demo", 9, "claim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	public = false
+	if _, err := svc.SourcePublicIssueComment(field(preview, "plan_id"), true); err == nil || !strings.Contains(err.Error(), "not public") || posted {
+		t.Fatalf("expected public upstream revalidation failure, err=%v posted=%t", err, posted)
+	}
+}
+
 func TestGitHubCrossRepoPullRequestRevalidatesHeadSHA(t *testing.T) {
 	baseSHA := strings.Repeat("a", 40)
 	headSHA := strings.Repeat("b", 40)
