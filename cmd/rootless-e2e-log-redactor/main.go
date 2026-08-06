@@ -15,7 +15,7 @@ const (
 )
 
 var (
-	safeTestLine              = regexp.MustCompile(`^(=== RUN   TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E)|--- (?:PASS|FAIL): TestTrustedLinuxWorkcellRootless(?:E2E|RestartE2E) \([0-9.]+s\)|PASS|FAIL)$`)
+	safeTestLine              = regexp.MustCompile(`^(=== RUN   TestTrustedLinuxWorkcellRootless(?:Cleanup|Restart)?E2E|--- (?:PASS|FAIL): TestTrustedLinuxWorkcellRootless(?:Cleanup|Restart)?E2E \([0-9.]+s\)|PASS|FAIL)$`)
 	safeStageLine             = regexp.MustCompile(`^P12 rootless category=stage_(?:clean_start|image_build|pod_create|network_volume_create|workspace_bind|compose|postgres|chromium|cancellation|cleanup)$`)
 	safePostgresOperationLine = regexp.MustCompile(`^P12 rootless category=postgres_(?:image_inspect|network_create|volume_create|container_run|readiness_query)$`)
 )
@@ -30,6 +30,15 @@ func category(line string) string {
 		{"rootless endpoint unavailable after restart", "endpoint_restart"},
 		{"runtime-labelled resources survived rootless service restart", "restart_orphans"},
 		{"rootless resources remain", "cleanup_resources"},
+		{"rootless pod inventory failed", "pod_inventory"},
+		{"rootless container inventory failed", "container_inventory"},
+		{"rootless network inventory failed", "network_inventory"},
+		{"rootless volume inventory failed", "volume_inventory"},
+		{"rootless pod cleanup failed", "pod_cleanup"},
+		{"rootless container cleanup failed", "container_cleanup"},
+		{"rootless network cleanup failed", "network_cleanup"},
+		{"rootless volume cleanup failed", "volume_cleanup"},
+		{"rootless container engine returned an unsafe resource identifier", "unsafe_resource_id"},
 		{"podman-compose cleanup failed", "compose_cleanup"},
 		{"podman-compose failed", "compose"},
 		{"chromium smoke failed", "chromium"},
