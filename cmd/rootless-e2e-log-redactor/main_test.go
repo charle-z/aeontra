@@ -94,10 +94,27 @@ func TestNormalizeClassifiesRootlessLifecycleFailures(t *testing.T) {
 		"podman-compose cleanup failed":                                    "P12 rootless category=compose_cleanup",
 		"Error: no such network p12-net-deadbeef":                          "P12 rootless category=postgres_network",
 		"Error: no such image localhost/p12-postgres-fixture:17-alpine":    "P12 rootless category=postgres_image",
+		"rootless pod inventory failed":                                    "P12 rootless category=pod_inventory",
+		"rootless container inventory failed":                              "P12 rootless category=container_inventory",
+		"rootless network cleanup failed":                                  "P12 rootless category=network_cleanup",
+		"rootless volume cleanup failed":                                   "P12 rootless category=volume_cleanup",
+		"rootless container engine returned an unsafe resource identifier": "P12 rootless category=unsafe_resource_id",
 	}
 	for input, expected := range tests {
 		if got := normalize(input); got != expected {
 			t.Fatalf("input=%q normalized=%q expected=%q", input, got, expected)
+		}
+	}
+}
+
+func TestNormalizeKeepsCleanupTestBoundary(t *testing.T) {
+	for _, input := range []string{
+		"=== RUN   TestTrustedLinuxWorkcellRootlessCleanupE2E",
+		"--- PASS: TestTrustedLinuxWorkcellRootlessCleanupE2E (0.12s)",
+		"--- FAIL: TestTrustedLinuxWorkcellRootlessCleanupE2E (1.23s)",
+	} {
+		if got := normalize(input); got != input {
+			t.Fatalf("input=%q normalized=%q", input, got)
 		}
 	}
 }
