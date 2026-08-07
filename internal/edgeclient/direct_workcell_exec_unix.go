@@ -257,7 +257,7 @@ func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWo
 	// service. Binding Bubblewrap to that worker preserves Edge-restart recovery while
 	// ensuring a crashed worker cannot leave an unowned sandbox behind.
 	args := []string{"--die-with-parent", "--new-session", "--unshare-all", "--share-net", "--clearenv"}
-	for _, systemPath := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates"} {
+	for _, systemPath := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates", "/etc/alternatives"} {
 		if info, err := os.Stat(systemPath); err == nil && info.IsDir() {
 			args = append(args, "--ro-bind", systemPath, systemPath)
 		}
