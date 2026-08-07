@@ -16,7 +16,7 @@ done
 
 [[ "$OUTPUT" = /* ]] || usage
 [ ! -e "$OUTPUT" ] || { printf 'output already exists\n' >&2; exit 1; }
-for command in gh sha256sum tar install mktemp; do
+for command in curl sha256sum tar install mktemp; do
   command -v "$command" >/dev/null 2>&1 || { printf 'required command unavailable\n' >&2; exit 1; }
 done
 
@@ -27,7 +27,9 @@ DIGEST='a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112'
 WORK="$(mktemp -d)"
 trap 'rm -rf -- "$WORK"' EXIT
 
-gh release download "$TAG" --repo cli/cli --pattern "$ASSET" --dir "$WORK"
+curl --fail --location --proto '=https' --proto-redir '=https' \
+  --output "$WORK/$ASSET" \
+  "https://github.com/cli/cli/releases/download/$TAG/$ASSET"
 printf '%s  %s\n' "$DIGEST" "$WORK/$ASSET" | sha256sum --check --status
 tar -xzf "$WORK/$ASSET" -C "$WORK"
 SOURCE="$WORK/gh_${VERSION}_linux_amd64/bin/gh"
