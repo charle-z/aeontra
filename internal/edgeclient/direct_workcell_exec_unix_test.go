@@ -91,6 +91,9 @@ func TestRunDirectWorkcellCommandUsesTrustedWorkspaceSandbox(t *testing.T) {
 	if info, err := os.Stat("/etc/chromium.d"); err == nil && info.IsDir() && !strings.Contains(joined, "--ro-bind\n/etc/chromium.d\n/etc/chromium.d") {
 		t.Fatalf("workcell did not expose Chromium system configuration read-only: %v", args)
 	}
+	if info, err := os.Stat("/etc/fonts"); err == nil && info.IsDir() && !strings.Contains(joined, "--ro-bind\n/etc/fonts\n/etc/fonts") {
+		t.Fatalf("workcell did not expose Fontconfig system configuration read-only: %v", args)
+	}
 	if _, err := os.Stat(filepath.Join(workspacePath, ".mcp-devbox", "runtime", "tmp")); !os.IsNotExist(err) {
 		t.Fatalf("workspace runtime tmp should not be created: %v", err)
 	}
