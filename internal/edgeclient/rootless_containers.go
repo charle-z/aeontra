@@ -198,11 +198,12 @@ func rootlessEnginePrefix(endpoint *RootlessContainerEndpoint) []string {
 }
 
 func (execContainerCommandRunner) Run(ctx context.Context, executable string, args, environment []string) ([]byte, error) {
-	capture := &bytes.Buffer{}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
 	command := exec.CommandContext(ctx, executable, args...)
 	command.Env = append([]string(nil), environment...)
-	command.Stdout = capture
-	command.Stderr = capture
+	command.Stdout = stdout
+	command.Stderr = stderr
 	command.SysProcAttr = processGroupAttributes()
 	command.Cancel = func() error {
 		if command.Process == nil {
@@ -216,8 +217,8 @@ func (execContainerCommandRunner) Run(ctx context.Context, executable string, ar
 	}
 	command.WaitDelay = 5 * time.Second
 	err := command.Run()
-	if capture.Len() > 64<<10 {
+	if stdout.Len()+stderr.Len() > 64<<10 {
 		return nil, errors.New("rootless container command output exceeded its limit")
 	}
-	return capture.Bytes(), err
+	return stdout.Bytes(), err
 }
