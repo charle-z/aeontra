@@ -13,6 +13,21 @@ import (
 	"time"
 )
 
+func TestExecContainerCommandRunnerKeepsStderrOutOfMachineOutput(t *testing.T) {
+	output, err := execContainerCommandRunner{}.Run(
+		t.Context(),
+		"/bin/sh",
+		[]string{"-c", `printf 'resource-id\n'; printf 'warning from engine\n' >&2`},
+		[]string{"PATH=/usr/bin:/bin", "LANG=C", "LC_ALL=C"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(output); got != "resource-id\n" {
+		t.Fatalf("machine output=%q", got)
+	}
+}
+
 func TestExecContainerCommandRunnerCancelsWholeProcessGroup(t *testing.T) {
 	root := t.TempDir()
 	heartbeat := filepath.Join(root, "heartbeat")
