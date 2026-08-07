@@ -38,6 +38,18 @@ type execContainerCommandRunner struct{}
 var containerResourceIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 func DiscoverRootlessContainerEndpoint(uid int, toolPath string) (*RootlessContainerEndpoint, error) {
+	endpoints, err := DiscoverRootlessContainerEndpoints(uid, toolPath)
+	if err != nil || len(endpoints) == 0 {
+		return nil, err
+	}
+	return endpoints[0], nil
+}
+
+// DiscoverRootlessContainerEndpoints returns every validated user-owned rootless
+// engine endpoint in deterministic preference order. Callers that own durable
+// container state can use the complete set to recover that state if another
+// rootless engine appears later on the host.
+func DiscoverRootlessContainerEndpoints(uid int, toolPath string) ([]*RootlessContainerEndpoint, error) {
 	if uid < 1 {
 		return nil, errors.New("rootless container endpoint requires a non-root user")
 	}
@@ -56,6 +68,7 @@ func DiscoverRootlessContainerEndpoint(uid int, toolPath string) (*RootlessConta
 		{engine: "docker", executable: "docker", path: filepath.Join(runtimeRoot, "docker.sock")},
 		{engine: "podman", executable: "podman", path: filepath.Join(runtimeRoot, "podman", "podman.sock")},
 	}
+	endpoints := make([]*RootlessContainerEndpoint, 0, len(candidates))
 	for _, candidate := range candidates {
 		executable, ok := findSafeLinuxTool(candidate.executable, toolPath)
 		if !ok {
@@ -67,9 +80,9 @@ func DiscoverRootlessContainerEndpoint(uid int, toolPath string) (*RootlessConta
 			}
 			return nil, err
 		}
-		return &RootlessContainerEndpoint{Engine: candidate.engine, SocketPath: candidate.path, Executable: executable}, nil
+		endpoints = append(endpoints, &RootlessContainerEndpoint{Engine: candidate.engine, SocketPath: candidate.path, Executable: executable})
 	}
-	return nil, nil
+	return endpoints, nil
 }
 
 func validateRootlessContainerSocket(path, runtimeRoot string, uid int) error {

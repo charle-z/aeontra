@@ -41,15 +41,66 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
 	}
-	endpoint, err := edgeclient.DiscoverRootlessContainerEndpoint(os.Geteuid(), "")
-	if err != nil || endpoint == nil {
+	endpoints, err := edgeclient.DiscoverRootlessContainerEndpoints(os.Geteuid(), "")
+	if err != nil || len(endpoints) == 0 {
 		return edge.OperationResult{}, "project_toolbox_unavailable"
 	}
-	manager, err := edgeclient.OpenProjectToolboxManager(edgeclient.ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint})
+	managers := make([]projectToolboxOperations, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		manager, openErr := edgeclient.OpenProjectToolboxManager(edgeclient.ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint})
+		if openErr != nil {
+			return edge.OperationResult{}, "project_toolbox_unavailable"
+		}
+		managers = append(managers, manager)
+	}
+	manager, err := selectProjectToolboxManager(ctx, managers, resolved, operation)
 	if err != nil {
-		return edge.OperationResult{}, "project_toolbox_unavailable"
+		switch {
+		case errors.Is(err, edgeclient.ErrProjectToolboxNotOwned), errors.Is(err, edgeclient.ErrProjectToolboxUnsafeState):
+			return edge.OperationResult{}, "project_toolbox_failed"
+		default:
+			return edge.OperationResult{}, "project_toolbox_unavailable"
+		}
 	}
 	return collectProjectToolbox(ctx, manager, resolved, operation)
+}
+
+func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxOperations, resolved edgeclient.ProjectResolution, operation edge.Operation) (projectToolboxOperations, error) {
+	if len(managers) == 0 {
+		return nil, edgeclient.ErrProjectToolboxUnavailable
+	}
+	if !projectToolboxOperationNeedsLiveOwnership(operation.Kind) {
+		return managers[0], nil
+	}
+	request := edgeclient.ProjectToolboxStatusRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace}
+	var lastErr error
+	for _, manager := range managers {
+		_, err := manager.Status(ctx, request)
+		switch {
+		case err == nil:
+			return manager, nil
+		case errors.Is(err, edgeclient.ErrProjectToolboxNotFound):
+			return manager, nil
+		case errors.Is(err, edgeclient.ErrProjectToolboxNotOwned), errors.Is(err, edgeclient.ErrProjectToolboxUnavailable):
+			lastErr = err
+			continue
+		default:
+			return nil, err
+		}
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, edgeclient.ErrProjectToolboxUnavailable
+}
+
+func projectToolboxOperationNeedsLiveOwnership(kind edge.OperationKind) bool {
+	switch kind {
+	case edge.OperationProjectBrowserHarnessCleanup, edge.OperationProjectBrowserHarnessArtifactList, edge.OperationProjectBrowserHarnessArtifactRead:
+		return false
+	default:
+		return true
+	}
 }
 
 func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations, resolved edgeclient.ProjectResolution, operation edge.Operation) (edge.OperationResult, string) {
