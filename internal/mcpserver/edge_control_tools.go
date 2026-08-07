@@ -108,6 +108,7 @@ func (s *Server) addEdgeControlTools() {
 		Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 	}, s.handleProjectSnapshot)
 	s.addProjectExecTool(projectSchema)
+	s.addProjectNetworkTools(projectSchema)
 	s.addProjectProcessTools(projectSchema)
 	s.addProjectGitSyncTools(projectSchema)
 	s.addProjectGitHubTools(projectSchema)

@@ -39,6 +39,12 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if !isToolbox && (request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request)) {
 		return OperationRequest{}, errors.New("project toolbox service fields are invalid for this operation")
 	}
+	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
+		return normalizeProjectNetworkRequest(kind, request)
+	}
+	if !emptyProjectNetworkRequestFields(request) {
+		return OperationRequest{}, errors.New("project network fields are invalid for this operation")
+	}
 	if kind == OperationProjectExec {
 		return normalizeProjectExecRequest(request)
 	}
