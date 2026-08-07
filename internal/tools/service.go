@@ -69,9 +69,10 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		SourceCapability:            source,
 		ManagedDeploymentCapability: &ManagedDeploymentCapability{PlatformCapability: platform},
 		ExecutionCapability: &ExecutionCapability{
-			serviceCore: core,
-			sandbox:     disabledSandboxRunner{},
-			validation:  disabledValidationRunner{},
+			serviceCore:      core,
+			SourceCapability: source,
+			sandbox:          disabledSandboxRunner{},
+			validation:       disabledValidationRunner{},
 		},
 		ResultCapability: &ResultCapability{serviceCore: core},
 		BrainCapability:  &BrainCapability{serviceCore: core},

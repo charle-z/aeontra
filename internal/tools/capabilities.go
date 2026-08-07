@@ -57,6 +57,7 @@ type PlatformCapability struct {
 // behavior.
 type ExecutionCapability struct {
 	*serviceCore
+	*SourceCapability
 	sandbox    SandboxRunner
 	testCmd    []string
 	validation ValidationRunner

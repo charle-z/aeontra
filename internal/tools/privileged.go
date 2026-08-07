@@ -47,6 +47,12 @@ func normalizePrivilegedConfig(cfg PrivilegedConfig) PrivilegedConfig {
 func (s *ExecutionCapability) PrivilegedTaskPreview(repo, profile string, params map[string]string) (string, error) {
 	sp := s.log.Start("privileged_task_preview")
 	profile = strings.TrimSpace(profile)
+	if profile == "edge-release-maintenance" {
+		if strings.TrimSpace(repo) != "" || len(params) != 0 {
+			return "", fmt.Errorf("edge-release-maintenance accepts no repository or parameters")
+		}
+		return s.SourceCapability.SourceEdgeReleaseMaintenancePreview()
+	}
 	if !s.privileged.Enabled {
 		err := fmt.Errorf("privileged task profiles are disabled by administrator configuration")
 		sp.Finish(audit.Deny, profile, nil, err)
@@ -75,6 +81,9 @@ func (s *ExecutionCapability) PrivilegedTaskPreview(repo, profile string, params
 
 func (s *ExecutionCapability) PrivilegedTaskExecute(planID string, approve bool) (string, error) {
 	sp := s.log.Start("privileged_task_execute")
+	if operation, ok := s.plans.Operation(strings.TrimSpace(planID)); ok && operation == "source-edge-release-maintenance" {
+		return s.SourceCapability.SourceEdgeReleaseMaintenanceApply(planID, approve)
+	}
 	if !s.privileged.Enabled {
 		err := fmt.Errorf("privileged task profiles are disabled by administrator configuration")
 		sp.Finish(audit.Deny, planID, nil, err)
