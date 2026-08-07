@@ -64,6 +64,8 @@ func safeProjectToolboxSelectionFailure(err error) string {
 	switch {
 	case errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
 		return "project_toolbox_container_unavailable"
+	case errors.Is(err, edgeclient.ErrProjectToolboxContainerMissing):
+		return "project_toolbox_container_missing"
 	case errors.Is(err, edgeclient.ErrProjectToolboxIdentityMismatch):
 		return "project_toolbox_identity_mismatch"
 	case errors.Is(err, edgeclient.ErrProjectToolboxMountMismatch):
@@ -97,6 +99,19 @@ func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxO
 			return manager, nil
 		case errors.Is(err, edgeclient.ErrProjectToolboxNotFound):
 			return manager, nil
+		case operation.Kind == edge.OperationProjectToolboxRepair && errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
+			_, repairErr := manager.Repair(ctx, edgeclient.ProjectToolboxRepairRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
+			switch {
+			case repairErr == nil:
+				return manager, nil
+			case errors.Is(repairErr, edgeclient.ErrProjectToolboxContainerMissing), errors.Is(repairErr, edgeclient.ErrProjectToolboxUnavailable):
+				lastErr = repairErr
+				continue
+			case errors.Is(repairErr, edgeclient.ErrProjectToolboxNotOwned), errors.Is(repairErr, edgeclient.ErrProjectToolboxUnsafeState):
+				return nil, repairErr
+			default:
+				return nil, repairErr
+			}
 		case errors.Is(err, edgeclient.ErrProjectToolboxNotOwned), errors.Is(err, edgeclient.ErrProjectToolboxUnavailable):
 			lastErr = err
 			continue
