@@ -88,6 +88,9 @@ func TestRunDirectWorkcellCommandUsesTrustedWorkspaceSandbox(t *testing.T) {
 	if info, err := os.Stat("/etc/alternatives"); err == nil && info.IsDir() && !strings.Contains(joined, "--ro-bind\n/etc/alternatives\n/etc/alternatives") {
 		t.Fatalf("workcell did not expose system alternatives read-only: %v", args)
 	}
+	if info, err := os.Stat("/etc/chromium.d"); err == nil && info.IsDir() && !strings.Contains(joined, "--ro-bind\n/etc/chromium.d\n/etc/chromium.d") {
+		t.Fatalf("workcell did not expose Chromium system configuration read-only: %v", args)
+	}
 	if _, err := os.Stat(filepath.Join(workspacePath, ".mcp-devbox", "runtime", "tmp")); !os.IsNotExist(err) {
 		t.Fatalf("workspace runtime tmp should not be created: %v", err)
 	}
