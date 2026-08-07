@@ -77,6 +77,7 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 		"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH": true, "MCP_FRONT_DOOR_COORDINATOR_TARGET": true,
 		"MCP_FRONT_DOOR_COORDINATOR_REQUEST_ID": true, "MCP_FRONT_DOOR_COORDINATOR_STATE_ROOT": true,
 		"MCP_FRONT_DOOR_COORDINATOR_ADDR": true,
+		managedCatalogRequestEnv: true, managedCatalogMCPTokenEnv: true,
 	}
 	for _, entry := range entries {
 		if entry.IsPreview {
@@ -106,6 +107,11 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 			return "", fmt.Errorf("managed coordinator environment key %s does not match the fixed contract: %w", key, err)
 		}
 		return value, nil
+	}
+	_, hasCatalogRequest := environment[managedCatalogRequestEnv]
+	_, hasCatalogToken := environment[managedCatalogMCPTokenEnv]
+	if hasCatalogRequest != hasCatalogToken {
+		return managedFrontDoorCoordinatorIdentity{}, errors.New("managed coordinator catalog rollout environment is incomplete")
 	}
 	if _, err := resolve("COOLIFY_API_TOKEN", s.coolify.token); err != nil {
 		return managedFrontDoorCoordinatorIdentity{}, err

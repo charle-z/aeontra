@@ -53,6 +53,18 @@ func TestVerifyManagedFrontDoorCoordinatorRuntimeRejectsWrongBackendCommitAndUne
 	if _, err := svc.verifyManagedFrontDoorCoordinatorRuntime(coordinator, front, backend); err == nil || !strings.Contains(err.Error(), "unexpected environment key") {
 		t.Fatalf("unexpected managed key accepted: %v", err)
 	}
+
+	base := strings.TrimSuffix(coordinatorRuntimeEnvironment(server.URL, "idle", ""), "]")
+	catalogRequest, _ := json.Marshal(coordinatorRuntimeEnvironmentEntry(managedCatalogRequestEnv, "opaque-request"))
+	catalogToken, _ := json.Marshal(coordinatorRuntimeEnvironmentEntry(managedCatalogMCPTokenEnv, "opaque-token"))
+	environment = base + "," + string(catalogRequest) + "," + string(catalogToken) + "]"
+	if _, err := svc.verifyManagedFrontDoorCoordinatorRuntime(coordinator, front, backend); err != nil {
+		t.Fatalf("managed catalog rollout environment rejected: %v", err)
+	}
+	environment = base + "," + string(catalogRequest) + "]"
+	if _, err := svc.verifyManagedFrontDoorCoordinatorRuntime(coordinator, front, backend); err == nil || !strings.Contains(err.Error(), "catalog rollout environment is incomplete") {
+		t.Fatalf("partial catalog rollout environment accepted: %v", err)
+	}
 }
 
 func TestVerifyManagedFrontDoorCoordinatorRuntimeUsesAuthenticatedCommentsWithoutValues(t *testing.T) {
