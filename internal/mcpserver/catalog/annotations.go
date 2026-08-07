@@ -27,5 +27,7 @@ func RegisterAnnotations(register func(map[string]any, ...string)) {
 	register(localWrite, "notes_write")
 	register(localDestructive, "apply_patch", "memory_write", "memory_update_handoff", "repo_remote_set", "sandbox_exec")
 	register(externalDestructive, "run_command", "run_tests", "source_pull_request_merge", "source_default_branch_update", "source_workflow_dispatch", "coolify_deploy", "platform_deploy", "platform_deploy_without_cache", "coolify_set_env", "platform_front_door_create", "privileged_task_execute", "project_validation_execute")
+	register(externalRead, "source_edge_release_status", "source_edge_release_maintenance_preview")
+	register(externalDestructive, "source_edge_release_maintenance_apply")
 	register(localIdempotentWrite, "brain_index")
 }
