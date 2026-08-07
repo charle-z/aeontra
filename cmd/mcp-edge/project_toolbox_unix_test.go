@@ -18,13 +18,19 @@ type fakeProjectToolboxManager struct {
 	execRequest    edgeclient.ProjectToolboxExecRequest
 	serviceRequest edgeclient.ProjectToolboxServiceStartRequest
 	removed        bool
+	statusErr      error
+	statusCalls    int
 }
 
 func (manager *fakeProjectToolboxManager) Create(_ context.Context, request edgeclient.ProjectToolboxCreateRequest) (edgeclient.ProjectToolboxSnapshot, bool, error) {
 	manager.createRequest = request
 	return toolboxFixtureSnapshot(), false, nil
 }
-func (*fakeProjectToolboxManager) Status(context.Context, edgeclient.ProjectToolboxStatusRequest) (edgeclient.ProjectToolboxSnapshot, error) {
+func (manager *fakeProjectToolboxManager) Status(context.Context, edgeclient.ProjectToolboxStatusRequest) (edgeclient.ProjectToolboxSnapshot, error) {
+	manager.statusCalls++
+	if manager.statusErr != nil {
+		return edgeclient.ProjectToolboxSnapshot{}, manager.statusErr
+	}
 	return toolboxFixtureSnapshot(), nil
 }
 func (manager *fakeProjectToolboxManager) Exec(_ context.Context, request edgeclient.ProjectToolboxExecRequest) (edgeclient.ProjectToolboxSnapshot, error) {
