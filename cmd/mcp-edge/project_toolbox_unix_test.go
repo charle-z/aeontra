@@ -20,6 +20,8 @@ type fakeProjectToolboxManager struct {
 	removed        bool
 	statusErr      error
 	statusCalls    int
+	repairErr      error
+	repairCalls    int
 }
 
 func (manager *fakeProjectToolboxManager) Create(_ context.Context, request edgeclient.ProjectToolboxCreateRequest) (edgeclient.ProjectToolboxSnapshot, bool, error) {
@@ -39,7 +41,11 @@ func (manager *fakeProjectToolboxManager) Exec(_ context.Context, request edgecl
 	snapshot.Output = "ok\n"
 	return snapshot, nil
 }
-func (*fakeProjectToolboxManager) Repair(context.Context, edgeclient.ProjectToolboxRepairRequest) (edgeclient.ProjectToolboxSnapshot, error) {
+func (manager *fakeProjectToolboxManager) Repair(context.Context, edgeclient.ProjectToolboxRepairRequest) (edgeclient.ProjectToolboxSnapshot, error) {
+	manager.repairCalls++
+	if manager.repairErr != nil {
+		return edgeclient.ProjectToolboxSnapshot{}, manager.repairErr
+	}
 	return toolboxFixtureSnapshot(), nil
 }
 func (manager *fakeProjectToolboxManager) ServiceStart(_ context.Context, request edgeclient.ProjectToolboxServiceStartRequest) (edgeclient.ProjectToolboxServiceSnapshot, bool, error) {

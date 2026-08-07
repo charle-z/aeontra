@@ -48,6 +48,7 @@ var (
 	ErrProjectToolboxNotFound             = errors.New("project toolbox not found")
 	ErrProjectToolboxNotOwned             = errors.New("project toolbox is not owned")
 	ErrProjectToolboxContainerUnavailable = fmt.Errorf("%w: container unavailable", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxContainerMissing     = fmt.Errorf("%w: container missing", ErrProjectToolboxNotOwned)
 	ErrProjectToolboxIdentityMismatch     = fmt.Errorf("%w: identity mismatch", ErrProjectToolboxNotOwned)
 	ErrProjectToolboxMountMismatch        = fmt.Errorf("%w: mount mismatch", ErrProjectToolboxNotOwned)
 	ErrProjectToolboxResourceMismatch     = fmt.Errorf("%w: resource mismatch", ErrProjectToolboxNotOwned)
@@ -392,6 +393,12 @@ func (manager *ProjectToolboxManager) Repair(ctx context.Context, request Projec
 		return ProjectToolboxSnapshot{}, err
 	}
 	snapshot, err := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+	if errors.Is(err, ErrProjectToolboxContainerUnavailable) {
+		if recoverErr := manager.recoverOwnedContainer(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace); recoverErr != nil {
+			return ProjectToolboxSnapshot{}, recoverErr
+		}
+		snapshot, err = manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+	}
 	if err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
@@ -652,11 +659,50 @@ func (manager *ProjectToolboxManager) status(ctx context.Context, record project
 	return ProjectToolboxSnapshot{ToolboxID: record.ToolboxID, State: state, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit, ContainerAccess: true, WritableBytes: writableBytes, RootFSBytes: rootFSBytes}, nil
 }
 
+func (manager *ProjectToolboxManager) recoverOwnedContainer(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
+	output, err := manager.run(ctx, "ps", "-aq", "--filter", "label="+projectToolboxLabelKey+"="+record.ToolboxID)
+	if err != nil {
+		return ErrProjectToolboxUnavailable
+	}
+	candidates := strings.Fields(string(output))
+	if len(candidates) == 0 {
+		return ErrProjectToolboxContainerMissing
+	}
+	if len(candidates) != 1 || !containerResourceIDPattern.MatchString(candidates[0]) {
+		return ErrProjectToolboxUnsafeState
+	}
+	candidate := candidates[0]
+	if err := manager.verifyOwnershipReference(ctx, record, alias, target, workspace, candidate); err != nil {
+		return err
+	}
+	nameOutput, err := manager.run(ctx, "inspect", "--format", "{{.Name}}", candidate)
+	if err != nil {
+		return ErrProjectToolboxContainerUnavailable
+	}
+	currentName := strings.TrimPrefix(strings.TrimSpace(string(nameOutput)), "/")
+	if currentName == "" {
+		return ErrProjectToolboxUnsafeState
+	}
+	if currentName != record.ContainerName {
+		if _, err := manager.run(ctx, "rename", candidate, record.ContainerName); err != nil {
+			return ErrProjectToolboxUnavailable
+		}
+	}
+	return manager.verifyOwnership(ctx, record, alias, target, workspace)
+}
+
 func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
+	return manager.verifyOwnershipReference(ctx, record, alias, target, workspace, record.ContainerName)
+}
+
+func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace, reference string) error {
 	if record.WorkspaceID != workspace.ID || record.ProjectAlias != alias || record.TargetAlias != target || !projectToolboxIDPattern.MatchString(record.ToolboxID) || record.ContainerName != "mcp-toolbox-"+strings.TrimPrefix(record.ToolboxID, "tb_") {
 		return ErrProjectToolboxIdentityMismatch
 	}
-	output, err := manager.run(ctx, "inspect", "--format", `{{index .Config.Labels "`+projectToolboxLabelKey+`"}}|{{.Image}}`, record.ContainerName)
+	if reference != record.ContainerName && !containerResourceIDPattern.MatchString(reference) {
+		return ErrProjectToolboxUnsafeState
+	}
+	output, err := manager.run(ctx, "inspect", "--format", `{{index .Config.Labels "`+projectToolboxLabelKey+`"}}|{{.Image}}`, reference)
 	if err != nil {
 		return ErrProjectToolboxContainerUnavailable
 	}
@@ -665,7 +711,7 @@ func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, recor
 	if !found || label != record.ToolboxID || normalizeErr != nil || imageID != record.BaseImageID {
 		return ErrProjectToolboxIdentityMismatch
 	}
-	mountOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Mounts}}", record.ContainerName)
+	mountOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Mounts}}", reference)
 	var mounts []struct {
 		Type, Source, Destination string
 		RW                        bool
@@ -673,12 +719,12 @@ func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, recor
 	if err != nil || json.Unmarshal(mountOutput, &mounts) != nil || !validProjectToolboxMounts(mounts, workspace.Path, manager.endpoint.SocketPath) {
 		return ErrProjectToolboxMountMismatch
 	}
-	resourceOutput, err := manager.run(ctx, "inspect", "--format", "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}", record.ContainerName)
+	resourceOutput, err := manager.run(ctx, "inspect", "--format", "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}", reference)
 	wantResources := fmt.Sprintf("%d|%d|%d", int64(record.MemoryMiB)*1024*1024, int64(record.CPUMillis)*1000000, record.ProcessLimit)
 	if err != nil || strings.TrimSpace(string(resourceOutput)) != wantResources {
 		return ErrProjectToolboxResourceMismatch
 	}
-	environmentOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Config.Env}}", record.ContainerName)
+	environmentOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Config.Env}}", reference)
 	var environment []string
 	if err != nil || json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment, manager.endpoint.Engine, record.ToolboxID) {
 		return ErrProjectToolboxEnvironmentMismatch
