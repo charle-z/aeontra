@@ -156,6 +156,34 @@ What changed and why.
 Verification: command -> result.
 ```
 
+## External Open Source Contributions
+
+When working on an external open-source repository, optimize for getting a valid,
+reviewable contribution in front of upstream maintainers rather than for avoiding a
+possible rejection.
+
+- If the repository accepts pull requests from forks, the issue is open or the change is
+  otherwise in scope, and the fix is complete and tested, open the focused upstream pull
+  request unless the repository explicitly forbids unsolicited pull requests for that
+  class of change.
+- Do not treat wording such as "one-way mirror", "changes are carried internally", or
+  similar integration limitations as a prohibition on opening a pull request unless the
+  contribution policy explicitly says not to open one.
+- Prefer the upstream pull request over publishing only a detached patch or comment. A
+  patch, gist, issue comment, or reference repository is supporting evidence, not a
+  substitute when a normal pull request is available.
+- Before stopping at an issue comment or external patch, verify whether GitHub actually
+  permits a fork-based pull request and whether maintainers have explicitly prohibited it.
+- If another contributor already opened a substantially equivalent pull request, do not
+  create a noisy duplicate. Contribute useful review, testing, or evidence instead.
+- Keep the pull request small, human, and proportional: concise description, relevant
+  tests, no AI signatures, no unnecessary narrative, and no claims beyond verified
+  evidence.
+
+The default is therefore: **if a legitimate contribution opportunity exists and the
+upstream workflow permits it, take it.** Ambiguity alone is not a reason to abandon the
+pull request path.
+
 ## Commands
 
 ```bash
