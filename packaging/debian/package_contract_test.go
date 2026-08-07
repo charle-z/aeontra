@@ -110,7 +110,7 @@ func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 		}
 	}
 	pinnedGH := repoFile(t, "packaging/github-cli/stage-pinned.sh")
-	for _, required := range []string{"v2.97.0", "gh_2.97.0_linux_amd64.tar.gz", "a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112", "gh release download", "sha256sum --check", "gh version 2.97.0"} {
+	for _, required := range []string{"v2.97.0", "gh_2.97.0_linux_amd64.tar.gz", "a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112", "https://github.com/cli/cli/releases/download/$TAG/$ASSET", "--proto '=https'", "sha256sum --check", "gh version 2.97.0"} {
 		if !strings.Contains(pinnedGH, required) {
 			t.Fatalf("pinned GitHub CLI acquisition missing %q", required)
 		}
