@@ -96,14 +96,18 @@ func configuredService() (*systemdService, error) {
 	if err != nil {
 		return nil, err
 	}
-	name := "mcp-devbox-opencode-edge@" + strings.TrimSpace(string(content)) + ".service"
+	user := strings.TrimSpace(string(content))
+	name := "mcp-devbox-opencode-edge@" + user + ".service"
 	if !servicePattern.MatchString(name) {
 		return nil, errors.New("invalid service")
 	}
-	return &systemdService{name: name}, nil
+	return &systemdService{name: name, user: user}, nil
 }
 
-type systemdService struct{ name string }
+type systemdService struct {
+	name string
+	user string
+}
 
 func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver edgeupdate.OfficialResolver, service *systemdService) (edgeupdate.Status, error) {
 	status, err := engine.Status()
@@ -139,12 +143,29 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 	if err := service.InstallUnit(releaseRoot); err != nil {
 		return edgeupdate.Status{}, err
 	}
+	if err := service.ReconcileRootlessPodmanSocket(); err != nil {
+		return edgeupdate.Status{}, err
+	}
 	if !service.EdgeHealthy() {
 		if err := service.RestartEdge(); err != nil || !service.EdgeHealthy() {
 			return edgeupdate.Status{}, errors.New("edge repair health check failed")
 		}
 	}
 	return engine.Status()
+}
+
+func (s *systemdService) ReconcileRootlessPodmanSocket() error {
+	if s == nil || !regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`).MatchString(s.user) {
+		return errors.New("edge user configuration is invalid")
+	}
+	machine := "--machine=" + s.user + "@"
+	if _, err := systemctlCommand("--user", machine, "enable", "--now", "podman.socket"); err != nil {
+		return errors.New("rootless Podman socket repair failed")
+	}
+	if _, err := systemctlCommand("--user", machine, "is-active", "--quiet", "podman.socket"); err != nil {
+		return errors.New("rootless Podman socket health check failed")
+	}
+	return nil
 }
 
 func repairComponentPermissions(releaseRoot, component, relative string) error {
