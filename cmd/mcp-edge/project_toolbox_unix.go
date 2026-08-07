@@ -55,14 +55,30 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 	}
 	manager, err := selectProjectToolboxManager(ctx, managers, resolved, operation)
 	if err != nil {
-		switch {
-		case errors.Is(err, edgeclient.ErrProjectToolboxNotOwned), errors.Is(err, edgeclient.ErrProjectToolboxUnsafeState):
-			return edge.OperationResult{}, "project_toolbox_failed"
-		default:
-			return edge.OperationResult{}, "project_toolbox_unavailable"
-		}
+		return edge.OperationResult{}, safeProjectToolboxSelectionFailure(err)
 	}
 	return collectProjectToolbox(ctx, manager, resolved, operation)
+}
+
+func safeProjectToolboxSelectionFailure(err error) string {
+	switch {
+	case errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
+		return "project_toolbox_container_unavailable"
+	case errors.Is(err, edgeclient.ErrProjectToolboxIdentityMismatch):
+		return "project_toolbox_identity_mismatch"
+	case errors.Is(err, edgeclient.ErrProjectToolboxMountMismatch):
+		return "project_toolbox_mount_mismatch"
+	case errors.Is(err, edgeclient.ErrProjectToolboxResourceMismatch):
+		return "project_toolbox_resource_mismatch"
+	case errors.Is(err, edgeclient.ErrProjectToolboxEnvironmentMismatch):
+		return "project_toolbox_environment_mismatch"
+	case errors.Is(err, edgeclient.ErrProjectToolboxUnsafeState):
+		return "project_toolbox_state_unsafe"
+	case errors.Is(err, edgeclient.ErrProjectToolboxNotOwned):
+		return "project_toolbox_failed"
+	default:
+		return "project_toolbox_unavailable"
+	}
 }
 
 func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxOperations, resolved edgeclient.ProjectResolution, operation edge.Operation) (projectToolboxOperations, error) {

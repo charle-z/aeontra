@@ -39,16 +39,21 @@ const (
 )
 
 var (
-	projectToolboxIDPattern           = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
-	projectToolboxImageIDPattern      = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
-	projectToolboxEnvKeyPattern       = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
-	projectToolboxServiceIDPattern    = regexp.MustCompile(`^ts_[a-f0-9]{32}$`)
-	projectToolboxServiceNamePattern  = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
-	projectToolboxCgroupParentPattern = regexp.MustCompile(`^/system\.slice/p12-rootless-podman-[0-9]+-[0-9]+-[0-9]+\.service/containers$`)
-	ErrProjectToolboxNotFound         = errors.New("project toolbox not found")
-	ErrProjectToolboxNotOwned         = errors.New("project toolbox is not owned")
-	ErrProjectToolboxUnsafeState      = errors.New("project toolbox state is unsafe")
-	ErrProjectToolboxUnavailable      = errors.New("project toolbox rootless engine is unavailable")
+	projectToolboxIDPattern               = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
+	projectToolboxImageIDPattern          = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	projectToolboxEnvKeyPattern           = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
+	projectToolboxServiceIDPattern        = regexp.MustCompile(`^ts_[a-f0-9]{32}$`)
+	projectToolboxServiceNamePattern      = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	projectToolboxCgroupParentPattern     = regexp.MustCompile(`^/system\.slice/p12-rootless-podman-[0-9]+-[0-9]+-[0-9]+\.service/containers$`)
+	ErrProjectToolboxNotFound             = errors.New("project toolbox not found")
+	ErrProjectToolboxNotOwned             = errors.New("project toolbox is not owned")
+	ErrProjectToolboxContainerUnavailable = fmt.Errorf("%w: container unavailable", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxIdentityMismatch     = fmt.Errorf("%w: identity mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxMountMismatch        = fmt.Errorf("%w: mount mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxResourceMismatch     = fmt.Errorf("%w: resource mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxEnvironmentMismatch  = fmt.Errorf("%w: environment mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxUnsafeState          = errors.New("project toolbox state is unsafe")
+	ErrProjectToolboxUnavailable          = errors.New("project toolbox rootless engine is unavailable")
 )
 
 type ProjectToolboxManagerConfig struct {
@@ -649,13 +654,16 @@ func (manager *ProjectToolboxManager) status(ctx context.Context, record project
 
 func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
 	if record.WorkspaceID != workspace.ID || record.ProjectAlias != alias || record.TargetAlias != target || !projectToolboxIDPattern.MatchString(record.ToolboxID) || record.ContainerName != "mcp-toolbox-"+strings.TrimPrefix(record.ToolboxID, "tb_") {
-		return ErrProjectToolboxNotOwned
+		return ErrProjectToolboxIdentityMismatch
 	}
 	output, err := manager.run(ctx, "inspect", "--format", `{{index .Config.Labels "`+projectToolboxLabelKey+`"}}|{{.Image}}`, record.ContainerName)
+	if err != nil {
+		return ErrProjectToolboxContainerUnavailable
+	}
 	label, rawImageID, found := strings.Cut(strings.TrimSpace(string(output)), "|")
 	imageID, normalizeErr := normalizeProjectToolboxImageID(rawImageID)
-	if err != nil || !found || label != record.ToolboxID || normalizeErr != nil || imageID != record.BaseImageID {
-		return ErrProjectToolboxNotOwned
+	if !found || label != record.ToolboxID || normalizeErr != nil || imageID != record.BaseImageID {
+		return ErrProjectToolboxIdentityMismatch
 	}
 	mountOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Mounts}}", record.ContainerName)
 	var mounts []struct {
@@ -663,17 +671,17 @@ func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, recor
 		RW                        bool
 	}
 	if err != nil || json.Unmarshal(mountOutput, &mounts) != nil || !validProjectToolboxMounts(mounts, workspace.Path, manager.endpoint.SocketPath) {
-		return ErrProjectToolboxNotOwned
+		return ErrProjectToolboxMountMismatch
 	}
 	resourceOutput, err := manager.run(ctx, "inspect", "--format", "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}", record.ContainerName)
 	wantResources := fmt.Sprintf("%d|%d|%d", int64(record.MemoryMiB)*1024*1024, int64(record.CPUMillis)*1000000, record.ProcessLimit)
 	if err != nil || strings.TrimSpace(string(resourceOutput)) != wantResources {
-		return ErrProjectToolboxNotOwned
+		return ErrProjectToolboxResourceMismatch
 	}
 	environmentOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Config.Env}}", record.ContainerName)
 	var environment []string
 	if err != nil || json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment, manager.endpoint.Engine, record.ToolboxID) {
-		return ErrProjectToolboxNotOwned
+		return ErrProjectToolboxEnvironmentMismatch
 	}
 	return nil
 }
