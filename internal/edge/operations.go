@@ -39,6 +39,8 @@ const (
 	OperationProjectStatus                     OperationKind = "project_status"
 	OperationProjectSnapshot                   OperationKind = "project_snapshot"
 	OperationProjectExec                       OperationKind = "project_exec"
+	OperationProjectNetworkRoute               OperationKind = "project_network_route"
+	OperationProjectNetworkProbe               OperationKind = "project_network_probe"
 	OperationProjectProcessStart               OperationKind = "project_process_start"
 	OperationProjectProcessStatus              OperationKind = "project_process_status"
 	OperationProjectProcessStop                OperationKind = "project_process_stop"
@@ -107,6 +109,9 @@ type OperationRequest struct {
 	Stdin                        string            `json:"stdin,omitempty"`
 	Environment                  map[string]string `json:"environment,omitempty"`
 	TimeoutSeconds               int               `json:"timeout_seconds,omitempty"`
+	NetworkDestination           string            `json:"network_destination,omitempty"`
+	NetworkPorts                 []int             `json:"network_ports,omitempty"`
+	NetworkTimeoutMillis         int               `json:"network_timeout_millis,omitempty"`
 	BackgroundProcessID          string            `json:"background_process_id,omitempty"`
 	StdoutOffset                 int64             `json:"stdout_offset,omitempty"`
 	StderrOffset                 int64             `json:"stderr_offset,omitempty"`
@@ -153,6 +158,11 @@ type BackgroundProcessSummary struct {
 	ExitCode       int    `json:"exit_code"`
 	TerminalSignal string `json:"terminal_signal,omitempty"`
 	Reason         string `json:"reason,omitempty"`
+}
+
+type NetworkPortResult struct {
+	Port  int    `json:"port"`
+	State string `json:"state"`
 }
 
 type BrowserHarnessSummary struct {
@@ -227,6 +237,10 @@ type OperationResult struct {
 	ExecPreflightUS                  int64                           `json:"exec_preflight_us,omitempty"`
 	ExecExecutionUS                  int64                           `json:"exec_execution_us,omitempty"`
 	ExecResultUS                     int64                           `json:"exec_result_us,omitempty"`
+	NetworkDestination               string                          `json:"network_destination,omitempty"`
+	NetworkInterface                 string                          `json:"network_interface,omitempty"`
+	NetworkSourceIP                  string                          `json:"network_source_ip,omitempty"`
+	NetworkPorts                     []NetworkPortResult             `json:"network_ports,omitempty"`
 	BackgroundProcessID              string                          `json:"background_process_id,omitempty"`
 	BackgroundProcessState           string                          `json:"background_process_state,omitempty"`
 	BackgroundStartedAt              string                          `json:"background_started_at,omitempty"`
@@ -661,6 +675,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if hasProjectExecResult(result) {
 		return code == "" && validProjectExecResult(result)
 	}
+	if hasProjectNetworkResult(result) {
+		return false
+	}
 	if hasProjectBrowserHarnessResult(result) {
 		return false
 	}
@@ -710,6 +727,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectExecResult(result) {
 		return kind == OperationProjectExec && validOperationCompletion(result, "")
 	}
+	if hasProjectNetworkResult(result) {
+		return validProjectNetworkResultForKind(kind, result)
+	}
 	if hasProjectBrowserHarnessResult(result) {
 		return validProjectBrowserHarnessResultForKind(kind, result)
 	}
@@ -739,6 +759,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	}
 	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
+	}
+	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
+		return false
 	}
 	if kind == OperationProjectExec || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
@@ -816,7 +839,7 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 }
 
 func emptyOperationResult(result OperationResult) bool {
-	if hasProjectExecResult(result) || hasProjectProcessResult(result) {
+	if hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
 	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && !hasProjectGitHubResult(result)
