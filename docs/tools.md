@@ -141,6 +141,9 @@ do not replace server-side enforcement.
 | `source_default_branch_update` | 0/1/0/1 | Revalidate the target SHA and update the owner-bound repository default branch. |
 | `source_workflow_dispatch_preview` | 1/0/1/1 | Verify one active workflow file and exact branch SHA, reject secret-like bounded inputs, and plan one dispatch. |
 | `source_workflow_dispatch` | 0/1/0/1 | Revalidate workflow identity and branch SHA, then dispatch the reviewed owner-bound workflow once. |
+| `source_edge_release_status` | 1/0/1/1 | Read the fixed `mcp-devbox` `edge-release` state, release runs/jobs, and release assets. |
+| `source_edge_release_maintenance_preview` | 1/0/1/1 | Plan cancellation of obsolete release runs followed by the fixed main-only custom deployment branch policy. |
+| `source_edge_release_maintenance_apply` | 0/1/0/1 | Revalidate and execute only that fixed maintenance plan; branch protection is never changed. |
 | `repo_remote_preview` | 1/0/1/0 | Plan an owner-restricted credential-free remote add/update. |
 | `repo_remote_set` | 0/1/0/0 | Revalidate and add or replace the planned named remote. |
 | `repo_publish_preview` | 1/0/1/1 | Inspect the exact remote branch and plan one safe push. |
