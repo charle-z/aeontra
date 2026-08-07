@@ -85,6 +85,9 @@ func TestRunDirectWorkcellCommandUsesTrustedWorkspaceSandbox(t *testing.T) {
 	if !strings.Contains(joined, "--setenv\nTMPDIR\n/tmp") || strings.Contains(joined, "--setenv\nTMPDIR\n/workspace/.mcp-devbox/runtime/tmp") {
 		t.Fatalf("workcell did not use private short tmpfs: %v", args)
 	}
+	if info, err := os.Stat("/etc/alternatives"); err == nil && info.IsDir() && !strings.Contains(joined, "--ro-bind\n/etc/alternatives\n/etc/alternatives") {
+		t.Fatalf("workcell did not expose system alternatives read-only: %v", args)
+	}
 	if _, err := os.Stat(filepath.Join(workspacePath, ".mcp-devbox", "runtime", "tmp")); !os.IsNotExist(err) {
 		t.Fatalf("workspace runtime tmp should not be created: %v", err)
 	}
