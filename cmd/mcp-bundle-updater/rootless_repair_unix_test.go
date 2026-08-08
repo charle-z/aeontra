@@ -22,8 +22,9 @@ func TestRootlessPodmanRepairIsFixedToEdgeUserSocket(t *testing.T) {
 	}
 	want := [][]string{
 		{"--user", "--machine=mcpedge@", "enable", "--now", "podman.socket"},
-		{"--user", "--machine=mcpedge@", "try-restart", "podman.service"},
+		{"--user", "--machine=mcpedge@", "restart", "podman.service"},
 		{"--user", "--machine=mcpedge@", "restart", "podman.socket"},
+		{"--user", "--machine=mcpedge@", "is-active", "--quiet", "podman.service"},
 		{"--user", "--machine=mcpedge@", "is-active", "--quiet", "podman.socket"},
 	}
 	if !reflect.DeepEqual(calls, want) {
