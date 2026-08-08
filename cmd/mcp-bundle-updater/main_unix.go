@@ -162,11 +162,14 @@ func (s *systemdService) ReconcileRootlessPodmanSocket() error {
 	if _, err := systemctlCommand("--user", machine, "enable", "--now", "podman.socket"); err != nil {
 		return errors.New("rootless Podman socket repair failed")
 	}
-	if _, err := systemctlCommand("--user", machine, "try-restart", "podman.service"); err != nil {
+	if _, err := systemctlCommand("--user", machine, "restart", "podman.service"); err != nil {
 		return errors.New("rootless Podman API service repair failed")
 	}
 	if _, err := systemctlCommand("--user", machine, "restart", "podman.socket"); err != nil {
 		return errors.New("rootless Podman socket restart failed")
+	}
+	if _, err := systemctlCommand("--user", machine, "is-active", "--quiet", "podman.service"); err != nil {
+		return errors.New("rootless Podman API service health check failed")
 	}
 	if _, err := systemctlCommand("--user", machine, "is-active", "--quiet", "podman.socket"); err != nil {
 		return errors.New("rootless Podman socket health check failed")
