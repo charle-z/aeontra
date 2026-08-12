@@ -21,7 +21,7 @@ func clearRuntimeEnv(t *testing.T) {
 		sandboxImageEnv,
 		validationRunnerURLEnv, validationRunnerTokenEnv,
 		privilegedTasksEnv, privilegedServicesEnv, privilegedTimeoutEnv,
-		githubTokenEnv, githubOwnerEnv, githubOwnerTypeEnv, githubDefaultVisibilityEnv,
+		githubTokenEnv, githubOSSTokenEnv, githubOwnerEnv, githubOwnerTypeEnv, githubDefaultVisibilityEnv,
 		coolifyURLEnv, coolifyAPITokenEnv, coolifyAllowedAppsEnv, coolifyServerUUIDEnv,
 		coolifyProjectUUIDEnv, coolifyEnvironmentNameEnv, coolifyEnvironmentUUIDEnv,
 		coolifyAllowedDomainsEnv, coolifyGitHubAppUUIDEnv, coolifyDestinationUUIDEnv,
@@ -59,6 +59,9 @@ func TestLoadPrivilegedConfigRejectsInvalidTimeout(t *testing.T) {
 
 func TestOptionalRuntimeClientsUseExistingEnvironmentNames(t *testing.T) {
 	clearRuntimeEnv(t)
+	if githubOSSTokenEnv != "GH_TOKEN" {
+		t.Fatalf("public OSS GitHub env = %q, want GH_TOKEN", githubOSSTokenEnv)
+	}
 	if buildGitHubClientFromEnv() != nil {
 		t.Fatal("GitHub client should be disabled without GITHUB_TOKEN")
 	}
