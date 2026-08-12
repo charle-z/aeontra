@@ -13,29 +13,30 @@ the authenticated local Edge. It separates two uses of GitHub authority:
 
 | Authority | Location | Purpose |
 |---|---|---|
-| Public MCP GitHub API | VPS/Coolify `GITHUB_TOKEN` | Owner-bound repositories plus planned public forks, upstream issue/PR comments, cross-repository PRs, exact-head checks and workflows. |
-| Public OSS GitHub broker | Same VPS/Coolify `GITHUB_TOKEN` | Public external upstreams only; fork under the configured owner, publish only to that fork, and open/read upstream PRs without external merge authority. |
+| Public MCP GitHub API | VPS/Coolify `GITHUB_TOKEN` | Owner-bound repositories, HTTPS publication, exact-head checks and workflows. |
+| Public OSS GitHub broker | VPS/Coolify `GITHUB_OSS_TOKEN`, with `GITHUB_TOKEN` fallback | Public external upstreams only; create forks, comment, and open/read cross-repository PRs without external merge authority. |
 | Local Git and GitHub broker | Edge private `github.json` | Clone/publish one owner-bound repository and execute only server-constructed `gh api` reads for its registered `dev` project. |
 
-The same existing GitHub credential may be entered in both places, but it is stored
-separately because the VPS and PC are separate trust domains. Public OSS API writes
-reuse the VPS copy; fork Git transport reuses the Edge copy. Neither copy is returned
-to the model, written into a workspace, placed in Git argv, or mounted into Bubblewrap.
+The VPS keeps owner-bound and public-OSS authority separate. `GITHUB_TOKEN` can remain
+a narrow fine-grained credential for repositories owned by `GITHUB_OWNER`, while
+`GITHUB_OSS_TOKEN` can carry the user authority required for third-party public OSS
+API writes. The Edge credential remains a separate trust domain for local Git transport.
+None of these credentials is returned to the model, written into a workspace, placed
+in Git argv, or mounted into Bubblewrap.
 
 ## Required GitHub permission
 
-Use the existing token only when GitHub grants it the operations required by the
-selected workflow. Owner-bound development needs repository Contents read/write and
-Metadata read. Public OSS automation additionally needs permission to create a public
-fork, comment on the selected public issue/PR, and open a PR against that upstream.
+Owner-bound development needs repository Contents read/write and Metadata read on the
+configured owner. Public OSS automation needs user authority to create a public fork,
+comment on the selected public issue/PR, and open a PR against that external upstream.
 Checks and workflow diagnostics need Actions/Checks read. MCP Devbox probes each action
 through its closed API call and fails without exposing the token when GitHub denies it.
-Do not broaden the credential merely to bypass a failed policy check.
+Do not broaden the owner-bound credential merely to bypass a failed policy check.
 
 ## Public OSS broker contract
 
-The public control plane exposes a closed contribution path using the same configured
-GitHub client:
+The public control plane exposes a closed contribution path using one GitHub client
+that selects the route-scoped credential before sending the Authorization header:
 
 - only public external upstream repositories are accepted;
 - a fork must live under `GITHUB_OWNER` and retain the exact upstream parent;
@@ -47,13 +48,14 @@ GitHub client:
 - inline review replies bind the PR head, comment ID and comment timestamp before posting;
 - no tool merges an external upstream PR.
 
-The token remains in the public broker process. It is not copied into the Edge toolbox
-or made available to an arbitrary `gh` command.
+Both VPS tokens remain in the public broker process. They are not copied into the Edge
+toolbox or made available to an arbitrary `gh` command.
 
 Configure the public copy as private Coolify variables and redeploy the existing MCP:
 
 ```text
-GITHUB_TOKEN=<same fine-grained PAT>
+GITHUB_TOKEN=<fine-grained owner-bound PAT>
+GITHUB_OSS_TOKEN=<user credential for public OSS writes>
 GITHUB_OWNER=charle-z
 GITHUB_OWNER_TYPE=user
 ```
