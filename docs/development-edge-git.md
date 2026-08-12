@@ -14,12 +14,12 @@ the authenticated local Edge. It separates two uses of GitHub authority:
 | Authority | Location | Purpose |
 |---|---|---|
 | Public MCP GitHub API | VPS/Coolify `GITHUB_TOKEN` | Owner-bound repositories, HTTPS publication, exact-head checks and workflows. |
-| Public OSS GitHub broker | VPS/Coolify `GITHUB_OSS_TOKEN`, with `GITHUB_TOKEN` fallback | Public external upstreams only; create forks, comment, and open/read cross-repository PRs without external merge authority. |
+| Public OSS GitHub broker | VPS/Coolify `GH_TOKEN`, with `GITHUB_TOKEN` fallback | Public external upstreams only; create forks, comment, and open/read cross-repository PRs without external merge authority. |
 | Local Git and GitHub broker | Edge private `github.json` | Clone/publish one owner-bound repository and execute only server-constructed `gh api` reads for its registered `dev` project. |
 
 The VPS keeps owner-bound and public-OSS authority separate. `GITHUB_TOKEN` can remain
 a narrow fine-grained credential for repositories owned by `GITHUB_OWNER`, while
-`GITHUB_OSS_TOKEN` can carry the user authority required for third-party public OSS
+`GH_TOKEN` can carry the user authority required for third-party public OSS
 API writes. The Edge credential remains a separate trust domain for local Git transport.
 None of these credentials is returned to the model, written into a workspace, placed
 in Git argv, or mounted into Bubblewrap.
@@ -55,7 +55,7 @@ Configure the public copy as private Coolify variables and redeploy the existing
 
 ```text
 GITHUB_TOKEN=<fine-grained owner-bound PAT>
-GITHUB_OSS_TOKEN=<user credential for public OSS writes>
+GH_TOKEN=<user credential for public OSS writes>
 GITHUB_OWNER=charle-z
 GITHUB_OWNER_TYPE=user
 ```

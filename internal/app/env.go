@@ -45,7 +45,7 @@ const (
 
 const (
 	githubTokenEnv             = "GITHUB_TOKEN"
-	githubOSSTokenEnv          = "GITHUB_OSS_TOKEN"
+	githubOSSTokenEnv          = "GH_TOKEN"
 	githubOwnerEnv             = "GITHUB_OWNER"
 	githubOwnerTypeEnv         = "GITHUB_OWNER_TYPE"
 	githubDefaultVisibilityEnv = "GITHUB_DEFAULT_VISIBILITY"
