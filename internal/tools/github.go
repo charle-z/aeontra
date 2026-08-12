@@ -30,10 +30,11 @@ const (
 )
 
 // GitHubClient is a narrow, token-backed GitHub API client for global-builder
-// repo creation and lookup. The token is sent only as an Authorization header.
+// repo creation and lookup. Tokens are sent only as Authorization headers.
 type GitHubClient struct {
 	baseURL           string
 	token             string
+	ossToken          string
 	owner             string
 	ownerType         string // user|org
 	defaultVisibility string // private|public
@@ -68,6 +69,17 @@ func NewGitHubClient(baseURL, token, owner, ownerType, defaultVisibility string)
 		doNoRedirect:      noRedirectClient.Do,
 		doSigned:          noRedirectClient.Do,
 	}
+}
+
+// WithOSSToken configures an optional user credential used only for REST routes
+// whose repository owner differs from the configured owner. Owner-bound routes
+// continue to use the narrower primary token.
+func (c *GitHubClient) WithOSSToken(token string) *GitHubClient {
+	if c == nil {
+		return nil
+	}
+	c.ossToken = strings.TrimSpace(token)
+	return c
 }
 
 func (c *GitHubClient) Configured() bool {
@@ -118,6 +130,24 @@ func (c *GitHubClient) doJSON(ctx context.Context, method, path string, body []b
 	return c.doJSONLimit(ctx, method, path, body, githubDefaultResponseLimit)
 }
 
+func (c *GitHubClient) tokenForPath(path string) string {
+	if c == nil {
+		return ""
+	}
+	if c.ossToken == "" || !strings.HasPrefix(path, "/repos/") {
+		return c.token
+	}
+	ownerSegment, _, ok := strings.Cut(strings.TrimPrefix(path, "/repos/"), "/")
+	if !ok {
+		return c.token
+	}
+	requestOwner, err := url.PathUnescape(ownerSegment)
+	if err != nil || strings.EqualFold(requestOwner, c.owner) {
+		return c.token
+	}
+	return c.ossToken
+}
+
 func (c *GitHubClient) doJSONLimit(ctx context.Context, method, path string, body []byte, limit int64) (int, string, error) {
 	var r io.Reader
 	if body != nil {
@@ -127,7 +157,7 @@ func (c *GitHubClient) doJSONLimit(ctx context.Context, method, path string, bod
 	if err != nil {
 		return 0, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.tokenForPath(path))
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if body != nil {

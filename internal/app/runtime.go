@@ -211,7 +211,7 @@ func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logge
 		service = service.WithCoolify(coolify)
 	}
 	if github := buildGitHubClientFromEnv(); github != nil {
-		service = service.WithGitHub(github)
+		service = service.WithGitHub(github.WithOSSToken(os.Getenv(githubOSSTokenEnv)))
 	}
 	brainStore, err := buildBrainStore(brainRoot, pol.Roots(), filepath.Join(stateRoot, "brain", "console-node.key"))
 	if err != nil {
