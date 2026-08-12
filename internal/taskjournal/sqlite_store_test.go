@@ -67,7 +67,7 @@ func TestSQLiteJournalMigratesLegacyJSONIdempotently(t *testing.T) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	legacyTime := time.Date(2026, 7, 10, 3, 2, 1, 0, time.UTC)
+	legacyTime := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 	legacy := legacyEntry{TaskID: testTaskID, Operation: "run_tests", Summary: "MCP tool operation: run_tests", State: StateCompleted, Heartbeat: legacyTime, Controller: "internal"}
 	body, err := json.Marshal(legacy)
 	if err != nil {
