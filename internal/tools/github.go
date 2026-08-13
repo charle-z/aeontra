@@ -149,6 +149,19 @@ func (c *GitHubClient) tokenForPath(path string) string {
 }
 
 func (c *GitHubClient) doJSONLimit(ctx context.Context, method, path string, body []byte, limit int64) (int, string, error) {
+	token := c.tokenForPath(path)
+	status, responseBody, err := c.doJSONLimitWithToken(ctx, method, path, body, limit, token)
+	if err != nil {
+		return status, responseBody, err
+	}
+	if token == c.ossToken && c.ossToken != "" && c.token != "" && c.ossToken != c.token &&
+		(status == http.StatusForbidden || status == http.StatusNotFound) {
+		return c.doJSONLimitWithToken(ctx, method, path, body, limit, c.token)
+	}
+	return status, responseBody, nil
+}
+
+func (c *GitHubClient) doJSONLimitWithToken(ctx context.Context, method, path string, body []byte, limit int64, token string) (int, string, error) {
 	var r io.Reader
 	if body != nil {
 		r = bytes.NewReader(body)
@@ -157,7 +170,7 @@ func (c *GitHubClient) doJSONLimit(ctx context.Context, method, path string, bod
 	if err != nil {
 		return 0, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.tokenForPath(path))
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if body != nil {
