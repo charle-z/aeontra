@@ -22,6 +22,9 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	constitution := read("../.specify/memory/constitution.md")
 
 	roadmap := read("product-roadmap.md")
+	currentTask := read("../.agent-memory/current-task.md")
+	handoff := read("../.agent-memory/handoffs/latest.md")
+	reconciliation := read("baselines/2026-08-12-operational-reconciliation.md")
 
 	for path, content := range map[string]string{
 		"spec.md":         spec,
@@ -87,6 +90,43 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	} {
 		if !strings.Contains(roadmap, required) {
 			t.Errorf("product roadmap does not contain %q", required)
+		}
+	}
+
+	for _, required := range []string{
+		"Last updated: 2026-08-12",
+		"Codex harness compatibility spike",
+		"worktrees and deterministic parallelism",
+		"durable task graph and multiagent",
+	} {
+		if !strings.Contains(roadmap, required) {
+			t.Errorf("current product roadmap does not contain %q", required)
+		}
+	}
+	for path, content := range map[string]string{
+		"current task": currentTask,
+		"handoff":      handoff,
+	} {
+		for _, required := range []string{
+			"p15.0.34",
+			"166 tools",
+			"Codex",
+			"multiagent",
+		} {
+			if !strings.Contains(content, required) {
+				t.Errorf("%s does not contain %q", path, required)
+			}
+		}
+	}
+	for _, required := range []string{
+		"f8d0a38af06527dcf59763c793bee81aca9dd044",
+		"04c544b776ffca2071cb5b5a9951b8b32f423a36",
+		"489a64f40cbbde014986ff130662a485f9513d6c",
+		"PR #154",
+		"No restart or Edge update was performed",
+	} {
+		if !strings.Contains(reconciliation, required) {
+			t.Errorf("operational reconciliation baseline does not contain %q", required)
 		}
 	}
 
