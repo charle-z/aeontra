@@ -1,6 +1,6 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-08-03
+Last updated: 2026-08-12
 
 ## Direct GPT Web to Edge roadmap
 
@@ -17,11 +17,38 @@ runtime; OpenCode remains a tested optional fallback.
 | 3B recovery/list/signal/cleanup | Real-device accepted on p15.0.23 | A fresh process streamed incrementally, survived exactly one managed Edge restart and resumed at the next record without replay. Closed `interrupt` stopped the inner sandbox with known exit code 130 and no operator signal; repeated interrupt/stop were idempotent, exclusive cleanup succeeded, the final list was empty and doctor remained ready with `NRestarts=0`. |
 | Safe Edge checkout synchronization | Real-device accepted on p15.0.20 | Status and authenticated fetch completed on the real checkout as a clean synchronized no-op: attached `main`, exact HEAD/upstream, ahead=0, behind=0 and no mutation. |
 | 4 persistent universal toolbox | Real-device accepted on p15.0.20 | The real toolbox retained rootfs, marker, installed tools, rootless Podman socket and the same durable service across the coordinated Edge restart. Repeated service stop was idempotent and exclusive cleanup removed only that toolbox/service. |
-| 5 complete persistent GitHub broker | Read-only slice deployed; login/import and direct Git verified; consequential operations pending | Managed `gh` and the normal login remain safely imported into the private Edge store, and authenticated direct Git fetch is accepted. Closed consequential PR, workflow and release operations remain. |
-| 6 direct GPT Web parity | Planned | Workspace-scoped filesystem, Git, process, toolbox, container and durable-result coverage. |
+| 5 split GitHub authority | Validation pending | Control-plane owner/public-OSS publication, PR, checks, merge and workflow operations are deployed. The Edge-private broker has accepted login/import, status and direct Git synchronization; a credential-free handoff from an Edge checkout to the control-plane publication path remains the missing acceptance. |
+| 6 direct GPT Web parity | Validation pending | Foreground/background execution, persistent toolbox, rootless container access, managed browser harness, Git synchronization and durable results are deployed. One complete project delivery through only the direct path remains the acceptance gate. |
 | 7 worktrees and deterministic parallelism | Planned | Durable isolated worktrees, ownership, fairness, recovery and explicit cleanup. |
-| 8 full benchmark | Planned | Complete project delivery through the direct path with retained latency/resource/CI evidence. |
-| 9 durable task graph | Deferred by operator | Product-native task dependencies, worktree/process/result association and recovery; explicitly excluded from the current execution and not required for the single-agent path. |
+| 8 full benchmark | Planned | Complete project delivery through the direct/Codex path with retained latency, resource, CI, browser and deployment evidence. |
+| 9 durable task graph and multiagent | Planned; foundation implemented | The private P16 workqueue already provides durable jobs, dependencies, leases, fencing, fairness and backup. Public task/worktree/runtime association and multiagent acceptance remain unimplemented. |
+| 10 Codex harness compatibility spike | In progress | Evaluate stock Codex CLI/App Server with a scripted external-model bridge before considering a fork. Codex must reuse the existing workcell, model-turn and durable-operation boundaries. |
+
+## Accepted execution sequence — 2026-08-12
+
+The next implementation order is deliberately narrower than the older milestone list:
+
+1. Reconcile source, production, signed Edge release, live device state and continuation
+   documents. Do not restart or update the Edge while operator-reported long-running
+   work lacks a durable checkpoint.
+2. Publish one stabilization release from an exact-head-green `main` and validate the
+   real Edge independently from the backend deployment.
+3. Run a Codex compatibility spike with a pinned official artifact and a scripted model
+   provider. Prefer stock CLI/App Server; fork only after a recorded incompatibility.
+4. Productize Codex as an optional signed Edge harness while retaining OpenCode as a
+   rollback path for at least one accepted release.
+5. Close the split GitHub handoff, then implement server-owned worktrees with one writer
+   per worktree, exact base identities and explicit cleanup.
+6. Connect the existing P16 workqueue to task, worktree, process/toolbox, model-turn and
+   result identities. Begin with read-only and non-model parallel workers before
+   allowing multiple writing agents.
+7. Execute one full project benchmark and one public-OSS contribution benchmark before
+   product-directory, multi-user or large-fleet work.
+
+Automatic ChatGPT browser driving is not a durability primitive. The core continuation
+contract is a content-bounded checkpoint plus a resumable task identity. Any later UI
+automation must remain optional, use a manually authenticated browser profile and fail
+without replaying consequential effects.
 
 ## Status snapshot — 2026-07-18
 
