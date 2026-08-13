@@ -1,0 +1,16 @@
+{
+  "version": "0.147.0",
+  "tag": "rust-v0.147.0",
+  "source_commit": "be6e8eac029b183056b7e4402879f15d2c85f61b",
+  "release_url": "https://github.com/openai/codex/releases/tag/rust-v0.147.0",
+  "linux_amd64_asset": "codex-x86_64-unknown-linux-musl.tar.gz",
+  "linux_amd64_sha256": "0246e2e773834e07f0fb5249ed6ebad12e4591e608f8c7bb97dd6a9690544c36",
+  "linux_amd64_binary_sha256": "cb0a15567e9a60a5820d54b0f6ae86d504dc3805c1eab21a47f70e3eb7b73a40",
+  "wire_api": "responses",
+  "requires_openai_auth": false,
+  "app_server_transports": [
+    "stdio",
+    "unix",
+    "websocket"
+  ]
+}

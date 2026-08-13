@@ -1,4 +1,4 @@
-# Handoff — reconciliation in progress; Codex and multiagent not started
+# Handoff — stock Codex accepted; signed adapter and multiagent pending
 
 Updated: 2026-08-12
 
@@ -23,9 +23,12 @@ snapshot and limitations.
 
 ## Work in progress
 
-Branch `codex/reconcile-roadmap` updates only documentation truth and its regression
-test. It does not change the catalog, runtime, Edge bundle, production or external
-resources.
+PR #177 merged the reconciliation at
+`82a65e9ed881f8f15099040867748404674718f4`. Branch
+`codex/codex-harness-spike` now pins official Codex `0.147.0` and carries two host
+acceptances: a credential-free scripted Responses provider and App Server initialize
+over stdio. Both passed with an isolated `CODEX_HOME`; no model API or tool execution
+was involved. See `docs/analysis/codex-harness-compatibility.md`.
 
 After exact-head merge:
 
@@ -35,12 +38,9 @@ After exact-head merge:
    whose ownership and replacement are proven.
 3. Publish the next signed stabilization release from then-current green main and
    install it once on the real Edge.
-4. Create a separate Codex spike branch. Pin an official artifact, run it in a
-   disposable toolbox, and prove scripted provider/App Server behavior before changing
-   the signed bundle.
-5. If stock Codex can be paused/resumed through the durable model-turn bridge, build the
-   signed Edge adapter and retain OpenCode as rollback. Otherwise record the exact
-   missing extension before considering a minimal fork.
+4. Publish the compatibility evidence through one exact-head-green pull request.
+5. Build the signed loopback Responses-to-model-turn adapter around stock Codex and
+   retain OpenCode as rollback. A fork is not justified by the accepted stock seams.
 6. Implement worktrees and one-writer ownership, then connect the existing P16
    workqueue to the durable task graph and multiagent execution.
 
@@ -53,5 +53,6 @@ After exact-head merge:
 - ChatGPT browser automation is not required for durable continuation and must not be
   coupled to consequential replay.
 
-No restart, Edge update, cleanup, deployment, release, Codex installation or
-multiagent execution occurred during this reconciliation.
+No restart, Edge update, deployment, release, Codex installation or multiagent
+execution occurred during the compatibility spike. Only a verified official artifact
+under `/tmp` was executed for the two isolated acceptances.
