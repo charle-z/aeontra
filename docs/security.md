@@ -222,6 +222,15 @@ Bubblewrap. Only the selected workspace and a private runtime area are writable.
 identity, home, unrelated repositories, and private control sockets are excluded. There
 is no direct-execution fallback.
 
+The source candidate for the optional Codex harness uses a private loopback Responses
+adapter backed by the same durable model-turn transport. It rejects non-loopback peers
+and hosts, rejects Authorization input, bounds and strictly decodes requests, strips
+Codex session/cache/reasoning metadata, and exposes only ordinary function tools to the
+external model. Namespace multiagent declarations and disabled web-search declarations
+are accepted for stock-client compatibility but are not offered across the model-turn
+boundary. This source contract does not claim an installed Edge release; packaging and
+real-device acceptance remain separate gates.
+
 ### Managed browser harness
 
 The browser capability is a general programming harness for every authorized development

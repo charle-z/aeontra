@@ -22,7 +22,7 @@ runtime; OpenCode remains a tested optional fallback.
 | 7 worktrees and deterministic parallelism | Planned | Durable isolated worktrees, ownership, fairness, recovery and explicit cleanup. |
 | 8 full benchmark | Planned | Complete project delivery through the direct/Codex path with retained latency, resource, CI, browser and deployment evidence. |
 | 9 durable task graph and multiagent | Planned; foundation implemented | The private P16 workqueue already provides durable jobs, dependencies, leases, fencing, fairness and backup. Public task/worktree/runtime association and multiagent acceptance remain unimplemented. |
-| 10 Codex harness compatibility spike | Host accepted; productization pending | Stock Codex 0.147.0 reached a credential-free scripted Responses provider. Experimental App Server initialization also passed but is not a production dependency. No fork is justified; the signed adapter, package, real Edge acceptance and rollback release remain pending. |
+| 10 Codex harness compatibility spike | Adapter core host accepted; signed productization pending | Stock Codex 0.147.0 completed a credential-free two-turn tool loop through the strict loopback Responses-to-model-turn adapter. Experimental App Server initialization remains compatibility evidence only. No fork is justified; workcell launch, packaging, restart/resume, real GPT Web acceptance and one rollback-safe signed release remain pending. |
 
 ## Accepted execution sequence — 2026-08-12
 
