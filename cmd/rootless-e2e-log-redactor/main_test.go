@@ -87,6 +87,11 @@ func TestRedactBoundsOutput(t *testing.T) {
 
 func TestNormalizeClassifiesRootlessLifecycleFailures(t *testing.T) {
 	tests := map[string]string{
+		"rootless command failed: exit status 41 output=private":              "P12 rootless category=workspace_fixture_missing",
+		"rootless command failed: exit status 42 output=private":              "P12 rootless category=workspace_bind_writable",
+		"rootless command failed: exit status 125 output=private":             "P12 rootless category=engine_command",
+		"rootless command failed: exit status 126 output=private":             "P12 rootless category=container_command_unexecutable",
+		"rootless command failed: exit status 127 output=private":             "P12 rootless category=container_command_not_found",
 		"rootful container socket is accessible to the rootless test user": "P12 rootless category=rootful_socket",
 		"rootless container socket is unsafe":                              "P12 rootless category=endpoint_socket",
 		"rootless pod resources inherited by runtime cycle":                "P12 rootless category=inherited_state",

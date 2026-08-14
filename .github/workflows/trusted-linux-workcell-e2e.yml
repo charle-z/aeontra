@@ -172,10 +172,12 @@ jobs:
           test "$(readlink -f /usr/local/bin/podman)" = "/usr/bin/podman"
           test "$(/usr/local/bin/podman --version)" = "podman version 3.4.4"
           /usr/bin/podman --version
-          echo "P12_PODMAN_BIN=/usr/bin/podman" >> "$GITHUB_ENV"
-          echo "P12_ROOTLESS_TOOL_PATH=/usr/bin:/usr/sbin:/bin:/sbin" >> "$GITHUB_ENV"
-          echo "P12_ROOTLESS_CYCLE_CONTAINERS_CONF=$containers_conf" >> "$GITHUB_ENV"
-          echo "CONTAINERS_CONF=$containers_conf" >> "$GITHUB_ENV"
+          {
+            echo "P12_PODMAN_BIN=/usr/bin/podman"
+            echo "P12_ROOTLESS_TOOL_PATH=/usr/bin:/usr/sbin:/bin:/sbin"
+            echo "P12_ROOTLESS_CYCLE_CONTAINERS_CONF=$containers_conf"
+            echo "CONTAINERS_CONF=$containers_conf"
+          } >> "$GITHUB_ENV"
           CONTAINERS_CONF="$containers_conf" /usr/bin/podman --version
           command -v setsid
 
