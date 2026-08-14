@@ -41,27 +41,6 @@ type p12RootlessCycleReport struct {
 	RootlessSocketPermissions bool `json:"rootless_socket_permissions"`
 }
 
-func TestP12LastNonEmptyLine(t *testing.T) {
-	t.Parallel()
-	for _, test := range []struct {
-		name   string
-		output string
-		want   string
-	}{
-		{name: "marker only", output: "workspace-ready\n", want: "workspace-ready"},
-		{name: "runner warning before marker", output: "time=runner level=warning msg=ignored\nworkspace-ready\n", want: "workspace-ready"},
-		{name: "blank suffix", output: "warning\r\n{\"Type\":\"bind\"}\r\n\r\n", want: "{\"Type\":\"bind\"}"},
-		{name: "empty", output: " \n\r\n", want: ""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			if got := p12LastNonEmptyLine(test.output); got != test.want {
-				t.Fatalf("last line=%q want=%q", got, test.want)
-			}
-		})
-	}
-}
-
 func p12RootlessRuntimeIDs(t *testing.T) []string {
 	t.Helper()
 	ids := []string{
@@ -187,21 +166,20 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 	stage = "workspace_bind"
 	containerName := "p12-workspace-" + suffix
 	workspaceMount := workspace + ":/workspace:ro"
-	workspaceOutput := p12Engine(t, endpoint, append(prefix,
+	p12Engine(t, endpoint, append(prefix,
 		"run", "--name", containerName, "--label", label, "--network", network,
 		"--volume", volume+":/data", "--volume", workspaceMount,
-		image, "/bin/sh", "-c", "test -f /workspace/fixture.txt && if touch /workspace/p12-denied 2>/dev/null; then exit 1; fi; echo workspace-ready",
+		image, "/bin/sh", "-c", "test -f /workspace/fixture.txt && if touch /workspace/p12-denied 2>/dev/null; then exit 1; fi",
 	)...)
-	workspaceBindValidated := p12LastNonEmptyLine(workspaceOutput) == "workspace-ready"
-	if !workspaceBindValidated {
-		t.Fatal("workspace bind validation failed")
-	}
+	// The command exit status is the authoritative assertion. Podman versions
+	// differ in whether remote run output is forwarded to the client.
+	workspaceBindValidated := true
 	type mountEvidence struct {
 		Type        string `json:"Type"`
 		Source      string `json:"Source"`
 		Destination string `json:"Destination"`
 	}
-	mountOutput := p12LastNonEmptyLine(p12Engine(t, endpoint, append(prefix, "inspect", "--format", "{{json .Mounts}}", containerName)...))
+	mountOutput := p12Engine(t, endpoint, append(prefix, "inspect", "--format", "{{json .Mounts}}", containerName)...)
 	var mounts []mountEvidence
 	if err := json.Unmarshal([]byte(mountOutput), &mounts); err != nil {
 		t.Fatal("workspace bind inventory was not valid JSON")
@@ -251,16 +229,6 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 		ContainersCleaned: true, PodsCleaned: true, NetworksCleaned: true, VolumesCleaned: true,
 		RootlessSocketOwnedByUser: true, RootlessSocketPermissions: true,
 	}
-}
-
-func p12LastNonEmptyLine(output string) string {
-	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
-	for index := len(lines) - 1; index >= 0; index-- {
-		if line := strings.TrimSpace(lines[index]); line != "" {
-			return line
-		}
-	}
-	return ""
 }
 
 func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image, runtimeID, suffix string) bool {

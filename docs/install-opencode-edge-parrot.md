@@ -48,7 +48,7 @@ sudo apt-get install --yes --no-install-recommends \
   build-essential pkg-config iproute2 curl wget openssl ripgrep podman
 ```
 
-The validated toolchain is Go 1.26.5, Node 24.18.0, npm 11.16.0, Bubblewrap 0.11.0,
+The validated toolchain is Go 1.26.6, Node 24.18.0, npm 11.16.0, Bubblewrap 0.11.0,
 and Podman 5.4.2. Install Go and Node from reviewed archives or a reviewed package
 source. Root-owned wrapper files in `/usr/local/bin` are preferable to symlinks
 when the local inventory must resolve the executable itself inside an allowlisted
