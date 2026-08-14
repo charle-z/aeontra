@@ -39,16 +39,26 @@ func (s *Server) addModelTurnTools() {
 		Annotations: writeHints,
 	}, s.handleModelRuntimeStart)
 
+	runtimeStartSchema := closedObject(map[string]any{
+		"device_id":       stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35),
+		"workspace_id":    stringSchema("opaque workspace id resolved only by the Edge registry", `^ws_[a-f0-9]{32}$`, 35),
+		"goal":            map[string]any{"type": "string", "minLength": 1, "maxLength": modelturn.MaxGoalBodyBytes},
+		"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
+		"idempotency_key": stringSchema("caller-generated idempotency key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, maxOpenCodeIdempotencyBytes),
+	}, []string{"device_id", "workspace_id", "goal", "timeout_seconds", "idempotency_key"})
+
 	s.addDirectTool(toolDef{
 		Name:        "opencode_runtime_start",
-		Description: "Request one pinned OpenCode runtime on a paired Edge device using an opaque local workspace and bounded goal.",
-		InputSchema: closedObject(map[string]any{
-			"device_id":       stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35),
-			"workspace_id":    stringSchema("opaque workspace id resolved only by the Edge registry", `^ws_[a-f0-9]{32}$`, 35),
-			"goal":            map[string]any{"type": "string", "minLength": 1, "maxLength": modelturn.MaxGoalBodyBytes},
-			"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
-			"idempotency_key": stringSchema("caller-generated idempotency key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, maxOpenCodeIdempotencyBytes),
-		}, []string{"device_id", "workspace_id", "goal", "timeout_seconds", "idempotency_key"}),
+		Description: "Compatibility name for starting the active signed model harness on a paired Edge; current releases use pinned stock Codex and a rolled-back release may use OpenCode.",
+		InputSchema: runtimeStartSchema,
+		Version:     "1",
+		Annotations: idempotentWriteHints,
+	}, s.handleOpenCodeRuntimeStart)
+
+	s.addDirectTool(toolDef{
+		Name:        "codex_runtime_start",
+		Description: "Request one pinned stock Codex runtime on a paired Edge device using an opaque local workspace and bounded goal.",
+		InputSchema: runtimeStartSchema,
 		Version:     "1",
 		Annotations: idempotentWriteHints,
 	}, s.handleOpenCodeRuntimeStart)

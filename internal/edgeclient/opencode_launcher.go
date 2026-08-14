@@ -94,6 +94,8 @@ type OpenCodeLauncherConfig struct {
 	StateRoot      string
 	SocketRoot     string
 	OpenCodePath   string
+	CodexPath      string
+	CodexPinPath   string
 	DriverPath     string
 	ProviderPath   string
 	BubblewrapPath string
@@ -122,20 +124,22 @@ type OpenCodeLaunchResult struct {
 }
 
 type OpenCodeLauncher struct {
-	config                 OpenCodeLauncherConfig
-	remoteFactory          func(ModelRuntimeLease) (OpenCodeRemoteTransport, error)
-	runProcess             func(context.Context, openCodeProcessSpec) openCodeProcessResult
-	verifySandbox          func(context.Context, openCodeProcessSpec) error
-	resolveWorkspace       func(string) (string, error)
-	resolveWorkspaceRecord func(string) (Workspace, error)
-	linuxNetworkProbe      LinuxNetworkProbe
-	rootlessEndpoint       func(int, string) (*RootlessContainerEndpoint, error)
-	rootlessEnvironment    rootlessContainerEnvironmentBuilder
-	containerRunner        ContainerCommandRunner
-	effectiveUID           func() int
-	now                    func() time.Time
-	allowRootTest          bool
-	allowRootlessRootTest  bool
+	config                  OpenCodeLauncherConfig
+	harness                 runtimeHarness
+	remoteFactory           func(ModelRuntimeLease) (OpenCodeRemoteTransport, error)
+	runProcess              func(context.Context, openCodeProcessSpec) openCodeProcessResult
+	verifySandbox           func(context.Context, openCodeProcessSpec) error
+	verifyCodexInstallation func(string, string) error
+	resolveWorkspace        func(string) (string, error)
+	resolveWorkspaceRecord  func(string) (Workspace, error)
+	linuxNetworkProbe       LinuxNetworkProbe
+	rootlessEndpoint        func(int, string) (*RootlessContainerEndpoint, error)
+	rootlessEnvironment     rootlessContainerEnvironmentBuilder
+	containerRunner         ContainerCommandRunner
+	effectiveUID            func() int
+	now                     func() time.Time
+	allowRootTest           bool
+	allowRootlessRootTest   bool
 }
 
 type openCodeProcessSpec struct {
@@ -174,20 +178,34 @@ type openCodeProcessResult struct {
 }
 
 func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, error) {
+	return newRuntimeLauncher(config, runtimeHarnessOpenCode)
+}
+
+func newRuntimeLauncher(config OpenCodeLauncherConfig, harness runtimeHarness) (*OpenCodeLauncher, error) {
 	config.StateRoot = filepath.Clean(strings.TrimSpace(config.StateRoot))
 	if strings.TrimSpace(config.SocketRoot) == "" {
 		config.SocketRoot = filepath.Join(config.StateRoot, openCodeRuntimeDirName)
 	}
 	config.SocketRoot = filepath.Clean(strings.TrimSpace(config.SocketRoot))
 	config.OpenCodePath = filepath.Clean(strings.TrimSpace(config.OpenCodePath))
+	config.CodexPath = filepath.Clean(strings.TrimSpace(config.CodexPath))
+	config.CodexPinPath = filepath.Clean(strings.TrimSpace(config.CodexPinPath))
 	if strings.TrimSpace(config.DriverPath) != "" {
 		config.DriverPath = filepath.Clean(strings.TrimSpace(config.DriverPath))
 	}
 	config.ProviderPath = filepath.Clean(strings.TrimSpace(config.ProviderPath))
 	config.BubblewrapPath = filepath.Clean(strings.TrimSpace(config.BubblewrapPath))
 	config.IntegrityPath = filepath.Clean(strings.TrimSpace(config.IntegrityPath))
-	if !filepath.IsAbs(config.StateRoot) || !filepath.IsAbs(config.SocketRoot) || !filepath.IsAbs(config.OpenCodePath) || (config.DriverPath != "" && !filepath.IsAbs(config.DriverPath)) || !filepath.IsAbs(config.ProviderPath) || !filepath.IsAbs(config.BubblewrapPath) || !filepath.IsAbs(config.IntegrityPath) {
-		return nil, errors.New("OpenCode launcher paths must be absolute local paths")
+	pathsValid := filepath.IsAbs(config.StateRoot) && filepath.IsAbs(config.SocketRoot) && filepath.IsAbs(config.BubblewrapPath)
+	if harness == runtimeHarnessOpenCode {
+		pathsValid = pathsValid && filepath.IsAbs(config.OpenCodePath) && (config.DriverPath == "" || filepath.IsAbs(config.DriverPath)) && filepath.IsAbs(config.ProviderPath) && filepath.IsAbs(config.IntegrityPath)
+	} else if harness == runtimeHarnessCodex {
+		pathsValid = pathsValid && filepath.IsAbs(config.CodexPath) && filepath.IsAbs(config.CodexPinPath)
+	} else {
+		return nil, errors.New("runtime harness is invalid")
+	}
+	if !pathsValid {
+		return nil, errors.New("runtime launcher paths must be absolute local paths")
 	}
 	if !pathInside(config.StateRoot, config.SocketRoot) {
 		return nil, errors.New("OpenCode socket root must stay inside the private Edge state root")
@@ -235,8 +253,13 @@ func NewOpenCodeLauncher(config OpenCodeLauncherConfig) (*OpenCodeLauncher, erro
 	if config.Workspaces == nil || config.Journal == nil {
 		return nil, errors.New("OpenCode launcher requires local workspace and runtime journals")
 	}
-	launcher := &OpenCodeLauncher{config: config, effectiveUID: os.Geteuid, now: time.Now, runProcess: runOpenCodeProcess}
-	launcher.verifySandbox = launcher.verifyOpenCodeSandbox
+	launcher := &OpenCodeLauncher{config: config, harness: harness, effectiveUID: os.Geteuid, now: time.Now, runProcess: runOpenCodeProcess}
+	launcher.verifyCodexInstallation = verifyPinnedCodex
+	if harness == runtimeHarnessCodex {
+		launcher.verifySandbox = launcher.verifyCodexSandbox
+	} else {
+		launcher.verifySandbox = launcher.verifyOpenCodeSandbox
+	}
 	launcher.resolveWorkspace = config.Workspaces.Resolve
 	launcher.resolveWorkspaceRecord = config.Workspaces.Get
 	launcher.rootlessEndpoint = DiscoverRootlessContainerEndpoint
@@ -462,38 +485,46 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		}
 	}()
 	lease.TimeoutSeconds = executionTimeoutSeconds
-	driverDone, err := l.startDriver(runCtx, socketPath, lease, remote)
-	if err != nil {
-		failLocal(OpenCodeLocalFailed, -1, false)
-		_, _ = remote.Failed(context.Background(), "")
-		return result, err
-	}
-	startupCtx, startupCancel := context.WithTimeout(runCtx, l.config.DriverStartupBudget)
-	driverExited, err := waitForPrivateDriverSocketOrExit(startupCtx, socketPath, l.effectiveUID(), driverDone)
-	startupExpired := startupCtx.Err() != nil && runCtx.Err() == nil
-	startupCancel()
-	if err != nil && startupExpired {
-		err = errStartupDriverNotReady
-	}
-	if err != nil {
-		cancel()
-		if !driverExited {
-			<-driverDone
+	transportEndpoint := socketPath
+	var adapterDone <-chan error
+	readyPhase := modelturn.RuntimePhaseDriverSocketReady
+	if l.harness == runtimeHarnessCodex {
+		transportEndpoint, adapterDone, err = l.startCodexAdapter(runCtx, lease, remote)
+		readyPhase = modelturn.RuntimePhaseModelAdapterReady
+	} else {
+		var driverExited bool
+		adapterDone, err = l.startDriver(runCtx, socketPath, lease, remote)
+		if err == nil {
+			startupCtx, startupCancel := context.WithTimeout(runCtx, l.config.DriverStartupBudget)
+			var startupExpired bool
+			driverExited, err = waitForPrivateDriverSocketOrExit(startupCtx, socketPath, l.effectiveUID(), adapterDone)
+			startupExpired = startupCtx.Err() != nil && runCtx.Err() == nil
+			startupCancel()
+			if err != nil && startupExpired {
+				err = errStartupDriverNotReady
+			}
 		}
+		if err != nil && adapterDone != nil && !driverExited {
+			cancel()
+			<-adapterDone
+		}
+	}
+	if err != nil {
+		cancel()
 		failLocal(OpenCodeLocalFailed, -1, false)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
-	if err := reportOpenCodeRuntimePhase(runCtx, remote, modelturn.RuntimePhaseDriverSocketReady); err != nil {
+	if err := reportOpenCodeRuntimePhase(runCtx, remote, readyPhase); err != nil {
 		cancel()
-		<-driverDone
+		<-adapterDone
 		failLocal(OpenCodeLocalFailed, -1, false)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
 	if err := l.config.Journal.MarkRunning(ctx, lease.RuntimeID); err != nil {
 		cancel()
-		<-driverDone
+		<-adapterDone
 		failLocal(OpenCodeLocalFailed, -1, false)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
@@ -501,17 +532,19 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 
 	stdout := newBoundedSink(l.config.OutputLimit)
 	stderr := newBoundedSink(l.config.OutputLimit)
-	spec, err := l.processSpecForWorkspace(runtimeDir, workspaceRecord, preparation, socketPath, lease, stdout, stderr)
+	spec, err := l.processSpecForWorkspace(runtimeDir, workspaceRecord, preparation, transportEndpoint, lease, stdout, stderr)
 	if err != nil {
 		cancel()
-		<-driverDone
+		<-adapterDone
 		failLocal(OpenCodeLocalFailed, -1, false)
 		_, _ = remote.Failed(context.Background(), "")
 		return result, err
 	}
-	spec.Started = func() error {
-		return reportOpenCodeRuntimePhase(runCtx, remote, modelturn.RuntimePhaseOpenCodeProcessStarted)
+	processPhase := modelturn.RuntimePhaseOpenCodeProcessStarted
+	if l.harness == runtimeHarnessCodex {
+		processPhase = modelturn.RuntimePhaseCodexProcessStarted
 	}
+	spec.Started = func() error { return reportOpenCodeRuntimePhase(runCtx, remote, processPhase) }
 	processDone := make(chan openCodeProcessResult, 1)
 	processStarted := time.Now()
 	go func() { processDone <- l.runProcess(runCtx, spec) }()
@@ -541,7 +574,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		internalBrokerErr = <-internalBrokerDone
 		internalBrokerDone = nil
 	}
-	driverErr := <-driverDone
+	adapterErr := <-adapterDone
 	terminalRuntime := modelturn.Runtime{}
 	select {
 	case terminalRuntime = <-heartbeatDone:
@@ -609,9 +642,12 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		}
 		return result, fmt.Errorf("OpenCode terminated unexpectedly (%s)", signal)
 	}
-	if driverErr != nil && !errors.Is(driverErr, context.Canceled) {
+	if adapterErr != nil && !errors.Is(adapterErr, context.Canceled) {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
+		if l.harness == runtimeHarnessCodex {
+			return result, errors.New("codex loopback adapter terminated unexpectedly")
+		}
 		return result, errors.New("OpenCode model-turn driver terminated unexpectedly")
 	}
 	if _, err := remote.Completed(context.Background(), ""); err != nil {

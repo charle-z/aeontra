@@ -222,14 +222,18 @@ Bubblewrap. Only the selected workspace and a private runtime area are writable.
 identity, home, unrelated repositories, and private control sockets are excluded. There
 is no direct-execution fallback.
 
-The source candidate for the optional Codex harness uses a private loopback Responses
+The signed-source candidate for the optional Codex harness uses a private loopback Responses
 adapter backed by the same durable model-turn transport. It rejects non-loopback peers
 and hosts, rejects Authorization input, bounds and strictly decodes requests, strips
 Codex session/cache/reasoning metadata, and exposes only ordinary function tools to the
 external model. Namespace multiagent declarations and disabled web-search declarations
 are accepted for stock-client compatibility but are not offered across the model-turn
-boundary. This source contract does not claim an installed Edge release; packaging and
-real-device acceptance remain separate gates.
+boundary. Stock Codex executes with `danger-full-access` only inside the already
+constrained outer Bubblewrap workcell; it receives no host home, Windows mount,
+rootful container socket, Edge state root or model credential. Built-in Codex
+multiagent is explicitly disabled until each writer can be bound to a managed
+worktree and a fenced P16 lease. This source contract does not claim an installed Edge
+release; signed publication and real-device acceptance remain separate gates.
 
 ### Managed browser harness
 

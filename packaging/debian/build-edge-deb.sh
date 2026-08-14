@@ -37,6 +37,14 @@ for path in \
     exit 1
   }
 done
+HAS_CODEX=0
+if [ -f "$BUNDLE/codex/codex" ] || [ -f "$BUNDLE/codex/pin.json" ]; then
+  [ -f "$BUNDLE/codex/codex" ] && [ ! -L "$BUNDLE/codex/codex" ] && [ -f "$BUNDLE/codex/pin.json" ] && [ ! -L "$BUNDLE/codex/pin.json" ] || {
+    printf 'signed Codex components are incomplete\n' >&2
+    exit 1
+  }
+  HAS_CODEX=1
+fi
 
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:?SOURCE_DATE_EPOCH is required for reproducible package content}"
 export SOURCE_DATE_EPOCH
@@ -47,7 +55,7 @@ RELEASE_ROOT="$PACKAGE_ROOT/opt/mcp-devbox/releases/$RELEASE"
 
 install -d -m 0755 \
   "$PACKAGE_ROOT/DEBIAN" "$RELEASE_ROOT/bin" "$RELEASE_ROOT/libexec" \
-  "$RELEASE_ROOT/opencode" "$RELEASE_ROOT/opencode-provider" "$RELEASE_ROOT/systemd" \
+  "$RELEASE_ROOT/opencode" "$RELEASE_ROOT/opencode-provider" "$RELEASE_ROOT/codex" "$RELEASE_ROOT/systemd" \
   "$PACKAGE_ROOT/etc/mcp-devbox" "$PACKAGE_ROOT/usr/local/bin" \
   "$PACKAGE_ROOT/usr/local/libexec/mcp-devbox" "$PACKAGE_ROOT/usr/share/doc/mcp-devbox" \
   "$PACKAGE_ROOT/etc/systemd/system"
@@ -62,6 +70,10 @@ install -m 0755 "$BUNDLE/libexec/node" "$RELEASE_ROOT/libexec/node"
 install -m 0755 "$BUNDLE/libexec/gh" "$RELEASE_ROOT/libexec/gh"
 install -m 0755 "$BUNDLE/opencode/opencode" "$RELEASE_ROOT/opencode/opencode"
 install -m 0644 "$BUNDLE/opencode/package-lock.json" "$RELEASE_ROOT/opencode/package-lock.json"
+if [ "$HAS_CODEX" -eq 1 ]; then
+  install -m 0755 "$BUNDLE/codex/codex" "$RELEASE_ROOT/codex/codex"
+  install -m 0644 "$BUNDLE/codex/pin.json" "$RELEASE_ROOT/codex/pin.json"
+fi
 install -m 0644 "$BUNDLE/opencode-provider/index.js" "$RELEASE_ROOT/opencode-provider/index.js"
 install -m 0644 "$BUNDLE/opencode-provider/htb-actions.js" "$RELEASE_ROOT/opencode-provider/htb-actions.js"
 install -m 0644 "$BUNDLE/opencode-provider/dev-actions.js" "$RELEASE_ROOT/opencode-provider/dev-actions.js"

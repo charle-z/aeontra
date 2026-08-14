@@ -54,7 +54,7 @@ Private runtime body.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.ToolCount != 166 || catalog.Hash != "sha256:088a0bacfb5a631bb8b4fd45185ec3f997648992ab9810f7a401d0d4d8eeefe5" {
+	if catalog.ToolCount != 167 || catalog.Hash != "sha256:8ce8ca2897c7550546ba1277bbe590670c0d4d6648959b7362bc0bd9114cb523" {
 		t.Fatalf("catalog=%+v", catalog)
 	}
 	keyPath := filepath.Join(stateRoot, "brain", "console-node.key")

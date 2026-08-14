@@ -109,7 +109,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	} {
 		for _, required := range []string{
 			"p15.0.34",
-			"166 tools",
+			"167 tools",
 			"Codex",
 			"multiagent",
 		} {

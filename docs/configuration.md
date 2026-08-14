@@ -340,6 +340,8 @@ because they appear in source.
 | `/brain` | Brain Markdown truth, local Git, and disposable `.cache` | dedicated persistent volume; dirs `0700`, files `0600`, UID/GID `10001:10001` in image | outside the repository jail; back up `.git`, `.gitignore`, `curated`, `working`; `.cache` is disposable |
 | `~/.local/state/mcp-edge` | installed Edge identity, registry, jobs, results, local Git authority | persistent, owner-only; credential files `0600` | never mounted into model workcells or returned through tools; back up before lifecycle changes |
 | `/opt/mcp-devbox/releases/<release>` and `/opt/mcp-devbox/current` | signed immutable Edge releases and active link | root-owned package/updater state | replace only through the signed installer/updater; source release and installed release require separate evidence |
+| `/opt/mcp-devbox/current/codex/codex` | pinned stock Codex CLI used by the active signed harness | immutable component hashed by the Edge manifest | mounted read-only at `/mcp-codex` only inside the selected trusted Linux workcell |
+| `/opt/mcp-devbox/current/codex/pin.json` | official tag, asset, archive SHA-256, binary SHA-256 and provider contract | immutable component hashed by the Edge manifest | server-owned input; a runtime request cannot replace the executable, pin or provider URL |
 
 No secret store, OAuth store, Edge identity, local Git credential, Docker socket, or
 host-private state path should be exposed as a repository alias or normal agent-writable

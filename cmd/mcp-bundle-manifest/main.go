@@ -25,6 +25,7 @@ func run(args []string) int {
 	protocol := fs.String("protocol", "", "bundle protocol version")
 	catalog := fs.String("catalog", "", "sha256 catalog identity")
 	architecture := fs.String("architecture", "", "amd64 or arm64")
+	manifestVersion := fs.Int("manifest-version", bundle.CurrentManifestVersion, "signed bundle manifest version")
 	keyPath := fs.String("private-key", "", "absolute raw Ed25519 private-key file")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 {
 		return 2
@@ -38,11 +39,11 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, "bundle private key is invalid")
 		return 1
 	}
-	manifest, err := bundle.Build(*root, bundle.Metadata{
+	manifest, err := bundle.BuildVersion(*root, bundle.Metadata{
 		Release: strings.TrimSpace(*release), Commit: strings.TrimSpace(*commit),
 		ProtocolVersion: strings.TrimSpace(*protocol), CatalogHash: strings.TrimSpace(*catalog),
 		Architecture: strings.TrimSpace(*architecture),
-	})
+	}, *manifestVersion)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

@@ -155,6 +155,11 @@ func (f *fakeOpenCodeRemote) WaitResponse(context.Context, modelturn.TurnID) (mo
 	return modelturn.ModelResponse{}, errors.New("unexpected model wait in launcher unit test")
 }
 func (f *fakeOpenCodeRemote) Cancel(context.Context, modelturn.TurnID) error { return nil }
+func (f *fakeOpenCodeRemote) Runtime(context.Context, string) (modelturn.Runtime, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.runtime, nil
+}
 func (f *fakeOpenCodeRemote) ReportPhase(_ context.Context, phase modelturn.RuntimePhase, category modelturn.RuntimeRetryCategory, count uint32) (modelturn.Runtime, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

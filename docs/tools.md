@@ -24,7 +24,8 @@ do not replace server-side enforcement.
 | `system_runtime_info` | 1/0/1/0 | Return safe live build and deterministic catalog identity. |
 | `mcp_client_capabilities` | 1/0/1/0 | Return only the current session's allowlisted client name/version, protocol and explicitly announced sampling/roots/elicitation flags. |
 | `model_runtime_start` | 0/0/0/0 | Create one durable external-model runtime; it does not start or select a model provider. |
-| `opencode_runtime_start` | 0/0/1/0 | Request one pinned OpenCode runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
+| `opencode_runtime_start` | 0/0/1/0 | Historical compatibility name for the active signed Edge model harness; current signed candidates use Codex while a bundle rollback may restore OpenCode. |
+| `codex_runtime_start` | 0/0/1/0 | Request one pinned stock Codex runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
 | `workspace_runtime_continue` | 0/0/1/0 | Continue one registered dev or HTB workspace through the active ChatGPT session using its local trusted contract; accepts the opaque workspace id, timeout and a fresh caller-generated idempotency key, creates one runtime, and does not retry automatically. |
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
 | `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |

@@ -54,7 +54,7 @@ GPT Web model_turn_next/model_turn_respond
                  |
        durable model-turn store
                  |
-      private Edge driver socket
+ private signed Edge transport
                  |
  signed loopback Responses adapter
                  |
@@ -63,10 +63,18 @@ GPT Web model_turn_next/model_turn_respond
     existing workcell and brokers
 ```
 
-The adapter translates Codex Responses requests into the existing bounded model-turn
+The signed `mcp-edge codex` process now owns the private loopback listener and translates
+Codex Responses requests into the existing bounded model-turn
 request and translates the validated external text/tool response back to Responses
 SSE. Codex retains its agent loop; MCP Devbox retains runtime identity, replay
 protection, cancellation, workcell scope, GitHub brokerage and audit.
+
+The active source unit launches the pinned stock CLI inside the existing trusted Linux
+workcell Bubblewrap boundary. It passes no OpenAI credential or ChatGPT browser state,
+fixes the provider URL to the server-owned loopback listener, sets
+`requires_openai_auth=false`, and keeps Codex multiagent disabled until managed
+worktrees and one-writer fencing are implemented. OpenCode and its signed provider stay
+in the bundle solely as the preceding-release rollback harness.
 
 An App Server controller may be evaluated separately while it remains experimental,
 but it is not a prerequisite for this adapter or the initial signed release.
@@ -86,13 +94,12 @@ but it is not a prerequisite for this adapter or the initial signed release.
 
 ## Remaining implementation gates
 
-1. Launch stock Codex and the adapter inside the current workcell boundary; no extra
-   host filesystem or network authority.
-2. Package the pinned official artifact plus its provenance verification in one signed
-   Edge bundle.
+1. Pass exact-head CI for the source launcher and packaging candidate.
+2. Publish one signed Edge release containing the pinned official artifact and verify
+   the installed manifest independently from source and backend identity.
 3. Pass Codex process restart/resume and a real GPT Web turn loop. The scripted
    credential-free tool-call loop is already host accepted. Reassess App Server
    independently against the official support posture before making it part of a
    production lifecycle contract.
-4. Publish one signed release and accept it on the real Edge while OpenCode remains an
-   explicit rollback path.
+4. Implement managed worktrees and one-writer ownership before enabling
+   `agents.enabled`; then connect that ownership to the existing P16 queue.

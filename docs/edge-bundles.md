@@ -13,19 +13,22 @@ the package/updater.
 public trust key, release, commit and expected catalog hash are compiled into packaged
 executables; an unstamped local build cannot validate a production bundle.
 
-The current version-2 manifest binds:
+The current version-4 manifest binds:
 
 - release, exact 40-character Git commit, bundle protocol and architecture;
 - the deterministic exterior MCP catalog hash;
 - SHA-256 hashes for `mcp-edge`, `model-turn-driver`, the reviewed Node 24.18.0 runtime,
-  `mcp-autopilot-worker`, the privileged updater, OpenCode and its lockfile, provider `index.js`, provider
-  `htb-actions.js`, provider `dev-actions.js`, provider `package.json`, and the
-  packaged Edge systemd unit.
+  `mcp-autopilot-worker`, the privileged updater, bundled GitHub CLI, OpenCode and its
+  lockfile, pinned stock Codex and its exact pin manifest, provider `index.js`, provider
+  `htb-actions.js`, provider `dev-actions.js`, provider `package.json`, and the packaged
+  Edge systemd unit.
 
-The verifier retains the exact signed version-1 component layout so an installed
-version-2 updater can still verify and roll back to p15.0.4 or an earlier signed P15
-release. Version 1 never accepts `dev-actions.js` as an unsigned extra authority;
-version 2 requires and hashes it. Other manifest versions fail closed.
+The verifier retains all exact signed historical layouts. Version 1 predates
+`dev-actions.js`; version 2 adds and hashes it; version 3 adds the bundled GitHub CLI;
+version 4 adds and hashes Codex plus its pin manifest. An installed version-3 updater
+cannot validate version 4, so the first migration uses a signed version-3 bridge whose
+new updater understands both versions, followed by the signed version-4 Codex bundle.
+Other manifest versions fail closed.
 
 Every component must be a regular non-symlink file below the release root. Unknown,
 missing, extra or malformed manifest fields fail closed. The Edge verifies the bundle
@@ -46,10 +49,12 @@ configuration.
 
 ## Release generation
 
-The release pipeline stages the fixed layout, then invokes `mcp-bundle-manifest` with
-an absolute release root, the exact release/commit/protocol/catalog/architecture and
-an absolute raw Ed25519 private-key file. The command creates new manifest/signature
-files only; it refuses overwrite. Debian packaging and the privileged updater consume
+The release pipeline stages the selected fixed layout, then invokes
+`mcp-bundle-manifest` with an absolute release root, manifest version, the exact
+release/commit/protocol/catalog/architecture and an absolute raw Ed25519 private-key
+file. The command creates new manifest/signature files only; it refuses overwrite.
+`bridge-v3` retains the OpenCode unit and omits Codex; `codex-v4` hashes the pinned Codex
+files and activates the Codex unit. Debian packaging and the privileged updater consume
 this already signed staged directory and never accept caller-provided URLs, paths,
 hashes or scripts.
 

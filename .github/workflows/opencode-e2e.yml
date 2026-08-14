@@ -187,6 +187,7 @@ jobs:
           ./packaging/parrot/stage-edge-bundle.sh \
             --output "$bundle" \
             --release p15.0.0 \
+            --manifest-version 3 \
             --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
             --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
             --private-key "$release_key" \

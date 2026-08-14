@@ -68,9 +68,10 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	unit := readRepositoryFile(t, "packaging/systemd/mcp-devbox-opencode-edge@.service")
 	for _, expected := range []string{
 		"User=%i",
-		"/usr/local/bin/mcp-edge opencode",
+		"/usr/local/bin/mcp-edge codex",
 		"--bundle-root /opt/mcp-devbox/current",
-		"--driver /opt/mcp-devbox/current/libexec/model-turn-driver",
+		"--codex /opt/mcp-devbox/current/codex/codex",
+		"--codex-pin /opt/mcp-devbox/current/codex/pin.json",
 		"AF_NETLINK",
 		"NoNewPrivileges=yes",
 		"RestrictNamespaces=false",
@@ -91,5 +92,14 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	}
 	if strings.Contains(unit, "/var/run/docker.sock") || strings.Contains(unit, "/run/docker.sock") {
 		t.Fatal("OpenCode Edge unit exposes a rootful container socket")
+	}
+	bridge := readRepositoryFile(t, "packaging/systemd/mcp-devbox-opencode-edge-bridge@.service")
+	for _, expected := range []string{"/usr/local/bin/mcp-edge opencode", "--driver /opt/mcp-devbox/current/libexec/model-turn-driver", "--provider /opt/mcp-devbox/opencode-provider", "KillMode=process"} {
+		if !strings.Contains(bridge, expected) {
+			t.Fatalf("bridge Edge unit missing %q", expected)
+		}
+	}
+	if strings.Contains(bridge, " mcp-edge codex") {
+		t.Fatal("bridge Edge unit must retain OpenCode until the v4-aware updater is installed")
 	}
 }

@@ -7,6 +7,13 @@ on:
         description: Exact immutable P15 release (p15.x.y)
         required: true
         type: string
+      generation:
+        description: Bridge v3 first, then Codex v4 after the bridge is installed
+        required: true
+        type: choice
+        options:
+          - bridge-v3
+          - codex-v4
 
 permissions:
   contents: read
@@ -32,8 +39,10 @@ jobs:
       - name: Validate immutable release input
         env:
           RELEASE: ${{ inputs.release }}
+          GENERATION: ${{ inputs.generation }}
         run: |
           [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ ]]
+          [[ "$GENERATION" = bridge-v3 || "$GENERATION" = codex-v4 ]]
           test -n "$EDGE_PRIVATE_KEY_B64"
           test -n "$DEB_GPG_PRIVATE_KEY_B64"
           ! git rev-parse "$RELEASE" >/dev/null 2>&1
@@ -71,18 +80,32 @@ jobs:
       - name: Build and verify signed artifacts
         env:
           RELEASE: ${{ inputs.release }}
+          GENERATION: ${{ inputs.generation }}
         run: |
           commit="$(git rev-parse HEAD)"
           catalog="$(go run ./cmd/mcp-catalog-id)"
           public_key="$(go run ./cmd/mcp-bundle-public-key "$RUNNER_TEMP/release/edge.key")"
           bash packaging/github-cli/stage-pinned.sh --output "$RUNNER_TEMP/release/gh"
-          bash packaging/parrot/stage-edge-bundle.sh \
-            --output "$RUNNER_TEMP/release/bundle" --release "$RELEASE" --commit "$commit" \
-            --catalog "$catalog" --private-key "$RUNNER_TEMP/release/edge.key" --public-key "$public_key" \
-            --node-bin "$(command -v node)" \
-            --gh-bin "$RUNNER_TEMP/release/gh" \
-            --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode" \
+          manifest_version=3
+          codex_args=()
+          if [ "$GENERATION" = codex-v4 ]; then
+            manifest_version=4
+            bash packaging/codex/stage-pinned.sh \
+              --output-bin "$RUNNER_TEMP/release/codex" \
+              --output-pin "$RUNNER_TEMP/release/codex-pin.json"
+            codex_args=(--codex-bin "$RUNNER_TEMP/release/codex" --codex-pin "$RUNNER_TEMP/release/codex-pin.json")
+          fi
+          stage_args=(
+            --output "$RUNNER_TEMP/release/bundle" --release "$RELEASE" --commit "$commit"
+            --manifest-version "$manifest_version"
+            --catalog "$catalog" --private-key "$RUNNER_TEMP/release/edge.key" --public-key "$public_key"
+            --node-bin "$(command -v node)"
+            --gh-bin "$RUNNER_TEMP/release/gh"
+            --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode"
             --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+          )
+          stage_args+=("${codex_args[@]}")
+          bash packaging/parrot/stage-edge-bundle.sh "${stage_args[@]}"
           go build -trimpath -o "$RUNNER_TEMP/release/mcp-release-channel" ./cmd/mcp-release-channel
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
           export SOURCE_DATE_EPOCH
@@ -114,9 +137,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE: ${{ inputs.release }}
+          GENERATION: ${{ inputs.generation }}
         run: |
           release_dir="$RUNNER_TEMP/release/assets/$RELEASE"
-          gh release create "$RELEASE" "$release_dir"/* --target "$(git rev-parse HEAD)" --title "MCP Devbox Edge $RELEASE" --notes "Official signed P15 Edge bundle, Debian installer, checksums, signatures, and SBOM."
+          gh release create "$RELEASE" "$release_dir"/* --target "$(git rev-parse HEAD)" --title "MCP Devbox Edge $RELEASE" --notes "Official signed P15 Edge $GENERATION bundle, Debian installer, checksums, signatures, and SBOM."
           if ! gh release view stable >/dev/null 2>&1; then
             gh release create stable --target "$(git rev-parse HEAD)" --title 'MCP Devbox Edge stable channel' --notes 'Mutable pointer containing only the currently signed stable channel metadata.'
           fi
