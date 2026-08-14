@@ -277,6 +277,22 @@ created workspace registration if project binding fails. Clone additionally remo
 its exact reserved directory on an ordinary failure; a replaced path is preserved for
 manual review. Existing repositories are never rewritten, moved or deleted.
 
+## Managed task worktrees
+
+Durable parallel tasks never reuse the canonical checkout as a writer. The Edge creates
+each worktree below the fixed private namespace
+`<development-root>/.mcp-devbox-worktrees/<project>/<worktree-id>` from one exact
+40-character base commit and a generated `codex/worktree-<id>` branch. The caller cannot
+supply a path or branch.
+
+The manager validates the canonical repository, `.git` worktree pointer, top-level,
+branch, ownership, modes and absence of symlinks. It registers the worktree as a separate
+`linux-workcell/dev` workspace. Every writer is bound to one durable job, lease and fence;
+a restarted coordinator may reclaim it only for the same job with a strictly newer fence.
+Status and cleanup revalidate the physical worktree and registry binding. Cleanup rejects
+dirty trees, removes only the exact worktree/workspace and retains the branch and task
+evidence for normal review and integration.
+
 ## Direct GPT Web snapshot vertical
 
 `project_snapshot` is the first direct GPT Web to Edge operation. The caller supplies

@@ -21,6 +21,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 	"github.com/charle-z/mcp-devbox/internal/telemetry"
 	"github.com/charle-z/mcp-devbox/internal/tools"
+	"github.com/charle-z/mcp-devbox/internal/workqueue"
 )
 
 type appRuntime struct {
@@ -38,13 +39,17 @@ type appRuntime struct {
 	ModelTurns  *modelturn.Store
 	Edge        *edge.Store
 	Sessions    *mcpserver.HTTPSessionStore
+	WorkQueue   *workqueue.Store
 }
 
 func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr, telemetryErr, journalErr, resultErr, modelTurnErr, edgeErr, sessionErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, journalErr, resultErr, modelTurnErr, edgeErr, sessionErr, workQueueErr error
+	if r.Server != nil {
+		r.Server.StopProjectTaskCoordinator()
+	}
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -72,7 +77,10 @@ func (r *appRuntime) Close() error {
 	if r.Sessions != nil {
 		sessionErr = r.Sessions.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || journalErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil || sessionErr != nil {
+	if r.WorkQueue != nil {
+		workQueueErr = r.WorkQueue.Close()
+	}
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || journalErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil || sessionErr != nil || workQueueErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
@@ -155,8 +163,20 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, fmt.Errorf("opening edge identity store: %w", err)
 	}
+	workQueue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(stateRoot, "workqueue"), ControllerID: "mcp-devbox-control-plane"})
+	if err != nil {
+		_ = edgeStore.Close()
+		_ = modelTurns.Close()
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening durable work queue: %w", err)
+	}
 	sessions, err := mcpserver.OpenHTTPSessionStore(filepath.Join(stateRoot, "mcp-sessions"))
 	if err != nil {
+		_ = workQueue.Close()
 		_ = edgeStore.Close()
 		_ = modelTurns.Close()
 		_ = results.Close()
@@ -172,7 +192,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Logger:      logger,
 		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithConsoleStorageRoots(stateRoot, auditPath).WithHTTPSessionStore(sessions),
+		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithWorkQueue(workQueue).WithConsoleStorageRoots(stateRoot, auditPath).WithHTTPSessionStore(sessions),
 		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,
@@ -182,6 +202,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		ModelTurns:  modelTurns,
 		Edge:        edgeStore,
 		Sessions:    sessions,
+		WorkQueue:   workQueue,
 	}, nil
 }
 

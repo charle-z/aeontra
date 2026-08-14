@@ -341,6 +341,8 @@ because they appear in source.
 | `~/.local/state/mcp-edge` | installed Edge identity, registry, jobs, results, local Git authority | persistent, owner-only; credential files `0600` | never mounted into model workcells or returned through tools; back up before lifecycle changes |
 | `/opt/mcp-devbox/releases/<release>` and `/opt/mcp-devbox/current` | signed immutable Edge releases and active link | root-owned package/updater state | replace only through the signed installer/updater; source release and installed release require separate evidence |
 | `/opt/mcp-devbox/current/codex/codex` | pinned stock Codex CLI used by the active signed harness | immutable component hashed by the Edge manifest | mounted read-only at `/mcp-codex` only inside the selected trusted Linux workcell |
+| `/state/workqueue/queue.db` | durable control-plane jobs, task groups, leases, fences and opaque worker bindings | private SQLite schema version 2, `0600`, single active writer | never contains prompts, source, paths, commands or credentials |
+| `~/.local/state/mcp-edge/project-worktrees.db` | Edge-private managed worktree identity, ownership and fence registry | private SQLite, `0600` | paths remain local and are never returned by public task tools |
 | `/opt/mcp-devbox/current/codex/pin.json` | official tag, asset, archive SHA-256, binary SHA-256 and provider contract | immutable component hashed by the Edge manifest | server-owned input; a runtime request cannot replace the executable, pin or provider URL |
 
 No secret store, OAuth store, Edge identity, local Git credential, Docker socket, or

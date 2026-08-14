@@ -183,6 +183,8 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		"DOCKER_CONFIG": openCodeSandboxWorkspace + "/.mcp-devbox/tools/docker", "MCP_DEVBOX_RUNTIME_ID": lease.RuntimeID,
 		"MCP_DEVBOX_PROFILE": string(workspace.Profile), "MCP_DEVBOX_MODE": string(workspace.Mode), "MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 		"COMPOSE_PROJECT_NAME": strings.ReplaceAll(lease.RuntimeID, "-", "_"),
+		"GIT_AUTHOR_NAME":      "MCP Devbox Codex", "GIT_AUTHOR_EMAIL": "codex@mcp-devbox.invalid",
+		"GIT_COMMITTER_NAME": "MCP Devbox Codex", "GIT_COMMITTER_EMAIL": "codex@mcp-devbox.invalid",
 	}
 	args := []string{"--die-with-parent", "--new-session", "--unshare-all", "--share-net", "--clearenv"}
 	for _, systemPath := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates"} {
@@ -309,6 +311,10 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, stateRoot, runt
 	}
 	if spec.Environment["CODEX_HOME"] != openCodeSandboxHome || spec.Environment["MCP_DEVBOX_RUNTIME_ID"] != lease.RuntimeID || spec.Environment["PATH"] == toolPath {
 		return errors.New("codex workcell environment is incomplete")
+	}
+	if spec.Environment["GIT_AUTHOR_NAME"] != "MCP Devbox Codex" || spec.Environment["GIT_AUTHOR_EMAIL"] != "codex@mcp-devbox.invalid" ||
+		spec.Environment["GIT_COMMITTER_NAME"] != "MCP Devbox Codex" || spec.Environment["GIT_COMMITTER_EMAIL"] != "codex@mcp-devbox.invalid" {
+		return errors.New("codex workcell Git identity is incomplete")
 	}
 	return nil
 }

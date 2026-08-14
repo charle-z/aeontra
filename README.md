@@ -125,6 +125,9 @@ fail if the relevant repository, branch, application, target, or configuration c
   local Git history, and a disposable search index.
 - **Control plane and Edge:** durable opaque coordination with signed releases and local
   private workspace contracts on Linux/Parrot/WSL.
+- **Durable parallel tasks:** one to four bounded GPT Web/Codex workers can run on
+  distinct exact-base Edge worktrees with server-owned leases, monotonically increasing
+  fences, independent runtimes, restart reconciliation and clean-only explicit cleanup.
 - **Browser harness:** arbitrary Playwright, Puppeteer, Selenium, WebDriver or custom automation in any authorized persistent development toolbox, with installable browser engines, general HTTP/HTTPS and localhost access, durable profiles, managed downloads/artifacts, cancellation and resource limits.
 - **Large results:** bounded redacted output can be persisted and continued through an
   opaque `result_ref` instead of flooding one MCP response.

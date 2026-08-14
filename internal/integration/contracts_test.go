@@ -102,8 +102,8 @@ func TestStdioHTTPAndRuntimeIdentityRemainEquivalent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.ToolCount != 167 {
-		t.Fatalf("tool count = %d, want 167", catalog.ToolCount)
+	if catalog.ToolCount != 171 {
+		t.Fatalf("tool count = %d, want 171", catalog.ToolCount)
 	}
 
 	var stdioOutput bytes.Buffer

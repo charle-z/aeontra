@@ -60,6 +60,14 @@ func TestCodexLinuxWorkcellSpecUsesOnlySignedHarnessAndLoopbackAdapter(t *testin
 			t.Fatalf("credential-shaped environment escaped into Codex: %s", key)
 		}
 	}
+	for key, want := range map[string]string{
+		"GIT_AUTHOR_NAME": "MCP Devbox Codex", "GIT_AUTHOR_EMAIL": "codex@mcp-devbox.invalid",
+		"GIT_COMMITTER_NAME": "MCP Devbox Codex", "GIT_COMMITTER_EMAIL": "codex@mcp-devbox.invalid",
+	} {
+		if spec.Sandbox.Environment[key] != want {
+			t.Fatalf("%s=%q want=%q", key, spec.Sandbox.Environment[key], want)
+		}
+	}
 	if mount := findSandboxMount(spec.Sandbox.Mounts, codexSandboxExecutable); mount.Source != codexPath || mount.Writable {
 		t.Fatalf("Codex executable mount=%+v", mount)
 	}

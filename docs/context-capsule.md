@@ -80,8 +80,7 @@ Do not collapse these surfaces into one “sandbox” claim:
   pins, a two-catalog maximum, and a persistent journal. It does not add a public
   deployment endpoint or expose tokens to the MCP client.
 
-Source release, package artifact, VPS deployment, and installed Edge are separate
-facts. Verify each with separate evidence.
+Source release, package artifact, VPS deployment, and installed Edge are separate facts. Verify each with separate evidence.
 
 ## Durable security invariants
 
@@ -153,7 +152,8 @@ tag, or automatic deployment is not evidence of a real-device installation.
 - `/repos`: repository jail and project data.
 - `/state`: OAuth stores, audit, observability, telemetry, tasks, results, console, model-turn, queue, and Edge/control-plane coordination.
 - `/brain`: optional Brain Markdown truth and local Git; search cache is disposable.
-- `~/.local/state/mcp-edge`: private installed Edge identity, registry, journal, results, and optional local Git authority.
+- `~/.local/state/mcp-edge`: private installed Edge identity, registry, journal, results, local Git authority, and the private managed-worktree registry/namespace.
+- `/state/workqueue`: durable task groups, workers, leases, fences and opaque Edge/runtime bindings; goal bodies stay in the bounded model-turn store.
 - `/coordinator-state/catalog-rollout`: private atomic backend rollout journal inside the existing coordinator persistent volume.
 
 Keep `/state`, `/brain`, OAuth stores, Edge private state, credentials, and engine sockets outside the repository jail. Preserve owner-only modes and reviewed backups.

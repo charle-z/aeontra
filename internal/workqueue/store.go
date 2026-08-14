@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 type Store struct {
 	root     string
@@ -159,6 +159,31 @@ func (s *Store) initialize() error {
 			FOREIGN KEY(dependency_id) REFERENCES jobs(job_id)
 		) WITHOUT ROWID`,
 		`CREATE INDEX IF NOT EXISTS dependencies_reverse ON dependencies(dependency_id,job_id)`,
+		`CREATE TABLE IF NOT EXISTS task_groups(
+			task_id TEXT PRIMARY KEY,
+			idempotency_key TEXT NOT NULL UNIQUE,
+			project_alias TEXT NOT NULL,
+			target_alias TEXT NOT NULL,
+			base_commit TEXT NOT NULL,
+			goal_hash TEXT NOT NULL,
+			pool TEXT NOT NULL,
+			profile TEXT NOT NULL,
+			worker_count INTEGER NOT NULL,
+			execution_timeout_seconds INTEGER NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS task_workers(
+			task_id TEXT NOT NULL REFERENCES task_groups(task_id) ON DELETE CASCADE,
+			ordinal INTEGER NOT NULL,
+			job_id TEXT NOT NULL UNIQUE REFERENCES jobs(job_id) ON DELETE CASCADE,
+			goal_ref TEXT NOT NULL,
+			operation_id TEXT NOT NULL DEFAULT '',
+			worktree_id TEXT NOT NULL DEFAULT '',
+			workspace_id TEXT NOT NULL DEFAULT '',
+			runtime_id TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY(task_id,ordinal)
+		) WITHOUT ROWID`,
 	} {
 		if _, err := s.db.Exec(statement); err != nil {
 			return errors.New("workqueue: database initialization failed")
@@ -168,8 +193,8 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version > schemaVersion {
 		return errors.New("workqueue: schema is unsupported")
 	}
-	if version == 0 {
-		if _, err := s.db.Exec(`PRAGMA user_version=1`); err != nil {
+	if version < schemaVersion {
+		if _, err := s.db.Exec(`PRAGMA user_version=2`); err != nil {
 			return errors.New("workqueue: schema activation failed")
 		}
 	}
@@ -372,6 +397,28 @@ func recoverExpired(tx *sql.Tx, now time.Time) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// RecoverExpired makes abandoned leases visible to restart-safe coordinators without
+// requiring them to guess which pool or worker owned the previous process.
+func (s *Store) RecoverExpired() error {
+	if s == nil || s.db == nil {
+		return errors.New("workqueue: store is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return errors.New("workqueue: recovery transaction failed")
+	}
+	defer tx.Rollback()
+	if err := recoverExpired(tx, s.clock().UTC()); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New("workqueue: recovery commit failed")
 	}
 	return nil
 }
@@ -630,6 +677,31 @@ func (s *Store) Integrity() error {
 	var dependencyCount int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM dependencies`).Scan(&dependencyCount); err != nil || dependencyCount < 0 || dependencyCount > s.config.MaxJobs*MaxDependencies {
 		return errors.New("workqueue: dependency bound exceeded")
+	}
+	taskRows, err := s.db.Query(`SELECT task_id FROM task_groups ORDER BY task_id`)
+	if err != nil {
+		return errors.New("workqueue: task semantic scan failed")
+	}
+	taskIDs := make([]string, 0)
+	for taskRows.Next() {
+		var taskID string
+		if err := taskRows.Scan(&taskID); err != nil {
+			_ = taskRows.Close()
+			return errors.New("workqueue: task semantic scan failed")
+		}
+		taskIDs = append(taskIDs, taskID)
+		if len(taskIDs) > s.config.MaxJobs {
+			_ = taskRows.Close()
+			return errors.New("workqueue: task row bound exceeded")
+		}
+	}
+	if err := taskRows.Close(); err != nil {
+		return errors.New("workqueue: task semantic scan failed")
+	}
+	for _, taskID := range taskIDs {
+		if _, found, err := taskByID(s.db, taskID); err != nil || !found {
+			return errors.New("workqueue: task semantic integrity failed")
+		}
 	}
 	foreignRows, err := s.db.Query(`PRAGMA foreign_key_check`)
 	if err != nil {

@@ -235,9 +235,15 @@ workcell commands and the managed browser harness. Stock Codex executes with
 `danger-full-access` only inside the already
 constrained outer Bubblewrap workcell; it receives no host home, Windows mount,
 rootful container socket, Edge state root or model credential. Built-in Codex
-multiagent is explicitly disabled until each writer can be bound to a managed
-worktree and a fenced P16 lease. This source contract does not claim an installed Edge
-release; signed publication and real-device acceptance remain separate gates.
+multiagent remains explicitly disabled. MCP Devbox instead binds each parallel writer
+to a managed exact-base Git worktree, registered workspace, durable job, lease and
+monotonically increasing fence. Workers have independent model runtimes and never share
+a writer checkout. Expired leases must reclaim the same worktree with a strictly newer
+fence before work resumes; stale claims, completion and cleanup fail closed. Terminal
+cleanup requires an exact fence and a clean tree, preserves each worker branch, and
+never guesses how commits should be integrated.
+This source contract does not claim an installed Edge release; signed publication and
+real-device acceptance remain separate gates.
 
 ### Managed browser harness
 

@@ -75,6 +75,11 @@ const (
 	OperationProjectBrowserHarnessCleanup      OperationKind = "project_browser_harness_cleanup"
 	OperationProjectBrowserHarnessArtifactList OperationKind = "project_browser_harness_artifact_list"
 	OperationProjectBrowserHarnessArtifactRead OperationKind = "project_browser_harness_artifact_read"
+	OperationProjectWorktreeCreate             OperationKind = "project_worktree_create"
+	OperationProjectWorktreeClaim              OperationKind = "project_worktree_claim"
+	OperationProjectWorktreeStatus             OperationKind = "project_worktree_status"
+	OperationProjectWorktreeList               OperationKind = "project_worktree_list"
+	OperationProjectWorktreeCleanup            OperationKind = "project_worktree_cleanup"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -147,6 +152,13 @@ type OperationRequest struct {
 	BrowserHarnessArtifactPath   string            `json:"browser_harness_artifact_path,omitempty"`
 	BrowserHarnessArtifactOffset int64             `json:"browser_harness_artifact_offset,omitempty"`
 	BrowserHarnessArtifactLimit  int               `json:"browser_harness_artifact_limit,omitempty"`
+	WorktreeID                   string            `json:"worktree_id,omitempty"`
+	WorktreeBaseCommit           string            `json:"worktree_base_commit,omitempty"`
+	WorktreeRole                 string            `json:"worktree_role,omitempty"`
+	WorkJobID                    string            `json:"work_job_id,omitempty"`
+	WorkLeaseID                  string            `json:"work_lease_id,omitempty"`
+	WorkFence                    uint64            `json:"work_fence,omitempty"`
+	WorktreeLimit                int               `json:"worktree_limit,omitempty"`
 }
 
 type BackgroundProcessSummary struct {
@@ -185,6 +197,20 @@ type BrowserHarnessArtifactSummary struct {
 	Bytes     int64  `json:"bytes"`
 	SHA256    string `json:"sha256"`
 	UpdatedAt string `json:"updated_at"`
+}
+
+type ProjectWorktreeSummary struct {
+	WorktreeID  string `json:"worktree_id"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	State       string `json:"state"`
+	Role        string `json:"role"`
+	BaseCommit  string `json:"base_commit"`
+	Branch      string `json:"branch"`
+	JobID       string `json:"job_id"`
+	LeaseID     string `json:"lease_id"`
+	Fence       uint64 `json:"fence"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 type OperationResult struct {
@@ -363,6 +389,17 @@ type OperationResult struct {
 	BrowserHarnessCleanupRuns        int                             `json:"browser_harness_cleanup_runs,omitempty"`
 	BrowserHarnessCleanupArtifacts   int                             `json:"browser_harness_cleanup_artifacts,omitempty"`
 	BrowserHarnessCleanupProfiles    int                             `json:"browser_harness_cleanup_profiles,omitempty"`
+	WorktreeID                       string                          `json:"worktree_id,omitempty"`
+	WorktreeState                    string                          `json:"worktree_state,omitempty"`
+	WorktreeRole                     string                          `json:"worktree_role,omitempty"`
+	WorktreeBaseCommit               string                          `json:"worktree_base_commit,omitempty"`
+	WorktreeBranch                   string                          `json:"worktree_branch,omitempty"`
+	WorkJobID                        string                          `json:"work_job_id,omitempty"`
+	WorkLeaseID                      string                          `json:"work_lease_id,omitempty"`
+	WorkFence                        uint64                          `json:"work_fence,omitempty"`
+	WorktreeCreatedAt                string                          `json:"worktree_created_at,omitempty"`
+	WorktreeUpdatedAt                string                          `json:"worktree_updated_at,omitempty"`
+	Worktrees                        []ProjectWorktreeSummary        `json:"worktrees,omitempty"`
 }
 
 type OperationProgress struct {
@@ -561,6 +598,31 @@ func (s *Store) OperationStatus(operationID string) (Operation, error) {
 	return op, nil
 }
 
+// OperationByIdempotency recovers the durable operation created for an exact
+// idempotent intent. It closes the cross-store crash window between operation
+// creation and the coordinator persisting the opaque operation id.
+func (s *Store) OperationByIdempotency(deviceID string, kind OperationKind, key string) (Operation, bool, error) {
+	key = strings.TrimSpace(key)
+	if !idPattern.MatchString(deviceID) || !projectOperationUsesIdempotency(kind) || !projectOperationIdempotencyPattern.MatchString(key) {
+		return Operation{}, false, errors.New("edge operation idempotency lookup is invalid")
+	}
+	sum := sha256.Sum256([]byte(key))
+	digest := hex.EncodeToString(sum[:])
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.recoverExpiredOperationLeasesForDeviceLocked(deviceID); err != nil {
+		return Operation{}, false, errors.New("edge operation persistence failed")
+	}
+	op, err := s.operationLifecycleByDigest(deviceID, kind, digest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Operation{}, false, nil
+	}
+	if err != nil {
+		return Operation{}, false, errors.New("edge operation persistence failed")
+	}
+	return op, true, nil
+}
+
 func (s *Store) WaitOperation(ctx context.Context, operationID string, timeout time.Duration) (Operation, error) {
 	if timeout <= 0 || timeout > 3*time.Minute {
 		return Operation{}, errors.New("operation wait is invalid")
@@ -672,6 +734,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if err != nil || len(body) > MaxOperationResultBytes {
 		return false
 	}
+	if hasProjectWorktreeResult(result) {
+		return false
+	}
 	if hasProjectExecResult(result) {
 		return code == "" && validProjectExecResult(result)
 	}
@@ -724,6 +789,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if code != "" {
 		return validOperationCompletion(result, code)
 	}
+	if hasProjectWorktreeResult(result) {
+		return validProjectWorktreeResultForKind(kind, result)
+	}
 	if hasProjectExecResult(result) {
 		return kind == OperationProjectExec && validOperationCompletion(result, "")
 	}
@@ -763,7 +831,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
 		return false
 	}
-	if kind == OperationProjectExec || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
+	if kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")
@@ -839,7 +907,7 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 }
 
 func emptyOperationResult(result OperationResult) bool {
-	if hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
+	if hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
 	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && !hasProjectGitHubResult(result)
