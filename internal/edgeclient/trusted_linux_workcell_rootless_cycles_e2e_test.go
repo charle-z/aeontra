@@ -166,14 +166,15 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 	stage = "workspace_bind"
 	containerName := "p12-workspace-" + suffix
 	workspaceMount := workspace + ":/workspace:ro"
-	p12Engine(t, endpoint, append(prefix,
+	workspaceOutput := p12Engine(t, endpoint, append(prefix,
 		"run", "--name", containerName, "--label", label, "--network", network,
 		"--volume", volume+":/data", "--volume", workspaceMount,
-		image, "/bin/sh", "-c", "test -f /workspace/fixture.txt && if touch /workspace/p12-denied 2>/dev/null; then exit 1; fi",
+		image, "/bin/sh", "-c", "test -f /workspace/fixture.txt && if touch /workspace/p12-denied 2>/dev/null; then exit 1; fi; echo workspace-ready",
 	)...)
-	// The command exit status is the authoritative assertion. Podman versions
-	// differ in whether remote run output is forwarded to the client.
-	workspaceBindValidated := true
+	workspaceBindValidated := strings.TrimSpace(workspaceOutput) == "workspace-ready"
+	if !workspaceBindValidated {
+		t.Fatal("workspace bind validation failed")
+	}
 	type mountEvidence struct {
 		Type        string `json:"Type"`
 		Source      string `json:"Source"`

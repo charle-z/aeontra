@@ -158,6 +158,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             bubblewrap podman uidmap slirp4netns fuse-overlayfs python3-venv
+          containers_conf="$RUNNER_TEMP/p12-rootless-containers.conf"
+          umask 077
+          printf '[engine]\n' >"$containers_conf"
+          test -f "$containers_conf"
+          test ! -L "$containers_conf"
+          test "$(stat -c '%u' "$containers_conf")" = "$(id -u)"
+          test "$(stat -c '%a' "$containers_conf")" = "600"
+          export CONTAINERS_CONF="$containers_conf"
           test -x /usr/bin/podman
           test "$(/usr/bin/podman --version)" = "podman version 3.4.4"
           sudo ln -sfn /usr/bin/podman /usr/local/bin/podman
@@ -166,6 +174,9 @@ jobs:
           /usr/bin/podman --version
           echo "P12_PODMAN_BIN=/usr/bin/podman" >> "$GITHUB_ENV"
           echo "P12_ROOTLESS_TOOL_PATH=/usr/bin:/usr/sbin:/bin:/sbin" >> "$GITHUB_ENV"
+          echo "P12_ROOTLESS_CYCLE_CONTAINERS_CONF=$containers_conf" >> "$GITHUB_ENV"
+          echo "CONTAINERS_CONF=$containers_conf" >> "$GITHUB_ENV"
+          CONTAINERS_CONF="$containers_conf" /usr/bin/podman --version
           command -v setsid
 
       - name: Install pinned podman-compose
