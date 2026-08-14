@@ -226,9 +226,13 @@ The signed-source candidate for the optional Codex harness uses a private loopba
 adapter backed by the same durable model-turn transport. It rejects non-loopback peers
 and hosts, rejects Authorization input, bounds and strictly decodes requests, strips
 Codex session/cache/reasoning metadata, and exposes only ordinary function tools to the
-external model. Namespace multiagent declarations and disabled web-search declarations
-are accepted for stock-client compatibility but are not offered across the model-turn
-boundary. Stock Codex executes with `danger-full-access` only inside the already
+external model. The launcher fixes the stock client's top-level `web_search` mode to
+`disabled`: an external web-search effect cannot cross the durable function-tool
+rendezvous with verifiable identity. Namespace multiagent declarations and disabled
+web-search declarations are accepted for stock-client compatibility but are not offered
+across the model-turn boundary. Internet access remains available through authorized
+workcell commands and the managed browser harness. Stock Codex executes with
+`danger-full-access` only inside the already
 constrained outer Bubblewrap workcell; it receives no host home, Windows mount,
 rootful container socket, Edge state root or model credential. Built-in Codex
 multiagent is explicitly disabled until each writer can be bound to a managed

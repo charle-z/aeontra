@@ -48,6 +48,7 @@ func TestCodexLinuxWorkcellSpecUsesOnlySignedHarnessAndLoopbackAdapter(t *testin
 		`model_providers.mcp-devbox.base_url="http://127.0.0.1:43210/v1"`,
 		`model_providers.mcp-devbox.wire_api="responses"`,
 		`model_providers.mcp-devbox.requires_openai_auth=false`,
+		`web_search="disabled"`,
 		`agents.enabled=false`,
 	} {
 		if !strings.Contains(joined, required) {
