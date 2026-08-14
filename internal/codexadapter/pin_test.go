@@ -15,7 +15,7 @@ type codexPin struct {
 	LinuxAMD64BinarySHA256 string   `json:"linux_amd64_binary_sha256"`
 	WireAPI                string   `json:"wire_api"`
 	RequiresOpenAIAuth     bool     `json:"requires_openai_auth"`
-	AppServerExperimental bool     `json:"app_server_experimental"`
+	AppServerExperimental  bool     `json:"app_server_experimental"`
 	AppServerTransports    []string `json:"app_server_transports"`
 }
 
