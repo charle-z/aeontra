@@ -20,7 +20,7 @@ RUN GOMAXPROCS=${BUILD_GOMAXPROCS} \
 	UV_THREADPOOL_SIZE=${BUILD_UV_THREADPOOL_SIZE} \
 	pnpm console:build
 
-FROM golang:1.26.5-alpine3.24 AS build
+FROM golang:1.26.6-alpine3.24 AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
 # --build-arg GIT_SHA=$(git rev-parse HEAD). It is baked into the binary via -ldflags so
@@ -49,7 +49,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 # Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can
 # run common Go and web project checks in the VPS container. (Bigger image, but this
 # is a dev-agent box.)
-FROM golang:1.26.5-alpine3.24
+FROM golang:1.26.6-alpine3.24
 
 # OCI metadata (good practice; helps registries/scanners identify the image).
 # For fully reproducible prod builds, pin the base by digest (golang:1.26-alpine@sha256:...).

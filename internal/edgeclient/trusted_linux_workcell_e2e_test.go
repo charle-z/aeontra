@@ -479,13 +479,25 @@ func p12Engine(t *testing.T, endpoint *RootlessContainerEndpoint, args ...string
 func p12RootlessEnv(endpoint *RootlessContainerEndpoint) []string {
 	home, _ := os.UserHomeDir()
 	runtimeRoot := filepath.Join("/run/user", strconv.Itoa(os.Geteuid()))
-	return []string{
+	environment := []string{
 		"PATH=" + openCodeDefaultToolPath,
 		"HOME=" + home,
 		"XDG_RUNTIME_DIR=" + runtimeRoot,
 		"CONTAINER_HOST=unix://" + endpoint.SocketPath,
 		"DOCKER_HOST=unix://" + endpoint.SocketPath,
 		"LANG=C", "LC_ALL=C",
+	}
+	if path := strings.TrimSpace(os.Getenv("P12_ROOTLESS_CYCLE_CONTAINERS_CONF")); path != "" {
+		environment = append(environment, "CONTAINERS_CONF="+path)
+	}
+	return environment
+}
+
+func TestP12RootlessEnvIncludesManagedCycleConfig(t *testing.T) {
+	t.Setenv("P12_ROOTLESS_CYCLE_CONTAINERS_CONF", "/tmp/p12-managed-containers.conf")
+	environment := p12RootlessEnv(&RootlessContainerEndpoint{SocketPath: "/run/user/1000/podman/podman.sock"})
+	if !strings.Contains(strings.Join(environment, "\n"), "CONTAINERS_CONF=/tmp/p12-managed-containers.conf") {
+		t.Fatalf("managed containers.conf missing from environment: %v", environment)
 	}
 }
 

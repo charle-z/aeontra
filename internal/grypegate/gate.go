@@ -49,6 +49,8 @@ func (s Severity) String() string {
 // ParseSeverity accepts Grype's canonical severity names case-insensitively.
 func ParseSeverity(value string) (Severity, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "unknown":
+		return SeverityUnknown, nil
 	case "negligible":
 		return SeverityNegligible, nil
 	case "low":
@@ -125,7 +127,9 @@ func Evaluate(reader io.Reader, minimum Severity) ([]Finding, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: match %d: %v", ErrInvalidReport, index, err)
 		}
-		if severity < minimum {
+		// Unknown is a canonical Grype severity. It cannot be proven below the
+		// configured threshold, so preserve the finding and fail closed.
+		if severity != SeverityUnknown && severity < minimum {
 			continue
 		}
 		location := ""
@@ -153,7 +157,7 @@ func Evaluate(reader io.Reader, minimum Severity) ([]Finding, error) {
 		return findings[i].Package < findings[j].Package
 	})
 	if len(findings) > 0 {
-		return findings, fmt.Errorf("%w: %d finding(s) at or above %s", ErrVulnerabilitiesFound, len(findings), minimum)
+		return findings, fmt.Errorf("%w: %d finding(s) blocking minimum %s", ErrVulnerabilitiesFound, len(findings), minimum)
 	}
 	return findings, nil
 }

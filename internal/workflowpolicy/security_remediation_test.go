@@ -26,16 +26,16 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		contents[name] = string(content)
 	}
 
-	if !strings.Contains(contents["go.mod"], "go 1.26.5") {
-		t.Error("go.mod must require the Go 1.26.5 security release")
+	if !strings.Contains(contents["go.mod"], "go 1.26.6") {
+		t.Error("go.mod must require the Go 1.26.6 security release")
 	}
 	for _, workflow := range []string{"ci.yml", "security.yml", "fuzz.yml"} {
-		if !strings.Contains(contents[workflow], `go-version: "1.26.5"`) {
-			t.Errorf("%s must use Go 1.26.5", workflow)
+		if !strings.Contains(contents[workflow], `go-version: "1.26.6"`) {
+			t.Errorf("%s must use Go 1.26.6", workflow)
 		}
 	}
 	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator"} {
-		if !strings.Contains(contents[dockerfile], "golang:1.26.5-alpine3.24") {
+		if !strings.Contains(contents[dockerfile], "golang:1.26.6-alpine3.24") {
 			t.Errorf("%s must use the fixed versioned Go/Alpine base", dockerfile)
 		}
 	}
