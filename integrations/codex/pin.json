@@ -8,6 +8,7 @@
   "linux_amd64_binary_sha256": "cb0a15567e9a60a5820d54b0f6ae86d504dc3805c1eab21a47f70e3eb7b73a40",
   "wire_api": "responses",
   "requires_openai_auth": false,
+  "app_server_experimental": true,
   "app_server_transports": [
     "stdio",
     "unix",

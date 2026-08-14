@@ -1,6 +1,6 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-08-12
+Last updated: 2026-08-14
 
 ## Direct GPT Web to Edge roadmap
 
@@ -22,7 +22,7 @@ runtime; OpenCode remains a tested optional fallback.
 | 7 worktrees and deterministic parallelism | Planned | Durable isolated worktrees, ownership, fairness, recovery and explicit cleanup. |
 | 8 full benchmark | Planned | Complete project delivery through the direct/Codex path with retained latency, resource, CI, browser and deployment evidence. |
 | 9 durable task graph and multiagent | Planned; foundation implemented | The private P16 workqueue already provides durable jobs, dependencies, leases, fencing, fairness and backup. Public task/worktree/runtime association and multiagent acceptance remain unimplemented. |
-| 10 Codex harness compatibility spike | Host accepted; productization pending | Stock Codex 0.147.0 reached a credential-free scripted Responses provider and initialized App Server over stdio. No fork is justified; the signed adapter, package, real Edge acceptance and rollback release remain pending. |
+| 10 Codex harness compatibility spike | Host accepted; productization pending | Stock Codex 0.147.0 reached a credential-free scripted Responses provider. Experimental App Server initialization also passed but is not a production dependency. No fork is justified; the signed adapter, package, real Edge acceptance and rollback release remain pending. |
 
 ## Accepted execution sequence — 2026-08-12
 

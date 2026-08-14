@@ -1,6 +1,6 @@
 # Current task — productize the accepted stock Codex harness
 
-Updated: 2026-08-12
+Updated: 2026-08-14
 
 ## Verified starting point
 
@@ -32,7 +32,8 @@ The accepted compatibility evidence is on branch `codex/codex-harness-spike`:
 - Codex `0.147.0`, official tag `rust-v0.147.0`, is pinned by source, asset and digest;
 - `codex exec` reached a loopback scripted Responses endpoint with no Authorization
   header and returned the exact marker;
-- `codex app-server --stdio` completed `initialize` with an isolated `CODEX_HOME`;
+- experimental `codex app-server --stdio` completed `initialize` with an isolated
+  `CODEX_HOME`, but is not a supported production dependency;
 - no model API, subscription, browser token, GitHub credential or model-generated tool
   was used;
 - stock configuration is sufficient, so a fork is not justified.
@@ -44,8 +45,9 @@ The preferred order is:
 3. wait for durable checkpoints from operator-reported active VPS research and Edge OSS
    work before any Edge restart or update;
 4. publish the next stabilization release from a green main and update the Edge once;
-5. implement the signed loopback Responses-to-model-turn adapter and package the pinned
-   stock artifact;
+5. implement the signed loopback Responses-to-model-turn adapter around stock
+   `codex exec` and package the pinned artifact; keep App Server outside the production
+   contract while its official status is experimental;
 6. keep OpenCode as rollback until one signed Codex release passes real-device
    acceptance;
 7. implement managed worktrees before writing multiagent execution;

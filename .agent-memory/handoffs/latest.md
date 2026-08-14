@@ -1,6 +1,6 @@
 # Handoff — stock Codex accepted; signed adapter and multiagent pending
 
-Updated: 2026-08-12
+Updated: 2026-08-14
 
 ## Current evidence
 
@@ -28,7 +28,10 @@ PR #177 merged the reconciliation at
 `codex/codex-harness-spike` now pins official Codex `0.147.0` and carries two host
 acceptances: a credential-free scripted Responses provider and App Server initialize
 over stdio. Both passed with an isolated `CODEX_HOME`; no model API or tool execution
-was involved. See `docs/analysis/codex-harness-compatibility.md`.
+was involved. App Server is experimental and unsupported for production workloads in
+the current official documentation, so the signed adapter must rely on the custom
+Responses provider rather than App Server. See
+`docs/analysis/codex-harness-compatibility.md`.
 
 After exact-head merge:
 

@@ -15,6 +15,7 @@ type codexPin struct {
 	LinuxAMD64BinarySHA256 string   `json:"linux_amd64_binary_sha256"`
 	WireAPI                string   `json:"wire_api"`
 	RequiresOpenAIAuth     bool     `json:"requires_openai_auth"`
+	AppServerExperimental bool     `json:"app_server_experimental"`
 	AppServerTransports    []string `json:"app_server_transports"`
 }
 
@@ -28,6 +29,7 @@ func TestCodexCompatibilityDecisionDocumentsBoundaries(t *testing.T) {
 		"without forking Codex",
 		"private loopback OpenAI-compatible Responses provider",
 		"without giving it an OpenAI API key",
+		"experimental and unsupported for production workloads",
 		"Retain OpenCode as a signed rollback harness",
 		"Implement managed worktrees and one-writer ownership",
 	} {
@@ -60,6 +62,9 @@ func TestOfficialCodexPin(t *testing.T) {
 	}
 	if pin.WireAPI != "responses" || pin.RequiresOpenAIAuth {
 		t.Fatalf("unsafe provider contract: wire=%q requires_openai_auth=%v", pin.WireAPI, pin.RequiresOpenAIAuth)
+	}
+	if !pin.AppServerExperimental {
+		t.Fatal("App Server must remain explicitly experimental in the compatibility pin")
 	}
 	want := []string{"stdio", "unix", "websocket"}
 	if len(pin.AppServerTransports) != len(want) {
