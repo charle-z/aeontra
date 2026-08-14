@@ -237,6 +237,7 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		"--config", `model_providers.mcp-devbox.wire_api="responses"`,
 		"--config", `model_providers.mcp-devbox.requires_openai_auth=false`,
 		"--config", `model_providers.mcp-devbox.supports_websockets=false`,
+		"--config", `web_search="disabled"`,
 		"--config", `agents.enabled=false`,
 		linuxWorkcellOpenCodePrompt,
 	}
@@ -271,7 +272,7 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, stateRoot, runt
 		return errors.New("codex workcell command is invalid")
 	}
 	joined := strings.Join(spec.Command, "\x00")
-	for _, required := range []string{`model="mcp-devbox-codex"`, `model_provider="mcp-devbox"`, fmt.Sprintf("model_providers.mcp-devbox.base_url=%q", adapterURL), `model_providers.mcp-devbox.wire_api="responses"`, `model_providers.mcp-devbox.requires_openai_auth=false`, `model_providers.mcp-devbox.supports_websockets=false`, `agents.enabled=false`} {
+	for _, required := range []string{`model="mcp-devbox-codex"`, `model_provider="mcp-devbox"`, fmt.Sprintf("model_providers.mcp-devbox.base_url=%q", adapterURL), `model_providers.mcp-devbox.wire_api="responses"`, `model_providers.mcp-devbox.requires_openai_auth=false`, `model_providers.mcp-devbox.supports_websockets=false`, `web_search="disabled"`, `agents.enabled=false`} {
 		if !strings.Contains(joined, required) {
 			return errors.New("codex workcell provider configuration is incomplete")
 		}

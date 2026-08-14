@@ -96,6 +96,7 @@ func TestOfficialCodexScriptedResponsesCompatibility(t *testing.T) {
 		"--config", `model_providers.mcp-devbox.wire_api="responses"`,
 		"--config", `model_providers.mcp-devbox.requires_openai_auth=false`,
 		"--config", `model_providers.mcp-devbox.supports_websockets=false`,
+		"--config", `web_search="disabled"`,
 		"Return the scripted marker and do not call tools.",
 	}
 	command := exec.CommandContext(ctx, bin, args...)
@@ -212,6 +213,7 @@ func TestOfficialCodexResponsesAdapterToolLoop(t *testing.T) {
 		"--config", `model_providers.mcp-devbox.wire_api="responses"`,
 		"--config", `model_providers.mcp-devbox.requires_openai_auth=false`,
 		"--config", `model_providers.mcp-devbox.supports_websockets=false`,
+		"--config", `web_search="disabled"`,
 		"Use exec_command once and then return the final scripted marker.",
 	}
 	command := exec.CommandContext(ctx, bin, args...)
