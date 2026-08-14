@@ -11,7 +11,10 @@ import (
 
 func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 	root := t.TempDir()
-	paths := DefaultLayout()
+	paths, ok := layoutForVersion(3)
+	if !ok {
+		t.Fatal("version three layout unavailable")
+	}
 	for component, relative := range paths {
 		path := filepath.Join(root, filepath.FromSlash(relative))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -102,11 +105,45 @@ func TestVersionTwoBundleWithoutBundledGitHubCLIRemainsVerifiableForRollback(t *
 	}
 }
 
-func TestBuildEmitsVersionThreeWithBundledGitHubCLI(t *testing.T) {
+func TestVersionThreeWithBundledGitHubCLIRemainsVerifiableForRollback(t *testing.T) {
 	root := t.TempDir()
 	layout, ok := layoutForVersion(3)
 	if !ok {
 		t.Fatal("version three layout unavailable")
+	}
+	if _, exists := layout[ComponentGitHubCLI]; !exists {
+		t.Fatal("version three manifest is missing GitHub CLI")
+	}
+	if _, exists := layout[ComponentCodex]; exists {
+		t.Fatal("version three unexpectedly requires Codex")
+	}
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest, err := BuildVersion(root, Metadata{
+		Release: "p15.0.35", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Architecture: "amd64",
+	}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Version != 3 || len(manifest.Components) != len(versionThreeRequiredComponents()) {
+		t.Fatalf("bridge manifest=%+v", manifest)
+	}
+}
+
+func TestBuildEmitsVersionFourWithPinnedCodexHarness(t *testing.T) {
+	root := t.TempDir()
+	layout, ok := layoutForVersion(4)
+	if !ok {
+		t.Fatal("version four layout unavailable")
 	}
 	for component, relative := range layout {
 		path := filepath.Join(root, filepath.FromSlash(relative))
@@ -118,18 +155,20 @@ func TestBuildEmitsVersionThreeWithBundledGitHubCLI(t *testing.T) {
 		}
 	}
 	manifest, err := Build(root, Metadata{
-		Release: "p15.0.14", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Release: "p15.0.35", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Version != 3 {
-		t.Fatalf("version=%d, want version 3", manifest.Version)
+	if manifest.Version != 4 {
+		t.Fatalf("version=%d, want version 4", manifest.Version)
 	}
-	if _, exists := manifest.Components[ComponentGitHubCLI]; !exists {
-		t.Fatal("version three manifest is missing GitHub CLI")
+	for _, component := range []string{ComponentCodex, ComponentCodexPin} {
+		if _, exists := manifest.Components[component]; !exists {
+			t.Fatalf("version four manifest is missing %s", component)
+		}
 	}
 }
 
@@ -139,7 +178,7 @@ func TestBundleVerificationFailsBeforeRuntimeWithPreciseSafeCodes(t *testing.T) 
 		t.Fatal(err)
 	}
 	base := Manifest{
-		Version: 3, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: CurrentManifestVersion, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}
@@ -195,7 +234,7 @@ func TestBundleVerificationRejectsTamperingAndIncompatibleCatalog(t *testing.T) 
 		t.Fatal(err)
 	}
 	manifest := Manifest{
-		Version: 3, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: CurrentManifestVersion, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}

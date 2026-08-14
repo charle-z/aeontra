@@ -31,7 +31,7 @@ mcp-edge onboard --server https://mcp-devbox-charlez.duckdns.org
 
 The pairing code is read from standard input and is never accepted as an argument.
 Onboarding verifies the installed signed bundle, runs the Bubblewrap/systemd/rootless/
-Node/Go/OpenCode/provider/driver preflight, pairs without replacing an existing
+Node/Go/signed-harness/provider/driver preflight, pairs without replacing an existing
 identity, and waits for the systemd path unit to start and health-check the Edge. It
 prints one safe final result containing only the device ID and valid/active states.
 
@@ -49,6 +49,7 @@ links:
 - `/usr/local/libexec/mcp-devbox/mcp-autopilot-worker`;
 - `/usr/local/libexec/mcp-devbox/mcp-bundle-updater`;
 - `/usr/local/libexec/mcp-devbox/node` (the reviewed Node 24.18.0 runtime);
+- `/opt/mcp-devbox/current/codex/codex` and `codex/pin.json` in manifest-v4 releases;
 - `/opt/mcp-devbox/opencode-provider`;
 - `/opt/mcp-devbox/opencode-1.18.1`.
 
@@ -115,6 +116,12 @@ base64-encoded Debian GPG signing identity. The workflow checks out exact `main`
 the public key without disclosing private material, stages all pinned components, runs
 the P15 tests/vet/build gates, generates an SPDX SBOM, publishes one immutable GitHub
 release, and updates only the separately signed `stable` channel documents.
+
+The manifest-v3 to manifest-v4 migration is intentionally two-stage. Dispatch and
+install one `bridge-v3` release first so the installed updater learns version 4 while
+the active service remains OpenCode. After verifying that bridge, dispatch and install
+one `codex-v4` release to add the hashed Codex binary/pin and activate Codex. Skipping
+the bridge causes the old updater to reject the new manifest before installation.
 
 `.github/workflows/p15-edge.yml` uses ephemeral release identities on pull requests. It
 builds the Debian package twice and compares bytes, exercises a clean isolated package

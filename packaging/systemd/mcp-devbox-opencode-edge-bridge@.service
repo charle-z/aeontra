@@ -1,5 +1,5 @@
 [Unit]
-Description=MCP Devbox Trusted Linux Workcell Edge for %i
+Description=MCP Devbox Trusted Linux Workcell Edge bridge for %i
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=/home/%i/.local/state/mcp-edge/identity.json
@@ -17,17 +17,18 @@ Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 ExecStartPre=/usr/bin/test -x /usr/bin/bwrap
 ExecStartPre=/usr/bin/test -x /usr/local/bin/mcp-edge
-ExecStartPre=/usr/bin/test -x /opt/mcp-devbox/current/codex/codex
-ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/current/codex/pin.json
-ExecStartPre=/opt/mcp-devbox/current/codex/codex --version
+ExecStartPre=/usr/bin/test -x /opt/mcp-devbox/current/libexec/model-turn-driver
+ExecStartPre=/usr/bin/test -x /usr/local/libexec/mcp-devbox/node
+ExecStartPre=/usr/bin/test -x /opt/mcp-devbox/opencode-1.18.1/opencode
+ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/opencode-1.18.1/package-lock.json
+ExecStartPre=/usr/bin/test -r /opt/mcp-devbox/opencode-provider/index.js
+ExecStartPre=/opt/mcp-devbox/opencode-1.18.1/opencode --version
 
-ExecStart=/usr/local/bin/mcp-edge codex --bundle-root /opt/mcp-devbox/current --state /home/%i/.local/state/mcp-edge --codex /opt/mcp-devbox/current/codex/codex --codex-pin /opt/mcp-devbox/current/codex/pin.json --bubblewrap /usr/bin/bwrap --wait 120s --poll 5s --heartbeat 5s --output-limit 1048576
+ExecStart=/usr/local/bin/mcp-edge opencode --bundle-root /opt/mcp-devbox/current --state /home/%i/.local/state/mcp-edge --opencode /opt/mcp-devbox/opencode-1.18.1/opencode --driver /opt/mcp-devbox/current/libexec/model-turn-driver --provider /opt/mcp-devbox/opencode-provider --bubblewrap /usr/bin/bwrap --integrity /opt/mcp-devbox/opencode-1.18.1/package-lock.json --wait 120s --poll 5s --heartbeat 5s --output-limit 1048576
 
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
-# The main Edge may restart independently while explicitly managed project
-# process groups continue. Their PID/start-time identity is reconciled on boot.
 KillMode=process
 
 NoNewPrivileges=yes

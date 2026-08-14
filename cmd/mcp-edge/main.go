@@ -43,6 +43,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = runWorkcell(args[1:], stderr)
 	case "opencode":
 		err = runOpenCodeRelay(args[1:], stderr)
+	case "codex":
+		err = runCodexRelay(args[1:], stderr)
 	case "workspace":
 		err = workspaceCommand(args[1:], stdout, stderr)
 	case "project":

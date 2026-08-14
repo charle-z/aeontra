@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	CurrentManifestVersion = 3
+	CurrentManifestVersion = 4
 
 	ManifestFile  = "manifest.json"
 	SignatureFile = "manifest.sig"
@@ -37,6 +37,8 @@ const (
 	ComponentProviderPackage = "provider-package"
 	ComponentOpenCode        = "opencode"
 	ComponentOpenCodeLock    = "opencode-lock"
+	ComponentCodex           = "codex"
+	ComponentCodexPin        = "codex-pin"
 	ComponentSystemd         = "systemd-unit"
 )
 
@@ -93,7 +95,7 @@ type VerificationError struct {
 func (e *VerificationError) Error() string { return string(e.Code) }
 
 func RequiredComponents() []string {
-	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentGitHubCLI, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentGitHubCLI, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentCodex, ComponentCodexPin, ComponentSystemd}
 }
 
 func legacyRequiredComponents() []string {
@@ -104,6 +106,10 @@ func versionTwoRequiredComponents() []string {
 	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
 }
 
+func versionThreeRequiredComponents() []string {
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentGitHubCLI, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+}
+
 func requiredComponentsForVersion(version int) ([]string, bool) {
 	switch version {
 	case 1:
@@ -111,6 +117,8 @@ func requiredComponentsForVersion(version int) ([]string, bool) {
 	case 2:
 		return versionTwoRequiredComponents(), true
 	case 3:
+		return versionThreeRequiredComponents(), true
+	case 4:
 		return RequiredComponents(), true
 	default:
 		return nil, false
@@ -131,6 +139,8 @@ func DefaultLayout() map[string]string {
 		ComponentProviderPackage: "opencode-provider/package.json",
 		ComponentOpenCode:        "opencode/opencode",
 		ComponentOpenCodeLock:    "opencode/package-lock.json",
+		ComponentCodex:           "codex/codex",
+		ComponentCodexPin:        "codex/pin.json",
 		ComponentSystemd:         "systemd/mcp-devbox-opencode-edge@.service",
 	}
 }
@@ -140,25 +150,41 @@ func layoutForVersion(version int) (map[string]string, bool) {
 	if version == 1 {
 		delete(layout, ComponentDevActions)
 		delete(layout, ComponentGitHubCLI)
+		delete(layout, ComponentCodex)
+		delete(layout, ComponentCodexPin)
 		return layout, true
 	}
 	if version == 2 {
 		delete(layout, ComponentGitHubCLI)
+		delete(layout, ComponentCodex)
+		delete(layout, ComponentCodexPin)
 		return layout, true
 	}
 	if version == 3 {
+		delete(layout, ComponentCodex)
+		delete(layout, ComponentCodexPin)
+		return layout, true
+	}
+	if version == 4 {
 		return layout, true
 	}
 	return nil, false
 }
 
 func Build(root string, metadata Metadata) (Manifest, error) {
+	return BuildVersion(root, metadata, CurrentManifestVersion)
+}
+
+func BuildVersion(root string, metadata Metadata, version int) (Manifest, error) {
 	manifest := Manifest{
-		Version: CurrentManifestVersion, Release: metadata.Release, Commit: metadata.Commit,
+		Version: version, Release: metadata.Release, Commit: metadata.Commit,
 		ProtocolVersion: metadata.ProtocolVersion, CatalogHash: metadata.CatalogHash,
 		Architecture: metadata.Architecture, Components: map[string]string{},
 	}
-	layout, _ := layoutForVersion(manifest.Version)
+	layout, ok := layoutForVersion(manifest.Version)
+	if !ok {
+		return Manifest{}, &VerificationError{Code: ManifestInvalid}
+	}
 	for component, relative := range layout {
 		path, err := containedComponentPath(root, relative)
 		if err != nil {

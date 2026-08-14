@@ -104,9 +104,15 @@ func TestPrivilegedUpdaterAuthorityIsLimitedToFixedUnits(t *testing.T) {
 
 func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 	stage := repoFile(t, "packaging/parrot/stage-edge-bundle.sh")
-	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js", "--node-bin", "libexec/node", "--gh-bin", "libexec/gh"} {
+	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js", "--node-bin", "libexec/node", "--gh-bin", "libexec/gh", "--manifest-version", "mcp-devbox-opencode-edge-bridge@.service", "codex/codex", "codex/pin.json"} {
 		if !strings.Contains(stage, required) {
 			t.Fatalf("bundle staging missing %q", required)
+		}
+	}
+	pinnedCodex := repoFile(t, "packaging/codex/stage-pinned.sh")
+	for _, required := range []string{"rust-v0.147.0", "codex-x86_64-unknown-linux-musl.tar.gz", "0246e2e773834e07f0fb5249ed6ebad12e4591e608f8c7bb97dd6a9690544c36", "cb0a15567e9a60a5820d54b0f6ae86d504dc3805c1eab21a47f70e3eb7b73a40", "https://github.com/openai/codex/releases/download/$TAG/$ASSET", "sha256sum --check", "codex-cli 0.147.0"} {
+		if !strings.Contains(pinnedCodex, required) {
+			t.Fatalf("pinned Codex acquisition missing %q", required)
 		}
 	}
 	pinnedGH := repoFile(t, "packaging/github-cli/stage-pinned.sh")
@@ -121,7 +127,7 @@ func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 		}
 	}
 	release := repoFile(t, ".github/workflows/edge-release.yml")
-	for _, required := range []string{"workflow_dispatch", "environment: edge-release", "EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64", "stage-edge-bundle.sh", "build-edge-release.sh", "build-edge-deb.sh", "Generate Edge bundle SBOM", "gh release create", "gh release upload stable --clobber"} {
+	for _, required := range []string{"workflow_dispatch", "environment: edge-release", "EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64", "stage-edge-bundle.sh", "build-edge-release.sh", "build-edge-deb.sh", "Generate Edge bundle SBOM", "gh release create", "gh release upload stable --clobber", "bridge-v3", "codex-v4", "packaging/codex/stage-pinned.sh"} {
 		if !strings.Contains(release, required) {
 			t.Fatalf("release workflow missing %q", required)
 		}

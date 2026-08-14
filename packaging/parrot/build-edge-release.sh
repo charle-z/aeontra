@@ -28,10 +28,19 @@ done
 
 install -d -m 0755 "$OUTPUT/$RELEASE" "$OUTPUT/stable"
 ARCHIVE="$OUTPUT/$RELEASE/mcp-devbox-edge_${RELEASE}_${ARCHITECTURE}.tar.gz"
+CODEX_COMPONENTS=()
+if [ -f "$BUNDLE/codex/codex" ] || [ -f "$BUNDLE/codex/pin.json" ]; then
+  [ -f "$BUNDLE/codex/codex" ] && [ ! -L "$BUNDLE/codex/codex" ] && [ -f "$BUNDLE/codex/pin.json" ] && [ ! -L "$BUNDLE/codex/pin.json" ] || {
+    printf 'signed Codex components are incomplete\n' >&2
+    exit 1
+  }
+  CODEX_COMPONENTS=(codex/codex codex/pin.json)
+fi
 tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
   --format=posix -C "$BUNDLE" -czf "$ARCHIVE" \
   manifest.json manifest.sig bin/mcp-edge libexec/model-turn-driver libexec/node libexec/gh \
   libexec/mcp-autopilot-worker libexec/mcp-bundle-updater \
+  "${CODEX_COMPONENTS[@]}" \
   opencode/opencode opencode/package-lock.json opencode-provider/index.js \
   opencode-provider/htb-actions.js opencode-provider/dev-actions.js opencode-provider/package.json \
   systemd/mcp-devbox-opencode-edge@.service

@@ -97,6 +97,8 @@ local_preflight_completed
 started_confirmed
 driver_socket_ready
 opencode_process_started
+model_adapter_ready
+codex_process_started
 first_model_turn_created
 tool_execution_started
 terminal

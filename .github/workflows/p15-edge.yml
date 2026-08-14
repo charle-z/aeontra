@@ -77,9 +77,13 @@ jobs:
         run: |
           catalog="$(go run ./cmd/mcp-catalog-id)"
           bash packaging/github-cli/stage-pinned.sh --output "$RUNNER_TEMP/release/gh"
+          bash packaging/codex/stage-pinned.sh \
+            --output-bin "$RUNNER_TEMP/release/codex" \
+            --output-pin "$RUNNER_TEMP/release/codex-pin.json"
           bash packaging/parrot/stage-edge-bundle.sh \
             --output "$RUNNER_TEMP/release/bundle" \
             --release p15.0.0 \
+            --manifest-version 4 \
             --commit "$(git rev-parse HEAD)" \
             --catalog "$catalog" \
             --private-key "$RUNNER_TEMP/release/edge.key" \
@@ -87,7 +91,9 @@ jobs:
             --node-bin "$(command -v node)" \
             --gh-bin "$RUNNER_TEMP/release/gh" \
             --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode" \
-            --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+            --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json" \
+            --codex-bin "$RUNNER_TEMP/release/codex" \
+            --codex-pin "$RUNNER_TEMP/release/codex-pin.json"
 
       - name: Build package twice reproducibly
         run: |
