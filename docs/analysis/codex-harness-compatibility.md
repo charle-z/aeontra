@@ -38,6 +38,13 @@ Responses endpoint on loopback, proves that stock Codex reaches it and returns i
 marker, and separately initializes the stock App Server over stdio. The test never
 contacts a model API and never executes a model-generated tool.
 
+The product adapter core is now implemented in the same package. Its official-artifact
+acceptance executes a two-turn stock Codex loop: the external turn selects
+`exec_command`, Codex executes the bounded tool inside its read-only test sandbox, the
+tool result returns through a second durable request, and the final marker is consumed.
+Codex session metadata, prompt-cache identity, encrypted reasoning and deferred
+namespace/search declarations do not cross the model-turn boundary.
+
 ## Product integration shape
 
 The production adapter should be a signed MCP Devbox process beside Codex:
@@ -79,14 +86,13 @@ but it is not a prerequisite for this adapter or the initial signed release.
 
 ## Remaining implementation gates
 
-1. Implement the signed Responses-to-model-turn adapter with strict request/response
-   schemas, bounded bodies, cancellation and replay tests.
-2. Launch stock Codex and the adapter inside the current workcell boundary; no extra
+1. Launch stock Codex and the adapter inside the current workcell boundary; no extra
    host filesystem or network authority.
-3. Package the pinned official artifact plus its provenance verification in one signed
+2. Package the pinned official artifact plus its provenance verification in one signed
    Edge bundle.
-4. Pass a scripted tool-call loop, Codex process restart/resume and real GPT Web turn loop.
-   Reassess App Server independently against the official support posture before making
-   it part of a production lifecycle contract.
-5. Publish one signed release and accept it on the real Edge while OpenCode remains an
+3. Pass Codex process restart/resume and a real GPT Web turn loop. The scripted
+   credential-free tool-call loop is already host accepted. Reassess App Server
+   independently against the official support posture before making it part of a
+   production lifecycle contract.
+4. Publish one signed release and accept it on the real Edge while OpenCode remains an
    explicit rollback path.

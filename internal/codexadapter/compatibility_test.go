@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,13 +17,19 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/codexadapter"
+	"github.com/charle-z/mcp-devbox/internal/modelturn"
 )
 
 const (
 	codexBinaryEnv = "MCP_DEVBOX_CODEX_BIN"
 	spikeMarker    = "MCP_DEVBOX_CODEX_STOCK_OK"
+	toolMarker     = "MCP_DEVBOX_CODEX_TOOL_OK"
+	loopMarker     = "MCP_DEVBOX_CODEX_LOOP_OK"
 )
 
 // TestOfficialCodexScriptedResponsesCompatibility is an explicit host acceptance
@@ -164,6 +171,157 @@ func TestOfficialCodexAppServerInitialize(t *testing.T) {
 	if len(result["userAgent"]) == 0 || len(result["codexHome"]) == 0 {
 		t.Fatalf("app-server response lacks identity fields: %s", response.Result)
 	}
+}
+
+func TestOfficialCodexResponsesAdapterToolLoop(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("official Linux artifact acceptance requires Linux")
+	}
+	bin := verifiedCodexBinary(t)
+	transport := newScriptedAdapterTransport()
+	adapter, err := codexadapter.New(codexadapter.Options{
+		RuntimeID: transport.runtime.RuntimeID,
+		ModelID:   "mcp-devbox-scripted",
+		Transport: transport,
+		TTL:       time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(adapter.Handler())
+	defer server.Close()
+
+	root := t.TempDir()
+	codexHome := filepath.Join(root, "codex-home")
+	if err := os.Mkdir(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	args := []string{
+		"exec",
+		"--ignore-user-config",
+		"--ephemeral",
+		"--skip-git-repo-check",
+		"--sandbox", "read-only",
+		"--cd", root,
+		"--config", `model="mcp-devbox-scripted"`,
+		"--config", `model_provider="mcp-devbox"`,
+		"--config", `model_providers.mcp-devbox.name="MCP Devbox scripted"`,
+		"--config", fmt.Sprintf("model_providers.mcp-devbox.base_url=%q", server.URL+"/v1"),
+		"--config", `model_providers.mcp-devbox.wire_api="responses"`,
+		"--config", `model_providers.mcp-devbox.requires_openai_auth=false`,
+		"--config", `model_providers.mcp-devbox.supports_websockets=false`,
+		"Use exec_command once and then return the final scripted marker.",
+	}
+	command := exec.CommandContext(ctx, bin, args...)
+	command.Env = scrubModelCredentials(os.Environ(), codexHome)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("stock Codex adapter tool loop failed: %v\n%s", err, output)
+	}
+	if !bytes.Contains(output, []byte(loopMarker)) {
+		t.Fatalf("stock Codex output missing loop marker:\n%s", output)
+	}
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	if transport.runtime.LastSequence != 2 || !transport.toolResultSeen {
+		t.Fatalf("turns=%d tool_result_seen=%v", transport.runtime.LastSequence, transport.toolResultSeen)
+	}
+}
+
+type scriptedAdapterTransport struct {
+	mu             sync.Mutex
+	runtime        modelturn.Runtime
+	responses      map[modelturn.TurnID]modelturn.ModelResponse
+	toolResultSeen bool
+}
+
+func newScriptedAdapterTransport() *scriptedAdapterTransport {
+	return &scriptedAdapterTransport{
+		runtime: modelturn.Runtime{
+			RuntimeID: "mr_22222222222222222222222222222222",
+			Status:    modelturn.RuntimeRunning,
+		},
+		responses: make(map[modelturn.TurnID]modelturn.ModelResponse),
+	}
+}
+
+func (t *scriptedAdapterTransport) Runtime(context.Context, string) (modelturn.Runtime, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.runtime, nil
+}
+
+func (t *scriptedAdapterTransport) CreateTurn(_ context.Context, request modelturn.ModelRequest) (modelturn.Turn, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if request.Sequence != t.runtime.LastSequence+1 {
+		return modelturn.Turn{}, modelturn.ErrSequenceMismatch
+	}
+	turnID := modelturn.TurnID(fmt.Sprintf("mt_%032x", request.Sequence))
+	turn := modelturn.Turn{
+		RuntimeID: request.RuntimeID, ID: turnID, Sequence: request.Sequence,
+		RequestDigest: request.RequestDigest, CreatedAt: time.Now().UTC(),
+	}
+	var payload struct {
+		Prompt []json.RawMessage `json:"prompt"`
+		Tools  []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(request.Payload, &payload); err != nil {
+		return modelturn.Turn{}, err
+	}
+	var responsePayload []byte
+	if request.Sequence == 1 {
+		var execToolID string
+		for _, tool := range payload.Tools {
+			if tool.Name == "exec_command" {
+				execToolID = tool.ID
+				break
+			}
+		}
+		if execToolID == "" {
+			return modelturn.Turn{}, errors.New("Codex request did not offer exec_command")
+		}
+		responsePayload, _ = json.Marshal(map[string]any{
+			"finish_reason": "tool_calls",
+			"tool_calls": []any{map[string]any{
+				"arguments": map[string]any{"cmd": "printf " + toolMarker},
+				"call_id":   "call_scripted_1",
+				"tool_id":   execToolID,
+			}},
+		})
+	} else {
+		encoded := string(request.Payload)
+		if !strings.Contains(encoded, toolMarker) || !strings.Contains(encoded, "tool-result") {
+			return modelturn.Turn{}, errors.New("Codex request did not return the tool result")
+		}
+		t.toolResultSeen = true
+		responsePayload, _ = json.Marshal(map[string]any{"finish_reason": "stop", "text": loopMarker})
+	}
+	t.runtime.LastSequence = request.Sequence
+	t.responses[turnID] = modelturn.ModelResponse{
+		RuntimeID: request.RuntimeID, TurnID: turnID, Sequence: request.Sequence,
+		RequestDigest: request.RequestDigest, Payload: responsePayload,
+	}
+	return turn, nil
+}
+
+func (t *scriptedAdapterTransport) WaitResponse(_ context.Context, turnID modelturn.TurnID) (modelturn.ModelResponse, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	response, exists := t.responses[turnID]
+	if !exists {
+		return modelturn.ModelResponse{}, modelturn.ErrTurnNotFound
+	}
+	return response, nil
+}
+
+func (*scriptedAdapterTransport) Cancel(context.Context, modelturn.TurnID) error {
+	return nil
 }
 
 func verifiedCodexBinary(t *testing.T) string {
