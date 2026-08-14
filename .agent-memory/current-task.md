@@ -1,6 +1,6 @@
-# Current task — reconcile state and prove a Codex harness
+# Current task — productize the accepted stock Codex harness
 
-Updated: 2026-08-12
+Updated: 2026-08-14
 
 ## Verified starting point
 
@@ -22,18 +22,32 @@ The dated evidence and explicit non-actions are in
 
 ## Active scope
 
-Phase 0 reconciles documentation and operational truth. Phase 1 then evaluates stock
-Codex CLI/App Server as an optional Edge harness whose model requests are satisfied by
-the existing durable GPT Web model-turn protocol.
+Phase 0 reconciled documentation and operational truth through PR #177, merge commit
+`82a65e9ed881f8f15099040867748404674718f4`. Phase 1 proved stock Codex CLI/App Server
+as an optional Edge harness whose model requests can be satisfied without OpenAI auth
+by a local Responses provider.
+
+The accepted compatibility evidence is on branch `codex/codex-harness-spike`:
+
+- Codex `0.147.0`, official tag `rust-v0.147.0`, is pinned by source, asset and digest;
+- `codex exec` reached a loopback scripted Responses endpoint with no Authorization
+  header and returned the exact marker;
+- experimental `codex app-server --stdio` completed `initialize` with an isolated
+  `CODEX_HOME`, but is not a supported production dependency;
+- no model API, subscription, browser token, GitHub credential or model-generated tool
+  was used;
+- stock configuration is sufficient, so a fork is not justified.
 
 The preferred order is:
 
-1. merge the reconciliation through normal exact-head CI;
+1. publish the compatibility evidence through normal exact-head CI;
 2. inventory active operations and classify obsolete remote branches/resources;
 3. wait for durable checkpoints from operator-reported active VPS research and Edge OSS
    work before any Edge restart or update;
 4. publish the next stabilization release from a green main and update the Edge once;
-5. run a disposable, pinned Codex compatibility spike without an OpenAI API key;
+5. implement the signed loopback Responses-to-model-turn adapter around stock
+   `codex exec` and package the pinned artifact; keep App Server outside the production
+   contract while its official status is experimental;
 6. keep OpenCode as rollback until one signed Codex release passes real-device
    acceptance;
 7. implement managed worktrees before writing multiagent execution;
@@ -56,6 +70,7 @@ The preferred order is:
 
 ## Current branch
 
-`codex/reconcile-roadmap` is based exactly on the verified main head. It contains only
-the dated reconciliation, corrected roadmap/current handoff and their documentation
-contract. Codex integration belongs in a separate branch after this change merges.
+`codex/codex-harness-spike` is based exactly on the PR #177 merge. It contains only the
+machine-readable official Codex pin, credential-free stock compatibility acceptance,
+the compatibility decision and continuation updates. It does not package or install
+Codex and does not alter the public MCP catalog.

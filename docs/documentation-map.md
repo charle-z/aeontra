@@ -145,6 +145,8 @@ above:
 - P16 measured capacity evidence: `docs/baselines/2026-07-22-p16-capacity.md`.
 - Pre-Codex source/production/Edge reconciliation:
   `docs/baselines/2026-08-12-operational-reconciliation.md`.
+- Stock Codex CLI/App Server compatibility decision:
+  `docs/analysis/codex-harness-compatibility.md`.
 - Edge lifecycle state migration: `docs/edge-lifecycle-migration.md`.
 - P16 package/install candidate: `docs/install-edge-parrot-p16.md`.
 - Human project aliases and workspace resolution:
