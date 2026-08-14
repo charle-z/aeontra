@@ -125,7 +125,7 @@ func (l *OpenCodeLauncher) startCodexAdapter(ctx context.Context, lease ModelRun
 	}
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp4", "127.0.0.1:0")
 	if err != nil {
-		return "", nil, errors.New("Codex loopback adapter could not bind")
+		return "", nil, errors.New("codex loopback adapter could not bind")
 	}
 	server := &http.Server{
 		Handler: adapter.Handler(), ReadHeaderTimeout: 5 * time.Second,
@@ -150,10 +150,10 @@ func (l *OpenCodeLauncher) startCodexAdapter(ctx context.Context, lease ModelRun
 
 func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, workspace Workspace, preparation LinuxWorkcellPreparation, adapterURL string, lease ModelRuntimeLease, stdout, stderr io.Writer) (openCodeProcessSpec, error) {
 	if workspace.Profile != WorkspaceProfileLinuxWorkcell || workspace.Mode != WorkspaceModeDev || workspace.Path != preparation.Workspace.Path || workspace.ID != lease.WorkspaceID {
-		return openCodeProcessSpec{}, errors.New("Codex requires the matching development Linux workcell")
+		return openCodeProcessSpec{}, errors.New("codex requires the matching development Linux workcell")
 	}
 	if !validCodexAdapterURL(adapterURL) {
-		return openCodeProcessSpec{}, errors.New("Codex adapter URL is invalid")
+		return openCodeProcessSpec{}, errors.New("codex adapter URL is invalid")
 	}
 	resolvedCodex, err := filepath.EvalSymlinks(l.config.CodexPath)
 	if err != nil || !filepath.IsAbs(resolvedCodex) {
@@ -162,7 +162,7 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 	home := filepath.Join(runtimeDir, "home")
 	for _, dir := range []string{home, filepath.Join(home, ".config"), filepath.Join(home, ".local", "share"), filepath.Join(home, ".local", "state"), filepath.Join(home, ".cache")} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return openCodeProcessSpec{}, errors.New("Codex private runtime directory failed")
+			return openCodeProcessSpec{}, errors.New("codex private runtime directory failed")
 		}
 	}
 	persistentPath := strings.Join([]string{
@@ -264,37 +264,37 @@ func validCodexAdapterURL(value string) bool {
 
 func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, stateRoot, runtimeDir string, workspace Workspace, codexPath, toolPath string, lease ModelRuntimeLease, adapterURL string) error {
 	if !spec.DieWithParent || !spec.NewSession || !spec.UnshareAll || !spec.ShareNetwork || !spec.ClearEnv || spec.WorkingDirectory != openCodeSandboxWorkspace {
-		return errors.New("Codex workcell namespace posture is incomplete")
+		return errors.New("codex workcell namespace posture is incomplete")
 	}
 	wantCommandPrefix := []string{codexSandboxExecutable, "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "--sandbox", "danger-full-access", "--cd", openCodeSandboxWorkspace}
 	if len(spec.Command) < len(wantCommandPrefix)+1 || !slices.Equal(spec.Command[:len(wantCommandPrefix)], wantCommandPrefix) || spec.Command[len(spec.Command)-1] != linuxWorkcellOpenCodePrompt {
-		return errors.New("Codex workcell command is invalid")
+		return errors.New("codex workcell command is invalid")
 	}
 	joined := strings.Join(spec.Command, "\x00")
 	for _, required := range []string{`model="mcp-devbox-codex"`, `model_provider="mcp-devbox"`, fmt.Sprintf("model_providers.mcp-devbox.base_url=%q", adapterURL), `model_providers.mcp-devbox.wire_api="responses"`, `model_providers.mcp-devbox.requires_openai_auth=false`, `model_providers.mcp-devbox.supports_websockets=false`, `agents.enabled=false`} {
 		if !strings.Contains(joined, required) {
-			return errors.New("Codex workcell provider configuration is incomplete")
+			return errors.New("codex workcell provider configuration is incomplete")
 		}
 	}
 	for key := range spec.Environment {
 		upper := strings.ToUpper(key)
 		if strings.Contains(upper, "OPENAI") || strings.Contains(upper, "API_KEY") || strings.Contains(upper, "TOKEN") {
-			return errors.New("Codex workcell environment contains credential authority")
+			return errors.New("codex workcell environment contains credential authority")
 		}
 	}
 	mounts := make(map[string]openCodeSandboxMount)
 	for _, mount := range spec.Mounts {
 		if _, duplicate := mounts[mount.Target]; duplicate {
-			return errors.New("Codex workcell mount target is duplicated")
+			return errors.New("codex workcell mount target is duplicated")
 		}
 		mounts[mount.Target] = mount
 		for _, forbidden := range []string{"/var/run/docker.sock", "/run/docker.sock", "/mnt/c", "/mnt/d", "/root"} {
 			if mount.Target == forbidden || mount.Source == forbidden || pathInside(forbidden, mount.Target) || pathInside(forbidden, mount.Source) {
-				return errors.New("Codex workcell exposes a forbidden host path")
+				return errors.New("codex workcell exposes a forbidden host path")
 			}
 		}
 		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && mount.Source != runtimeDir) {
-			return errors.New("Codex workcell exposes private Edge state")
+			return errors.New("codex workcell exposes private Edge state")
 		}
 	}
 	for target, expected := range map[string]openCodeSandboxMount{
@@ -303,11 +303,11 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, stateRoot, runt
 		openCodeSandboxWorkspace: {Source: workspace.Path, Target: openCodeSandboxWorkspace, Writable: true, Kind: "bind"},
 	} {
 		if mounts[target] != expected {
-			return errors.New("Codex workcell required mount is missing or unsafe")
+			return errors.New("codex workcell required mount is missing or unsafe")
 		}
 	}
 	if spec.Environment["CODEX_HOME"] != openCodeSandboxHome || spec.Environment["MCP_DEVBOX_RUNTIME_ID"] != lease.RuntimeID || spec.Environment["PATH"] == toolPath {
-		return errors.New("Codex workcell environment is incomplete")
+		return errors.New("codex workcell environment is incomplete")
 	}
 	return nil
 }
@@ -329,7 +329,7 @@ func (l *OpenCodeLauncher) verifyCodexSandbox(ctx context.Context, spec openCode
 		return fmt.Errorf("bubblewrap verification failed (%s)", diagnostic.Code)
 	}
 	if stdout.Truncated() || strings.TrimSpace(stdout.String()) != "codex-cli "+PinnedCodexVersion {
-		return errors.New("Codex version does not match the pinned release")
+		return errors.New("codex version does not match the pinned release")
 	}
 	return nil
 }

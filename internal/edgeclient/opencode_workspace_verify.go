@@ -13,21 +13,21 @@ import (
 func (l *OpenCodeLauncher) verifyLocalInstallationForWorkspace(ctx context.Context, workspace Workspace, preparation *LinuxWorkcellPreparation, lease ModelRuntimeLease) error {
 	if l.harness == runtimeHarnessCodex {
 		if workspace.Profile != WorkspaceProfileLinuxWorkcell || workspace.Mode != WorkspaceModeDev || preparation == nil {
-			return errors.New("Codex requires a prepared development Linux workcell")
+			return errors.New("codex requires a prepared development Linux workcell")
 		}
 		if l.verifyCodexInstallation == nil {
-			return errors.New("Codex installation verification is unavailable")
+			return errors.New("codex installation verification is unavailable")
 		}
 		if err := l.verifyCodexInstallation(l.config.CodexPath, l.config.CodexPinPath); err != nil {
 			return err
 		}
 		verifyRuntime, err := os.MkdirTemp(l.config.SocketRoot, "verify-codex-")
 		if err != nil {
-			return errors.New("Codex verification runtime could not be created")
+			return errors.New("codex verification runtime could not be created")
 		}
 		defer removePrivateRuntimeDir(verifyRuntime, l.config.SocketRoot)
 		if err := os.Chmod(verifyRuntime, 0o700); err != nil {
-			return errors.New("Codex verification runtime is unsafe")
+			return errors.New("codex verification runtime is unsafe")
 		}
 		spec, err := l.codexLinuxWorkcellProcessSpec(verifyRuntime, workspace, *preparation, "http://127.0.0.1:1/v1", lease, io.Discard, io.Discard)
 		if err != nil {

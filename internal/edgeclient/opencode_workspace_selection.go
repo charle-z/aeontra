@@ -10,7 +10,7 @@ import (
 func (l *OpenCodeLauncher) processSpecForWorkspace(runtimeDir string, workspace Workspace, preparation *LinuxWorkcellPreparation, socketPath string, lease ModelRuntimeLease, stdout, stderr io.Writer) (openCodeProcessSpec, error) {
 	if l.harness == runtimeHarnessCodex {
 		if preparation == nil {
-			return openCodeProcessSpec{}, errors.New("Codex requires Linux workcell preparation")
+			return openCodeProcessSpec{}, errors.New("codex requires Linux workcell preparation")
 		}
 		return l.codexLinuxWorkcellProcessSpec(runtimeDir, workspace, *preparation, socketPath, lease, stdout, stderr)
 	}

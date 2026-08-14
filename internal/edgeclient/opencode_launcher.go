@@ -646,7 +646,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, truncated)
 		_, _ = remote.Failed(context.Background(), "")
 		if l.harness == runtimeHarnessCodex {
-			return result, errors.New("Codex loopback adapter terminated unexpectedly")
+			return result, errors.New("codex loopback adapter terminated unexpectedly")
 		}
 		return result, errors.New("OpenCode model-turn driver terminated unexpectedly")
 	}
