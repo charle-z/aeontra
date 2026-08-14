@@ -54,24 +54,24 @@ type Adapter struct {
 
 func New(options Options) (*Adapter, error) {
 	if !runtimeIDPattern.MatchString(options.RuntimeID) {
-		return nil, errors.New("Codex adapter runtime id is invalid")
+		return nil, errors.New("codex adapter runtime id is invalid")
 	}
 	if !identifierPattern.MatchString(options.ModelID) {
-		return nil, errors.New("Codex adapter model id is invalid")
+		return nil, errors.New("codex adapter model id is invalid")
 	}
 	if options.Transport == nil {
-		return nil, errors.New("Codex adapter transport is required")
+		return nil, errors.New("codex adapter transport is required")
 	}
 	runtimes, ok := options.Transport.(runtimeReader)
 	if !ok {
-		return nil, errors.New("Codex adapter transport cannot read runtime state")
+		return nil, errors.New("codex adapter transport cannot read runtime state")
 	}
 	ttl := options.TTL
 	if ttl == 0 {
 		ttl = defaultTurnTTL
 	}
 	if ttl < time.Second || ttl > modelturn.MaxTurnTTL {
-		return nil, errors.New("Codex adapter turn TTL is invalid")
+		return nil, errors.New("codex adapter turn TTL is invalid")
 	}
 	return &Adapter{
 		runtimeID: options.RuntimeID,
@@ -184,10 +184,10 @@ func decodeResponsesRequest(writer http.ResponseWriter, request *http.Request) (
 		return responsesRequest{}, err
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return responsesRequest{}, errors.New("multiple Responses request values are not allowed")
+		return responsesRequest{}, errors.New("multiple responses request values are not allowed")
 	}
 	if input.Input == nil {
-		return responsesRequest{}, errors.New("Responses input is required")
+		return responsesRequest{}, errors.New("responses input is required")
 	}
 	return input, nil
 }

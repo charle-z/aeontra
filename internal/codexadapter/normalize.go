@@ -112,10 +112,10 @@ type reasoningOptions struct {
 
 func normalizeResponsesRequest(input responsesRequest) (normalizedRequest, error) {
 	if len(input.Input) > maxPromptItems || len(input.Tools) > maxResponsesTools {
-		return normalizedRequest{}, errors.New("Responses request exceeds item limits")
+		return normalizedRequest{}, errors.New("responses request exceeds item limits")
 	}
 	if len([]byte(input.Instructions)) > maxPromptTextBytes || len([]byte(input.PromptCacheKey)) > maxPromptCacheBytes {
-		return normalizedRequest{}, errors.New("Responses request text exceeds limits")
+		return normalizedRequest{}, errors.New("responses request text exceeds limits")
 	}
 	if err := validateIgnoredRequestMetadata(input); err != nil {
 		return normalizedRequest{}, err
@@ -139,25 +139,25 @@ func normalizeResponsesRequest(input responsesRequest) (normalizedRequest, error
 		if toolType == "web_search" {
 			var search responsesWebSearchTool
 			if err := decodeStrict(rawTool, &search); err != nil || search.ExternalWebAccess {
-				return normalizedRequest{}, errors.New("Responses web search tool is invalid")
+				return normalizedRequest{}, errors.New("responses web search tool is invalid")
 			}
 			continue
 		}
 		if toolType != "function" {
-			return normalizedRequest{}, errors.New("Responses tool type is unsupported")
+			return normalizedRequest{}, errors.New("responses tool type is unsupported")
 		}
 		var tool responsesTool
 		if err := decodeStrict(rawTool, &tool); err != nil {
-			return normalizedRequest{}, errors.New("Responses function tool is invalid")
+			return normalizedRequest{}, errors.New("responses function tool is invalid")
 		}
 		if tool.Type != "function" || !identifierPattern.MatchString(tool.Name) {
-			return normalizedRequest{}, errors.New("Responses tool is invalid")
+			return normalizedRequest{}, errors.New("responses tool is invalid")
 		}
 		if _, duplicate := toolNames[tool.Name]; duplicate {
-			return normalizedRequest{}, errors.New("Responses tool name is duplicated")
+			return normalizedRequest{}, errors.New("responses tool name is duplicated")
 		}
 		toolNames[tool.Name] = struct{}{}
-		schema, err := decodeJSONObject(tool.Parameters, "Responses tool parameters")
+		schema, err := decodeJSONObject(tool.Parameters, "responses tool parameters")
 		if err != nil {
 			return normalizedRequest{}, err
 		}
@@ -204,13 +204,13 @@ func normalizeResponsesRequest(input responsesRequest) (normalizedRequest, error
 }
 
 func responsesToolType(raw json.RawMessage) (string, error) {
-	value, err := decodeJSONObject(raw, "Responses tool")
+	value, err := decodeJSONObject(raw, "responses tool")
 	if err != nil {
 		return "", err
 	}
 	toolType, ok := value["type"].(string)
 	if !ok || toolType == "" {
-		return "", errors.New("Responses tool type is missing")
+		return "", errors.New("responses tool type is missing")
 	}
 	return toolType, nil
 }
@@ -218,17 +218,17 @@ func responsesToolType(raw json.RawMessage) (string, error) {
 func validateDeferredNamespaceTool(raw json.RawMessage) error {
 	var namespace responsesNamespaceTool
 	if err := decodeStrict(raw, &namespace); err != nil || !identifierPattern.MatchString(namespace.Name) {
-		return errors.New("Responses namespace tool is invalid")
+		return errors.New("responses namespace tool is invalid")
 	}
 	if len(namespace.Tools) > maxResponsesTools {
-		return errors.New("Responses namespace has too many tools")
+		return errors.New("responses namespace has too many tools")
 	}
 	for _, rawTool := range namespace.Tools {
 		var tool responsesTool
 		if err := decodeStrict(rawTool, &tool); err != nil || tool.Type != "function" || !identifierPattern.MatchString(tool.Name) {
-			return errors.New("Responses namespace member is invalid")
+			return errors.New("responses namespace member is invalid")
 		}
-		if _, err := decodeJSONObject(tool.Parameters, "Responses namespace parameters"); err != nil {
+		if _, err := decodeJSONObject(tool.Parameters, "responses namespace parameters"); err != nil {
 			return err
 		}
 	}
@@ -239,30 +239,30 @@ func validateIgnoredRequestMetadata(input responsesRequest) error {
 	if len(input.Reasoning) != 0 {
 		var reasoning reasoningOptions
 		if err := decodeStrict(input.Reasoning, &reasoning); err != nil {
-			return errors.New("Responses reasoning options are invalid")
+			return errors.New("responses reasoning options are invalid")
 		}
 		if reasoning.Summary != "" && reasoning.Summary != "auto" && reasoning.Summary != "concise" && reasoning.Summary != "detailed" {
-			return errors.New("Responses reasoning summary is unsupported")
+			return errors.New("responses reasoning summary is unsupported")
 		}
 		if reasoning.Effort != "" && reasoning.Effort != "none" && reasoning.Effort != "minimal" && reasoning.Effort != "low" && reasoning.Effort != "medium" && reasoning.Effort != "high" && reasoning.Effort != "xhigh" {
-			return errors.New("Responses reasoning effort is unsupported")
+			return errors.New("responses reasoning effort is unsupported")
 		}
 	}
 	seenInclude := make(map[string]struct{}, len(input.Include))
 	for _, include := range input.Include {
 		if include != "reasoning.encrypted_content" {
-			return errors.New("Responses include value is unsupported")
+			return errors.New("responses include value is unsupported")
 		}
 		if _, duplicate := seenInclude[include]; duplicate {
-			return errors.New("Responses include value is duplicated")
+			return errors.New("responses include value is duplicated")
 		}
 		seenInclude[include] = struct{}{}
 	}
 	if len(input.ClientMetadata) != 0 {
 		if len(input.ClientMetadata) > maxClientMetadataRaw {
-			return errors.New("Responses client metadata exceeds the limit")
+			return errors.New("responses client metadata exceeds the limit")
 		}
-		if _, err := decodeJSONObject(input.ClientMetadata, "Responses client metadata"); err != nil {
+		if _, err := decodeJSONObject(input.ClientMetadata, "responses client metadata"); err != nil {
 			return err
 		}
 	}
@@ -274,17 +274,17 @@ func normalizeInput(instructions string, items []json.RawMessage) ([]any, error)
 	for _, raw := range items {
 		kind, err := responsesInputType(raw)
 		if err != nil {
-			return nil, errors.New("Responses input item is invalid")
+			return nil, errors.New("responses input item is invalid")
 		}
 		if kind != "function_call" {
 			continue
 		}
 		var call inputFunctionCall
 		if err := decodeStrict(raw, &call); err != nil || !identifierPattern.MatchString(call.CallID) || !identifierPattern.MatchString(call.Name) {
-			return nil, errors.New("Responses function call is invalid")
+			return nil, errors.New("responses function call is invalid")
 		}
 		if _, duplicate := callNames[call.CallID]; duplicate {
-			return nil, errors.New("Responses function call id is duplicated")
+			return nil, errors.New("responses function call id is duplicated")
 		}
 		callNames[call.CallID] = call.Name
 	}
@@ -296,7 +296,7 @@ func normalizeInput(instructions string, items []json.RawMessage) ([]any, error)
 	for _, raw := range items {
 		kind, err := responsesInputType(raw)
 		if err != nil {
-			return nil, errors.New("Responses input item is invalid")
+			return nil, errors.New("responses input item is invalid")
 		}
 		switch kind {
 		case "message":
@@ -308,9 +308,9 @@ func normalizeInput(instructions string, items []json.RawMessage) ([]any, error)
 		case "function_call":
 			var call inputFunctionCall
 			if err := decodeStrict(raw, &call); err != nil {
-				return nil, errors.New("Responses function call is invalid")
+				return nil, errors.New("responses function call is invalid")
 			}
-			arguments, err := decodeJSONObject(json.RawMessage(call.Arguments), "Responses function arguments")
+			arguments, err := decodeJSONObject(json.RawMessage(call.Arguments), "responses function arguments")
 			if err != nil {
 				return nil, err
 			}
@@ -326,15 +326,15 @@ func normalizeInput(instructions string, items []json.RawMessage) ([]any, error)
 		case "function_call_output":
 			var output inputFunctionOutput
 			if err := decodeStrict(raw, &output); err != nil || !identifierPattern.MatchString(output.CallID) {
-				return nil, errors.New("Responses function output is invalid")
+				return nil, errors.New("responses function output is invalid")
 			}
 			name, exists := callNames[output.CallID]
 			if !exists {
-				return nil, errors.New("Responses function output lacks its offered call")
+				return nil, errors.New("responses function output lacks its offered call")
 			}
 			value, err := decodeJSONValue(output.Output)
 			if err != nil {
-				return nil, errors.New("Responses function output is invalid")
+				return nil, errors.New("responses function output is invalid")
 			}
 			prompt = append(prompt, map[string]any{
 				"content": []any{map[string]any{
@@ -348,29 +348,29 @@ func normalizeInput(instructions string, items []json.RawMessage) ([]any, error)
 		case "reasoning":
 			var reasoning inputReasoning
 			if err := decodeStrict(raw, &reasoning); err != nil {
-				return nil, errors.New("Responses reasoning item is invalid")
+				return nil, errors.New("responses reasoning item is invalid")
 			}
 			if len(reasoning.Summary) != 0 {
 				var summary []json.RawMessage
 				if err := json.Unmarshal(reasoning.Summary, &summary); err != nil {
-					return nil, errors.New("Responses reasoning summary is invalid")
+					return nil, errors.New("responses reasoning summary is invalid")
 				}
 			}
 		default:
-			return nil, fmt.Errorf("Responses input type %q is unsupported", kind)
+			return nil, fmt.Errorf("responses input type %q is unsupported", kind)
 		}
 	}
 	return prompt, nil
 }
 
 func responsesInputType(raw json.RawMessage) (string, error) {
-	value, err := decodeJSONObject(raw, "Responses input item")
+	value, err := decodeJSONObject(raw, "responses input item")
 	if err != nil {
 		return "", err
 	}
 	kind, ok := value["type"].(string)
 	if !ok || kind == "" {
-		return "", errors.New("Responses input item type is missing")
+		return "", errors.New("responses input item type is missing")
 	}
 	return kind, nil
 }
@@ -378,26 +378,26 @@ func responsesInputType(raw json.RawMessage) (string, error) {
 func normalizeInputMessage(raw json.RawMessage) (map[string]any, error) {
 	var message inputMessage
 	if err := decodeStrict(raw, &message); err != nil {
-		return nil, errors.New("Responses message is invalid")
+		return nil, errors.New("responses message is invalid")
 	}
 	role := message.Role
 	if role == "developer" {
 		role = "system"
 	}
 	if role != "system" && role != "user" && role != "assistant" {
-		return nil, errors.New("Responses message role is unsupported")
+		return nil, errors.New("responses message role is unsupported")
 	}
 	if len(message.Content) > maxPromptItems {
-		return nil, errors.New("Responses message has too many parts")
+		return nil, errors.New("responses message has too many parts")
 	}
 	parts := make([]any, 0, len(message.Content))
 	for _, rawPart := range message.Content {
 		var part inputTextPart
 		if err := decodeStrict(rawPart, &part); err != nil || (part.Type != "input_text" && part.Type != "output_text") {
-			return nil, errors.New("Responses message part is unsupported")
+			return nil, errors.New("responses message part is unsupported")
 		}
 		if len([]byte(part.Text)) > maxPromptTextBytes {
-			return nil, errors.New("Responses message text exceeds the limit")
+			return nil, errors.New("responses message text exceeds the limit")
 		}
 		parts = append(parts, map[string]any{"text": part.Text, "type": "text"})
 	}
@@ -423,17 +423,17 @@ func normalizeResponsesToolChoice(raw json.RawMessage, toolNames map[string]stru
 		if choice == "auto" || choice == "none" || choice == "required" {
 			return map[string]any{"type": choice}, nil
 		}
-		return nil, errors.New("Responses tool choice is unsupported")
+		return nil, errors.New("responses tool choice is unsupported")
 	}
 	var selected struct {
 		Type string `json:"type"`
 		Name string `json:"name"`
 	}
 	if err := decodeStrict(raw, &selected); err != nil || selected.Type != "function" {
-		return nil, errors.New("Responses tool choice is invalid")
+		return nil, errors.New("responses tool choice is invalid")
 	}
 	if _, exists := toolNames[selected.Name]; !exists {
-		return nil, errors.New("Responses tool choice names an unoffered tool")
+		return nil, errors.New("responses tool choice names an unoffered tool")
 	}
 	return map[string]any{"tool_name": selected.Name, "type": "tool"}, nil
 }
