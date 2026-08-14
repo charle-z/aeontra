@@ -42,7 +42,7 @@ understood without the index or MCP Devbox binary.
 
 P9 uses SQLite FTS5 through the pure-Go driver `modernc.org/sqlite`, initially pinned
 to `v1.53.0` after compatibility and FTS5 tests. The module reports Go 1.25 as its
-minimum, compatible with the repository's Go 1.26.5 toolchain.
+minimum, compatible with the repository's Go 1.26.6 toolchain.
 
 The DB lives under ignored `.cache/brain.db`. It stores normalized metadata, redacted
 search text, forward links, and FTS5 rows. It is never authoritative and may be deleted
