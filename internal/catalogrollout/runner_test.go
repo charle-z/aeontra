@@ -20,14 +20,18 @@ func tr() Request {
 }
 
 type fp struct {
-	o         Observation
-	c         []string
-	f         map[string]error
-	interrupt bool
+	o                  Observation
+	c                  []string
+	f                  map[string]error
+	interrupt          bool
+	backendPinMismatch bool
 }
 
 func (p *fp) Observe(context.Context) (Observation, error) {
 	p.c = append(p.c, "observe")
+	if p.backendPinMismatch {
+		return Observation{}, errors.New("backend application pin does not match the running backend")
+	}
 	return p.o, p.f["observe"]
 }
 
@@ -43,6 +47,7 @@ func (p *fp) PrepareFront(_ context.Context, a, b Identity) (string, error) {
 func (p *fp) DeployBackend(_ context.Context, b Identity) (string, error) {
 	p.c = append(p.c, "deploy-backend")
 	if err := p.f["deploy-backend"]; err != nil {
+		p.backendPinMismatch = true
 		return "backend-deploy", err
 	}
 	p.o.Backend = b
@@ -70,8 +75,9 @@ func (p *fp) FinalizeFront(_ context.Context, b Identity) (string, error) {
 func (p *fp) RollbackBackend(_ context.Context, a Identity) (string, error) {
 	p.c = append(p.c, "rollback-backend")
 	if err := p.f["rollback-backend"]; err != nil {
-		return "", err
+		return "backend-rollback", err
 	}
+	p.backendPinMismatch = false
 	p.o.Backend = a
 	return "backend-rollback", nil
 }
@@ -163,12 +169,45 @@ func TestFailureBeforeSwitch(t *testing.T) {
 	request := tr()
 	platform := &fp{o: Observation{Backend: request.Previous, Front: FrontContract{Primary: request.Previous.CatalogHash}}, f: map[string]error{"deploy-backend": errors.New("build")}}
 	status, err := rr(t, platform).Run(context.Background(), request)
-	if err == nil || status.State != StateFailed || platform.o.Backend != request.Previous || platform.o.Front != (FrontContract{Primary: request.Previous.CatalogHash}) {
+	if err == nil || status.State != StateFailed || status.Reason != "backend_deploy_failed" || status.DeploymentID != "backend-deploy" || platform.o.Backend != request.Previous || platform.o.Front != (FrontContract{Primary: request.Previous.CatalogHash}) {
 		t.Fatalf("%+v %+v %v", status, platform.o, err)
 	}
 	calls := strings.Join(platform.c, ",")
-	if !strings.Contains(calls, "rollback-front") || strings.Contains(calls, "rollback-backend") {
+	want := "observe,prepare-front,observe,deploy-backend,rollback-backend,observe,rollback-front,observe"
+	if calls != want {
 		t.Fatal(calls)
+	}
+}
+
+func TestFailedBackendRollbackPreservesRecoveryDeployment(t *testing.T) {
+	request := tr()
+	platform := &fp{
+		o: Observation{Backend: request.Previous, Front: FrontContract{Primary: request.Previous.CatalogHash}},
+		f: map[string]error{
+			"deploy-backend":   errors.New("build"),
+			"rollback-backend": errors.New("rollback build"),
+		},
+	}
+	status, err := rr(t, platform).Run(context.Background(), request)
+	if err == nil || status.State != StateFailed || status.Reason != "backend_deploy_failed: backend rollback failed" || status.DeploymentID != "backend-rollback" {
+		t.Fatalf("%+v %v", status, err)
+	}
+	if got := strings.Join(platform.c, ","); got != "observe,prepare-front,observe,deploy-backend,rollback-backend" {
+		t.Fatal(got)
+	}
+}
+
+func TestFailedBackendDeploymentIsNotRepeatedAfterCompensation(t *testing.T) {
+	request := tr()
+	platform := &fp{o: Observation{Backend: request.Previous, Front: FrontContract{Primary: request.Previous.CatalogHash}}, f: map[string]error{"deploy-backend": errors.New("build")}}
+	runner := rr(t, platform)
+	first, firstErr := runner.Run(context.Background(), request)
+	second, secondErr := runner.Run(context.Background(), request)
+	if firstErr == nil || secondErr == nil || first.State != StateFailed || second.State != StateFailed || second.DeploymentID != "backend-deploy" {
+		t.Fatalf("first=%+v err=%v second=%+v err=%v", first, firstErr, second, secondErr)
+	}
+	if got := strings.Count(strings.Join(platform.c, ","), "deploy-backend"); got != 1 {
+		t.Fatalf("deploy count=%d calls=%v", got, platform.c)
 	}
 }
 

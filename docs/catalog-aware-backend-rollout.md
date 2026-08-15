@@ -50,6 +50,10 @@ It resumes from observation and journal state rather than repeating actions blin
 ## Failure behavior
 
 - Failure before the backend switch restores the previous Front Door contract.
+- A failed backend deployment preserves its opaque deployment ID, explicitly repins and
+  redeploys the previous compatible commit before observation, and verifies the restored
+  backend and Front Door identities. A failed recovery preserves the recovery deployment
+  ID instead.
 - Failure after the backend switch deploys the previous compatible commit and restores
   the previous Front Door contract.
 - A different active request is rejected.

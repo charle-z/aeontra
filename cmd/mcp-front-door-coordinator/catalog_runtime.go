@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -32,6 +33,17 @@ type catalogRuntimeConfig struct {
 
 func catalogRolloutRequested(getenv func(string) string) bool {
 	return getenv != nil && strings.TrimSpace(getenv(catalogRequestEnv)) != ""
+}
+
+func catalogTerminalMessage(status catalogrollout.Status, runErr error) string {
+	deploymentID := ""
+	if _, err := catalogrollout.EncodePublishedStatus(status); err == nil {
+		deploymentID = status.DeploymentID
+	}
+	if runErr != nil {
+		return fmt.Sprintf("catalog rollout terminal: state=%s phase=%s deployment_id=%s reason=%s", status.State, status.Phase, deploymentID, status.Reason)
+	}
+	return fmt.Sprintf("catalog rollout terminal: state=%s phase=%s deployment_id=%s revision=%d", status.State, status.Phase, deploymentID, status.Revision)
 }
 
 func loadCatalogRuntimeConfig(getenv func(string) string) (catalogRuntimeConfig, error) {
@@ -164,11 +176,7 @@ func serveCatalogCoordinator(ctx context.Context, listener net.Listener, getenv 
 							}
 						}
 						status, runErr := (catalogrollout.Runner{Platform: platform, Journal: journal}).Run(ctx, config.Request)
-						if runErr != nil {
-							log.Printf("catalog rollout terminal: state=%s phase=%s reason=%s", status.State, status.Phase, status.Reason)
-							return
-						}
-						log.Printf("catalog rollout terminal: state=%s phase=%s revision=%d", status.State, status.Phase, status.Revision)
+						log.Print(catalogTerminalMessage(status, runErr))
 					}()
 				}
 			}
