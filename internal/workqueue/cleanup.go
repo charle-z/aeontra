@@ -16,6 +16,7 @@ func (s *Store) CleanupTerminal(retention time.Duration, limit int) (int64, erro
 		SELECT j.job_id FROM jobs j
 		WHERE j.state IN (?,?,?) AND j.updated_at<?
 		AND NOT EXISTS (SELECT 1 FROM dependencies d WHERE d.dependency_id=j.job_id)
+		AND NOT EXISTS (SELECT 1 FROM task_workers tw WHERE tw.job_id=j.job_id)
 		ORDER BY j.updated_at,j.job_id LIMIT ?
 	)`, StateSucceeded, StateFailed, StateCancelled, cutoff, limit)
 	if err != nil {

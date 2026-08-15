@@ -10,6 +10,7 @@ package mcpserver
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,32 +24,38 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 	"github.com/charle-z/mcp-devbox/internal/telemetry"
 	"github.com/charle-z/mcp-devbox/internal/tools"
+	"github.com/charle-z/mcp-devbox/internal/workqueue"
 )
 
 const largeResultThresholdBytes = 32 << 10
 
 // Server dispatches MCP requests to the tool service.
 type Server struct {
-	svc            *tools.Service
-	name           string
-	table          map[string]toolEntry
-	order          []string
-	observer       *observability.Logger
-	journal        *taskjournal.Journal
-	telemetry      *telemetry.Store
-	startedAt      time.Time
-	bootID         string
-	payload        payloadCounters
-	clients        *clientCapabilityStore
-	modelTurns     *modelturn.Store
-	edgeDevices    edgeDeviceRegistry
-	edgeWorkspaces edgeWorkspaceRegistry
-	edgeOperations edgeOperationRegistry
-	httpSessions   *HTTPSessionStore
-	stateRoot      string
-	auditPath      string
-	modelWaitMu    sync.Mutex
-	modelWaits     map[string]struct{}
+	svc             *tools.Service
+	name            string
+	table           map[string]toolEntry
+	order           []string
+	observer        *observability.Logger
+	journal         *taskjournal.Journal
+	telemetry       *telemetry.Store
+	startedAt       time.Time
+	bootID          string
+	payload         payloadCounters
+	clients         *clientCapabilityStore
+	modelTurns      *modelturn.Store
+	edgeDevices     edgeDeviceRegistry
+	edgeWorkspaces  edgeWorkspaceRegistry
+	edgeOperations  edgeOperationRegistry
+	httpSessions    *HTTPSessionStore
+	stateRoot       string
+	auditPath       string
+	modelWaitMu     sync.Mutex
+	modelWaits      map[string]struct{}
+	workQueue       *workqueue.Store
+	taskLifecycleMu sync.Mutex
+	taskReconcileMu sync.Mutex
+	taskCancel      context.CancelFunc
+	taskWG          sync.WaitGroup
 }
 
 type toolEntry struct {
