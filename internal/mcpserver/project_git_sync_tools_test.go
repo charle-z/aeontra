@@ -98,17 +98,18 @@ func TestProjectGitSyncToolsExposeOnlyClosedProjectScopedInputs(t *testing.T) {
 func TestProjectGitSyncHandlersQueueBoundOperationsAndReturnOnlyPublicMetadata(t *testing.T) {
 	tests := []struct {
 		name       string
+		tool       string
 		arguments  string
 		kind       edge.OperationKind
 		planID     string
 		idempotent string
 	}{
-		{name: "status", arguments: `{"alias":"project","target":"parrot"}`, kind: edge.OperationProjectGitStatus},
-		{name: "fetch", arguments: `{"alias":"project","target":"parrot","idempotency_key":"fetch-1"}`, kind: edge.OperationProjectGitFetch, idempotent: "fetch-1"},
-		{name: "preview", arguments: `{"alias":"project","target":"parrot","idempotency_key":"preview-1"}`, kind: edge.OperationProjectGitFastForwardPreview, idempotent: "preview-1"},
-		{name: "fast_forward", arguments: `{"alias":"project","target":"parrot","idempotency_key":"apply-1","plan_id":"gp_11111111111111111111111111111111"}`, kind: edge.OperationProjectGitFastForward, idempotent: "apply-1", planID: "gp_11111111111111111111111111111111"},
-		{name: "publish_preview", arguments: `{"alias":"project","target":"parrot","idempotency_key":"publish-preview-1"}`, kind: edge.OperationProjectGitPublishPreview, idempotent: "publish-preview-1"},
-		{name: "publish", arguments: `{"alias":"project","target":"parrot","idempotency_key":"publish-1","plan_id":"gp_11111111111111111111111111111111"}`, kind: edge.OperationProjectGitPublish, idempotent: "publish-1", planID: "gp_11111111111111111111111111111111"},
+		{name: "status", tool: "project_git_status", arguments: `{"alias":"project","target":"parrot"}`, kind: edge.OperationProjectGitStatus},
+		{name: "fetch", tool: "project_git_fetch", arguments: `{"alias":"project","target":"parrot","idempotency_key":"fetch-1"}`, kind: edge.OperationProjectGitFetch, idempotent: "fetch-1"},
+		{name: "preview", tool: "project_git_fast_forward_preview", arguments: `{"alias":"project","target":"parrot","idempotency_key":"preview-1"}`, kind: edge.OperationProjectGitFastForwardPreview, idempotent: "preview-1"},
+		{name: "fast_forward", tool: "project_git_fast_forward", arguments: `{"alias":"project","target":"parrot","idempotency_key":"apply-1","plan_id":"gp_11111111111111111111111111111111"}`, kind: edge.OperationProjectGitFastForward, idempotent: "apply-1", planID: "gp_11111111111111111111111111111111"},
+		{name: "publish_preview", tool: "project_git_publish_preview", arguments: `{"alias":"project","target":"parrot","idempotency_key":"publish-preview-1"}`, kind: edge.OperationProjectGitPublishPreview, idempotent: "publish-preview-1"},
+		{name: "publish", tool: "project_git_publish", arguments: `{"alias":"project","target":"parrot","idempotency_key":"publish-1","plan_id":"gp_11111111111111111111111111111111"}`, kind: edge.OperationProjectGitPublish, idempotent: "publish-1", planID: "gp_11111111111111111111111111111111"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -124,7 +125,7 @@ func TestProjectGitSyncHandlersQueueBoundOperationsAndReturnOnlyPublicMetadata(t
 				},
 			}}
 			server := New(nil).WithEdgeStore(store)
-			output, err := server.handleProjectGitSync(json.RawMessage(test.arguments), test.kind)
+			output, err := server.table[test.tool].handler(json.RawMessage(test.arguments))
 			if err != nil {
 				t.Fatal(err)
 			}
