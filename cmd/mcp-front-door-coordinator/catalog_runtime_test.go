@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/catalogrollout"
 )
@@ -18,6 +20,23 @@ func catalogEnv() map[string]string {
 		frontCommitEnv: strings.Repeat("f", 40), backendCommitEnv: previous.Commit,
 		expectedProtocolEnv: previous.ProtocolVersion, expectedCatalogEnv: previous.CatalogHash,
 		catalogRequestEnv: string(body), catalogMCPTokenEnv: "mcp-token",
+	}
+}
+
+func TestCatalogTerminalMessageIncludesBoundedDeploymentEvidence(t *testing.T) {
+	status := catalogrollout.Status{
+		State: catalogrollout.StateFailed, Phase: catalogrollout.PhaseComplete,
+		DeploymentID: "backend-deployment-123", Reason: "backend_deploy_failed",
+		Request:   catalogrollout.Request{RequestID: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		UpdatedAt: time.Unix(1234, 0).UTC(),
+	}
+	message := catalogTerminalMessage(status, errors.New("private detail"))
+	if !strings.Contains(message, "deployment_id=backend-deployment-123") || !strings.Contains(message, "reason=backend_deploy_failed") || strings.Contains(message, "private detail") {
+		t.Fatal(message)
+	}
+	status.DeploymentID = "unsafe\nvalue"
+	if got := catalogTerminalMessage(status, errors.New("private detail")); strings.Contains(got, "unsafe") {
+		t.Fatal(got)
 	}
 }
 

@@ -352,6 +352,13 @@ func (r Runner) Run(ctx context.Context, request Request) (Status, error) {
 			if interrupted(ctx, actionErr) {
 				return status, errors.Join(ErrInterrupted, actionErr)
 			}
+			status, err = r.persist(ctx, Status{
+				Request: request, State: StateRunning, Phase: PhaseDeployBackend,
+				DeploymentID: deploymentID, Reason: "backend_deploy_failed",
+			})
+			if err != nil {
+				return status, errors.Join(actionErr, err)
+			}
 			return r.compensate(ctx, status, request, "backend_deploy_failed", actionErr)
 		}
 		status, err = r.persist(ctx, Status{Request: request, State: StateRunning, Phase: PhaseVerifyBackend, DeploymentID: deploymentID})
@@ -363,28 +370,82 @@ func (r Runner) Run(ctx context.Context, request Request) (Status, error) {
 }
 
 func (r Runner) compensate(ctx context.Context, status Status, request Request, reason string, cause error) (Status, error) {
-	status, _ = r.persist(ctx, Status{Request: request, State: StateCompensating, Phase: status.Phase, Reason: reason})
-	observation, err := r.Platform.Observe(ctx)
-	if err != nil {
-		return r.fail(ctx, request, reason+": rollback observation failed", errors.Join(cause, err))
-	}
-	if same(observation.Backend, request.Candidate) {
-		status, _ = r.persist(ctx, Status{Request: request, State: StateCompensating, Phase: PhaseRollbackBackend, Reason: reason})
-		if _, err := r.Platform.RollbackBackend(ctx, request.Previous); err != nil {
-			return r.fail(ctx, request, reason+": backend rollback failed", errors.Join(cause, err))
+	failureDeploymentID := status.DeploymentID
+	status, _ = r.persist(ctx, Status{
+		Request: request, State: StateCompensating, Phase: status.Phase,
+		DeploymentID: failureDeploymentID, Reason: reason,
+	})
+
+	var observation Observation
+	rollbackBackend := reason == "backend_deploy_failed"
+	if !rollbackBackend {
+		var err error
+		observation, err = r.Platform.Observe(ctx)
+		if err != nil {
+			return r.fail(ctx, status, reason+": rollback observation failed", errors.Join(cause, err))
 		}
+		rollbackBackend = same(observation.Backend, request.Candidate)
+	}
+	if rollbackBackend {
+		status, _ = r.persist(ctx, Status{
+			Request: request, State: StateCompensating, Phase: PhaseRollbackBackend,
+			DeploymentID: failureDeploymentID, Reason: reason,
+		})
+		rollbackID, rollbackErr := r.Platform.RollbackBackend(ctx, request.Previous)
+		if rollbackErr != nil {
+			if rollbackID != "" {
+				status.DeploymentID = rollbackID
+			}
+			return r.fail(ctx, status, reason+": backend rollback failed", errors.Join(cause, rollbackErr))
+		}
+		status, _ = r.persist(ctx, Status{
+			Request: request, State: StateCompensating, Phase: PhaseRollbackBackend,
+			DeploymentID: rollbackID, Reason: reason,
+		})
+		var observeErr error
+		observation, observeErr = r.Platform.Observe(ctx)
+		if observeErr != nil {
+			return r.fail(ctx, status, reason+": rollback observation failed", errors.Join(cause, observeErr))
+		}
+	}
+	if !same(observation.Backend, request.Previous) {
+		return r.fail(ctx, status, reason+": backend rollback verification failed", errors.Join(cause, errors.New("previous backend identity was not restored")))
 	}
 	if !frontOld(observation.Front, request) {
-		status, _ = r.persist(ctx, Status{Request: request, State: StateCompensating, Phase: PhaseRollbackFront, Reason: reason})
-		if _, err := r.Platform.RollbackFront(ctx, request.Previous); err != nil {
-			return r.fail(ctx, request, reason+": front rollback failed", errors.Join(cause, err))
+		status, _ = r.persist(ctx, Status{
+			Request: request, State: StateCompensating, Phase: PhaseRollbackFront,
+			DeploymentID: status.DeploymentID, Reason: reason,
+		})
+		rollbackID, rollbackErr := r.Platform.RollbackFront(ctx, request.Previous)
+		if rollbackErr != nil {
+			if rollbackID != "" {
+				status.DeploymentID = rollbackID
+			}
+			return r.fail(ctx, status, reason+": front rollback failed", errors.Join(cause, rollbackErr))
+		}
+		status, _ = r.persist(ctx, Status{
+			Request: request, State: StateCompensating, Phase: PhaseRollbackFront,
+			DeploymentID: rollbackID, Reason: reason,
+		})
+		finalObservation, observeErr := r.Platform.Observe(ctx)
+		if observeErr != nil {
+			return r.fail(ctx, status, reason+": rollback observation failed", errors.Join(cause, observeErr))
+		}
+		if !same(finalObservation.Backend, request.Previous) || !frontOld(finalObservation.Front, request) {
+			return r.fail(ctx, status, reason+": rollback verification failed", errors.Join(cause, errors.New("previous backend and front-door contract were not restored")))
 		}
 	}
-	return r.fail(ctx, request, reason, cause)
+	if failureDeploymentID != "" {
+		status.DeploymentID = failureDeploymentID
+	}
+	return r.fail(ctx, status, reason, cause)
 }
 
-func (r Runner) fail(ctx context.Context, request Request, reason string, cause error) (Status, error) {
-	status, persistErr := r.persist(ctx, Status{Request: request, State: StateFailed, Phase: PhaseComplete, Reason: reason})
+func (r Runner) fail(ctx context.Context, status Status, reason string, cause error) (Status, error) {
+	status.State = StateFailed
+	status.Phase = PhaseComplete
+	status.Reason = reason
+	status, persistErr := r.persist(ctx, status)
 	if persistErr != nil {
 		return status, errors.Join(cause, persistErr)
 	}
