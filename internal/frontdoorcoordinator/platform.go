@@ -453,6 +453,35 @@ func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error
 	return deploymentID, errors.New("coolify deployment did not reach terminal state")
 }
 
+func (c *Client) stopAndWait(ctx context.Context, appID string) error {
+	if err := c.requestJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(appID)+"/stop", nil, nil); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		var application struct {
+			Status string `json:"status"`
+		}
+		if err := c.requestJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(appID), nil, &application); err != nil {
+			return err
+		}
+		status := strings.TrimSpace(application.Status)
+		if status == "stopped" || status == "exited" || strings.HasPrefix(status, "exited:") {
+			return nil
+		}
+		if status == "" || (!strings.HasPrefix(status, "running:") && status != "running" && status != "stopping") {
+			return errors.New("managed application returned an invalid stop state")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		c.sleep(2 * time.Second)
+	}
+	return errors.New("managed application did not stop before deployment")
+}
+
 func (c *Client) requestJSON(ctx context.Context, method, path string, payload any, result any) error {
 	var body io.Reader
 	if payload != nil {

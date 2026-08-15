@@ -31,13 +31,18 @@ The private Front Door coordinator owns the durable state machine:
 
 1. Observe the current backend, Front Door, Coolify application identity, commit pin,
    auto-deploy state, protocol, tool count, and catalog.
-2. Pin the backend to the currently compatible commit and set both
+2. Create or non-force fast-forward the fixed, server-owned
+   `backend-rollback-stable` branch to the currently running backend commit. The caller
+   cannot select or move this branch.
+3. Pin the backend to the candidate on `main` and keep both
    `is_auto_deploy_enabled=false` and `instant_deploy=false`.
-3. If the catalog is unchanged, deploy the exact candidate once and verify it.
 4. If the catalog changed, deploy the Front Door with exactly
    `primary=candidate` and `transition=previous`, then verify the old backend remains
    reachable through the official domain.
-5. Deploy the exact backend candidate once.
+5. Stop the singleton backend through the Coolify application API, wait for its
+   container to exit, deploy the candidate exactly once, and verify it. This bounded
+   stop-first replacement is required because the durable SQLite stores permit one
+   writer and cannot participate in Coolify's overlapping rolling replacement.
 6. Verify the direct backend and official Front Door identities, OAuth discovery, one
    authenticated MCP initialize, the same MCP session, and a real
    `system_runtime_info` tool call.
@@ -50,17 +55,21 @@ It resumes from observation and journal state rather than repeating actions blin
 ## Failure behavior
 
 - Failure before the backend switch restores the previous Front Door contract.
-- A failed backend deployment preserves its opaque deployment ID, explicitly repins and
-  redeploys the previous compatible commit before observation, and verifies the restored
+- A failed backend deployment preserves its opaque deployment ID, switches temporarily
+  to the fixed rollback branch, stops any active backend, deploys the previous compatible
+  commit, restores the application metadata branch to `main`, and verifies the recovered
   backend and Front Door identities. A failed recovery preserves the recovery deployment
   ID instead.
-- Failure after the backend switch deploys the previous compatible commit and restores
-  the previous Front Door contract.
+- Failure after the backend switch uses the same fixed-branch stop-first recovery and
+  restores the previous Front Door contract.
 - A different active request is rejected.
 - A topology transition and a catalog rollout cannot run at the same time.
 - The official domain is never pointed at a backend that is outside the admitted pair.
 - OAuth discovery remains independent from the MCP catalog gate; `/mcp` remains
   fail-closed when the backend catalog is not admitted.
+- The stable Front Door and OAuth routes remain live during the stop-first interval, but
+  authenticated MCP calls can be temporarily unavailable. This workflow does not claim
+  zero-downtime backend replacement.
 
 ## Operator runbook
 
