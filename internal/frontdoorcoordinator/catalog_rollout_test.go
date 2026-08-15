@@ -37,10 +37,15 @@ type rolloutFixture struct {
 	frontTransition string
 	protocol        string
 	pinnedCommit    string
+	backendBranch   string
 	autoDeploy      bool
 	instantDeploy   bool
 	backendDeploys  int
+	backendStops    int
 	frontDeploys    int
+	backendRunning  bool
+	backendStopFail bool
+	backendBranches []string
 	oauthCalls      int
 	mcpCalls        int
 	mcpFail         bool
@@ -50,7 +55,7 @@ type rolloutFixture struct {
 func newRolloutFixture() *rolloutFixture {
 	previous := catalogrollout.Identity{Commit: strings.Repeat("a", 40), ProtocolVersion: testProtocol, ToolCount: 137, CatalogHash: "sha256:" + strings.Repeat("1", 64)}
 	candidate := catalogrollout.Identity{Commit: strings.Repeat("b", 40), ProtocolVersion: testProtocol, ToolCount: 137, CatalogHash: "sha256:" + strings.Repeat("2", 64)}
-	return &rolloutFixture{previous: previous, candidate: candidate, runtime: previous, frontPrimary: previous.CatalogHash, protocol: testProtocol, pinnedCommit: previous.Commit}
+	return &rolloutFixture{previous: previous, candidate: candidate, runtime: previous, frontPrimary: previous.CatalogHash, protocol: testProtocol, pinnedCommit: previous.Commit, backendBranch: "main", backendRunning: true}
 }
 
 func (f *rolloutFixture) coolifyHandler(w http.ResponseWriter, r *http.Request) {
@@ -59,9 +64,18 @@ func (f *rolloutFixture) coolifyHandler(w http.ResponseWriter, r *http.Request) 
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/backend1":
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"uuid": "backend1", "git_repository": ManagedRepository, "git_branch": "main",
+			"uuid": "backend1", "git_repository": ManagedRepository, "git_branch": f.backendBranch,
 			"git_commit_sha": f.pinnedCommit, "is_auto_deploy_enabled": f.autoDeploy, "instant_deploy": f.instantDeploy,
+			"status": map[bool]string{true: "running:healthy", false: "exited:stopped"}[f.backendRunning],
 		})
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/backend1/stop":
+		f.backendStops++
+		if f.backendStopFail {
+			http.Error(w, "stop failed", http.StatusInternalServerError)
+			return
+		}
+		f.backendRunning = false
+		w.WriteHeader(http.StatusOK)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1/envs":
 		entries := []environmentEntry{
 			{Key: "MCP_FRONT_DOOR_EXPECTED_PROTOCOL", Comment: ManagedEnvironmentComment("token", "MCP_FRONT_DOOR_EXPECTED_PROTOCOL", f.protocol), IsLiteral: true, IsRuntime: true},
@@ -93,6 +107,9 @@ func (f *rolloutFixture) coolifyHandler(w http.ResponseWriter, r *http.Request) 
 			panic(err)
 		}
 		f.pinnedCommit, _ = payload["git_commit_sha"].(string)
+		if branch, ok := payload["git_branch"].(string); ok {
+			f.backendBranch = branch
+		}
 		f.autoDeploy, _ = payload["is_auto_deploy_enabled"].(bool)
 		f.instantDeploy, _ = payload["instant_deploy"].(bool)
 		w.WriteHeader(http.StatusOK)
@@ -106,15 +123,21 @@ func (f *rolloutFixture) coolifyHandler(w http.ResponseWriter, r *http.Request) 
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
 		app := r.URL.Query().Get("uuid")
 		if app == "backend1" {
+			if f.backendRunning {
+				panic("backend deployment attempted before the previous singleton stopped")
+			}
 			f.backendDeploys++
-			switch f.pinnedCommit {
-			case f.previous.Commit:
+			f.backendBranches = append(f.backendBranches, f.backendBranch)
+			switch f.backendBranch {
+			case ManagedBackendRollbackBranch:
 				f.runtime = f.previous
-			case f.candidate.Commit:
+			case "main":
 				f.runtime = f.candidate
 			default:
-				panic("unknown pinned commit")
+				panic("unknown backend branch")
 			}
+			f.pinnedCommit = f.runtime.Commit
+			f.backendRunning = true
 		} else if app == "front1" {
 			f.frontDeploys++
 		} else {
@@ -213,7 +236,7 @@ func TestCatalogPlatformRunnerExecutesChangedCatalogEndToEnd(t *testing.T) {
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
-	if fixture.backendDeploys != 1 || fixture.frontDeploys != 2 || fixture.pinnedCommit != fixture.candidate.Commit || fixture.autoDeploy || fixture.instantDeploy || fixture.frontPrimary != fixture.candidate.CatalogHash || fixture.frontTransition != "" || fixture.oauthCalls != 2 || fixture.mcpCalls != 2 || !strings.HasPrefix(fixture.description, catalogrollout.PublishedStatusPrefix) {
+	if fixture.backendDeploys != 1 || fixture.backendStops != 1 || strings.Join(fixture.backendBranches, ",") != "main" || fixture.frontDeploys != 2 || fixture.pinnedCommit != fixture.candidate.Commit || fixture.autoDeploy || fixture.instantDeploy || fixture.frontPrimary != fixture.candidate.CatalogHash || fixture.frontTransition != "" || fixture.oauthCalls != 2 || fixture.mcpCalls != 2 || !strings.HasPrefix(fixture.description, catalogrollout.PublishedStatusPrefix) {
 		t.Fatalf("fixture=%+v", fixture)
 	}
 }
@@ -231,8 +254,8 @@ func TestCatalogPlatformRunnerSkipsFrontForUnchangedCatalog(t *testing.T) {
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
-	if fixture.backendDeploys != 1 || fixture.frontDeploys != 0 {
-		t.Fatalf("backend=%d front=%d", fixture.backendDeploys, fixture.frontDeploys)
+	if fixture.backendDeploys != 1 || fixture.backendStops != 1 || strings.Join(fixture.backendBranches, ",") != "main" || fixture.frontDeploys != 0 {
+		t.Fatalf("backend=%d stops=%d branches=%v front=%d", fixture.backendDeploys, fixture.backendStops, fixture.backendBranches, fixture.frontDeploys)
 	}
 }
 
@@ -249,7 +272,22 @@ func TestCatalogPlatformRunnerRollsBackAfterMCPFailure(t *testing.T) {
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
-	if fixture.backendDeploys != 2 || fixture.frontDeploys != 2 || fixture.runtime != fixture.previous || fixture.frontPrimary != fixture.previous.CatalogHash || fixture.frontTransition != "" {
+	if fixture.backendDeploys != 2 || fixture.backendStops != 2 || strings.Join(fixture.backendBranches, ",") != "main,"+ManagedBackendRollbackBranch || fixture.frontDeploys != 2 || fixture.runtime != fixture.previous || fixture.frontPrimary != fixture.previous.CatalogHash || fixture.frontTransition != "" || fixture.backendBranch != "main" {
+		t.Fatalf("fixture=%+v", fixture)
+	}
+}
+
+func TestCatalogPlatformDoesNotDeployWhenSingletonStopFails(t *testing.T) {
+	fixture := newRolloutFixture()
+	fixture.backendStopFail = true
+	platform, closeFn := testCatalogPlatform(t, fixture)
+	defer closeFn()
+	if _, err := platform.DeployBackend(context.Background(), fixture.candidate); err == nil {
+		t.Fatal("expected singleton stop failure")
+	}
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	if fixture.backendStops != 1 || fixture.backendDeploys != 0 || fixture.runtime != fixture.previous {
 		t.Fatalf("fixture=%+v", fixture)
 	}
 }

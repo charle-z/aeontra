@@ -56,6 +56,81 @@ func TestGitHubRepositoryFileAtRefIsExactAndBounded(t *testing.T) {
 	}
 }
 
+func TestGitHubManagedRollbackBranchCreatesAndFastForwards(t *testing.T) {
+	first := strings.Repeat("a", 40)
+	second := strings.Repeat("b", 40)
+	current := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/"+managedBackendRollbackBranch:
+			if current == "" {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": current}})
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/mcp-devbox/git/refs":
+			var payload map[string]string
+			if json.NewDecoder(r.Body).Decode(&payload) != nil || payload["ref"] != "refs/heads/"+managedBackendRollbackBranch || payload["sha"] != first {
+				t.Fatal("invalid managed rollback branch creation")
+			}
+			current = first
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/acme/mcp-devbox/compare/"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ahead"})
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/acme/mcp-devbox/git/refs/heads/"+managedBackendRollbackBranch:
+			var payload struct {
+				SHA   string `json:"sha"`
+				Force bool   `json:"force"`
+			}
+			if json.NewDecoder(r.Body).Decode(&payload) != nil || payload.SHA != second || payload.Force {
+				t.Fatal("managed rollback branch update was not a non-force fast-forward")
+			}
+			current = second
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewGitHubClient(server.URL, "token", "acme", "org", "private")
+	if err := client.ensureManagedRollbackBranch(t.Context(), "", false, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ensureManagedRollbackBranch(t.Context(), first, true, second); err != nil {
+		t.Fatal(err)
+	}
+	if current != second {
+		t.Fatal(current)
+	}
+}
+
+func TestGitHubManagedRollbackBranchRejectsDivergence(t *testing.T) {
+	current := strings.Repeat("a", 40)
+	target := strings.Repeat("b", 40)
+	mutated := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/"+managedBackendRollbackBranch:
+			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": current}})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/acme/mcp-devbox/compare/"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "diverged"})
+		case r.Method == http.MethodPatch:
+			mutated = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewGitHubClient(server.URL, "token", "acme", "org", "private")
+	err := client.ensureManagedRollbackBranch(t.Context(), current, true, target)
+	if err == nil || !strings.Contains(err.Error(), "cannot fast-forward") || mutated {
+		t.Fatalf("err=%v mutated=%t", err, mutated)
+	}
+}
+
 func TestManagedBackendRolloutRejectsIncompleteExactHeadChecks(t *testing.T) {
 	commit := strings.Repeat("a", 40)
 	manifest := []byte(`{"schema_version":1,"protocol_version":"2024-11-05","tool_count":137,"catalog_hash":"sha256:` + strings.Repeat("b", 64) + `"}`)

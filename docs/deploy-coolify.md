@@ -190,9 +190,18 @@ Expected:
 
 When a recovery bearer is configured, test it only through a protected header.
 
-## Rolling replacement test
+## Replacement test
 
-After initial acceptance, perform or observe one normal rolling replacement and verify:
+The managed MCP backend is a durable SQLite singleton. Its catalog-aware coordinator
+uses a bounded stop-first replacement because a normal Coolify rolling replacement
+starts the candidate while the previous process still holds the writer locks. Coolify
+also resolves the configured Git branch during deployment, so rollback uses the fixed
+server-owned `backend-rollback-stable` branch rather than treating `git_commit_sha` as
+an independently deployable ref. Do not perform a direct rolling deployment of this
+managed backend.
+
+After initial acceptance, perform or observe one coordinator-managed replacement and
+verify:
 
 1. `/healthz` returns healthy after the replacement;
 2. `/version` reports the intended exact commit;
@@ -202,13 +211,17 @@ After initial acceptance, perform or observe one normal rolling replacement and 
 6. Brain remains present only when enabled;
 7. no secret values appear in application logs.
 
-This distinguishes a healthy new container from a deployment that silently lost durable
-authority state.
+The stable Front Door and OAuth discovery remain available during the bounded stop-first
+interval. MCP calls may be temporarily unavailable until the new singleton is healthy;
+do not report this workflow as zero-downtime. The test distinguishes a healthy new
+container from a deployment that silently lost durable authority state.
 
 ## Rollback
 
-Rollback to a previously reviewed application revision through Coolify's normal rollback
-or branch/commit procedure. After rollback, repeat:
+For the fixed managed backend, use only the catalog-aware coordinator rollback. It
+deploys the reviewed previous commit from `backend-rollback-stable` and restores the
+application metadata branch to `main`. For other applications, use Coolify's normal
+reviewed rollback procedure. After rollback, repeat:
 
 - `/healthz`;
 - `/version` exact-commit verification;

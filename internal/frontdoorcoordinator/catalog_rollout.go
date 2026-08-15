@@ -17,6 +17,8 @@ import (
 
 const maxCatalogProbeBody = 1 << 20
 
+const ManagedBackendRollbackBranch = "backend-rollback-stable"
+
 type CatalogPlatform struct {
 	client   *Client
 	mcpToken string
@@ -42,6 +44,7 @@ type catalogApplication struct {
 	GitCommitSHA        string `json:"git_commit_sha"`
 	IsAutoDeployEnabled bool   `json:"is_auto_deploy_enabled"`
 	InstantDeploy       bool   `json:"instant_deploy"`
+	Status              string `json:"status"`
 }
 
 func (a catalogApplication) repository() string {
@@ -125,12 +128,33 @@ func (p *CatalogPlatform) PrepareFront(ctx context.Context, previous, candidate 
 }
 
 func (p *CatalogPlatform) DeployBackend(ctx context.Context, candidate catalogrollout.Identity) (string, error) {
+	return p.deployBackendFromBranch(ctx, candidate, "main")
+}
+
+func (p *CatalogPlatform) deployBackendFromBranch(ctx context.Context, candidate catalogrollout.Identity, branch string) (deploymentID string, resultErr error) {
 	if err := candidate.Validate(); err != nil {
 		return "", err
 	}
+	if branch != "main" && branch != ManagedBackendRollbackBranch {
+		return "", errors.New("managed backend deployment branch is invalid")
+	}
 	if err := p.client.patch(ctx, p.client.config.BackendAppID, map[string]any{
-		"git_commit_sha": candidate.Commit, "is_auto_deploy_enabled": false, "instant_deploy": false,
+		"git_branch": branch, "git_commit_sha": candidate.Commit, "is_auto_deploy_enabled": false, "instant_deploy": false,
 	}); err != nil {
+		return "", err
+	}
+	if branch == ManagedBackendRollbackBranch {
+		defer func() {
+			restoreCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
+			restoreErr := p.client.patch(restoreCtx, p.client.config.BackendAppID, map[string]any{
+				"git_branch": "main", "git_commit_sha": candidate.Commit,
+				"is_auto_deploy_enabled": false, "instant_deploy": false,
+			})
+			resultErr = errors.Join(resultErr, restoreErr)
+		}()
+	}
+	if err := p.client.stopAndWait(ctx, p.client.config.BackendAppID); err != nil {
 		return "", err
 	}
 	return p.client.deployAndWait(ctx, p.client.config.BackendAppID)
@@ -184,7 +208,7 @@ func (p *CatalogPlatform) FinalizeFront(ctx context.Context, candidate catalogro
 }
 
 func (p *CatalogPlatform) RollbackBackend(ctx context.Context, previous catalogrollout.Identity) (string, error) {
-	return p.DeployBackend(ctx, previous)
+	return p.deployBackendFromBranch(ctx, previous, ManagedBackendRollbackBranch)
 }
 
 func (p *CatalogPlatform) RollbackFront(ctx context.Context, previous catalogrollout.Identity) (string, error) {
