@@ -22,9 +22,15 @@ import (
 
 const projectGitPlanTTL = 5 * time.Minute
 
-type projectGitFastForwardPlan struct {
+const (
+	projectGitPlanFastForward = "fast_forward"
+	projectGitPlanPublish     = "publish"
+)
+
+type projectGitPlan struct {
 	Version     int       `json:"version"`
 	ID          string    `json:"id"`
+	Action      string    `json:"action"`
 	WorkspaceID string    `json:"workspace_id"`
 	Alias       string    `json:"alias"`
 	Target      string    `json:"target"`
@@ -74,13 +80,19 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 	if err != nil || pushRemote != expectedRemote {
 		return edge.OperationResult{}, errors.New("project Git push remote is not owner-bound")
 	}
-	upstream, err := runProjectGitLocal(ctx, runner, resolved, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
-	if err != nil || upstream != "origin/"+branch {
+	upstream, err := runProjectGitLocal(ctx, runner, resolved, "for-each-ref", "--format=%(upstream:short)", "refs/heads/"+branch)
+	if err != nil || (upstream != "" && upstream != "origin/"+branch) {
 		return edge.OperationResult{}, errors.New("project Git upstream is invalid")
 	}
 	live, err := runProjectGitRemote(ctx, runner, resolved, credential, "ls-remote", "--heads", "origin", "refs/heads/"+branch)
+	if err != nil {
+		return edge.OperationResult{}, errors.New("project Git remote HEAD is unavailable")
+	}
+	if live == "" {
+		return result, nil
+	}
 	fields := strings.Fields(live)
-	if err != nil || len(fields) != 2 || fields[1] != "refs/heads/"+branch || !projectSnapshotHeadPattern.MatchString(fields[0]) {
+	if len(fields) != 2 || fields[1] != "refs/heads/"+branch || !projectSnapshotHeadPattern.MatchString(fields[0]) {
 		return edge.OperationResult{}, errors.New("project Git remote HEAD is invalid")
 	}
 	result.GitRemoteHead = fields[0]
@@ -133,7 +145,7 @@ func previewProjectGitFastForward(ctx context.Context, stateRoot string, resolve
 	if err != nil {
 		return edge.OperationResult{}, err
 	}
-	plan := projectGitFastForwardPlan{Version: 1, ID: id, WorkspaceID: resolved.Workspace.ID, Alias: resolved.Project.Alias, Target: resolved.TargetAlias, Branch: status.GitBranch, Head: status.GitHead, RemoteHead: status.GitRemoteHead, ExpiresAt: now.UTC().Add(projectGitPlanTTL)}
+	plan := projectGitPlan{Version: 1, ID: id, Action: projectGitPlanFastForward, WorkspaceID: resolved.Workspace.ID, Alias: resolved.Project.Alias, Target: resolved.TargetAlias, Branch: status.GitBranch, Head: status.GitHead, RemoteHead: status.GitRemoteHead, ExpiresAt: now.UTC().Add(projectGitPlanTTL)}
 	if err := writeProjectGitPlan(stateRoot, plan, true); err != nil {
 		return edge.OperationResult{}, err
 	}
@@ -143,7 +155,7 @@ func previewProjectGitFastForward(ctx context.Context, stateRoot string, resolve
 
 func executeProjectGitFastForward(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, planID string, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
 	plan, err := readProjectGitPlan(stateRoot, planID)
-	if err != nil || plan.Used || !plan.ExpiresAt.After(now.UTC()) || plan.WorkspaceID != resolved.Workspace.ID || plan.Alias != resolved.Project.Alias || plan.Target != resolved.TargetAlias {
+	if err != nil || plan.Action != projectGitPlanFastForward || plan.Used || !plan.ExpiresAt.After(now.UTC()) || plan.WorkspaceID != resolved.Workspace.ID || plan.Alias != resolved.Project.Alias || plan.Target != resolved.TargetAlias {
 		return edge.OperationResult{}, errors.New("project Git fast-forward plan is unavailable")
 	}
 	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
@@ -165,6 +177,67 @@ func executeProjectGitFastForward(ctx context.Context, stateRoot string, resolve
 		return edge.OperationResult{}, errors.New("project Git fast-forward verification failed")
 	}
 	after.GitFastForwarded = plan.Head != plan.RemoteHead
+	return after, nil
+}
+
+func previewProjectGitPublish(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
+	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
+	if err != nil || status.GitDetached || !status.GitClean || status.GitDiverged || status.GitBehind != 0 {
+		return edge.OperationResult{}, errors.New("project Git checkout cannot publish")
+	}
+	if status.GitRemoteHead != "" {
+		if !status.GitFetched {
+			return edge.OperationResult{}, errors.New("project Git remote branch must be fetched before publication")
+		}
+		if _, err := runProjectGitLocal(ctx, runner, resolved, "merge-base", "--is-ancestor", status.GitRemoteHead, status.GitHead); err != nil {
+			return edge.OperationResult{}, errors.New("project Git publication would not fast-forward")
+		}
+	}
+	id, err := newProjectGitPlanID()
+	if err != nil {
+		return edge.OperationResult{}, err
+	}
+	plan := projectGitPlan{Version: 1, ID: id, Action: projectGitPlanPublish, WorkspaceID: resolved.Workspace.ID, Alias: resolved.Project.Alias, Target: resolved.TargetAlias, Branch: status.GitBranch, Head: status.GitHead, RemoteHead: status.GitRemoteHead, ExpiresAt: now.UTC().Add(projectGitPlanTTL)}
+	if err := writeProjectGitPlan(stateRoot, plan, true); err != nil {
+		return edge.OperationResult{}, err
+	}
+	status.GitPlanID, status.GitPlanExpiresAt = id, plan.ExpiresAt.Format(time.RFC3339)
+	return status, nil
+}
+
+func executeProjectGitPublish(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, planID string, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
+	plan, err := readProjectGitPlan(stateRoot, planID)
+	if err != nil || plan.Action != projectGitPlanPublish || plan.Used || !plan.ExpiresAt.After(now.UTC()) || plan.WorkspaceID != resolved.Workspace.ID || plan.Alias != resolved.Project.Alias || plan.Target != resolved.TargetAlias {
+		return edge.OperationResult{}, errors.New("project Git publication plan is unavailable")
+	}
+	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
+	if err != nil || !status.GitClean || status.GitDetached || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitBehind != 0 {
+		return edge.OperationResult{}, errors.New("project Git publication state changed")
+	}
+	if status.GitRemoteHead != "" {
+		if !status.GitFetched {
+			return edge.OperationResult{}, errors.New("project Git publication tracking state changed")
+		}
+		if _, err := runProjectGitLocal(ctx, runner, resolved, "merge-base", "--is-ancestor", status.GitRemoteHead, status.GitHead); err != nil {
+			return edge.OperationResult{}, errors.New("project Git publication would not fast-forward")
+		}
+	}
+	if err := consumeProjectGitPlan(stateRoot, plan.ID); err != nil {
+		return edge.OperationResult{}, errors.New("project Git publication plan was already consumed")
+	}
+	plan.Used = true
+	if err := writeProjectGitPlan(stateRoot, plan, false); err != nil {
+		return edge.OperationResult{}, err
+	}
+	refspec := plan.Branch + ":refs/heads/" + plan.Branch
+	if _, err := runProjectGitRemote(ctx, runner, resolved, credential, "push", "--porcelain", "--set-upstream", "origin", refspec); err != nil {
+		return edge.OperationResult{}, errors.New("project Git publication failed")
+	}
+	after, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
+	if err != nil || !after.GitClean || after.GitBranch != plan.Branch || after.GitHead != plan.Head || after.GitRemoteHead != plan.Head {
+		return edge.OperationResult{}, errors.New("project Git publication verification failed")
+	}
+	after.GitPublished = true
 	return after, nil
 }
 
@@ -205,7 +278,7 @@ func projectGitPlanPath(stateRoot, id string) (string, error) {
 	return filepath.Join(root, id+".json"), nil
 }
 
-func writeProjectGitPlan(stateRoot string, plan projectGitFastForwardPlan, create bool) error {
+func writeProjectGitPlan(stateRoot string, plan projectGitPlan, create bool) error {
 	path, err := projectGitPlanPath(stateRoot, plan.ID)
 	if err != nil {
 		return err
@@ -242,27 +315,31 @@ func writeProjectGitPlan(stateRoot string, plan projectGitFastForwardPlan, creat
 	return os.Rename(temp, path)
 }
 
-func readProjectGitPlan(stateRoot, id string) (projectGitFastForwardPlan, error) {
+func readProjectGitPlan(stateRoot, id string) (projectGitPlan, error) {
 	path, err := projectGitPlanPath(stateRoot, id)
 	if err != nil {
-		return projectGitFastForwardPlan{}, err
+		return projectGitPlan{}, err
 	}
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || info.Size() > 4096 || !projectGitOwned(info) {
-		return projectGitFastForwardPlan{}, errors.New("project Git plan is unsafe")
+		return projectGitPlan{}, errors.New("project Git plan is unsafe")
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return projectGitFastForwardPlan{}, err
+		return projectGitPlan{}, err
 	}
 	defer f.Close()
 	dec := json.NewDecoder(io.LimitReader(f, 4096))
 	dec.DisallowUnknownFields()
-	var plan projectGitFastForwardPlan
-	if dec.Decode(&plan) != nil || dec.Decode(&struct{}{}) != io.EOF || plan.Version != 1 || plan.ID != id || plan.ExpiresAt.IsZero() ||
-		!projectSnapshotHeadPattern.MatchString(plan.Head) || !projectSnapshotHeadPattern.MatchString(plan.RemoteHead) || !validProjectSnapshotBranch(plan.Branch) ||
+	var plan projectGitPlan
+	if err := dec.Decode(&plan); err != nil {
+		return projectGitPlan{}, errors.New("project Git plan is invalid")
+	}
+	remoteValid := (plan.Action == projectGitPlanPublish && plan.RemoteHead == "") || projectSnapshotHeadPattern.MatchString(plan.RemoteHead)
+	if dec.Decode(&struct{}{}) != io.EOF || plan.Version != 1 || plan.ID != id || plan.ExpiresAt.IsZero() ||
+		(plan.Action != projectGitPlanFastForward && plan.Action != projectGitPlanPublish) || !projectSnapshotHeadPattern.MatchString(plan.Head) || !remoteValid || !validProjectSnapshotBranch(plan.Branch) ||
 		plan.WorkspaceID == "" || plan.Alias == "" || plan.Target == "" {
-		return projectGitFastForwardPlan{}, errors.New("project Git plan is invalid")
+		return projectGitPlan{}, errors.New("project Git plan is invalid")
 	}
 	return plan, nil
 }

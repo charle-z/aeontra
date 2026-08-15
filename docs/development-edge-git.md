@@ -182,9 +182,15 @@ an old runtime for a later chat.
 
 The public direct-Edge path reuses the same private credential authority without
 starting OpenCode. `project_git_status`, `project_git_fetch`,
-`project_git_fast_forward_preview`, and `project_git_fast_forward` operate only on the
-checkout already bound to a human project alias and Edge target. The credential stays
-in the askpass child environment, while the public result contains only bounded Git
-identity and relationship metadata. The write plan is durable across Edge restart but
-expires after five minutes solely as a transaction guard; it is single-use and does
-not impose a workspace TTL.
+`project_git_fast_forward_preview`, `project_git_fast_forward`,
+`project_git_publish_preview`, and `project_git_publish` operate only on the checkout
+already bound to a human project alias and Edge target. Status accepts an attached
+local branch whose same-name remote branch does not exist yet. Publication then binds
+the clean branch, exact local HEAD and current remote absence or exact fetched remote
+HEAD into a private plan before a fixed no-force same-name push. The caller cannot
+supply a repository, URL, remote, refspec, tags, force option or credential.
+
+The credential stays in the askpass child environment, while the public result contains
+only bounded Git identity and relationship metadata. Write plans are durable across an
+Edge restart but expire after five minutes solely as transaction guards; they are
+single-use and do not impose a workspace TTL.

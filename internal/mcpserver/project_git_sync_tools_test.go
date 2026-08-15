@@ -70,7 +70,7 @@ func (store *projectGitSyncToolStore) WaitOperation(_ context.Context, operation
 
 func TestProjectGitSyncToolsExposeOnlyClosedProjectScopedInputs(t *testing.T) {
 	server := stampServer(t)
-	for _, name := range []string{"project_git_status", "project_git_fetch", "project_git_fast_forward_preview", "project_git_fast_forward"} {
+	for _, name := range []string{"project_git_status", "project_git_fetch", "project_git_fast_forward_preview", "project_git_fast_forward", "project_git_publish_preview", "project_git_publish"} {
 		entry, ok := server.table[name]
 		if !ok {
 			t.Fatalf("missing %s", name)
@@ -107,6 +107,8 @@ func TestProjectGitSyncHandlersQueueBoundOperationsAndReturnOnlyPublicMetadata(t
 		{name: "fetch", arguments: `{"alias":"project","target":"parrot","idempotency_key":"fetch-1"}`, kind: edge.OperationProjectGitFetch, idempotent: "fetch-1"},
 		{name: "preview", arguments: `{"alias":"project","target":"parrot","idempotency_key":"preview-1"}`, kind: edge.OperationProjectGitFastForwardPreview, idempotent: "preview-1"},
 		{name: "fast_forward", arguments: `{"alias":"project","target":"parrot","idempotency_key":"apply-1","plan_id":"gp_11111111111111111111111111111111"}`, kind: edge.OperationProjectGitFastForward, idempotent: "apply-1", planID: "gp_11111111111111111111111111111111"},
+		{name: "publish_preview", arguments: `{"alias":"project","target":"parrot","idempotency_key":"publish-preview-1"}`, kind: edge.OperationProjectGitPublishPreview, idempotent: "publish-preview-1"},
+		{name: "publish", arguments: `{"alias":"project","target":"parrot","idempotency_key":"publish-1","plan_id":"gp_11111111111111111111111111111111"}`, kind: edge.OperationProjectGitPublish, idempotent: "publish-1", planID: "gp_11111111111111111111111111111111"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -117,6 +119,7 @@ func TestProjectGitSyncHandlersQueueBoundOperationsAndReturnOnlyPublicMetadata(t
 					GitBranch: "main", GitHead: strings.Repeat("a", 40), GitRemoteHead: strings.Repeat("b", 40),
 					GitAhead: 1, GitBehind: 2, GitDiverged: true, GitDirty: true, GitFetched: true,
 					GitFastForwarded: test.kind == edge.OperationProjectGitFastForward,
+					GitPublished:     test.kind == edge.OperationProjectGitPublish,
 					GitPlanID:        test.planID, GitPlanExpiresAt: "2026-08-02T12:00:00Z",
 				},
 			}}
@@ -136,6 +139,9 @@ func TestProjectGitSyncHandlersQueueBoundOperationsAndReturnOnlyPublicMetadata(t
 				if !strings.Contains(output, required) {
 					t.Fatalf("output missing %q: %s", required, output)
 				}
+			}
+			if test.kind == edge.OperationProjectGitPublish && !strings.Contains(output, `"published":true`) {
+				t.Fatalf("publication result missing success marker: %s", output)
 			}
 			for _, forbidden := range []string{"device_id", "workspace_id", "credential", "remote_url", "ed_111"} {
 				if strings.Contains(output, forbidden) {

@@ -15,12 +15,14 @@ import (
 )
 
 type projectGitSyncRunner struct {
-	head, remote    string
-	status          string
-	dirty           bool
-	relation        string
-	calls           []string
-	credentialCalls []string
+	head, remote     string
+	branch, upstream string
+	status           string
+	dirty            bool
+	relation         string
+	published        bool
+	calls            []string
+	credentialCalls  []string
 }
 
 func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, credential edgeclient.GitHubCredential) (string, error) {
@@ -29,11 +31,19 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 	if credential.Token != "" {
 		r.credentialCalls = append(r.credentialCalls, call)
 	}
+	branch := r.branch
+	if branch == "" {
+		branch = "main"
+	}
+	upstream := r.upstream
+	if upstream == "" && r.remote != "" {
+		upstream = "origin/" + branch
+	}
 	switch call {
 	case "rev-parse --verify HEAD":
 		return r.head, nil
 	case "branch --show-current":
-		return "main", nil
+		return branch, nil
 	case "status --porcelain=v1 --untracked-files=all":
 		if r.dirty {
 			return " M dirty.go", nil
@@ -41,24 +51,37 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 		return r.status, nil
 	case "remote get-url origin", "remote get-url --push origin":
 		return "https://github.com/charle-z/repo.git", nil
-	case "rev-parse --abbrev-ref --symbolic-full-name @{upstream}":
-		return "origin/main", nil
-	case "ls-remote --heads origin refs/heads/main":
-		return r.remote + "\trefs/heads/main\n", nil
-	case "rev-parse --verify refs/remotes/origin/main":
+	case "for-each-ref --format=%(upstream:short) refs/heads/" + branch:
+		return upstream, nil
+	case "ls-remote --heads origin refs/heads/" + branch:
+		if r.remote == "" {
+			return "", nil
+		}
+		return r.remote + "\trefs/heads/" + branch + "\n", nil
+	case "rev-parse --verify refs/remotes/origin/" + branch:
 		return r.remote, nil
 	case "rev-list --left-right --count " + r.head + "..." + r.remote:
+		if r.head == r.remote {
+			return "0\t0", nil
+		}
 		if r.relation == "" {
 			return "0\t1", nil
 		}
 		return r.relation, nil
 	case "merge-base --is-ancestor " + r.head + " " + r.remote:
 		return "", nil
-	case "fetch --no-tags origin refs/heads/main:refs/remotes/origin/main":
+	case "merge-base --is-ancestor " + r.remote + " " + r.head:
+		return "", nil
+	case "fetch --no-tags origin refs/heads/" + branch + ":refs/remotes/origin/" + branch:
 		return "", nil
 	case "merge --ff-only " + r.remote:
 		r.head = r.remote
 		return "", nil
+	case "push --porcelain --set-upstream origin " + branch + ":refs/heads/" + branch:
+		r.remote = r.head
+		r.upstream = "origin/" + branch
+		r.published = true
+		return "To https://github.com/charle-z/repo.git\n* refs/heads/" + branch + ":refs/heads/" + branch + " [new branch]", nil
 	default:
 		return "", errors.New("unexpected Git command: " + call)
 	}
@@ -117,6 +140,62 @@ func TestInspectProjectGitCheckoutReportsOnlyBoundedRelation(t *testing.T) {
 	}
 	if strings.Join(runner.credentialCalls, "\n") != "ls-remote --heads origin refs/heads/main" {
 		t.Fatalf("credential calls=%v", runner.credentialCalls)
+	}
+}
+
+func TestInspectProjectGitCheckoutAllowsCleanUnpublishedBranch(t *testing.T) {
+	runner := &projectGitSyncRunner{
+		head: "0123456789abcdef0123456789abcdef01234567", branch: "feat/download-maze-mvp",
+	}
+	result, err := inspectProjectGitCheckout(context.Background(), projectGitResolution(), runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"})
+	if err != nil || result.GitBranch != runner.branch || result.GitHead != runner.head || result.GitRemoteHead != "" || !result.GitClean || result.GitFetched {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if strings.Join(runner.credentialCalls, "\n") != "ls-remote --heads origin refs/heads/"+runner.branch {
+		t.Fatalf("credential calls=%v", runner.credentialCalls)
+	}
+}
+
+func TestProjectGitPublishPlanIsExactSingleUseAndOwnerBound(t *testing.T) {
+	stateRoot := t.TempDir()
+	runner := &projectGitSyncRunner{
+		head: "0123456789abcdef0123456789abcdef01234567", branch: "feat/download-maze-mvp",
+	}
+	resolved := projectGitResolution()
+	preview, err := previewProjectGitPublish(context.Background(), stateRoot, resolved, runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}, time.Now().UTC())
+	if err != nil || preview.GitPlanID == "" || preview.GitPlanExpiresAt == "" {
+		t.Fatalf("preview=%+v err=%v", preview, err)
+	}
+	executed, err := executeProjectGitPublish(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}, time.Now().UTC())
+	if err != nil || !executed.GitPublished || executed.GitHead != runner.head || executed.GitRemoteHead != runner.head || !runner.published {
+		t.Fatalf("execute=%+v published=%v err=%v", executed, runner.published, err)
+	}
+	if _, err := executeProjectGitPublish(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}, time.Now().UTC()); err == nil {
+		t.Fatal("replayed publication plan accepted")
+	}
+	for _, call := range runner.calls {
+		if strings.Contains(call, "--force") || strings.Contains(call, "--tags") || strings.Contains(call, "github_pat") {
+			t.Fatalf("unsafe publication call: %s", call)
+		}
+	}
+}
+
+func TestProjectGitPublishPlanRejectsRemoteStateChange(t *testing.T) {
+	stateRoot := t.TempDir()
+	runner := &projectGitSyncRunner{
+		head: "0123456789abcdef0123456789abcdef01234567", branch: "feat/download-maze-mvp",
+	}
+	resolved := projectGitResolution()
+	preview, err := previewProjectGitPublish(context.Background(), stateRoot, resolved, runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.remote = "1123456789abcdef0123456789abcdef01234567"
+	if _, err := executeProjectGitPublish(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}, time.Now().UTC()); err == nil {
+		t.Fatal("publication accepted a remote branch created after preview")
+	}
+	if runner.published {
+		t.Fatal("publication ran after remote state changed")
 	}
 }
 

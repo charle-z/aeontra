@@ -88,6 +88,7 @@ Use this short map before scanning the complete catalog in `docs/tools.md`.
 | Run an allowlisted command or project tests | `run_command` / `run_tests` |
 | Inspect Git state or changes | `repo_status` / `repo_diff` |
 | Publish the current branch | `repo_publish_preview`, then `repo_publish` |
+| Publish a registered Edge checkout | `project_git_publish_preview`, then `project_git_publish` |
 | Create a pull request | `source_pull_request_create_preview`, then `source_pull_request_create` |
 | Inspect a public upstream issue | `source_public_issue_status` |
 | Create the configured-owner fork | `source_public_fork_create_preview`, then `source_public_fork_create` |

@@ -32,6 +32,7 @@ type projectGitSyncPublicView struct {
 	Dirty          bool                `json:"dirty"`
 	Fetched        bool                `json:"remote_tracking_current"`
 	FastForwarded  bool                `json:"fast_forwarded"`
+	Published      bool                `json:"published"`
 	PlanID         string              `json:"plan_id,omitempty"`
 	PlanExpiresAt  string              `json:"plan_expires_at,omitempty"`
 	Reused         bool                `json:"reused"`
@@ -53,6 +54,12 @@ func (s *Server) addProjectGitSyncTools(projectSchema map[string]any) {
 	s.addDirectTool(toolDef{Name: "project_git_fast_forward", Description: "Consume one exact Edge-owned plan after revalidating project, branch, clean tree, local HEAD and remote HEAD; executes only git merge --ff-only of the bound commit.", InputSchema: closedObject(map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key, "plan_id": stringSchema("opaque single-use Edge fast-forward plan", `^gp_[a-f0-9]{32}$`, 35)}, []string{"alias", "target", "idempotency_key", "plan_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
 		return s.handleProjectGitSync(raw, edge.OperationProjectGitFastForward)
 	})
+	s.addDirectTool(toolDef{Name: "project_git_publish_preview", Description: "Create a short-lived single-use plan bound to the registered owner repository, clean attached branch, exact local HEAD and current remote branch state. It exposes no credential, URL, refspec or force option.", InputSchema: closedObject(map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key}, []string{"alias", "target", "idempotency_key"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
+		return s.handleProjectGitSync(raw, edge.OperationProjectGitPublishPreview)
+	})
+	s.addDirectTool(toolDef{Name: "project_git_publish", Description: "Consume and revalidate one exact publication plan, then push only the bound current branch to its same-name branch on the fixed owner-bound origin without force or caller refspecs.", InputSchema: closedObject(map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key, "plan_id": stringSchema("opaque single-use Edge publication plan", `^gp_[a-f0-9]{32}$`, 35)}, []string{"alias", "target", "idempotency_key", "plan_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
+		return s.handleProjectGitSync(raw, edge.OperationProjectGitPublish)
+	})
 }
 
 func (s *Server) handleProjectGitSync(arguments json.RawMessage, kind edge.OperationKind) (string, error) {
@@ -70,8 +77,8 @@ func (s *Server) handleProjectGitSync(arguments json.RawMessage, kind edge.Opera
 	if kind == edge.OperationProjectGitStatus && (params.IdempotencyKey != "" || params.PlanID != "") {
 		return "", errors.New("status accepts no plan or idempotency key")
 	}
-	if kind != edge.OperationProjectGitFastForward && params.PlanID != "" {
-		return "", errors.New("plan is accepted only for fast-forward")
+	if kind != edge.OperationProjectGitFastForward && kind != edge.OperationProjectGitPublish && params.PlanID != "" {
+		return "", errors.New("plan is accepted only for fast-forward or publication")
 	}
 	device, err := resolver.ResolveActiveDeviceName(params.Target)
 	if err != nil {
@@ -98,6 +105,7 @@ func (s *Server) handleProjectGitSync(arguments json.RawMessage, kind edge.Opera
 		view.Dirty = r.GitDirty
 		view.Fetched = r.GitFetched
 		view.FastForwarded = r.GitFastForwarded
+		view.Published = r.GitPublished
 		view.PlanID = r.GitPlanID
 		view.PlanExpiresAt = r.GitPlanExpiresAt
 	} else if op.State == edge.OperationFailed || op.State == edge.OperationCancelled {
