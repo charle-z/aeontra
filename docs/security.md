@@ -242,6 +242,14 @@ a writer checkout. Expired leases must reclaim the same worktree with a strictly
 fence before work resumes; stale claims, completion and cleanup fail closed. Terminal
 cleanup requires an exact fence and a clean tree, preserves each worker branch, and
 never guesses how commits should be integrated.
+For a linked worktree, the outer Bubblewrap launcher projects that repository's validated
+common Git directory at one fixed internal mount and sets `GIT_DIR` to the exact
+server-owned worktree entry. This is writable repository-scoped Git authority required
+for status, index and branch commits. It does not mount the canonical working tree,
+sibling working-tree contents, Git credentials, host home or unrelated repositories.
+The `.git` pointer, common directory, ownership, modes, managed development root and
+absence of symlinks are revalidated before the sandbox starts; ordinary canonical
+checkouts receive no extra Git mount.
 This source contract does not claim an installed Edge release; signed publication and
 real-device acceptance remain separate gates.
 
