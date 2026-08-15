@@ -12,11 +12,112 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/modelturn"
 )
+
+func TestBubblewrapLinkedWorktreeGitMetadata(t *testing.T) {
+	if os.Getenv("OPENCODE_BWRAP_HOST_E2E") != "1" {
+		t.Skip("host Bubblewrap linked-worktree Git acceptance is explicit")
+	}
+	bubblewrapPath, err := exec.LookPath("bwrap")
+	if err != nil {
+		t.Fatal("Bubblewrap is required by the tagged linked-worktree Git acceptance")
+	}
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal("Git is required by the tagged linked-worktree Git acceptance")
+	}
+	fixture := newProjectWorktreeFixture(t)
+	manager, err := OpenProjectWorktreeManager(ProjectWorktreeManagerConfig{
+		StateRoot: fixture.stateRoot, Roots: fixture.roots, Workspaces: fixture.workspaces,
+		Runner:     NewDevGitCommandRunner(fixture.stateRoot, "/usr/local/bin:/usr/bin:/bin"),
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: "gho_" + strings.Repeat("c", 36)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close()
+	created, _, err := manager.Create(context.Background(), ProjectWorktreeCreateRequest{
+		Alias: "project", TargetAlias: "trusted-linux", Repository: "charle-z/project",
+		CanonicalWorkspaceID: fixture.canonical.ID, CanonicalPath: fixture.canonical.Path,
+		BaseCommit: fixture.head, Role: ProjectWorktreeWriter,
+		JobID: "wj_dddddddddddddddddddddddddddddddd", LeaseID: "wl_dddddddddddddddddddddddddddddddd", Fence: 1,
+		IdempotencyKey: "bubblewrap-linked-worktree-git",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := fixture.workspaces.Get(created.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenOpenCodeRuntimeJournal(fixture.stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	launcher, err := NewCodexLauncher(CodexLauncherConfig{
+		StateRoot: fixture.stateRoot, CodexPath: "/usr/bin/true", CodexPinPath: filepath.Join(fixture.stateRoot, "codex-pin.json"),
+		BubblewrapPath: bubblewrapPath, OutputLimit: 4096, Workspaces: fixture.workspaces, Journal: journal,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease := ModelRuntimeLease{
+		RuntimeID: "mr_dddddddddddddddddddddddddddddddd", DeviceID: "ed_dddddddddddddddddddddddddddddddd",
+		WorkspaceID: workspace.ID, Controller: modelturn.ControllerRemoteEdge, State: modelturn.RuntimeStateStarting,
+		Goal: "commit the isolated fixture", GoalDigest: "sha256:" + strings.Repeat("d", 64), TimeoutSeconds: 60, ProviderProfile: remoteProviderProfile,
+	}
+	spec, err := launcher.codexLinuxWorkcellProcessSpec(filepath.Join(fixture.stateRoot, "r", lease.RuntimeID), workspace, LinuxWorkcellPreparation{Workspace: workspace}, "http://127.0.0.1:43210/v1", lease, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	separator := slices.Index(spec.Args, "--")
+	if separator < 0 {
+		t.Fatal("Bubblewrap command separator is missing")
+	}
+	runGit := func(arguments ...string) string {
+		t.Helper()
+		args := append(append([]string(nil), spec.Args[:separator+1]...), append([]string{gitPath}, arguments...)...)
+		command := exec.Command(spec.Executable, args...)
+		command.Dir, command.Env = spec.Dir, spec.Env
+		output, runErr := command.CombinedOutput()
+		if runErr != nil {
+			t.Fatalf("sandbox Git %v failed: %v: %s", arguments, runErr, boundedDiagnostic(string(output)))
+		}
+		return strings.TrimSpace(string(output))
+	}
+	if status := runGit("status", "--porcelain=v1"); status != "" {
+		t.Fatalf("linked worktree is not initially clean: %q", status)
+	}
+	runGit("commit", "--allow-empty", "-m", "linked worktree acceptance")
+	if status := runGit("status", "--porcelain=v1"); status != "" {
+		t.Fatalf("linked worktree is not clean after commit: %q", status)
+	}
+	worktreeHead := strings.TrimSpace(runHostGit(t, created.path, "rev-parse", "HEAD"))
+	canonicalHead := strings.TrimSpace(runHostGit(t, fixture.canonical.Path, "rev-parse", "HEAD"))
+	if worktreeHead == fixture.head || canonicalHead != fixture.head {
+		t.Fatalf("branch isolation failed: worktree=%s canonical=%s base=%s", worktreeHead, canonicalHead, fixture.head)
+	}
+}
+
+func runHostGit(t *testing.T, directory string, arguments ...string) string {
+	t.Helper()
+	command := exec.Command("git", arguments...)
+	command.Dir = directory
+	command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("host Git %v failed: %v: %s", arguments, err, boundedDiagnostic(string(output)))
+	}
+	return string(output)
+}
 
 type bubblewrapIsolationReport struct {
 	SchemaVersion                 int             `json:"schema_version"`

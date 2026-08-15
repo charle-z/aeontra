@@ -155,6 +155,10 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 	if !validCodexAdapterURL(adapterURL) {
 		return openCodeProcessSpec{}, errors.New("codex adapter URL is invalid")
 	}
+	gitMetadata, linkedWorktree, err := resolveCodexWorktreeGitMetadata(workspace, l.config.Workspaces.roots)
+	if err != nil {
+		return openCodeProcessSpec{}, err
+	}
 	resolvedCodex, err := filepath.EvalSymlinks(l.config.CodexPath)
 	if err != nil || !filepath.IsAbs(resolvedCodex) {
 		return openCodeProcessSpec{}, errors.New("pinned Codex executable could not be resolved")
@@ -186,6 +190,10 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		"GIT_AUTHOR_NAME":      "MCP Devbox Codex", "GIT_AUTHOR_EMAIL": "codex@mcp-devbox.invalid",
 		"GIT_COMMITTER_NAME": "MCP Devbox Codex", "GIT_COMMITTER_EMAIL": "codex@mcp-devbox.invalid",
 	}
+	if linkedWorktree {
+		environment["GIT_DIR"] = gitMetadata.SandboxGitDir
+		environment["GIT_WORK_TREE"] = openCodeSandboxWorkspace
+	}
 	args := []string{"--die-with-parent", "--new-session", "--unshare-all", "--share-net", "--clearenv"}
 	for _, systemPath := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates"} {
 		if info, err := os.Stat(systemPath); err == nil && info.IsDir() {
@@ -213,6 +221,9 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		environment["DOCKER_HOST"], environment["CONTAINER_HOST"] = uri, uri
 		environment["MCP_DEVBOX_CONTAINER_ENGINE"] = preparation.RootlessContainer.Engine
 		environment["MCP_DEVBOX_CONTAINER_LABEL"] = rootlessRuntimeLabelKey + "=" + lease.RuntimeID
+	}
+	if linkedWorktree {
+		args = append(args, "--bind", gitMetadata.CommonDir, codexSandboxGitCommon)
 	}
 	args = append(args,
 		"--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
@@ -249,7 +260,7 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 	if err != nil {
 		return openCodeProcessSpec{}, err
 	}
-	if err := validateCodexLinuxWorkcellSandbox(parsed, l.config.StateRoot, runtimeDir, workspace, resolvedCodex, l.config.ToolPath, lease, adapterURL); err != nil {
+	if err := validateCodexLinuxWorkcellSandbox(parsed, l.config.Workspaces.roots, l.config.StateRoot, runtimeDir, workspace, resolvedCodex, l.config.ToolPath, lease, adapterURL); err != nil {
 		return openCodeProcessSpec{}, err
 	}
 	env := []string{"PATH=" + l.config.ToolPath, "HOME=" + home, "USER=mcpedge", "LANG=C.UTF-8", "LC_ALL=C.UTF-8"}
@@ -265,7 +276,7 @@ func validCodexAdapterURL(value string) bool {
 	return err == nil && port >= 1 && port <= 65535
 }
 
-func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, stateRoot, runtimeDir string, workspace Workspace, codexPath, toolPath string, lease ModelRuntimeLease, adapterURL string) error {
+func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots WorkspaceRoots, stateRoot, runtimeDir string, workspace Workspace, codexPath, toolPath string, lease ModelRuntimeLease, adapterURL string) error {
 	if !spec.DieWithParent || !spec.NewSession || !spec.UnshareAll || !spec.ShareNetwork || !spec.ClearEnv || spec.WorkingDirectory != openCodeSandboxWorkspace {
 		return errors.New("codex workcell namespace posture is incomplete")
 	}
@@ -300,6 +311,10 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, stateRoot, runt
 			return errors.New("codex workcell exposes private Edge state")
 		}
 	}
+	gitMetadata, linkedWorktree, err := resolveCodexWorktreeGitMetadata(workspace, roots)
+	if err != nil {
+		return err
+	}
 	for target, expected := range map[string]openCodeSandboxMount{
 		codexSandboxExecutable:   {Source: codexPath, Target: codexSandboxExecutable, Kind: "bind"},
 		openCodeSandboxRuntime:   {Source: runtimeDir, Target: openCodeSandboxRuntime, Writable: true, Kind: "bind"},
@@ -308,6 +323,14 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, stateRoot, runt
 		if mounts[target] != expected {
 			return errors.New("codex workcell required mount is missing or unsafe")
 		}
+	}
+	if linkedWorktree {
+		if mounts[codexSandboxGitCommon] != (openCodeSandboxMount{Source: gitMetadata.CommonDir, Target: codexSandboxGitCommon, Writable: true, Kind: "bind"}) ||
+			spec.Environment["GIT_DIR"] != gitMetadata.SandboxGitDir || spec.Environment["GIT_COMMON_DIR"] != "" || spec.Environment["GIT_WORK_TREE"] != openCodeSandboxWorkspace {
+			return errors.New("codex workcell linked Git metadata is missing or unsafe")
+		}
+	} else if spec.Environment["GIT_DIR"] != "" || spec.Environment["GIT_COMMON_DIR"] != "" || spec.Environment["GIT_WORK_TREE"] != "" || mounts[codexSandboxGitCommon].Target != "" {
+		return errors.New("codex workcell contains unexpected linked Git authority")
 	}
 	if spec.Environment["CODEX_HOME"] != openCodeSandboxHome || spec.Environment["MCP_DEVBOX_RUNTIME_ID"] != lease.RuntimeID || spec.Environment["PATH"] == toolPath {
 		return errors.New("codex workcell environment is incomplete")

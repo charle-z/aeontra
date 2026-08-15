@@ -73,6 +73,87 @@ func TestCodexLinuxWorkcellSpecUsesOnlySignedHarnessAndLoopbackAdapter(t *testin
 	}
 }
 
+func TestCodexLinkedWorktreeSpecMountsExactGitMetadata(t *testing.T) {
+	fixture := newProjectWorktreeFixture(t)
+	manager, err := OpenProjectWorktreeManager(ProjectWorktreeManagerConfig{
+		StateRoot: fixture.stateRoot, Roots: fixture.roots, Workspaces: fixture.workspaces,
+		Runner:     NewDevGitCommandRunner(fixture.stateRoot, "/usr/local/bin:/usr/bin:/bin"),
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: "gho_" + strings.Repeat("c", 36)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close()
+	created, _, err := manager.Create(context.Background(), ProjectWorktreeCreateRequest{
+		Alias: "project", TargetAlias: "parrot", Repository: "charle-z/project",
+		CanonicalWorkspaceID: fixture.canonical.ID, CanonicalPath: fixture.canonical.Path,
+		BaseCommit: fixture.head, Role: ProjectWorktreeWriter,
+		JobID: "wj_cccccccccccccccccccccccccccccccc", LeaseID: "wl_cccccccccccccccccccccccccccccccc", Fence: 1,
+		IdempotencyKey: "worktree-codex-git-metadata",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := fixture.workspaces.Get(created.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexPath := filepath.Join(t.TempDir(), "codex")
+	if err := os.WriteFile(codexPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pinPath := filepath.Join(t.TempDir(), "pin.json")
+	if err := os.WriteFile(pinPath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bubblewrap := filepath.Join(t.TempDir(), "bwrap")
+	if err := os.WriteFile(bubblewrap, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenOpenCodeRuntimeJournal(fixture.stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	launcher, err := NewCodexLauncher(CodexLauncherConfig{
+		StateRoot: fixture.stateRoot, CodexPath: codexPath, CodexPinPath: pinPath,
+		BubblewrapPath: bubblewrap, OutputLimit: 4096, Workspaces: fixture.workspaces, Journal: journal,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease := ModelRuntimeLease{
+		RuntimeID: "mr_cccccccccccccccccccccccccccccccc", DeviceID: "ed_cccccccccccccccccccccccccccccccc",
+		WorkspaceID: workspace.ID, Controller: modelturn.ControllerRemoteEdge, State: modelturn.RuntimeStateStarting,
+		Goal: "commit the isolated fixture", GoalDigest: "sha256:" + strings.Repeat("c", 64), TimeoutSeconds: 60, ProviderProfile: remoteProviderProfile,
+	}
+	runtimeDir := filepath.Join(fixture.stateRoot, "r", lease.RuntimeID)
+	spec, err := launcher.codexLinuxWorkcellProcessSpec(runtimeDir, workspace, LinuxWorkcellPreparation{Workspace: workspace}, "http://127.0.0.1:43210/v1", lease, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitPointer, err := os.ReadFile(filepath.Join(created.path, ".git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitDir := filepath.Clean(strings.TrimSpace(strings.TrimPrefix(string(gitPointer), "gitdir: ")))
+	for key, want := range map[string]string{
+		"GIT_DIR": filepath.ToSlash(filepath.Join(codexSandboxGitCommon, "worktrees", filepath.Base(gitDir))), "GIT_WORK_TREE": openCodeSandboxWorkspace,
+	} {
+		if spec.Sandbox.Environment[key] != want {
+			t.Fatalf("%s=%q want=%q", key, spec.Sandbox.Environment[key], want)
+		}
+	}
+	if got := spec.Sandbox.Environment["GIT_COMMON_DIR"]; got != "" {
+		t.Fatalf("GIT_COMMON_DIR=%q want empty so the linked gitdir resolves commondir itself", got)
+	}
+	mount := findSandboxMount(spec.Sandbox.Mounts, codexSandboxGitCommon)
+	wantSource := filepath.Join(fixture.canonical.Path, ".git")
+	if mount.Source != wantSource || !mount.Writable || mount.Kind != "bind" {
+		t.Fatalf("Git common metadata mount=%+v want source=%s writable bind", mount, wantSource)
+	}
+}
+
 func TestCodexLauncherCompletesOneDurableLinuxWorkcellLease(t *testing.T) {
 	fixture, workspace, _, lease, _ := linuxWorkcellLauncherFixture(t, WorkspaceModeDev)
 	codexPath := filepath.Join(t.TempDir(), "codex")

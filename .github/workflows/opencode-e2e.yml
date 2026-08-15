@@ -241,6 +241,17 @@ jobs:
           set -e
           exit "$status"
 
+      - name: Run linked-worktree Git isolation
+        run: |
+          set +e
+          OPENCODE_BWRAP_HOST_E2E=1 "$BWRAP_E2E_BIN" \
+            -test.run=TestBubblewrapLinkedWorktreeGitMetadata -test.count=1 -test.v 2>&1 \
+            | "$REDACTOR_BIN" \
+            | tee artifacts/codex-linked-worktree-git-redacted.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+
       - name: Run combined OpenCode sandbox E2E
         run: |
           run_combined_e2e() {
@@ -382,6 +393,7 @@ jobs:
 
           candidates = [
               Path("artifacts/opencode-combined-sandbox-redacted.log"),
+              Path("artifacts/codex-linked-worktree-git-redacted.log"),
               Path("artifacts/opencode-bubblewrap-isolation-redacted.log"),
               Path("artifacts/opencode-bubblewrap-preflight-redacted.log"),
           ]
@@ -402,6 +414,7 @@ jobs:
           path: |
             artifacts/opencode-bubblewrap-preflight-redacted.log
             artifacts/opencode-bubblewrap-isolation-redacted.log
+            artifacts/codex-linked-worktree-git-redacted.log
             artifacts/opencode-combined-sandbox-redacted.log
             artifacts/opencode-bubblewrap-preflight-report.json
             artifacts/opencode-bubblewrap-isolation-report.json

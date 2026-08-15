@@ -293,6 +293,14 @@ Status and cleanup revalidate the physical worktree and registry binding. Cleanu
 dirty trees, removes only the exact worktree/workspace and retains the branch and task
 evidence for normal review and integration.
 
+Git linked worktrees keep their index and per-worktree metadata below the canonical
+repository's common `.git/worktrees` directory rather than below the worktree itself.
+The Codex workcell therefore binds that one validated common Git directory to a fixed
+sandbox target and points `GIT_DIR` at the exact generated worktree entry. The linked
+entry resolves its own `commondir`; the launcher does not synthesize or override it.
+The canonical checkout contents and sibling worktree contents are not mounted. Pointer,
+root, ownership, mode and symlink checks fail closed before any worker starts.
+
 ## Direct GPT Web snapshot vertical
 
 `project_snapshot` is the first direct GPT Web to Edge operation. The caller supplies
