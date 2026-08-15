@@ -116,7 +116,8 @@ fail if the relevant repository, branch, application, target, or configuration c
   patch, create new files, and keep agent-agnostic project memory.
 - **Validation:** run one configured test command, allowlisted argv, a contained L3
   sandbox when available, or fixed profiles through a private validation runner.
-- **Git and GitHub:** status, diff, commit, safe fetch/fast-forward, owner-bound repository
+- **Git and GitHub:** status, diff, commit, safe fetch/fast-forward, exact same-name
+  no-force publication from a registered Edge checkout, owner-bound repository
   operations, exact-head PR/check diagnostics, planned publication, green-gated merge,
   and a private direct-Edge broker built on fixed official `gh` operations.
 - **Coolify:** bounded status/log reads and planned application creation or deployment

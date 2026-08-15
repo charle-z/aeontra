@@ -147,8 +147,10 @@ process expiration.
 
 The registered development checkout has a separate closed Git synchronization path:
 
-- `project_git_status` reads the attached branch, HEAD, fixed upstream, live remote
-  HEAD, fetched relation and clean/dirty/diverged state without returning paths or URLs;
+- `project_git_status` reads the attached branch, HEAD, optional fixed upstream, live
+  same-name remote HEAD, fetched relation and clean/dirty/diverged state without
+  returning paths or URLs. A missing upstream and missing remote branch are represented
+  as an unpublished local branch rather than a synchronization failure;
 - `project_git_fetch` runs `git fetch --no-tags origin` with only the Edge-constructed
   current-branch tracking refspec through the existing owner-bound private credential
   runner; callers cannot supply URLs, tags or refspecs;
@@ -156,13 +158,20 @@ The registered development checkout has a separate closed Git synchronization pa
   remote-tracking state, zero local-only commits and an ancestor relationship, then
   persists a private `0600` five-minute plan bound to the exact two commits;
 - `project_git_fast_forward` consumes that plan once, revalidates every bound field and
-  runs only `git merge --ff-only` of the recorded remote commit.
+  runs only `git merge --ff-only` of the recorded remote commit;
+- `project_git_publish_preview` requires a clean attached branch and binds a private
+  five-minute plan to the exact local HEAD plus the current same-name remote branch.
+  An existing remote branch must have current tracking state and be an ancestor of the
+  local HEAD; a missing remote branch is bound explicitly as absent;
+- `project_git_publish` consumes that plan once, revalidates the checkout and live remote
+  state, and runs only a no-force push of the bound branch to its same-name branch on the
+  fixed owner-bound `origin`.
 
-Fetch does not touch the working tree. Fast-forward rejects dirty, detached, ahead,
-diverged, owner-mismatched, stale-remote, expired, replayed, malformed or symlinked
-state. There is no `reset --hard`, checkout mutation, force, tag fetch, arbitrary
-remote, arbitrary refspec or credential-bearing output.
-Only `ls-remote` and fetch receive the private askpass credential. Local inspection,
+Fetch does not touch the working tree. Fast-forward and publication reject dirty,
+detached, non-fast-forward, owner-mismatched, stale-remote, expired, replayed, malformed
+or symlinked state. There is no `reset --hard`, checkout mutation, force, tag fetch,
+arbitrary remote, caller refspec or credential-bearing output. Only `ls-remote`, fetch
+and the fixed publication push receive the private askpass credential. Local inspection,
 ancestor checks and `merge --ff-only` run with an empty credential environment, so
 repository-controlled filters cannot inherit the GitHub token.
 

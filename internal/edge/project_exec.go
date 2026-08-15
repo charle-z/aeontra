@@ -58,7 +58,7 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup {
 		return normalizeProjectProcessRequest(kind, request)
 	}
-	if kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward {
+	if kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish {
 		return normalizeProjectGitSyncRequest(kind, request)
 	}
 	if kind == OperationProjectGitHubStatus {
@@ -190,7 +190,7 @@ func projectOperationUsesIdempotency(kind OperationKind) bool {
 	return kind == OperationProjectSnapshot || kind == OperationProjectExec || kind == OperationProjectProcessStart ||
 		kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup ||
 		kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup ||
-		kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward ||
+		kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish ||
 		kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup ||
 		kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStop ||
 		kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeCleanup

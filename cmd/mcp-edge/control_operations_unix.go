@@ -129,7 +129,7 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectProcess(ctx, stateRoot, processes, operation)
 	case edge.OperationProjectBrowserCreate, edge.OperationProjectBrowserStatus, edge.OperationProjectBrowserList, edge.OperationProjectBrowserRun, edge.OperationProjectBrowserArtifactRead, edge.OperationProjectBrowserClose, edge.OperationProjectBrowserCleanup:
 		return executeProjectBrowser(ctx, stateRoot, browsers, operation)
-	case edge.OperationProjectGitStatus, edge.OperationProjectGitFetch, edge.OperationProjectGitFastForwardPreview, edge.OperationProjectGitFastForward:
+	case edge.OperationProjectGitStatus, edge.OperationProjectGitFetch, edge.OperationProjectGitFastForwardPreview, edge.OperationProjectGitFastForward, edge.OperationProjectGitPublishPreview, edge.OperationProjectGitPublish:
 		return executeProjectGitSync(ctx, stateRoot, operation)
 	case edge.OperationProjectGitHubStatus:
 		return executeProjectGitHubStatus(ctx, stateRoot, operation)
@@ -186,6 +186,10 @@ func executeProjectGitSync(ctx context.Context, stateRoot string, operation edge
 		result, err = previewProjectGitFastForward(ctx, stateRoot, resolved, runner, credential, time.Now().UTC())
 	case edge.OperationProjectGitFastForward:
 		result, err = executeProjectGitFastForward(ctx, stateRoot, resolved, operation.Request.GitPlanID, runner, credential, time.Now().UTC())
+	case edge.OperationProjectGitPublishPreview:
+		result, err = previewProjectGitPublish(ctx, stateRoot, resolved, runner, credential, time.Now().UTC())
+	case edge.OperationProjectGitPublish:
+		result, err = executeProjectGitPublish(ctx, stateRoot, resolved, operation.Request.GitPlanID, runner, credential, time.Now().UTC())
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}

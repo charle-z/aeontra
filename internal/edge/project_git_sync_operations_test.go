@@ -4,7 +4,7 @@ import "testing"
 
 func TestProjectGitSyncRequestsAreClosedAndDurable(t *testing.T) {
 	base := OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell"}
-	for _, kind := range []OperationKind{OperationProjectGitStatus, OperationProjectGitFetch, OperationProjectGitFastForwardPreview} {
+	for _, kind := range []OperationKind{OperationProjectGitStatus, OperationProjectGitFetch, OperationProjectGitFastForwardPreview, OperationProjectGitPublishPreview} {
 		request := base
 		if kind != OperationProjectGitStatus {
 			request.IdempotencyKey = "sync-1"
@@ -17,6 +17,9 @@ func TestProjectGitSyncRequestsAreClosedAndDurable(t *testing.T) {
 	execute.IdempotencyKey = "sync-2"
 	execute.GitPlanID = "gp_0123456789abcdef0123456789abcdef"
 	if _, err := validateOperationRequestWithProjectExec(OperationProjectGitFastForward, execute); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectGitPublish, execute); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,5 +58,26 @@ func TestProjectGitSyncCompletionRejectsMixedOrLeakyResults(t *testing.T) {
 	result.ExecStdout = "leak"
 	if validOperationCompletionForKind(OperationProjectGitStatus, result, "") {
 		t.Fatal("mixed execution result accepted")
+	}
+
+	unpublished := OperationResult{
+		WorkspaceID: "ws_0123456789abcdef0123456789abcdef", ProjectAlias: "project",
+		ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
+		ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
+		GitBranch: "feat/download-maze-mvp", GitHead: "0123456789abcdef0123456789abcdef01234567", GitClean: true,
+	}
+	if !validOperationCompletionForKind(OperationProjectGitStatus, unpublished, "") {
+		t.Fatal("clean unpublished branch status was rejected")
+	}
+	unpublished.GitPlanID = "gp_0123456789abcdef0123456789abcdef"
+	unpublished.GitPlanExpiresAt = "2026-08-15T12:00:00Z"
+	if !validOperationCompletionForKind(OperationProjectGitPublishPreview, unpublished, "") {
+		t.Fatal("unpublished branch publication preview was rejected")
+	}
+	unpublished.GitPlanID, unpublished.GitPlanExpiresAt = "", ""
+	unpublished.GitRemoteHead = unpublished.GitHead
+	unpublished.GitPublished = true
+	if !validOperationCompletionForKind(OperationProjectGitPublish, unpublished, "") {
+		t.Fatal("verified publication result was rejected")
 	}
 }

@@ -1,6 +1,6 @@
 # MCP Devbox product roadmap
 
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 
 ## Direct GPT Web to Edge roadmap
 
@@ -17,7 +17,7 @@ runtime; OpenCode remains a tested optional fallback.
 | 3B recovery/list/signal/cleanup | Real-device accepted on p15.0.23 | A fresh process streamed incrementally, survived exactly one managed Edge restart and resumed at the next record without replay. Closed `interrupt` stopped the inner sandbox with known exit code 130 and no operator signal; repeated interrupt/stop were idempotent, exclusive cleanup succeeded, the final list was empty and doctor remained ready with `NRestarts=0`. |
 | Safe Edge checkout synchronization | Real-device accepted on p15.0.20 | Status and authenticated fetch completed on the real checkout as a clean synchronized no-op: attached `main`, exact HEAD/upstream, ahead=0, behind=0 and no mutation. |
 | 4 persistent universal toolbox | Real-device accepted on p15.0.20 | The real toolbox retained rootfs, marker, installed tools, rootless Podman socket and the same durable service across the coordinated Edge restart. Repeated service stop was idempotent and exclusive cleanup removed only that toolbox/service. |
-| 5 split GitHub authority | Validation pending | Control-plane owner/public-OSS publication, PR, checks, merge and workflow operations are deployed. The Edge-private broker has accepted login/import, status and direct Git synchronization; a credential-free handoff from an Edge checkout to the control-plane publication path remains the missing acceptance. |
+| 5 split GitHub authority | Publication candidate; validation pending | Control-plane owner/public-OSS publication, PR, checks, merge and workflow operations are deployed. The direct Edge candidate adds an exact single-use same-name no-force publication handoff for registered checkouts; a signed release and one complete real project delivery remain the acceptance gate. |
 | 6 direct GPT Web parity | Validation pending | Foreground/background execution, persistent toolbox, rootless container access, managed browser harness, Git synchronization and durable results are deployed. One complete project delivery through only the direct path remains the acceptance gate. |
 | 7 worktrees and deterministic parallelism | Deployed; corrective acceptance pending | Release p15.0.38 proved distinct worktree/workspace/runtime/branch identities, terminal cleanup and fences, but real workers could not resolve linked-worktree Git metadata. The corrective source projects only the validated repository-scoped common Git metadata into each workcell; exact-head CI, signed release and repeated two-commit acceptance remain. |
 | 8 full benchmark | Planned | Complete project delivery through the direct/Codex path with retained latency, resource, CI, browser and deployment evidence. |
