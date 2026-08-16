@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+const (
+	projectGitCommandTimeout = 10 * time.Second
+	projectGitStatusTimeout  = 2 * time.Minute
+)
+
 type localProjectCheckoutInspector struct{}
 
 func newProjectCheckoutInspector() ProjectCheckoutInspector {
@@ -57,11 +62,23 @@ func (localProjectCheckoutInspector) Inspect(ctx context.Context, path, owner, r
 }
 
 type projectGitRunner struct {
-	gitPath string
+	gitPath        string
+	commandTimeout time.Duration
+	statusTimeout  time.Duration
 }
 
 func (r projectGitRunner) run(ctx context.Context, directory string, args ...string) (string, error) {
-	commandCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	timeout := r.commandTimeout
+	if timeout <= 0 {
+		timeout = projectGitCommandTimeout
+	}
+	if len(args) > 0 && args[0] == "status" {
+		timeout = r.statusTimeout
+		if timeout <= 0 {
+			timeout = projectGitStatusTimeout
+		}
+	}
+	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	command := exec.CommandContext(commandCtx, r.gitPath, args...)
 	command.Dir = directory
@@ -79,6 +96,7 @@ func (r projectGitRunner) run(ctx context.Context, directory string, args ...str
 		"GIT_CONFIG_VALUE_1=false",
 		"GIT_CONFIG_KEY_2=protocol.file.allow",
 		"GIT_CONFIG_VALUE_2=never",
+		"GIT_OPTIONAL_LOCKS=0",
 		"GIT_TERMINAL_PROMPT=0",
 	}
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
