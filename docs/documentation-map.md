@@ -147,6 +147,8 @@ above:
   `docs/baselines/2026-08-12-operational-reconciliation.md`.
 - Stock Codex CLI/App Server compatibility decision:
   `docs/analysis/codex-harness-compatibility.md`.
+- Planned P17 orchestration layer, semantic acceptance and continuation contract:
+  `docs/analysis/p17-durable-objective-supervisor.md`.
 - Edge lifecycle state migration: `docs/edge-lifecycle-migration.md`.
 - P16 package/install candidate: `docs/install-edge-parrot-p16.md`.
 - Human project aliases and workspace resolution:

@@ -76,7 +76,8 @@ func TestProjectWorktreeLifecycleUsesExactBaseAndFencedOwner(t *testing.T) {
 	}
 	workerGit("add", "worker.txt")
 	workerGit("commit", "-m", "worker change")
-	if status, err := manager.Status(context.Background(), created.ID); err != nil || status.Branch != created.Branch {
+	if status, err := manager.Status(context.Background(), created.ID); err != nil || status.Branch != created.Branch ||
+		!status.EvidenceKnown || status.HeadCommit == fixture.head || !status.Clean || status.CommitsAheadBase != 1 || status.ChangedPathCount != 1 {
 		t.Fatalf("committed writer worktree status=%+v err=%v", status, err)
 	}
 

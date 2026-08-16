@@ -71,16 +71,25 @@ store and never appears in task status.
 The coordinator leases every worker independently. A new lease increments the fence;
 the matching Edge worktree accepts a claim only for the same job and a strictly newer
 fence. Startup records the durable Edge operation before waiting for it, binds the
-returned managed worktree/workspace before creating the runtime, and derives terminal
-worker state from the bound runtime. A periodic coordinator reconciles these identities
+returned managed worktree/workspace before creating the runtime, and derives its private
+lifecycle state from the bound runtime. A periodic coordinator reconciles these identities
 after control-plane restart without creating duplicate worktrees or runtimes. Its bounded
 scan includes only nonterminal groups, so retained historical evidence cannot starve newer
 work. If the process exits between creating an Edge operation and storing its opaque ID,
 the coordinator recovers that exact operation by its server-owned idempotency key instead
 of dispatching a duplicate.
 
-`project_task_start` provides bounded fan-out, not implicit source integration. Each
-successful writer leaves one explicit `codex/worktree-<id>` branch. Callers review and
+`project_task_start` provides bounded fan-out, not implicit source integration. A model
+runtime reaching `completed` proves only that the model loop ended; it does not prove
+that the requested goal was satisfied. `project_task_status` therefore reports private
+queue `lifecycle_state`, live `runtime_state`, and a separate `acceptance_state`.
+For a completed runtime it revalidates the exact managed worktree and returns only bounded
+Git evidence: base and head commits, cleanliness, commits ahead of base and changed-path
+count. Valid evidence yields `acceptance_pending`; unavailable, stale or inconsistent
+evidence yields `reconciliation_required`. P16 deliberately has no generic automatic
+`accepted` transition because acceptance criteria depend on the task.
+
+Each runtime-completed writer retains one explicit `codex/worktree-<id>` branch. Callers review and
 combine those commits through normal Git and PR gates; the system never guesses conflict
 resolution. `project_task_cleanup` requires a terminal task, exact current lease/fence and
 a clean worktree. It removes the registered worktree but deliberately preserves its Git

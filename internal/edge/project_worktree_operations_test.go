@@ -89,3 +89,31 @@ func TestProjectWorktreeListResultIsBoundedAndTyped(t *testing.T) {
 		t.Fatal("caller-controlled worktree branch accepted")
 	}
 }
+
+func TestProjectWorktreeStatusRequiresBoundedGitEvidence(t *testing.T) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result := OperationResult{
+		WorkspaceID:  "ws_0123456789abcdef0123456789abcdef",
+		ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
+		ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
+		WorktreeID: "wt_0123456789abcdef0123456789abcdef", WorktreeState: "ready", WorktreeRole: "writer",
+		WorktreeBaseCommit: "0123456789abcdef0123456789abcdef01234567", WorktreeBranch: "codex/worktree-0123456789abcdef0123456789abcdef",
+		WorkJobID: "wj_0123456789abcdef0123456789abcdef", WorkLeaseID: "wl_0123456789abcdef0123456789abcdef", WorkFence: 1,
+		WorktreeCreatedAt: now, WorktreeUpdatedAt: now,
+		WorktreeEvidenceKnown: true, WorktreeHeadCommit: "1123456789abcdef0123456789abcdef01234567", WorktreeClean: true,
+		WorktreeCommitsAheadBase: 1, WorktreeChangedPathCount: 2,
+	}
+	if !validOperationCompletionForKind(OperationProjectWorktreeStatus, result, "") {
+		t.Fatal("valid worktree status evidence rejected")
+	}
+	withoutEvidence := result
+	withoutEvidence.WorktreeEvidenceKnown = false
+	if validOperationCompletionForKind(OperationProjectWorktreeStatus, withoutEvidence, "") {
+		t.Fatal("worktree status without Git evidence accepted")
+	}
+	leaky := result
+	leaky.ExecStdout = "secret path"
+	if validOperationCompletionForKind(OperationProjectWorktreeStatus, leaky, "") {
+		t.Fatal("mixed worktree status result accepted")
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -105,6 +106,11 @@ type ProjectWorktreeSnapshot struct {
 	Fence                uint64               `json:"fence"`
 	CreatedAt            time.Time            `json:"created_at"`
 	UpdatedAt            time.Time            `json:"updated_at"`
+	EvidenceKnown        bool                 `json:"evidence_known,omitempty"`
+	HeadCommit           string               `json:"head_commit,omitempty"`
+	Clean                bool                 `json:"clean,omitempty"`
+	CommitsAheadBase     int                  `json:"commits_ahead_base,omitempty"`
+	ChangedPathCount     int                  `json:"changed_path_count,omitempty"`
 	path                 string
 	idempotencyKey       string
 	cleanupKey           string
@@ -343,8 +349,48 @@ func (m *ProjectWorktreeManager) Status(ctx context.Context, id string) (Project
 		if err := m.revalidate(ctx, snapshot); err != nil {
 			return ProjectWorktreeSnapshot{}, err
 		}
+		if err := m.collectEvidence(ctx, &snapshot); err != nil {
+			return ProjectWorktreeSnapshot{}, err
+		}
 	}
 	return snapshot, nil
+}
+
+func (m *ProjectWorktreeManager) collectEvidence(ctx context.Context, snapshot *ProjectWorktreeSnapshot) error {
+	headText, err := m.runner.Run(ctx, snapshot.path, []string{"rev-parse", "--verify", "HEAD"}, m.credential)
+	head := strings.TrimSpace(headText)
+	if err != nil || !projectWorktreeCommitPattern.MatchString(head) {
+		return ErrProjectWorktreeUnavailable
+	}
+	if _, err := m.runner.Run(ctx, snapshot.path, []string{"merge-base", "--is-ancestor", snapshot.BaseCommit, head}, m.credential); err != nil {
+		return ErrProjectWorktreeBaseChanged
+	}
+	status, err := m.runner.Run(ctx, snapshot.path, []string{"status", "--porcelain=v1", "--untracked-files=all"}, m.credential)
+	if err != nil {
+		return ErrProjectWorktreeUnavailable
+	}
+	aheadText, err := m.runner.Run(ctx, snapshot.path, []string{"rev-list", "--count", "--max-count=10001", snapshot.BaseCommit + ".." + head}, m.credential)
+	if err != nil {
+		return ErrProjectWorktreeUnavailable
+	}
+	ahead, err := strconv.Atoi(strings.TrimSpace(aheadText))
+	if err != nil || ahead < 0 || ahead > 10000 || ((head == snapshot.BaseCommit) != (ahead == 0)) {
+		return ErrProjectWorktreeUnsafe
+	}
+	changed, err := m.runner.Run(ctx, snapshot.path, []string{"diff", "--name-only", "-z", snapshot.BaseCommit + ".." + head}, m.credential)
+	if err != nil || (changed != "" && !strings.HasSuffix(changed, "\x00")) {
+		return ErrProjectWorktreeUnavailable
+	}
+	changedPaths := strings.Count(changed, "\x00")
+	if changedPaths > 10000 {
+		return ErrProjectWorktreeUnsafe
+	}
+	snapshot.EvidenceKnown = true
+	snapshot.HeadCommit = head
+	snapshot.Clean = ProjectCheckoutStatusClean(status)
+	snapshot.CommitsAheadBase = ahead
+	snapshot.ChangedPathCount = changedPaths
+	return nil
 }
 
 func (m *ProjectWorktreeManager) List(ctx context.Context, alias, target string, limit int) ([]ProjectWorktreeSnapshot, error) {
