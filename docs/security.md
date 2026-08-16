@@ -181,6 +181,13 @@ blocks `/mcp`, including SSE, while a healthy fixed backend can continue serving
 Rollouts may admit only the exact primary hash plus one authenticated transition hash;
 wildcards, duplicates, malformed hashes and a third catalog fail closed.
 
+An authenticated comment-only MCP SSE stream remains authorized as the same accepted
+downstream request while backend instances are replaced. The Front Door waits on exact
+backend compatibility probes and emits only local comments; it does not replay the
+original short-lived bearer. This grants no authority for a new stream, `POST`, `DELETE`
+or data-bearing SSE event. Client write failures are treated as downstream disconnects,
+not as evidence that the backend failed.
+
 Normal application domain promotion is also closed. The caller may provide only one
 credential-free HTTPS origin with no port, path, query or fragment, and its DNS suffix
 must match the immutable non-empty `COOLIFY_ALLOWED_DOMAINS` policy. The application
