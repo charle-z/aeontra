@@ -102,14 +102,70 @@ func (s *PlatformCapability) requirePlatformDomainReady(app platformApplication)
 	if app.Status != "running:healthy" {
 		return managedApplicationDeployment{}, fmt.Errorf("application is not running healthy: %s", app.Status)
 	}
+	expectedCommit, err := s.resolvePlatformDomainDeploymentCommit(app)
+	if err != nil {
+		return managedApplicationDeployment{}, err
+	}
 	deployment, err := s.latestManagedApplicationDeployment(app.UUID)
 	if err != nil {
 		return managedApplicationDeployment{}, err
 	}
-	if err := requireManagedDeployment("application", deployment, app.commit()); err != nil {
+	if err := requireManagedDeployment("application", deployment, expectedCommit); err != nil {
 		return managedApplicationDeployment{}, err
 	}
 	return deployment, nil
+}
+
+func (s *PlatformCapability) resolvePlatformDomainDeploymentCommit(app platformApplication) (string, error) {
+	configured := strings.TrimSpace(app.commit())
+	if configured != "HEAD" {
+		return configured, nil
+	}
+	if s.github == nil || !s.github.Configured() {
+		return "", errors.New("GitHub is required to resolve application git_commit_sha=HEAD")
+	}
+	repository, err := ownerBoundPlatformRepositoryName(app.repo(), s.github.owner)
+	if err != nil {
+		return "", err
+	}
+	branch := strings.TrimSpace(app.branch())
+	if !safeGitName(branch) {
+		return "", errors.New("application branch is invalid")
+	}
+	commit, err := s.github.branchSHA(context.Background(), repository, branch)
+	if err != nil {
+		return "", fmt.Errorf("resolving application branch commit: %w", err)
+	}
+	if !frontDoorCommitPattern.MatchString(commit) {
+		return "", errors.New("application branch resolved to an invalid commit")
+	}
+	return commit, nil
+}
+
+func ownerBoundPlatformRepositoryName(raw, owner string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	var parts []string
+	switch {
+	case strings.Contains(raw, "://") || strings.HasPrefix(raw, "git@"):
+		if _, err := sanitizeGitHubRemoteURL(raw, owner); err != nil {
+			return "", fmt.Errorf("application repository is not owner-bound: %w", err)
+		}
+		if strings.HasPrefix(raw, "git@github.com:") {
+			parts = strings.Split(strings.TrimSuffix(strings.TrimPrefix(raw, "git@github.com:"), ".git"), "/")
+		} else {
+			parsed, err := url.Parse(raw)
+			if err != nil {
+				return "", errors.New("application repository is invalid")
+			}
+			parts = strings.Split(strings.Trim(strings.TrimSuffix(parsed.Path, ".git"), "/"), "/")
+		}
+	default:
+		parts = strings.Split(strings.TrimSuffix(raw, ".git"), "/")
+	}
+	if len(parts) != 2 || !strings.EqualFold(parts[0], owner) || !safeCloneDir(parts[1]) {
+		return "", fmt.Errorf("application repository must be under configured GITHUB_OWNER %q", owner)
+	}
+	return parts[1], nil
 }
 
 func (s *PlatformCapability) PlatformAppDomainUpdatePreview(appID, rawDomain string) (string, error) {
@@ -150,8 +206,8 @@ func (s *PlatformCapability) PlatformAppDomainUpdatePreview(appID, rawDomain str
 		return "", err
 	}
 	span.Finish(audit.Allow, "preview "+plan.ID, nil, nil)
-	return fmt.Sprintf("app: %s\nname: %s\nrepository: %s\nbranch: %s\ncommit: %s\ncurrent_domain: %s\ntarget_domain: %s\nchange_required: %t\nlatest_deployment: %s\ndeployment_status: %s\neffect: PATCH only the application domains field with force_domain_override=false; no deployment is dispatched\nplan_id: %s\nexpiry: %s\n",
-		app.UUID, app.Name, safePlatformURL(app.repo()), app.branch(), app.commit(), safePlatformURL(currentDomain), targetDomain,
+	return fmt.Sprintf("app: %s\nname: %s\nrepository: %s\nbranch: %s\nconfigured_commit: %s\ncommit: %s\ncurrent_domain: %s\ntarget_domain: %s\nchange_required: %t\nlatest_deployment: %s\ndeployment_status: %s\neffect: PATCH only the application domains field with force_domain_override=false; no deployment is dispatched\nplan_id: %s\nexpiry: %s\n",
+		app.UUID, app.Name, safePlatformURL(app.repo()), app.branch(), app.commit(), deployment.Commit, safePlatformURL(currentDomain), targetDomain,
 		changeRequired, deployment.DeploymentUUID, deployment.Status, plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 

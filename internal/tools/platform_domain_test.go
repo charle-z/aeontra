@@ -13,7 +13,11 @@ import (
 const platformDomainTestCommit = "21ef0f6b173962185ea1e86b99cc6c0e61aa9f8e"
 
 func platformDomainApp(domain, branch, status string) string {
-	return `{"uuid":"app1","name":"demo","status":"` + status + `","deployment_status":"finished","git_repository":"acme/demo","git_branch":"` + branch + `","git_commit_sha":"` + platformDomainTestCommit + `","fqdn":"` + domain + `","build_pack":"dockerfile","dockerfile_location":"/Dockerfile","ports_exposes":"3000","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/health","destination_uuid":"destination1","custom_docker_run_options":"--read-only"}`
+	return platformDomainAppAtCommit(domain, branch, platformDomainTestCommit, status)
+}
+
+func platformDomainAppAtCommit(domain, branch, commit, status string) string {
+	return `{"uuid":"app1","name":"demo","status":"` + status + `","deployment_status":"finished","git_repository":"acme/demo","git_branch":"` + branch + `","git_commit_sha":"` + commit + `","fqdn":"` + domain + `","build_pack":"dockerfile","dockerfile_location":"/Dockerfile","ports_exposes":"3000","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/health","destination_uuid":"destination1","custom_docker_run_options":"--read-only"}`
 }
 
 func platformDomainDeployment(status string) string {
@@ -78,6 +82,93 @@ func TestPlatformAppDomainUpdatePlansAndChangesOnlyDomain(t *testing.T) {
 	}
 	if _, err := service.PlatformAppDomainUpdate(planID, true); err == nil || !strings.Contains(err.Error(), "already used") {
 		t.Fatalf("plan replay must fail: %v", err)
+	}
+}
+
+func TestPlatformAppDomainUpdateResolvesCoolifyHEADToOwnerBranch(t *testing.T) {
+	currentDomain := "http://demo.example.com"
+	patches := 0
+	branchReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/demo/git/ref/heads/main":
+			branchReads++
+			_, _ = response.Write([]byte(`{"object":{"sha":"` + platformDomainTestCommit + `"}}`))
+		case request.Method == http.MethodGet && request.URL.Path == "/api/v1/applications/app1":
+			_, _ = response.Write([]byte(platformDomainAppAtCommit(currentDomain, "main", "HEAD", "running:healthy")))
+		case request.Method == http.MethodGet && request.URL.Path == "/api/v1/deployments/applications/app1":
+			_, _ = response.Write([]byte(platformDomainDeployment("finished")))
+		case request.Method == http.MethodPatch && request.URL.Path == "/api/v1/applications/app1":
+			patches++
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			currentDomain = body["domains"].(string)
+			_, _ = response.Write([]byte(`{"uuid":"app1"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	service := configuredPlatformService(t, config.ModeAllow, server.URL)
+	service.WithGitHub(NewGitHubClient(server.URL, "github-token", "acme", "org", "private"))
+	preview, err := service.PlatformAppDomainUpdatePreview("app1", "https://demo.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"configured_commit: HEAD", "commit: " + platformDomainTestCommit, "latest_deployment: dep1"} {
+		if !strings.Contains(preview, want) {
+			t.Fatalf("HEAD preview missing %q:\n%s", want, preview)
+		}
+	}
+	out, err := service.PlatformAppDomainUpdate(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patches != 1 || branchReads != 3 || !strings.Contains(out, "changed: true") {
+		t.Fatalf("HEAD update patches=%d branch_reads=%d out=%q", patches, branchReads, out)
+	}
+}
+
+func TestOwnerBoundPlatformRepositoryName(t *testing.T) {
+	for _, raw := range []string{
+		"acme/demo",
+		"https://github.com/acme/demo.git",
+		"git@github.com:acme/demo.git",
+		"ssh://git@github.com/acme/demo.git",
+	} {
+		got, err := ownerBoundPlatformRepositoryName(raw, "acme")
+		if err != nil || got != "demo" {
+			t.Fatalf("repository %q got=%q err=%v", raw, got, err)
+		}
+	}
+	for _, raw := range []string{
+		"other/demo",
+		"https://github.com/other/demo.git",
+		"https://user:pass@github.com/acme/demo.git",
+		"https://gitlab.com/acme/demo.git",
+	} {
+		if got, err := ownerBoundPlatformRepositoryName(raw, "acme"); err == nil {
+			t.Fatalf("unsafe repository %q resolved to %q", raw, got)
+		}
+	}
+}
+
+func TestPlatformAppDomainUpdateRejectsHEADWithoutGitHubAuthority(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/api/v1/applications/app1" {
+			t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+		}
+		_, _ = response.Write([]byte(platformDomainAppAtCommit("http://demo.example.com", "main", "HEAD", "running:healthy")))
+	}))
+	defer server.Close()
+
+	service := configuredPlatformService(t, config.ModeAllow, server.URL)
+	service.WithGitHub(nil)
+	if _, err := service.PlatformAppDomainUpdatePreview("app1", "https://demo.example.com"); err == nil || !strings.Contains(err.Error(), "GitHub is required") {
+		t.Fatalf("HEAD without GitHub authority must fail closed: %v", err)
 	}
 }
 

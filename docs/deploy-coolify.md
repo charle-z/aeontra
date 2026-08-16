@@ -166,6 +166,12 @@ previous domain and reports failure. Certificate issuance and the final public T
 probe remain separate observed facts; never advertise HTTPS until a normal
 certificate-valid request succeeds.
 
+When Coolify represents the configured commit as `HEAD`, preview resolves the exact
+owner-bound GitHub repository branch and requires the latest finished deployment to
+match that SHA. Execution resolves it again before and after the domain-only patch, so
+a moving branch or a repository outside `GITHUB_OWNER` fails closed. An application
+already pinned to an exact commit does not require this compatibility lookup.
+
 ## Optional private validation runner
 
 JavaScript validation that requires a container engine belongs in the separately
