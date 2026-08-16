@@ -8,7 +8,7 @@ RUN npm ci --no-audit --no-fund \
     && install -m 0755 ./node_modules/opencode-linux-x64/bin/opencode /opt/opencode/opencode-1.18.1 \
     && test "$(/opt/opencode/opencode-1.18.1 --version)" = "1.18.1"
 
-FROM golang:1.26.5-bookworm AS test-build
+FROM golang:1.26.6-bookworm AS test-build
 
 WORKDIR /workspace
 COPY go.mod go.sum ./
@@ -27,7 +27,7 @@ RUN BUNDLE_PUBLIC_KEY="$(go run ./cmd/mcp-bundle-keygen --output /tmp/opencode-e
     && rm /tmp/opencode-e2e-release.key \
     && go test -c -tags=opencode_e2e -o /out/mcp-devbox-opencode-e2e ./internal/mcpserver
 
-FROM golang:1.26.5-bookworm
+FROM golang:1.26.6-bookworm
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git ripgrep strace \
