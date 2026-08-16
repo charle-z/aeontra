@@ -196,7 +196,11 @@ freezes its repository, branch, commit, build, port, healthcheck, destination, r
 options and deployment identity. Execution sends only Coolify's `domains` field with
 conflict override disabled, dispatches no deployment, revalidates the frozen state, and
 restores the previous domain if post-write verification detects drift. An empty domain
-policy grants no domain authority.
+policy grants no domain authority. Coolify's `git_commit_sha=HEAD` compatibility value
+is never compared literally with a deployment SHA: MCP Devbox resolves only the
+configured owner's exact repository branch through GitHub, seals the result into the
+plan and resolves it again during execution. A moved branch, malformed repository or
+different owner fails closed without patching the application.
 
 ## Edge trust and signed releases
 
