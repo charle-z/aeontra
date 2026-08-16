@@ -13,6 +13,10 @@ var (
 
 func (f *FrontDoor) storeSnapshot(next *snapshot) {
 	f.stateMu.Lock()
+	previous := f.state.Load()
+	if next != nil && next.Ready && (previous == nil || !previous.Ready) {
+		f.backendGeneration.Add(1)
+	}
 	f.state.Store(next)
 	close(f.stateChanged)
 	f.stateChanged = make(chan struct{})

@@ -16,7 +16,7 @@ func TestJournalPersistsTransitionsAndPublishesSafeEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 7, 14, 20, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 	journal.now = func() time.Time { return now }
 	events, cancel := journal.Subscribe()
 	defer cancel()

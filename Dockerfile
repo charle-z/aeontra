@@ -20,7 +20,7 @@ RUN GOMAXPROCS=${BUILD_GOMAXPROCS} \
 	UV_THREADPOOL_SIZE=${BUILD_UV_THREADPOOL_SIZE} \
 	pnpm console:build
 
-FROM golang:1.26.5-alpine3.24 AS build
+FROM golang:1.26.6-alpine3.24 AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
 # --build-arg GIT_SHA=$(git rev-parse HEAD). It is baked into the binary via -ldflags so
@@ -49,7 +49,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 # Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can
 # run common Go and web project checks in the VPS container. (Bigger image, but this
 # is a dev-agent box.)
-FROM golang:1.26.5-alpine3.24
+FROM golang:1.26.6-alpine3.24
 
 # OCI metadata (good practice; helps registries/scanners identify the image).
 # For fully reproducible prod builds, pin the base by digest (golang:1.26-alpine@sha256:...).
@@ -59,28 +59,39 @@ LABEL org.opencontainers.image.title="mcp-devbox" \
 
 RUN apk add --no-cache ca-certificates git nodejs \
 	&& npm_archive=/tmp/npm-12.0.1.tgz \
-	&& brace_archive=/tmp/brace-expansion-5.0.8.tgz \
+	&& brace_archive=/tmp/brace-expansion-5.0.9.tgz \
+	&& ip_archive=/tmp/ip-address-10.3.1.tgz \
 	&& busybox wget -qO "$npm_archive" https://registry.npmjs.org/npm/-/npm-12.0.1.tgz \
-	&& busybox wget -qO "$brace_archive" https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.8.tgz \
+	&& busybox wget -qO "$brace_archive" https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz \
+	&& busybox wget -qO "$ip_archive" https://registry.npmjs.org/ip-address/-/ip-address-10.3.1.tgz \
 	&& printf '%s  %s\n' 5e02bea4c784df1c3bbea9e55c7d2232329e1d1920c254789833ed9e8b0a5f16 "$npm_archive" \
 		| busybox sha256sum -c - \
-	&& printf '%s  %s\n' a03b06e66d862d0278b1ff45b66427f245f99c665800dc9bd790c0c13d2247fe "$brace_archive" \
+	&& printf '%s  %s\n' 5d06001fddd25cbee90c96db4dc5b7b57711b984c3141e28d10f143deb52dbaf "$brace_archive" \
 		| busybox sha256sum -c - \
-	&& mkdir -p /tmp/npm-unpack /tmp/brace-unpack /usr/local/lib/node_modules \
+	&& printf '%s  %s\n' ad1790063beea11a312c801df30d58e147de762f4f77787552376eb7424623e5 "$ip_archive" \
+		| busybox sha256sum -c - \
+	&& mkdir -p /tmp/npm-unpack /tmp/brace-unpack /tmp/ip-unpack /usr/local/lib/node_modules \
 	&& busybox tar -xzf "$npm_archive" -C /tmp/npm-unpack \
 	&& busybox tar -xzf "$brace_archive" -C /tmp/brace-unpack \
+	&& busybox tar -xzf "$ip_archive" -C /tmp/ip-unpack \
 	&& rm -rf /tmp/npm-unpack/package/node_modules/brace-expansion \
 	&& mkdir -p /tmp/npm-unpack/package/node_modules/brace-expansion \
 	&& cp -a /tmp/brace-unpack/package/. /tmp/npm-unpack/package/node_modules/brace-expansion/ \
+	&& rm -rf /tmp/npm-unpack/package/node_modules/ip-address \
+	&& mkdir -p /tmp/npm-unpack/package/node_modules/ip-address \
+	&& cp -a /tmp/ip-unpack/package/. /tmp/npm-unpack/package/node_modules/ip-address/ \
 	&& mv /tmp/npm-unpack/package /usr/local/lib/node_modules/npm \
 	&& ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 	&& ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
 	&& test "$(npm --version)" = 12.0.1 \
 	&& test "$(node -p \
-		"require('/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json').version")" = 5.0.8 \
+		"require('/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json').version")" = 5.0.9 \
+	&& test "$(node -p \
+		"require('/usr/local/lib/node_modules/npm/node_modules/ip-address/package.json').version")" = 10.3.1 \
 	&& test "$(find /usr/local/lib/node_modules/npm -path '*/brace-expansion/package.json' -type f | wc -l)" -eq 1 \
+	&& test "$(find /usr/local/lib/node_modules/npm -path '*/ip-address/package.json' -type f | wc -l)" -eq 1 \
 	&& test ! -e /usr/lib/node_modules/npm \
-	&& rm -rf "$npm_archive" "$brace_archive" /tmp/npm-unpack /tmp/brace-unpack \
+	&& rm -rf "$npm_archive" "$brace_archive" "$ip_archive" /tmp/npm-unpack /tmp/brace-unpack /tmp/ip-unpack \
 	&& (corepack enable 2>/dev/null || true) \
 	&& addgroup -S mcpdevbox \
 	&& adduser -S -D -H -u 10001 -G mcpdevbox mcpdevbox \
