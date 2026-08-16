@@ -50,13 +50,6 @@ contract is a content-bounded checkpoint plus a resumable task identity. Any lat
 automation must remain optional, use a manually authenticated browser profile and fail
 without replaying consequential effects.
 
-The next orchestration layer is planned as P17. It adds a durable objective supervisor,
-fair handling of multiple pending model turns, task-specific semantic evaluation,
-review/CI/integration control, compact continuation checkpoints, optional per-worker
-model backends and content-free efficiency metrics. It does not automate ChatGPT by
-screen coordinates and it does not enlarge Edge, GitHub or deployment authority. See
-`docs/analysis/p17-durable-objective-supervisor.md`.
-
 ## Status snapshot — 2026-07-18
 
 This table distinguishes implemented state from roadmap intent. Detailed acceptance
