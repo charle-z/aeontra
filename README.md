@@ -120,8 +120,9 @@ fail if the relevant repository, branch, application, target, or configuration c
   no-force publication from a registered Edge checkout, owner-bound repository
   operations, exact-head PR/check diagnostics, planned publication, green-gated merge,
   and a private direct-Edge broker built on fixed official `gh` operations.
-- **Coolify:** bounded status/log reads and planned application creation or deployment
-  under configured server, project, application, domain, and repository boundaries.
+- **Coolify:** bounded status/log reads, planned application creation or deployment,
+  and reviewed HTTPS-domain promotion under configured server, project, application,
+  domain, and repository boundaries.
 - **Brain:** persistent Markdown truth with owner-curated and agent-working trust levels,
   local Git history, and a disposable search index.
 - **Control plane and Edge:** durable opaque coordination with signed releases and local

@@ -71,6 +71,8 @@ func (s *Server) register() {
 
 	catalog.RegisterPlatformAppPreview(s.addCatalogTool, platformAppPreviewAdapter{service: s.svc})
 
+	catalog.RegisterPlatformDomain(s.addCatalogTool, s.svc)
+
 	catalog.RegisterFrontDoorPlatform(s.addCatalogTool, frontDoorPlatformAdapter{service: s.svc})
 
 	catalog.RegisterFrontDoorCoordinator(s.addCatalogTool, frontDoorCoordinatorAdapter{service: s.svc})

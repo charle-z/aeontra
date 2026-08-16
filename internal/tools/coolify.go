@@ -446,7 +446,7 @@ func validCoolifyBuildPack(v string) bool {
 
 func (c *CoolifyClient) domainAllowed(raw string) bool {
 	if len(c.allowedDomainRules) == 0 {
-		return true
+		return false
 	}
 	host := strings.ToLower(strings.TrimSpace(raw))
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {
