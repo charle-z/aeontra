@@ -46,7 +46,7 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 		return r.head, nil
 	case "branch --show-current":
 		return branch, nil
-	case "status --porcelain=v1 --untracked-files=all":
+	case "status --porcelain=v1 --untracked-files=normal":
 		if r.dirty {
 			return " M dirty.go", nil
 		}

@@ -140,7 +140,7 @@ inspector runs only fixed, read-only Git operations with no shell:
 git rev-parse --show-toplevel
 git remote get-url origin
 git remote get-url --push origin
-git status --porcelain=v1 --untracked-files=all
+git status --porcelain=v1 --untracked-files=normal
 ```
 
 Host and global Git configuration are disabled, hooks are disabled, file-protocol
@@ -315,7 +315,7 @@ runs exactly these fixed Git commands in that workspace:
 ```text
 git rev-parse --verify HEAD
 git branch --show-current
-git status --porcelain=v1 --untracked-files=all
+git status --porcelain=v1 --untracked-files=normal
 ```
 
 The response is bounded to operation identity, reuse state, project/repository/target,

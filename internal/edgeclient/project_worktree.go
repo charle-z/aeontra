@@ -365,7 +365,7 @@ func (m *ProjectWorktreeManager) collectEvidence(ctx context.Context, snapshot *
 	if _, err := m.runner.Run(ctx, snapshot.path, []string{"merge-base", "--is-ancestor", snapshot.BaseCommit, head}, m.credential); err != nil {
 		return ErrProjectWorktreeBaseChanged
 	}
-	status, err := m.runner.Run(ctx, snapshot.path, []string{"status", "--porcelain=v1", "--untracked-files=all"}, m.credential)
+	status, err := m.runner.Run(ctx, snapshot.path, ProjectCheckoutStatusArgs(), m.credential)
 	if err != nil {
 		return ErrProjectWorktreeUnavailable
 	}
@@ -459,7 +459,7 @@ func (m *ProjectWorktreeManager) Cleanup(ctx context.Context, request ProjectWor
 	if err := m.revalidate(ctx, snapshot); err != nil {
 		return ProjectWorktreeSnapshot{}, false, err
 	}
-	status, err := m.runner.Run(ctx, snapshot.path, []string{"status", "--porcelain=v1", "--untracked-files=all"}, m.credential)
+	status, err := m.runner.Run(ctx, snapshot.path, ProjectCheckoutStatusArgs(), m.credential)
 	if err != nil {
 		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
 	}

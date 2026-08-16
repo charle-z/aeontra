@@ -2,6 +2,24 @@ package edgeclient
 
 import "testing"
 
+func TestProjectCheckoutStatusArgsUseBoundedUntrackedScan(t *testing.T) {
+	args := ProjectCheckoutStatusArgs()
+	want := []string{"status", "--porcelain=v1", "--untracked-files=normal"}
+	if len(args) != len(want) {
+		t.Fatalf("status args length=%d want %d", len(args), len(want))
+	}
+	for index := range want {
+		if args[index] != want[index] {
+			t.Fatalf("status arg %d=%q want %q", index, args[index], want[index])
+		}
+	}
+
+	args[2] = "--untracked-files=all"
+	if ProjectCheckoutStatusArgs()[2] != "--untracked-files=normal" {
+		t.Fatal("caller mutation changed the fixed status invocation")
+	}
+}
+
 func TestProjectCheckoutStatusCleanIgnoresOnlyUntrackedManagedRuntime(t *testing.T) {
 	tests := []struct {
 		name   string

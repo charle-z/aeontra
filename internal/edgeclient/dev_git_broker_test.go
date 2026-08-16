@@ -40,7 +40,7 @@ func (runner *fakeDevGitRunner) Run(_ context.Context, dir string, args []string
 		return runner.branch + "\n", nil
 	case joined == "rev-parse HEAD":
 		return runner.head + "\n", nil
-	case joined == "status --porcelain=v1 --untracked-files=all":
+	case joined == "status --porcelain=v1 --untracked-files=normal":
 		return runner.status, nil
 	case strings.HasPrefix(joined, "ls-remote --heads origin "):
 		if runner.remoteHead == "" {
