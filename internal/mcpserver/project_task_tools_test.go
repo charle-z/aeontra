@@ -401,6 +401,47 @@ func TestProjectTaskSemanticStatePrecedenceIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestProjectTaskSemanticStatesRemainHonestWithoutReconciliationStores(t *testing.T) {
+	taskCases := []struct {
+		state workqueue.TaskState
+		want  string
+	}{
+		{state: workqueue.TaskCompleted, want: "acceptance_pending"},
+		{state: workqueue.TaskFailed, want: "failed"},
+		{state: workqueue.TaskCancelled, want: "cancelled"},
+		{state: workqueue.TaskRunning, want: "running"},
+	}
+	for _, tc := range taskCases {
+		if got := projectTaskSemanticState(tc.state); got != tc.want {
+			t.Fatalf("task state %s mapped to %s, want %s", tc.state, got, tc.want)
+		}
+	}
+
+	workerCases := []struct {
+		state       workqueue.State
+		wantState   string
+		wantRuntime string
+		wantAccept  string
+	}{
+		{state: workqueue.StateSucceeded, wantState: "acceptance_pending", wantRuntime: string(modelturn.RuntimeStateCompleted), wantAccept: "pending"},
+		{state: workqueue.StateFailed, wantState: "failed", wantRuntime: string(modelturn.RuntimeStateFailed), wantAccept: "failed"},
+		{state: workqueue.StateCancelled, wantState: "cancelled", wantRuntime: string(modelturn.RuntimeStateCancelled), wantAccept: "cancelled"},
+		{state: workqueue.StateLeased, wantState: "running", wantRuntime: "", wantAccept: "not_ready"},
+	}
+	for _, tc := range workerCases {
+		state, runtimeState, acceptance := projectTaskWorkerSemanticState(workqueue.TaskWorker{State: tc.state})
+		if state != tc.wantState || runtimeState != tc.wantRuntime || acceptance != tc.wantAccept {
+			t.Fatalf("worker state %s mapped to (%s,%s,%s), want (%s,%s,%s)", tc.state, state, runtimeState, acceptance, tc.wantState, tc.wantRuntime, tc.wantAccept)
+		}
+	}
+
+	task := workqueue.TaskGroup{State: workqueue.TaskCompleted, Workers: []workqueue.TaskWorker{{State: workqueue.StateSucceeded}}}
+	view := (&Server{}).projectTaskStatusView(context.Background(), task)
+	if view.State != "reconciliation_required" || len(view.Workers) != 1 || view.Workers[0].RuntimeState != "unknown" || view.Workers[0].AcceptanceState != "reconciliation_required" {
+		t.Fatalf("view without reconciliation stores=%+v", view)
+	}
+}
+
 func TestProjectTaskToolsFailClosedWithoutRequiredStores(t *testing.T) {
 	server, _ := modelTurnServer(t)
 	for name, body := range map[string]string{
