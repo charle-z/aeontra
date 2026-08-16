@@ -203,7 +203,8 @@ func TestSQLiteJournalEventsSurviveRestartWithStableCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 7, 17, 6, 0, 0, 123456789, time.UTC)
+	now := time.Now().UTC().Add(-time.Hour).Truncate(time.Second).Add(123456789)
+	firstOccurredAt := now
 	journal.now = func() time.Time { return now }
 	if err := journal.Start(testTaskID, "repo_status", "http"); err != nil {
 		t.Fatal(err)
@@ -229,7 +230,7 @@ func TestSQLiteJournalEventsSurviveRestartWithStableCursor(t *testing.T) {
 	if err != nil || len(second.Events) != 1 || second.Events[0].EventID == first.Events[0].EventID || second.HasMore {
 		t.Fatalf("second=%+v err=%v", second, err)
 	}
-	if second.Events[0].OccurredAt.Format(time.RFC3339Nano) != "2026-07-17T06:00:00.123456789Z" {
-		t.Fatalf("timestamp=%s", second.Events[0].OccurredAt.Format(time.RFC3339Nano))
+	if !second.Events[0].OccurredAt.Equal(firstOccurredAt) {
+		t.Fatalf("timestamp=%s want=%s", second.Events[0].OccurredAt.Format(time.RFC3339Nano), firstOccurredAt.Format(time.RFC3339Nano))
 	}
 }
