@@ -8,7 +8,27 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestProjectGitRunnerAllowsLongerStatusInspection(t *testing.T) {
+	gitPath := filepath.Join(t.TempDir(), "git")
+	if err := os.WriteFile(gitPath, []byte("#!/bin/sh\nif [ \"$1\" = status ]; then sleep 1; exit 0; fi\nwhile :; do :; done\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runner := projectGitRunner{
+		gitPath:        gitPath,
+		commandTimeout: 50 * time.Millisecond,
+		statusTimeout:  5 * time.Second,
+	}
+
+	if _, err := runner.run(context.Background(), t.TempDir(), "status", "--porcelain=v1"); err != nil {
+		t.Fatalf("status must receive the longer inspection budget: %v", err)
+	}
+	if _, err := runner.run(context.Background(), t.TempDir(), "rev-parse", "--show-toplevel"); err == nil {
+		t.Fatal("non-status metadata command unexpectedly received the status budget")
+	}
+}
 
 func TestLocalProjectCheckoutInspectorClassifiesReadyDirtyAndRemoteDrift(t *testing.T) {
 	repository := createProjectCheckoutFixture(t, "https://github.com/charle-z/ekoparty-trip-agent.git")
