@@ -15,14 +15,16 @@ import (
 )
 
 type projectGitSyncRunner struct {
-	head, remote     string
-	branch, upstream string
-	status           string
-	dirty            bool
-	relation         string
-	published        bool
-	calls            []string
-	credentialCalls  []string
+	head, remote        string
+	branch, upstream    string
+	status              string
+	dirty               bool
+	relation            string
+	trackingMissing     bool
+	remoteObjectMissing bool
+	published           bool
+	calls               []string
+	credentialCalls     []string
 }
 
 func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, credential edgeclient.GitHubCredential) (string, error) {
@@ -59,8 +61,14 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 		}
 		return r.remote + "\trefs/heads/" + branch + "\n", nil
 	case "rev-parse --verify refs/remotes/origin/" + branch:
+		if r.trackingMissing {
+			return "", errors.New("tracking ref is unavailable")
+		}
 		return r.remote, nil
 	case "rev-list --left-right --count " + r.head + "..." + r.remote:
+		if r.remoteObjectMissing {
+			return "", errors.New("remote object is unavailable")
+		}
 		if r.head == r.remote {
 			return "0\t0", nil
 		}
@@ -71,6 +79,9 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 	case "merge-base --is-ancestor " + r.head + " " + r.remote:
 		return "", nil
 	case "merge-base --is-ancestor " + r.remote + " " + r.head:
+		if r.remoteObjectMissing {
+			return "", errors.New("remote object is unavailable")
+		}
 		return "", nil
 	case "fetch --no-tags origin refs/heads/" + branch + ":refs/remotes/origin/" + branch:
 		return "", nil
@@ -80,6 +91,7 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 	case "push --porcelain --set-upstream origin " + branch + ":refs/heads/" + branch:
 		r.remote = r.head
 		r.upstream = "origin/" + branch
+		r.trackingMissing = false
 		r.published = true
 		return "To https://github.com/charle-z/repo.git\n* refs/heads/" + branch + ":refs/heads/" + branch + " [new branch]", nil
 	default:
@@ -177,6 +189,36 @@ func TestProjectGitPublishPlanIsExactSingleUseAndOwnerBound(t *testing.T) {
 		if strings.Contains(call, "--force") || strings.Contains(call, "--tags") || strings.Contains(call, "github_pat") {
 			t.Fatalf("unsafe publication call: %s", call)
 		}
+	}
+}
+
+func TestProjectGitPublishAllowsLocallyProvableAdvanceWithoutCurrentTrackingRef(t *testing.T) {
+	stateRoot := t.TempDir()
+	runner := &projectGitSyncRunner{
+		head: "1123456789abcdef0123456789abcdef01234567", remote: "0123456789abcdef0123456789abcdef01234567",
+		branch: "feat/download-maze-mvp", relation: "1\t0", trackingMissing: true,
+	}
+	resolved := projectGitResolution()
+	preview, err := previewProjectGitPublish(context.Background(), stateRoot, resolved, runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}, time.Now().UTC())
+	if err != nil || preview.GitPlanID == "" || preview.GitRemoteHead != runner.remote || preview.GitAhead != 1 || preview.GitBehind != 0 || preview.GitFetched {
+		t.Fatalf("preview=%+v err=%v", preview, err)
+	}
+	executed, err := executeProjectGitPublish(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}, time.Now().UTC())
+	if err != nil || !executed.GitPublished || executed.GitHead != runner.head || executed.GitRemoteHead != runner.head || !runner.published {
+		t.Fatalf("execute=%+v published=%v err=%v", executed, runner.published, err)
+	}
+}
+
+func TestProjectGitPublishRejectsRemoteCommitThatCannotBeProvedLocally(t *testing.T) {
+	runner := &projectGitSyncRunner{
+		head: "1123456789abcdef0123456789abcdef01234567", remote: "0123456789abcdef0123456789abcdef01234567",
+		branch: "feat/download-maze-mvp", trackingMissing: true, remoteObjectMissing: true,
+	}
+	if preview, err := previewProjectGitPublish(context.Background(), t.TempDir(), projectGitResolution(), runner, edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}, time.Now().UTC()); err == nil || preview.GitPlanID != "" {
+		t.Fatalf("preview=%+v err=%v", preview, err)
+	}
+	if runner.published {
+		t.Fatal("publication ran without locally provable ancestry")
 	}
 }
 

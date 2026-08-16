@@ -161,8 +161,10 @@ The registered development checkout has a separate closed Git synchronization pa
   runs only `git merge --ff-only` of the recorded remote commit;
 - `project_git_publish_preview` requires a clean attached branch and binds a private
   five-minute plan to the exact local HEAD plus the current same-name remote branch.
-  An existing remote branch must have current tracking state and be an ancestor of the
-  local HEAD; a missing remote branch is bound explicitly as absent;
+  An existing remote commit must already be locally resolvable and be a proven ancestor
+  of the local HEAD; a stale or absent remote-tracking ref is reported but does not
+  override that exact object-level proof. A missing remote branch is bound explicitly
+  as absent;
 - `project_git_publish` consumes that plan once, revalidates the checkout and live remote
   state, and runs only a no-force push of the bound branch to its same-name branch on the
   fixed owner-bound `origin`.

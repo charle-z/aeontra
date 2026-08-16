@@ -63,7 +63,7 @@ do not replace server-side enforcement.
 | `project_git_fetch` | 0/0/1/1 | Fetch exactly `origin` with `--no-tags` and an Edge-constructed current-branch refspec, using the existing private Git broker credential; no caller refspec is accepted. |
 | `project_git_fast_forward_preview` | 1/0/1/1 | Create a five-minute Edge-owned single-use plan bound to project, target, branch, clean tree, local HEAD and fetched remote HEAD. Dirty, detached, ahead or diverged checkouts fail closed. |
 | `project_git_fast_forward` | 0/0/1/1 | Consume and revalidate one exact plan, then run only `git merge --ff-only <bound-commit>`; no reset, checkout, force, tags, URL or free refspec exists. |
-| `project_git_publish_preview` | 1/0/1/1 | Create a five-minute Edge-owned single-use publication plan bound to the exact clean attached branch, local HEAD and current same-name remote-branch state. Existing remote branches must be fetched and fast-forwardable. |
+| `project_git_publish_preview` | 1/0/1/1 | Create a five-minute Edge-owned single-use publication plan bound to the exact clean attached branch, local HEAD and current same-name remote-branch state. An existing remote commit must be locally resolvable and a proven ancestor; a stale optional tracking ref does not replace that proof. |
 | `project_git_publish` | 0/0/1/1 | Consume and revalidate one exact publication plan, then push only the bound branch to its same-name branch on the fixed owner-bound `origin` with no force, tags, caller URL or caller refspec. |
 | `project_toolbox_create` | 0/1/1/1 | Create or recover one persistent Debian rootfs through the registered workspace's user-owned rootless engine. Optional CPU, memory and process limits are range-checked; omitted values receive broad server-owned defaults. The fixed rootless endpoint is available inside the toolbox; packages and caches persist until explicit cleanup. |
 | `project_toolbox_status` | 1/0/1/1 | Return only opaque lifecycle/base identity, applied resource limits, rootless-engine availability, writable/rootfs byte usage and timestamps; host paths, socket path and container identity remain private. |
@@ -139,7 +139,7 @@ do not replace server-side enforcement.
 | `source_public_pull_request_status` | 1/0/1/1 | Read one public PR, exact-head checks, reviews and conversation comments. |
 | `source_pull_request_create_preview` | 1/0/1/1 | Bind head/base SHAs and plan one non-draft pull request. |
 | `source_pull_request_create` | 0/0/0/1 | Revalidate branch SHAs and create the planned pull request. |
-| `source_pull_request_status` | 1/0/1/1 | Read PR state and every check/status context for the exact head SHA. |
+| `source_pull_request_status` | 1/0/1/1 | Read PR state and every check/status context for the exact head SHA. A generic required-checks denial keeps evidence incomplete; only GitHub's exact feature-unavailable response for an ineligible private repository proves that no required-check feature exists. |
 | `source_pull_request_failure_diagnostics` | 1/0/1/1 | Read failed jobs on the exact PR head and return failed steps, annotations and line-numbered redacted log context. |
 | `source_pull_request_job_log` | 1/0/1/1 | Read one exact job log in redacted byte chunks with `next_offset`; no job ID, token or signed URL is exposed. |
 | `source_pull_request_merge_preview` | 1/0/1/1 | Require mergeable state and completely green checks, then plan a merge commit. |
