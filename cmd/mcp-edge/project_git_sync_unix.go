@@ -97,11 +97,13 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 	}
 	result.GitRemoteHead = fields[0]
 	tracked, trackErr := runProjectGitLocal(ctx, runner, resolved, "rev-parse", "--verify", "refs/remotes/origin/"+branch)
-	if trackErr != nil || tracked != result.GitRemoteHead {
+	if trackErr == nil && tracked == result.GitRemoteHead {
+		result.GitFetched = true
+	}
+	counts, err := runProjectGitLocal(ctx, runner, resolved, "rev-list", "--left-right", "--count", head+"..."+result.GitRemoteHead)
+	if err != nil && !result.GitFetched {
 		return result, nil
 	}
-	result.GitFetched = true
-	counts, err := runProjectGitLocal(ctx, runner, resolved, "rev-list", "--left-right", "--count", head+"..."+tracked)
 	parts := strings.Fields(counts)
 	if err != nil || len(parts) != 2 {
 		return edge.OperationResult{}, errors.New("project Git relation is unavailable")
@@ -186,9 +188,6 @@ func previewProjectGitPublish(ctx context.Context, stateRoot string, resolved ed
 		return edge.OperationResult{}, errors.New("project Git checkout cannot publish")
 	}
 	if status.GitRemoteHead != "" {
-		if !status.GitFetched {
-			return edge.OperationResult{}, errors.New("project Git remote branch must be fetched before publication")
-		}
 		if _, err := runProjectGitLocal(ctx, runner, resolved, "merge-base", "--is-ancestor", status.GitRemoteHead, status.GitHead); err != nil {
 			return edge.OperationResult{}, errors.New("project Git publication would not fast-forward")
 		}
@@ -215,9 +214,6 @@ func executeProjectGitPublish(ctx context.Context, stateRoot string, resolved ed
 		return edge.OperationResult{}, errors.New("project Git publication state changed")
 	}
 	if status.GitRemoteHead != "" {
-		if !status.GitFetched {
-			return edge.OperationResult{}, errors.New("project Git publication tracking state changed")
-		}
 		if _, err := runProjectGitLocal(ctx, runner, resolved, "merge-base", "--is-ancestor", status.GitRemoteHead, status.GitHead); err != nil {
 			return edge.OperationResult{}, errors.New("project Git publication would not fast-forward")
 		}

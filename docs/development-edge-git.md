@@ -186,8 +186,10 @@ starting OpenCode. `project_git_status`, `project_git_fetch`,
 `project_git_publish_preview`, and `project_git_publish` operate only on the checkout
 already bound to a human project alias and Edge target. Status accepts an attached
 local branch whose same-name remote branch does not exist yet. Publication then binds
-the clean branch, exact local HEAD and current remote absence or exact fetched remote
-HEAD into a private plan before a fixed no-force same-name push. The caller cannot
+the clean branch, exact local HEAD and current remote absence or exact remotely observed
+HEAD into a private plan before a fixed no-force same-name push. An existing remote
+commit must be locally resolvable and a proven ancestor even when the optional tracking
+ref is stale or absent. The caller cannot
 supply a repository, URL, remote, refspec, tags, force option or credential.
 
 The credential stays in the askpass child environment, while the public result contains

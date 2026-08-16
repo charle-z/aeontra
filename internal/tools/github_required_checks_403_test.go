@@ -43,3 +43,26 @@ func TestGitHubRequiredChecks403KeepsStatusVisibleAndMergeClosed(t *testing.T) {
 		t.Fatalf("preview=%q err=%v", preview, err)
 	}
 }
+
+func TestGitHubUnavailablePrivateBranchProtectionAcceptsCompleteGreenEvidence(t *testing.T) {
+	fixture := evidenceFixture{
+		checkTotal:   1,
+		checkPages:   map[int][]map[string]string{1: {{"name": "Verify", "status": "completed", "conclusion": "success"}}},
+		requiredCode: http.StatusForbidden,
+		requiredBody: `{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature.","documentation_url":"https://docs.github.com/rest/branches/branch-protection#get-status-checks-protection","status":"403"}`,
+		pull:         true,
+	}
+	server := newEvidenceServer(t, fixture)
+	defer server.Close()
+
+	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithGitHub(NewGitHubClient(server.URL, "token", "acme", "org", "private"))
+	status, err := svc.SourcePullRequestStatus("demo", 7)
+	if err != nil || !strings.Contains(status, "all_checks_green: true") || !strings.Contains(status, "evidence_complete: true") || !strings.Contains(status, "required_checks: feature_unavailable") {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+	preview, err := svc.SourcePullRequestMergePreview("demo", 7)
+	if err != nil || !strings.Contains(preview, "evidence_complete: true") {
+		t.Fatalf("preview=%q err=%v", preview, err)
+	}
+}
