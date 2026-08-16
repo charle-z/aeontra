@@ -80,6 +80,8 @@ func projectWorktreeResult(resolved edgeclient.ProjectResolution, snapshot edgec
 		ProjectTarget: resolved.TargetAlias, ProjectState: resolved.SafeState(), ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
 		WorktreeID: snapshot.ID, WorktreeState: string(snapshot.State), WorktreeRole: string(snapshot.Role),
 		WorktreeBaseCommit: snapshot.BaseCommit, WorktreeBranch: snapshot.Branch,
+		WorktreeEvidenceKnown: snapshot.EvidenceKnown, WorktreeHeadCommit: snapshot.HeadCommit, WorktreeClean: snapshot.Clean,
+		WorktreeCommitsAheadBase: snapshot.CommitsAheadBase, WorktreeChangedPathCount: snapshot.ChangedPathCount,
 		WorkJobID: snapshot.JobID, WorkLeaseID: snapshot.LeaseID, WorkFence: snapshot.Fence,
 		WorktreeCreatedAt: snapshot.CreatedAt.UTC().Format(time.RFC3339Nano), WorktreeUpdatedAt: snapshot.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}

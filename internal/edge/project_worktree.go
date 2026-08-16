@@ -75,6 +75,7 @@ func emptyProjectWorktreeRequestFields(request OperationRequest) bool {
 
 func hasProjectWorktreeResult(result OperationResult) bool {
 	return result.WorktreeID != "" || result.WorktreeState != "" || result.WorktreeRole != "" || result.WorktreeBaseCommit != "" || result.WorktreeBranch != "" ||
+		result.WorktreeEvidenceKnown || result.WorktreeHeadCommit != "" || result.WorktreeClean || result.WorktreeCommitsAheadBase != 0 || result.WorktreeChangedPathCount != 0 ||
 		result.WorkJobID != "" || result.WorkLeaseID != "" || result.WorkFence != 0 || result.WorktreeCreatedAt != "" || result.WorktreeUpdatedAt != "" || len(result.Worktrees) != 0
 }
 
@@ -108,8 +109,20 @@ func validProjectWorktreeResultForKind(kind OperationKind, result OperationResul
 	if kind != OperationProjectWorktreeCleanup && result.WorktreeState != "ready" {
 		return false
 	}
+	hasEvidence := result.WorktreeEvidenceKnown || result.WorktreeHeadCommit != "" || result.WorktreeClean || result.WorktreeCommitsAheadBase != 0 || result.WorktreeChangedPathCount != 0
+	if kind == OperationProjectWorktreeStatus {
+		if !result.WorktreeEvidenceKnown || !projectWorktreeCommitPattern.MatchString(result.WorktreeHeadCommit) ||
+			result.WorktreeCommitsAheadBase < 0 || result.WorktreeCommitsAheadBase > 10000 || result.WorktreeChangedPathCount < 0 || result.WorktreeChangedPathCount > 10000 ||
+			((result.WorktreeHeadCommit == result.WorktreeBaseCommit) != (result.WorktreeCommitsAheadBase == 0)) {
+			return false
+		}
+	} else if hasEvidence {
+		return false
+	}
 	metadata := result
 	metadata.WorktreeID, metadata.WorktreeState, metadata.WorktreeRole, metadata.WorktreeBaseCommit, metadata.WorktreeBranch = "", "", "", "", ""
+	metadata.WorktreeEvidenceKnown, metadata.WorktreeHeadCommit, metadata.WorktreeClean = false, "", false
+	metadata.WorktreeCommitsAheadBase, metadata.WorktreeChangedPathCount = 0, 0
 	metadata.WorkJobID, metadata.WorkLeaseID, metadata.WorkFence = "", "", 0
 	metadata.WorktreeCreatedAt, metadata.WorktreeUpdatedAt = "", ""
 	return validProjectOperationResult(metadata)

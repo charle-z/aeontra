@@ -45,26 +45,36 @@ type projectTaskCleanupParams struct {
 }
 
 type projectTaskWorkerView struct {
-	Ordinal     int             `json:"ordinal"`
-	State       workqueue.State `json:"state"`
-	WorktreeID  string          `json:"worktree_id,omitempty"`
-	WorkspaceID string          `json:"workspace_id,omitempty"`
-	RuntimeID   string          `json:"runtime_id,omitempty"`
-	Branch      string          `json:"branch,omitempty"`
-	Summary     string          `json:"summary,omitempty"`
+	Ordinal          int             `json:"ordinal"`
+	State            string          `json:"state"`
+	LifecycleState   workqueue.State `json:"lifecycle_state"`
+	RuntimeState     string          `json:"runtime_state,omitempty"`
+	AcceptanceState  string          `json:"acceptance_state"`
+	WorktreeID       string          `json:"worktree_id,omitempty"`
+	WorkspaceID      string          `json:"workspace_id,omitempty"`
+	RuntimeID        string          `json:"runtime_id,omitempty"`
+	Branch           string          `json:"branch,omitempty"`
+	BaseCommit       string          `json:"base_commit"`
+	HeadCommit       string          `json:"head_commit,omitempty"`
+	GitEvidenceKnown bool            `json:"git_evidence_known,omitempty"`
+	Clean            *bool           `json:"clean,omitempty"`
+	CommitsAheadBase *int            `json:"commits_ahead_base,omitempty"`
+	ChangedPathCount *int            `json:"changed_path_count,omitempty"`
+	Summary          string          `json:"summary,omitempty"`
 }
 
 type projectTaskView struct {
-	TaskID      string                  `json:"task_id"`
-	Alias       string                  `json:"alias"`
-	Target      string                  `json:"target"`
-	BaseCommit  string                  `json:"base_commit"`
-	State       workqueue.TaskState     `json:"state"`
-	WorkerCount int                     `json:"worker_count"`
-	Workers     []projectTaskWorkerView `json:"workers"`
-	CreatedAt   time.Time               `json:"created_at"`
-	UpdatedAt   time.Time               `json:"updated_at"`
-	Cleaned     bool                    `json:"cleaned,omitempty"`
+	TaskID         string                  `json:"task_id"`
+	Alias          string                  `json:"alias"`
+	Target         string                  `json:"target"`
+	BaseCommit     string                  `json:"base_commit"`
+	State          string                  `json:"state"`
+	LifecycleState workqueue.TaskState     `json:"lifecycle_state"`
+	WorkerCount    int                     `json:"worker_count"`
+	Workers        []projectTaskWorkerView `json:"workers"`
+	CreatedAt      time.Time               `json:"created_at"`
+	UpdatedAt      time.Time               `json:"updated_at"`
+	Cleaned        bool                    `json:"cleaned,omitempty"`
 }
 
 func (s *Server) WithWorkQueue(store *workqueue.Store) *Server {
@@ -229,7 +239,7 @@ func (s *Server) handleProjectTaskStatus(arguments json.RawMessage) (string, err
 	if err != nil || !found {
 		return "", errors.New("project task not found")
 	}
-	return marshalToolValue(projectTaskPublicView(task, false), nil)
+	return marshalToolValue(s.projectTaskStatusView(context.Background(), task), nil)
 }
 
 func (s *Server) handleProjectTaskCancel(arguments json.RawMessage) (string, error) {
@@ -596,15 +606,148 @@ func projectTaskRuntimeOutcome(runtime modelturn.Runtime) (workqueue.State, stri
 }
 
 func projectTaskPublicView(task workqueue.TaskGroup, cleaned bool) projectTaskView {
-	view := projectTaskView{TaskID: task.ID, Alias: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, State: task.State, WorkerCount: task.WorkerCount, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt, Cleaned: cleaned, Workers: make([]projectTaskWorkerView, 0, len(task.Workers))}
+	view := projectTaskView{TaskID: task.ID, Alias: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, State: projectTaskSemanticState(task.State), LifecycleState: task.State, WorkerCount: task.WorkerCount, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt, Cleaned: cleaned, Workers: make([]projectTaskWorkerView, 0, len(task.Workers))}
 	for _, worker := range task.Workers {
 		branch := ""
 		if strings.HasPrefix(worker.WorktreeID, "wt_") {
 			branch = "codex/worktree-" + strings.TrimPrefix(worker.WorktreeID, "wt_")
 		}
-		view.Workers = append(view.Workers, projectTaskWorkerView{Ordinal: worker.Ordinal, State: worker.State, WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID, RuntimeID: worker.RuntimeID, Branch: branch, Summary: worker.Summary})
+		state, runtimeState, acceptanceState := projectTaskWorkerSemanticState(worker)
+		view.Workers = append(view.Workers, projectTaskWorkerView{Ordinal: worker.Ordinal, State: state, LifecycleState: worker.State, RuntimeState: runtimeState, AcceptanceState: acceptanceState, WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID, RuntimeID: worker.RuntimeID, Branch: branch, BaseCommit: task.BaseCommit, Summary: worker.Summary})
 	}
 	return view
+}
+
+func projectTaskSemanticState(state workqueue.TaskState) string {
+	switch state {
+	case workqueue.TaskCompleted:
+		return "acceptance_pending"
+	case workqueue.TaskFailed:
+		return "failed"
+	case workqueue.TaskCancelled:
+		return "cancelled"
+	default:
+		return "running"
+	}
+}
+
+func projectTaskWorkerSemanticState(worker workqueue.TaskWorker) (string, string, string) {
+	switch worker.State {
+	case workqueue.StateSucceeded:
+		return "acceptance_pending", string(modelturn.RuntimeStateCompleted), "pending"
+	case workqueue.StateFailed:
+		return "failed", string(modelturn.RuntimeStateFailed), "failed"
+	case workqueue.StateCancelled:
+		return "cancelled", string(modelturn.RuntimeStateCancelled), "cancelled"
+	default:
+		return "running", "", "not_ready"
+	}
+}
+
+func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskGroup) projectTaskView {
+	view := projectTaskPublicView(task, false)
+	if s.modelTurns == nil || s.edgeOperations == nil || s.edgeDevices == nil {
+		for index := range view.Workers {
+			if view.Workers[index].State == "acceptance_pending" {
+				view.Workers[index].State = "reconciliation_required"
+				view.Workers[index].RuntimeState = "unknown"
+				view.Workers[index].AcceptanceState = "reconciliation_required"
+			}
+		}
+		view.State = projectTaskViewSemanticState(view.Workers)
+		return view
+	}
+	resolver, resolverOK := s.edgeDevices.(edgeDeviceAliasRegistry)
+	device, deviceErr := edge.Device{}, errors.New("edge unavailable")
+	if resolverOK {
+		device, deviceErr = resolver.ResolveActiveDeviceName(task.Target)
+		if deviceErr == nil && !s.edgeDevices.DeviceActive(device.ID) {
+			deviceErr = errors.New("edge inactive")
+		}
+	}
+	for index, worker := range task.Workers {
+		item := &view.Workers[index]
+		if worker.RuntimeID == "" {
+			if worker.State == workqueue.StateCancelled {
+				item.RuntimeState = string(modelturn.RuntimeStateCancelled)
+			}
+			continue
+		}
+		runtime, err := s.modelTurns.Runtime(ctx, worker.RuntimeID)
+		if err != nil {
+			item.State, item.RuntimeState, item.AcceptanceState = "reconciliation_required", "unknown", "reconciliation_required"
+			continue
+		}
+		item.RuntimeState = string(runtime.State)
+		switch runtime.State {
+		case modelturn.RuntimeStateCompleted:
+			if worker.State != workqueue.StateSucceeded || worker.WorktreeID == "" || deviceErr != nil {
+				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				continue
+			}
+			status, _, statusErr := s.edgeOperations.CreateOperation(device.ID, edge.OperationProjectWorktreeStatus, edge.OperationRequest{Alias: task.Project, TargetAlias: task.Target, Profile: "linux-workcell", WorktreeID: worker.WorktreeID})
+			if statusErr == nil {
+				status, statusErr = s.edgeOperations.WaitOperation(ctx, status.ID, 10*time.Second)
+			}
+			result := status.Result
+			if statusErr != nil || status.State != edge.OperationSucceeded || !result.WorktreeEvidenceKnown || result.WorktreeID != worker.WorktreeID ||
+				result.WorktreeBaseCommit != task.BaseCommit || result.WorktreeBranch != item.Branch || result.WorktreeHeadCommit == "" {
+				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				continue
+			}
+			clean, ahead, changed := result.WorktreeClean, result.WorktreeCommitsAheadBase, result.WorktreeChangedPathCount
+			item.State, item.AcceptanceState = "acceptance_pending", "pending"
+			item.GitEvidenceKnown, item.HeadCommit = true, result.WorktreeHeadCommit
+			item.Clean, item.CommitsAheadBase, item.ChangedPathCount = &clean, &ahead, &changed
+		case modelturn.RuntimeStateFailed, modelturn.RuntimeStateExpired:
+			if worker.State == workqueue.StateFailed {
+				item.State, item.AcceptanceState = "failed", "failed"
+			} else {
+				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+			}
+		case modelturn.RuntimeStateCancelled:
+			if worker.State == workqueue.StateCancelled {
+				item.State, item.AcceptanceState = "cancelled", "cancelled"
+			} else {
+				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+			}
+		default:
+			if worker.State == workqueue.StateSucceeded || worker.State == workqueue.StateFailed || worker.State == workqueue.StateCancelled {
+				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+			} else {
+				item.State, item.AcceptanceState = "running", "not_ready"
+			}
+		}
+	}
+	view.State = projectTaskViewSemanticState(view.Workers)
+	return view
+}
+
+func projectTaskViewSemanticState(workers []projectTaskWorkerView) string {
+	allPending, anyFailed, anyReconciliation, anyRunning, anyCancelled := len(workers) > 0, false, false, false, false
+	for _, worker := range workers {
+		anyFailed = anyFailed || worker.State == "failed"
+		anyReconciliation = anyReconciliation || worker.State == "reconciliation_required"
+		anyRunning = anyRunning || worker.State == "running"
+		anyCancelled = anyCancelled || worker.State == "cancelled"
+		allPending = allPending && worker.State == "acceptance_pending"
+	}
+	if anyFailed {
+		return "failed"
+	}
+	if anyReconciliation {
+		return "reconciliation_required"
+	}
+	if anyRunning {
+		return "running"
+	}
+	if allPending {
+		return "acceptance_pending"
+	}
+	if anyCancelled {
+		return "cancelled"
+	}
+	return "running"
 }
 
 func discardTaskGoalRefs(store *modelturn.Store, refs []modelturn.RuntimeBodyReference) {

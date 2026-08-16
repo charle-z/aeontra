@@ -107,6 +107,11 @@ func (s *projectTaskEdgeStore) WaitOperation(_ context.Context, id string, _ tim
 		s.worktrees[result.WorktreeID] = result
 	case edge.OperationProjectWorktreeStatus:
 		result = s.worktrees[op.Request.WorktreeID]
+		result.WorktreeEvidenceKnown = true
+		result.WorktreeHeadCommit = "1123456789abcdef0123456789abcdef01234567"
+		result.WorktreeClean = true
+		result.WorktreeCommitsAheadBase = 1
+		result.WorktreeChangedPathCount = 1
 	case edge.OperationProjectWorktreeCleanup:
 		result = s.worktrees[op.Request.WorktreeID]
 		result.WorktreeState = "removed"
@@ -315,7 +320,12 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
-	if err != nil || !strings.Contains(status, `"state":"completed"`) {
+	if err != nil || !strings.Contains(status, `"state":"acceptance_pending"`) || !strings.Contains(status, `"lifecycle_state":"completed"`) ||
+		!strings.Contains(status, `"runtime_state":"completed"`) || !strings.Contains(status, `"acceptance_state":"pending"`) ||
+		!strings.Contains(status, `"base_commit":"0123456789abcdef0123456789abcdef01234567"`) ||
+		!strings.Contains(status, `"head_commit":"1123456789abcdef0123456789abcdef01234567"`) ||
+		!strings.Contains(status, `"clean":true`) || !strings.Contains(status, `"commits_ahead_base":1`) ||
+		!strings.Contains(status, `"changed_path_count":1`) || strings.Contains(status, `"state":"succeeded"`) {
 		t.Fatalf("status=%s err=%v", status, err)
 	}
 	cleaned, err := server.table["project_task_cleanup"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `","idempotency_key":"parallel-cleanup-finish-0001"}`))
@@ -338,6 +348,97 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 	cleaned, err = server.table["project_task_cleanup"].handler(json.RawMessage(`{"task_id":"` + queued.ID + `","idempotency_key":"parallel-cleanup-empty-0001"}`))
 	if err != nil || !strings.Contains(cleaned, `"cleaned":true`) {
 		t.Fatalf("empty cleanup=%s err=%v", cleaned, err)
+	}
+}
+
+func TestProjectTaskStatusRequiresLiveGitEvidenceForCompletedRuntime(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Commit one focused change."],"timeout_seconds":600,"idempotency_key":"parallel-evidence-0001"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	server.WithEdgeStore(&inactiveProjectTaskEdgeStore{edges})
+	status, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(status, `"state":"reconciliation_required"`) ||
+		!strings.Contains(status, `"runtime_state":"completed"`) || !strings.Contains(status, `"acceptance_state":"reconciliation_required"`) ||
+		strings.Contains(status, `"git_evidence_known":true`) || strings.Contains(status, `"state":"succeeded"`) {
+		t.Fatalf("status=%s err=%v", status, err)
+	}
+}
+
+func TestProjectTaskSemanticStatePrecedenceIsDeterministic(t *testing.T) {
+	cases := []struct {
+		name    string
+		workers []projectTaskWorkerView
+		want    string
+	}{
+		{name: "all pending", workers: []projectTaskWorkerView{{State: "acceptance_pending"}, {State: "acceptance_pending"}}, want: "acceptance_pending"},
+		{name: "failure dominates reconciliation", workers: []projectTaskWorkerView{{State: "reconciliation_required"}, {State: "failed"}}, want: "failed"},
+		{name: "reconciliation dominates running", workers: []projectTaskWorkerView{{State: "running"}, {State: "reconciliation_required"}}, want: "reconciliation_required"},
+		{name: "running dominates cancellation", workers: []projectTaskWorkerView{{State: "cancelled"}, {State: "running"}}, want: "running"},
+		{name: "terminal cancellation mix", workers: []projectTaskWorkerView{{State: "acceptance_pending"}, {State: "cancelled"}}, want: "cancelled"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := projectTaskViewSemanticState(tc.workers); got != tc.want {
+				t.Fatalf("state=%s want=%s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectTaskSemanticStatesRemainHonestWithoutReconciliationStores(t *testing.T) {
+	taskCases := []struct {
+		state workqueue.TaskState
+		want  string
+	}{
+		{state: workqueue.TaskCompleted, want: "acceptance_pending"},
+		{state: workqueue.TaskFailed, want: "failed"},
+		{state: workqueue.TaskCancelled, want: "cancelled"},
+		{state: workqueue.TaskRunning, want: "running"},
+	}
+	for _, tc := range taskCases {
+		if got := projectTaskSemanticState(tc.state); got != tc.want {
+			t.Fatalf("task state %s mapped to %s, want %s", tc.state, got, tc.want)
+		}
+	}
+
+	workerCases := []struct {
+		state       workqueue.State
+		wantState   string
+		wantRuntime string
+		wantAccept  string
+	}{
+		{state: workqueue.StateSucceeded, wantState: "acceptance_pending", wantRuntime: string(modelturn.RuntimeStateCompleted), wantAccept: "pending"},
+		{state: workqueue.StateFailed, wantState: "failed", wantRuntime: string(modelturn.RuntimeStateFailed), wantAccept: "failed"},
+		{state: workqueue.StateCancelled, wantState: "cancelled", wantRuntime: string(modelturn.RuntimeStateCancelled), wantAccept: "cancelled"},
+		{state: workqueue.StateLeased, wantState: "running", wantRuntime: "", wantAccept: "not_ready"},
+	}
+	for _, tc := range workerCases {
+		state, runtimeState, acceptance := projectTaskWorkerSemanticState(workqueue.TaskWorker{State: tc.state})
+		if state != tc.wantState || runtimeState != tc.wantRuntime || acceptance != tc.wantAccept {
+			t.Fatalf("worker state %s mapped to (%s,%s,%s), want (%s,%s,%s)", tc.state, state, runtimeState, acceptance, tc.wantState, tc.wantRuntime, tc.wantAccept)
+		}
+	}
+
+	task := workqueue.TaskGroup{State: workqueue.TaskCompleted, Workers: []workqueue.TaskWorker{{State: workqueue.StateSucceeded}}}
+	view := (&Server{}).projectTaskStatusView(context.Background(), task)
+	if view.State != "reconciliation_required" || len(view.Workers) != 1 || view.Workers[0].RuntimeState != "unknown" || view.Workers[0].AcceptanceState != "reconciliation_required" {
+		t.Fatalf("view without reconciliation stores=%+v", view)
 	}
 }
 

@@ -144,6 +144,10 @@ func TestFrontDoorRecoversCommentOnlySSEWithoutReusingAuthorization(t *testing.T
 	if line, err := reader.ReadString('\n'); err != nil || line != "\n" {
 		t.Fatalf("recovery separator=%q err=%v", line, err)
 	}
+	deadline = time.Now().Add(time.Second)
+	for door.sseReconnects.Load() != 1 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	if streamRequests.Load() != 1 {
 		t.Fatalf("backend SSE authorization was replayed %d times", streamRequests.Load())
 	}
@@ -179,6 +183,10 @@ func TestFrontDoorRecoversCommentOnlySSEWithoutReusingAuthorization(t *testing.T
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("front door did not preserve SSE through the second replacement")
+	}
+	deadline = time.Now().Add(time.Second)
+	for door.sseReconnects.Load() != 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
 	}
 	if streamRequests.Load() != 1 || door.sseReconnects.Load() != 2 || door.sseReconnectFails.Load() != 0 {
 		t.Fatalf("stream requests=%d recoveries=%d failures=%d", streamRequests.Load(), door.sseReconnects.Load(), door.sseReconnectFails.Load())

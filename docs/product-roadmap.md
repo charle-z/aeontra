@@ -19,9 +19,9 @@ runtime; OpenCode remains a tested optional fallback.
 | 4 persistent universal toolbox | Real-device accepted on p15.0.20 | The real toolbox retained rootfs, marker, installed tools, rootless Podman socket and the same durable service across the coordinated Edge restart. Repeated service stop was idempotent and exclusive cleanup removed only that toolbox/service. |
 | 5 split GitHub authority | Publication candidate; validation pending | Control-plane owner/public-OSS publication, PR, checks, merge and workflow operations are deployed. The direct Edge candidate adds an exact single-use same-name no-force publication handoff for registered checkouts; a signed release and one complete real project delivery remain the acceptance gate. |
 | 6 direct GPT Web parity | Validation pending | Foreground/background execution, persistent toolbox, rootless container access, managed browser harness, Git synchronization and durable results are deployed. One complete project delivery through only the direct path remains the acceptance gate. |
-| 7 worktrees and deterministic parallelism | Deployed; corrective acceptance pending | Release p15.0.38 proved distinct worktree/workspace/runtime/branch identities, terminal cleanup and fences, but real workers could not resolve linked-worktree Git metadata. The corrective source projects only the validated repository-scoped common Git metadata into each workcell; exact-head CI, signed release and repeated two-commit acceptance remain. |
+| 7 worktrees and deterministic parallelism | Real-device accepted on p15.0.39 | Two writers from one exact base produced distinct commits containing only their assigned files in separate worktrees/workspaces/runtimes/branches. Cleanup revalidated fences and was idempotent; a separate pre-turn cancellation was idempotent and cleaned exactly its own worktree. |
 | 8 full benchmark | Planned | Complete project delivery through the direct/Codex path with retained latency, resource, CI, browser and deployment evidence. |
-| 9 durable task graph and multiagent | Deployed; corrective acceptance pending | `project_task_*` on p15.0.38 proved distinct workers, terminal reconciliation, idempotent cancel and clean-only cleanup, but the first semantic acceptance produced no commits because linked Git metadata was absent inside Bubblewrap. The corrective mount must pass exact-head CI, signed release and the repeated two-worker commit acceptance before closure. |
+| 9 durable task graph and multiagent | Real-device accepted on p15.0.39; semantic-status refinement in progress | The corrective two-worker acceptance produced isolated commits and passed idempotent cancellation/cleanup. The remaining product correction separates runtime completion from semantic acceptance and reports bounded Git evidence instead of presenting an ended model loop as task success. |
 | 10 Codex harness compatibility spike | Deployed and real-device accepted | Stock Codex 0.147.0 is pinned in signed Edge release p15.0.37. A real Parrot runtime completed a two-turn GPT Web loop and executed a bounded workcell command without an OpenAI API credential. Built-in Codex multiagent remains disabled because MCP Devbox owns task, lease, worktree and fencing authority. |
 
 ## Accepted execution sequence — 2026-08-12
@@ -49,6 +49,13 @@ Automatic ChatGPT browser driving is not a durability primitive. The core contin
 contract is a content-bounded checkpoint plus a resumable task identity. Any later UI
 automation must remain optional, use a manually authenticated browser profile and fail
 without replaying consequential effects.
+
+The next orchestration layer is planned as P17. It adds a durable objective supervisor,
+fair handling of multiple pending model turns, task-specific semantic evaluation,
+review/CI/integration control, compact continuation checkpoints, optional per-worker
+model backends and content-free efficiency metrics. It does not automate ChatGPT by
+screen coordinates and it does not enlarge Edge, GitHub or deployment authority. See
+`docs/analysis/p17-durable-objective-supervisor.md`.
 
 ## Status snapshot — 2026-07-18
 

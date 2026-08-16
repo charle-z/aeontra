@@ -90,4 +90,13 @@ func TestManagedTaskWorktreeContractIsDocumented(t *testing.T) {
 			t.Errorf("task tool documentation missing %q", tool)
 		}
 	}
+	workqueue, err := os.ReadFile("workqueue-store.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"acceptance_pending", "reconciliation_required", "runtime reaching `completed`", "does not prove"} {
+		if !strings.Contains(string(workqueue), required) {
+			t.Errorf("workqueue semantic status documentation missing %q", required)
+		}
+	}
 }

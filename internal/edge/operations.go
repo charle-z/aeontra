@@ -397,6 +397,11 @@ type OperationResult struct {
 	WorktreeRole                     string                          `json:"worktree_role,omitempty"`
 	WorktreeBaseCommit               string                          `json:"worktree_base_commit,omitempty"`
 	WorktreeBranch                   string                          `json:"worktree_branch,omitempty"`
+	WorktreeEvidenceKnown            bool                            `json:"worktree_evidence_known,omitempty"`
+	WorktreeHeadCommit               string                          `json:"worktree_head_commit,omitempty"`
+	WorktreeClean                    bool                            `json:"worktree_clean,omitempty"`
+	WorktreeCommitsAheadBase         int                             `json:"worktree_commits_ahead_base,omitempty"`
+	WorktreeChangedPathCount         int                             `json:"worktree_changed_path_count,omitempty"`
 	WorkJobID                        string                          `json:"work_job_id,omitempty"`
 	WorkLeaseID                      string                          `json:"work_lease_id,omitempty"`
 	WorkFence                        uint64                          `json:"work_fence,omitempty"`
