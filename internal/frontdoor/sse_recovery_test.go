@@ -144,6 +144,10 @@ func TestFrontDoorRecoversCommentOnlySSEWithoutReusingAuthorization(t *testing.T
 	if line, err := reader.ReadString('\n'); err != nil || line != "\n" {
 		t.Fatalf("recovery separator=%q err=%v", line, err)
 	}
+	deadline = time.Now().Add(time.Second)
+	for door.sseReconnects.Load() != 1 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	if streamRequests.Load() != 1 {
 		t.Fatalf("backend SSE authorization was replayed %d times", streamRequests.Load())
 	}
