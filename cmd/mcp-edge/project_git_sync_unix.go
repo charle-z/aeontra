@@ -62,7 +62,7 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 	} else {
 		result.GitBranch = branch
 	}
-	status, err := runProjectGitLocal(ctx, runner, resolved, "status", "--porcelain=v1", "--untracked-files=all")
+	status, err := runProjectGitLocal(ctx, runner, resolved, edgeclient.ProjectCheckoutStatusArgs()...)
 	if err != nil {
 		return edge.OperationResult{}, errors.New("project Git status is unavailable")
 	}

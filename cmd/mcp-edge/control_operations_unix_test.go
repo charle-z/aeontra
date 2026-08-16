@@ -101,9 +101,9 @@ func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
 		},
 	}
 	runner := &projectSnapshotRunner{outputs: map[string]string{
-		"rev-parse --verify HEAD":                     "0123456789abcdef0123456789abcdef01234567\n",
-		"branch --show-current":                       "main\n",
-		"status --porcelain=v1 --untracked-files=all": "?? .mcp-devbox/runtime/home/.config/go/telemetry/local/weekends\n",
+		"rev-parse --verify HEAD":                        "0123456789abcdef0123456789abcdef01234567\n",
+		"branch --show-current":                          "main\n",
+		"status --porcelain=v1 --untracked-files=normal": "?? .mcp-devbox/\n",
 	}}
 	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
 	if code != "" || result.SnapshotHead != "0123456789abcdef0123456789abcdef01234567" ||
@@ -113,7 +113,7 @@ func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
 	expected := []string{
 		resolved.Workspace.Path + "|rev-parse --verify HEAD",
 		resolved.Workspace.Path + "|branch --show-current",
-		resolved.Workspace.Path + "|status --porcelain=v1 --untracked-files=all",
+		resolved.Workspace.Path + "|status --porcelain=v1 --untracked-files=normal",
 	}
 	if strings.Join(runner.calls, "\n") != strings.Join(expected, "\n") {
 		t.Fatalf("calls=%v", runner.calls)
@@ -130,9 +130,9 @@ func TestCollectProjectSnapshotReportsDirtyAndFailsClosedForWrongWorkspace(t *te
 		},
 	}
 	runner := &projectSnapshotRunner{outputs: map[string]string{
-		"rev-parse --verify HEAD":                     "0123456789abcdef0123456789abcdef01234567",
-		"branch --show-current":                       "main",
-		"status --porcelain=v1 --untracked-files=all": " M changed.go\n",
+		"rev-parse --verify HEAD":                        "0123456789abcdef0123456789abcdef01234567",
+		"branch --show-current":                          "main",
+		"status --porcelain=v1 --untracked-files=normal": " M changed.go\n",
 	}}
 	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
 	if code != "" || result.SnapshotClean || result.ProjectState != "dirty" || result.SnapshotBranch != "main" || result.SnapshotHead == "" {

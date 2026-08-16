@@ -51,7 +51,7 @@ func (localProjectCheckoutInspector) Inspect(ctx context.Context, path, owner, r
 	if err != nil || !projectRemoteMatches(strings.TrimSpace(pushRemote), owner, repository) {
 		return ProjectCheckoutRemoteMismatch, nil
 	}
-	status, err := runner.run(ctx, validated, "status", "--porcelain=v1", "--untracked-files=all")
+	status, err := runner.run(ctx, validated, ProjectCheckoutStatusArgs()...)
 	if err != nil {
 		return ProjectCheckoutUnsafe, errors.New("project checkout status is unavailable")
 	}

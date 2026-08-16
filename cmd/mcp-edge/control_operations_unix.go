@@ -264,7 +264,7 @@ func collectProjectSnapshot(ctx context.Context, resolved edgeclient.ProjectReso
 	if err != nil || !validProjectSnapshotBranch(branch) {
 		return edge.OperationResult{}, "project_snapshot_failed"
 	}
-	statusOutput, err := runner.Run(ctx, resolved.Workspace.Path, []string{"status", "--porcelain=v1", "--untracked-files=all"}, credential)
+	statusOutput, err := runner.Run(ctx, resolved.Workspace.Path, edgeclient.ProjectCheckoutStatusArgs(), credential)
 	if err != nil {
 		return edge.OperationResult{}, "project_snapshot_failed"
 	}

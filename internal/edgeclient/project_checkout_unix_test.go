@@ -48,14 +48,18 @@ func TestLocalProjectCheckoutInspectorClassifiesReadyDirtyAndRemoteDrift(t *test
 	if err != nil || state != ProjectCheckoutReady {
 		t.Fatalf("managed runtime must not dirty checkout: state=%s err=%v", state, err)
 	}
-	if err := os.WriteFile(filepath.Join(repository, "untracked.txt"), []byte("local\n"), 0o600); err != nil {
+	untrackedDir := filepath.Join(repository, "generated", "nested")
+	if err := os.MkdirAll(untrackedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(untrackedDir, "untracked.txt"), []byte("local\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	state, err = inspector.Inspect(context.Background(), repository, "charle-z", "ekoparty-trip-agent")
 	if err != nil || state != ProjectCheckoutDirty {
 		t.Fatalf("dirty state=%s err=%v", state, err)
 	}
-	if err := os.Remove(filepath.Join(repository, "untracked.txt")); err != nil {
+	if err := os.RemoveAll(filepath.Join(repository, "generated")); err != nil {
 		t.Fatal(err)
 	}
 	runProjectGit(t, repository, "remote", "set-url", "origin", "https://github.com/charle-z/another.git")
