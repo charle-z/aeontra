@@ -99,6 +99,7 @@ func TestInitializeInstructionsDescribeAgentLoop(t *testing.T) {
 		"repo_remote_preview",
 		"repo_publish_preview",
 		"platform_app_create_preview",
+		"platform_app_domain_update_preview/platform_app_domain_update",
 		"platform_deploy_preview",
 		"notes_write_preview",
 		"privileged_task_preview",

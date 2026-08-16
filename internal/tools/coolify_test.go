@@ -212,6 +212,17 @@ func TestCoolifyCreateApp_DeniesDomainOutsideAllowlist(t *testing.T) {
 	}
 }
 
+func TestCoolifyCreateApp_DeniesDomainWhenAllowlistIsEmpty(t *testing.T) {
+	svc, _ := newTestService(t, config.ModeAllow)
+	c := fakeCoolify(t, "https://coolify.example.com", "tok", nil, nil).
+		WithBuilderConfig("server1", "project1", "production", "", nil)
+	svc.WithCoolify(c)
+
+	if _, err := svc.CoolifyCreateApp("demo", "charle-z/demo", "main", "nixpacks", "", "https://demo.example.com", true); err == nil || !strings.Contains(err.Error(), "COOLIFY_ALLOWED_DOMAINS") {
+		t.Fatalf("empty domain allowlist must deny caller-selected domains: %v", err)
+	}
+}
+
 func TestCoolifySetEnv_RedactsValues(t *testing.T) {
 	svc, _ := newTestService(t, config.ModeAllow)
 	var gotPath string

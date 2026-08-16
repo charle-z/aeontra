@@ -181,6 +181,16 @@ blocks `/mcp`, including SSE, while a healthy fixed backend can continue serving
 Rollouts may admit only the exact primary hash plus one authenticated transition hash;
 wildcards, duplicates, malformed hashes and a third catalog fail closed.
 
+Normal application domain promotion is also closed. The caller may provide only one
+credential-free HTTPS origin with no port, path, query or fragment, and its DNS suffix
+must match the immutable non-empty `COOLIFY_ALLOWED_DOMAINS` policy. The application
+UUID must be allowed, healthy, and backed by one exact finished deployment. Preview
+freezes its repository, branch, commit, build, port, healthcheck, destination, runtime
+options and deployment identity. Execution sends only Coolify's `domains` field with
+conflict override disabled, dispatches no deployment, revalidates the frozen state, and
+restores the previous domain if post-write verification detects drift. An empty domain
+policy grants no domain authority.
+
 ## Edge trust and signed releases
 
 The public control plane and a paired Edge authenticate their outbound protocol with a
