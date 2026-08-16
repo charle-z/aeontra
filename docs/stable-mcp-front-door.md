@@ -43,11 +43,14 @@ operation even when its response was lost.
 
 Requests already accepted continue on the backend connection that accepted them. For
 an authenticated `GET /mcp` SSE stream, the front door owns the downstream connection.
-If the backend process retires, it keeps the client stream open, waits for the next
-compatible backend and reconnects upstream with the same authorization and durable
-session headers. This reconnect contract is deliberately limited to the current MCP
-backend stream, which emits comments and keepalives only. A non-comment SSE event fails
-closed until an explicit replay or resume contract exists.
+If the backend process retires, it keeps the client stream open and waits for the next
+compatible backend using exact readiness, protocol and catalog probes. The accepted
+stream then remains on front-door-owned comment keepalives; it does not replay the
+original `Authorization` header, which may contain a short-lived OAuth bearer. This
+recovery contract is deliberately limited to the current MCP backend stream, which
+emits comments and keepalives only. New connections and every `POST` or `DELETE` still
+authenticate at the backend. A non-comment SSE event fails closed until an explicit
+data replay or resume contract exists.
 
 A proxied `/mcp` response, including SSE, is also rejected unless its
 `X-MCP-Catalog-Hash` belongs to that same one- or two-hash contract. Protocol identity
@@ -271,8 +274,12 @@ that the server can force ChatGPT to keep a connector namespace mounted.
   budget, the request fails closed with `503` and `Retry-After`; it is not forwarded.
 - There is no generic write retry. A `POST /mcp` transport error after dispatch is
   returned as unavailable rather than risking a duplicated tool execution.
-- SSE reconnection is safe only while the backend emits comments and keepalives. The
-  proxy rejects a data-bearing event instead of silently losing or duplicating it.
+- SSE recovery is safe only while the backend emits comments and keepalives. The proxy
+  does not replay a possibly expired bearer after the stream was accepted, distinguishes
+  downstream disconnects from backend failures, and rejects a data-bearing event instead
+  of silently losing or duplicating it. The compatibility response retains the historical
+  `sse_reconnects` and `sse_reconnect_failures` field names for existing monitors; they
+  count downstream recoveries and genuine recovery failures.
 - It cannot prevent a ChatGPT client-side catalog/cache or namespace presentation issue.
 - A healthy front door plus healthy backend during a missing namespace is evidence of a
   client presentation problem, not proof of an internal OpenAI root cause.

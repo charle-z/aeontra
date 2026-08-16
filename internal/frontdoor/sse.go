@@ -8,9 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
-var errSSEPayloadUnsupported = errors.New("backend SSE emitted a non-comment event")
+var (
+	errSSEPayloadUnsupported = errors.New("backend SSE emitted a non-comment event")
+	errSSEDownstreamClosed   = errors.New("downstream SSE connection closed")
+)
 
 func isMCPStreamRequest(r *http.Request) bool {
 	return r != nil && r.Method == http.MethodGet && r.URL.Path == "/mcp" &&
@@ -18,77 +22,118 @@ func isMCPStreamRequest(r *http.Request) bool {
 }
 
 func (f *FrontDoor) serveMCPStream(w http.ResponseWriter, r *http.Request) {
-	started := false
-	for {
-		response, err := f.awaitMCPStream(w, r, started)
-		if err != nil {
-			if r.Context().Err() != nil {
-				return
-			}
-			if started {
-				f.sseReconnectFails.Add(1)
-				return
-			}
-			w.Header().Set("Retry-After", "1")
-			http.Error(w, "MCP backend is temporarily unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		if response.StatusCode != http.StatusOK {
-			if started {
-				_ = response.Body.Close()
-				f.sseReconnectFails.Add(1)
-				return
-			}
-			copyResponseHeaders(w.Header(), response.Header)
-			w.Header().Set("X-MCP-Front-Door-Commit", normalizedCommit(f.frontDoorCommit))
-			w.WriteHeader(response.StatusCode)
-			_, _ = io.Copy(w, response.Body)
-			_ = response.Body.Close()
-			return
-		}
-		if !started {
-			copyResponseHeaders(w.Header(), response.Header)
-			w.Header().Del("Content-Length")
-			w.Header().Set("X-MCP-Front-Door-Commit", normalizedCommit(f.frontDoorCommit))
-			w.WriteHeader(http.StatusOK)
-			if !flushResponse(w) {
-				_ = response.Body.Close()
-				return
-			}
-			started = true
-		} else {
-			f.sseReconnects.Add(1)
-		}
-		err = copyCommentSSE(w, response.Body)
-		_ = response.Body.Close()
+	response, err := f.awaitMCPStream(r)
+	if err != nil {
 		if r.Context().Err() != nil {
 			return
 		}
-		if errors.Is(err, errSSEPayloadUnsupported) {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "MCP backend is temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if response.StatusCode != http.StatusOK {
+		copyResponseHeaders(w.Header(), response.Header)
+		w.Header().Set("X-MCP-Front-Door-Commit", normalizedCommit(f.frontDoorCommit))
+		w.WriteHeader(response.StatusCode)
+		_, _ = io.Copy(w, response.Body)
+		_ = response.Body.Close()
+		return
+	}
+	copyResponseHeaders(w.Header(), response.Header)
+	w.Header().Del("Content-Length")
+	w.Header().Set("X-MCP-Front-Door-Commit", normalizedCommit(f.frontDoorCommit))
+	w.WriteHeader(http.StatusOK)
+	if !flushResponse(w) {
+		_ = response.Body.Close()
+		return
+	}
+	err = copyCommentSSE(w, response.Body)
+	_ = response.Body.Close()
+	if r.Context().Err() != nil || errors.Is(err, errSSEDownstreamClosed) {
+		return
+	}
+	if errors.Is(err, errSSEPayloadUnsupported) {
+		f.sseReconnectFails.Add(1)
+		return
+	}
+	f.storeUnavailable(errors.New("backend SSE connection ended"))
+	f.recoverAcceptedMCPStream(w, r)
+}
+
+// recoverAcceptedMCPStream preserves the already authenticated downstream stream
+// while compatible backend instances are replaced. The current MCP SSE contract is
+// deliberately comment-only, so replaying the original Authorization header would
+// add no information and would incorrectly depend on a short-lived OAuth bearer.
+// Readiness and exact catalog probes remain authoritative for every recovery. New
+// connections and every POST/DELETE request still authenticate at the backend.
+func (f *FrontDoor) recoverAcceptedMCPStream(w http.ResponseWriter, r *http.Request) {
+	for {
+		waitCtx, cancel := context.WithTimeout(r.Context(), f.admissionTimeout)
+		err := f.waitForBackend(waitCtx, func() error {
+			return writeSSEComment(w, "front-door waiting")
+		})
+		cancel()
+		if r.Context().Err() != nil || errors.Is(err, errSSEDownstreamClosed) {
+			return
+		}
+		if err != nil {
 			f.sseReconnectFails.Add(1)
 			return
 		}
-		f.storeUnavailable(errors.New("backend SSE connection ended"))
+		if err := writeSSEComment(w, "front-door stream recovered"); err != nil {
+			return
+		}
+		f.sseReconnects.Add(1)
+
+		if err := f.keepRecoveredMCPStream(w, r); err != nil {
+			if !errors.Is(err, errBackendUnavailable) && !errors.Is(err, errSSEDownstreamClosed) && r.Context().Err() == nil {
+				f.sseReconnectFails.Add(1)
+			}
+			if errors.Is(err, errBackendUnavailable) {
+				continue
+			}
+			return
+		}
+		return
 	}
 }
 
-func (f *FrontDoor) awaitMCPStream(w http.ResponseWriter, r *http.Request, started bool) (*http.Response, error) {
-	ctx, cancel := context.WithTimeout(r.Context(), f.admissionTimeout)
-	defer cancel()
-	var heartbeat func() error
-	if started {
-		heartbeat = func() error {
-			if _, err := io.WriteString(w, ": front-door waiting\n\n"); err != nil {
+func (f *FrontDoor) keepRecoveredMCPStream(w http.ResponseWriter, r *http.Request) error {
+	ticker := time.NewTicker(sseWaitKeepalive)
+	defer ticker.Stop()
+	for {
+		changed := f.stateChangeChannel()
+		state := f.state.Load()
+		if state == nil || !state.Ready {
+			return errBackendUnavailable
+		}
+		select {
+		case <-r.Context().Done():
+			return r.Context().Err()
+		case <-changed:
+		case <-ticker.C:
+			if err := writeSSEComment(w, "front-door ping"); err != nil {
 				return err
 			}
-			if !flushResponse(w) {
-				return context.Canceled
-			}
-			return nil
 		}
 	}
+}
+
+func writeSSEComment(w http.ResponseWriter, comment string) error {
+	if _, err := io.WriteString(w, ": "+comment+"\n\n"); err != nil {
+		return errSSEDownstreamClosed
+	}
+	if !flushResponse(w) {
+		return errSSEDownstreamClosed
+	}
+	return nil
+}
+
+func (f *FrontDoor) awaitMCPStream(r *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithTimeout(r.Context(), f.admissionTimeout)
+	defer cancel()
 	for {
-		if err := f.waitForBackend(ctx, heartbeat); err != nil {
+		if err := f.waitForBackend(ctx, nil); err != nil {
 			return nil, err
 		}
 		if err := ctx.Err(); err != nil {
@@ -146,10 +191,10 @@ func copyCommentSSE(w http.ResponseWriter, body io.Reader) error {
 				return errSSEPayloadUnsupported
 			}
 			if _, writeErr := io.WriteString(w, line); writeErr != nil {
-				return writeErr
+				return errSSEDownstreamClosed
 			}
 			if !flushResponse(w) {
-				return context.Canceled
+				return errSSEDownstreamClosed
 			}
 		}
 		if err != nil {
