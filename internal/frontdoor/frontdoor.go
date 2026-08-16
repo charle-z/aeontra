@@ -83,6 +83,7 @@ type FrontDoor struct {
 	stateMu             sync.Mutex
 	stateChanged        chan struct{}
 	state               atomic.Pointer[snapshot]
+	backendGeneration   atomic.Uint64
 	activeRequests      atomic.Int64
 	admissionWaits      atomic.Int64
 	admissionRecoveries atomic.Int64
