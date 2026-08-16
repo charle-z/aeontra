@@ -101,10 +101,14 @@ func (f *FrontDoor) recoverAcceptedMCPStream(w http.ResponseWriter, r *http.Requ
 func (f *FrontDoor) keepRecoveredMCPStream(w http.ResponseWriter, r *http.Request) error {
 	ticker := time.NewTicker(sseWaitKeepalive)
 	defer ticker.Stop()
+	observedGeneration := f.backendGeneration.Load()
 	for {
 		changed := f.stateChangeChannel()
 		state := f.state.Load()
 		if state == nil || !state.Ready {
+			return errBackendUnavailable
+		}
+		if f.backendGeneration.Load() != observedGeneration {
 			return errBackendUnavailable
 		}
 		select {
