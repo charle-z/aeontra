@@ -50,7 +50,7 @@ func TestOpenCodeRuntimeStartContractIsClosedAndBounded(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode_runtime_start is not registered")
 	}
-	if entry.def.Version != "1" {
+	if entry.def.Version != "2" {
 		t.Fatalf("version=%q", entry.def.Version)
 	}
 	wantHints := map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
@@ -66,9 +66,19 @@ func TestOpenCodeRuntimeStartContractIsClosedAndBounded(t *testing.T) {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	wantKeys := []string{"device_id", "goal", "idempotency_key", "timeout_seconds", "workspace_id"}
+	wantKeys := []string{"alias", "device_id", "goal", "idempotency_key", "target", "timeout_seconds", "workspace_id"}
 	if !reflect.DeepEqual(keys, wantKeys) {
 		t.Fatalf("properties=%v", keys)
+	}
+	required := append([]string(nil), entry.def.InputSchema["required"].([]string)...)
+	sort.Strings(required)
+	wantRequired := []string{"goal", "idempotency_key", "timeout_seconds"}
+	if !reflect.DeepEqual(required, wantRequired) {
+		t.Fatalf("required=%v", required)
+	}
+	oneOf, ok := entry.def.InputSchema["oneOf"].([]any)
+	if !ok || len(oneOf) != 2 {
+		t.Fatalf("oneOf=%#v", entry.def.InputSchema["oneOf"])
 	}
 	for _, forbidden := range []string{"path", "shell", "argv", "env", "provider", "api_key", "model", "mount", "uid", "vpn", "sudo", "network_policy", "provider_url"} {
 		if _, exists := properties[forbidden]; exists {

@@ -17,6 +17,8 @@ import (
 type fixedWorkspaceEdgeStore struct {
 	devices  map[string]bool
 	bindings map[string]edge.WorkspaceBinding
+	aliases  map[string]edge.Device
+	projects map[string]edge.WorkspaceBinding
 }
 
 func (store fixedWorkspaceEdgeStore) DeviceActive(deviceID string) bool {
@@ -256,4 +258,23 @@ func TestWorkspaceRuntimeContinueRejectsInactiveEdgeBinding(t *testing.T) {
 	if !strings.Contains(got, "active workspace not found") {
 		t.Fatalf("inactive edge error=%q", got)
 	}
+}
+
+func (store fixedWorkspaceEdgeStore) ResolveActiveDeviceName(name string) (edge.Device, error) {
+	device, ok := store.aliases[name]
+	if !ok || !store.devices[device.ID] {
+		return edge.Device{}, errors.New("active edge device not found")
+	}
+	return device, nil
+}
+
+func (store fixedWorkspaceEdgeStore) ResolveProjectWorkspace(deviceID, alias, target string) (edge.WorkspaceBinding, error) {
+	binding, ok := store.projects[deviceID+"|"+alias+"|"+target]
+	if !ok {
+		return edge.WorkspaceBinding{}, errors.New("registered project workspace not found")
+	}
+	if binding.DeviceID != deviceID || !store.devices[deviceID] {
+		return edge.WorkspaceBinding{}, errors.New("registered project workspace not found")
+	}
+	return binding, nil
 }
