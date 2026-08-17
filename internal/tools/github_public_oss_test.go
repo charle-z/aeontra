@@ -48,7 +48,7 @@ func TestGitHubPublicOSSWorkflowIsPlannedRevalidatedAndOwnerBound(t *testing.T) 
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/git/ref/heads/main":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + baseSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo/compare/"+baseSHA+"..."+headSHA:
-			_, _ = w.Write([]byte(`{"status":"ahead"}`))
+			_, _ = w.Write([]byte(`{"status":"ahead","ahead_by":1,"merge_base_commit":{"sha":"` + baseSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/pulls":
 			if pullCreated {
 				_, _ = w.Write([]byte(`[{"number":17,"state":"open","html_url":"https://github.com/upstream/demo/pull/17","head":{"ref":"fix/test","sha":"` + headSHA + `","repo":{"full_name":"acme/demo"},"user":{"login":"acme"}},"base":{"ref":"main","sha":"` + baseSHA + `"}}]`))
@@ -122,6 +122,135 @@ func TestGitHubPublicOSSRejectsConfiguredOwnerAsUpstream(t *testing.T) {
 	svc.WithGitHub(NewGitHubClient("https://example.invalid", "token", "acme", "user", "private"))
 	if _, err := svc.SourcePublicForkCreatePreview("acme", "demo"); err == nil || !strings.Contains(err.Error(), "external upstream") {
 		t.Fatalf("expected owner-bound rejection, got %v", err)
+	}
+}
+
+func TestGitHubPublicOSSAcceptsDivergedForkWithUniqueCommits(t *testing.T) {
+	baseSHA := strings.Repeat("a", 40)
+	headSHA := strings.Repeat("b", 40)
+	mergeBaseSHA := strings.Repeat("c", 40)
+	created := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo":
+			_, _ = w.Write([]byte(`{"full_name":"upstream/demo","private":false,"visibility":"public","default_branch":"main"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo":
+			_, _ = w.Write([]byte(`{"full_name":"acme/demo","private":false,"visibility":"public","fork":true,"parent":{"full_name":"upstream/demo"},"permissions":{"push":true}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo/git/ref/heads/fix/test":
+			_, _ = w.Write([]byte(`{"object":{"sha":"` + headSHA + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/git/ref/heads/main":
+			_, _ = w.Write([]byte(`{"object":{"sha":"` + baseSHA + `"}}`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/acme/demo/compare/"):
+			_, _ = w.Write([]byte(`{"status":"diverged","ahead_by":1,"behind_by":3,"merge_base_commit":{"sha":"` + mergeBaseSHA + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/pulls":
+			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/upstream/demo/pulls":
+			created = true
+			_, _ = w.Write([]byte(`{"number":17,"state":"open","html_url":"https://github.com/upstream/demo/pull/17","head":{"ref":"fix/test","sha":"` + headSHA + `"},"base":{"ref":"main","sha":"` + baseSHA + `"}}`))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithGitHub(NewGitHubClient(server.URL, "token", "acme", "user", "private"))
+	preview, err := svc.SourceCrossRepoPullRequestCreatePreview("upstream", "demo", "fix/test", "main", "Fix", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SourceCrossRepoPullRequestCreate(field(preview, "plan_id"), true); err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Fatal("expected pull request creation")
+	}
+}
+
+func TestValidateCrossRepoHeadContribution(t *testing.T) {
+	validMergeBase := strings.Repeat("c", 40)
+	tests := []struct {
+		name       string
+		comparison githubCompareResponse
+		wantErr    bool
+	}{
+		{
+			name: "ahead with unique commit and merge base",
+			comparison: func() githubCompareResponse {
+				result := githubCompareResponse{Status: "ahead", AheadBy: 1}
+				result.MergeBaseCommit.SHA = validMergeBase
+				return result
+			}(),
+		},
+		{
+			name:       "ahead without merge base",
+			comparison: githubCompareResponse{Status: "ahead", AheadBy: 1},
+			wantErr:    true,
+		},
+		{
+			name:       "ahead without unique commit",
+			comparison: githubCompareResponse{Status: "ahead"},
+			wantErr:    true,
+		},
+		{
+			name:       "identical",
+			comparison: githubCompareResponse{Status: "identical"},
+			wantErr:    true,
+		},
+		{
+			name:       "behind",
+			comparison: githubCompareResponse{Status: "behind"},
+			wantErr:    true,
+		},
+		{
+			name: "diverged with unique commit and merge base",
+			comparison: func() githubCompareResponse {
+				result := githubCompareResponse{Status: "diverged", AheadBy: 1}
+				result.MergeBaseCommit.SHA = validMergeBase
+				return result
+			}(),
+		},
+		{
+			name: "diverged without unique commit",
+			comparison: func() githubCompareResponse {
+				result := githubCompareResponse{Status: "diverged"}
+				result.MergeBaseCommit.SHA = validMergeBase
+				return result
+			}(),
+			wantErr: true,
+		},
+		{
+			name:       "diverged without shared history evidence",
+			comparison: githubCompareResponse{Status: "diverged", AheadBy: 1},
+			wantErr:    true,
+		},
+		{
+			name: "diverged with malformed merge base",
+			comparison: func() githubCompareResponse {
+				result := githubCompareResponse{Status: "diverged", AheadBy: 1}
+				result.MergeBaseCommit.SHA = "not-a-sha"
+				return result
+			}(),
+			wantErr: true,
+		},
+		{
+			name: "unknown status",
+			comparison: func() githubCompareResponse {
+				result := githubCompareResponse{Status: "unknown", AheadBy: 1}
+				result.MergeBaseCommit.SHA = validMergeBase
+				return result
+			}(),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateCrossRepoHeadContribution(tt.comparison)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateCrossRepoHeadContribution() error = %v, wantErr %t", err, tt.wantErr)
+			}
+		})
 	}
 }
 
@@ -236,7 +365,7 @@ func TestGitHubCrossRepoPullRequestRevalidatesHeadSHA(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/git/ref/heads/main":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + baseSHA + `"}}`))
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/acme/demo/compare/"):
-			_, _ = w.Write([]byte(`{"status":"ahead"}`))
+			_, _ = w.Write([]byte(`{"status":"ahead","ahead_by":1,"merge_base_commit":{"sha":"` + baseSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/pulls":
 			_, _ = w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/repos/upstream/demo/pulls":
