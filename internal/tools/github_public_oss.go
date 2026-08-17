@@ -304,12 +304,12 @@ func (s *SourceCapability) SourceCrossRepoPullRequestCreatePreview(upstreamOwner
 	if err != nil {
 		return "", err
 	}
-	relation, err := s.github.compareAt(ctx, s.github.owner, repo, baseSHA, headSHA)
+	comparison, err := s.github.compareAt(ctx, s.github.owner, repo, baseSHA, headSHA)
 	if err != nil {
 		return "", err
 	}
-	if relation != "ahead" {
-		return "", fmt.Errorf("fork head is not ahead of the upstream base (status=%s)", relation)
+	if err := validateCrossRepoHeadContribution(comparison); err != nil {
+		return "", err
 	}
 	existing, err := s.github.findCrossRepoPullRequest(ctx, upstreamOwner, repo, head, base)
 	if err != nil {
@@ -376,8 +376,8 @@ func (s *SourceCapability) SourceCrossRepoPullRequestCreate(planID string, appro
 	if err != nil || baseSHA != plan.Args["base_sha"] {
 		return "", fmt.Errorf("pull request base changed after preview")
 	}
-	relation, err := s.github.compareAt(ctx, s.github.owner, plan.Args["repo"], baseSHA, headSHA)
-	if err != nil || relation != "ahead" {
+	comparison, err := s.github.compareAt(ctx, s.github.owner, plan.Args["repo"], baseSHA, headSHA)
+	if err != nil || validateCrossRepoHeadContribution(comparison) != nil {
 		return "", fmt.Errorf("pull request ancestry changed after preview")
 	}
 	existing, err := s.github.findCrossRepoPullRequest(ctx, plan.Args["upstream_owner"], plan.Args["repo"], plan.Args["head"], plan.Args["base"])
@@ -395,6 +395,21 @@ func (s *SourceCapability) SourceCrossRepoPullRequestCreate(planID string, appro
 	}
 	sp.Finish(audit.Allow, planID, nil, nil)
 	return fmt.Sprintf("repository: %s\npull_request: %d\nurl: %s\nstate: %s\nhead_sha: %s\nbase: %s\ndraft: %t\n", plan.Args["upstream"], pull.Number, pull.HTMLURL, pull.State, pull.Head.SHA, pull.Base.Ref, draft), nil
+}
+
+func validateCrossRepoHeadContribution(comparison githubCompareResponse) error {
+	status := strings.TrimSpace(comparison.Status)
+	if status != "ahead" && status != "diverged" {
+		return fmt.Errorf("fork head has no validated contribution relative to upstream base (status=%s)", status)
+	}
+	if comparison.AheadBy <= 0 {
+		return fmt.Errorf("fork head has no validated contribution relative to upstream base (status=%s)", status)
+	}
+	mergeBaseSHA := strings.TrimSpace(comparison.MergeBaseCommit.SHA)
+	if !frontDoorCommitPattern.MatchString(mergeBaseSHA) {
+		return fmt.Errorf("fork head has no validated contribution relative to upstream base (status=%s)", status)
+	}
+	return nil
 }
 
 func reviewCommentMatchesPull(comment githubPublicReviewCommentResponse, owner, repo string, number int) bool {

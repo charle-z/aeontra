@@ -309,20 +309,20 @@ func (c *GitHubClient) branchSHAAt(ctx context.Context, owner, repo, branch stri
 	return response.Object.SHA, nil
 }
 
-func (c *GitHubClient) compareAt(ctx context.Context, owner, repo, baseSHA, headSHA string) (string, error) {
+func (c *GitHubClient) compareAt(ctx context.Context, owner, repo, baseSHA, headSHA string) (githubCompareResponse, error) {
 	path := "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(repo) + "/compare/" + url.PathEscape(baseSHA) + "..." + url.PathEscape(headSHA)
 	status, body, err := c.doJSONLimit(ctx, http.MethodGet, path, nil, githubCompareResponseLimit)
 	if err != nil {
-		return "", err
+		return githubCompareResponse{}, err
 	}
 	if status < 200 || status >= 300 {
-		return "", fmt.Errorf("GitHub compare -> HTTP %d", status)
+		return githubCompareResponse{}, fmt.Errorf("GitHub compare -> HTTP %d", status)
 	}
 	var response githubCompareResponse
 	if err := json.Unmarshal([]byte(body), &response); err != nil {
-		return "", fmt.Errorf("decoding GitHub compare: %w", err)
+		return githubCompareResponse{}, fmt.Errorf("decoding GitHub compare: %w", err)
 	}
-	return response.Status, nil
+	return response, nil
 }
 
 func (c *GitHubClient) findCrossRepoPullRequest(ctx context.Context, upstreamOwner, repo, head, base string) (*githubPublicPullResponse, error) {
