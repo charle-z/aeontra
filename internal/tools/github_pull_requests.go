@@ -94,7 +94,11 @@ func (c *GitHubClient) branchSHA(ctx context.Context, repo, branch string) (stri
 }
 
 type githubCompareResponse struct {
-	Status string `json:"status"`
+	Status          string `json:"status"`
+	AheadBy         int    `json:"ahead_by"`
+	MergeBaseCommit struct {
+		SHA string `json:"sha"`
+	} `json:"merge_base_commit"`
 }
 
 func (c *GitHubClient) commitIsAncestor(ctx context.Context, repo, ancestor, descendant string) (bool, error) {

@@ -125,7 +125,7 @@ do not replace server-side enforcement.
 | `source_public_issue_comment` | 0/0/0/1 | Require the conversation to remain unchanged and post the planned comment. |
 | `source_public_review_reply_preview` | 1/0/1/1 | Bind one exact inline review comment, PR head and reply body. |
 | `source_public_review_reply` | 0/0/0/1 | Revalidate the PR and comment timestamp, then post one threaded reply. |
-| `source_cross_repo_pull_request_create_preview` | 1/0/1/1 | Bind fork/upstream SHAs, ancestry and duplicate state for one public PR. |
+| `source_cross_repo_pull_request_create_preview` | 1/0/1/1 | Bind fork/upstream SHAs, shared-history head contribution and duplicate state for one public PR; upstream may have advanced independently. |
 | `source_cross_repo_pull_request_create` | 0/0/0/1 | Revalidate the fork, SHAs and duplicate state, then open the public upstream PR. |
 | `source_public_pull_request_status` | 1/0/1/1 | Read one public PR, exact-head checks, reviews and conversation comments. |
 | `source_pull_request_create_preview` | 1/0/1/1 | Bind head/base SHAs and plan one non-draft pull request. |

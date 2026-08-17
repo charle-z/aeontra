@@ -147,7 +147,7 @@ func RegisterSourcePublicOSS(register Register, service SourcePublicOSSService) 
 	})
 	register(Tool{
 		Name:        "source_cross_repo_pull_request_create_preview",
-		Description: "Verify an exact configured-owner fork branch, upstream base, ancestry, and duplicate state before planning one cross-repository pull request. Nothing is created.",
+		Description: "Verify an exact configured-owner fork branch, upstream base, shared-history head contribution, and duplicate state before planning one cross-repository pull request. Upstream may have advanced independently. Nothing is created.",
 		InputSchema: closedObject(map[string]any{
 			"upstream_owner": boundedStringProp("public external GitHub owner", 1, 39),
 			"repo":           boundedStringProp("fork and upstream repository name", 1, 100),
@@ -176,7 +176,7 @@ func RegisterSourcePublicOSS(register Register, service SourcePublicOSSService) 
 	})
 	register(Tool{
 		Name:        "source_cross_repo_pull_request_create",
-		Description: "Execute one reviewed source_cross_repo_pull_request_create_preview plan after revalidating fork, branch SHAs, ancestry, and duplicate state.",
+		Description: "Execute one reviewed source_cross_repo_pull_request_create_preview plan after revalidating fork, branch SHAs, shared-history head contribution, and duplicate state.",
 		InputSchema: planExecutionSchema("pull request plan returned by source_cross_repo_pull_request_create_preview"),
 		Version:     "1",
 		Handler: func(arguments json.RawMessage) (string, error) {
