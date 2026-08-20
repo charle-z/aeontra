@@ -53,7 +53,10 @@ Never publish:
       public reporting boundary.
 - [x] CI runs tests, vet, formatting, dependency review, and secret scanning.
 - [ ] Dependencies and container images are pinned; SBOM and checksums are produced.
-- [ ] A clean clone can build and run without private infrastructure values.
+- [x] CI builds and initializes the local read-only stdio server through
+      `scripts/verify-clean-install.sh` without private infrastructure values.
+- [ ] A clean Linux/WSL Edge installation, pairing, signed update, and rollback are
+      reproduced by an independent operator without private maintainer defaults.
 - [ ] The public console uses only synthetic/sanitized fixtures.
 - [ ] A tagged release and rollback procedure are tested.
 

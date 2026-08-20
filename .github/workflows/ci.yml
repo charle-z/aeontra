@@ -63,6 +63,9 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Verify clean local installation
+        run: ./scripts/verify-clean-install.sh
+
       - name: Validate GitHub Actions
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 

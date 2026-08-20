@@ -86,6 +86,10 @@ go build ./...
 git diff --check
 ```
 
+Run `./scripts/verify-clean-install.sh` when setup, packaging, startup, configuration,
+or contributor prerequisites change. It is intentionally independent of the original
+maintainer's domains, deployment platform, accounts, and Edge device.
+
 Also run the catalog identity, documentation, workflow-policy, browser, rootless, or
 packaging gates affected by the change. CI is authoritative for exact-head checks.
 

@@ -190,6 +190,14 @@ go build -o ./bin/mcp-devbox ./cmd/mcp-devbox
 ./bin/mcp-devbox serve --root /absolute/path/to/repository --mode read-only
 ```
 
+The release-independent clean-install acceptance builds a fresh binary, starts the
+read-only stdio transport against a disposable repository, validates MCP initialization,
+and checks that audit state is created without private infrastructure:
+
+```bash
+./scripts/verify-clean-install.sh
+```
+
 For reviewed local changes:
 
 ```bash
