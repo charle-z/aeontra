@@ -269,6 +269,9 @@ Start with [`docs/documentation-map.md`](docs/documentation-map.md). Canonical r
 - [`docs/configuration.md`](docs/configuration.md): complete configuration reference;
 - [`docs/security.md`](docs/security.md): technical security architecture;
 - [`SECURITY.md`](SECURITY.md): vulnerability reporting and disclosure;
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): development workflow, gates, and contribution provenance;
+- [`SUPPORT.md`](SUPPORT.md): best-effort support scope and useful diagnostics;
+- [`GOVERNANCE.md`](GOVERNANCE.md): decision process and maintainer roles;
 - [`docs/tools.md`](docs/tools.md): public tool catalog;
 - `/version` and `system_runtime_info`: live build/catalog identity;
 - [`docs/baselines/`](docs/baselines/): dated historical evidence.
@@ -283,3 +286,6 @@ rights reserved unless the owner states otherwise.
 
 Report vulnerabilities privately using [`SECURITY.md`](SECURITY.md). Do not publish
 secrets, exploit details, or unpatched vulnerabilities in a public issue.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing code and
+[`SUPPORT.md`](SUPPORT.md) before opening a support request.

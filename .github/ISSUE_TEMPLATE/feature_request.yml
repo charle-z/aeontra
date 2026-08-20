@@ -1,0 +1,46 @@
+name: Feature request
+description: Propose a focused capability or contract change.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user problem without prescribing an architecture.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What observable result should become possible?
+    validations:
+      required: true
+  - type: textarea
+    id: authority
+    attributes:
+      label: Authority and trust boundaries
+      description: Which filesystem, process, network, credential, Git, browser, container, deployment, or update authority is required?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Can an existing capability or a smaller contract solve the problem?
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility considerations
+      description: Note affected tools, schemas, config, state, releases, or host profiles.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope checks
+      options:
+        - label: This request does not depend on exposing a secret or unrestricted host shell to a model.
+          required: true
+        - label: This request contains no private infrastructure or personal data.
+          required: true

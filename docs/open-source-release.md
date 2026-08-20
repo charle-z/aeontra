@@ -45,8 +45,12 @@ Never publish:
 - [x] Full working tree and complete Git history are scanned for secrets; exact
       synthetic redaction fixtures are narrowly documented in `.gitleaks.toml`.
 - [ ] `SECURITY.md` matches implemented isolation/egress limitations.
-- [ ] `CONTRIBUTING.md`, code of conduct, support boundary, and private vulnerability
-      reporting channel are added.
+- [x] `CONTRIBUTING.md`, `SUPPORT.md`, governance, issue forms, and a concise pull-request
+      template define the public contribution and support workflow.
+- [ ] A standard code of conduct and a maintainer-approved private conduct-reporting
+      channel are added without reusing the vulnerability inbox ambiguously.
+- [x] GitHub private vulnerability reporting is enabled and `SECURITY.md` defines the
+      public reporting boundary.
 - [x] CI runs tests, vet, formatting, dependency review, and secret scanning.
 - [ ] Dependencies and container images are pinned; SBOM and checksums are produced.
 - [ ] A clean clone can build and run without private infrastructure values.
