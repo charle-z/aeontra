@@ -1,0 +1,43 @@
+title = "MCP Devbox secret scanning policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic GitHub PAT used only to verify redaction"
+targetRules = ["github-pat"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^internal/edgeclient/htb_checkpoint_redaction_test\.go$''']
+regexes = ['''ghp_012345678901234567890123456789012345''']
+
+[[allowlists]]
+description = "Exact synthetic values and key names used by tests and documentation"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''^\.github/workflows/trusted-linux-workcell-e2e\.yml$''',
+  '''^docs/workspace-runtime-continuation\.md$''',
+  '''^docs/security\.md$''',
+  '''^internal/edgeclient/htb_checkpoint_redaction_test\.go$''',
+  '''^internal/edgeclient/dev_git_broker_unix\.go$''',
+  '''^internal/edgeclient/htb_lab_broker_unix\.go$''',
+  '''^internal/edgeclient/htb_actions_test\.go$''',
+  '''^internal/edgeclient/trusted_linux_workcell_e2e_test\.go$''',
+  '''^packaging/debian/package_contract_test\.go$''',
+  '''^internal/policy/secrets_test\.go$''',
+]
+regexes = [
+  '''p12-fixture-user-secret", "p12-fixture-root-secret''',
+  '''"idempotency_key": "continue-20260720T230000Z-a1b2c3d4"''',
+  '''"recovered-lab-password",''',
+  '''ghp_012345678901234567890123456789012345''',
+  '''normalized non-secret arguments, creation/expiry timestamps''',
+  '''"PATH=" \+ runner\.toolPath, "HOME=" \+ secretRoot''',
+  '''"HOME=" \+ secretDir,''',
+  '''secret, "0123456789abcdef0123456789abcdef"''',
+  '''p12FixtureRootSecret = "p12-fixture-root-secret"''',
+  '''"EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64"''',
+  '''DB_TOKEN=abcdef0123456789''',
+]

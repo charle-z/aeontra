@@ -55,6 +55,10 @@ func (s *PlatformCapability) managedFrontDoorCoordinatorCoolifyURL() (string, er
 
 func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request PlatformFrontDoorCoordinatorRequest) (string, error) {
 	sp := s.log.Start("platform_front_door_coordinator_preview")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "preview", nil, err)
+		return "", err
+	}
 	if err := s.frontDoorPlatformConfigError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
 		return "", err
@@ -133,6 +137,10 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request Platfor
 
 func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_front_door_coordinator_create")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "create", nil, err)
+		return "", err
+	}
 	if err := s.frontDoorPlatformConfigError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
@@ -279,6 +287,10 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 
 func (s *PlatformCapability) PlatformFrontDoorTransitionPreview(targetRaw string) (string, error) {
 	sp := s.log.Start("platform_front_door_transition_preview")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "preview", nil, err)
+		return "", err
+	}
 	target, err := frontdoorcoordinator.ParseTarget(targetRaw)
 	if err != nil || target == frontdoorcoordinator.TargetIdle {
 		if err == nil {
@@ -372,6 +384,10 @@ func (s *PlatformCapability) PlatformFrontDoorTransitionPreview(targetRaw string
 
 func (s *PlatformCapability) PlatformFrontDoorTransition(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_front_door_transition")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "transition", nil, err)
+		return "", err
+	}
 	needsApproval, err := s.pol.CheckAction()
 	if err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
@@ -471,6 +487,10 @@ func (s *PlatformCapability) PlatformFrontDoorTransition(planID string, approve 
 
 func (s *PlatformCapability) PlatformFrontDoorTransitionStatus() (string, error) {
 	sp := s.log.Start("platform_front_door_transition_status")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "status", nil, err)
+		return "", err
+	}
 	app, exists, err := s.managedFrontDoorCoordinatorApp()
 	if err != nil || !exists {
 		if err == nil {

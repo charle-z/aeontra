@@ -21,6 +21,7 @@ func clearRuntimeEnv(t *testing.T) {
 		sandboxImageEnv,
 		validationRunnerURLEnv, validationRunnerTokenEnv,
 		privilegedTasksEnv, privilegedServicesEnv, privilegedTimeoutEnv,
+		maintainerProfileEnv,
 		githubTokenEnv, githubOSSTokenEnv, githubOwnerEnv, githubOwnerTypeEnv, githubDefaultVisibilityEnv,
 		coolifyURLEnv, coolifyAPITokenEnv, coolifyAllowedAppsEnv, coolifyServerUUIDEnv,
 		coolifyProjectUUIDEnv, coolifyEnvironmentNameEnv, coolifyEnvironmentUUIDEnv,
@@ -28,6 +29,25 @@ func clearRuntimeEnv(t *testing.T) {
 		coolifyAllowedMountsEnv,
 	} {
 		t.Setenv(name, "")
+	}
+}
+
+func TestLoadMaintainerProfileIsExplicitAndClosed(t *testing.T) {
+	clearRuntimeEnv(t)
+	profile, err := loadMaintainerProfile()
+	if err != nil || profile != "" {
+		t.Fatalf("default profile=%q err=%v", profile, err)
+	}
+
+	t.Setenv(maintainerProfileEnv, "charle-z-production")
+	profile, err = loadMaintainerProfile()
+	if err != nil || profile != "charle-z-production" {
+		t.Fatalf("configured profile=%q err=%v", profile, err)
+	}
+
+	t.Setenv(maintainerProfileEnv, "unexpected")
+	if _, err := loadMaintainerProfile(); err == nil || !strings.Contains(err.Error(), maintainerProfileEnv) {
+		t.Fatalf("unsupported profile error=%v", err)
 	}
 }
 

@@ -1,8 +1,12 @@
-# Public showcase evidence
+# Frozen historical showcase evidence
 
-`pixelgrama-evidence.json` is the single canonical source for Pixelgrama evidence used by the MCP Devbox presentation.
+`pixelgrama-evidence.json` is the frozen historical Pixelgrama snapshot used by the
+Aeontra presentation. It was captured while the referenced source evidence was public;
+the repository is now private, so the landing must not promise current GitHub access.
 
-The file stays under `docs/showcase` because it is public documentation and reviewable evidence, while `evidence.go` embeds those exact bytes into the Go binary. The public server exposes the embedded resource at:
+The file stays under `docs/showcase` because the snapshot itself is public, versioned
+documentation, while `evidence.go` embeds those exact bytes into the Go binary. The
+public server exposes the embedded resource at:
 
 ```text
 /showcase/pixelgrama-evidence.json
@@ -19,4 +23,6 @@ Schema version 1 validates:
 - an honest authority status when the exact historical policy mode is not publicly verifiable;
 - direct operations separately from consequential operations whose public result is visible but whose one-time plan artifacts remain private.
 
-The manifest is static evidence. The landing must not query GitHub on page load, and the public resource grants no control-plane authority.
+The manifest is static historical evidence, not a live availability check. The landing
+must not query GitHub on page load, and the public resource grants no repository or
+control-plane authority.

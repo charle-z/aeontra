@@ -61,6 +61,25 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 			t.Fatalf("postinst contains forbidden operation %q", forbidden)
 		}
 	}
+	if strings.Contains(postinst, "id charles") || strings.Contains(postinst, "EDGE_USER='charles'") {
+		t.Fatal("postinst must not select the maintainer's local account")
+	}
+
+	prerm := repoFile(t, "packaging/debian/prerm")
+	for _, required := range []string{
+		"mcp-devbox-edge-onboard@${EDGE_USER}.path",
+		"mcp-devbox-opencode-edge@${EDGE_USER}.service",
+		"mcp-devbox-edge-onboard@${EDGE_USER}.path.d/10-edge-home.conf",
+		"mcp-devbox-opencode-edge@${EDGE_USER}.service.d/10-edge-home.conf",
+		"systemctl daemon-reload",
+	} {
+		if !strings.Contains(prerm, required) {
+			t.Fatalf("prerm missing safe lifecycle cleanup %q", required)
+		}
+	}
+	if strings.Contains(prerm, "systemctl disable --now \"mcp-devbox-edge-onboard@${EDGE_USER}.path\" || true") || strings.HasPrefix(strings.TrimSpace(prerm), "rm -f /etc/polkit") {
+		t.Fatal("prerm must fail closed before removing updater authority")
+	}
 
 	updaterUnit := repoFile(t, "packaging/systemd/mcp-devbox-bundle-updater.service")
 	for _, required := range []string{"User=root", "update stable", "ProtectSystem=strict", "ReadWritePaths=/opt/mcp-devbox /etc/systemd/system /usr/local/bin", "CapabilityBoundingSet="} {

@@ -120,9 +120,9 @@ jobs:
           sudo install -d -o mcp-build -g mcp-build -m 0700 \
             "$integrated_context" "$external_context" \
             "$integrated_first" "$integrated_second" "$external_output" "$cache"
-          printf 'FROM busybox:1.37.0\nRUN echo p16-runc-ok > /ok\n' \
+          printf 'FROM busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0\nRUN echo p16-runc-ok > /ok\n' \
             | sudo tee "$integrated_context/Dockerfile" >/dev/null
-          printf '# syntax=docker/dockerfile:1.7\nFROM busybox:1.37.0\nRUN echo p16-external-runc-ok > /ok\n' \
+          printf '# syntax=docker/dockerfile:1.7\nFROM busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0\nRUN echo p16-external-runc-ok > /ok\n' \
             | sudo tee "$external_context/Dockerfile" >/dev/null
           sudo chown -R mcp-build:mcp-build "$fixture" "$cache"
           socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock

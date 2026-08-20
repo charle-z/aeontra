@@ -1,18 +1,9 @@
 # Open-source release boundary
 
-MCP Devbox is currently source-visible but not open source. Copyright © 2026
-Carlos Acosta. All rights reserved. The `COPYRIGHT` file is the current legal notice.
-
-Public visibility alone does not grant permission to use, copy, modify, distribute,
-sublicense, sell, or create derivative works. Do not describe the project as open
-source until the owner intentionally adds an open-source license.
-
-## Future licensing options
-
-The owner may later choose AGPL-3.0 plus a separate commercial license, a permissive
-license, or another explicit arrangement. That decision remains deferred and should
-consider contribution goals, hosted-service reuse, attribution, support obligations,
-and commercial strategy.
+Aeontra is licensed under the Apache License, Version 2.0 through the `mcp-devbox`
+compatibility repository. `LICENSE`, `NOTICE`, `COPYRIGHT`, and
+[`docs/provenance.md`](provenance.md) define the source-license and historical-author
+boundary. Artifact-specific third-party notices remain a separate release gate.
 
 ## Public repository
 
@@ -39,24 +30,41 @@ Never publish:
 
 ## Release blockers
 
-- [x] Current copyright posture documented in `COPYRIGHT`; no open-source license granted.
-- [ ] Owner chooses a future open-source, source-available, or dual-license model if desired.
+- [x] Apache License 2.0, project attribution, and copyright posture are published in
+      `LICENSE`, `NOTICE`, and `COPYRIGHT`.
+- [x] Historical human and owner-directed automation identities are mapped in
+      `docs/provenance.md`; future external contributions use the DCO.
 - [ ] README comparison claims have dated primary sources.
-- [ ] Full working tree and complete Git history are scanned for secrets.
-- [ ] `SECURITY.md` matches implemented isolation/egress limitations.
-- [ ] `CONTRIBUTING.md`, code of conduct, support boundary, and private vulnerability
-      reporting channel are added.
-- [ ] CI runs tests, vet, formatting, dependency review, and secret scanning.
-- [ ] Dependencies and container images are pinned; SBOM and checksums are produced.
-- [ ] A clean clone can build and run without private infrastructure values.
-- [ ] The public console uses only synthetic/sanitized fixtures.
+- [x] Full working tree and complete Git history are scanned for secrets; exact
+      synthetic redaction fixtures are narrowly documented in `.gitleaks.toml`.
+- [x] `SECURITY.md` matches implemented isolation/egress limitations and does not imply
+      that the source license authorizes security testing.
+- [x] `CONTRIBUTING.md`, `SUPPORT.md`, governance, issue forms, and a concise pull-request
+      template define the public contribution and support workflow.
+- [ ] Non-blocking follow-up: add a standard code of conduct and a
+      maintainer-approved private conduct-reporting channel without reusing the
+      vulnerability inbox ambiguously. Their absence does not block licensing,
+      publication, or leaving draft once the technical and provenance gates pass.
+- [x] GitHub private vulnerability reporting is enabled and `SECURITY.md` defines the
+      public reporting boundary.
+- [x] CI runs tests, vet, formatting, dependency review, and secret scanning.
+- [x] External Actions and versioned container bases are pinned by immutable commit or
+      digest; dependency/license gates and container SBOM/checksum evidence are produced.
+- [x] CI builds and initializes the local read-only stdio server through
+      `scripts/verify-clean-install.sh` without private infrastructure values.
+- [ ] A clean Linux/WSL Edge installation, pairing, signed update, and rollback are
+      reproduced by an independent operator without private maintainer defaults.
+- [x] Fixed managed-deployment tools are moved behind an explicit maintainer profile or
+      made owner-configurable; third-party installations do not expose this repository's
+      Coolify application IDs, domains, or release repository as operative defaults.
+- [x] The public console uses only synthetic/sanitized fixtures; repository tests reject
+      maintainer usernames, private domains, and personal absolute paths in those fixtures.
 - [ ] A tagged release and rollback procedure are tested.
 
 ## Positioning rule
 
-Do not claim that MCP Devbox is categorically “secure” or that alternatives have no
+Do not claim that Aeontra is categorically “secure” or that alternatives have no
 security controls. State concrete, testable differences and current limitations.
 The durable differentiator is a deny-by-default authority model with secret denial,
 command/path jail, planned consequential actions, independent runner/edge checks,
 and auditable handoffs—not simply access to a terminal from chat.
-

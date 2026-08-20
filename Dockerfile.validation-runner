@@ -1,12 +1,38 @@
-FROM golang:1.26.6-alpine3.24 AS build
+FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/validation-runner ./cmd/validation-runner
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/validation-runner ./cmd/validation-runner
 
-FROM docker:29-cli
-RUN apk add --no-cache curl
+FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS docker-cli
+ARG DOCKER_CLI_VERSION=29.7.2
+ARG DOCKER_CLI_COMMIT=a7dcaa6fdb6ed04aacbfdc76357fdae01605609e
+ARG DOCKER_CLI_SOURCE_SHA256=225b7ab2a15f5230b482df8461069cd4bce38891266fb9898d4188d0a3cbf54a
+WORKDIR /go/src/github.com/docker/cli
+RUN apk add --no-cache ca-certificates \
+    && source_archive=/tmp/docker-cli.tar.gz \
+    && busybox wget -qO "$source_archive" \
+        "https://github.com/docker/cli/archive/refs/tags/v${DOCKER_CLI_VERSION}.tar.gz" \
+    && printf '%s  %s\n' "$DOCKER_CLI_SOURCE_SHA256" "$source_archive" \
+        | busybox sha256sum -c - \
+    && tar -xzf "$source_archive" --strip-components=1 -C . \
+    && rm -f "$source_archive" \
+    && CGO_ENABLED=0 GO111MODULE=auto go build \
+        -tags grpcnotrace \
+        -trimpath \
+        -ldflags="-s -w -X github.com/docker/cli/cli/version.GitCommit=${DOCKER_CLI_COMMIT} -X github.com/docker/cli/cli/version.Version=${DOCKER_CLI_VERSION}" \
+        -o /out/docker ./cmd/docker \
+    && test "$(go version -m /out/docker | sed -n 's/.*go\(1\.[0-9][0-9.]*\).*/go\1/p' | head -1)" = go1.26.6
+
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+RUN apk upgrade --no-cache \
+    && apk add --no-cache ca-certificates
+COPY --from=docker-cli /out/docker /usr/local/bin/docker
+COPY --from=docker-cli /go/src/github.com/docker/cli/LICENSE /usr/share/licenses/docker-cli/LICENSE
+COPY --from=docker-cli /go/src/github.com/docker/cli/NOTICE /usr/share/licenses/docker-cli/NOTICE
 COPY --from=build /out/validation-runner /usr/local/bin/validation-runner
 EXPOSE 8787
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
+    CMD busybox wget -qO- http://127.0.0.1:8787/healthz >/dev/null || exit 1
 ENTRYPOINT ["/usr/local/bin/validation-runner"]

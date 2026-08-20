@@ -1,4 +1,4 @@
-// Package landing serves the unauthenticated, presentation-only MCP Devbox showcase.
+// Package landing serves the unauthenticated, presentation-only Aeontra showcase.
 // It owns only static embedded assets. It cannot execute tools, inspect repositories,
 // approve plans, read audit data, or access console sessions and credentials.
 package landing

@@ -276,13 +276,18 @@ observed from GitHub Actions after publication.
 
 `.github/workflows/security.yml` adds three bounded jobs:
 
-- **CodeQL:** Go manual build analysis with `github/codeql-action@v4.37.0`; only
+- **CodeQL:** Go manual build analysis with `github/codeql-action` pinned to commit
+  `99df26d4f13ea111d4ec1a7dddef6063f76b97e9` (`v4.37.0`); only
   `contents: read` and `security-events: write` are granted;
-- **Dependency review:** `actions/dependency-review-action@v5.0.0` runs only for pull
-  requests and blocks moderate-or-higher introduced vulnerabilities without PR comments;
+- **Dependency review:** `actions/dependency-review-action` pinned to commit
+  `a1d282b36b6f3519aa1f3fc636f609c47dddb294` (`v5.0.0`) runs only for pull requests
+  and blocks moderate-or-higher introduced vulnerabilities without PR comments;
 - **Container evidence:** builds `mcp-devbox:ci` locally, generates
-  `sbom.spdx.json` with `anchore/sbom-action@v0.24.0`, and scans the local image with
-  `anchore/scan-action@v7.4.0`, failing on high-or-critical findings.
+  `sbom.spdx.json` with `anchore/sbom-action` pinned to
+  `e22c389904149dbc22b58101806040fa8d37a610` (`v0.24.0`), and scans the local image
+  with `anchore/scan-action` pinned to
+  `e1165082ffb1fe366ebaf02d8526e7c4989ea9d2` (`v7.4.0`), failing on
+  high-or-critical findings.
 
 No registry login, image push, workflow secret, artifact/release upload, production
 endpoint, or active DAST exists. SBOM and Grype JSON are verified as non-empty local

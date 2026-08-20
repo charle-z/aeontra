@@ -1,0 +1,10 @@
+Aeontra
+Copyright 2026 Carlos Acosta
+
+Aeontra is distributed under the Apache License, Version 2.0. The names
+`mcp-devbox` and `mcp-edge` remain compatibility identifiers for existing module,
+package, service, state, protocol, and installation contracts.
+
+Third-party components retain their respective copyright and license notices.
+Each binary, package, image, browser bundle, or other release artifact must carry
+the notices required by the exact components it distributes.

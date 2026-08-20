@@ -202,6 +202,14 @@ configured owner's exact repository branch through GitHub, seals the result into
 plan and resolves it again during execution. A moved branch, malformed repository or
 different owner fails closed without patching the application.
 
+Repository-maintainer operations are a separate opt-in boundary. Generic installations
+leave `MCP_DEVBOX_MAINTAINER_PROFILE` unset, so the fixed production backend, Front
+Door/coordinator, Brain deployment contract, and official Edge-release maintenance
+operations are registered for protocol compatibility but fail before reading private
+platform state or making an external request. The sole supported profile value enables
+the repository maintainer's reviewed constants; it does not make them caller-selectable
+and is not a template for a downstream operator's infrastructure.
+
 ## Edge trust and signed releases
 
 The public control plane and a paired Edge authenticate their outbound protocol with a

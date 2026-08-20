@@ -18,8 +18,8 @@ sources of truth.
 - [`documentation-map.md`](documentation-map.md) — source ownership and status terms.
 - [`product-roadmap.md`](product-roadmap.md) — evidence-based product direction.
 - [`docs/baselines/`](baselines/) — dated historical evidence.
-- `.agent-memory/current-task.md` and `.agent-memory/handoffs/latest.md` — active task
-  and continuation state.
+Operator-local `.agent-memory/` files and optional Brain notes may carry continuation
+state, but they remain untracked instance data and are not canonical product documents.
 
 Use `/version` or `system_runtime_info` for the live server commit, protocol, tool count,
 and catalog hash. Do not copy those moving values into this capsule.
@@ -142,7 +142,7 @@ Do not infer current state from this file. Resolve it as follows:
 | What source release exists? | source-host release metadata and signed manifest |
 | What package artifact was published? | release/package workflow evidence |
 | What is installed on a real Edge? | supported local doctor/status and signed bundle metadata |
-| What task is active? | `.agent-memory/current-task.md` |
+| What task is active? | current Git state plus operator-local `.agent-memory/` or an optional Brain checkpoint |
 | What happened historically? | a dated file in `baselines/`, an ADR/spec, PR, and Git history |
 
 Use “validation pending” for a missing environment-specific proof. A green source test,
@@ -170,7 +170,7 @@ Keep `/state`, `/brain`, OAuth stores, Edge private state, credentials, and engi
 
 ## Resuming safely
 1. Read `AGENTS.md` and this capsule.
-2. Read `.agent-memory/current-task.md` and the latest handoff.
+2. Read the operator-local task/handoff or optional Brain checkpoint when one exists.
 3. Verify branch, HEAD, upstream, and working tree.
 4. Read the affected canonical source, runbook, implementation, and tests.
 5. Confirm live identity only when the task depends on deployment state.

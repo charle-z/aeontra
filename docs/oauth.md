@@ -13,7 +13,7 @@ Set both required env vars (OAuth stays **off** unless both are present):
 
 | Env | Meaning | Example |
 |-----|---------|---------|
-| `MCP_DEVBOX_PUBLIC_URL` | Public HTTPS base URL (the OAuth **issuer**). Must be `https://` (only `localhost` may use `http`). | `https://mcp-devbox-charlez.duckdns.org` |
+| `MCP_DEVBOX_PUBLIC_URL` | Public HTTPS base URL (the OAuth **issuer**). Must be `https://` (only `localhost` may use `http`). | `https://mcp.example.com` |
 | `MCP_DEVBOX_OAUTH_PASSPHRASE` | The owner login secret entered on the authorize page. | *(a strong passphrase)* |
 | `MCP_DEVBOX_STATE_ROOT` | Administrator-owned durable state root. When set, missing OAuth store paths default beneath it. The Docker image sets `/state`. | `/state` |
 | `MCP_DEVBOX_OAUTH_CLIENT_STORE` | Optional absolute override for persistent Dynamic Client Registration clients. Defaults to `<STATE_ROOT>/oauth-clients.json` when a state root is configured. | `/state/oauth-clients.json` |

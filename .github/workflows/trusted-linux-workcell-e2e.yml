@@ -17,6 +17,7 @@ permissions:
 
 env:
   P12_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  P12_POSTGRES_IMAGE: docker.io/library/postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
 
 jobs:
   trusted-host:
@@ -141,13 +142,13 @@ jobs:
           cache: true
 
       - name: Set up pinned pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.13.1
           run_install: false
 
       - name: Set up Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "22"
           cache: pnpm
@@ -296,14 +297,14 @@ jobs:
             if [ "$delay" -ne 0 ]; then
               sleep "$delay"
             fi
-            if docker pull docker.io/library/postgres:17-alpine; then
-              postgres_image_id="$(docker image inspect --format '{{.Id}}' docker.io/library/postgres:17-alpine)"
+            if docker pull "$P12_POSTGRES_IMAGE"; then
+              postgres_image_id="$(docker image inspect --format '{{.Id}}' "$P12_POSTGRES_IMAGE")"
               case "$postgres_image_id" in
                 sha256:????????????????????????????????????????????????????????????????) ;;
                 *) echo "P12 rootless category=postgres_image_identity"; exit 1 ;;
               esac
               postgres_image="localhost/p12-postgres-fixture:${postgres_image_id#sha256:}"
-              docker image tag docker.io/library/postgres:17-alpine "$postgres_image"
+              docker image tag "$P12_POSTGRES_IMAGE" "$postgres_image"
               test "$(docker image inspect --format '{{.Id}}' "$postgres_image")" = "$postgres_image_id"
               docker image save --output "$archive" "$postgres_image"
               test -s "$archive"

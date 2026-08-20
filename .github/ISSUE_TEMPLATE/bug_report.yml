@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible defect without sensitive data.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, private URLs, OAuth material, production logs, or unpatched vulnerability details. Use private vulnerability reporting for security issues.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use a disposable repository and list the smallest exact steps.
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: identity
+    attributes:
+      label: Version and environment
+      description: Include source commit, /version or system_runtime_info, host profile, OS, and Edge release when relevant.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - Control plane / MCP transport
+        - Edge / workcell
+        - Files or processes
+        - Git / GitHub
+        - Browser / toolbox / containers
+        - OAuth / Front Door
+        - Deployment / release / updater
+        - Console / documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Bounded diagnostics
+      description: Paste only redacted, relevant output. Prefer safe codes and request IDs over raw logs.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed secrets, credentials, private infrastructure details, and personal data.
+          required: true
+        - label: This is not an undisclosed vulnerability that should be reported privately.
+          required: true

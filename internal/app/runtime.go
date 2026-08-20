@@ -218,10 +218,15 @@ func buildTaskJournal(root string) (*taskjournal.Journal, error) {
 }
 
 func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logger, primary, brainRoot, stateRoot string) (*tools.Service, error) {
+	maintainerProfile, err := loadMaintainerProfile()
+	if err != nil {
+		return nil, err
+	}
 	service := tools.NewService(pol, logger, primary).
 		WithTestCommand(cfg.TestCommand).
 		WithSandboxRunner(buildSandboxRunner(cfg, primary)).
-		WithValidationRunner(buildValidationRunnerFromEnv())
+		WithValidationRunner(buildValidationRunnerFromEnv()).
+		WithMaintainerProfile(maintainerProfile)
 
 	privileged, err := loadPrivilegedConfig()
 	if err != nil {
@@ -242,6 +247,16 @@ func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logge
 		service = service.WithBrainStore(brainStore)
 	}
 	return service, nil
+}
+
+func loadMaintainerProfile() (string, error) {
+	profile := strings.TrimSpace(os.Getenv(maintainerProfileEnv))
+	switch profile {
+	case "", tools.MaintainerProfileCharleZProduction:
+		return profile, nil
+	default:
+		return "", fmt.Errorf("%s has an unsupported value", maintainerProfileEnv)
+	}
 }
 
 func buildBrainStore(root string, repositoryRoots []string, consoleIdentityPath string) (*brainpkg.Store, error) {

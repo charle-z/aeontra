@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTimestamp, relativeAge } from "./timeDisplay";
+import { formatTimestamp, relativeAge } from "./time-format";
 
 describe("explicit timezone formatting", () => {
   it("formats the requested Bogotá instant without using browser timezone", () => {

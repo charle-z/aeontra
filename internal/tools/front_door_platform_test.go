@@ -19,6 +19,7 @@ const (
 func configuredFrontDoorPlatformService(t *testing.T, mode config.Mode, baseURL string) *Service {
 	t.Helper()
 	svc := configuredPlatformService(t, mode, baseURL)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(baseURL, "github-token", "acme", "org", "private"))
 	svc.WithCoolify(svc.coolify.WithBuilderRuntime("destination1", nil))
 	return svc

@@ -211,13 +211,22 @@ func walkJob(node *yaml.Node, pullRequestFacing bool, scope string) error {
 }
 
 func validateActionVersion(value, scope string) error {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "./") {
+		return nil
+	}
 	separator := strings.LastIndex(value, "@")
 	if separator <= 0 || separator == len(value)-1 {
 		return fmt.Errorf("%w: %s action %q has no explicit ref", ErrMutableVersion, scope, value)
 	}
 	ref := strings.ToLower(strings.TrimSpace(value[separator+1:]))
-	if ref == "main" || ref == "master" || ref == "latest" {
+	if len(ref) != 40 {
 		return fmt.Errorf("%w: %s action %q", ErrMutableVersion, scope, value)
+	}
+	for _, character := range ref {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return fmt.Errorf("%w: %s action %q", ErrMutableVersion, scope, value)
+		}
 	}
 	return nil
 }

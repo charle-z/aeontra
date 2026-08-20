@@ -132,7 +132,9 @@ describe("Neo-BIOS operations firmware", () => {
     expect(screen.getByTitle(task.created_at)).toBeInTheDocument();
     expect(screen.getByTitle(task.terminal_at)).toBeInTheDocument();
     expect(screen.queryByTitle(task.heartbeat_at)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Load older tasks" }));
+    const loadOlder = await screen.findByRole("button", { name: "Load older tasks" });
+    await waitFor(() => expect(loadOlder).toBeEnabled());
+    fireEvent.click(loadOlder);
     await waitFor(() => expect(screen.getByText("repo_status")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("button", { name: "Load older tasks" })).toBeDisabled());
   });
@@ -175,7 +177,9 @@ describe("Neo-BIOS operations firmware", () => {
     const view = render(<App />);
     await waitFor(() => expect(screen.getByText("Timezone: America/Bogota")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load older tasks" }));
+    const loadOlder = await screen.findByRole("button", { name: "Load older tasks" });
+    await waitFor(() => expect(loadOlder).toBeEnabled());
+    fireEvent.click(loadOlder);
     await waitFor(() => expect(screen.getByText("repo_status")).toBeInTheDocument());
     const before = screen.getAllByRole("row").map((row) => row.textContent);
     fireEvent.change(screen.getByRole("combobox", { name: "Timezone" }), { target: { value: "UTC" } });

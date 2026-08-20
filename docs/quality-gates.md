@@ -33,7 +33,8 @@ unchanged zero-High/Critical Grype threshold. The dated baseline is merge-ready;
 production identity and smoke remain pending until merge and `/brain` persistence.
 
 Workflow policy (always through `go test ./...`): dangerous triggers, permissions,
-secrets, mutable versions, missing timeouts, and production actions fail before merge.
+secrets, non-SHA external Action references, missing timeouts, and production actions
+fail before merge. Repository-local Actions remain bound to the checked-out commit.
 
 Core CI is split into independent blocking verify, CGO race, staticcheck, and
 govulncheck jobs so one failure remains attributable. Pinned actionlint validates
@@ -75,6 +76,9 @@ Authenticated console:
 
 Security evidence added by P6:
 
+- pinned Gitleaks scans the complete reachable Git history and current tree; the
+  repository policy extends upstream defaults and permits only exact synthetic
+  redaction fixtures with path-and-pattern `AND` conditions;
 - CodeQL Go analysis with minimal `security-events: write`;
 - pull-request dependency review at moderate severity;
 - local Docker build, SPDX JSON SBOM, and blocking high-severity Grype scan;

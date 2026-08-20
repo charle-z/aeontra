@@ -24,6 +24,7 @@ func TestManagedDeploymentCapabilityBlocksForceBackendDeployment(t *testing.T) {
 	defer server.Close()
 
 	service, _ := newTestService(t, config.ModeAllow)
+	service.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	client := NewCoolifyClient(server.URL, "token", nil)
 	client.do = server.Client().Do
 	service.WithCoolify(client)
@@ -153,6 +154,7 @@ func TestManagedBackendRolloutRejectsIncompleteExactHeadChecks(t *testing.T) {
 	defer server.Close()
 
 	service, _ := newTestService(t, config.ModeAllow)
+	service.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	service.WithGitHub(NewGitHubClient(server.URL, "token", "acme", "org", "private"))
 	app := platformApplication{UUID: managedBackendAppUUID, GitRepository: "https://github.com/acme/mcp-devbox.git", GitBranch: managedBackendBranch}
 	if _, err := service.PlatformCapability.managedBackendRolloutIdentity(t.Context(), app); err == nil || !strings.Contains(err.Error(), "green checks") {

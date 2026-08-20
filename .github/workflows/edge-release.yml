@@ -124,7 +124,7 @@ jobs:
           git diff --check
 
       - name: Generate Edge bundle SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: ${{ runner.temp }}/release/bundle
           format: spdx-json

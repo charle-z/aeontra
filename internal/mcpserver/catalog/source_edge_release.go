@@ -11,7 +11,7 @@ type SourceEdgeReleaseService interface {
 func RegisterSourceEdgeRelease(register Register, service SourceEdgeReleaseService) {
 	register(Tool{
 		Name:        "source_edge_release_status",
-		Description: "Read the fixed charle-z/mcp-devbox edge-release environment, main protection/rules, release workflow runs/jobs, and release assets.",
+		Description: "Read the repository maintainer profile's fixed edge-release environment, main protection/rules, release workflow runs/jobs, and release assets.",
 		InputSchema: closedObject(map[string]any{}),
 		Version:     "1",
 		Handler: func(arguments json.RawMessage) (string, error) {

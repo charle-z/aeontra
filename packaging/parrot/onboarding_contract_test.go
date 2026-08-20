@@ -85,6 +85,7 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	for _, forbidden := range []string{
 		"Conflicts=mcp-devbox-edge.service mcp-devbox-opencode-edge.service",
 		"After=mcp-devbox-edge.service mcp-devbox-opencode-edge.service",
+		"--state /home/%i/.local/state/mcp-edge",
 	} {
 		if strings.Contains(unit, forbidden) {
 			t.Fatalf("OpenCode Edge unit must not manage unpackaged legacy units through %q", forbidden)
@@ -101,5 +102,8 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	}
 	if strings.Contains(bridge, " mcp-edge codex") {
 		t.Fatal("bridge Edge unit must retain OpenCode until the v4-aware updater is installed")
+	}
+	if strings.Contains(bridge, "--state /home/%i/.local/state/mcp-edge") {
+		t.Fatal("bridge Edge unit must derive state from the package-selected HOME")
 	}
 }

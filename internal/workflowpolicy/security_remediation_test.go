@@ -35,9 +35,41 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		}
 	}
 	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator"} {
-		if !strings.Contains(contents[dockerfile], "golang:1.26.6-alpine3.24") {
-			t.Errorf("%s must use the fixed versioned Go/Alpine base", dockerfile)
+		if !strings.Contains(contents[dockerfile], "golang:1.26.6-") {
+			t.Errorf("%s must use the fixed versioned Go base", dockerfile)
 		}
+	}
+	for dockerfile, runtimeBase := range map[string]string{
+		"Dockerfile":                        "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+		"Dockerfile.validation-runner":      "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+		"Dockerfile.front-door":             "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+		"Dockerfile.front-door-coordinator": "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+	} {
+		if !strings.Contains(contents[dockerfile], runtimeBase) {
+			t.Errorf("%s must use the supported Alpine 3.21 runtime with OpenSSL 3.3", dockerfile)
+		}
+		if !strings.Contains(contents[dockerfile], "apk upgrade --no-cache") {
+			t.Errorf("%s must upgrade its pinned Alpine runtime before installing packages", dockerfile)
+		}
+	}
+	if !strings.Contains(contents["Dockerfile.validation-runner"], "COPY go.mod go.sum ./") {
+		t.Error("Dockerfile.validation-runner must bind dependency downloads to go.sum")
+	}
+	for _, required := range []string{
+		"DOCKER_CLI_VERSION=29.7.2",
+		"DOCKER_CLI_COMMIT=a7dcaa6fdb6ed04aacbfdc76357fdae01605609e",
+		"DOCKER_CLI_SOURCE_SHA256=225b7ab2a15f5230b482df8461069cd4bce38891266fb9898d4188d0a3cbf54a",
+		"CGO_ENABLED=0 GO111MODULE=auto go build",
+		"test \"$(go version -m /out/docker",
+		"COPY --from=docker-cli /go/src/github.com/docker/cli/LICENSE /usr/share/licenses/docker-cli/LICENSE",
+		"COPY --from=docker-cli /go/src/github.com/docker/cli/NOTICE /usr/share/licenses/docker-cli/NOTICE",
+	} {
+		if !strings.Contains(contents["Dockerfile.validation-runner"], required) {
+			t.Errorf("Dockerfile.validation-runner does not contain %q", required)
+		}
+	}
+	if strings.Contains(contents["Dockerfile.validation-runner"], "FROM docker:") {
+		t.Error("Dockerfile.validation-runner must not inherit a Docker CLI built with a vulnerable Go toolchain")
 	}
 
 	dockerfile := contents["Dockerfile"]
@@ -64,9 +96,19 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"/usr/local/lib/node_modules/npm/node_modules/ip-address/package.json",
 		"test ! -e /usr/lib/node_modules/npm",
 		"busybox wget -qO- http://127.0.0.1:8765/readyz",
+		"COPY --from=build /usr/local/go /usr/local/go",
+		"https://unofficial-builds.nodejs.org/download/release/v22.23.2/",
+		"2d18b5731055f7efa6c899004909b00ee110e38d3775745f60ec9ccf1f9982e7",
+		"86e3f4d05d92c6a4e51b0ce8bab6c22d602d4b8a372743fed302403de5376d4c",
+		`test "$(/node/bin/node --version)" = v22.23.2`,
+		"COPY --from=node-runtime /node/bin/node /usr/local/bin/node",
+		"&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)",
 	} {
 		if !strings.Contains(dockerfile, required) {
 			t.Errorf("Dockerfile does not contain %q", required)
 		}
+	}
+	if strings.Contains(dockerfile, "&& find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true") {
+		t.Error("the setuid cleanup fallback must not mask earlier installation failures")
 	}
 }

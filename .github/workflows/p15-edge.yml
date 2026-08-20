@@ -114,7 +114,7 @@ jobs:
             -v "$RUNNER_TEMP/deb-a:/artifacts:ro" \
             -v "$RUNNER_TEMP/legacy-state:/fixtures/legacy-state:ro" \
             debian:bookworm-slim sh -euxc '
-              printf "#!/bin/sh\nif [ \"\${1:-}\" = show ]; then printf \"not-found\\\\n\"; exit 0; fi\nif [ -e /tmp/fail-edge-service ] && [ \"\${1:-}\" = is-active ]; then exit 1; fi\nexit 0\n" >/usr/bin/systemctl
+              printf "#!/bin/sh\nprintf \"%%s\\\\n\" \"\$*\" >>/tmp/systemctl.log\nif [ \"\${1:-}\" = show ]; then printf \"not-found\\\\n\"; exit 0; fi\nif [ -e /tmp/fail-edge-service ] && [ \"\${1:-}\" = is-active ]; then exit 1; fi\nif [ -e /tmp/fail-disable ] && [ \"\${1:-}\" = disable ]; then exit 1; fi\nexit 0\n" >/usr/bin/systemctl
               chmod 0755 /usr/bin/systemctl
               printf "#!/bin/sh\nexit 0\n" >/usr/bin/loginctl
               chmod 0755 /usr/bin/loginctl
@@ -129,32 +129,56 @@ jobs:
               test ! -e /opt/mcp-devbox/.p15-migration-opencode-1.18.1
               test -x /usr/local/bin/mcp-edge
               /usr/local/bin/mcp-edge bundle verify
-              useradd -m charles
+              useradd -m -d /srv/edgeci edgeci
               command -v runuser
-              install -d -o charles -g charles -m 0700 /home/charles/.config
-              install -d -o charles -g charles -m 0700 /home/charles/.config/mcp-devbox-edge
-              cp -a /fixtures/legacy-state/. /home/charles/.config/mcp-devbox-edge/
-              chown -R charles:charles /home/charles/.config/mcp-devbox-edge
+              install -d -m 0755 /etc/mcp-devbox
+              printf "edgeci\n" >/etc/mcp-devbox/edge-user
+              chmod 0600 /etc/mcp-devbox/edge-user
+              install -d -o edgeci -g edgeci -m 0700 /srv/edgeci/.config
+              install -d -o edgeci -g edgeci -m 0700 /srv/edgeci/.config/mcp-devbox-edge
+              cp -a /fixtures/legacy-state/. /srv/edgeci/.config/mcp-devbox-edge/
+              chown -R edgeci:edgeci /srv/edgeci/.config/mcp-devbox-edge
               printf "#!/bin/sh\nexit 0\n" >/usr/local/libexec/mcp-devbox/onboarding-preflight
               chmod 0755 /usr/local/libexec/mcp-devbox/onboarding-preflight
               touch /tmp/fail-edge-service
               if /var/lib/dpkg/info/mcp-devbox-edge.postinst configure; then exit 1; fi
-              cmp /fixtures/legacy-state/identity.json /home/charles/.config/mcp-devbox-edge/identity.json
-              cmp /fixtures/legacy-state/device.key /home/charles/.config/mcp-devbox-edge/device.key
-              cmp /fixtures/legacy-state/workspaces.db /home/charles/.config/mcp-devbox-edge/workspaces.db
-              test ! -e /home/charles/.local/state/mcp-edge
-              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
+              cmp /fixtures/legacy-state/identity.json /srv/edgeci/.config/mcp-devbox-edge/identity.json
+              cmp /fixtures/legacy-state/device.key /srv/edgeci/.config/mcp-devbox-edge/device.key
+              cmp /fixtures/legacy-state/workspaces.db /srv/edgeci/.config/mcp-devbox-edge/workspaces.db
+              test ! -e /srv/edgeci/.local/state/mcp-edge
+              test ! -e /srv/edgeci/.local/state/.mcp-edge-state-migration-v1.json
               rm /tmp/fail-edge-service
               /var/lib/dpkg/info/mcp-devbox-edge.postinst configure
-              cmp /fixtures/legacy-state/identity.json /home/charles/.local/state/mcp-edge/identity.json
-              cmp /fixtures/legacy-state/device.key /home/charles/.local/state/mcp-edge/device.key
-              cmp /fixtures/legacy-state/workspaces.db /home/charles/.local/state/mcp-edge/workspaces.db
-              cmp /fixtures/legacy-state/checkpoint.md /home/charles/.local/state/mcp-edge/checkpoint.md
-              test ! -e /home/charles/.config/mcp-devbox-edge
-              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
+              cmp /fixtures/legacy-state/identity.json /srv/edgeci/.local/state/mcp-edge/identity.json
+              cmp /fixtures/legacy-state/device.key /srv/edgeci/.local/state/mcp-edge/device.key
+              cmp /fixtures/legacy-state/workspaces.db /srv/edgeci/.local/state/mcp-edge/workspaces.db
+              cmp /fixtures/legacy-state/checkpoint.md /srv/edgeci/.local/state/mcp-edge/checkpoint.md
+              test ! -e /srv/edgeci/.config/mcp-devbox-edge
+              test ! -e /srv/edgeci/.local/state/.mcp-edge-state-migration-v1.json
+              grep -Fx "WorkingDirectory=/srv/edgeci/.local/state/mcp-edge" /etc/systemd/system/mcp-devbox-opencode-edge@edgeci.service.d/10-edge-home.conf
+              grep -Fx "Environment=HOME=/srv/edgeci" /etc/systemd/system/mcp-devbox-opencode-edge@edgeci.service.d/10-edge-home.conf
+              grep -Fx "ReadWritePaths=/srv/edgeci/.local/state/mcp-edge /srv/edgeci/workspaces /srv/edgeci/htb-machines" /etc/systemd/system/mcp-devbox-opencode-edge@edgeci.service.d/10-edge-home.conf
+              grep -Fx "PathExists=/srv/edgeci/.local/state/mcp-edge/identity.json" /etc/systemd/system/mcp-devbox-edge-onboard@edgeci.path.d/10-edge-home.conf
               /var/lib/dpkg/info/mcp-devbox-edge.postinst configure
-              cmp /fixtures/legacy-state/identity.json /home/charles/.local/state/mcp-edge/identity.json
-              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
+              cmp /fixtures/legacy-state/identity.json /srv/edgeci/.local/state/mcp-edge/identity.json
+              test ! -e /srv/edgeci/.local/state/.mcp-edge-state-migration-v1.json
+              : >/tmp/systemctl.log
+              /var/lib/dpkg/info/mcp-devbox-edge.prerm upgrade
+              test -f /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+              test ! -s /tmp/systemctl.log
+              touch /tmp/fail-disable
+              if /var/lib/dpkg/info/mcp-devbox-edge.prerm remove; then exit 1; fi
+              test -f /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+              test -f /etc/systemd/system/mcp-devbox-edge-onboard@edgeci.path.d/10-edge-home.conf
+              rm /tmp/fail-disable
+              : >/tmp/systemctl.log
+              /var/lib/dpkg/info/mcp-devbox-edge.prerm remove
+              grep -Fx "disable --now mcp-devbox-edge-onboard@edgeci.path" /tmp/systemctl.log
+              grep -Fx "disable --now mcp-devbox-opencode-edge@edgeci.service" /tmp/systemctl.log
+              test ! -e /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+              test ! -e /etc/systemd/system/mcp-devbox-edge-onboard@edgeci.path.d/10-edge-home.conf
+              test ! -e /etc/systemd/system/mcp-devbox-opencode-edge@edgeci.service.d/10-edge-home.conf
+              test -f /srv/edgeci/.local/state/mcp-edge/identity.json
             '
 
       - name: Upload package evidence

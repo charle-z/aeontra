@@ -14,11 +14,12 @@ import (
 // capability must share. Capabilities never own independent policy, audit, root, or
 // action-plan state.
 type serviceCore struct {
-	pol   *policy.Policy
-	log   *audit.Logger
-	root  string
-	run   Runner
-	plans *ActionPlanStore
+	pol               *policy.Policy
+	log               *audit.Logger
+	root              string
+	run               Runner
+	plans             *ActionPlanStore
+	maintainerProfile string
 }
 
 // RepositoryCapability owns repository, filesystem, memory, and notes behavior.

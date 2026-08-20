@@ -12,6 +12,7 @@ import (
 
 func TestCoolifySetEnvBrainRootVerifiesStorageBeforeEnvWrite(t *testing.T) {
 	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	var requests []string
 	svc.WithCoolify(fakeCoolify(t, "https://coolify.example.com", "tok", []string{p9BrainAppUUID}, func(r *http.Request) (*http.Response, error) {
 		requests = append(requests, r.Method+" "+r.URL.Path)
@@ -69,6 +70,7 @@ func TestCoolifySetEnvBrainRootRejectsWrongAppOrPathWithoutHTTP(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, _ := newTestService(t, config.ModeAllow)
+			svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 			called := false
 			svc.WithCoolify(fakeCoolify(t, "https://coolify.example.com", "tok", nil, func(*http.Request) (*http.Response, error) {
 				called = true
@@ -86,6 +88,7 @@ func TestCoolifySetEnvBrainRootRejectsWrongAppOrPathWithoutHTTP(t *testing.T) {
 
 func TestCoolifySetEnvBrainStorageConflictStopsBeforeEnvWrite(t *testing.T) {
 	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	var requests int
 	svc.WithCoolify(fakeCoolify(t, "https://coolify.example.com", "tok", []string{p9BrainAppUUID}, func(r *http.Request) (*http.Response, error) {
 		requests++

@@ -1,19 +1,20 @@
-# MCP Devbox
+# Aeontra
 
-[![Hosted on CubePath](https://img.shields.io/badge/Hosted%20on-CubePath-00C853?style=for-the-badge&logo=cloud&logoColor=white)](https://cubepath.com)
-
-MCP Devbox is secure by default, but it does not claim to eliminate every operational
+Aeontra is secure by default, but it does not claim to eliminate every operational
 risk. It gives AI clients useful hands for software work without handing them an
 unrestricted machine.
 
 It combines repository-scoped tools, immutable startup policy, explicit approval for
 risky actions, secret redaction, audit, durable state, optional GitHub/Coolify adapters,
-and a signed Linux Edge architecture. The model reasons; MCP Devbox constrains and
-executes.
+and a signed Linux Edge architecture. The model reasons; Aeontra constrains and
+executes. The current repository, executable, protocol, services, environment
+variables, and state paths retain the `mcp-devbox` and `mcp-edge` compatibility names.
+See [`docs/brand-compatibility.md`](docs/brand-compatibility.md) before renaming an
+identifier.
 
-## What MCP Devbox is
+## What Aeontra is
 
-MCP Devbox is a Go MCP server for inspecting, changing, validating, publishing, and
+Aeontra is a Go MCP server for inspecting, changing, validating, publishing, and
 deploying software through narrow tools. It is designed for ChatGPT and other MCP
 clients, but the security boundary lives in the server rather than in a prompt or a
 specific model provider.
@@ -25,7 +26,7 @@ generic proxy.
 ## The problem it solves
 
 General filesystem-and-terminal agents are convenient but give untrusted model output
-too much ambient authority. MCP Devbox replaces that ambient authority with explicit
+too much ambient authority. Aeontra replaces that ambient authority with explicit
 contracts:
 
 - repository roots form a filesystem and command jail;
@@ -40,9 +41,9 @@ contracts:
 This reduces authority. It does not make model-generated actions inherently safe.
 Operators still own configuration, review, credentials, deployment, and recovery.
 
-## Public demo and production status
+## Maintainer-operated demo
 
-The public landing and MCP endpoint are served from:
+The maintainer currently operates a public landing and credential-gated MCP endpoint at:
 
 ```text
 https://mcp-devbox-charlez.duckdns.org/
@@ -54,8 +55,10 @@ deployment, Edge, or secret authority. `/console` remains authenticated and `/mc
 remains credential-gated. See
 [`docs/landing/public-showcase.md`](docs/landing/public-showcase.md).
 
-The production control plane and authenticated console are hosted on **CubePath** and
-deployed through Coolify.
+This deployment is evidence that the architecture can run remotely; its host, domain,
+accounts, and application identifiers are not project defaults or contributor
+requirements. Aeontra can run locally over stdio without Coolify or the maintainer's
+infrastructure.
 
 Do not copy a commit, release, tool count, or catalog hash from this README. Read the
 live deployment identity from [`/version`](https://mcp-devbox-charlez.duckdns.org/version)
@@ -69,7 +72,7 @@ or call `system_runtime_info`. The canonical public tool contract is
 MCP client
    │  stdio or authenticated HTTPS
    ▼
-MCP Devbox control plane
+Aeontra control plane (`mcp-devbox` compatibility executable)
    ├─ immutable policy: roots, mode, allowlists, secrets
    ├─ direct read/status operations under policy + audit
    ├─ preview → single-use plan → approval → revalidation → narrow effect
@@ -138,7 +141,7 @@ See [`docs/tools.md`](docs/tools.md) for the complete current catalog and exact 
 
 ## What it cannot do
 
-MCP Devbox deliberately does not provide:
+Aeontra deliberately does not provide:
 
 - a free host shell;
 - automatic self-approval;
@@ -185,6 +188,14 @@ cd mcp-devbox
 go test ./... -count=1
 go build -o ./bin/mcp-devbox ./cmd/mcp-devbox
 ./bin/mcp-devbox serve --root /absolute/path/to/repository --mode read-only
+```
+
+The release-independent clean-install acceptance builds a fresh binary, starts the
+read-only stdio transport against a disposable repository, validates MCP initialization,
+and checks that audit state is created without private infrastructure:
+
+```bash
+./scripts/verify-clean-install.sh
 ```
 
 For reviewed local changes:
@@ -242,7 +253,7 @@ local-human grants, patch-first writes, command allowlists, exact plans, state
 revalidation, non-root containers, private persistent state, signed Edge releases, and
 closed public schemas.
 
-MCP Devbox is secure by default, but it does not claim to eliminate every operational
+Aeontra is secure by default, but it does not claim to eliminate every operational
 risk. Known limitations and profile-specific trust boundaries are part of the product
 contract, not fine print.
 
@@ -269,6 +280,13 @@ Start with [`docs/documentation-map.md`](docs/documentation-map.md). Canonical r
 - [`docs/configuration.md`](docs/configuration.md): complete configuration reference;
 - [`docs/security.md`](docs/security.md): technical security architecture;
 - [`SECURITY.md`](SECURITY.md): vulnerability reporting and disclosure;
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): development workflow, gates, and contribution provenance;
+- [`SUPPORT.md`](SUPPORT.md): best-effort support scope and useful diagnostics;
+- [`GOVERNANCE.md`](GOVERNANCE.md): decision process and maintainer roles;
+- [`docs/brand-compatibility.md`](docs/brand-compatibility.md): public brand and stable
+  compatibility identifiers;
+- [`docs/dependency-licenses.md`](docs/dependency-licenses.md): dependency license and
+  distribution-notice policy;
 - [`docs/tools.md`](docs/tools.md): public tool catalog;
 - `/version` and `system_runtime_info`: live build/catalog identity;
 - [`docs/baselines/`](docs/baselines/): dated historical evidence.
@@ -278,8 +296,14 @@ creating competing configuration or security references.
 
 ## License and vulnerability reporting
 
-No open-source `LICENSE` file is currently published. Treat the repository as all
-rights reserved unless the owner states otherwise.
+Aeontra is licensed under the
+[Apache License, Version 2.0](LICENSE). See [`NOTICE`](NOTICE) for project attribution,
+[`docs/provenance.md`](docs/provenance.md) for the historical identity boundary, and
+[`docs/dependency-licenses.md`](docs/dependency-licenses.md) for third-party and
+artifact-specific obligations.
 
 Report vulnerabilities privately using [`SECURITY.md`](SECURITY.md). Do not publish
 secrets, exploit details, or unpatched vulnerabilities in a public issue.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing code and
+[`SUPPORT.md`](SUPPORT.md) before opening a support request.

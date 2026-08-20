@@ -154,12 +154,12 @@
   var demoMessageKey = "loading";
   var demoMessages = {
     loading: {
-      es: "Cargando el manifiesto público integrado...",
-      en: "Loading the embedded public manifest..."
+      es: "Cargando el snapshot histórico integrado...",
+      en: "Loading the embedded historical snapshot..."
     },
     available: {
-      es: "Evidencia pública cargada. Recorrido de solo lectura listo.",
-      en: "Public evidence loaded. Read-only walkthrough ready."
+      es: "Snapshot histórico cargado. Recorrido de solo lectura listo.",
+      en: "Historical snapshot loaded. Read-only walkthrough ready."
     },
     unavailable: {
       es: "La evidencia guiada no está disponible temporalmente. La página no intentará consultar GitHub ni mostrar diagnósticos privados.",
@@ -369,7 +369,7 @@
 
   function renderDemoEvidence(payload) {
     setDemoText("demoRequestSummary", payload.project.request_summary);
-    setDemoLink("demoRepository", payload.project.repository, "charle-z/pixelgrama");
+    setDemoBilingualText("demoRepository", "Privado actualmente; snapshot histórico integrado", "Currently private; embedded historical snapshot");
     setDemoText("demoBaseBranch", payload.project.base_branch);
     setDemoBilingualText("demoAuthorityPosture", "No verificado públicamente", "Not publicly verified");
     renderDemoStringList("demoPerimeterIncludes", payload.perimeter.includes);

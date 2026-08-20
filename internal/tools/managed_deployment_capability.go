@@ -14,11 +14,20 @@ type ManagedDeploymentCapability struct {
 }
 
 func (c *ManagedDeploymentCapability) PlatformDeployPreview(appID string) (string, error) {
-	app, err := c.getPlatformApp(strings.TrimSpace(appID))
+	appID = strings.TrimSpace(appID)
+	if appID == managedBackendAppUUID {
+		if err := c.requireMaintainerProfile(); err != nil {
+			return "", err
+		}
+	}
+	app, err := c.getPlatformApp(appID)
 	if err != nil {
 		return "", err
 	}
 	if app.UUID == managedBackendAppUUID {
+		if err := c.requireMaintainerProfile(); err != nil {
+			return "", err
+		}
 		sp := c.log.Start("platform_deploy_preview")
 		result, err := c.managedBackendRolloutPreview(app)
 		if err != nil {
@@ -34,6 +43,9 @@ func (c *ManagedDeploymentCapability) PlatformDeployPreview(appID string) (strin
 func (c *ManagedDeploymentCapability) PlatformDeploy(planID string, approve bool) (string, error) {
 	plan, err := c.plans.Peek(strings.TrimSpace(planID))
 	if err == nil && plan.Args["rollout"] == managedBackendRolloutMarker {
+		if err := c.requireMaintainerProfile(); err != nil {
+			return "", err
+		}
 		sp := c.log.Start("platform_deploy")
 		needsApproval, policyErr := c.pol.CheckAction()
 		if policyErr != nil {
@@ -61,7 +73,11 @@ func (c *ManagedDeploymentCapability) PlatformDeploy(planID string, approve bool
 }
 
 func (c *ManagedDeploymentCapability) PlatformDeployWithoutCachePreview(appID string) (string, error) {
-	app, err := c.getPlatformApp(strings.TrimSpace(appID))
+	appID = strings.TrimSpace(appID)
+	if appID == managedBackendAppUUID {
+		return "", errors.New("managed backend force deployments are forbidden; use platform_deploy_preview")
+	}
+	app, err := c.getPlatformApp(appID)
 	if err != nil {
 		return "", err
 	}

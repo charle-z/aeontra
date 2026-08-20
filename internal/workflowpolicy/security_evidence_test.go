@@ -14,17 +14,26 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 	text := string(content)
 
 	for _, required := range []string{
+		"secret-scan:",
+		"name: Secret scanning",
+		"actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
+		"fetch-depth: 0",
+		"GITLEAKS_VERSION: \"8.30.1\"",
+		"551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+		"gitleaks\" git --config .gitleaks.toml --redact --log-opts=\"--all\" .",
+		"gitleaks\" dir --config .gitleaks.toml --redact .",
 		"codeql:",
 		"dependency-review:",
 		"container-evidence:",
 		"security-events: write",
-		"github/codeql-action/init@v4.37.0",
-		"github/codeql-action/analyze@v4.37.0",
-		"actions/dependency-review-action@v5.0.0",
+		"github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9",
+		"github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9",
+		"actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294",
 		"fail-on-severity: moderate",
 		"docker build --file Dockerfile --tag mcp-devbox:ci .",
 		"docker build --file Dockerfile.front-door --tag mcp-front-door:ci .",
 		"docker build --file Dockerfile.front-door-coordinator --tag mcp-front-door-coordinator:ci .",
+		"docker build --file Dockerfile.validation-runner --tag mcp-validation-runner:ci .",
 		"Verify private coordinator named-volume startup",
 		"sh scripts/test-front-door-coordinator-volume.sh",
 		"output-file: front-door-sbom.spdx.json",
@@ -39,11 +48,17 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"test -s front-door-coordinator-sbom.spdx.json",
 		"test -s front-door-coordinator-grype.json",
 		"go run ./cmd/grype-gate --report front-door-coordinator-grype.json --minimum high --annotation-file Dockerfile.front-door-coordinator",
-		"anchore/sbom-action@v0.24.0",
+		"output-file: validation-runner-sbom.spdx.json",
+		"image: mcp-validation-runner:ci",
+		"output-file: validation-runner-grype.json",
+		"test -s validation-runner-sbom.spdx.json",
+		"test -s validation-runner-grype.json",
+		"go run ./cmd/grype-gate --report validation-runner-grype.json --minimum high --annotation-file Dockerfile.validation-runner",
+		"anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610",
 		"output-file: sbom.spdx.json",
 		"upload-artifact: false",
 		"upload-release-assets: false",
-		"anchore/scan-action@v7.4.0",
+		"anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2",
 		"image: mcp-devbox:ci",
 		"fail-build: false",
 		"severity-cutoff: high",
@@ -70,7 +85,37 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 			t.Errorf("security.yml contains forbidden %q", forbidden)
 		}
 	}
-	if got := strings.Count(text, "timeout-minutes:"); got != 3 {
-		t.Fatalf("timeout count = %d, want 3", got)
+	if got := strings.Count(text, "timeout-minutes:"); got != 4 {
+		t.Fatalf("timeout count = %d, want 4", got)
+	}
+}
+
+func TestGitleaksPolicyKeepsSyntheticAllowlistNarrow(t *testing.T) {
+	content, err := os.ReadFile("../../.gitleaks.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		"useDefault = true",
+		"condition = \"AND\"",
+		"targetRules = [\"github-pat\"]",
+		"targetRules = [\"generic-api-key\"]",
+		"htb_checkpoint_redaction_test\\.go$",
+		"ghp_" + "012345678901234567890123456789012345",
+		"DB_TOKEN=" + "abcdef0123456789",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf(".gitleaks.toml does not contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"condition = \"OR\"",
+		"'''^.*$'''",
+		"'''^internal/.*'''",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf(".gitleaks.toml contains broad allowlist %q", forbidden)
+		}
 	}
 }

@@ -476,6 +476,10 @@ func (c *GitHubClient) edgeReleaseDeletePolicy(ctx context.Context, id int64) er
 
 func (s *SourceCapability) SourceEdgeReleaseStatus() (string, error) {
 	sp := s.log.Start("source_edge_release_status")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "status", nil, err)
+		return "", err
+	}
 	if err := s.github.configError(); err != nil {
 		return "", err
 	}
@@ -535,6 +539,10 @@ func (s *SourceCapability) SourceEdgeReleaseStatus() (string, error) {
 
 func (s *SourceCapability) SourceEdgeReleaseMaintenancePreview() (string, error) {
 	sp := s.log.Start("source_edge_release_maintenance_preview")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "preview", nil, err)
+		return "", err
+	}
 	if err := s.github.configError(); err != nil {
 		return "", err
 	}
@@ -567,6 +575,10 @@ func (s *SourceCapability) SourceEdgeReleaseMaintenancePreview() (string, error)
 
 func (s *SourceCapability) SourceEdgeReleaseMaintenanceApply(planID string, approve bool) (string, error) {
 	sp := s.log.Start("source_edge_release_maintenance_apply")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "apply", nil, err)
+		return "", err
+	}
 	if err := s.github.configError(); err != nil {
 		return "", err
 	}

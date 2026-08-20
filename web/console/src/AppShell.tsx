@@ -19,7 +19,7 @@ import {
 import type { RuntimeStatus } from "./types";
 import GraphView from "./GraphView";
 import { TimeDisplayProvider, Timestamp } from "./TimeDisplay";
-import { DEFAULT_TIMEZONE } from "./timeDisplay";
+import { DEFAULT_TIMEZONE } from "./time-format";
 
 const tabs = ["System", "Agents", "Tasks", "Brain", "Graph", "Edge", "Observability", "Security", "Events"] as const;
 const taskStates: TaskState[] = ["requested", "planned", "awaiting_approval", "executing", "observing", "validating", "completed", "failed", "cancelled", "disconnected"];
@@ -279,6 +279,7 @@ export default function AppShell() {
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>({ controller: "", state: "", operation: "" });
   const [eventFilters, setEventFilters] = useState<EventFilters>({ controller: "", state: "", event_type: "", operation: "" });
   const [taskPaging, setTaskPaging] = useState(false);
+  const [taskRefreshing, setTaskRefreshing] = useState(false);
   const [eventPaging, setEventPaging] = useState(false);
   const [streamState, setStreamState] = useState<StreamState>("connecting");
   const [lastEventID, setLastEventID] = useState("");
@@ -350,8 +351,12 @@ export default function AppShell() {
 
   useEffect(() => {
     const controller = new AbortController();
+    setTaskRefreshing(true);
     const timer = window.setTimeout(() => {
-      void fetchTasks(scopedTaskFilters, "", controller.signal).then(setTasks).catch(() => { if (!controller.signal.aborted) setError("task journal unavailable"); });
+      void fetchTasks(scopedTaskFilters, "", controller.signal)
+        .then(setTasks)
+        .catch(() => { if (!controller.signal.aborted) setError("task journal unavailable"); })
+        .finally(() => { if (!controller.signal.aborted) setTaskRefreshing(false); });
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [scopedTaskFilters]);
@@ -501,7 +506,7 @@ export default function AppShell() {
     switch (active) {
       case "System": return <SystemTab status={status} data={data} error={error} />;
       case "Agents": return <AgentsTab data={data} projectSelection={projectSelection} edgeSelection={edgeSelection} />;
-      case "Tasks": return <TasksTab tasks={tasks} filters={taskFilters} setFilters={setTaskFilters} loadMore={() => void loadMoreTasks()} loading={taskPaging} />;
+      case "Tasks": return <TasksTab tasks={tasks} filters={taskFilters} setFilters={setTaskFilters} loadMore={() => void loadMoreTasks()} loading={taskPaging || taskRefreshing} />;
       case "Brain": return <BrainTab data={data} />;
       case "Graph": return <div className="graph-panel"><Section title="Brain Link Graph" /><GraphView brain={data?.brain ?? null} /></div>;
       case "Edge": return <EdgeTab data={data} />;
