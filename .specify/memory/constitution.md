@@ -73,15 +73,21 @@ confusion, and unsafe failure recovery. Every bypass must fail safely.
 ## Article V — Git and release rules
 
 - Use a feature branch and small reviewable commits.
+- Use Conventional Commits. Phase and milestone identifiers belong in planning and
+  evidence, not in public commit subjects.
+- Keep subjects imperative and focused on the software change; use a scope when useful
+  and mark breaking changes explicitly.
 - Commit format:
 
   ```text
-  Step NN: short title
+  type(scope): short imperative description
 
   What changed and why.
   Verification: commands and result.
   ```
 
+- Common types are `feat`, `fix`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`,
+  and `perf`.
 - No `Co-Authored-By` or AI signature.
 - No force push, destructive history rewrite, secret commit, or unreviewed generated
   artifact.

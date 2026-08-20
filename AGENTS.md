@@ -148,14 +148,21 @@ branding.
 - `git_commit` commits locally and does not push.
 - Use preview/execute pairs for publication, pull requests, merges, and deployment.
 - Do not add AI signatures or `Co-Authored-By` trailers.
+- Use Conventional Commits. Planning or milestone identifiers belong in issues,
+  specifications, Brain, and dated evidence—not in public commit subjects.
+- Keep the subject imperative, concise, and about the software change. Use a scope when
+  it improves discovery, and mark breaking changes explicitly.
 - Commit format:
 
 ```text
-Step NN: short title
+type(scope): short imperative description
 
 What changed and why.
 Verification: command -> result.
 ```
+
+Common types are `feat`, `fix`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, and
+`perf`. Keep one reviewable concern per commit.
 
 ## External Open Source Contributions
 
