@@ -93,3 +93,24 @@ func TestOSSIssueFormsAreValidAndDoNotSolicitSecrets(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicConsoleFixturesDoNotNameMaintainerInfrastructure(t *testing.T) {
+	for _, path := range []string{
+		"console-2.0/mockup.html",
+		"../web/console/src/App.test.tsx",
+		"../web/console/e2e/graph-responsive.spec.ts",
+	} {
+		content := strings.ToLower(readDoc(t, path))
+		for _, forbidden := range []string{
+			"charles",
+			"pauda",
+			"duckdns.org",
+			"/home/",
+			"c:\\users\\",
+		} {
+			if strings.Contains(content, forbidden) {
+				t.Errorf("%s contains maintainer-specific fixture marker %q", path, forbidden)
+			}
+		}
+	}
+}

@@ -62,7 +62,8 @@ Never publish:
 - [ ] Fixed managed-deployment tools are moved behind an explicit maintainer profile or
       made owner-configurable; third-party installations do not expose this repository's
       Coolify application IDs, domains, or release repository as operative defaults.
-- [ ] The public console uses only synthetic/sanitized fixtures.
+- [x] The public console uses only synthetic/sanitized fixtures; repository tests reject
+      maintainer usernames, private domains, and personal absolute paths in those fixtures.
 - [ ] A tagged release and rollback procedure are tested.
 
 ## Positioning rule
