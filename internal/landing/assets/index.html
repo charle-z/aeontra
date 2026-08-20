@@ -24,7 +24,7 @@
       <p class="boot-thesis" data-es="CHATGPT TRABAJANDO SOBRE INFRAESTRUCTURA REAL, SIN ENTREGARLE UNA SHELL LIBRE." data-en="CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.">CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.</p>
       <p><span data-es="solución ........ herramientas limitadas y operaciones verificables " data-en="solution ........ narrow tools and verifiable operations ">solution ........ narrow tools and verifiable operations </span><span class="ok">[BOUNDED]</span></p>
       <p><span data-es="autonomía ....... solo lectura / revisión / autonomía acotada " data-en="autonomy ........ read-only / review / bounded autonomy ">autonomy ........ read-only / review / bounded autonomy </span><span class="ok">[CONFIGURED]</span></p>
-      <p><span data-es="prueba ........... Pixelgrama, construido y desplegado sobre CubePath " data-en="proof ............ Pixelgrama, built and deployed on CubePath ">proof ............ Pixelgrama, built and deployed on CubePath </span><span class="ok">[PUBLIC]</span></p>
+      <p><span data-es="caso histórico ... Pixelgrama, documentado cuando su evidencia era pública " data-en="historical case .. Pixelgrama, recorded while its evidence was public ">historical case .. Pixelgrama, recorded while its evidence was public </span><span class="warn">[FROZEN]</span></p>
       <p><span data-es="esta página ...... presentación pública sin autoridad operativa " data-en="this page ........ public presentation with no operational authority ">this page ........ public presentation with no operational authority </span><span class="ok">[ENFORCED]</span></p>
       <button type="button" id="skipBoot" data-es="[ Pulsa cualquier tecla para continuar ]" data-en="[ Press any key to continue ]">[ Press any key to continue ]</button>
     </div>
@@ -61,22 +61,22 @@
               <p class="lede hero-solution" data-es="Aeontra permite que un agente lea, modifique, pruebe, publique y despliegue proyectos mediante herramientas limitadas, políticas inmutables, secretos denegados y operaciones verificables." data-en="Aeontra lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations.">Aeontra lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations.</p>
               <p class="hero-autonomy" data-es="El propietario elige entre solo lectura, revisión explícita o autonomía dentro de límites previamente configurados." data-en="The owner chooses between read-only access, explicit review or autonomy within preconfigured limits.">The owner chooses between read-only access, explicit review or autonomy within preconfigured limits.</p>
               <nav class="hero-actions" id="hero-actions" aria-label="Primary showcase actions" data-es="Acciones principales de la presentación" data-en="Primary showcase actions" data-i18n-attr="aria-label">
-                <a class="hero-action" href="#demo" data-es="Ver la prueba completa" data-en="View the complete proof">View the complete proof</a>
+                <a class="hero-action" href="#demo" data-es="Revisar el caso histórico" data-en="Review the historical case">Review the historical case</a>
                 <a class="hero-action" href="#authority" data-es="Explorar el modelo de autoridad" data-en="Explore the authority model">Explore the authority model</a>
                 <a class="hero-action" href="https://github.com/charle-z/mcp-devbox" data-es="Abrir el repositorio" data-en="Open the repository">Open the repository</a>
               </nav>
             </div>
-            <aside class="hero-proof" aria-label="Public end-to-end proof" data-es="Prueba pública de punta a punta" data-en="Public end-to-end proof" data-i18n-attr="aria-label">
-              <p class="hero-proof-label" data-es="PRUEBA PÚBLICA" data-en="PUBLIC PROOF">PUBLIC PROOF</p>
+            <aside class="hero-proof" aria-label="Historical end-to-end case" data-es="Caso histórico de punta a punta" data-en="Historical end-to-end case" data-i18n-attr="aria-label">
+              <p class="hero-proof-label" data-es="CASO HISTÓRICO" data-en="HISTORICAL CASE">HISTORICAL CASE</p>
               <h2>Pixelgrama</h2>
-              <p data-es="Pixelgrama fue construido, probado, publicado y desplegado mediante Aeontra sobre CubePath." data-en="Pixelgrama was built, tested, published and deployed through Aeontra on CubePath.">Pixelgrama was built, tested, published and deployed through Aeontra on CubePath.</p>
+              <p data-es="Pixelgrama fue construido, probado y desplegado mediante Aeontra. La evidencia se congeló cuando el repositorio era público; su disponibilidad actual no forma parte del contrato." data-en="Pixelgrama was built, tested and deployed through Aeontra. The evidence was frozen while the repository was public; current availability is outside this contract.">Pixelgrama was built, tested and deployed through Aeontra. The evidence was frozen while the repository was public; current availability is outside this contract.</p>
               <dl class="hero-proof-facts">
-                <dt data-es="código" data-en="source">source</dt><dd>charle-z/pixelgrama</dd>
+                <dt data-es="fuente" data-en="source">source</dt><dd data-es="snapshot histórico" data-en="historical snapshot">historical snapshot</dd>
                 <dt data-es="producción" data-en="production">production</dt><dd><a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall">/wall</a></dd>
                 <dt data-es="identidad" data-en="identity">identity</dt><dd><a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/version">/version</a></dd>
                 <dt data-es="infraestructura" data-en="infrastructure">infrastructure</dt><dd>CubePath + Coolify</dd>
               </dl>
-              <p class="hero-boundary" data-es="Esta evidencia es pública, de solo lectura y únicamente de presentación. No concede acceso a herramientas, consola ni credenciales." data-en="This evidence is public, read-only and presentation-only. It grants no access to tools, the console or credentials.">This evidence is public, read-only and presentation-only. It grants no access to tools, the console or credentials.</p>
+              <p class="hero-boundary" data-es="Este snapshot integrado es histórico, de solo lectura y únicamente de presentación. No prueba disponibilidad actual ni concede acceso a herramientas, consola o credenciales." data-en="This embedded snapshot is historical, read-only and presentation-only. It proves no current availability and grants no access to tools, the console or credentials.">This embedded snapshot is historical, read-only and presentation-only. It proves no current availability and grants no access to tools, the console or credentials.</p>
             </aside>
           </div>
           <div class="capability-status">
@@ -173,19 +173,19 @@
           </div>
         </section>
 
-        <section id="demo" aria-busy="true" data-es="Recorre la evidencia pública de Pixelgrama en seis pasos" data-en="Walk through Pixelgrama public evidence in six steps" data-label-es="DEMO" data-label-en="DEMO" data-i18n-role="hint">
+        <section id="demo" aria-busy="true" data-es="Recorre el snapshot histórico de Pixelgrama en seis pasos" data-en="Walk through the historical Pixelgrama snapshot in six steps" data-label-es="CASO" data-label-en="CASE" data-i18n-role="hint">
           <p class="eyebrow" data-es="02 · DEMO GUIADA DE SOLO LECTURA" data-en="02 · READ-ONLY GUIDED DEMO">02 · READ-ONLY GUIDED DEMO</p>
           <h2 data-es="DE LA SOLICITUD AL COMMIT EN PRODUCCIÓN" data-en="FROM REQUEST TO PRODUCTION COMMIT">FROM REQUEST TO PRODUCTION COMMIT</h2>
-          <p class="sub prose" data-es="Esta historia se genera desde el manifiesto público y versionado de Pixelgrama. No consulta GitHub durante la carga y no concede autoridad sobre Aeontra." data-en="This story is generated from Pixelgrama's public, versioned manifest. It does not query GitHub during page load and grants no authority over Aeontra.">This story is generated from Pixelgrama's public, versioned manifest. It does not query GitHub during page load and grants no authority over Aeontra.</p>
+          <p class="sub prose" data-es="Esta historia se genera desde un manifiesto versionado, congelado cuando la evidencia era pública. No consulta GitHub, no promete acceso actual y no concede autoridad sobre Aeontra." data-en="This story is generated from a versioned manifest frozen while the evidence was public. It does not query GitHub, promise current access or grant authority over Aeontra.">This story is generated from a versioned manifest frozen while the evidence was public. It does not query GitHub, promise current access or grant authority over Aeontra.</p>
 
           <div class="demo-boundary" role="note">
             <p><strong data-es="PERÍMETRO DE LA DEMO" data-en="DEMO BOUNDARY">DEMO BOUNDARY</strong></p>
-            <p data-es="Pública, sin autenticación y de solo lectura. No puede invocar herramientas, abrir la consola, aprobar planes, pedir grants, leer credenciales ni acceder a repositorios." data-en="Public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access repositories.">Public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access repositories.</p>
+            <p data-es="El snapshot es público, sin autenticación y de solo lectura. No puede invocar herramientas, abrir la consola, aprobar planes, pedir grants, leer credenciales ni acceder al repositorio histórico." data-en="The snapshot is public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access the historical repository.">The snapshot is public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access the historical repository.</p>
           </div>
 
-          <p class="demo-status warn" id="demoStatus" aria-live="polite" data-demo-state="loading" data-es="Cargando el manifiesto público integrado..." data-en="Loading the embedded public manifest...">Loading the embedded public manifest...</p>
+          <p class="demo-status warn" id="demoStatus" aria-live="polite" data-demo-state="loading" data-es="Cargando el snapshot histórico integrado..." data-en="Loading the embedded historical snapshot...">Loading the embedded historical snapshot...</p>
 
-          <ol class="demo-steps" aria-label="Pixelgrama evidence walkthrough" data-es="Recorrido de evidencia de Pixelgrama" data-en="Pixelgrama evidence walkthrough" data-i18n-attr="aria-label">
+          <ol class="demo-steps" aria-label="Historical Pixelgrama walkthrough" data-es="Recorrido histórico de Pixelgrama" data-en="Historical Pixelgrama walkthrough" data-i18n-attr="aria-label">
             <li class="demo-step" data-demo-step="1">
               <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">01</span><h3 data-es="SOLICITUD" data-en="REQUEST">REQUEST</h3></div>
               <p id="demoRequestSummary" class="demo-primary-value" data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</p>
@@ -195,7 +195,7 @@
             <li class="demo-step" data-demo-step="2">
               <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">02</span><h3 data-es="PERÍMETRO" data-en="PERIMETER">PERIMETER</h3></div>
               <dl class="demo-kv">
-                <dt data-es="repositorio" data-en="repository">repository</dt><dd><a id="demoRepository" href="/showcase/pixelgrama-evidence.json" data-es="ver manifiesto" data-en="view manifest">view manifest</a></dd>
+                <dt data-es="repositorio" data-en="repository">repository</dt><dd id="demoRepository" data-es="privado actualmente" data-en="currently private">currently private</dd>
                 <dt data-es="rama base" data-en="base branch">base branch</dt><dd id="demoBaseBranch">—</dd>
                 <dt data-es="modo histórico" data-en="historical mode">historical mode</dt><dd id="demoAuthorityPosture" class="warn">—</dd>
                 <dt data-es="herramientas exactas" data-en="exact tools">exact tools</dt><dd data-es="No publicadas en la evidencia histórica." data-en="Not published in the historical evidence.">Not published in the historical evidence.</dd>
@@ -246,7 +246,7 @@
 
           <div class="demo-links">
             <a href="/showcase/pixelgrama-evidence.json" data-es="Abrir manifiesto canónico" data-en="Open canonical manifest">Open canonical manifest</a>
-            <a href="https://github.com/charle-z/pixelgrama" data-es="Abrir repositorio público" data-en="Open public repository">Open public repository</a>
+            <span data-es="El repositorio del caso es privado actualmente" data-en="The case-study repository is currently private">The case-study repository is currently private</span>
             <a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall" data-es="Abrir Pixelgrama" data-en="Open Pixelgrama">Open Pixelgrama</a>
           </div>
         </section>

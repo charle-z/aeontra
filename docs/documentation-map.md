@@ -136,7 +136,7 @@ above:
 
 - Public presentation landing contract: `docs/landing/public-showcase.md`.
 - Stable independently deployed MCP facade: `docs/stable-mcp-front-door.md`.
-- Canonical Pixelgrama presentation evidence: `docs/showcase/pixelgrama-evidence.json`.
+- Frozen historical Pixelgrama presentation snapshot: `docs/showcase/pixelgrama-evidence.json`.
 - GitHub Actions diagnosis and bounded log retrieval: `docs/github-actions-diagnostics.md`.
 - P8 closure evidence: `docs/baselines/2026-07-13-p8.md`.
 - P8.1 production closure: `docs/baselines/2026-07-14-p8_1-production.md`.

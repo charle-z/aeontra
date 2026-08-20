@@ -27,11 +27,13 @@ route `GET /` by the existing Go HTTP server. The same binary embeds:
 - `assets/request-path.svg`
 - `assets/social-card.svg`
 
-The canonical Pixelgrama presentation evidence is
-`docs/showcase/pixelgrama-evidence.json`. The build validates and embeds those exact
-bytes, then serves them as the static public resource
+The frozen historical Pixelgrama snapshot is
+`docs/showcase/pixelgrama-evidence.json`. It was captured while the referenced source
+evidence was public; the repository may now require access. The build validates and
+embeds those exact bytes, then serves them as the static public resource
 `/showcase/pixelgrama-evidence.json`. Missing or invalid evidence fails closed at
-startup instead of producing a partial presentation.
+startup instead of producing a partial presentation. The snapshot is not a live
+availability or repository-visibility claim.
 
 There is no second application, listener, container, framework runtime, analytics
 provider, CDN, font service, database, session store, or credential. More specific
@@ -45,10 +47,10 @@ existing routes retain their handlers and contracts:
 The landing JavaScript makes exactly two same-origin public requests. `/version`
 returns the already allowlisted runtime identity: availability, version, commit, build
 time, protocol, tool count, and catalog hash. The static
-`/showcase/pixelgrama-evidence.json` resource supplies the guided Pixelgrama story from
-the same validated bytes embedded at startup. Neither request reaches GitHub or a
-private control-plane route. Failure renders a generic unavailable state without
-forwarding raw errors.
+`/showcase/pixelgrama-evidence.json` resource supplies the guided historical Pixelgrama
+story from the same validated bytes embedded at startup. Neither request reaches
+GitHub or a private control-plane route. Failure renders a generic unavailable state
+without forwarding raw errors.
 
 ## Visual and content structure
 
@@ -59,15 +61,15 @@ bars, and no gradients or rounded design system.
 The continuous document contains:
 
 1. a benefit-first hero that states the excessive-authority problem, the
-   bounded-tool solution, the three autonomy choices, and the public Pixelgrama proof
+   bounded-tool solution, the three autonomy choices, and the historical Pixelgrama case
    before component detail;
-2. exactly three primary hero actions: the canonical proof, the authority model,
+2. exactly three primary hero actions: the historical case, the authority model,
    and the repository;
 3. capability status below the hero;
 4. a visual comparison between broad ambient authority and Aeontra's explicit
    bounded authority, followed by the conceptual `read-only`, `ask`, and `allow`
    selector;
-5. a six-step, read-only Pixelgrama walkthrough generated from the canonical manifest;
+5. a six-step, read-only Pixelgrama walkthrough generated from the frozen manifest;
 6. local policy explorer;
 7. static request-path graphic;
 8. measured host capacity and the closed P16 target-VPS acceptance;
@@ -128,7 +130,7 @@ Tests must fail when the landing is absent or when it loses any of these propert
 - exact unauthenticated `GET /` and hardened safe 404/405 behavior;
 - unchanged authentication of `/mcp` and `/console`;
 - embedded local assets and exact content types;
-- closed, valid, embedded Pixelgrama evidence with safe startup failure;
+- closed, valid, embedded historical Pixelgrama snapshot with safe startup failure;
 - no inline scripts, remote asset loads, browser storage, cookies, WebSockets, SSE, or
   control-plane fetches;
 - metadata and Open Graph fields;
@@ -139,8 +141,8 @@ Tests must fail when the landing is absent or when it loses any of these propert
 - explicit separation of historical PR SHAs from the currently observed production
   commit, with unavailable historical mode and tool detail left unavailable;
 - safe `/version` identity handling;
-- a bilingual benefit-first hero with problem, solution, autonomy, Pixelgrama
-  proof, and exactly three primary actions;
+- a bilingual benefit-first hero with problem, solution, autonomy, the historical
+  Pixelgrama case, and exactly three primary actions;
 - a bilingual, mobile-readable authority comparison that does not depend only on
   color, describes `allow` as configured autonomy, avoids presenting `ask` as the only
   safe mode, and states that reduced authority is not absolute safety;

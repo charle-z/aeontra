@@ -110,17 +110,17 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 		`data-es="ChatGPT trabajando sobre infraestructura real, sin entregarle una shell libre."`,
 		`data-es="Aeontra permite que un agente lea, modifique, pruebe, publique y despliegue proyectos mediante herramientas limitadas, políticas inmutables, secretos denegados y operaciones verificables."`,
 		`data-es="El propietario elige entre solo lectura, revisión explícita o autonomía dentro de límites previamente configurados."`,
-		`data-es="Pixelgrama fue construido, probado, publicado y desplegado mediante Aeontra sobre CubePath."`,
+		`data-es="Pixelgrama fue construido, probado y desplegado mediante Aeontra. La evidencia se congeló cuando el repositorio era público; su disponibilidad actual no forma parte del contrato."`,
 		`data-en="A general shell gives the model more authority than most tasks require."`,
 		`data-en="ChatGPT working on real infrastructure without receiving a free shell."`,
 		`data-en="Aeontra lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations."`,
 		`data-en="The owner chooses between read-only access, explicit review or autonomy within preconfigured limits."`,
-		`data-en="Pixelgrama was built, tested, published and deployed through Aeontra on CubePath."`,
+		`data-en="Pixelgrama was built, tested and deployed through Aeontra. The evidence was frozen while the repository was public; current availability is outside this contract."`,
 		`href="#demo"`,
 		`href="/showcase/pixelgrama-evidence.json"`,
 		`href="#authority"`,
 		`href="https://github.com/charle-z/mcp-devbox"`,
-		`data-es="Ver la prueba completa"`,
+		`data-es="Revisar el caso histórico"`,
 		`data-es="Explorar el modelo de autoridad"`,
 		`data-es="Abrir el repositorio"`,
 	} {
@@ -139,7 +139,7 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 		"AEONTRA — BOUNDED AUTONOMY",
 		"REAL INFRASTRUCTURE.",
 		"NO FREE SHELL.",
-		"Pixelgrama built and deployed through Aeontra.",
+		"Bounded tools · verifiable operations · durable evidence",
 	} {
 		if !strings.Contains(socialCard, required) {
 			t.Errorf("social card missing benefit-first statement %q", required)
@@ -167,7 +167,7 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 		"CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.",
 		"narrow tools and verifiable operations",
 		"read-only / review / bounded autonomy",
-		"Pixelgrama, built and deployed on CubePath",
+		"Pixelgrama, recorded while its evidence was public",
 	} {
 		if !strings.Contains(boot, required) {
 			t.Errorf("boot summary missing benefit-first statement %q", required)
@@ -176,6 +176,11 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 	for _, forbidden := range []string{"policy explorer", "runtime identity", "tool count"} {
 		if strings.Contains(strings.ToLower(boot), forbidden) {
 			t.Errorf("boot summary leads with technical component %q", forbidden)
+		}
+	}
+	for _, staleClaim := range []string{"PUBLIC PROOF", "Open public repository", "Abrir repositorio público"} {
+		if strings.Contains(index, staleClaim) {
+			t.Errorf("landing claims current public Pixelgrama access through %q", staleClaim)
 		}
 	}
 
@@ -287,8 +292,8 @@ func TestLandingGuidedDemoUsesCanonicalReadOnlyEvidence(t *testing.T) {
 		`href="#demo" data-es="Demo" data-en="Demo"`,
 		`data-en="FROM REQUEST TO PRODUCTION COMMIT"`,
 		`data-es="DE LA SOLICITUD AL COMMIT EN PRODUCCIÓN"`,
-		`data-en="Public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access repositories."`,
-		`data-es="Pública, sin autenticación y de solo lectura. No puede invocar herramientas, abrir la consola, aprobar planes, pedir grants, leer credenciales ni acceder a repositorios."`,
+		`data-en="The snapshot is public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access the historical repository."`,
+		`data-es="El snapshot es público, sin autenticación y de solo lectura. No puede invocar herramientas, abrir la consola, aprobar planes, pedir grants, leer credenciales ni acceder al repositorio histórico."`,
 		`id="demoRequestSummary"`,
 		`id="demoPullRequests"`,
 		`id="demoChecks"`,
@@ -317,6 +322,7 @@ func TestLandingGuidedDemoUsesCanonicalReadOnlyEvidence(t *testing.T) {
 		`document.createElement("li")`,
 		`pullRequest.url + "/files"`,
 		`The page will not query GitHub or expose private diagnostics.`,
+		`Historical snapshot loaded. Read-only walkthrough ready.`,
 		`setDemoMessage("available")`,
 		`demoSection.setAttribute("aria-busy", key === "loading" ? "true" : "false")`,
 		`.catch(demoUnavailable)`,

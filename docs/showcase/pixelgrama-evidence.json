@@ -152,9 +152,9 @@
     ]
   },
   "perimeter": {
-    "statement": "This manifest covers only public Pixelgrama source history, public GitHub validation, and the observed public production result used by the Aeontra presentation.",
+    "statement": "This frozen manifest records Pixelgrama source history and validation captured while that evidence was public, plus the production result observed for the Aeontra presentation; it does not assert current repository visibility.",
     "includes": [
-      "Public charle-z/pixelgrama repository, commits, pull requests, and successful checks",
+      "Historical charle-z/pixelgrama commits, pull requests, and successful checks captured while the repository was public",
       "Public production URL, wall route, and version endpoint",
       "CubePath as infrastructure provider and Coolify as deployment platform"
     ],
