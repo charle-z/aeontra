@@ -111,6 +111,9 @@ jobs:
       - name: Build private front door coordinator image
         run: docker build --file Dockerfile.front-door-coordinator --tag mcp-front-door-coordinator:ci .
 
+      - name: Build private validation runner image
+        run: docker build --file Dockerfile.validation-runner --tag mcp-validation-runner:ci .
+
       - name: Verify private coordinator named-volume startup
         run: sh scripts/test-front-door-coordinator-volume.sh
 
@@ -152,6 +155,19 @@ jobs:
 
       - name: Verify private front door coordinator SBOM
         run: test -s front-door-coordinator-sbom.spdx.json
+
+      - name: Generate private validation runner SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: mcp-validation-runner:ci
+          format: spdx-json
+          output-file: validation-runner-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+
+      - name: Verify private validation runner SBOM
+        run: test -s validation-runner-sbom.spdx.json
 
       - name: Scan local image
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
@@ -200,3 +216,19 @@ jobs:
 
       - name: Enforce private front door coordinator vulnerability threshold
         run: go run ./cmd/grype-gate --report front-door-coordinator-grype.json --minimum high --annotation-file Dockerfile.front-door-coordinator
+
+      - name: Scan private validation runner image
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: mcp-validation-runner:ci
+          fail-build: false
+          severity-cutoff: high
+          output-format: json
+          output-file: validation-runner-grype.json
+          cache-db: true
+
+      - name: Verify private validation runner vulnerability report
+        run: test -s validation-runner-grype.json
+
+      - name: Enforce private validation runner vulnerability threshold
+        run: go run ./cmd/grype-gate --report validation-runner-grype.json --minimum high --annotation-file Dockerfile.validation-runner
