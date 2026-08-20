@@ -13,7 +13,7 @@ func TestStep16ReadmeIsProductEntryPoint(t *testing.T) {
 	for _, heading := range []string{
 		"## What Aeontra is",
 		"## The problem it solves",
-		"## Public demo and production status",
+		"## Maintainer-operated demo",
 		"## How it works",
 		"## Authority model",
 		"## Main capabilities",

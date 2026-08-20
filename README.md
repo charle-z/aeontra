@@ -1,7 +1,5 @@
 # Aeontra
 
-[![Hosted on CubePath](https://img.shields.io/badge/Hosted%20on-CubePath-00C853?style=for-the-badge&logo=cloud&logoColor=white)](https://cubepath.com)
-
 Aeontra is secure by default, but it does not claim to eliminate every operational
 risk. It gives AI clients useful hands for software work without handing them an
 unrestricted machine.
@@ -43,9 +41,9 @@ contracts:
 This reduces authority. It does not make model-generated actions inherently safe.
 Operators still own configuration, review, credentials, deployment, and recovery.
 
-## Public demo and production status
+## Maintainer-operated demo
 
-The public landing and MCP endpoint are served from:
+The maintainer currently operates a public landing and credential-gated MCP endpoint at:
 
 ```text
 https://mcp-devbox-charlez.duckdns.org/
@@ -57,8 +55,10 @@ deployment, Edge, or secret authority. `/console` remains authenticated and `/mc
 remains credential-gated. See
 [`docs/landing/public-showcase.md`](docs/landing/public-showcase.md).
 
-The production control plane and authenticated console are hosted on **CubePath** and
-deployed through Coolify.
+This deployment is evidence that the architecture can run remotely; its host, domain,
+accounts, and application identifiers are not project defaults or contributor
+requirements. Aeontra can run locally over stdio without Coolify or the maintainer's
+infrastructure.
 
 Do not copy a commit, release, tool count, or catalog hash from this README. Read the
 live deployment identity from [`/version`](https://mcp-devbox-charlez.duckdns.org/version)
