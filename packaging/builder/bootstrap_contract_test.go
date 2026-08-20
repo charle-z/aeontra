@@ -13,7 +13,7 @@ func TestVPSBootstrapIsExactCommitSystemdDurableAndRollbackBounded(t *testing.T)
 		"#!/bin/sh",
 		"set -eu",
 		"umask 077",
-		"SOURCE_URL=https://github.com/charle-z/mcp-devbox.git",
+		"SOURCE_URL=https://github.com/charle-z/aeontra.git",
 		"UNIT=mcp-devbox-builder-bootstrap.service",
 		"[ \"$#\" -eq 1 ]",
 		"commit must be one lowercase 40-character SHA",

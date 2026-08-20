@@ -432,7 +432,7 @@ Stop if the socket is outside `/run/user/$(id -u)`, symlinked, root-owned, or ac
 ### 4. Build the exact reviewed commit
 
 ```bash
-git clone https://github.com/charle-z/mcp-devbox.git /tmp/mcp-devbox-p12
+git clone https://github.com/charle-z/aeontra.git /tmp/mcp-devbox-p12
 cd /tmp/mcp-devbox-p12
 git checkout <EXACT_P12_MERGE_COMMIT>
 git status --short

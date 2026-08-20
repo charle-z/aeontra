@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	edgeReleaseRepo            = "mcp-devbox"
+	edgeReleaseRepo            = managedSourceRepository
 	edgeReleaseEnvironmentName = "edge-release"
 	edgeReleaseBranch          = "main"
 	edgeReleaseWorkflow        = "edge-release.yml"

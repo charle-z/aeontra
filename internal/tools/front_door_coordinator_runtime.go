@@ -21,11 +21,11 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 	if err := s.validateManagedFrontDoorCoordinatorApp(app); err != nil {
 		return managedFrontDoorCoordinatorIdentity{}, err
 	}
-	mainSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorCoordinatorBranch)
+	mainSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorCoordinatorBranch)
 	if err != nil || !frontDoorCommitPattern.MatchString(mainSHA) {
 		return managedFrontDoorCoordinatorIdentity{}, errors.New("main branch returned an invalid commit")
 	}
-	frontSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorBranch)
+	frontSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorBranch)
 	if err != nil || !frontDoorCommitPattern.MatchString(frontSHA) {
 		return managedFrontDoorCoordinatorIdentity{}, errors.New("stable front-door branch returned an invalid commit")
 	}
@@ -52,7 +52,7 @@ func (s *PlatformCapability) verifyManagedFrontDoorCoordinatorRuntime(app, front
 		}
 		deployments[component.name] = deployment
 	}
-	coordinatorOnMain, err := s.github.commitIsAncestor(context.Background(), "mcp-devbox", deployments["coordinator"].Commit, mainSHA)
+	coordinatorOnMain, err := s.github.commitIsAncestor(context.Background(), managedSourceRepository, deployments["coordinator"].Commit, mainSHA)
 	if err != nil {
 		return managedFrontDoorCoordinatorIdentity{}, fmt.Errorf("validating managed coordinator deployment ancestry: %w", err)
 	}

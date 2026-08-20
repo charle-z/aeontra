@@ -20,6 +20,12 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
 
+func TestOfficialReleaseBaseUsesAeontraRepository(t *testing.T) {
+	if OfficialBaseURL != "https://github.com/charle-z/aeontra/releases/download" {
+		t.Fatalf("official release base URL=%q", OfficialBaseURL)
+	}
+}
+
 type officialRoundTripper struct{ channel, signature []byte }
 
 func (r officialRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {

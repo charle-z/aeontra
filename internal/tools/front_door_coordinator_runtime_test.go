@@ -16,9 +16,9 @@ func TestVerifyManagedFrontDoorCoordinatorRuntimeRejectsWrongBackendCommitAndUne
 	compareStatus := "identical"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/acme/mcp-devbox/git/ref/heads/main", "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case "/repos/acme/aeontra/git/ref/heads/main", "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
-		case "/repos/acme/mcp-devbox/compare/" + frontDoorTestSHA + "..." + frontDoorTestSHA:
+		case "/repos/acme/aeontra/compare/" + frontDoorTestSHA + "..." + frontDoorTestSHA:
 			_, _ = w.Write([]byte(`{"status":"` + compareStatus + `"}`))
 		case "/api/v1/applications/coord1/envs":
 			_, _ = w.Write([]byte(environment))
@@ -73,9 +73,9 @@ func TestVerifyManagedFrontDoorCoordinatorRuntimeUsesAuthenticatedCommentsWithou
 	environment := ""
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/acme/mcp-devbox/git/ref/heads/main", "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case "/repos/acme/aeontra/git/ref/heads/main", "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
-		case "/repos/acme/mcp-devbox/compare/" + coordinatorCommit + "..." + frontDoorTestSHA:
+		case "/repos/acme/aeontra/compare/" + coordinatorCommit + "..." + frontDoorTestSHA:
 			_, _ = w.Write([]byte(`{"status":"ahead"}`))
 		case "/api/v1/applications/coord1/envs":
 			_, _ = w.Write([]byte(environment))

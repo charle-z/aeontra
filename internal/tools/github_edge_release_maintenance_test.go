@@ -23,15 +23,15 @@ func TestEdgeReleaseMaintenanceCancelsObsoleteRunBeforePolicyWrite(t *testing.T)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/main":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/main":
 			fmt.Fprintf(w, `{"object":{"sha":"%s"}}`, mainSHA)
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/branches/main/protection":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/branches/main/protection":
 			w.WriteHeader(http.StatusNotFound)
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/rules/branches/main":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/rules/branches/main":
 			w.Write([]byte(`[]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/environments/edge-release":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/environments/edge-release":
 			fmt.Fprintf(w, `{"name":"edge-release","protection_rules":[],"deployment_branch_policy":{"protected_branches":%t,"custom_branch_policies":%t}}`, protectedBranches, customPolicies)
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/environments/edge-release/deployment-branch-policies":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/environments/edge-release/deployment-branch-policies":
 			if !customPolicies {
 				w.WriteHeader(http.StatusNotFound)
 				return
@@ -46,33 +46,33 @@ func TestEdgeReleaseMaintenanceCancelsObsoleteRunBeforePolicyWrite(t *testing.T)
 				fmt.Fprintf(w, `{"id":%d,"name":"%s"}`, id, name)
 			}
 			w.Write([]byte(`]}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/actions/workflows/edge-release.yml/runs":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/actions/workflows/edge-release.yml/runs":
 			status, conclusion := "waiting", ""
 			if cancelled {
 				status, conclusion = "completed", "cancelled"
 			}
 			fmt.Fprintf(w, `{"workflow_runs":[{"id":%d,"workflow_id":42,"head_branch":"main","head_sha":"%s","event":"workflow_dispatch","status":"%s","conclusion":"%s"}]}`, runID, oldSHA, status, conclusion)
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/releases":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/releases":
 			w.Write([]byte(`[]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/releases/tags/stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/releases/tags/stable":
 			w.WriteHeader(http.StatusNotFound)
-		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/repos/acme/mcp-devbox/actions/runs/%d", runID):
+		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/repos/acme/aeontra/actions/runs/%d", runID):
 			status, conclusion := "waiting", ""
 			if cancelled {
 				status, conclusion = "completed", "cancelled"
 			}
 			fmt.Fprintf(w, `{"id":%d,"workflow_id":42,"head_branch":"main","head_sha":"%s","event":"workflow_dispatch","status":"%s","conclusion":"%s"}`, runID, oldSHA, status, conclusion)
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/actions/workflows/edge-release.yml":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/actions/workflows/edge-release.yml":
 			w.Write([]byte(`{"id":42,"name":"Publish signed P15 Edge release","path":".github/workflows/edge-release.yml","state":"active"}`))
-		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/repos/acme/mcp-devbox/actions/runs/%d/pending_deployments", runID):
+		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/repos/acme/aeontra/actions/runs/%d/pending_deployments", runID):
 			w.Write([]byte(`[{"environment":{"name":"edge-release"},"wait_timer":0,"current_user_can_approve":false,"reviewers":[]}]`))
-		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/repos/acme/mcp-devbox/actions/runs/%d/jobs", runID):
+		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/repos/acme/aeontra/actions/runs/%d/jobs", runID):
 			w.Write([]byte(`{"jobs":[{"name":"Build, verify, and publish official stable bundle","status":"waiting","conclusion":"","steps":[]}]}`))
-		case r.Method == http.MethodPost && r.URL.Path == fmt.Sprintf("/repos/acme/mcp-devbox/actions/runs/%d/cancel", runID):
+		case r.Method == http.MethodPost && r.URL.Path == fmt.Sprintf("/repos/acme/aeontra/actions/runs/%d/cancel", runID):
 			events = append(events, "cancel")
 			cancelled = true
 			w.WriteHeader(http.StatusAccepted)
-		case r.Method == http.MethodPut && r.URL.Path == "/repos/acme/mcp-devbox/environments/edge-release":
+		case r.Method == http.MethodPut && r.URL.Path == "/repos/acme/aeontra/environments/edge-release":
 			if !cancelled {
 				t.Fatal("environment was changed before obsolete run cancellation")
 			}
@@ -91,7 +91,7 @@ func TestEdgeReleaseMaintenanceCancelsObsoleteRunBeforePolicyWrite(t *testing.T)
 			protectedBranches = false
 			customPolicies = true
 			w.Write([]byte(`{"name":"edge-release"}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/mcp-devbox/environments/edge-release/deployment-branch-policies":
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/aeontra/environments/edge-release/deployment-branch-policies":
 			var body struct {
 				Name string `json:"name"`
 			}
@@ -100,7 +100,7 @@ func TestEdgeReleaseMaintenanceCancelsObsoleteRunBeforePolicyWrite(t *testing.T)
 			}
 			policies[7] = "main"
 			w.WriteHeader(http.StatusCreated)
-		case r.Method == http.MethodDelete && r.URL.Path == "/repos/acme/mcp-devbox/environments/edge-release/deployment-branch-policies/8":
+		case r.Method == http.MethodDelete && r.URL.Path == "/repos/acme/aeontra/environments/edge-release/deployment-branch-policies/8":
 			delete(policies, 8)
 			w.WriteHeader(http.StatusNoContent)
 		default:
@@ -140,21 +140,21 @@ func TestEdgeReleaseMaintenanceRefusesProtectedMain(t *testing.T) {
 	mainSHA := strings.Repeat("b", 40)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/acme/mcp-devbox/git/ref/heads/main":
+		case "/repos/acme/aeontra/git/ref/heads/main":
 			fmt.Fprintf(w, `{"object":{"sha":"%s"}}`, mainSHA)
-		case "/repos/acme/mcp-devbox/branches/main/protection":
+		case "/repos/acme/aeontra/branches/main/protection":
 			w.Write([]byte(`{}`))
-		case "/repos/acme/mcp-devbox/rules/branches/main":
+		case "/repos/acme/aeontra/rules/branches/main":
 			w.Write([]byte(`[]`))
-		case "/repos/acme/mcp-devbox/environments/edge-release":
+		case "/repos/acme/aeontra/environments/edge-release":
 			w.Write([]byte(`{"name":"edge-release","protection_rules":[],"deployment_branch_policy":{"protected_branches":true,"custom_branch_policies":false}}`))
-		case "/repos/acme/mcp-devbox/environments/edge-release/deployment-branch-policies":
+		case "/repos/acme/aeontra/environments/edge-release/deployment-branch-policies":
 			w.WriteHeader(http.StatusNotFound)
-		case "/repos/acme/mcp-devbox/actions/workflows/edge-release.yml/runs":
+		case "/repos/acme/aeontra/actions/workflows/edge-release.yml/runs":
 			w.Write([]byte(`{"workflow_runs":[]}`))
-		case "/repos/acme/mcp-devbox/releases":
+		case "/repos/acme/aeontra/releases":
 			w.Write([]byte(`[]`))
-		case "/repos/acme/mcp-devbox/releases/tags/stable":
+		case "/repos/acme/aeontra/releases/tags/stable":
 			w.WriteHeader(http.StatusNotFound)
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)

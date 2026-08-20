@@ -51,7 +51,7 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 		sp.Finish(audit.Deny, "preview", nil, err)
 		return "", err
 	}
-	sha, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorBranch)
+	sha, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorBranch)
 	if err != nil {
 		sp.Finish(audit.Error, "preview branch", nil, err)
 		return "", fmt.Errorf("reading stable front-door branch: %w", err)
@@ -154,7 +154,7 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
-	sha, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorBranch)
+	sha, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorBranch)
 	if err != nil || sha != plan.Args["branch_sha"] {
 		err = errors.New("stable front-door branch changed after preview")
 		sp.Finish(audit.Deny, planID, nil, err)
@@ -369,7 +369,7 @@ func (s *PlatformCapability) normalizeFrontDoorOrigin(raw, field string) (string
 }
 
 func (s *PlatformCapability) managedFrontDoorRepository() string {
-	return "https://github.com/" + s.github.owner + "/mcp-devbox.git"
+	return managedRepositoryURL(s.github.owner)
 }
 
 func (s *PlatformCapability) managedFrontDoorApp() (platformApplication, bool, error) {
@@ -427,9 +427,7 @@ func (s *PlatformCapability) validateManagedFrontDoorApp(app platformApplication
 }
 
 func (s *PlatformCapability) managedFrontDoorRepositoryMatches(raw string) bool {
-	normalized := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(raw), "/"), ".git")
-	ownerRepo := s.github.owner + "/mcp-devbox"
-	return strings.EqualFold(normalized, ownerRepo) || strings.EqualFold(normalized, "https://github.com/"+ownerRepo)
+	return managedRepositoryMatches(s.github.owner, raw)
 }
 
 func (s *PlatformCapability) ensureManagedFrontDoorDomain(app platformApplication, domain string) error {

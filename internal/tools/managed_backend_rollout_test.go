@@ -63,22 +63,22 @@ func TestGitHubManagedRollbackBranchCreatesAndFastForwards(t *testing.T) {
 	current := ""
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/"+managedBackendRollbackBranch:
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/"+managedBackendRollbackBranch:
 			if current == "" {
 				http.NotFound(w, r)
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": current}})
-		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/mcp-devbox/git/refs":
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/aeontra/git/refs":
 			var payload map[string]string
 			if json.NewDecoder(r.Body).Decode(&payload) != nil || payload["ref"] != "refs/heads/"+managedBackendRollbackBranch || payload["sha"] != first {
 				t.Fatal("invalid managed rollback branch creation")
 			}
 			current = first
 			w.WriteHeader(http.StatusCreated)
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/acme/mcp-devbox/compare/"):
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/acme/aeontra/compare/"):
 			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ahead"})
-		case r.Method == http.MethodPatch && r.URL.Path == "/repos/acme/mcp-devbox/git/refs/heads/"+managedBackendRollbackBranch:
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/acme/aeontra/git/refs/heads/"+managedBackendRollbackBranch:
 			var payload struct {
 				SHA   string `json:"sha"`
 				Force bool   `json:"force"`
@@ -112,9 +112,9 @@ func TestGitHubManagedRollbackBranchRejectsDivergence(t *testing.T) {
 	mutated := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/"+managedBackendRollbackBranch:
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/"+managedBackendRollbackBranch:
 			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": current}})
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/acme/mcp-devbox/compare/"):
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/acme/aeontra/compare/"):
 			_ = json.NewEncoder(w).Encode(map[string]string{"status": "diverged"})
 		case r.Method == http.MethodPatch:
 			mutated = true
@@ -137,15 +137,15 @@ func TestManagedBackendRolloutRejectsIncompleteExactHeadChecks(t *testing.T) {
 	manifest := []byte(`{"schema_version":1,"protocol_version":"2024-11-05","tool_count":137,"catalog_hash":"sha256:` + strings.Repeat("b", 64) + `"}`)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/main":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/main":
 			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]any{"sha": commit}})
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/contents/deploy/catalog-identity.json":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/contents/deploy/catalog-identity.json":
 			_ = json.NewEncoder(w).Encode(githubRepositoryContent{Type: "file", Encoding: "base64", Content: base64.StdEncoding.EncodeToString(manifest), SHA: strings.Repeat("c", 40), Size: len(manifest)})
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/commits/"+commit+"/check-runs":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/commits/"+commit+"/check-runs":
 			_ = json.NewEncoder(w).Encode(map[string]any{"total_count": 1, "check_runs": []map[string]any{{"id": 1, "name": "CI", "status": "in_progress", "conclusion": "", "html_url": "https://example.test/run"}}})
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/branches/main/protection/required_status_checks":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/branches/main/protection/required_status_checks":
 			http.NotFound(w, r)
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/commits/"+commit+"/status":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/commits/"+commit+"/status":
 			_ = json.NewEncoder(w).Encode(map[string]any{"state": "pending", "total_count": 0, "statuses": []any{}})
 		default:
 			t.Fatalf("unexpected request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)

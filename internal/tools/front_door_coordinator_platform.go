@@ -73,13 +73,13 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request Platfor
 		sp.Finish(audit.Deny, "preview", nil, err)
 		return "", err
 	}
-	mainSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorCoordinatorBranch)
+	mainSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorCoordinatorBranch)
 	if err != nil || !frontDoorCommitPattern.MatchString(mainSHA) {
 		err = errors.New("main branch returned an invalid commit")
 		sp.Finish(audit.Error, "preview main", nil, err)
 		return "", err
 	}
-	frontSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorBranch)
+	frontSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorBranch)
 	if err != nil || !frontDoorCommitPattern.MatchString(frontSHA) {
 		err = errors.New("stable front-door branch returned an invalid commit")
 		sp.Finish(audit.Error, "preview front", nil, err)
@@ -174,13 +174,13 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
-	mainSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorCoordinatorBranch)
+	mainSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorCoordinatorBranch)
 	if err != nil || mainSHA != plan.Args["main_sha"] {
 		err = errors.New("main branch changed after coordinator preview")
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
-	frontSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorBranch)
+	frontSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorBranch)
 	if err != nil || frontSHA != plan.Args["front_sha"] {
 		err = errors.New("stable front-door branch changed after coordinator preview")
 		sp.Finish(audit.Deny, planID, nil, err)

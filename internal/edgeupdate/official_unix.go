@@ -24,7 +24,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
 
-const OfficialBaseURL = "https://github.com/charle-z/mcp-devbox/releases/download"
+const OfficialBaseURL = "https://github.com/charle-z/aeontra/releases/download"
 
 type OfficialResolver struct {
 	PublicKey ed25519.PublicKey

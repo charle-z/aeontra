@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	managedBackendRepository       = "mcp-devbox"
+	managedBackendRepository       = managedSourceRepository
 	managedBackendBranch           = "main"
 	managedBackendRollbackBranch   = frontdoorcoordinator.ManagedBackendRollbackBranch
 	managedBackendManifestPath     = "deploy/catalog-identity.json"

@@ -659,7 +659,7 @@ func managedRepositoryMatches(raw string) bool {
 	raw = strings.TrimPrefix(raw, "http://github.com/")
 	raw = strings.TrimPrefix(raw, "ssh://git@github.com/")
 	raw = strings.TrimPrefix(raw, "git@github.com:")
-	return raw == strings.ToLower(ManagedRepository)
+	return raw == strings.ToLower(ManagedRepository) || raw == strings.ToLower(ManagedCompatibilityRepository)
 }
 
 func (c *Client) frontBackendURL(ctx context.Context) (string, error) {
