@@ -19,13 +19,20 @@ jobs:
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - run: go test ./... -count=1
 `
 }
 
 func TestValidateAcceptsLeastPrivilegeWorkflow(t *testing.T) {
 	if err := Validate("ci.yml", []byte(validWorkflow())); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateAcceptsRepositoryLocalAction(t *testing.T) {
+	workflow := strings.Replace(validWorkflow(), "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", "./.github/actions/setup", 1)
+	if err := Validate("ci.yml", []byte(workflow)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -87,9 +94,17 @@ func TestValidateRejectsSecretsAndProductionActionsInPullRequests(t *testing.T) 
 
 func TestValidateRejectsMutableActionAndToolVersions(t *testing.T) {
 	for name, workflow := range map[string]string{
-		"action-main":   strings.Replace(validWorkflow(), "actions/checkout@v5", "actions/checkout@main", 1),
-		"action-latest": strings.Replace(validWorkflow(), "actions/checkout@v5", "actions/checkout@latest", 1),
-		"go-latest":     strings.Replace(validWorkflow(), "go test ./... -count=1", "go run golang.org/x/vuln/cmd/govulncheck@latest ./...", 1),
+		"action-tag":    strings.Replace(validWorkflow(), "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", "actions/checkout@v5", 1),
+		"action-main":   strings.Replace(validWorkflow(), "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", "actions/checkout@main", 1),
+		"action-latest": strings.Replace(validWorkflow(), "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", "actions/checkout@latest", 1),
+		"action-short":  strings.Replace(validWorkflow(), "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", "actions/checkout@fbc6f399", 1),
+		"action-not-hex": strings.Replace(
+			validWorkflow(),
+			"actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
+			"actions/checkout@zbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
+			1,
+		),
+		"go-latest": strings.Replace(validWorkflow(), "go test ./... -count=1", "go run golang.org/x/vuln/cmd/govulncheck@latest ./...", 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := Validate("ci.yml", []byte(workflow)); !errors.Is(err, ErrMutableVersion) {
