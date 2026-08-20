@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-alpine3.22 AS console-build
+FROM node:22-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8 AS console-build
 
 # The production VPS has two vCPUs. Keep image assembly to one logical CPU by
 # default so the live control plane, Coolify and Traefik retain scheduler time.
@@ -20,7 +20,7 @@ RUN GOMAXPROCS=${BUILD_GOMAXPROCS} \
 	UV_THREADPOOL_SIZE=${BUILD_UV_THREADPOOL_SIZE} \
 	pnpm console:build
 
-FROM golang:1.26.6-alpine3.24 AS build
+FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
 # --build-arg GIT_SHA=$(git rev-parse HEAD). It is baked into the binary via -ldflags so
@@ -49,10 +49,10 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 # Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can
 # run common Go and web project checks in the VPS container. (Bigger image, but this
 # is a dev-agent box.)
-FROM golang:1.26.6-alpine3.24
+FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83
 
 # OCI metadata (good practice; helps registries/scanners identify the image).
-# For fully reproducible prod builds, pin the base by digest (golang:1.26-alpine@sha256:...).
+# Tags remain readable while the digest fixes the exact multi-platform image index.
 LABEL org.opencontainers.image.title="mcp-devbox" \
 	org.opencontainers.image.description="Secure-by-default local MCP server for AI coding agents" \
 	org.opencontainers.image.source="https://github.com/charle-z/mcp-devbox"

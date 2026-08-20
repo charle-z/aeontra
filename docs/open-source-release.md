@@ -52,7 +52,8 @@ Never publish:
 - [x] GitHub private vulnerability reporting is enabled and `SECURITY.md` defines the
       public reporting boundary.
 - [x] CI runs tests, vet, formatting, dependency review, and secret scanning.
-- [ ] Dependencies and container images are pinned; SBOM and checksums are produced.
+- [x] External Actions and versioned container bases are pinned by immutable commit or
+      digest; dependency/license gates and container SBOM/checksum evidence are produced.
 - [x] CI builds and initializes the local read-only stdio server through
       `scripts/verify-clean-install.sh` without private infrastructure values.
 - [ ] A clean Linux/WSL Edge installation, pairing, signed update, and rollback are

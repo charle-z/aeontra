@@ -34,6 +34,11 @@ Go dependencies are scanned in CI for vulnerabilities and release images produce
 SBOM. The reviewed Go dependency set currently contains permissive MIT and BSD license
 families; changes still require inspection of the exact dependency diff.
 
+Every versioned Dockerfile base and the PostgreSQL rootless fixture retain a readable
+tag plus an immutable multi-platform manifest digest. Updating a tag or digest requires
+resolving it from the official registry, rebuilding the affected image, and rerunning
+the relevant container and host-specific gates.
+
 ## Distribution notices
 
 Source packages, container images, Edge packages, browser downloads, and generated web
