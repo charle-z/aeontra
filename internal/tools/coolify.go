@@ -378,6 +378,10 @@ func (s *PlatformCapability) CoolifySetEnv(app string, vars map[string]string, a
 	}
 	storageSummary := ""
 	if brainRoot, requested := vars["MCP_DEVBOX_BRAIN_ROOT"]; requested {
+		if err := s.requireMaintainerProfile(); err != nil {
+			sp.Finish(audit.Deny, "coolify_set_env "+app+" MCP_DEVBOX_BRAIN_ROOT", nil, err)
+			return "", err
+		}
 		if app != p9BrainAppUUID {
 			err := fmt.Errorf("MCP_DEVBOX_BRAIN_ROOT may only be configured on the fixed P9 Brain application")
 			sp.Finish(audit.Deny, "coolify_set_env "+app+" MCP_DEVBOX_BRAIN_ROOT", nil, err)

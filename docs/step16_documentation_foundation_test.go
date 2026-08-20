@@ -49,6 +49,8 @@ func TestStep16ReadmeIsProductEntryPoint(t *testing.T) {
 		"single-use plan",
 		"revalidation",
 		"audit",
+		"Apache License, Version 2.0",
+		"docs/provenance.md",
 	} {
 		if !strings.Contains(strings.ToLower(readme), strings.ToLower(required)) {
 			t.Errorf("README missing product marker %q", required)
@@ -178,7 +180,7 @@ func TestStep16SecurityAndDocumentationMapHaveCanonicalRoles(t *testing.T) {
 	model := readDoc(t, "security.md")
 	docMap := readDoc(t, "documentation-map.md")
 
-	for _, required := range []string{"Reporting a vulnerability", "Supported versions", "Disclosure policy", "docs/security.md", "no open-source `LICENSE`"} {
+	for _, required := range []string{"Reporting a vulnerability", "Supported versions", "Disclosure policy", "docs/security.md", "Apache License, Version 2.0"} {
 		if !strings.Contains(policy, required) {
 			t.Errorf("SECURITY.md missing public-policy marker %q", required)
 		}
@@ -207,6 +209,38 @@ func TestStep16SecurityAndDocumentationMapHaveCanonicalRoles(t *testing.T) {
 	} {
 		if !strings.Contains(docMap, required) {
 			t.Errorf("documentation-map.md missing canonical source %q", required)
+		}
+	}
+}
+
+func TestOpenSourceFoundationRecordsLicenseAndProvenance(t *testing.T) {
+	license := readDoc(t, "../LICENSE")
+	notice := readDoc(t, "../NOTICE")
+	copyright := readDoc(t, "../COPYRIGHT")
+	provenance := readDoc(t, "provenance.md")
+	docMap := readDoc(t, "documentation-map.md")
+
+	for _, marker := range []string{"Apache License", "Version 2.0", "TERMS AND CONDITIONS"} {
+		if !strings.Contains(license, marker) {
+			t.Errorf("LICENSE missing Apache-2.0 marker %q", marker)
+		}
+	}
+	for _, marker := range []string{"Aeontra", "Copyright 2026 Carlos Acosta", "mcp-devbox", "mcp-edge"} {
+		if !strings.Contains(notice, marker) {
+			t.Errorf("NOTICE missing attribution marker %q", marker)
+		}
+	}
+	if !strings.Contains(copyright, "Licensed under the Apache License, Version 2.0") {
+		t.Fatal("COPYRIGHT does not point to Apache-2.0")
+	}
+	for _, marker := range []string{"mcp-devbox@localhost", "edge@mcp-devbox.local", "t@t", "Developer Certificate of Origin 1.1"} {
+		if !strings.Contains(provenance, marker) {
+			t.Errorf("provenance boundary missing %q", marker)
+		}
+	}
+	for _, marker := range []string{"`LICENSE`, `NOTICE`, and `COPYRIGHT`", "`docs/provenance.md`"} {
+		if !strings.Contains(docMap, marker) {
+			t.Errorf("documentation map missing legal source %q", marker)
 		}
 	}
 }

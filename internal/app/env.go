@@ -76,6 +76,8 @@ const (
 	validationRunnerTokenEnv = "MCP_DEVBOX_VALIDATION_RUNNER_TOKEN"
 )
 
+const maintainerProfileEnv = "MCP_DEVBOX_MAINTAINER_PROFILE"
+
 // envFallback returns flagVal when non-empty (after trimming), otherwise the value
 // of the named environment variable.
 func envFallback(flagVal, envName string) string {

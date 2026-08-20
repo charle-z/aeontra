@@ -87,7 +87,7 @@ public issue.
 
 ## License status
 
-The repository currently has no open-source `LICENSE`. Public visibility does not grant
-permission to use, copy, modify, distribute, sublicense, sell, or create derivative
-works. See `COPYRIGHT` and [`docs/open-source-release.md`](docs/open-source-release.md).
-The security-reporting process does not change that status.
+Aeontra is licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE),
+[`NOTICE`](NOTICE), and [`docs/provenance.md`](docs/provenance.md). The license does not
+grant authorization to test third-party or production systems, and the
+security-reporting process does not expand that authority.

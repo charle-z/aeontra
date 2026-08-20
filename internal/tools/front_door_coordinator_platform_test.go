@@ -15,6 +15,7 @@ import (
 func configuredCoordinatorService(t *testing.T, mode config.Mode, baseURL string) *Service {
 	t.Helper()
 	svc := configuredPlatformService(t, mode, baseURL)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(baseURL, "github-token", "acme", "org", "private"))
 	svc.WithCoolify(NewCoolifyClient(baseURL, "coolify-token", nil).
 		WithBuilderConfig("server1", "project1", "production", "", []string{"mcp-devbox-charlez.duckdns.org"}).

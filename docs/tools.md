@@ -148,7 +148,7 @@ do not replace server-side enforcement.
 | `source_default_branch_update` | 0/1/0/1 | Revalidate the target SHA and update the owner-bound repository default branch. |
 | `source_workflow_dispatch_preview` | 1/0/1/1 | Verify one active workflow file and exact branch SHA, reject secret-like bounded inputs, and plan one dispatch. |
 | `source_workflow_dispatch` | 0/1/0/1 | Revalidate workflow identity and branch SHA, then dispatch the reviewed owner-bound workflow once. |
-| `source_edge_release_status` | 1/0/1/1 | Read the fixed `mcp-devbox` `edge-release` state, release runs/jobs, and release assets. |
+| `source_edge_release_status` | 1/0/1/1 | Read the maintainer profile's fixed `mcp-devbox` `edge-release` state, release runs/jobs, and release assets. |
 | `source_edge_release_maintenance_preview` | 1/0/1/1 | Plan cancellation of obsolete release runs followed by the fixed main-only custom deployment branch policy. |
 | `source_edge_release_maintenance_apply` | 0/1/0/1 | Revalidate and execute only that fixed maintenance plan; branch protection is never changed. |
 | `repo_remote_preview` | 1/0/1/0 | Plan an owner-restricted credential-free remote add/update. |
@@ -173,6 +173,12 @@ provider. Those owner-bound transport actions are intentionally absent from the
 exterior MCP catalog; see `docs/development-edge-git.md`.
 
 ## Coolify platform
+
+The fixed production backend, Front Door/coordinator, Brain deployment contract, and
+official Edge-release maintenance operations require the explicit repository-maintainer
+profile. They remain registered for catalog compatibility but fail closed in the
+portable default configuration. Generic app status, creation, deployment, logs, and
+domain operations continue to use only the operator's configured Coolify boundaries.
 
 | Tool | R/D/I/O | Effect |
 |---|---:|---|
@@ -296,6 +302,7 @@ repo content. Tokens are sent only in HTTP authorization headers and never retur
 
 - Core/transport: `MCP_DEVBOX_TOKEN`, `MCP_DEVBOX_ROOT`, `MCP_DEVBOX_MODE`,
   `MCP_DEVBOX_TEST_CMD`, `MCP_DEVBOX_ALLOW_CMD`, `MCP_DEVBOX_BRAIN_ROOT`,
+  optional repository-only `MCP_DEVBOX_MAINTAINER_PROFILE`,
   `MCP_DEVBOX_PUBLIC_URL`,
   `MCP_DEVBOX_OAUTH_PASSPHRASE`, `MCP_DEVBOX_OAUTH_CLIENT_STORE`, and
   `MCP_DEVBOX_OAUTH_ACCESS_STORE` and `MCP_DEVBOX_OAUTH_REFRESH_STORE` as applicable.

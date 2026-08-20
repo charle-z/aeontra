@@ -41,6 +41,7 @@ func TestPrivilegedCompatibilityRoutesOnlyEdgeReleaseMaintenance(t *testing.T) {
 	defer server.Close()
 
 	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(server.URL, "token", "acme", "user", "private"))
 
 	if _, err := svc.PrivilegedTaskPreview("", "git-fetch", nil); err == nil || !strings.Contains(err.Error(), "disabled by administrator configuration") {

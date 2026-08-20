@@ -9,7 +9,11 @@ func TestP16PostinstUsesClosedTransactionalEdgeLifecycle(t *testing.T) {
 	postinst := repoFile(t, "packaging/debian/postinst.in")
 	for _, required := range []string{
 		"STATE_MIGRATION_PREPARED=0",
-		"runuser -u \"$EDGE_USER\" -- env HOME=\"/home/$EDGE_USER\"",
+		"EDGE_HOME=\"$(getent passwd \"$EDGE_USER\" | cut -d: -f6)\"",
+		"write_edge_home_dropins",
+		"ConditionPathExists=",
+		"ReadWritePaths=",
+		"runuser -u \"$EDGE_USER\" -- env HOME=\"$EDGE_HOME\"",
 		"/usr/local/bin/mcp-edge lifecycle \"$operation\"",
 		"edge_lifecycle recover-state",
 		"edge_lifecycle prepare-state-migration",

@@ -137,6 +137,13 @@ func (s *Service) WithPrivilegedConfig(cfg PrivilegedConfig) *Service {
 	return s
 }
 
+// WithMaintainerProfile enables one administrator-selected fixed operational profile.
+// The empty default keeps maintainer-specific deployment and release contracts inert.
+func (s *Service) WithMaintainerProfile(profile string) *Service {
+	s.serviceCore.configureMaintainerProfile(profile)
+	return s
+}
+
 // WithBrainStore attaches one already-validated isolated Brain store at startup. The
 // store root is never added to repository policy roots.
 func (s *Service) WithBrainStore(store *brainpkg.Store) *Service {

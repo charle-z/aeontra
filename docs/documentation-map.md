@@ -15,6 +15,8 @@ state.
 | `CONTRIBUTING.md` | Contributor setup, change discipline, verification tiers, provenance, and review expectations | an internal milestone plan or operator handoff |
 | `SUPPORT.md` | Best-effort support boundary, supported-state language, and useful diagnostic inputs | an SLA or private troubleshooting channel |
 | `GOVERNANCE.md` | Public decision model, roles, and maintainer path | enterprise governance or private security-response procedure |
+| `LICENSE`, `NOTICE`, and `COPYRIGHT` | Source license, project attribution, and copyright notice | a dependency inventory or artifact-specific notice bundle |
+| `docs/provenance.md` | Historical human/automation identity mapping and future DCO boundary | a replacement for Git history or legal advice |
 | `docs/brand-compatibility.md` | Public product name, compatibility identifiers, and rename boundary | a mass-replacement checklist or deployment identity source |
 | `docs/dependency-licenses.md` | Reviewed dependency-license classes and distribution-notice requirements | legal clearance for project source or a release SBOM |
 | `docs/tools.md` | Canonical public MCP tool catalog, schemas, annotations, aliases, approval posture, and workflows | a hardcoded live deployment claim |

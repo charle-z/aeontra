@@ -110,6 +110,7 @@ func TestEdgeReleaseMaintenanceCancelsObsoleteRunBeforePolicyWrite(t *testing.T)
 	defer server.Close()
 
 	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(server.URL, "token", "acme", "user", "private"))
 
 	status, err := svc.SourceEdgeReleaseStatus()
@@ -162,6 +163,7 @@ func TestEdgeReleaseMaintenanceRefusesProtectedMain(t *testing.T) {
 	defer server.Close()
 
 	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(server.URL, "token", "acme", "user", "private"))
 	if _, err := svc.SourceEdgeReleaseMaintenancePreview(); err == nil || !strings.Contains(err.Error(), "never changes branch protection") {
 		t.Fatalf("expected protected-main refusal, got %v", err)

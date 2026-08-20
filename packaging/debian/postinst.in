@@ -13,6 +13,7 @@ LEGACY_OPENCODE_BACKUP="$ROOT/.p15-migration-opencode-1.18.1"
 MIGRATED_PROVIDER=0
 MIGRATED_OPENCODE=0
 EDGE_USER=''
+EDGE_HOME=''
 STATE_MIGRATION_PREPARED=0
 
 test "$(id -u)" -eq 0
@@ -44,7 +45,30 @@ stage_legacy_directory() {
 
 edge_lifecycle() {
   operation="$1"
-  runuser -u "$EDGE_USER" -- env HOME="/home/$EDGE_USER" /usr/local/bin/mcp-edge lifecycle "$operation"
+  runuser -u "$EDGE_USER" -- env HOME="$EDGE_HOME" /usr/local/bin/mcp-edge lifecycle "$operation"
+}
+
+write_edge_home_dropins() {
+  service_dropin_dir="/etc/systemd/system/mcp-devbox-opencode-edge@${EDGE_USER}.service.d"
+  path_dropin_dir="/etc/systemd/system/mcp-devbox-edge-onboard@${EDGE_USER}.path.d"
+  state_root="$EDGE_HOME/.local/state/mcp-edge"
+
+  install -d -m 0755 "$service_dropin_dir" "$path_dropin_dir"
+  {
+    printf '%s\n' '[Unit]' 'ConditionPathExists='
+    printf 'ConditionPathExists=%s/identity.json\n' "$state_root"
+    printf 'ConditionPathExists=!%s/STOP\n' "$state_root"
+    printf '%s\n' '' '[Service]'
+    printf 'WorkingDirectory=%s\n' "$state_root"
+    printf 'Environment=HOME=%s\n' "$EDGE_HOME"
+    printf '%s\n' 'ReadWritePaths='
+    printf 'ReadWritePaths=%s %s/workspaces %s/htb-machines\n' "$state_root" "$EDGE_HOME" "$EDGE_HOME"
+  } >"$service_dropin_dir/10-edge-home.conf"
+  {
+    printf '%s\n' '[Path]' 'PathExists='
+    printf 'PathExists=%s/identity.json\n' "$state_root"
+  } >"$path_dropin_dir/10-edge-home.conf"
+  chmod 0644 "$service_dropin_dir/10-edge-home.conf" "$path_dropin_dir/10-edge-home.conf"
 }
 
 restore_legacy_directory() {
@@ -104,8 +128,6 @@ if [ -s /etc/mcp-devbox/edge-user ]; then
   EDGE_USER="$(cat /etc/mcp-devbox/edge-user)"
 elif [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
   EDGE_USER="$SUDO_USER"
-elif id charles >/dev/null 2>&1; then
-  EDGE_USER='charles'
 fi
 
 systemctl daemon-reload
@@ -120,10 +142,16 @@ done
 /usr/local/bin/mcp-edge bundle verify
 if [ -n "$EDGE_USER" ]; then
 	case "$EDGE_USER" in *[!a-z0-9_-]*|'') echo 'invalid Edge user' >&2; exit 1;; esac
+	EDGE_HOME="$(getent passwd "$EDGE_USER" | cut -d: -f6)"
+	case "$EDGE_HOME" in /*) ;; *) echo 'invalid Edge user home' >&2; exit 1;; esac
+	case "$EDGE_HOME" in *[!A-Za-z0-9_./-]*|*/../*|*/..|../*|..) echo 'unsafe Edge user home' >&2; exit 1;; esac
+	test -d "$EDGE_HOME"
+	write_edge_home_dropins
 	printf '%s\n' "$EDGE_USER" >/etc/mcp-devbox/edge-user
 	chmod 0600 /etc/mcp-devbox/edge-user
 	sed "s/@EDGE_USER@/$EDGE_USER/g" /usr/share/mcp-devbox/49-mcp-devbox-updater.rules.in >/etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
 	chmod 0644 /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+  systemctl daemon-reload
   loginctl enable-linger "$EDGE_USER"
   systemctl --user --machine="${EDGE_USER}@" enable --now podman.socket
   edge_lifecycle recover-state
@@ -136,7 +164,7 @@ if [ -n "$EDGE_USER" ]; then
   systemctl enable "mcp-devbox-opencode-edge@${EDGE_USER}.service"
   systemctl enable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
   runuser -u "$EDGE_USER" -- /usr/local/libexec/mcp-devbox/onboarding-preflight
-  if [ -f "/home/${EDGE_USER}/.local/state/mcp-edge/identity.json" ]; then
+  if [ -f "$EDGE_HOME/.local/state/mcp-edge/identity.json" ]; then
     systemctl restart "mcp-devbox-opencode-edge@${EDGE_USER}.service"
     systemctl is-active --quiet "mcp-devbox-opencode-edge@${EDGE_USER}.service"
   fi

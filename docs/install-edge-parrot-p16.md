@@ -28,6 +28,24 @@ mcp-edge onboard --server https://mcp.example.com
 Replace `https://mcp.example.com` with the HTTPS origin of the operator's own control
 plane. The maintainer-operated demo domain is not an installation default.
 
+Run the package command from the intended Edge user's login session so `sudo` supplies
+that account through `SUDO_USER`. An unattended root shell has no safe user identity to
+infer and therefore installs the signed bundle without enabling a per-user Edge. For
+that case, select an existing non-root account explicitly before package installation:
+
+```text
+sudo install -d -m 0755 /etc/mcp-devbox
+printf '%s\n' '<edge-user>' | sudo tee /etc/mcp-devbox/edge-user >/dev/null
+sudo chmod 0600 /etc/mcp-devbox/edge-user
+sudo apt install ./mcp-devbox-edge_<version>_amd64.deb
+```
+
+The package resolves the account's home directory from the system identity database;
+it never assumes `/home/<user>` or falls back to the original maintainer's username.
+It writes root-owned, per-instance systemd drop-ins for that exact home while retaining
+the signed template service, so archive updates can still replace the executable
+contract without freezing an old `ExecStart` line.
+
 The first pairing still needs one short-lived code authorized by the control plane. The
 code is read from standard input and never accepted as a command-line argument. This is
 a one-time trust bootstrap, not a per-project or per-chat setup step.
@@ -148,6 +166,17 @@ container:
 - the following successful run migrates once and a repeat `postinst` is idempotent.
 
 Until that remote gate is green, this package candidate remains validation pending.
+
+## Package removal
+
+Removal fails closed if systemd cannot stop and disable either the identity watcher or
+the Edge service. Only after both operations succeed does `prerm` remove the generated
+home-directory drop-ins and updater polkit rule, then reload systemd. An ordinary
+package upgrade keeps the rule and running-unit configuration available for rollback.
+
+Private identity, keys, workspaces, checkpoints, project checkouts, and state are not
+deleted by package removal. Reinstalling the package and selecting the same Edge user
+can reuse that state after the normal integrity checks.
 
 ## Diagnosis
 

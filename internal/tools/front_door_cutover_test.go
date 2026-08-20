@@ -17,6 +17,7 @@ import (
 func configuredManagedCutoverService(t *testing.T, baseURL string) *Service {
 	t.Helper()
 	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(baseURL, "github-token", "acme", "org", "private"))
 	svc.WithCoolify(NewCoolifyClient(baseURL, "coolify-token", nil).
 		WithBuilderConfig("server1", "project1", "production", "", []string{

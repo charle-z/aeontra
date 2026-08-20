@@ -38,6 +38,10 @@ type PlatformFrontDoorRequest struct {
 
 func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFrontDoorRequest) (string, error) {
 	sp := s.log.Start("platform_front_door_create_preview")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "preview", nil, err)
+		return "", err
+	}
 	if err := s.frontDoorPlatformConfigError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
 		return "", err
@@ -121,6 +125,10 @@ func (s *PlatformCapability) PlatformFrontDoorCreatePreview(request PlatformFron
 
 func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_front_door_create")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "create", nil, err)
+		return "", err
+	}
 	if err := s.frontDoorPlatformConfigError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
@@ -274,6 +282,10 @@ func (s *PlatformCapability) PlatformFrontDoorCreate(planID string, approve bool
 
 func (s *PlatformCapability) PlatformFrontDoorStatus() (string, error) {
 	sp := s.log.Start("platform_front_door_status")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "status", nil, err)
+		return "", err
+	}
 	if err := s.coolify.configError(); err != nil {
 		sp.Finish(audit.Deny, "status", nil, err)
 		return "", err

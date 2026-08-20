@@ -172,7 +172,7 @@ func TestP12TrustedLinuxWorkcellClosureIsSynchronized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.ToolCount != 175 || runtime.CatalogHash != "sha256:37f91dcb2c086c11eccff04bcc523ec916420172f3e0a5520b24628319cd7bce" {
+	if runtime.ToolCount != 175 || runtime.CatalogHash != "sha256:0b64baf0bcb0bddd2a835deea96f1c56b26d59935fc7e92665c31ae9053c5898" {
 		t.Fatalf("current additive catalog identity = %d %s", runtime.ToolCount, runtime.CatalogHash)
 	}
 }

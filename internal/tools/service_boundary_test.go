@@ -22,16 +22,17 @@ func TestServiceFacadeContainsOnlyDelegatingConfigurationMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	allowed := map[string]bool{
-		"WithActionPlanStore":  true,
-		"WithRunner":           true,
-		"WithSandboxRunner":    true,
-		"WithTestCommand":      true,
-		"WithCoolify":          true,
-		"WithGitHub":           true,
-		"WithValidationRunner": true,
-		"WithPrivilegedConfig": true,
-		"WithBrainStore":       true,
-		"WithResultStore":      true,
+		"WithActionPlanStore":   true,
+		"WithRunner":            true,
+		"WithSandboxRunner":     true,
+		"WithTestCommand":       true,
+		"WithCoolify":           true,
+		"WithGitHub":            true,
+		"WithMaintainerProfile": true,
+		"WithValidationRunner":  true,
+		"WithPrivilegedConfig":  true,
+		"WithBrainStore":        true,
+		"WithResultStore":       true,
 	}
 
 	for _, entry := range entries {

@@ -1,8 +1,9 @@
 # Dependency license policy
 
 Aeontra accepts dependencies only after their licenses and redistribution obligations
-are reviewed. Dependency metadata is evidence, not legal advice, and a passing scanner
-does not license the project's own source.
+are reviewed. The project's own source is licensed under Apache-2.0; dependency metadata
+is evidence, not legal advice, and a passing scanner does not license third-party code
+under the project's terms.
 
 ## Automated gates
 
@@ -47,10 +48,13 @@ its SBOM and the license/notice material required by the components it actually 
 The repository-level policy is not a substitute for copying required license texts into
 a binary or image distribution.
 
-Before the first licensed public release, generate the release artifacts from the exact
-candidate commit, inspect their SBOMs, and add a release-level `NOTICE` or equivalent
-third-party notice bundle. Do not add a project `NOTICE` that implies the project's own
-copyright or license has been cleared before the provenance gate is complete.
+Before the first tagged public release, generate the release artifacts from the exact
+candidate commit, inspect their SBOMs, and add the required artifact-level third-party
+notice bundle. The project-level `NOTICE` records Aeontra attribution and compatibility
+names; it does not claim to enumerate every component shipped by every artifact. The
+source provenance gate is satisfied in [`docs/provenance.md`](provenance.md), while this
+artifact-level notice gate remains independently pending until exact release artifacts
+exist.
 
 ## Contributor check
 

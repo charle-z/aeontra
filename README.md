@@ -296,8 +296,11 @@ creating competing configuration or security references.
 
 ## License and vulnerability reporting
 
-No open-source `LICENSE` file is currently published. Treat the repository as all
-rights reserved unless the owner states otherwise.
+Aeontra is licensed under the
+[Apache License, Version 2.0](LICENSE). See [`NOTICE`](NOTICE) for project attribution,
+[`docs/provenance.md`](docs/provenance.md) for the historical identity boundary, and
+[`docs/dependency-licenses.md`](docs/dependency-licenses.md) for third-party and
+artifact-specific obligations.
 
 Report vulnerabilities privately using [`SECURITY.md`](SECURITY.md). Do not publish
 secrets, exploit details, or unpatched vulnerabilities in a public issue.
