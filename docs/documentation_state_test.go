@@ -20,10 +20,9 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	plan := read("../specs/001-layer-1/plan.md")
 	tasks := read("../specs/001-layer-1/tasks.md")
 	constitution := read("../.specify/memory/constitution.md")
+	gitignore := read("../.gitignore")
 
 	roadmap := read("product-roadmap.md")
-	currentTask := read("../.agent-memory/current-task.md")
-	handoff := read("../.agent-memory/handoffs/latest.md")
 	reconciliation := read("baselines/2026-08-12-operational-reconciliation.md")
 
 	for path, content := range map[string]string{
@@ -61,12 +60,16 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	for _, required := range []string{
 		"Phase status must be evidence-based",
 		"specs/",
-		".agent-memory/current-task.md",
+		".agent-memory/",
+		"optional Brain",
 		"docs/context-capsule.md",
 	} {
 		if !strings.Contains(constitution, required) {
 			t.Errorf("constitution does not contain %q", required)
 		}
+	}
+	if !strings.Contains(gitignore, "/.agent-memory/") {
+		t.Error("repository does not ignore operator-local .agent-memory state")
 	}
 
 	for _, required := range []string{
@@ -101,21 +104,6 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	} {
 		if !strings.Contains(roadmap, required) {
 			t.Errorf("current product roadmap does not contain %q", required)
-		}
-	}
-	for path, content := range map[string]string{
-		"current task": currentTask,
-		"handoff":      handoff,
-	} {
-		for _, required := range []string{
-			"p15.0.34",
-			"167 tools",
-			"Codex",
-			"multiagent",
-		} {
-			if !strings.Contains(content, required) {
-				t.Errorf("%s does not contain %q", path, required)
-			}
 		}
 	}
 	for _, required := range []string{

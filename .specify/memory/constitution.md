@@ -97,9 +97,10 @@ confusion, and unsafe failure recovery. Every bypass must fail safely.
 ## Article VI — Scope and phase discipline
 
 Build in explicit phases. The original Layer 1 MVP is complete; later work must not
-silently rewrite its historical spec. Active scope is defined by
-`.agent-memory/current-task.md` and `docs/context-capsule.md`, while future intent is
-tracked in `docs/product-roadmap.md`.
+silently rewrite its historical spec. Active product scope is defined by the affected
+specification, ADR, canonical documentation, and Git state, while future intent is
+tracked in `docs/product-roadmap.md`. Operator-local `.agent-memory/` and optional Brain
+checkpoints may preserve continuation state, but they are not versioned product contracts.
 
 - Do not mix unrelated phases into one branch.
 - Do not claim console, profiles, asset broker, edge, or orchestrator completion until
@@ -117,13 +118,17 @@ state changes, synchronize all affected layers:
 1. `specs/` — historical and active requirements/tasks; never leave completed tasks
    unchecked or mark planned work complete without evidence.
 2. `.specify/memory/constitution.md` — immutable principles and current phase rules.
-3. `.agent-memory/current-task.md` — exact active branch, completed commits, gates,
-   and next safe step.
-4. `.agent-memory/handoffs/latest.md` — concise restart point for another session.
-5. `docs/context-capsule.md` — deployed state, active work, risks, and next steps.
-6. `docs/product-roadmap.md` — future intent plus an explicit current status snapshot.
-7. ADRs, baselines, runbooks, README, tool docs, and setup guides when their contracts
+3. `docs/context-capsule.md` — bounded project context and evidence pointers without
+   copying moving live identity.
+4. `docs/product-roadmap.md` — future intent plus an explicit evidence-based status
+   snapshot.
+5. ADRs, baselines, runbooks, README, tool docs, and setup guides when their contracts
    or operational instructions changed.
+
+Instance task state must remain outside the tracked public tree. Agents may use ignored
+`.agent-memory/` files for local continuation and optional Brain notes for durable
+server-side handoff, but neither may override the repository, Git state, or live runtime
+evidence.
 
 Documentation status is protected by automated tests. A dated baseline is historical
 evidence and is not rewritten to pretend a past branch was already deployed.

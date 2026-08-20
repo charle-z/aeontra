@@ -23,8 +23,10 @@ canonical table in a runbook.
 
 - `.specify/memory/constitution.md`: durable engineering and security principles.
 - `AGENTS.md`: concise operating rules for agents working in this repository.
-- `.agent-memory/current-task.md`: current repository-local task state.
-- `.agent-memory/handoffs/latest.md`: bounded continuation state for another agent.
+- `.agent-memory/`: optional operator-local task and handoff state; it must remain untracked
+  and cannot override repository or live-runtime evidence.
+- Brain: optional durable server-side continuation notes. Brain is operational state,
+  not a substitute for versioned product contracts or Git history.
 - `specs/001-layer-1/` and later `specs/`: accepted requirements, plans, and task
   history for their specific scope.
 - `docs/context-capsule.md`: bounded project context and evidence pointers for resuming

@@ -10,12 +10,13 @@
 # Go
 /vendor/
 node_modules/
+/.pnpm-store/
 
 # Local runtime / audit artifacts
 /.mcp-devbox/
+/.agent-memory/
 *.log
 audit.log
-.agent-memory/handoffs/local-*
 
 # Editor / OS
 .DS_Store
