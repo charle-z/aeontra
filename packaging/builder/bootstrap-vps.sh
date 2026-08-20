@@ -5,7 +5,7 @@ umask 077
 ROOT_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PATH=$ROOT_PATH
 export PATH
-SOURCE_URL=https://github.com/charle-z/mcp-devbox.git
+SOURCE_URL=https://github.com/charle-z/aeontra.git
 WORK_ROOT=/var/lib/mcp-devbox-builder-bootstrap
 LOCK_PATH=/run/lock/mcp-devbox-builder-bootstrap.lock
 UNIT=mcp-devbox-builder-bootstrap.service

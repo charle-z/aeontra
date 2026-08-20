@@ -15,23 +15,23 @@ func TestPrivilegedCompatibilityRoutesOnlyEdgeReleaseMaintenance(t *testing.T) {
 	writes := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/main":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/main":
 			fmt.Fprintf(w, `{"object":{"sha":"%s"}}`, mainSHA)
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/branches/main/protection":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/branches/main/protection":
 			w.WriteHeader(http.StatusNotFound)
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/rules/branches/main":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/rules/branches/main":
 			w.Write([]byte(`[]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/environments/edge-release":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/environments/edge-release":
 			w.Write([]byte(`{"name":"edge-release","protection_rules":[],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/environments/edge-release/deployment-branch-policies":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/environments/edge-release/deployment-branch-policies":
 			w.Write([]byte(`{"branch_policies":[{"id":7,"name":"main"}]}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/actions/workflows/edge-release.yml/runs":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/actions/workflows/edge-release.yml/runs":
 			w.Write([]byte(`{"workflow_runs":[]}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/releases":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/releases":
 			w.Write([]byte(`[]`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/releases/tags/stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/releases/tags/stable":
 			w.WriteHeader(http.StatusNotFound)
-		case r.Method == http.MethodPut && r.URL.Path == "/repos/acme/mcp-devbox/environments/edge-release":
+		case r.Method == http.MethodPut && r.URL.Path == "/repos/acme/aeontra/environments/edge-release":
 			writes++
 			w.Write([]byte(`{"name":"edge-release"}`))
 		default:

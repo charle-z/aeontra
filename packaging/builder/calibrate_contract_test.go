@@ -14,7 +14,7 @@ func TestVPSCalibrationIsClosedBoundedAndRollbackCapable(t *testing.T) {
 		"#!/bin/bash",
 		"set -Eeuo pipefail",
 		"umask 077",
-		"readonly SOURCE_URL=https://github.com/charle-z/mcp-devbox.git",
+		"readonly SOURCE_URL=https://github.com/charle-z/aeontra.git",
 		"readonly HEALTH_URL=https://mcp-devbox-charlez.duckdns.org/healthz",
 		"readonly DEFAULT_QUOTA=65",
 		"readonly BUILD_TIMEOUT=30m",

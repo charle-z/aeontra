@@ -119,7 +119,7 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 		`href="#demo"`,
 		`href="/showcase/pixelgrama-evidence.json"`,
 		`href="#authority"`,
-		`href="https://github.com/charle-z/mcp-devbox"`,
+		`href="https://github.com/charle-z/aeontra"`,
 		`data-es="Revisar el caso histórico"`,
 		`data-es="Explorar el modelo de autoridad"`,
 		`data-es="Abrir el repositorio"`,

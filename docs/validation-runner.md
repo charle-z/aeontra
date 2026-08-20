@@ -40,7 +40,7 @@ repository. `/repos/mcp-devbox` is inside the public container, not necessarily 
 host path; clone it to an administrator-only directory on the VPS instead:
 
 ```bash
-git clone https://github.com/charle-z/mcp-devbox.git /opt/mcp-devbox-runner
+git clone https://github.com/charle-z/aeontra.git /opt/mcp-devbox-runner
 cd /opt/mcp-devbox-runner
 git checkout <the-main-commit-being-deployed>
 docker build -f Dockerfile.validation-runner -t mcp-devbox-validation-runner:local .

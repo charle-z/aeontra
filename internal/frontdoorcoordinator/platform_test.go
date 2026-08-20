@@ -100,6 +100,30 @@ func TestTopologyReadsRepositoryBranchesDomainsAndFrontBackend(t *testing.T) {
 	}
 }
 
+func TestManagedRepositoryAcceptsAeontraAndCompatibilitySlugOnly(t *testing.T) {
+	t.Parallel()
+	for _, repository := range []string{
+		"charle-z/aeontra",
+		"https://github.com/charle-z/aeontra.git",
+		"charle-z/mcp-devbox",
+		"https://github.com/charle-z/mcp-devbox.git",
+	} {
+		if !managedRepositoryMatches(repository) {
+			t.Errorf("managed repository rejected %q", repository)
+		}
+	}
+	for _, repository := range []string{
+		"other/aeontra",
+		"charle-z/aeontra-extra",
+		"https://github.com/charle-z/third.git",
+		"",
+	} {
+		if managedRepositoryMatches(repository) {
+			t.Errorf("managed repository accepted %q", repository)
+		}
+	}
+}
+
 func TestTopologyRejectsAmbiguousFrontBackend(t *testing.T) {
 	t.Parallel()
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

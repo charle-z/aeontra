@@ -7,8 +7,8 @@ unrestricted machine.
 It combines repository-scoped tools, immutable startup policy, explicit approval for
 risky actions, secret redaction, audit, durable state, optional GitHub/Coolify adapters,
 and a signed Linux Edge architecture. The model reasons; Aeontra constrains and
-executes. The current repository, executable, protocol, services, environment
-variables, and state paths retain the `mcp-devbox` and `mcp-edge` compatibility names.
+executes. The Go module, executable, protocol, services, environment variables, and
+state paths retain the `mcp-devbox` and `mcp-edge` compatibility names.
 See [`docs/brand-compatibility.md`](docs/brand-compatibility.md) before renaming an
 identifier.
 
@@ -183,8 +183,8 @@ Configuration and security differ by profile. Read
 Requirements: Go 1.26 and an absolute repository path.
 
 ```bash
-git clone https://github.com/charle-z/mcp-devbox.git
-cd mcp-devbox
+git clone https://github.com/charle-z/aeontra.git
+cd aeontra
 go test ./... -count=1
 go build -o ./bin/mcp-devbox ./cmd/mcp-devbox
 ./bin/mcp-devbox serve --root /absolute/path/to/repository --mode read-only

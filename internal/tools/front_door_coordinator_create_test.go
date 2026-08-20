@@ -24,7 +24,7 @@ func TestPlatformFrontDoorCoordinatorCreatesOnePrivateWorker(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && (r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/main" || r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable"):
+		case r.Method == http.MethodGet && (r.URL.Path == "/repos/acme/aeontra/git/ref/heads/main" || r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable"):
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			body := `[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}`
@@ -108,7 +108,7 @@ func TestPlatformFrontDoorCoordinatorCreatesOnePrivateWorker(t *testing.T) {
 	if created != 1 || storageCreates != 1 || environmentWrites != 12 || deploys != 1 {
 		t.Fatalf("created=%d storage=%d env=%d deploys=%d out=%s", created, storageCreates, environmentWrites, deploys, out)
 	}
-	if createPayload["autogenerate_domain"] != false || createPayload["custom_docker_run_options"] != managedFrontDoorCoordinatorDockerOptions || createPayload["dockerfile_location"] != "/Dockerfile.front-door-coordinator" || createPayload["ports_exposes"] != "8766" {
+	if createPayload["autogenerate_domain"] != false || createPayload["git_repository"] != "https://github.com/acme/aeontra.git" || createPayload["custom_docker_run_options"] != managedFrontDoorCoordinatorDockerOptions || createPayload["dockerfile_location"] != "/Dockerfile.front-door-coordinator" || createPayload["ports_exposes"] != "8766" {
 		t.Fatalf("unsafe coordinator create payload: %#v", createPayload)
 	}
 	for _, forbidden := range []string{"fqdn", "domains", "ports_mappings"} {

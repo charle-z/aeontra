@@ -1,8 +1,8 @@
 # Brand and compatibility boundary
 
-Aeontra is the public product name. The current repository and implementation were
-developed under the MCP Devbox name, which remains the compatibility identity for the
-first public release line.
+Aeontra is the public product name and the public repository slug. The implementation
+was developed under the MCP Devbox name, which remains the technical compatibility
+identity for the first public release line.
 
 Branding and technical identity change at different speeds. A product-name change must
 not silently break clients, installed devices, persisted state, signed updates, import
@@ -25,7 +25,7 @@ to make them appear current.
 Keep the following stable until a separately reviewed migration provides aliases,
 upgrade and rollback behavior, and real install evidence:
 
-- the `github.com/charle-z/mcp-devbox` Go module path and repository slug;
+- the `github.com/charle-z/mcp-devbox` Go module path;
 - the `mcp-devbox` and `mcp-edge` executable names;
 - MCP tool names, schemas, routes, protocol identifiers, and catalog semantics;
 - `MCP_DEVBOX_*` environment variables;
@@ -44,12 +44,19 @@ and private infrastructure values are deployment configuration or historical evi
 not Aeontra defaults. General installation documentation must use placeholders and
 must remain usable without the original maintainer's infrastructure.
 
-## Future repository or module rename
+## Repository migration and future module rename
 
-A future rename is a compatibility migration, not a textual replacement. Its design
-must address at least:
+The public repository moves from `charle-z/mcp-devbox` to `charle-z/aeontra`. GitHub's
+repository redirect preserves existing clones, while new documentation and managed
+source operations use the Aeontra URL. Deployment identity validation temporarily
+accepts either exact slug under the configured owner so existing Coolify applications
+can migrate without downtime.
 
-1. repository redirects and the Go module path;
+The Go module and runtime identifiers do not move with the repository. Any future
+technical-identity rename is a separate compatibility migration, not a textual
+replacement. Its design must address at least:
+
+1. the Go module path and import compatibility;
 2. executable, package, service, and state-path aliases;
 3. configuration precedence and deprecation windows;
 4. signed release and rollback compatibility;
@@ -57,4 +64,4 @@ must address at least:
 6. clean installation and in-place upgrade from the compatibility names.
 
 Until that design is implemented and accepted, users install Aeontra from the
-`mcp-devbox` repository and operate the `mcp-devbox`/`mcp-edge` compatibility binaries.
+`aeontra` repository and operate the `mcp-devbox`/`mcp-edge` compatibility binaries.

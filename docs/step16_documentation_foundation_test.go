@@ -76,6 +76,7 @@ func TestBrandCompatibilityBoundaryPreservesTechnicalContracts(t *testing.T) {
 	}
 	for _, marker := range []string{
 		"Aeontra is the public product name",
+		"charle-z/aeontra",
 		"github.com/charle-z/mcp-devbox",
 		"MCP_DEVBOX_*",
 		"/opt/mcp-devbox",

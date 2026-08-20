@@ -71,9 +71,9 @@ func TestPlatformFrontDoorTransitionDispatchesOnlyPrivateCoordinator(t *testing.
 	var ts *httptest.Server
 	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && (r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/main" || r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable"):
+		case r.Method == http.MethodGet && (r.URL.Path == "/repos/acme/aeontra/git/ref/heads/main" || r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable"):
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/compare/"+frontDoorTestSHA+"..."+frontDoorTestSHA:
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/compare/"+frontDoorTestSHA+"..."+frontDoorTestSHA:
 			_, _ = w.Write([]byte(`{"status":"identical"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[
@@ -178,9 +178,9 @@ func TestPlatformFrontDoorTransitionPreviewIsNoopAtTargetAndRejectsConflictingJo
 	var ts *httptest.Server
 	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/acme/mcp-devbox/git/ref/heads/main", "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case "/repos/acme/aeontra/git/ref/heads/main", "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
-		case "/repos/acme/mcp-devbox/compare/" + frontDoorTestSHA + "..." + frontDoorTestSHA:
+		case "/repos/acme/aeontra/compare/" + frontDoorTestSHA + "..." + frontDoorTestSHA:
 			_, _ = w.Write([]byte(`{"status":"identical"}`))
 		case "/api/v1/applications":
 			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"},{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed"}]`))

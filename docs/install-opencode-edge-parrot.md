@@ -67,7 +67,7 @@ install -d -m 0700 \
 
 ```bash
 rm -rf /tmp/mcp-devbox-reviewed
-git clone https://github.com/charle-z/mcp-devbox.git /tmp/mcp-devbox-reviewed
+git clone https://github.com/charle-z/aeontra.git /tmp/mcp-devbox-reviewed
 cd /tmp/mcp-devbox-reviewed
 git checkout <REVIEWED_COMMIT>
 git status --short

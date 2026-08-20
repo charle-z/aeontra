@@ -34,7 +34,7 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 	var domainPayload map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[]`))
@@ -108,6 +108,7 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 	for key, want := range map[string]any{
 		"name":                   "mcp-devbox-front-door-managed",
 		"github_app_uuid":        "githubapp1",
+		"git_repository":         "https://github.com/acme/aeontra.git",
 		"git_branch":             "front-door-stable",
 		"destination_uuid":       "destination1",
 		"build_pack":             "dockerfile",
@@ -134,7 +135,7 @@ func TestPlatformFrontDoorCreateReconcilesOneExistingAppAndSkipsDuplicateDeploy(
 	deploys := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
@@ -189,7 +190,7 @@ func TestPlatformFrontDoorCreateDeploysOneAuthenticatedCatalogTransition(t *test
 	writes := map[string]string{}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + nextFrontSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
@@ -318,7 +319,7 @@ func TestPlatformFrontDoorCreateRejectsStableBranchChangeAfterPreview(t *testing
 	created := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			branchReads++
 			sha := frontDoorTestSHA
 			if branchReads > 1 {
@@ -356,7 +357,7 @@ func TestPlatformFrontDoorCreateRecoversPartialApplicationWithoutDomain(t *testi
 	deploys := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte("{\"object\":{\"sha\":\"" + frontDoorTestSHA + "\"}}"))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte("[{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\"}]"))

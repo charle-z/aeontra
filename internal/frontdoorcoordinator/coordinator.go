@@ -15,11 +15,12 @@ import (
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
 const (
-	FrontPublicOrigin    = "https://mcp-devbox-charlez.duckdns.org"
-	FrontTemporaryOrigin = "https://front.mcp-devbox-charlez.duckdns.org"
-	BackendOrigin        = "https://backend.mcp-devbox-charlez.duckdns.org"
-	JournalFilename      = "front-door-transition.json"
-	ManagedRepository    = "charle-z/mcp-devbox"
+	FrontPublicOrigin              = "https://mcp-devbox-charlez.duckdns.org"
+	FrontTemporaryOrigin           = "https://front.mcp-devbox-charlez.duckdns.org"
+	BackendOrigin                  = "https://backend.mcp-devbox-charlez.duckdns.org"
+	JournalFilename                = "front-door-transition.json"
+	ManagedRepository              = "charle-z/aeontra"
+	ManagedCompatibilityRepository = "charle-z/mcp-devbox"
 )
 
 type Target string
