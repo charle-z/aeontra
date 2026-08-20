@@ -1,7 +1,8 @@
 # Open-source release boundary
 
-MCP Devbox is currently source-visible but not open source. Copyright © 2026
-Carlos Acosta. All rights reserved. The `COPYRIGHT` file is the current legal notice.
+Aeontra is currently source-visible through the `mcp-devbox` compatibility repository,
+but it is not open source. Copyright © 2026 Carlos Acosta. All rights reserved. The
+`COPYRIGHT` file is the current legal notice.
 
 Public visibility alone does not grant permission to use, copy, modify, distribute,
 sublicense, sell, or create derivative works. Do not describe the project as open
@@ -63,7 +64,7 @@ Never publish:
 
 ## Positioning rule
 
-Do not claim that MCP Devbox is categorically “secure” or that alternatives have no
+Do not claim that Aeontra is categorically “secure” or that alternatives have no
 security controls. State concrete, testable differences and current limitations.
 The durable differentiator is a deny-by-default authority model with secret denial,
 command/path jail, planned consequential actions, independent runner/edge checks,

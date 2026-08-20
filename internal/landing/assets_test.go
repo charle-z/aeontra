@@ -108,14 +108,14 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 	for _, required := range []string{
 		`data-es="Una shell general entrega al modelo más autoridad de la que la mayoría de tareas necesita."`,
 		`data-es="ChatGPT trabajando sobre infraestructura real, sin entregarle una shell libre."`,
-		`data-es="MCP Devbox permite que un agente lea, modifique, pruebe, publique y despliegue proyectos mediante herramientas limitadas, políticas inmutables, secretos denegados y operaciones verificables."`,
+		`data-es="Aeontra permite que un agente lea, modifique, pruebe, publique y despliegue proyectos mediante herramientas limitadas, políticas inmutables, secretos denegados y operaciones verificables."`,
 		`data-es="El propietario elige entre solo lectura, revisión explícita o autonomía dentro de límites previamente configurados."`,
-		`data-es="Pixelgrama fue construido, probado, publicado y desplegado mediante MCP Devbox sobre CubePath."`,
+		`data-es="Pixelgrama fue construido, probado, publicado y desplegado mediante Aeontra sobre CubePath."`,
 		`data-en="A general shell gives the model more authority than most tasks require."`,
 		`data-en="ChatGPT working on real infrastructure without receiving a free shell."`,
-		`data-en="MCP Devbox lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations."`,
+		`data-en="Aeontra lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations."`,
 		`data-en="The owner chooses between read-only access, explicit review or autonomy within preconfigured limits."`,
-		`data-en="Pixelgrama was built, tested, published and deployed through MCP Devbox on CubePath."`,
+		`data-en="Pixelgrama was built, tested, published and deployed through Aeontra on CubePath."`,
 		`href="#demo"`,
 		`href="/showcase/pixelgrama-evidence.json"`,
 		`href="#authority"`,
@@ -136,10 +136,10 @@ func TestLandingHeroExplainsProblemSolutionAutonomyAndProofFirst(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"MCP DEVBOX — BOUNDED AUTONOMY",
+		"AEONTRA — BOUNDED AUTONOMY",
 		"REAL INFRASTRUCTURE.",
 		"NO FREE SHELL.",
-		"Pixelgrama built and deployed through MCP Devbox.",
+		"Pixelgrama built and deployed through Aeontra.",
 	} {
 		if !strings.Contains(socialCard, required) {
 			t.Errorf("social card missing benefit-first statement %q", required)
@@ -211,8 +211,8 @@ func TestLandingAuthorityComparisonAndModesAreAccurateAccessibleAndResponsive(t 
 		`data-es="MODO ≠ PLAN ≠ GRANT HUMANO"`,
 		`data-en="CAUTION"`,
 		`data-es="ADVERTENCIA"`,
-		`data-en="MCP Devbox reduces the authority available. It does not make generated code or every allowed operation inherently safe."`,
-		`data-es="MCP Devbox reduce la autoridad disponible. No convierte el código generado ni toda operación permitida en inherentemente segura."`,
+		`data-en="Aeontra reduces the authority available. It does not make generated code or every allowed operation inherently safe."`,
+		`data-es="Aeontra reduce la autoridad disponible. No convierte el código generado ni toda operación permitida en inherentemente segura."`,
 	} {
 		if !strings.Contains(index, required) {
 			t.Errorf("authority comparison missing %q", required)
@@ -524,7 +524,7 @@ func TestLandingFinalPolishKeepsPublicSurfaceDetachedAndRowsBalanced(t *testing.
 		}
 	}
 	if strings.Contains(requestPath, `M890 130 H1060`) || strings.Contains(requestPath, `1050,120 1075,130 1050,140`) {
-		t.Fatal("public landing is still connected to the MCP Devbox request path")
+		t.Fatal("public landing is still connected to the Aeontra request path")
 	}
 	if got := strings.Count(index, `class="runtime-check"`); got != 3 {
 		t.Fatalf("runtime independent checks must have exactly three wrapped items, got %d", got)

@@ -1,6 +1,6 @@
 # Security policy
 
-MCP Devbox reduces the authority available to AI-driven development workflows. It is
+Aeontra reduces the authority available to AI-driven development workflows. It is
 **secure-by-default, not secure**. The technical trust boundaries, threat model,
 authority model, isolation profiles, persistence rules, limitations, and evidence are
 maintained in [`docs/security.md`](docs/security.md).

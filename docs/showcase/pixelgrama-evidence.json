@@ -152,7 +152,7 @@
     ]
   },
   "perimeter": {
-    "statement": "This manifest covers only public Pixelgrama source history, public GitHub validation, and the observed public production result used by the MCP Devbox presentation.",
+    "statement": "This manifest covers only public Pixelgrama source history, public GitHub validation, and the observed public production result used by the Aeontra presentation.",
     "includes": [
       "Public charle-z/pixelgrama repository, commits, pull requests, and successful checks",
       "Public production URL, wall route, and version endpoint",

@@ -1,6 +1,6 @@
 # Public showcase evidence
 
-`pixelgrama-evidence.json` is the single canonical source for Pixelgrama evidence used by the MCP Devbox presentation.
+`pixelgrama-evidence.json` is the single canonical source for Pixelgrama evidence used by the Aeontra presentation.
 
 The file stays under `docs/showcase` because it is public documentation and reviewable evidence, while `evidence.go` embeds those exact bytes into the Go binary. The public server exposes the embedded resource at:
 

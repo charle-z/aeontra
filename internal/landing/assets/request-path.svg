@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 1400 820" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
-  <title id="title">MCP Devbox request paths</title>
-  <desc id="desc">An authenticated request reaches MCP Devbox policy. Reads and allowlisted commands execute directly with audit. Consequential actions branch through a single-use plan and owner approval before bounded execution. The public landing is shown separately, outside the request path.</desc>
+  <title id="title">Aeontra request paths</title>
+  <desc id="desc">An authenticated request reaches Aeontra policy. Reads and allowlisted commands execute directly with audit. Consequential actions branch through a single-use plan and owner approval before bounded execution. The public landing is shown separately, outside the request path.</desc>
   <rect width="1400" height="820" fill="#000050"/>
 
   <g fill="none" stroke="#54FCFC" stroke-width="4">
@@ -34,7 +34,7 @@
 
     <g>
       <rect x="510" y="35" width="380" height="200" fill="#0000A8" stroke="#FCFC54" stroke-width="4"/>
-      <text x="700" y="88" fill="#FCFC54" font-size="29" font-weight="700">MCP DEVBOX</text>
+      <text x="700" y="88" fill="#FCFC54" font-size="29" font-weight="700">AEONTRA</text>
       <text x="700" y="128" fill="#F8F8F8" font-size="20">jail · secret deny · allowlist</text>
       <text x="700" y="162" fill="#F8F8F8" font-size="20">bounded output · policy · audit</text>
       <text x="700" y="202" fill="#54FC54" font-size="18">authority branches by effect</text>

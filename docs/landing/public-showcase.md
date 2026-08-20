@@ -64,7 +64,7 @@ The continuous document contains:
 2. exactly three primary hero actions: the canonical proof, the authority model,
    and the repository;
 3. capability status below the hero;
-4. a visual comparison between broad ambient authority and MCP Devbox's explicit
+4. a visual comparison between broad ambient authority and Aeontra's explicit
    bounded authority, followed by the conceptual `read-only`, `ask`, and `allow`
    selector;
 5. a six-step, read-only Pixelgrama walkthrough generated from the canonical manifest;
