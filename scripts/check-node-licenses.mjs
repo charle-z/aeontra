@@ -19,6 +19,20 @@ if (!input.trim()) {
 }
 
 const inventory = JSON.parse(input);
+if (
+  !inventory ||
+  Array.isArray(inventory) ||
+  typeof inventory !== "object"
+) {
+  throw new Error("pnpm license inventory has an invalid shape");
+}
+if (inventory.error) {
+  const code =
+    typeof inventory.error.code === "string"
+      ? inventory.error.code
+      : "unknown_error";
+  throw new Error(`pnpm license inventory failed: ${code}`);
+}
 const observedLicenses = Object.keys(inventory).sort();
 const unapproved = observedLicenses.filter(
   (license) => !allowedLicenses.has(license),
