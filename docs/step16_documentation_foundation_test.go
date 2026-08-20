@@ -11,7 +11,7 @@ func TestStep16ReadmeIsProductEntryPoint(t *testing.T) {
 	readme := readDoc(t, "../README.md")
 
 	for _, heading := range []string{
-		"## What MCP Devbox is",
+		"## What Aeontra is",
 		"## The problem it solves",
 		"## Public demo and production status",
 		"## How it works",
@@ -33,7 +33,7 @@ func TestStep16ReadmeIsProductEntryPoint(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"MCP Devbox is secure by default",
+		"Aeontra is secure by default",
 		"does not claim to eliminate every operational",
 		"docs/configuration.md",
 		"docs/security.md",
@@ -59,6 +59,33 @@ func TestStep16ReadmeIsProductEntryPoint(t *testing.T) {
 		if strings.Contains(readme, stale) {
 			t.Errorf("README still behaves like a phase diary: %q", stale)
 		}
+	}
+}
+
+func TestBrandCompatibilityBoundaryPreservesTechnicalContracts(t *testing.T) {
+	readme := readDoc(t, "../README.md")
+	boundary := readDoc(t, "brand-compatibility.md")
+	docMap := readDoc(t, "documentation-map.md")
+
+	for _, marker := range []string{"# Aeontra", "mcp-devbox", "mcp-edge", "docs/brand-compatibility.md"} {
+		if !strings.Contains(readme, marker) {
+			t.Errorf("README missing brand compatibility marker %q", marker)
+		}
+	}
+	for _, marker := range []string{
+		"Aeontra is the public product name",
+		"github.com/charle-z/mcp-devbox",
+		"MCP_DEVBOX_*",
+		"/opt/mcp-devbox",
+		"compatibility migration",
+		"clean installation and in-place upgrade",
+	} {
+		if !strings.Contains(boundary, marker) {
+			t.Errorf("brand compatibility boundary missing %q", marker)
+		}
+	}
+	if !strings.Contains(docMap, "`docs/brand-compatibility.md`") {
+		t.Fatal("documentation map does not register brand compatibility owner")
 	}
 }
 
