@@ -14,6 +14,14 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 	text := string(content)
 
 	for _, required := range []string{
+		"secret-scan:",
+		"name: Secret scanning",
+		"actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
+		"fetch-depth: 0",
+		"GITLEAKS_VERSION: \"8.30.1\"",
+		"551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+		"gitleaks\" git --config .gitleaks.toml --redact --log-opts=\"--all\" .",
+		"gitleaks\" dir --config .gitleaks.toml --redact .",
 		"codeql:",
 		"dependency-review:",
 		"container-evidence:",
@@ -70,7 +78,37 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 			t.Errorf("security.yml contains forbidden %q", forbidden)
 		}
 	}
-	if got := strings.Count(text, "timeout-minutes:"); got != 3 {
-		t.Fatalf("timeout count = %d, want 3", got)
+	if got := strings.Count(text, "timeout-minutes:"); got != 4 {
+		t.Fatalf("timeout count = %d, want 4", got)
+	}
+}
+
+func TestGitleaksPolicyKeepsSyntheticAllowlistNarrow(t *testing.T) {
+	content, err := os.ReadFile("../../.gitleaks.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		"useDefault = true",
+		"condition = \"AND\"",
+		"targetRules = [\"github-pat\"]",
+		"targetRules = [\"generic-api-key\"]",
+		"htb_checkpoint_redaction_test\\.go$",
+		"ghp_" + "012345678901234567890123456789012345",
+		"DB_TOKEN=" + "abcdef0123456789",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf(".gitleaks.toml does not contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"condition = \"OR\"",
+		"'''^.*$'''",
+		"'''^internal/.*'''",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf(".gitleaks.toml contains broad allowlist %q", forbidden)
+		}
 	}
 }

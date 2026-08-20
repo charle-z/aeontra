@@ -75,6 +75,9 @@ Authenticated console:
 
 Security evidence added by P6:
 
+- pinned Gitleaks scans the complete reachable Git history and current tree; the
+  repository policy extends upstream defaults and permits only exact synthetic
+  redaction fixtures with path-and-pattern `AND` conditions;
 - CodeQL Go analysis with minimal `security-events: write`;
 - pull-request dependency review at moderate severity;
 - local Docker build, SPDX JSON SBOM, and blocking high-severity Grype scan;

@@ -42,11 +42,12 @@ Never publish:
 - [x] Current copyright posture documented in `COPYRIGHT`; no open-source license granted.
 - [ ] Owner chooses a future open-source, source-available, or dual-license model if desired.
 - [ ] README comparison claims have dated primary sources.
-- [ ] Full working tree and complete Git history are scanned for secrets.
+- [x] Full working tree and complete Git history are scanned for secrets; exact
+      synthetic redaction fixtures are narrowly documented in `.gitleaks.toml`.
 - [ ] `SECURITY.md` matches implemented isolation/egress limitations.
 - [ ] `CONTRIBUTING.md`, code of conduct, support boundary, and private vulnerability
       reporting channel are added.
-- [ ] CI runs tests, vet, formatting, dependency review, and secret scanning.
+- [x] CI runs tests, vet, formatting, dependency review, and secret scanning.
 - [ ] Dependencies and container images are pinned; SBOM and checksums are produced.
 - [ ] A clean clone can build and run without private infrastructure values.
 - [ ] The public console uses only synthetic/sanitized fixtures.
@@ -59,4 +60,3 @@ security controls. State concrete, testable differences and current limitations.
 The durable differentiator is a deny-by-default authority model with secret denial,
 command/path jail, planned consequential actions, independent runner/edge checks,
 and auditable handoffs—not simply access to a terminal from chat.
-
