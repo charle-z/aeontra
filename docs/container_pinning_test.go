@@ -3,12 +3,14 @@ package docs_test
 import (
 	"bufio"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
 
 var pinnedContainerImage = regexp.MustCompile(`^[a-z0-9./_-]+:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$`)
+var inlineDockerfileBaseImage = regexp.MustCompile(`FROM[ \t]+([a-z0-9./_-]+:[a-zA-Z0-9._-]+(?:@sha256:[a-f0-9]{64})?)`)
 
 func TestEveryDockerfileBaseImageIsPinnedByDigest(t *testing.T) {
 	for _, path := range []string{
@@ -37,6 +39,24 @@ func TestEveryDockerfileBaseImageIsPinnedByDigest(t *testing.T) {
 			t.Fatalf("scan %s: %v", path, err)
 		}
 		_ = file.Close()
+	}
+}
+
+func TestWorkflowInlineDockerfileBaseImagesArePinnedByDigest(t *testing.T) {
+	paths, err := filepath.Glob("../.github/workflows/*.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, match := range inlineDockerfileBaseImage.FindAllStringSubmatch(string(content), -1) {
+			if !pinnedContainerImage.MatchString(match[1]) {
+				t.Errorf("%s contains unpinned inline base image %q", path, match[1])
+			}
+		}
 	}
 }
 

@@ -22,8 +22,11 @@ A clean Edge requires at most these two local commands:
 
 ```text
 sudo apt install ./mcp-devbox-edge_<version>_amd64.deb
-mcp-edge onboard --server https://mcp-devbox-charlez.duckdns.org
+mcp-edge onboard --server https://mcp.example.com
 ```
+
+Replace `https://mcp.example.com` with the HTTPS origin of the operator's own control
+plane. The maintainer-operated demo domain is not an installation default.
 
 The first pairing still needs one short-lived code authorized by the control plane. The
 code is read from standard input and never accepted as a command-line argument. This is

@@ -59,6 +59,9 @@ Never publish:
       `scripts/verify-clean-install.sh` without private infrastructure values.
 - [ ] A clean Linux/WSL Edge installation, pairing, signed update, and rollback are
       reproduced by an independent operator without private maintainer defaults.
+- [ ] Fixed managed-deployment tools are moved behind an explicit maintainer profile or
+      made owner-configurable; third-party installations do not expose this repository's
+      Coolify application IDs, domains, or release repository as operative defaults.
 - [ ] The public console uses only synthetic/sanitized fixtures.
 - [ ] A tagged release and rollback procedure are tested.
 
