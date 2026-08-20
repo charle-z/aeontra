@@ -285,6 +285,8 @@ Start with [`docs/documentation-map.md`](docs/documentation-map.md). Canonical r
 - [`GOVERNANCE.md`](GOVERNANCE.md): decision process and maintainer roles;
 - [`docs/brand-compatibility.md`](docs/brand-compatibility.md): public brand and stable
   compatibility identifiers;
+- [`docs/dependency-licenses.md`](docs/dependency-licenses.md): dependency license and
+  distribution-notice policy;
 - [`docs/tools.md`](docs/tools.md): public tool catalog;
 - `/version` and `system_runtime_info`: live build/catalog identity;
 - [`docs/baselines/`](docs/baselines/): dated historical evidence.

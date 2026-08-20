@@ -16,6 +16,7 @@ state.
 | `SUPPORT.md` | Best-effort support boundary, supported-state language, and useful diagnostic inputs | an SLA or private troubleshooting channel |
 | `GOVERNANCE.md` | Public decision model, roles, and maintainer path | enterprise governance or private security-response procedure |
 | `docs/brand-compatibility.md` | Public product name, compatibility identifiers, and rename boundary | a mass-replacement checklist or deployment identity source |
+| `docs/dependency-licenses.md` | Reviewed dependency-license classes and distribution-notice requirements | legal clearance for project source or a release SBOM |
 | `docs/tools.md` | Canonical public MCP tool catalog, schemas, annotations, aliases, approval posture, and workflows | a hardcoded live deployment claim |
 | `/version` and `system_runtime_info` | Live server version, commit, protocol, tool count, and catalog hash | documentation to be copied into operational prose |
 | `docs/baselines/` | Dated historical evidence, including exact commits, releases, hashes, counts, checks, deployments, and real-host observations | current operational instructions rewritten to match later state |

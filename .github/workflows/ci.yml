@@ -40,6 +40,9 @@ jobs:
       - name: Install console dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      - name: Check Node dependency licenses
+        run: pnpm licenses:check
+
       - name: Verify and build console
         run: pnpm console:verify
 

@@ -32,6 +32,13 @@ func TestOSSGovernanceDocumentsDefinePublicBoundaries(t *testing.T) {
 			"## Roles",
 			"Enterprise governance, commercial licensing, billing, and multi-tenant administration are deferred",
 		},
+		"dependency-licenses.md": {
+			"## Automated gates",
+			"caniuse-lite",
+			"mdn-data",
+			"## Distribution notices",
+			"provenance gate",
+		},
 		"../.github/PULL_REQUEST_TEMPLATE.md": {
 			"## Problem and invariant",
 			"## Verification",
