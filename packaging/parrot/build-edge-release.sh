@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: build-edge-release.sh --bundle <SIGNED_DIR> --output <DIR> --release p15.x.y --architecture amd64 --channel-tool <ABS_BIN> --private-key <ABS_KEY> --commit <SHA> --protocol <VERSION> --catalog <SHA256>\n' >&2
+  printf 'usage: build-edge-release.sh --bundle <SIGNED_DIR> --output <DIR> --release <p15.x.y|vMAJOR.MINOR.PATCH> --architecture amd64 --channel-tool <ABS_BIN> --private-key <ABS_KEY> --commit <SHA> --protocol <VERSION> --catalog <SHA256>\n' >&2
   exit 2
 }
 
@@ -22,7 +22,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [[ "$BUNDLE" = /* && "$OUTPUT" = /* && "$CHANNEL_TOOL" = /* && "$PRIVATE_KEY" = /* ]] || usage
-[[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ ]] || usage
+[[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ || "$RELEASE" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || usage
 [[ "$ARCHITECTURE" = amd64 || "$ARCHITECTURE" = arm64 ]] || usage
 : "${SOURCE_DATE_EPOCH:?SOURCE_DATE_EPOCH is required}"
 

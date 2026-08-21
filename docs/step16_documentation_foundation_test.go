@@ -33,8 +33,11 @@ func TestStep16ReadmeIsProductEntryPoint(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"Aeontra is secure by default",
-		"does not claim to eliminate every operational",
+		"Aeontra exposes scoped, auditable software-development operations",
+		"Administrators define repository roots, command policy",
+		"profiles at startup",
+		"documented controls limit authority",
+		"guarantee correct model output",
 		"docs/configuration.md",
 		"docs/security.md",
 		"SECURITY.md",
@@ -60,6 +63,11 @@ func TestStep16ReadmeIsProductEntryPoint(t *testing.T) {
 	for _, stale := range []string{"**P8.1", "**P9 Brain", "**P11.2", "**P12", "**P13", "**P14", "**P15", "## Status", "## How to build"} {
 		if strings.Contains(readme, stale) {
 			t.Errorf("README still behaves like a phase diary: %q", stale)
+		}
+	}
+	for _, slogan := range []string{"secure by default", "secure-by-default, not secure", "useful hands for software work", "the model reasons;"} {
+		if strings.Contains(strings.ToLower(readme), slogan) {
+			t.Errorf("README contains stock positioning phrase %q", slogan)
 		}
 	}
 }

@@ -1,9 +1,9 @@
 # Security policy
 
-Aeontra reduces the authority available to AI-driven development workflows. It is
-**secure-by-default, not secure**. The technical trust boundaries, threat model,
-authority model, isolation profiles, persistence rules, limitations, and evidence are
-maintained in [`docs/security.md`](docs/security.md).
+Aeontra limits the authority available to AI-driven development workflows through the
+controls documented in [`docs/security.md`](docs/security.md). That document defines
+the trust boundaries, threat model, authority model, isolation profiles, persistence
+rules, limitations and supporting evidence.
 
 ## Supported versions
 

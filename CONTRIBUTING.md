@@ -56,6 +56,17 @@ chore(scope): maintain repository tooling
 Internal milestone labels such as `P15` or `Step 42` are planning history, not public
 commit types.
 
+## Documentation style
+
+- State behavior, configuration, evidence and limitations directly.
+- Avoid slogans, anthropomorphic metaphors and stock contrast formulas such as
+  “not X but Y” or “more than X.”
+- Use words such as “explicit,” “intentional” and “deliberate” only when they identify a
+  tested contract or design decision.
+- Keep one canonical explanation for each topic and link to it from runbooks.
+- Support security, compatibility and performance claims with a test, dated source or
+  clearly labeled limitation.
+
 ## Verification tiers
 
 ### Quick gate

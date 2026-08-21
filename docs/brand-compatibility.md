@@ -65,3 +65,14 @@ replacement. Its design must address at least:
 
 Until that design is implemented and accepted, users install Aeontra from the
 `aeontra` repository and operate the `mcp-devbox`/`mcp-edge` compatibility binaries.
+
+## Public release names
+
+Public source and Edge releases use `vMAJOR.MINOR.PATCH` and the title
+`Aeontra <version>` or `Aeontra Edge <version>`. The historical `p15.x.y` format remains
+valid for installed bundles and the final transition bridge. The mutable `stable` tag
+remains a signed machine channel for compatibility; it is not the product version.
+
+Changing package names, service units, state paths or artifact basenames is outside this
+version-label migration. Those identifiers continue to use `mcp-devbox` and `mcp-edge`
+until an upgrade path includes aliases, package replacement metadata and rollback tests.

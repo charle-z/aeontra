@@ -135,6 +135,33 @@ func TestUpdaterInstallsAtomicallyIdempotentlyAndRollsBack(t *testing.T) {
 	assertCurrentRelease(t, root, "p15.0.0")
 }
 
+func TestUpdaterTransitionsFromLegacyReleaseToSemanticReleaseAndRollsBack(t *testing.T) {
+	root := t.TempDir()
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &fakeService{healthy: true}
+	engine := Engine{Root: root, PublicKey: publicKey, Service: service}
+
+	bridgeSource, bridgeCompatibility := signedRelease(t, "p15.0.45", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", privateKey)
+	if _, err := engine.Install(bridgeSource, bridgeCompatibility); err != nil {
+		t.Fatal(err)
+	}
+	stableSource, stableCompatibility := signedRelease(t, "v1.0.0", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", privateKey)
+	status, err := engine.Install(stableSource, stableCompatibility)
+	if err != nil || status.Release != "v1.0.0" || status.PreviousRelease != "p15.0.45" {
+		t.Fatalf("semantic upgrade = %+v, %v", status, err)
+	}
+	assertCurrentRelease(t, root, "v1.0.0")
+
+	status, err = engine.Rollback()
+	if err != nil || status.Release != "p15.0.45" || status.PreviousRelease != "v1.0.0" {
+		t.Fatalf("legacy rollback = %+v, %v", status, err)
+	}
+	assertCurrentRelease(t, root, "p15.0.45")
+}
+
 func TestUpdaterRestoresPreviousReleaseWhenHealthCheckFails(t *testing.T) {
 	root := t.TempDir()
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)

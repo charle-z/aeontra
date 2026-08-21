@@ -1,10 +1,10 @@
-name: Publish signed P15 Edge release
+name: Publish signed Aeontra Edge release
 
 on:
   workflow_dispatch:
     inputs:
       release:
-        description: Exact immutable P15 release (p15.x.y)
+        description: Exact immutable Edge release (p15.x.y bridge or vMAJOR.MINOR.PATCH)
         required: true
         type: string
       generation:
@@ -41,8 +41,11 @@ jobs:
           RELEASE: ${{ inputs.release }}
           GENERATION: ${{ inputs.generation }}
         run: |
-          [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ || "$RELEASE" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$GENERATION" = bridge-v3 || "$GENERATION" = codex-v4 ]]
+          if [[ "$RELEASE" = v* ]]; then
+            [[ "$GENERATION" = codex-v4 ]]
+          fi
           test -n "$EDGE_PRIVATE_KEY_B64"
           test -n "$DEB_GPG_PRIVATE_KEY_B64"
           ! git rev-parse "$RELEASE" >/dev/null 2>&1
@@ -140,9 +143,9 @@ jobs:
           GENERATION: ${{ inputs.generation }}
         run: |
           release_dir="$RUNNER_TEMP/release/assets/$RELEASE"
-          gh release create "$RELEASE" "$release_dir"/* --target "$(git rev-parse HEAD)" --title "MCP Devbox Edge $RELEASE" --notes "Official signed P15 Edge $GENERATION bundle, Debian installer, checksums, signatures, and SBOM."
+          gh release create "$RELEASE" "$release_dir"/* --target "$(git rev-parse HEAD)" --title "Aeontra Edge $RELEASE" --notes "Official signed Aeontra Edge $GENERATION bundle, Debian installer, checksums, signatures, and SBOM."
           if ! gh release view stable >/dev/null 2>&1; then
-            gh release create stable --target "$(git rev-parse HEAD)" --title 'MCP Devbox Edge stable channel' --notes 'Mutable pointer containing only the currently signed stable channel metadata.'
+            gh release create stable --target "$(git rev-parse HEAD)" --title 'Aeontra Edge stable channel' --notes 'Mutable pointer containing only the currently signed stable channel metadata.'
           fi
           gh release upload stable --clobber "$RUNNER_TEMP/release/assets/stable/channel-amd64.json" "$RUNNER_TEMP/release/assets/stable/channel-amd64.json.sig"
 

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/bundle"
 	"golang.org/x/sys/unix"
 )
 
@@ -23,7 +24,6 @@ const edgeInstanceLockVersion = 1
 
 var ErrEdgeInstanceLocked = errors.New("another Edge process already owns this state root")
 
-var edgeReleasePattern = regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`)
 var edgeCommitPattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
 var edgeInvocationPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
@@ -56,7 +56,7 @@ func AcquireEdgeInstanceLock(stateRoot, release, commit string) (*EdgeInstanceLo
 	stateRoot = filepath.Clean(strings.TrimSpace(stateRoot))
 	release = strings.TrimSpace(release)
 	commit = strings.TrimSpace(commit)
-	if !edgeReleasePattern.MatchString(release) || !edgeCommitPattern.MatchString(commit) {
+	if !bundle.ValidRelease(release) || !edgeCommitPattern.MatchString(commit) {
 		return nil, errors.New("edge instance identity is invalid")
 	}
 	if err := preparePrivateRoot(stateRoot); err != nil {
@@ -264,7 +264,7 @@ func currentSystemdInvocationID(pid int) string {
 }
 
 func validEdgeInstanceMetadata(metadata EdgeInstanceMetadata) bool {
-	return metadata.SchemaVersion == edgeInstanceLockVersion && metadata.PID > 1 && metadata.ProcessStartTicks > 0 && edgeReleasePattern.MatchString(metadata.Release) && edgeCommitPattern.MatchString(metadata.Commit) && (metadata.InvocationID == "" || edgeInvocationPattern.MatchString(metadata.InvocationID)) && !metadata.AcquiredAt.IsZero()
+	return metadata.SchemaVersion == edgeInstanceLockVersion && metadata.PID > 1 && metadata.ProcessStartTicks > 0 && bundle.ValidRelease(metadata.Release) && edgeCommitPattern.MatchString(metadata.Commit) && (metadata.InvocationID == "" || edgeInvocationPattern.MatchString(metadata.InvocationID)) && !metadata.AcquiredAt.IsZero()
 }
 
 func edgeMetadataProcessActive(metadata EdgeInstanceMetadata) bool {

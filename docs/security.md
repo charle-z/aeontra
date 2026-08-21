@@ -1,10 +1,10 @@
 # Technical security model
 
-MCP Devbox is **secure-by-default, not secure**. It narrows the authority exposed to an
-AI client through immutable startup configuration, closed schemas, repository jails,
-secret denial and redaction, explicit approval, single-use plans, revalidation, audit,
-and profile-specific isolation. These controls reduce risk; they do not prove that
-model-generated code or every permitted process is safe.
+MCP Devbox limits the authority exposed to an AI client through immutable startup
+configuration, closed schemas, repository jails, secret denial and redaction, explicit
+approval, single-use plans, revalidation, audit and profile-specific isolation. Its
+guarantees are the controls and boundaries documented here. They do not cover the
+correctness of generated code, every permitted dependency or a compromised host.
 
 The public reporting and disclosure policy is [`../SECURITY.md`](../SECURITY.md).
 Configuration requirements are canonical in

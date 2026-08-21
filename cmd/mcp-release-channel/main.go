@@ -19,7 +19,7 @@ func run(args []string) int {
 	fs := flag.NewFlagSet("mcp-release-channel", flag.ContinueOnError)
 	archive := fs.String("archive", "", "absolute deterministic release archive")
 	output := fs.String("output", "", "absolute channel output directory")
-	release := fs.String("release", "", "p15.x.y release")
+	release := fs.String("release", "", "p15.x.y bridge or vMAJOR.MINOR.PATCH release")
 	commit := fs.String("commit", "", "exact release commit")
 	protocol := fs.String("protocol", "", "bundle protocol")
 	catalog := fs.String("catalog", "", "catalog sha256")

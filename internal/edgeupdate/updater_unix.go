@@ -13,7 +13,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"syscall"
@@ -30,8 +29,6 @@ const (
 )
 
 var ErrHealthCheck = errors.New("edge health check failed; previous bundle restored")
-
-var releaseDirectoryPattern = regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`)
 
 type Service interface {
 	InstallUnit(string) error
@@ -420,7 +417,7 @@ func pruneOldReleases(root string, publicKey ed25519.PublicKey, now time.Time) e
 	}
 	candidates := []candidate{}
 	for _, entry := range entries {
-		if !entry.IsDir() || !releaseDirectoryPattern.MatchString(entry.Name()) {
+		if !entry.IsDir() || !bundle.ValidRelease(entry.Name()) {
 			continue
 		}
 		if _, retained := keep[entry.Name()]; retained {
