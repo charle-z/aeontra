@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       generation:
-        description: Bridge v3 first, then Codex v4 after the bridge is installed
+        description: Use bridge-v3 only for a v3 Edge; keep codex-v4 for an Edge already on v4
         required: true
         type: choice
         options:

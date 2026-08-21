@@ -86,9 +86,14 @@ the privileged fixed unit can run.
 ## P15 to Aeontra transition
 
 An updater installed from the historical line accepts only `p15.x.y`. The first public
-SemVer release therefore requires this order:
+Before publishing the compatibility bridge, inspect the installed manifest generation.
+Use `bridge-v3` only when the Edge still runs manifest v3. An Edge already on manifest
+v4 must receive a `codex-v4` bridge so the update does not remove its Codex layout.
 
-1. publish one final `p15.x.y` bridge containing an updater that accepts both formats;
+The SemVer transition uses this order:
+
+1. publish one final `p15.x.y` bridge containing an updater that accepts both formats,
+   using the installed Edge generation;
 2. install and validate that bridge on the real Edge;
 3. publish `v1.0.0` from a green exact-head commit and move the signed `stable` channel;
 4. update the same Edge through `stable`, verify health and identity, then exercise one

@@ -119,11 +119,13 @@ release, and updates only the separately signed `stable` channel documents. Hist
 bridge releases use `p15.x.y`; public Aeontra releases use
 `vMAJOR.MINOR.PATCH`. See [`edge-bundles.md`](edge-bundles.md) for the ordered migration.
 
-The manifest-v3 to manifest-v4 migration uses two stages. Dispatch and
-install one `bridge-v3` release first so the installed updater learns version 4 while
-the active service remains OpenCode. After verifying that bridge, dispatch and install
-one `codex-v4` release to add the hashed Codex binary/pin and activate Codex. Skipping
-the bridge causes the old updater to reject the new manifest before installation.
+For an Edge still on manifest v3, dispatch and install one `bridge-v3` release first so
+the installed updater learns version 4 while the active service remains OpenCode. After
+verifying that bridge, dispatch and install one `codex-v4` release to add the hashed
+Codex binary/pin and activate Codex. An Edge already on manifest v4 must keep
+`codex-v4` for its compatibility bridge; sending it `bridge-v3` would remove the Codex
+layout and is rejected by the updater. Skipping the compatibility bridge causes an old
+updater to reject the new release-name format before installation.
 
 `.github/workflows/p15-edge.yml` uses ephemeral release identities on pull requests. It
 builds the Debian package twice and compares bytes, exercises a clean isolated package
