@@ -1,9 +1,9 @@
 package edge
 
-import "regexp"
+import "github.com/charle-z/mcp-devbox/internal/bundle"
 
 func validRuntimeDiagnosticState(result OperationResult) bool {
-	hasProcessIdentity := regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`).MatchString(result.ProcessRelease) && regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(result.ProcessCommit)
+	hasProcessIdentity := bundle.ValidRelease(result.ProcessRelease) && projectSnapshotCommitPattern.MatchString(result.ProcessCommit)
 	noProcessIdentity := result.ProcessRelease == "" && result.ProcessCommit == ""
 	if !hasProcessIdentity && !noProcessIdentity {
 		return false

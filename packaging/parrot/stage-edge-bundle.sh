@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: stage-edge-bundle.sh --output <ABS_DIR> --release p15.x.y --manifest-version <3|4> --commit <SHA> --catalog <SHA256> --private-key <ABS_FILE> --public-key <HEX> --node-bin <ABS_FILE> --gh-bin <ABS_FILE> --opencode-bin <ABS_FILE> --opencode-lock <ABS_FILE> [--codex-bin <ABS_FILE> --codex-pin <ABS_FILE>]\n' >&2
+  printf 'usage: stage-edge-bundle.sh --output <ABS_DIR> --release <p15.x.y|vMAJOR.MINOR.PATCH> --manifest-version <3|4> --commit <SHA> --catalog <SHA256> --private-key <ABS_FILE> --public-key <HEX> --node-bin <ABS_FILE> --gh-bin <ABS_FILE> --opencode-bin <ABS_FILE> --opencode-lock <ABS_FILE> [--codex-bin <ABS_FILE> --codex-pin <ABS_FILE>]\n' >&2
   exit 2
 }
 
@@ -28,7 +28,7 @@ done
 
 [[ "$OUTPUT" = /* && "$PRIVATE_KEY" = /* && "$NODE_BIN" = /* && "$GH_BIN" = /* && "$OPENCODE_BIN" = /* && "$OPENCODE_LOCK" = /* ]] || usage
 [[ "$MANIFEST_VERSION" = 3 || "$MANIFEST_VERSION" = 4 ]] || usage
-[[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ ]] || usage
+[[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ || "$RELEASE" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || usage
 [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] || usage
 [[ "$CATALOG" =~ ^sha256:[a-f0-9]{64}$ ]] || usage
 [[ "$PUBLIC_KEY" =~ ^[a-f0-9]{64}$ ]] || usage

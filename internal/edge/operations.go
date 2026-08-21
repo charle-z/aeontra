@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
 
 type OperationKind string
@@ -782,7 +784,7 @@ func validOperationCompletion(result OperationResult, code string) bool {
 		return true
 	}
 	if !workspaceIDPattern.MatchString(result.WorkspaceID) {
-		validBundle := regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`).MatchString(result.Release) && regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(result.Commit) && result.ManifestStatus == "valid" && result.ComponentsCompatible && result.ProviderValid && result.DriverValid
+		validBundle := bundle.ValidRelease(result.Release) && projectSnapshotCommitPattern.MatchString(result.Commit) && result.ManifestStatus == "valid" && result.ComponentsCompatible && result.ProviderValid && result.DriverValid
 		invalidComponents := !result.ProviderValid && (!result.DriverValid || result.ManifestStatus == "provider_outdated")
 		invalidBundle := result.Release == "" && result.Commit == "" && regexp.MustCompile(`^(bundle_mismatch|provider_outdated|driver_outdated|manifest_invalid)$`).MatchString(result.ManifestStatus) && !result.ComponentsCompatible && invalidComponents
 		return (validBundle || invalidBundle) && validDiagnosticBlockers(result.Blockers) && validRuntimeDiagnostic(result)

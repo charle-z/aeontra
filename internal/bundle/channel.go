@@ -16,7 +16,7 @@ type Channel struct {
 }
 
 func CanonicalChannel(channel Channel) ([]byte, error) {
-	if channel.Version != 1 || !releasePattern.MatchString(channel.Release) || !commitPattern.MatchString(channel.Commit) ||
+	if channel.Version != 1 || !ValidRelease(channel.Release) || !commitPattern.MatchString(channel.Commit) ||
 		channel.ProtocolVersion == "" || !digestPattern.MatchString(channel.CatalogHash) ||
 		(channel.Architecture != "amd64" && channel.Architecture != "arm64") || !digestPattern.MatchString(channel.ArchiveHash) {
 		return nil, &VerificationError{Code: ManifestInvalid}

@@ -20,7 +20,7 @@ func main() {
 func run(args []string) int {
 	fs := flag.NewFlagSet("mcp-bundle-manifest", flag.ContinueOnError)
 	root := fs.String("root", "", "absolute staged release root")
-	release := fs.String("release", "", "p15.x.y release")
+	release := fs.String("release", "", "p15.x.y bridge or vMAJOR.MINOR.PATCH release")
 	commit := fs.String("commit", "", "exact 40-character commit")
 	protocol := fs.String("protocol", "", "bundle protocol version")
 	catalog := fs.String("catalog", "", "sha256 catalog identity")

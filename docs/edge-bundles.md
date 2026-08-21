@@ -1,6 +1,6 @@
 # Signed versioned Edge bundles
 
-P15 distributes the Parrot Edge as one indivisible release rooted at
+Aeontra distributes the Parrot Edge as one indivisible release rooted at
 `/opt/mcp-devbox/releases/<RELEASE>`. `/opt/mcp-devbox/current` is an atomic symlink
 to the active release; compatibility paths under `/usr/local` and
 `/opt/mcp-devbox/opencode-provider` point into that release and are managed only by
@@ -35,7 +35,7 @@ missing, extra or malformed manifest fields fail closed. The Edge verifies the b
 before polling for a new runtime, so a partial or mixed installation never discovers
 missing tools after work has started.
 
-Safe failure codes are intentionally closed:
+The updater returns this closed set of safe failure codes:
 
 | Code | Meaning |
 |---|---|
@@ -48,6 +48,17 @@ No code includes a path, hash value, key, target, command, credential or provide
 configuration.
 
 ## Release generation
+
+Release identifiers use one of two closed formats:
+
+- `p15.x.y` identifies the historical line and the final compatibility bridge;
+- `vMAJOR.MINOR.PATCH` identifies public Aeontra releases and follows stable SemVer
+  numeric components without prerelease or build suffixes.
+
+The `stable` tag is a mutable machine channel, not a bundle version. It contains only
+the signed channel document and signature. The channel names one immutable release,
+and the updater downloads that release's signed archive. Existing clients therefore
+continue to use `update stable` across the version-name transition.
 
 The release pipeline stages the selected fixed layout, then invokes
 `mcp-bundle-manifest` with an absolute release root, manifest version, the exact
@@ -71,3 +82,18 @@ The official channel signature proves artifact identity; a separate durable serv
 control signature proves that the paired device was actually assigned the closed
 `update stable`, rollback or repair operation. Edge verifies both boundaries before
 the privileged fixed unit can run.
+
+## P15 to Aeontra transition
+
+An updater installed from the historical line accepts only `p15.x.y`. The first public
+SemVer release therefore requires this order:
+
+1. publish one final `p15.x.y` bridge containing an updater that accepts both formats;
+2. install and validate that bridge on the real Edge;
+3. publish `v1.0.0` from a green exact-head commit and move the signed `stable` channel;
+4. update the same Edge through `stable`, verify health and identity, then exercise one
+   rollback to the locally retained bridge and one forward update to `v1.0.0`.
+
+Deleting the bridge before supported devices have upgraded removes their path to the
+SemVer line. Release retention must preserve the current and previous signed bundles
+until the transition acceptance is complete.

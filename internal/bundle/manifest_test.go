@@ -9,6 +9,22 @@ import (
 	"testing"
 )
 
+func TestReleaseNameAcceptsLegacyBridgeAndStableSemanticVersions(t *testing.T) {
+	for _, release := range []string{"p15.0.45", "v0.1.0", "v1.0.0", "v12.34.56"} {
+		if !ValidRelease(release) {
+			t.Errorf("release %q was rejected", release)
+		}
+	}
+	for _, release := range []string{
+		"", "stable", "1.0.0", "edge-v1.0.0", "v1.0", "v1.0.0-rc.1",
+		"v1.0.0+build", "v01.0.0", "v1.00.0", "v1.0.00", "../v1.0.0",
+	} {
+		if ValidRelease(release) {
+			t.Errorf("invalid release %q was accepted", release)
+		}
+	}
+}
+
 func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 	root := t.TempDir()
 	paths, ok := layoutForVersion(3)

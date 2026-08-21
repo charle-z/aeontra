@@ -52,10 +52,17 @@ const (
 )
 
 var (
-	releasePattern = regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`)
-	commitPattern  = regexp.MustCompile(`^[a-f0-9]{40}$`)
-	digestPattern  = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	legacyReleasePattern   = regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`)
+	semanticReleasePattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+	commitPattern          = regexp.MustCompile(`^[a-f0-9]{40}$`)
+	digestPattern          = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 )
+
+// ValidRelease accepts the historical P15 bridge identifiers and stable Aeontra
+// semantic versions. The closed format is also safe as one release-directory name.
+func ValidRelease(release string) bool {
+	return legacyReleasePattern.MatchString(release) || semanticReleasePattern.MatchString(release)
+}
 
 type Manifest struct {
 	Version         int               `json:"version"`
@@ -297,7 +304,7 @@ func Verify(root string, manifest Manifest, signature []byte, publicKey ed25519.
 
 func canonicalManifest(manifest Manifest) ([]byte, error) {
 	required, supported := requiredComponentsForVersion(manifest.Version)
-	if !supported || !releasePattern.MatchString(manifest.Release) || !commitPattern.MatchString(manifest.Commit) ||
+	if !supported || !ValidRelease(manifest.Release) || !commitPattern.MatchString(manifest.Commit) ||
 		strings.TrimSpace(manifest.ProtocolVersion) == "" || !digestPattern.MatchString(manifest.CatalogHash) ||
 		(manifest.Architecture != "amd64" && manifest.Architecture != "arm64") || len(manifest.Components) != len(required) {
 		return nil, &VerificationError{Code: ManifestInvalid}

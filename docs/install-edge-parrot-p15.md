@@ -93,7 +93,7 @@ signed release on failure. Rollback accepts only the prior locally known signed 
 Repair restores exact compatibility links/modes/unit/service from a valid signed
 release or fetches `stable` when the active bundle is incomplete. Cleanup always keeps
 current, previous and at least one additional signed release, and removes only older
-signed P15 directories after 30 days.
+signed release directories after 30 days.
 
 The unprivileged Edge can request only three fixed root-owned units through a generated
 polkit rule: official stable update, previous signed rollback, and official repair.
@@ -114,10 +114,12 @@ commands, scripts, targets, credentials or flags.
 `edge-release` environment supplies the base64-encoded raw Ed25519 bundle key and the
 base64-encoded Debian GPG signing identity. The workflow checks out exact `main`, derives
 the public key without disclosing private material, stages all pinned components, runs
-the P15 tests/vet/build gates, generates an SPDX SBOM, publishes one immutable GitHub
-release, and updates only the separately signed `stable` channel documents.
+the Edge tests/vet/build gates, generates an SPDX SBOM, publishes one immutable GitHub
+release, and updates only the separately signed `stable` channel documents. Historical
+bridge releases use `p15.x.y`; public Aeontra releases use
+`vMAJOR.MINOR.PATCH`. See [`edge-bundles.md`](edge-bundles.md) for the ordered migration.
 
-The manifest-v3 to manifest-v4 migration is intentionally two-stage. Dispatch and
+The manifest-v3 to manifest-v4 migration uses two stages. Dispatch and
 install one `bridge-v3` release first so the installed updater learns version 4 while
 the active service remains OpenCode. After verifying that bridge, dispatch and install
 one `codex-v4` release to add the hashed Codex binary/pin and activate Codex. Skipping

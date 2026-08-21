@@ -121,7 +121,7 @@ func TestPrivilegedUpdaterAuthorityIsLimitedToFixedUnits(t *testing.T) {
 	}
 }
 
-func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
+func TestEdgeReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 	stage := repoFile(t, "packaging/parrot/stage-edge-bundle.sh")
 	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js", "--node-bin", "libexec/node", "--gh-bin", "libexec/gh", "--manifest-version", "mcp-devbox-opencode-edge-bridge@.service", "codex/codex", "codex/pin.json"} {
 		if !strings.Contains(stage, required) {
@@ -146,9 +146,15 @@ func TestP15ReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 		}
 	}
 	release := repoFile(t, ".github/workflows/edge-release.yml")
-	for _, required := range []string{"workflow_dispatch", "environment: edge-release", "EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64", "stage-edge-bundle.sh", "build-edge-release.sh", "build-edge-deb.sh", "Generate Edge bundle SBOM", "gh release create", "gh release upload stable --clobber", "bridge-v3", "codex-v4", "packaging/codex/stage-pinned.sh"} {
+	for _, required := range []string{"Publish signed Aeontra Edge release", "p15.x.y bridge or vMAJOR.MINOR.PATCH", "workflow_dispatch", "environment: edge-release", "EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64", "stage-edge-bundle.sh", "build-edge-release.sh", "build-edge-deb.sh", "Generate Edge bundle SBOM", "gh release create", "gh release upload stable --clobber", "bridge-v3", "codex-v4", "packaging/codex/stage-pinned.sh"} {
 		if !strings.Contains(release, required) {
 			t.Fatalf("release workflow missing %q", required)
+		}
+	}
+	packageBuilder := repoFile(t, "packaging/debian/build-edge-deb.sh")
+	for _, required := range []string{"p15.x.y|vMAJOR.MINOR.PATCH", `^v(0|[1-9][0-9]*)`, `PACKAGE_VERSION="${RELEASE#v}"`} {
+		if !strings.Contains(packageBuilder, required) {
+			t.Fatalf("Edge package builder missing version transition contract %q", required)
 		}
 	}
 	evidence := repoFile(t, ".github/workflows/p15-edge.yml")
