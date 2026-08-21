@@ -1,14 +1,14 @@
 # Aeontra
 
-Aeontra is secure by default, but it does not claim to eliminate every operational
-risk. It gives AI clients useful hands for software work without handing them an
-unrestricted machine.
+Aeontra exposes scoped, auditable software-development operations to AI clients through
+MCP. Administrators define repository roots, command policy, credentials and execution
+profiles at startup.
 
 It combines repository-scoped tools, immutable startup policy, explicit approval for
 risky actions, secret redaction, audit, durable state, optional GitHub/Coolify adapters,
-and a signed Linux Edge architecture. The model reasons; Aeontra constrains and
-executes. The Go module, executable, protocol, services, environment variables, and
-state paths retain the `mcp-devbox` and `mcp-edge` compatibility names.
+and a signed Linux Edge architecture. The Go module, executable, protocol, services,
+environment variables and state paths retain the `mcp-devbox` and `mcp-edge`
+compatibility names.
 See [`docs/brand-compatibility.md`](docs/brand-compatibility.md) before renaming an
 identifier.
 
@@ -141,7 +141,7 @@ See [`docs/tools.md`](docs/tools.md) for the complete current catalog and exact 
 
 ## What it cannot do
 
-Aeontra deliberately does not provide:
+Aeontra does not provide:
 
 - a free host shell;
 - automatic self-approval;
@@ -152,7 +152,7 @@ Aeontra deliberately does not provide:
 - an arbitrary control-plane-to-Edge command, URL, path, credential, or proxy channel;
 - universal network isolation for every execution profile.
 
-The trusted Linux workcell intentionally shares the host network. It must not be
+The trusted Linux workcell shares the host network. It must not be
 described as equivalent to the networkless Edge sandbox or as universal containment.
 
 ## Supported architectures
@@ -253,9 +253,9 @@ local-human grants, patch-first writes, command allowlists, exact plans, state
 revalidation, non-root containers, private persistent state, signed Edge releases, and
 closed public schemas.
 
-Aeontra is secure by default, but it does not claim to eliminate every operational
-risk. Known limitations and profile-specific trust boundaries are part of the product
-contract, not fine print.
+The documented controls limit authority and record consequential effects. They do not
+guarantee correct model output, safe dependencies or a secure host. Known limitations
+and profile-specific trust boundaries are part of the product contract.
 
 ## Verification
 

@@ -26,12 +26,12 @@ and catalog hash. Do not copy those moving values into this capsule.
 
 ## Product in one paragraph
 
-MCP Devbox is a secure-by-default MCP server that lets AI clients inspect, change,
-validate, publish, and deploy software through narrow tools without exposing a free host
-shell or unrestricted machine authority. Policy is immutable at startup. Reads and
-bounded status operations execute directly under jail, secret, redaction, schema, and
-audit controls. Consequential effects use exact preview, single-use plan, approval when
-required, state revalidation, narrow execution, bounded result, and audit.
+MCP Devbox is the Aeontra compatibility server. It lets AI clients inspect, change,
+validate, publish and deploy software through a registered MCP tool catalog. Policy is
+immutable at startup. Reads and bounded status operations execute under jail, secret,
+redaction, schema and audit controls. Consequential effects use exact preview,
+single-use plans, approval when required, state revalidation, bounded execution and
+audit.
 
 ## Supported architecture
 

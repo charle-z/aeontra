@@ -85,16 +85,13 @@ It is not tied to ChatGPT, Astro, TypeScript, Node, Coolify, MiniMax, OpenCode, 
 any single framework. Those are clients, adapters, execution recipes, or deployment
 targets around a stable policy core.
 
-Core promise:
-
-> Any agent. Any stack. Explicit guardrails. Auditable delivery.
-
-The model reasons; MCP Devbox plans, constrains, executes, observes, validates, and
-audits; the human grants authority for consequential actions.
+Aeontra provides one policy core for multiple MCP clients and execution profiles. The
+control plane plans, executes, records and validates tool effects. An administrator
+defines authority for consequential actions.
 
 ## Product boundaries
 
-The product has five deliberately separate surfaces:
+The product has five separate surfaces:
 
 1. **Core control plane (private):** MCP tools, jail, secret denial, plans,
    approvals, redaction, audit, repository memory, and deployment integrations.

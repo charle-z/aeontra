@@ -5,9 +5,9 @@ The repository is the source of truth; chat history is not.
 
 ## Project Context
 
-MCP Devbox is a secure-by-default MCP server that gives AI clients narrow,
-auditable software-development tools without exposing a free host shell or unrestricted
-machine access.
+MCP Devbox is Aeontra's compatibility server. It exposes scoped, auditable
+software-development tools to AI clients through MCP. Repository roots, command policy,
+credentials and execution profiles remain administrator-controlled.
 
 Do not copy moving identity into this file. Use:
 
@@ -73,6 +73,9 @@ separately.
 - Never remove a contradictory test silently. Correct the obsolete contract and preserve
   historical evidence in baselines, ADRs, specs, or Git.
 - Propagate or classify errors; do not hide them with broad catches or vague success.
+- Write public documentation in direct technical prose. Avoid slogans, anthropomorphic
+  metaphors and stock contrast formulas; retain contrast only when it defines a tested
+  boundary or compatibility rule.
 
 ## Tool Discovery Index
 

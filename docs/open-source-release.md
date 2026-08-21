@@ -65,6 +65,6 @@ Never publish:
 
 Do not claim that Aeontra is categorically “secure” or that alternatives have no
 security controls. State concrete, testable differences and current limitations.
-The durable differentiator is a deny-by-default authority model with secret denial,
-command/path jail, planned consequential actions, independent runner/edge checks,
-and auditable handoffs—not simply access to a terminal from chat.
+The project documents a deny-by-default authority model with secret denial, command and
+path jails, planned consequential actions, independent runner/Edge checks and auditable
+handoffs. Positioning claims must point to those concrete controls and their limits.
