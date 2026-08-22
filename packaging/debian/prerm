@@ -6,11 +6,19 @@ if [ "$1" = remove ] || [ "$1" = deconfigure ]; then
     EDGE_USER="$(cat /etc/mcp-devbox/edge-user)"
     case "$EDGE_USER" in *[!a-z0-9_-]*|'') echo 'invalid Edge user' >&2; exit 1;; esac
     systemctl disable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
-    systemctl disable --now "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+    for EDGE_UNIT_BASE in mcp-devbox-edge mcp-devbox-opencode-edge; do
+      EDGE_UNIT="${EDGE_UNIT_BASE}@${EDGE_USER}.service"
+      EDGE_UNIT_STATE="$(systemctl show "$EDGE_UNIT" --property=LoadState --value)"
+      case "$EDGE_UNIT_STATE" in
+        not-found) ;;
+        loaded) systemctl disable --now "$EDGE_UNIT" ;;
+        *) echo 'Edge service state is invalid' >&2; exit 1 ;;
+      esac
+      rm -f "/etc/systemd/system/${EDGE_UNIT_BASE}@${EDGE_USER}.service.d/10-edge-home.conf"
+      rmdir "/etc/systemd/system/${EDGE_UNIT_BASE}@${EDGE_USER}.service.d" 2>/dev/null || true
+    done
     rm -f "/etc/systemd/system/mcp-devbox-edge-onboard@${EDGE_USER}.path.d/10-edge-home.conf"
-    rm -f "/etc/systemd/system/mcp-devbox-opencode-edge@${EDGE_USER}.service.d/10-edge-home.conf"
     rmdir "/etc/systemd/system/mcp-devbox-edge-onboard@${EDGE_USER}.path.d" 2>/dev/null || true
-    rmdir "/etc/systemd/system/mcp-devbox-opencode-edge@${EDGE_USER}.service.d" 2>/dev/null || true
   fi
   rm -f /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
   systemctl daemon-reload

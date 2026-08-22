@@ -1,4 +1,8 @@
-# Install and verify the Trusted Linux Workcell on Parrot WSL2
+# Historical OpenCode workcell installation on Parrot WSL2
+
+> **Superseded:** current releases use the neutral `mcp-devbox-edge@.service` and a
+> pinned stock Codex harness. This document is retained only for recovery of signed
+> manifest-v4 releases and must not be used for a new installation.
 
 Status: verified human-operated onboarding for P12. The first real remote smoke
 completed on 2026-07-18 from Parrot WSL2 through the CubePath-hosted control plane.

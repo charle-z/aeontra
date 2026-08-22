@@ -167,9 +167,9 @@ Actions runs/jobs/logs require `Actions: Read`; workflow dispatch requires
 `Actions: Write`; check-run annotations require `Checks: Read`. Job-log downloads follow exactly one GitHub-issued redirect, omit the
 Authorization header on the signed download request, redact returned content and expose
 at most 1 MiB per call within a 16 MiB per-job read window. A configured local
-development Edge separately injects `workspace_dev_git_clone`,
-`workspace_dev_publish_preview`, and `workspace_dev_publish` into its private OpenCode
-provider. Those owner-bound transport actions are intentionally absent from the
+development Edge separately exposes `workspace_dev_git_clone`,
+`workspace_dev_publish_preview`, and `workspace_dev_publish` through its private signed
+harness broker. Those owner-bound transport actions are intentionally absent from the
 exterior MCP catalog; see `docs/development-edge-git.md`.
 
 ## Coolify platform

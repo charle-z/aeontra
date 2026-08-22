@@ -22,7 +22,12 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/edgeupdate"
 )
 
-var servicePattern = regexp.MustCompile(`^mcp-devbox-opencode-edge@[a-z_][a-z0-9_-]{0,31}\.service$`)
+const (
+	legacyServiceBase  = "mcp-devbox-opencode-edge"
+	currentServiceBase = "mcp-devbox-edge"
+)
+
+var serviceUserPattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 var systemctlCommand = func(args ...string) ([]byte, error) {
 	return exec.Command("systemctl", args...).CombinedOutput()
 }
@@ -39,7 +44,7 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, bundle.ManifestInvalid)
 		return 1
 	}
-	service, err := configuredService()
+	service, err := configuredService(key)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "updater service configuration is invalid")
 		return 1
@@ -91,22 +96,43 @@ func compiledPublicKey() (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(key), nil
 }
 
-func configuredService() (*systemdService, error) {
+func configuredService(publicKey ed25519.PublicKey) (*systemdService, error) {
 	content, err := os.ReadFile("/etc/mcp-devbox/edge-user")
 	if err != nil {
 		return nil, err
 	}
 	user := strings.TrimSpace(string(content))
-	name := "mcp-devbox-opencode-edge@" + user + ".service"
-	if !servicePattern.MatchString(name) {
+	if !serviceUserPattern.MatchString(user) {
 		return nil, errors.New("invalid service")
 	}
-	return &systemdService{name: name, user: user}, nil
+	manifest, manifestErr := bundle.LoadTrustedManifest("/opt/mcp-devbox/current", publicKey)
+	neutralUnitInstalled := false
+	if info, statErr := os.Lstat("/etc/systemd/system/mcp-devbox-edge@.service"); statErr == nil {
+		neutralUnitInstalled = info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0
+	}
+	base := serviceBaseFromEvidence(manifest.Version, manifestErr == nil, neutralUnitInstalled)
+	return &systemdService{name: serviceName(base, user), user: user, publicKey: publicKey}, nil
 }
 
 type systemdService struct {
-	name string
-	user string
+	name      string
+	user      string
+	publicKey ed25519.PublicKey
+}
+
+func serviceName(base, user string) string { return base + "@" + user + ".service" }
+
+func serviceBaseFromEvidence(manifestVersion int, manifestTrusted, neutralUnitInstalled bool) string {
+	if manifestTrusted {
+		if manifestVersion >= 5 {
+			return currentServiceBase
+		}
+		return legacyServiceBase
+	}
+	if neutralUnitInstalled {
+		return currentServiceBase
+	}
+	return legacyServiceBase
 }
 
 func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver edgeupdate.OfficialResolver, service *systemdService) (edgeupdate.Status, error) {
@@ -115,25 +141,31 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 		return resolver.UpdateStable(ctx, engine)
 	}
 	releaseRoot := filepath.Join("/opt/mcp-devbox", edgeupdate.ReleasesDirectory, status.Release)
-	if _, err := bundle.LoadTrusted(releaseRoot, engine.PublicKey); err != nil {
+	manifest, err := bundle.LoadTrustedManifest(releaseRoot, engine.PublicKey)
+	if err != nil {
 		return resolver.UpdateStable(ctx, engine)
 	}
-	for component, relative := range bundle.DefaultLayout() {
+	layout, ok := bundle.LayoutForVersion(manifest.Version)
+	if !ok {
+		return edgeupdate.Status{}, errors.New("official component layout is invalid")
+	}
+	for component, relative := range layout {
 		if err := repairComponentPermissions(releaseRoot, component, relative); err != nil {
 			return edgeupdate.Status{}, errors.New("official component permissions repair failed")
 		}
 	}
-	links := map[string]string{
-		"/usr/local/bin/mcp-edge":                            "/opt/mcp-devbox/current/bin/mcp-edge",
-		"/usr/local/libexec/mcp-devbox/model-turn-driver":    "/opt/mcp-devbox/current/libexec/model-turn-driver",
-		"/usr/local/libexec/mcp-devbox/mcp-autopilot-worker": "/opt/mcp-devbox/current/libexec/mcp-autopilot-worker",
-		"/usr/local/libexec/mcp-devbox/mcp-bundle-updater":   "/opt/mcp-devbox/current/libexec/mcp-bundle-updater",
-		"/usr/local/libexec/mcp-devbox/node":                 "/opt/mcp-devbox/current/libexec/node",
-		"/opt/mcp-devbox/opencode-provider":                  "/opt/mcp-devbox/current/opencode-provider",
-		"/opt/mcp-devbox/opencode-1.18.1":                    "/opt/mcp-devbox/current/opencode",
+	links := map[string]struct{ component, target string }{
+		"/usr/local/bin/mcp-edge":                            {bundle.ComponentEdge, "/opt/mcp-devbox/current/bin/mcp-edge"},
+		"/usr/local/libexec/mcp-devbox/model-turn-driver":    {bundle.ComponentDriver, "/opt/mcp-devbox/current/libexec/model-turn-driver"},
+		"/usr/local/libexec/mcp-devbox/mcp-autopilot-worker": {bundle.ComponentWorker, "/opt/mcp-devbox/current/libexec/mcp-autopilot-worker"},
+		"/usr/local/libexec/mcp-devbox/mcp-bundle-updater":   {bundle.ComponentUpdater, "/opt/mcp-devbox/current/libexec/mcp-bundle-updater"},
+		"/usr/local/libexec/mcp-devbox/node":                 {bundle.ComponentNode, "/opt/mcp-devbox/current/libexec/node"},
+		"/opt/mcp-devbox/opencode-provider":                  {bundle.ComponentProvider, "/opt/mcp-devbox/current/opencode-provider"},
+		"/opt/mcp-devbox/opencode-1.18.1":                    {bundle.ComponentOpenCode, "/opt/mcp-devbox/current/opencode"},
 	}
-	for destination, target := range links {
-		if err := repairOfficialLink(destination, target); err != nil {
+	for destination, link := range links {
+		_, present := layout[link.component]
+		if err := reconcileOfficialLink(destination, link.target, present); err != nil {
 			return edgeupdate.Status{}, err
 		}
 	}
@@ -179,7 +211,7 @@ func (s *systemdService) ReconcileRootlessPodmanSocket() error {
 
 func repairComponentPermissions(releaseRoot, component, relative string) error {
 	mode := os.FileMode(0o644)
-	if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentGitHubCLI || component == bundle.ComponentOpenCode {
+	if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentGitHubCLI || component == bundle.ComponentOpenCode || component == bundle.ComponentCodex {
 		mode = 0o755
 	}
 	err := os.Chmod(filepath.Join(releaseRoot, filepath.FromSlash(relative)), mode)
@@ -187,6 +219,20 @@ func repairComponentPermissions(releaseRoot, component, relative string) error {
 		return nil
 	}
 	return err
+}
+
+func reconcileOfficialLink(destination, target string, present bool) error {
+	if present {
+		return repairOfficialLink(destination, target)
+	}
+	existing, err := os.Readlink(destination)
+	if err == nil && existing == target {
+		return os.Remove(destination)
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return nil
 }
 
 func repairOfficialLink(destination, target string) error {
@@ -223,12 +269,59 @@ func (s *systemdService) InstallUnit(releaseRoot string) error {
 	if err := reconcileBundledGitHubCLI(releaseRoot); err != nil {
 		return err
 	}
-	source := releaseRoot + "/systemd/mcp-devbox-opencode-edge@.service"
+	manifest, err := bundle.LoadTrustedManifest(releaseRoot, s.publicKey)
+	if err != nil {
+		return err
+	}
+	targetBase, unitRelative := serviceGeneration(manifest.Version)
+	if err := installSignedUnit(filepath.Join(releaseRoot, filepath.FromSlash(unitRelative)), "/etc/systemd/system/"+targetBase+"@.service"); err != nil {
+		return err
+	}
+	if err := installOnboardingPath(releaseRoot, manifest.Version); err != nil {
+		return err
+	}
+	if _, err := systemctlCommand("daemon-reload"); err != nil {
+		return errors.New("systemd reload failed")
+	}
+	targetName := serviceName(targetBase, s.user)
+	if _, err := systemctlCommand("enable", targetName); err != nil {
+		return errors.New("Edge service enable failed")
+	}
+	previousBase := legacyServiceBase
+	if targetBase == legacyServiceBase {
+		previousBase = currentServiceBase
+	}
+	previousName := serviceName(previousBase, s.user)
+	output, err := systemctlCommand("show", previousName, "--property=LoadState", "--value")
+	if err != nil {
+		return errors.New("previous Edge service inspection failed")
+	}
+	switch strings.TrimSpace(string(output)) {
+	case "not-found":
+	case "loaded":
+		if _, err := systemctlCommand("disable", "--now", previousName); err != nil {
+			return errors.New("previous Edge service retirement failed")
+		}
+	default:
+		return errors.New("previous Edge service state is invalid")
+	}
+	s.name = targetName
+	return retireLegacyEdgeServices()
+}
+
+func serviceGeneration(version int) (string, string) {
+	if version >= 5 {
+		return currentServiceBase, "systemd/mcp-devbox-edge@.service"
+	}
+	return legacyServiceBase, "systemd/mcp-devbox-opencode-edge@.service"
+}
+
+func installSignedUnit(source, destination string) error {
 	info, err := os.Lstat(source)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("signed edge unit is unavailable")
 	}
-	temporary := "/etc/systemd/system/.mcp-devbox-opencode-edge@.service.next"
+	temporary := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+".next")
 	input, err := os.Open(source)
 	if err != nil {
 		return err
@@ -245,14 +338,28 @@ func (s *systemdService) InstallUnit(releaseRoot string) error {
 		_ = os.Remove(temporary)
 		return errors.New("edge unit staging failed")
 	}
-	if err := os.Rename(temporary, "/etc/systemd/system/mcp-devbox-opencode-edge@.service"); err != nil {
+	if err := os.Rename(temporary, destination); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}
-	if _, err := systemctlCommand("daemon-reload"); err != nil {
-		return errors.New("systemd reload failed")
+	return nil
+}
+
+func installOnboardingPath(releaseRoot string, version int) error {
+	destination := "/etc/systemd/system/mcp-devbox-edge-onboard@.path"
+	if version >= 5 {
+		return installSignedUnit(filepath.Join(releaseRoot, "systemd", "mcp-devbox-edge-onboard@.path"), destination)
 	}
-	return retireLegacyEdgeServices()
+	body := []byte("[Unit]\nDescription=Start MCP Devbox Edge when identity exists for %i\n\n[Path]\nPathExists=/home/%i/.local/state/mcp-edge/identity.json\nUnit=mcp-devbox-opencode-edge@%i.service\n\n[Install]\nWantedBy=multi-user.target\n")
+	temporary := filepath.Join(filepath.Dir(destination), ".mcp-devbox-edge-onboard@.path.next")
+	if err := os.WriteFile(temporary, body, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, destination); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
 }
 
 func retireLegacyEdgeServices() error {

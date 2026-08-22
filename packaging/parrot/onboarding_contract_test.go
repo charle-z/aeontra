@@ -55,6 +55,8 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 		"$BUNDLE_ROOT/manifest.sig",
 		"$BUNDLE_ROOT/libexec/mcp-autopilot-worker",
 		"$BUNDLE_ROOT/libexec/mcp-bundle-updater",
+		"$BUNDLE_ROOT/systemd/mcp-devbox-edge@.service",
+		"signed Codex harness is incomplete",
 		"parrot-onboarding-preflight-ok",
 	} {
 		if !strings.Contains(script, expected) {
@@ -64,8 +66,11 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 	if strings.Contains(script, "/var/run/docker.sock --bind") || strings.Contains(script, "/run/docker.sock --bind") {
 		t.Fatal("onboarding script exposes a rootful container socket")
 	}
+	if strings.Contains(script, `if [ -x "$CODEX" ] && [ -r "$CODEX_PIN" ]`) {
+		t.Fatal("hybrid v4 bundle must not select Codex solely because the compatibility binary exists")
+	}
 
-	unit := readRepositoryFile(t, "packaging/systemd/mcp-devbox-opencode-edge@.service")
+	unit := readRepositoryFile(t, "packaging/systemd/mcp-devbox-edge@.service")
 	for _, expected := range []string{
 		"User=%i",
 		"/usr/local/bin/mcp-edge codex",
@@ -79,7 +84,7 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 		"ReadWritePaths=/home/%i/.local/state/mcp-edge /home/%i/workspaces /home/%i/htb-machines",
 	} {
 		if !strings.Contains(unit, expected) {
-			t.Fatalf("OpenCode Edge unit missing %q", expected)
+			t.Fatalf("Codex Edge unit missing %q", expected)
 		}
 	}
 	for _, forbidden := range []string{
@@ -88,11 +93,11 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 		"--state /home/%i/.local/state/mcp-edge",
 	} {
 		if strings.Contains(unit, forbidden) {
-			t.Fatalf("OpenCode Edge unit must not manage unpackaged legacy units through %q", forbidden)
+			t.Fatalf("Codex Edge unit must not manage unpackaged legacy units through %q", forbidden)
 		}
 	}
 	if strings.Contains(unit, "/var/run/docker.sock") || strings.Contains(unit, "/run/docker.sock") {
-		t.Fatal("OpenCode Edge unit exposes a rootful container socket")
+		t.Fatal("Codex Edge unit exposes a rootful container socket")
 	}
 	bridge := readRepositoryFile(t, "packaging/systemd/mcp-devbox-opencode-edge-bridge@.service")
 	for _, expected := range []string{"/usr/local/bin/mcp-edge opencode", "--driver /opt/mcp-devbox/current/libexec/model-turn-driver", "--provider /opt/mcp-devbox/opencode-provider", "KillMode=process"} {

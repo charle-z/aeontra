@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	CurrentManifestVersion = 4
+	CurrentManifestVersion = 5
 
 	ManifestFile  = "manifest.json"
 	SignatureFile = "manifest.sig"
@@ -40,6 +40,7 @@ const (
 	ComponentCodex           = "codex"
 	ComponentCodexPin        = "codex-pin"
 	ComponentSystemd         = "systemd-unit"
+	ComponentSystemdPath     = "systemd-onboard-path"
 )
 
 type Code string
@@ -102,6 +103,10 @@ type VerificationError struct {
 func (e *VerificationError) Error() string { return string(e.Code) }
 
 func RequiredComponents() []string {
+	return []string{ComponentEdge, ComponentWorker, ComponentUpdater, ComponentGitHubCLI, ComponentCodex, ComponentCodexPin, ComponentSystemd, ComponentSystemdPath}
+}
+
+func versionFourRequiredComponents() []string {
 	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentGitHubCLI, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentCodex, ComponentCodexPin, ComponentSystemd}
 }
 
@@ -126,6 +131,8 @@ func requiredComponentsForVersion(version int) ([]string, bool) {
 	case 3:
 		return versionThreeRequiredComponents(), true
 	case 4:
+		return versionFourRequiredComponents(), true
+	case 5:
 		return RequiredComponents(), true
 	default:
 		return nil, false
@@ -134,6 +141,22 @@ func requiredComponentsForVersion(version int) ([]string, bool) {
 
 func DefaultLayout() map[string]string {
 	return map[string]string{
+		ComponentEdge:        "bin/mcp-edge",
+		ComponentWorker:      "libexec/mcp-autopilot-worker",
+		ComponentUpdater:     "libexec/mcp-bundle-updater",
+		ComponentGitHubCLI:   "libexec/gh",
+		ComponentCodex:       "codex/codex",
+		ComponentCodexPin:    "codex/pin.json",
+		ComponentSystemd:     "systemd/mcp-devbox-edge@.service",
+		ComponentSystemdPath: "systemd/mcp-devbox-edge-onboard@.path",
+	}
+}
+
+func layoutForVersion(version int) (map[string]string, bool) {
+	if version == 5 {
+		return DefaultLayout(), true
+	}
+	layout := map[string]string{
 		ComponentEdge:            "bin/mcp-edge",
 		ComponentDriver:          "libexec/model-turn-driver",
 		ComponentWorker:          "libexec/mcp-autopilot-worker",
@@ -150,10 +173,6 @@ func DefaultLayout() map[string]string {
 		ComponentCodexPin:        "codex/pin.json",
 		ComponentSystemd:         "systemd/mcp-devbox-opencode-edge@.service",
 	}
-}
-
-func layoutForVersion(version int) (map[string]string, bool) {
-	layout := DefaultLayout()
 	if version == 1 {
 		delete(layout, ComponentDevActions)
 		delete(layout, ComponentGitHubCLI)
@@ -176,6 +195,21 @@ func layoutForVersion(version int) (map[string]string, bool) {
 		return layout, true
 	}
 	return nil, false
+}
+
+// LayoutForVersion returns a defensive copy of the signed component layout for
+// one supported manifest generation. Callers use it only after signature
+// verification to reconcile version-specific installed files.
+func LayoutForVersion(version int) (map[string]string, bool) {
+	layout, ok := layoutForVersion(version)
+	if !ok {
+		return nil, false
+	}
+	copy := make(map[string]string, len(layout))
+	for component, relative := range layout {
+		copy[component] = relative
+	}
+	return copy, true
 }
 
 func Build(root string, metadata Metadata) (Manifest, error) {
@@ -222,18 +256,31 @@ func LoadAndVerify(root string, publicKey ed25519.PublicKey, expected Compatibil
 }
 
 func LoadTrusted(root string, publicKey ed25519.PublicKey) (Verified, error) {
-	manifest, signature, err := loadManifestFiles(root)
+	manifest, err := LoadTrustedManifest(root, publicKey)
 	if err != nil {
 		return Verified{}, err
 	}
+	return Verified{Release: manifest.Release, Commit: manifest.Commit}, nil
+}
+
+// LoadTrustedManifest verifies the complete signed release and returns the
+// authenticated manifest for version-specific installation reconciliation.
+func LoadTrustedManifest(root string, publicKey ed25519.PublicKey) (Manifest, error) {
+	manifest, signature, err := loadManifestFiles(root)
+	if err != nil {
+		return Manifest{}, err
+	}
 	layout, ok := layoutForVersion(manifest.Version)
 	if !ok {
-		return Verified{}, &VerificationError{Code: ManifestInvalid}
+		return Manifest{}, &VerificationError{Code: ManifestInvalid}
 	}
-	return Verify(root, manifest, signature, publicKey, layout, Compatibility{
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
 		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
 		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
-	})
+	}); err != nil {
+		return Manifest{}, err
+	}
+	return manifest, nil
 }
 
 func loadManifestFiles(root string) (Manifest, []byte, error) {

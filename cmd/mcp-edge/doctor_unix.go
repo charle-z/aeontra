@@ -130,7 +130,7 @@ func inspectEdgeHealth() (string, bool, error) {
 		}
 		return fmt.Sprintf("edge_doctor status=blocked bundle=valid layout=valid identity=invalid service=unknown rootless=%s journal=%s", rootless, journalState), false, errors.New("edge doctor found an invalid identity")
 	}
-	service := "mcp-devbox-opencode-edge@" + currentUser.Username + ".service"
+	service := edgeServiceName(currentUser.Username)
 	runtime := doctorInspectRuntime(stateRoot, service)
 	status := "degraded"
 	healthy := endpoint != nil && runtime.Healthy && journalReady

@@ -109,8 +109,8 @@ private state root. Do not copy it into a workspace. Restart the Edge service af
 configuration so the next runtime observes the authority:
 
 ```bash
-sudo systemctl restart "mcp-devbox-opencode-edge@$(id -un).service"
-systemctl is-active "mcp-devbox-opencode-edge@$(id -un).service"
+sudo systemctl restart "mcp-devbox-edge@$(id -un).service"
+systemctl is-active "mcp-devbox-edge@$(id -un).service"
 ```
 
 ## Runtime behavior

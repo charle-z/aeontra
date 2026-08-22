@@ -246,7 +246,7 @@ limits. The public MCP container itself does not receive the Docker socket.
 
 ### Edge sandbox
 
-The ordinary Edge `sandbox` profile runs OpenCode inside mandatory networkless
+The ordinary Edge `sandbox` profile runs the active signed harness inside mandatory networkless
 Bubblewrap. Only the selected workspace and a private runtime area are writable. Edge
 identity, home, unrelated repositories, and private control sockets are excluded. There
 is no direct-execution fallback.

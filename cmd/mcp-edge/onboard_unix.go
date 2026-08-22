@@ -65,7 +65,7 @@ func onboard(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil || !onboardingUserPattern.MatchString(strings.TrimSpace(currentUser.Username)) {
 		return errors.New("onboarding service identity unavailable")
 	}
-	service := "mcp-devbox-opencode-edge@" + currentUser.Username + ".service"
+	service := edgeServiceName(currentUser.Username)
 	if err := waitOnboardingService(service, 30*time.Second); err != nil {
 		return err
 	}

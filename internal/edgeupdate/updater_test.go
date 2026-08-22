@@ -198,7 +198,7 @@ func TestUpdaterRepairsCorruptActiveReleaseAndRestoresItOnHealthFailure(t *testi
 	if _, err := engine.Install(source, compatibility); err != nil {
 		t.Fatal(err)
 	}
-	activeComponent := filepath.Join(root, ReleasesDirectory, compatibility.Release, "opencode-provider", "index.js")
+	activeComponent := filepath.Join(root, ReleasesDirectory, compatibility.Release, "codex", "codex")
 	if err := os.WriteFile(activeComponent, []byte("corrupt-active"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestUpdaterRejectsUnsignedOrCallerMixedBundleBeforeActivation(t *testing.T)
 	service := &fakeService{healthy: true}
 	engine := Engine{Root: root, PublicKey: publicKey, Service: service}
 	source, compatibility := signedRelease(t, "p15.2.0", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", privateKey)
-	if err := os.WriteFile(filepath.Join(source, "opencode-provider", "index.js"), []byte("tampered"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(source, "codex", "codex"), []byte("tampered"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := engine.Install(source, compatibility); err == nil {

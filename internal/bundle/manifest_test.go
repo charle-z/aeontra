@@ -155,11 +155,11 @@ func TestVersionThreeWithBundledGitHubCLIRemainsVerifiableForRollback(t *testing
 	}
 }
 
-func TestBuildEmitsVersionFourWithPinnedCodexHarness(t *testing.T) {
+func TestBuildEmitsVersionFiveWithOnlyPinnedCodexHarness(t *testing.T) {
 	root := t.TempDir()
-	layout, ok := layoutForVersion(4)
+	layout, ok := layoutForVersion(5)
 	if !ok {
-		t.Fatal("version four layout unavailable")
+		t.Fatal("version five layout unavailable")
 	}
 	for component, relative := range layout {
 		path := filepath.Join(root, filepath.FromSlash(relative))
@@ -178,13 +178,39 @@ func TestBuildEmitsVersionFourWithPinnedCodexHarness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Version != 4 {
-		t.Fatalf("version=%d, want version 4", manifest.Version)
+	if manifest.Version != 5 {
+		t.Fatalf("version=%d, want version 5", manifest.Version)
 	}
 	for _, component := range []string{ComponentCodex, ComponentCodexPin} {
 		if _, exists := manifest.Components[component]; !exists {
-			t.Fatalf("version four manifest is missing %s", component)
+			t.Fatalf("version five manifest is missing %s", component)
 		}
+	}
+	for _, component := range []string{
+		ComponentDriver, ComponentNode, ComponentProvider, ComponentHTBActions,
+		ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock,
+	} {
+		if _, exists := manifest.Components[component]; exists {
+			t.Fatalf("Codex-only manifest unexpectedly contains %s", component)
+		}
+	}
+	if got := layout[ComponentSystemd]; got != "systemd/mcp-devbox-edge@.service" {
+		t.Fatalf("systemd layout=%q, want neutral Edge unit", got)
+	}
+}
+
+func TestVersionFourHybridBundleRemainsVerifiableForRollback(t *testing.T) {
+	layout, ok := layoutForVersion(4)
+	if !ok {
+		t.Fatal("version four layout unavailable")
+	}
+	for _, component := range []string{ComponentOpenCode, ComponentOpenCodeLock, ComponentCodex, ComponentCodexPin} {
+		if _, exists := layout[component]; !exists {
+			t.Fatalf("version four rollback layout is missing %s", component)
+		}
+	}
+	if got := layout[ComponentSystemd]; got != "systemd/mcp-devbox-opencode-edge@.service" {
+		t.Fatalf("version four systemd layout=%q", got)
 	}
 }
 
@@ -194,13 +220,13 @@ func TestBundleVerificationFailsBeforeRuntimeWithPreciseSafeCodes(t *testing.T) 
 		t.Fatal(err)
 	}
 	base := Manifest{
-		Version: CurrentManifestVersion, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 4, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}
 	root := t.TempDir()
 	paths := map[string]string{}
-	for _, component := range RequiredComponents() {
+	for _, component := range versionFourRequiredComponents() {
 		paths[component] = component
 		path := filepath.Join(root, component)
 		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {

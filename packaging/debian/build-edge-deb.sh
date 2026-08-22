@@ -32,15 +32,25 @@ for command in dpkg-deb gpg sha256sum install mktemp; do
 done
 
 for path in \
-  manifest.json manifest.sig bin/mcp-edge libexec/model-turn-driver libexec/node libexec/gh \
-  libexec/mcp-autopilot-worker libexec/mcp-bundle-updater opencode/opencode opencode/package-lock.json \
-  opencode-provider/index.js opencode-provider/htb-actions.js opencode-provider/dev-actions.js \
-  opencode-provider/package.json systemd/mcp-devbox-opencode-edge@.service; do
+  manifest.json manifest.sig bin/mcp-edge libexec/gh \
+  libexec/mcp-autopilot-worker libexec/mcp-bundle-updater; do
   [ -f "$BUNDLE/$path" ] && [ ! -L "$BUNDLE/$path" ] || {
     printf 'signed bundle is incomplete: %s\n' "$path" >&2
     exit 1
   }
 done
+HAS_OPENCODE=0
+if [ -f "$BUNDLE/opencode/opencode" ] || [ -f "$BUNDLE/opencode/package-lock.json" ]; then
+  for path in libexec/model-turn-driver libexec/node opencode/opencode opencode/package-lock.json \
+    opencode-provider/index.js opencode-provider/htb-actions.js opencode-provider/dev-actions.js \
+    opencode-provider/package.json; do
+    [ -f "$BUNDLE/$path" ] && [ ! -L "$BUNDLE/$path" ] || {
+      printf 'signed OpenCode components are incomplete: %s\n' "$path" >&2
+      exit 1
+    }
+  done
+  HAS_OPENCODE=1
+fi
 HAS_CODEX=0
 if [ -f "$BUNDLE/codex/codex" ] || [ -f "$BUNDLE/codex/pin.json" ]; then
   [ -f "$BUNDLE/codex/codex" ] && [ ! -L "$BUNDLE/codex/codex" ] && [ -f "$BUNDLE/codex/pin.json" ] && [ ! -L "$BUNDLE/codex/pin.json" ] || {
@@ -48,6 +58,15 @@ if [ -f "$BUNDLE/codex/codex" ] || [ -f "$BUNDLE/codex/pin.json" ]; then
     exit 1
   }
   HAS_CODEX=1
+fi
+EDGE_UNIT=''
+if [ -f "$BUNDLE/systemd/mcp-devbox-edge@.service" ] && [ ! -e "$BUNDLE/systemd/mcp-devbox-opencode-edge@.service" ]; then
+  EDGE_UNIT='mcp-devbox-edge@.service'
+elif [ -f "$BUNDLE/systemd/mcp-devbox-opencode-edge@.service" ] && [ ! -e "$BUNDLE/systemd/mcp-devbox-edge@.service" ]; then
+  EDGE_UNIT='mcp-devbox-opencode-edge@.service'
+else
+  printf 'signed Edge unit selection is invalid\n' >&2
+  exit 1
 fi
 
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:?SOURCE_DATE_EPOCH is required for reproducible package content}"
@@ -67,22 +86,24 @@ install -d -m 0755 \
 install -d -m 0755 "$PACKAGE_ROOT/usr/share/mcp-devbox" "$PACKAGE_ROOT/etc/polkit-1/rules.d"
 
 install -m 0755 "$BUNDLE/bin/mcp-edge" "$RELEASE_ROOT/bin/mcp-edge"
-install -m 0755 "$BUNDLE/libexec/model-turn-driver" "$RELEASE_ROOT/libexec/model-turn-driver"
 install -m 0755 "$BUNDLE/libexec/mcp-autopilot-worker" "$RELEASE_ROOT/libexec/mcp-autopilot-worker"
 install -m 0755 "$BUNDLE/libexec/mcp-bundle-updater" "$RELEASE_ROOT/libexec/mcp-bundle-updater"
-install -m 0755 "$BUNDLE/libexec/node" "$RELEASE_ROOT/libexec/node"
 install -m 0755 "$BUNDLE/libexec/gh" "$RELEASE_ROOT/libexec/gh"
-install -m 0755 "$BUNDLE/opencode/opencode" "$RELEASE_ROOT/opencode/opencode"
-install -m 0644 "$BUNDLE/opencode/package-lock.json" "$RELEASE_ROOT/opencode/package-lock.json"
+if [ "$HAS_OPENCODE" -eq 1 ]; then
+  install -m 0755 "$BUNDLE/libexec/model-turn-driver" "$RELEASE_ROOT/libexec/model-turn-driver"
+  install -m 0755 "$BUNDLE/libexec/node" "$RELEASE_ROOT/libexec/node"
+  install -m 0755 "$BUNDLE/opencode/opencode" "$RELEASE_ROOT/opencode/opencode"
+  install -m 0644 "$BUNDLE/opencode/package-lock.json" "$RELEASE_ROOT/opencode/package-lock.json"
+  install -m 0644 "$BUNDLE/opencode-provider/index.js" "$RELEASE_ROOT/opencode-provider/index.js"
+  install -m 0644 "$BUNDLE/opencode-provider/htb-actions.js" "$RELEASE_ROOT/opencode-provider/htb-actions.js"
+  install -m 0644 "$BUNDLE/opencode-provider/dev-actions.js" "$RELEASE_ROOT/opencode-provider/dev-actions.js"
+  install -m 0644 "$BUNDLE/opencode-provider/package.json" "$RELEASE_ROOT/opencode-provider/package.json"
+fi
 if [ "$HAS_CODEX" -eq 1 ]; then
   install -m 0755 "$BUNDLE/codex/codex" "$RELEASE_ROOT/codex/codex"
   install -m 0644 "$BUNDLE/codex/pin.json" "$RELEASE_ROOT/codex/pin.json"
 fi
-install -m 0644 "$BUNDLE/opencode-provider/index.js" "$RELEASE_ROOT/opencode-provider/index.js"
-install -m 0644 "$BUNDLE/opencode-provider/htb-actions.js" "$RELEASE_ROOT/opencode-provider/htb-actions.js"
-install -m 0644 "$BUNDLE/opencode-provider/dev-actions.js" "$RELEASE_ROOT/opencode-provider/dev-actions.js"
-install -m 0644 "$BUNDLE/opencode-provider/package.json" "$RELEASE_ROOT/opencode-provider/package.json"
-install -m 0644 "$BUNDLE/systemd/mcp-devbox-opencode-edge@.service" "$RELEASE_ROOT/systemd/mcp-devbox-opencode-edge@.service"
+install -m 0644 "$BUNDLE/systemd/$EDGE_UNIT" "$RELEASE_ROOT/systemd/$EDGE_UNIT"
 install -m 0644 "$BUNDLE/manifest.json" "$RELEASE_ROOT/manifest.json"
 install -m 0644 "$BUNDLE/manifest.sig" "$RELEASE_ROOT/manifest.sig"
 install -m 0755 packaging/parrot/onboarding-preflight.sh "$PACKAGE_ROOT/usr/local/libexec/mcp-devbox/onboarding-preflight"
@@ -90,7 +111,12 @@ install -m 0644 packaging/systemd/mcp-devbox-bundle-updater.service "$PACKAGE_RO
 install -m 0644 packaging/systemd/mcp-devbox-bundle-rollback.service "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-bundle-rollback.service"
 install -m 0644 packaging/systemd/mcp-devbox-edge-repair.service "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-repair.service"
 install -m 0644 packaging/polkit/49-mcp-devbox-updater.rules.in "$PACKAGE_ROOT/usr/share/mcp-devbox/49-mcp-devbox-updater.rules.in"
-install -m 0644 packaging/systemd/mcp-devbox-edge-onboard@.path "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
+if [ "$EDGE_UNIT" = 'mcp-devbox-edge@.service' ]; then
+  install -m 0644 "$BUNDLE/systemd/mcp-devbox-edge-onboard@.path" "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
+else
+  sed 's/Unit=mcp-devbox-edge@%i.service/Unit=mcp-devbox-opencode-edge@%i.service/' packaging/systemd/mcp-devbox-edge-onboard@.path >"$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
+  chmod 0644 "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
+fi
 install -m 0644 packaging/parrot/autopilot-model.json "$PACKAGE_ROOT/etc/mcp-devbox/autopilot-model.json"
 install -m 0644 docs/edge-bundles.md "$PACKAGE_ROOT/usr/share/doc/mcp-devbox/edge-bundles.md"
 
