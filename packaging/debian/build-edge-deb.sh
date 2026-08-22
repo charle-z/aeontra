@@ -104,6 +104,9 @@ if [ "$HAS_CODEX" -eq 1 ]; then
   install -m 0644 "$BUNDLE/codex/pin.json" "$RELEASE_ROOT/codex/pin.json"
 fi
 install -m 0644 "$BUNDLE/systemd/$EDGE_UNIT" "$RELEASE_ROOT/systemd/$EDGE_UNIT"
+if [ "$EDGE_UNIT" = 'mcp-devbox-edge@.service' ]; then
+  install -m 0644 "$BUNDLE/systemd/mcp-devbox-edge-onboard@.path" "$RELEASE_ROOT/systemd/mcp-devbox-edge-onboard@.path"
+fi
 install -m 0644 "$BUNDLE/manifest.json" "$RELEASE_ROOT/manifest.json"
 install -m 0644 "$BUNDLE/manifest.sig" "$RELEASE_ROOT/manifest.sig"
 install -m 0755 packaging/parrot/onboarding-preflight.sh "$PACKAGE_ROOT/usr/local/libexec/mcp-devbox/onboarding-preflight"
@@ -112,7 +115,7 @@ install -m 0644 packaging/systemd/mcp-devbox-bundle-rollback.service "$PACKAGE_R
 install -m 0644 packaging/systemd/mcp-devbox-edge-repair.service "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-repair.service"
 install -m 0644 packaging/polkit/49-mcp-devbox-updater.rules.in "$PACKAGE_ROOT/usr/share/mcp-devbox/49-mcp-devbox-updater.rules.in"
 if [ "$EDGE_UNIT" = 'mcp-devbox-edge@.service' ]; then
-  install -m 0644 "$BUNDLE/systemd/mcp-devbox-edge-onboard@.path" "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
+  install -m 0644 "$RELEASE_ROOT/systemd/mcp-devbox-edge-onboard@.path" "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
 else
   sed 's/Unit=mcp-devbox-edge@%i.service/Unit=mcp-devbox-opencode-edge@%i.service/' packaging/systemd/mcp-devbox-edge-onboard@.path >"$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
   chmod 0644 "$PACKAGE_ROOT/etc/systemd/system/mcp-devbox-edge-onboard@.path"
