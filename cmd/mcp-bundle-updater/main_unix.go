@@ -154,21 +154,6 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 			return edgeupdate.Status{}, errors.New("official component permissions repair failed")
 		}
 	}
-	links := map[string]struct{ component, target string }{
-		"/usr/local/bin/mcp-edge":                            {bundle.ComponentEdge, "/opt/mcp-devbox/current/bin/mcp-edge"},
-		"/usr/local/libexec/mcp-devbox/model-turn-driver":    {bundle.ComponentDriver, "/opt/mcp-devbox/current/libexec/model-turn-driver"},
-		"/usr/local/libexec/mcp-devbox/mcp-autopilot-worker": {bundle.ComponentWorker, "/opt/mcp-devbox/current/libexec/mcp-autopilot-worker"},
-		"/usr/local/libexec/mcp-devbox/mcp-bundle-updater":   {bundle.ComponentUpdater, "/opt/mcp-devbox/current/libexec/mcp-bundle-updater"},
-		"/usr/local/libexec/mcp-devbox/node":                 {bundle.ComponentNode, "/opt/mcp-devbox/current/libexec/node"},
-		"/opt/mcp-devbox/opencode-provider":                  {bundle.ComponentProvider, "/opt/mcp-devbox/current/opencode-provider"},
-		"/opt/mcp-devbox/opencode-1.18.1":                    {bundle.ComponentOpenCode, "/opt/mcp-devbox/current/opencode"},
-	}
-	for destination, link := range links {
-		_, present := layout[link.component]
-		if err := reconcileOfficialLink(destination, link.target, present); err != nil {
-			return edgeupdate.Status{}, err
-		}
-	}
 	if err := reconcileBundledGitHubCLI(releaseRoot); err != nil {
 		return edgeupdate.Status{}, err
 	}
@@ -221,6 +206,34 @@ func repairComponentPermissions(releaseRoot, component, relative string) error {
 	return err
 }
 
+type officialComponentLink struct {
+	component   string
+	destination string
+	target      string
+}
+
+func officialComponentLinks() []officialComponentLink {
+	return []officialComponentLink{
+		{bundle.ComponentEdge, "/usr/local/bin/mcp-edge", "/opt/mcp-devbox/current/bin/mcp-edge"},
+		{bundle.ComponentDriver, "/usr/local/libexec/mcp-devbox/model-turn-driver", "/opt/mcp-devbox/current/libexec/model-turn-driver"},
+		{bundle.ComponentWorker, "/usr/local/libexec/mcp-devbox/mcp-autopilot-worker", "/opt/mcp-devbox/current/libexec/mcp-autopilot-worker"},
+		{bundle.ComponentUpdater, "/usr/local/libexec/mcp-devbox/mcp-bundle-updater", "/opt/mcp-devbox/current/libexec/mcp-bundle-updater"},
+		{bundle.ComponentNode, "/usr/local/libexec/mcp-devbox/node", "/opt/mcp-devbox/current/libexec/node"},
+		{bundle.ComponentProvider, "/opt/mcp-devbox/opencode-provider", "/opt/mcp-devbox/current/opencode-provider"},
+		{bundle.ComponentOpenCode, "/opt/mcp-devbox/opencode-1.18.1", "/opt/mcp-devbox/current/opencode"},
+	}
+}
+
+func reconcileOfficialComponentLinks(layout map[string]string, links []officialComponentLink) error {
+	for _, link := range links {
+		_, present := layout[link.component]
+		if err := reconcileOfficialLink(link.destination, link.target, present); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func reconcileOfficialLink(destination, target string, present bool) error {
 	if present {
 		return repairOfficialLink(destination, target)
@@ -271,6 +284,13 @@ func (s *systemdService) InstallUnit(releaseRoot string) error {
 	}
 	manifest, err := bundle.LoadTrustedManifest(releaseRoot, s.publicKey)
 	if err != nil {
+		return err
+	}
+	layout, ok := bundle.LayoutForVersion(manifest.Version)
+	if !ok {
+		return errors.New("official component layout is invalid")
+	}
+	if err := reconcileOfficialComponentLinks(layout, officialComponentLinks()); err != nil {
 		return err
 	}
 	targetBase, unitRelative := serviceGeneration(manifest.Version)
