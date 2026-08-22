@@ -285,7 +285,7 @@ func (s *systemdService) InstallUnit(releaseRoot string) error {
 	}
 	targetName := serviceName(targetBase, s.user)
 	if _, err := systemctlCommand("enable", targetName); err != nil {
-		return errors.New("Edge service enable failed")
+		return errors.New("edge service enable failed")
 	}
 	previousBase := legacyServiceBase
 	if targetBase == legacyServiceBase {

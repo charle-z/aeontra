@@ -22,7 +22,7 @@ RUN BUNDLE_PUBLIC_KEY="$(go run ./cmd/mcp-bundle-keygen --output /tmp/opencode-e
     && rm /out/release/manifest.json /out/release/manifest.sig \
     && E2E_LDFLAGS="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleRelease=p15.0.0 -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleCatalogHash=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundlePublicKey=$BUNDLE_PUBLIC_KEY" \
     && go build -trimpath -buildvcs=false -tags=opencode_e2e -ldflags "$E2E_LDFLAGS" -o /out/release/bin/mcp-edge ./cmd/mcp-edge \
-    && go run ./cmd/mcp-bundle-manifest --root /out/release --release p15.0.0 --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --protocol mcp-devbox.edge-bundle.v1 --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --architecture amd64 --private-key /tmp/opencode-e2e-release.key \
+    && go run ./cmd/mcp-bundle-manifest --root /out/release --release p15.0.0 --manifest-version 4 --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --protocol mcp-devbox.edge-bundle.v1 --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --architecture amd64 --private-key /tmp/opencode-e2e-release.key \
     && cp /out/release/bin/mcp-edge /out/mcp-edge \
     && cp /out/release/libexec/model-turn-driver /out/model-turn-driver \
     && rm /tmp/opencode-e2e-release.key \
