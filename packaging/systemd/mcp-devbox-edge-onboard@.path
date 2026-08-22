@@ -3,7 +3,7 @@ Description=Start MCP Devbox Edge after onboarding for %i
 
 [Path]
 PathExists=/home/%i/.local/state/mcp-edge/identity.json
-Unit=mcp-devbox-opencode-edge@%i.service
+Unit=mcp-devbox-edge@%i.service
 
 [Install]
 WantedBy=multi-user.target

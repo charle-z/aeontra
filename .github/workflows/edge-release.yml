@@ -8,12 +8,13 @@ on:
         required: true
         type: string
       generation:
-        description: Use bridge-v3 only for a v3 Edge; keep codex-v4 for an Edge already on v4
+        description: Use codex-v4 once as the updater bridge, then codex-v5 for Codex-only releases
         required: true
         type: choice
         options:
           - bridge-v3
           - codex-v4
+          - codex-v5
 
 permissions:
   contents: read
@@ -42,9 +43,9 @@ jobs:
           GENERATION: ${{ inputs.generation }}
         run: |
           [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ || "$RELEASE" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          [[ "$GENERATION" = bridge-v3 || "$GENERATION" = codex-v4 ]]
+          [[ "$GENERATION" = bridge-v3 || "$GENERATION" = codex-v4 || "$GENERATION" = codex-v5 ]]
           if [[ "$RELEASE" = v* ]]; then
-            [[ "$GENERATION" = codex-v4 ]]
+            [[ "$GENERATION" = codex-v4 || "$GENERATION" = codex-v5 ]]
           fi
           test -n "$EDGE_PRIVATE_KEY_B64"
           test -n "$DEB_GPG_PRIVATE_KEY_B64"
@@ -57,6 +58,7 @@ jobs:
           cache: true
 
       - name: Set up pinned Node
+        if: inputs.generation != 'codex-v5'
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.18.0'
@@ -64,6 +66,7 @@ jobs:
           cache-dependency-path: test/opencode-e2e/package-lock.json
 
       - name: Install pinned OpenCode
+        if: inputs.generation != 'codex-v5'
         run: npm ci --prefix test/opencode-e2e --no-audit --no-fund
 
       - name: Import offline release identities
@@ -91,22 +94,32 @@ jobs:
           bash packaging/github-cli/stage-pinned.sh --output "$RUNNER_TEMP/release/gh"
           manifest_version=3
           codex_args=()
+          legacy_args=()
           if [ "$GENERATION" = codex-v4 ]; then
             manifest_version=4
+          elif [ "$GENERATION" = codex-v5 ]; then
+            manifest_version=5
+          fi
+          if [ "$GENERATION" = codex-v4 ] || [ "$GENERATION" = codex-v5 ]; then
             bash packaging/codex/stage-pinned.sh \
               --output-bin "$RUNNER_TEMP/release/codex" \
               --output-pin "$RUNNER_TEMP/release/codex-pin.json"
             codex_args=(--codex-bin "$RUNNER_TEMP/release/codex" --codex-pin "$RUNNER_TEMP/release/codex-pin.json")
           fi
+          if [ "$GENERATION" != codex-v5 ]; then
+            legacy_args=(
+              --node-bin "$(command -v node)"
+              --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode"
+              --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+            )
+          fi
           stage_args=(
             --output "$RUNNER_TEMP/release/bundle" --release "$RELEASE" --commit "$commit"
             --manifest-version "$manifest_version"
             --catalog "$catalog" --private-key "$RUNNER_TEMP/release/edge.key" --public-key "$public_key"
-            --node-bin "$(command -v node)"
             --gh-bin "$RUNNER_TEMP/release/gh"
-            --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode"
-            --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
           )
+          stage_args+=("${legacy_args[@]}")
           stage_args+=("${codex_args[@]}")
           bash packaging/parrot/stage-edge-bundle.sh "${stage_args[@]}"
           go build -trimpath -o "$RUNNER_TEMP/release/mcp-release-channel" ./cmd/mcp-release-channel

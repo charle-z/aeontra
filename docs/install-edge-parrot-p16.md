@@ -81,9 +81,10 @@ and atomically points:
 /opt/mcp-devbox/current
 ```
 
-to that release. Compatibility links, the fixed systemd units, root-owned updater,
-polkit rule, reviewed Node/OpenCode/provider/driver components, and the rootless Podman
-prerequisites remain governed by the signed P15 bundle contract.
+to that release. Compatibility links, fixed systemd units, root-owned updater, polkit
+rule, pinned Codex component, and rootless Podman prerequisites remain governed by the
+signed bundle contract. OpenCode, its provider, Node and the external driver exist only
+in retained v4 rollback releases.
 
 The package declares `util-linux` because its lifecycle transaction invokes `runuser`;
 migration must execute as the Edge user who owns the private state, not as root. It also
@@ -266,7 +267,7 @@ Edge services and prove the state lock has no live owner:
 ```bash
 EDGE_USER="$(id -un)"
 sudo systemctl disable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
-sudo systemctl disable --now "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+sudo systemctl disable --now "mcp-devbox-edge@${EDGE_USER}.service"
 sudo systemctl disable --now mcp-devbox-edge.service
 pgrep -a mcp-edge
 ```
@@ -275,8 +276,8 @@ pgrep -a mcp-edge
 only then restore the watcher:
 
 ```bash
-sudo systemctl start "mcp-devbox-opencode-edge@${EDGE_USER}.service"
-systemctl is-active "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+sudo systemctl start "mcp-devbox-edge@${EDGE_USER}.service"
+systemctl is-active "mcp-devbox-edge@${EDGE_USER}.service"
 mcp-edge doctor
 sudo systemctl enable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
 ```
@@ -287,7 +288,7 @@ disabled while restoring the legacy rollback service:
 
 ```bash
 sudo systemctl disable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
-sudo systemctl disable --now "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+sudo systemctl disable --now "mcp-devbox-edge@${EDGE_USER}.service"
 sudo systemctl enable --now mcp-devbox-edge.service
 ```
 

@@ -69,12 +69,12 @@ request and translates the validated external text/tool response back to Respons
 SSE. Codex retains its agent loop; MCP Devbox retains runtime identity, replay
 protection, cancellation, workcell scope, GitHub brokerage and audit.
 
-The active source unit launches the pinned stock CLI inside the existing trusted Linux
+The active neutral Edge unit launches the pinned stock CLI inside the existing trusted Linux
 workcell Bubblewrap boundary. It passes no OpenAI credential or ChatGPT browser state,
 fixes the provider URL to the server-owned loopback listener, sets
-`requires_openai_auth=false`, and keeps Codex multiagent disabled until managed
-worktrees and one-writer fencing are implemented. OpenCode and its signed provider stay
-in the bundle solely as the preceding-release rollback harness.
+`requires_openai_auth=false`. Managed parallel writers use server-owned worktrees,
+leases and fences rather than Codex's built-in multiagent surface. OpenCode and its
+provider remain only in retained signed v4 rollback releases; v5 does not ship them.
 
 An App Server controller may be evaluated separately while it remains experimental,
 but it is not a prerequisite for this adapter or the initial signed release.
@@ -87,19 +87,14 @@ but it is not a prerequisite for this adapter or the initial signed release.
 - Do not expose the provider beyond loopback or the private workcell namespace.
 - Do not let Codex select a socket, host path, provider URL or GitHub credential.
 - Do not replace the P16 workqueue with Codex session storage.
-- Retain OpenCode as a signed rollback harness until a real-device Codex release passes
-  restart, cancellation, tool-loop and no-duplicate-turn acceptance.
+- Retain the signed v4 bridge release until the v5 real-device rollback/forward
+  acceptance passes; do not ship its OpenCode components in v5.
 - Implement managed worktrees and one-writer ownership before enabling writing
   multiagent workers.
 
-## Remaining implementation gates
+## Acceptance record
 
-1. Pass exact-head CI for the source launcher and packaging candidate.
-2. Publish one signed Edge release containing the pinned official artifact and verify
-   the installed manifest independently from source and backend identity.
-3. Pass Codex process restart/resume and a real GPT Web turn loop. The scripted
-   credential-free tool-call loop is already host accepted. Reassess App Server
-   independently against the official support posture before making it part of a
-   production lifecycle contract.
-4. Implement managed worktrees and one-writer ownership before enabling
-   `agents.enabled`; then connect that ownership to the existing P16 queue.
+The v4 Codex runtime, restart/resume, tool loop, no-duplicate-turn behavior and managed
+multiworker worktrees were accepted before the v5 packaging transition. The v5 source,
+release, installed-device and rollback/forward proofs must still be reported separately.
+Reassess App Server independently if its official support posture changes.

@@ -30,8 +30,8 @@ func TestCodexCompatibilityDecisionDocumentsBoundaries(t *testing.T) {
 		"private loopback OpenAI-compatible Responses provider",
 		"without giving it an OpenAI API key",
 		"experimental and unsupported for production workloads",
-		"Retain OpenCode as a signed rollback harness",
-		"Implement managed worktrees and one-writer ownership",
+		"Retain the signed v4 bridge release",
+		"Managed parallel writers use server-owned worktrees",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("Codex compatibility decision does not contain %q", required)

@@ -13,6 +13,8 @@ BUNDLE_ROOT="${MCP_DEVBOX_BUNDLE_ROOT:-/opt/mcp-devbox/current}"
 AUTOPILOT_MODEL="${MCP_DEVBOX_AUTOPILOT_MODEL:-/etc/mcp-devbox/autopilot-model.json}"
 NODE="${MCP_DEVBOX_NODE:-/usr/local/libexec/mcp-devbox/node}"
 GH="${MCP_DEVBOX_GH:-/usr/local/bin/gh}"
+CODEX="${MCP_DEVBOX_CODEX:-${BUNDLE_ROOT}/codex/codex}"
+CODEX_PIN="${MCP_DEVBOX_CODEX_PIN:-${BUNDLE_ROOT}/codex/pin.json}"
 REQUIRE_ROOTLESS="${MCP_DEVBOX_REQUIRE_ROOTLESS:-1}"
 
 fail() {
@@ -28,25 +30,35 @@ for command in bwrap curl git go python3; do
 done
 [ -r "$AUTOPILOT_MODEL" ] && [ ! -L "$AUTOPILOT_MODEL" ] || fail "local autopilot model configuration is missing"
 
-for path in /usr/local/bin/mcp-edge "$DRIVER" "$NODE" "$GH" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker" "$BUNDLE_ROOT/libexec/mcp-bundle-updater"; do
+for path in /usr/local/bin/mcp-edge "$GH" "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/manifest.sig" "$BUNDLE_ROOT/libexec/mcp-autopilot-worker" "$BUNDLE_ROOT/libexec/mcp-bundle-updater"; do
   [ -e "$path" ] || fail "missing reviewed installation path: $path"
 done
 [ -x /usr/local/bin/mcp-edge ] || fail "mcp-edge is not executable"
 [ -x "$GH" ] || fail "GitHub CLI is not executable"
-[ -x "$DRIVER" ] || fail "model-turn-driver is not executable"
-[ -x "$NODE" ] || fail "reviewed Node runtime is not executable"
-[ -x "$OPENCODE" ] || fail "OpenCode is not executable"
 [ -x "$BWRAP" ] || fail "Bubblewrap is not executable"
 
-[ "$("$NODE" --version)" = "v24.18.0" ] || fail "Node must be v24.18.0"
-[ "$("$OPENCODE" --version)" = "1.18.1" ] || fail "OpenCode must be 1.18.1"
-
-"$NODE" --input-type=module -e '
-  const provider = await import("file:///opt/mcp-devbox/opencode-provider/index.js");
-  if (typeof provider.createMCPDevboxModelBridge !== "function") {
-    throw new Error("provider export missing");
-  }
-' >/dev/null
+HARNESS=''
+if [ -f "$BUNDLE_ROOT/systemd/mcp-devbox-edge@.service" ] && [ ! -L "$BUNDLE_ROOT/systemd/mcp-devbox-edge@.service" ]; then
+  HARNESS='codex'
+  [ -x "$CODEX" ] && [ -r "$CODEX_PIN" ] && [ ! -L "$CODEX" ] && [ ! -L "$CODEX_PIN" ] || fail "signed Codex harness is incomplete"
+  "$CODEX" --version >/dev/null
+else
+  HARNESS='opencode'
+  for path in "$DRIVER" "$NODE" "$OPENCODE" "$INTEGRITY" "$PROVIDER/index.js" "$PROVIDER/package.json"; do
+    [ -e "$path" ] || fail "missing reviewed compatibility path: $path"
+  done
+  [ -x "$DRIVER" ] || fail "model-turn-driver is not executable"
+  [ -x "$NODE" ] || fail "reviewed Node runtime is not executable"
+  [ -x "$OPENCODE" ] || fail "OpenCode is not executable"
+  [ "$("$NODE" --version)" = "v24.18.0" ] || fail "Node must be v24.18.0"
+  [ "$("$OPENCODE" --version)" = "1.18.1" ] || fail "OpenCode must be 1.18.1"
+  "$NODE" --input-type=module -e '
+    const provider = await import("file:///opt/mcp-devbox/opencode-provider/index.js");
+    if (typeof provider.createMCPDevboxModelBridge !== "function") {
+      throw new Error("provider export missing");
+    }
+  ' >/dev/null
+fi
 
 install -d -m 0700 "$STATE_ROOT" "$DEV_ROOT" "$HTB_ROOT"
 for root in "$STATE_ROOT" "$DEV_ROOT" "$HTB_ROOT"; do
@@ -108,9 +120,12 @@ args=(
   --tmpfs /tmp
   --bind "$WORKSPACE" /workspace
   --bind "$RUNTIME" /runtime
-  --ro-bind "$PROVIDER" /mcp-provider
-  --ro-bind "$OPENCODE" /mcp-opencode
 )
+if [ "$HARNESS" = codex ]; then
+  args+=(--ro-bind "$CODEX" /mcp-codex --ro-bind "$CODEX_PIN" /mcp-codex-pin.json)
+else
+  args+=(--ro-bind "$PROVIDER" /mcp-provider --ro-bind "$OPENCODE" /mcp-opencode)
+fi
 if [ -n "$SOCKET" ]; then
   args+=(--bind "$SOCKET" /runtime/rootless-container.sock)
 fi
@@ -120,6 +135,7 @@ args+=(
   --setenv HOST_NETNS "$host_netns"
   --setenv EDGE_HOME "$HOME"
   --setenv ROOTLESS_ENABLED "$([ -n "$SOCKET" ] && printf 1 || printf 0)"
+  --setenv HARNESS "$HARNESS"
   --
   /bin/bash -euo pipefail -c '
     install -d -m 0700 /runtime/home
@@ -133,15 +149,20 @@ args+=(
     test ! -e /mnt/d
     test ! -S /run/docker.sock
     test ! -S /var/run/docker.sock
-    test "$(node --version)" = v24.18.0
-    test "$(/mcp-opencode --version)" = 1.18.1
     go version >/dev/null
-    node --input-type=module -e "
-      const provider = await import(\"file:///mcp-provider/index.js\");
-      if (typeof provider.createMCPDevboxModelBridge !== \"function\") {
-        throw new Error(\"provider export missing\");
-      }
-    "
+    if [ "$HARNESS" = codex ]; then
+      test -r /mcp-codex-pin.json
+      /mcp-codex --version >/dev/null
+    else
+      test "$(node --version)" = v24.18.0
+      test "$(/mcp-opencode --version)" = 1.18.1
+      node --input-type=module -e "
+        const provider = await import(\"file:///mcp-provider/index.js\");
+        if (typeof provider.createMCPDevboxModelBridge !== \"function\") {
+          throw new Error(\"provider export missing\");
+        }
+      "
+    fi
     if [ "$ROOTLESS_ENABLED" = 1 ]; then
       test -S /runtime/rootless-container.sock
       response="$(curl --fail --silent --show-error --max-time 5 --unix-socket /runtime/rootless-container.sock http://localhost/_ping)"

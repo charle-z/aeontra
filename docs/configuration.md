@@ -152,7 +152,7 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   `~/.local/state/mcp-edge/project-processes.db` and separate redacted logs below
   `~/.local/state/mcp-edge/project-process-logs`. The directory is owner-only and log
   and database files are `0600`; none is mounted into a workcell or returned as a path.
-- **Emergency limits:** `mcp-edge opencode --project-process-limit` defaults to `256`
+- **Emergency limits:** `mcp-edge codex --project-process-limit` defaults to `256`
   concurrent durable processes (maximum `4096`).
   `--project-process-log-limit` defaults to `67108864` bytes per stdout/stderr stream
   (maximum `1073741824`). Neither setting is a TTL and terminal rows are not removed

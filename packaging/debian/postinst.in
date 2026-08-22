@@ -15,6 +15,8 @@ MIGRATED_OPENCODE=0
 EDGE_USER=''
 EDGE_HOME=''
 STATE_MIGRATION_PREPARED=0
+EDGE_UNIT_BASE=''
+ATTEMPTED_EDGE_UNIT_BASE=''
 
 test "$(id -u)" -eq 0
 test -f "$RELEASE_ROOT/manifest.json"
@@ -49,7 +51,7 @@ edge_lifecycle() {
 }
 
 write_edge_home_dropins() {
-  service_dropin_dir="/etc/systemd/system/mcp-devbox-opencode-edge@${EDGE_USER}.service.d"
+  service_dropin_dir="/etc/systemd/system/${EDGE_UNIT_BASE}@${EDGE_USER}.service.d"
   path_dropin_dir="/etc/systemd/system/mcp-devbox-edge-onboard@${EDGE_USER}.path.d"
   state_root="$EDGE_HOME/.local/state/mcp-edge"
 
@@ -69,6 +71,38 @@ write_edge_home_dropins() {
     printf 'PathExists=%s/identity.json\n' "$state_root"
   } >"$path_dropin_dir/10-edge-home.conf"
   chmod 0644 "$service_dropin_dir/10-edge-home.conf" "$path_dropin_dir/10-edge-home.conf"
+}
+
+remove_official_link() {
+  destination="$1"
+  target="$2"
+  if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$target" ]; then
+    rm -f "$destination"
+  fi
+}
+
+install_edge_generation() {
+  release_root="$1"
+  path_next='/etc/systemd/system/.mcp-devbox-edge-onboard@.path.next'
+  if [ -f "$release_root/systemd/mcp-devbox-edge@.service" ] && [ ! -L "$release_root/systemd/mcp-devbox-edge@.service" ]; then
+    test -f "$release_root/systemd/mcp-devbox-edge-onboard@.path"
+    test ! -L "$release_root/systemd/mcp-devbox-edge-onboard@.path"
+    EDGE_UNIT_BASE='mcp-devbox-edge'
+    install -m 0644 "$release_root/systemd/mcp-devbox-edge@.service" /etc/systemd/system/mcp-devbox-edge@.service
+    install -m 0644 "$release_root/systemd/mcp-devbox-edge-onboard@.path" "$path_next"
+  elif [ -f "$release_root/systemd/mcp-devbox-opencode-edge@.service" ] && [ ! -L "$release_root/systemd/mcp-devbox-opencode-edge@.service" ]; then
+    EDGE_UNIT_BASE='mcp-devbox-opencode-edge'
+    install -m 0644 "$release_root/systemd/mcp-devbox-opencode-edge@.service" /etc/systemd/system/mcp-devbox-opencode-edge@.service
+    {
+      printf '%s\n' '[Unit]' 'Description=Start MCP Devbox Edge when identity exists for %i' '' '[Path]'
+      printf '%s\n' 'PathExists=/home/%i/.local/state/mcp-edge/identity.json' 'Unit=mcp-devbox-opencode-edge@%i.service' '' '[Install]' 'WantedBy=multi-user.target'
+    } >"$path_next"
+    chmod 0644 "$path_next"
+  else
+    echo 'signed Edge unit is unavailable' >&2
+    return 1
+  fi
+  mv -f "$path_next" /etc/systemd/system/mcp-devbox-edge-onboard@.path
 }
 
 restore_legacy_directory() {
@@ -94,8 +128,20 @@ rollback_install() {
     rm -f "$CURRENT_NEXT"
     ln -s "$OLD_TARGET" "$CURRENT_NEXT"
     mv -Tf "$CURRENT_NEXT" "$ROOT/current"
-    if [ -f "$ROOT/current/systemd/mcp-devbox-opencode-edge@.service" ]; then
-      install -m 0644 "$ROOT/current/systemd/mcp-devbox-opencode-edge@.service" /etc/systemd/system/mcp-devbox-opencode-edge@.service
+    if install_edge_generation "$ROOT/current"; then
+      if [ -n "$EDGE_USER" ]; then
+        if [ -n "$ATTEMPTED_EDGE_UNIT_BASE" ] && [ "$ATTEMPTED_EDGE_UNIT_BASE" != "$EDGE_UNIT_BASE" ]; then
+          systemctl disable --now "${ATTEMPTED_EDGE_UNIT_BASE}@${EDGE_USER}.service" || true
+        fi
+        write_edge_home_dropins || true
+        systemctl enable "${EDGE_UNIT_BASE}@${EDGE_USER}.service" || true
+        systemctl enable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path" || true
+        if [ -f "$EDGE_HOME/.local/state/mcp-edge/identity.json" ]; then
+          systemctl restart "${EDGE_UNIT_BASE}@${EDGE_USER}.service" || true
+        fi
+      fi
+    else
+      echo 'MCP Devbox Edge unit rollback requires manual recovery' >&2
     fi
   else
     rm -f "$ROOT/current"
@@ -110,19 +156,42 @@ mv -Tf "$CURRENT_NEXT" "$ROOT/current"
 
 ln -sfn "$ROOT/current/bin/mcp-edge" /usr/local/bin/mcp-edge
 ln -sfn "$ROOT/current/libexec/gh" /usr/local/bin/gh
-ln -sfn "$ROOT/current/libexec/model-turn-driver" /usr/local/libexec/mcp-devbox/model-turn-driver
 ln -sfn "$ROOT/current/libexec/mcp-autopilot-worker" /usr/local/libexec/mcp-devbox/mcp-autopilot-worker
 ln -sfn "$ROOT/current/libexec/mcp-bundle-updater" /usr/local/libexec/mcp-devbox/mcp-bundle-updater
-ln -sfn "$ROOT/current/libexec/node" /usr/local/libexec/mcp-devbox/node
-if stage_legacy_directory "$LEGACY_PROVIDER" "$LEGACY_PROVIDER_BACKUP"; then
-  MIGRATED_PROVIDER=1
+if [ -x "$ROOT/current/libexec/model-turn-driver" ]; then
+  ln -sfn "$ROOT/current/libexec/model-turn-driver" /usr/local/libexec/mcp-devbox/model-turn-driver
+else
+  remove_official_link /usr/local/libexec/mcp-devbox/model-turn-driver "$ROOT/current/libexec/model-turn-driver"
 fi
-ln -sfn "$ROOT/current/opencode-provider" "$LEGACY_PROVIDER"
-if stage_legacy_directory "$LEGACY_OPENCODE" "$LEGACY_OPENCODE_BACKUP"; then
-  MIGRATED_OPENCODE=1
+if [ -x "$ROOT/current/libexec/node" ]; then
+  ln -sfn "$ROOT/current/libexec/node" /usr/local/libexec/mcp-devbox/node
+else
+  remove_official_link /usr/local/libexec/mcp-devbox/node "$ROOT/current/libexec/node"
 fi
-ln -sfn "$ROOT/current/opencode" "$LEGACY_OPENCODE"
-install -m 0644 "$ROOT/current/systemd/mcp-devbox-opencode-edge@.service" /etc/systemd/system/mcp-devbox-opencode-edge@.service
+if [ -d "$ROOT/current/opencode-provider" ]; then
+  if stage_legacy_directory "$LEGACY_PROVIDER" "$LEGACY_PROVIDER_BACKUP"; then
+    MIGRATED_PROVIDER=1
+  fi
+  ln -sfn "$ROOT/current/opencode-provider" "$LEGACY_PROVIDER"
+else
+  if stage_legacy_directory "$LEGACY_PROVIDER" "$LEGACY_PROVIDER_BACKUP"; then
+    MIGRATED_PROVIDER=1
+  fi
+  remove_official_link "$LEGACY_PROVIDER" "$ROOT/current/opencode-provider"
+fi
+if [ -d "$ROOT/current/opencode" ]; then
+  if stage_legacy_directory "$LEGACY_OPENCODE" "$LEGACY_OPENCODE_BACKUP"; then
+    MIGRATED_OPENCODE=1
+  fi
+  ln -sfn "$ROOT/current/opencode" "$LEGACY_OPENCODE"
+else
+  if stage_legacy_directory "$LEGACY_OPENCODE" "$LEGACY_OPENCODE_BACKUP"; then
+    MIGRATED_OPENCODE=1
+  fi
+  remove_official_link "$LEGACY_OPENCODE" "$ROOT/current/opencode"
+fi
+install_edge_generation "$ROOT/current"
+ATTEMPTED_EDGE_UNIT_BASE="$EDGE_UNIT_BASE"
 
 if [ -s /etc/mcp-devbox/edge-user ]; then
   EDGE_USER="$(cat /etc/mcp-devbox/edge-user)"
@@ -161,12 +230,23 @@ if [ -n "$EDGE_USER" ]; then
     *"edge_lifecycle migration=not_needed"*) ;;
     *) echo 'unexpected MCP Devbox Edge migration status' >&2; exit 1 ;;
   esac
-  systemctl enable "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+  if [ "$EDGE_UNIT_BASE" = 'mcp-devbox-edge' ]; then
+    PREVIOUS_EDGE_UNIT="mcp-devbox-opencode-edge@${EDGE_USER}.service"
+  else
+    PREVIOUS_EDGE_UNIT="mcp-devbox-edge@${EDGE_USER}.service"
+  fi
+  PREVIOUS_EDGE_STATE="$(systemctl show "$PREVIOUS_EDGE_UNIT" --property=LoadState --value)"
+  case "$PREVIOUS_EDGE_STATE" in
+    not-found) ;;
+    loaded) systemctl disable --now "$PREVIOUS_EDGE_UNIT" ;;
+    *) echo 'previous Edge service state is invalid' >&2; exit 1 ;;
+  esac
+  systemctl enable "${EDGE_UNIT_BASE}@${EDGE_USER}.service"
   systemctl enable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
   runuser -u "$EDGE_USER" -- /usr/local/libexec/mcp-devbox/onboarding-preflight
   if [ -f "$EDGE_HOME/.local/state/mcp-edge/identity.json" ]; then
-    systemctl restart "mcp-devbox-opencode-edge@${EDGE_USER}.service"
-    systemctl is-active --quiet "mcp-devbox-opencode-edge@${EDGE_USER}.service"
+    systemctl restart "${EDGE_UNIT_BASE}@${EDGE_USER}.service"
+    systemctl is-active --quiet "${EDGE_UNIT_BASE}@${EDGE_USER}.service"
   fi
   if [ "$STATE_MIGRATION_PREPARED" -eq 1 ]; then
     FINALIZATION_OUTPUT="$(edge_lifecycle finalize-state-migration)"

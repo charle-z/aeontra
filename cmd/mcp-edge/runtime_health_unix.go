@@ -133,7 +133,7 @@ func installedEdgeServiceName() string {
 	if content, err := os.ReadFile("/etc/mcp-devbox/edge-user"); err == nil {
 		username := strings.TrimSpace(string(content))
 		if edgeServiceUserPattern.MatchString(username) {
-			return "mcp-devbox-opencode-edge@" + username + ".service"
+			return edgeServiceName(username)
 		}
 	}
 	current, err := user.Current()
@@ -144,7 +144,7 @@ func installedEdgeServiceName() string {
 	if !edgeServiceUserPattern.MatchString(username) {
 		return ""
 	}
-	return "mcp-devbox-opencode-edge@" + username + ".service"
+	return edgeServiceName(username)
 }
 
 func systemdEdgeServiceObservation(service string) edgeServiceObservation {

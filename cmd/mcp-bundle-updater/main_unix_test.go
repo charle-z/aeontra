@@ -100,3 +100,26 @@ func TestBridgeRepairAllowsVersionTwoReleaseWithoutBundledGitHubCLI(t *testing.T
 		t.Fatal("missing required bridge component unexpectedly accepted")
 	}
 }
+
+func TestServiceGenerationKeepsRollbackAndSelectsNeutralCodexUnit(t *testing.T) {
+	base, relative := serviceGeneration(4)
+	if base != legacyServiceBase || relative != "systemd/mcp-devbox-opencode-edge@.service" {
+		t.Fatalf("v4 service=%q path=%q", base, relative)
+	}
+	base, relative = serviceGeneration(5)
+	if base != currentServiceBase || relative != "systemd/mcp-devbox-edge@.service" {
+		t.Fatalf("v5 service=%q path=%q", base, relative)
+	}
+}
+
+func TestTrustedManifestOutranksStaleInstalledUnitDuringRollback(t *testing.T) {
+	if got := serviceBaseFromEvidence(4, true, true); got != legacyServiceBase {
+		t.Fatalf("trusted v4 selected %q, want rollback service", got)
+	}
+	if got := serviceBaseFromEvidence(5, true, false); got != currentServiceBase {
+		t.Fatalf("trusted v5 selected %q, want neutral service", got)
+	}
+	if got := serviceBaseFromEvidence(0, false, true); got != currentServiceBase {
+		t.Fatalf("unreadable manifest fallback selected %q, want installed neutral service", got)
+	}
+}

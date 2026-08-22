@@ -38,6 +38,17 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 			t.Fatalf("package builder missing %q", required)
 		}
 	}
+	for _, required := range []string{
+		"if [ \"$HAS_OPENCODE\" -eq 1 ]; then\n  install -d -m 0755 \"$RELEASE_ROOT/opencode\" \"$RELEASE_ROOT/opencode-provider\"",
+		"if [ \"$HAS_CODEX\" -eq 1 ]; then\n  install -d -m 0755 \"$RELEASE_ROOT/codex\"",
+	} {
+		if !strings.Contains(build, required) {
+			t.Fatalf("package builder must create optional component directories conditionally: %q", required)
+		}
+	}
+	if strings.Contains(build, "\"$RELEASE_ROOT/opencode\" \"$RELEASE_ROOT/opencode-provider\" \"$RELEASE_ROOT/codex\" \"$RELEASE_ROOT/systemd\"") {
+		t.Fatal("package builder must not materialize absent optional component directories")
+	}
 
 	postinst := repoFile(t, "packaging/debian/postinst.in")
 	for _, required := range []string{
@@ -68,9 +79,10 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	prerm := repoFile(t, "packaging/debian/prerm")
 	for _, required := range []string{
 		"mcp-devbox-edge-onboard@${EDGE_USER}.path",
-		"mcp-devbox-opencode-edge@${EDGE_USER}.service",
+		"for EDGE_UNIT_BASE in mcp-devbox-edge mcp-devbox-opencode-edge",
+		"EDGE_UNIT=\"${EDGE_UNIT_BASE}@${EDGE_USER}.service\"",
 		"mcp-devbox-edge-onboard@${EDGE_USER}.path.d/10-edge-home.conf",
-		"mcp-devbox-opencode-edge@${EDGE_USER}.service.d/10-edge-home.conf",
+		"${EDGE_UNIT_BASE}@${EDGE_USER}.service.d/10-edge-home.conf",
 		"systemctl daemon-reload",
 	} {
 		if !strings.Contains(prerm, required) {
@@ -123,7 +135,7 @@ func TestPrivilegedUpdaterAuthorityIsLimitedToFixedUnits(t *testing.T) {
 
 func TestEdgeReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 	stage := repoFile(t, "packaging/parrot/stage-edge-bundle.sh")
-	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js", "--node-bin", "libexec/node", "--gh-bin", "libexec/gh", "--manifest-version", "mcp-devbox-opencode-edge-bridge@.service", "codex/codex", "codex/pin.json"} {
+	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "--gh-bin", "libexec/gh", "--manifest-version", "mcp-devbox-opencode-edge-bridge@.service", "mcp-devbox-edge@.service", "mcp-devbox-edge-onboard@.path", "codex/codex", "codex/pin.json"} {
 		if !strings.Contains(stage, required) {
 			t.Fatalf("bundle staging missing %q", required)
 		}
@@ -146,7 +158,7 @@ func TestEdgeReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 		}
 	}
 	release := repoFile(t, ".github/workflows/edge-release.yml")
-	for _, required := range []string{"Publish signed Aeontra Edge release", "p15.x.y bridge or vMAJOR.MINOR.PATCH", "workflow_dispatch", "environment: edge-release", "EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64", "stage-edge-bundle.sh", "build-edge-release.sh", "build-edge-deb.sh", "Generate Edge bundle SBOM", "gh release create", "gh release upload stable --clobber", "bridge-v3", "codex-v4", "packaging/codex/stage-pinned.sh"} {
+	for _, required := range []string{"Publish signed Aeontra Edge release", "p15.x.y bridge or vMAJOR.MINOR.PATCH", "workflow_dispatch", "environment: edge-release", "EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64", "stage-edge-bundle.sh", "build-edge-release.sh", "build-edge-deb.sh", "Generate Edge bundle SBOM", "gh release create", "gh release upload stable --clobber", "bridge-v3", "codex-v4", "codex-v5", "packaging/codex/stage-pinned.sh"} {
 		if !strings.Contains(release, required) {
 			t.Fatalf("release workflow missing %q", required)
 		}
@@ -158,7 +170,7 @@ func TestEdgeReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 		}
 	}
 	evidence := repoFile(t, ".github/workflows/p15-edge.yml")
-	for _, required := range []string{"Reproducible signed Debian package", "cmp ", "dpkg --force-depends -i", "mcp-edge bundle verify", "edge-state-fixture", "cmp /fixtures/legacy-state/identity.json", "p14-provider", "test -L /opt/mcp-devbox/opencode-provider", "test -L /opt/mcp-devbox/opencode-1.18.1"} {
+	for _, required := range []string{"Reproducible signed Debian package", "cmp ", "dpkg --force-depends -i", "mcp-edge bundle verify", "edge-state-fixture", "cmp /fixtures/legacy-state/identity.json", "p14-provider", "test ! -e /opt/mcp-devbox/opencode-provider", "test ! -e /opt/mcp-devbox/opencode-1.18.1", "--manifest-version 5"} {
 		if !strings.Contains(evidence, required) {
 			t.Fatalf("P15 evidence workflow missing %q", required)
 		}
