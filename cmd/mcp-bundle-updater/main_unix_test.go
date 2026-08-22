@@ -112,6 +112,71 @@ func TestServiceGenerationKeepsRollbackAndSelectsNeutralCodexUnit(t *testing.T) 
 	}
 }
 
+func TestOfficialComponentLinksTrackGenerationAndRollback(t *testing.T) {
+	root := t.TempDir()
+	links := []officialComponentLink{
+		{bundle.ComponentEdge, filepath.Join(root, "bin", "mcp-edge"), filepath.Join(root, "current", "bin", "mcp-edge")},
+		{bundle.ComponentNode, filepath.Join(root, "libexec", "node"), filepath.Join(root, "current", "libexec", "node")},
+		{bundle.ComponentProvider, filepath.Join(root, "opencode-provider"), filepath.Join(root, "current", "opencode-provider")},
+		{bundle.ComponentOpenCode, filepath.Join(root, "opencode"), filepath.Join(root, "current", "opencode")},
+	}
+	v4, ok := bundle.LayoutForVersion(4)
+	if !ok {
+		t.Fatal("v4 layout unavailable")
+	}
+	v5, ok := bundle.LayoutForVersion(5)
+	if !ok {
+		t.Fatal("v5 layout unavailable")
+	}
+	if err := reconcileOfficialComponentLinks(v4, links); err != nil {
+		t.Fatal(err)
+	}
+	for _, link := range links {
+		if got, err := os.Readlink(link.destination); err != nil || got != link.target {
+			t.Fatalf("v4 link %s=%q err=%v", link.component, got, err)
+		}
+	}
+	if err := reconcileOfficialComponentLinks(v5, links); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(links[0].destination); err != nil || got != links[0].target {
+		t.Fatalf("shared Edge link=%q err=%v", got, err)
+	}
+	for _, link := range links[1:] {
+		if _, err := os.Lstat(link.destination); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("v5 retained %s link: %v", link.component, err)
+		}
+	}
+	if err := reconcileOfficialComponentLinks(v4, links); err != nil {
+		t.Fatal(err)
+	}
+	for _, link := range links {
+		if got, err := os.Readlink(link.destination); err != nil || got != link.target {
+			t.Fatalf("rollback link %s=%q err=%v", link.component, got, err)
+		}
+	}
+}
+
+func TestAbsentComponentPreservesUnmanagedCompatibilityPath(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "opencode-provider")
+	foreignTarget := filepath.Join(root, "operator-provider")
+	if err := os.Symlink(foreignTarget, destination); err != nil {
+		t.Fatal(err)
+	}
+	v5, ok := bundle.LayoutForVersion(5)
+	if !ok {
+		t.Fatal("v5 layout unavailable")
+	}
+	links := []officialComponentLink{{bundle.ComponentProvider, destination, filepath.Join(root, "current", "opencode-provider")}}
+	if err := reconcileOfficialComponentLinks(v5, links); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(destination); err != nil || got != foreignTarget {
+		t.Fatalf("unmanaged link=%q err=%v", got, err)
+	}
+}
+
 func TestTrustedManifestOutranksStaleInstalledUnitDuringRollback(t *testing.T) {
 	if got := serviceBaseFromEvidence(4, true, true); got != legacyServiceBase {
 		t.Fatalf("trusted v4 selected %q, want rollback service", got)
