@@ -38,6 +38,17 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 			t.Fatalf("package builder missing %q", required)
 		}
 	}
+	for _, required := range []string{
+		"if [ \"$HAS_OPENCODE\" -eq 1 ]; then\n  install -d -m 0755 \"$RELEASE_ROOT/opencode\" \"$RELEASE_ROOT/opencode-provider\"",
+		"if [ \"$HAS_CODEX\" -eq 1 ]; then\n  install -d -m 0755 \"$RELEASE_ROOT/codex\"",
+	} {
+		if !strings.Contains(build, required) {
+			t.Fatalf("package builder must create optional component directories conditionally: %q", required)
+		}
+	}
+	if strings.Contains(build, "\"$RELEASE_ROOT/opencode\" \"$RELEASE_ROOT/opencode-provider\" \"$RELEASE_ROOT/codex\" \"$RELEASE_ROOT/systemd\"") {
+		t.Fatal("package builder must not materialize absent optional component directories")
+	}
 
 	postinst := repoFile(t, "packaging/debian/postinst.in")
 	for _, required := range []string{

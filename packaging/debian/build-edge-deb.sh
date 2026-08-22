@@ -78,7 +78,7 @@ RELEASE_ROOT="$PACKAGE_ROOT/opt/mcp-devbox/releases/$RELEASE"
 
 install -d -m 0755 \
   "$PACKAGE_ROOT/DEBIAN" "$RELEASE_ROOT/bin" "$RELEASE_ROOT/libexec" \
-  "$RELEASE_ROOT/opencode" "$RELEASE_ROOT/opencode-provider" "$RELEASE_ROOT/codex" "$RELEASE_ROOT/systemd" \
+  "$RELEASE_ROOT/systemd" \
   "$PACKAGE_ROOT/etc/mcp-devbox" "$PACKAGE_ROOT/usr/local/bin" \
   "$PACKAGE_ROOT/usr/local/libexec/mcp-devbox" "$PACKAGE_ROOT/usr/share/doc/mcp-devbox" \
   "$PACKAGE_ROOT/etc/systemd/system"
@@ -90,6 +90,7 @@ install -m 0755 "$BUNDLE/libexec/mcp-autopilot-worker" "$RELEASE_ROOT/libexec/mc
 install -m 0755 "$BUNDLE/libexec/mcp-bundle-updater" "$RELEASE_ROOT/libexec/mcp-bundle-updater"
 install -m 0755 "$BUNDLE/libexec/gh" "$RELEASE_ROOT/libexec/gh"
 if [ "$HAS_OPENCODE" -eq 1 ]; then
+  install -d -m 0755 "$RELEASE_ROOT/opencode" "$RELEASE_ROOT/opencode-provider"
   install -m 0755 "$BUNDLE/libexec/model-turn-driver" "$RELEASE_ROOT/libexec/model-turn-driver"
   install -m 0755 "$BUNDLE/libexec/node" "$RELEASE_ROOT/libexec/node"
   install -m 0755 "$BUNDLE/opencode/opencode" "$RELEASE_ROOT/opencode/opencode"
@@ -100,6 +101,7 @@ if [ "$HAS_OPENCODE" -eq 1 ]; then
   install -m 0644 "$BUNDLE/opencode-provider/package.json" "$RELEASE_ROOT/opencode-provider/package.json"
 fi
 if [ "$HAS_CODEX" -eq 1 ]; then
+  install -d -m 0755 "$RELEASE_ROOT/codex"
   install -m 0755 "$BUNDLE/codex/codex" "$RELEASE_ROOT/codex/codex"
   install -m 0644 "$BUNDLE/codex/pin.json" "$RELEASE_ROOT/codex/pin.json"
 fi
