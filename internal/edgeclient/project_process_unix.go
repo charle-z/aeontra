@@ -61,6 +61,7 @@ var (
 	projectProcessReasonPattern          = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 	ErrProjectProcessNotFound            = errors.New("project process not found")
 	ErrProjectProcessIdempotencyConflict = errors.New("project process idempotency conflict")
+	ErrProjectProcessLimitReached        = errors.New("project process limit reached")
 	ErrProjectProcessIdentityChanged     = errors.New("project process identity changed")
 	ErrProjectProcessNotOwned            = errors.New("project process is not owned")
 	ErrProjectProcessGroupMissing        = errors.New("project process group is missing")
@@ -156,6 +157,7 @@ type ProjectProcessManager struct {
 	maxLogBytes                    int64
 	newID                          func() (string, error)
 	now                            func() time.Time
+	startMu                        sync.Mutex
 	watchMu                        sync.Mutex
 	watching                       map[string]bool
 }
@@ -272,6 +274,8 @@ func (manager *ProjectProcessManager) Start(ctx context.Context, request Project
 	if err != nil {
 		return ProjectProcessSnapshot{}, false, err
 	}
+	manager.startMu.Lock()
+	defer manager.startMu.Unlock()
 	if existing, err := manager.recordByIdempotency(request.IdempotencyKey); err == nil {
 		if existing.RequestDigest != digest {
 			return ProjectProcessSnapshot{}, false, ErrProjectProcessIdempotencyConflict
@@ -281,8 +285,11 @@ func (manager *ProjectProcessManager) Start(ctx context.Context, request Project
 		return ProjectProcessSnapshot{}, false, errors.New("project process journal unavailable")
 	}
 	var active int
-	if err := manager.db.QueryRow(`SELECT COUNT(*) FROM project_processes WHERE state IN ('starting','running','stopping')`).Scan(&active); err != nil || active >= manager.maxProcesses {
-		return ProjectProcessSnapshot{}, false, errors.New("project process limit reached")
+	if err := manager.db.QueryRow(`SELECT COUNT(*) FROM project_processes WHERE state IN ('starting','running','stopping')`).Scan(&active); err != nil {
+		return ProjectProcessSnapshot{}, false, errors.New("project process journal unavailable")
+	}
+	if active >= manager.maxProcesses {
+		return ProjectProcessSnapshot{}, false, ErrProjectProcessLimitReached
 	}
 	processID, err := manager.newID()
 	if err != nil || !projectProcessIDPattern.MatchString(processID) {

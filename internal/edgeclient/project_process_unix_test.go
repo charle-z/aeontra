@@ -160,6 +160,55 @@ func TestProjectProcessManagerStartsOnceAndReadsRedactedSeparatedOutput(t *testi
 	}
 }
 
+func TestProjectProcessManagerReservesProcessCapacityAtomically(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	next := 0
+	manager, err := OpenProjectProcessManager(ProjectProcessManagerConfig{
+		StateRoot: t.TempDir(), Platform: platform, MaxProcesses: 1, MaxLogBytes: 1 << 20,
+		NewID: func() (string, error) {
+			next++
+			return "pr_0123456789abcdef0123456789abcde" + string(rune('0'+next)), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+
+	requests := []ProjectProcessStartRequest{
+		testProjectProcessRequest(t, "capacity-a"),
+		testProjectProcessRequest(t, "capacity-b"),
+	}
+	start := make(chan struct{})
+	results := make(chan error, len(requests))
+	for _, request := range requests {
+		request := request
+		go func() {
+			<-start
+			_, _, startErr := manager.Start(context.Background(), request)
+			results <- startErr
+		}()
+	}
+	close(start)
+
+	succeeded := 0
+	limited := 0
+	for range requests {
+		startErr := <-results
+		switch {
+		case startErr == nil:
+			succeeded++
+		case errors.Is(startErr, ErrProjectProcessLimitReached):
+			limited++
+		default:
+			t.Fatalf("unexpected start error: %v", startErr)
+		}
+	}
+	if succeeded != 1 || limited != 1 || len(platform.specs) != 1 {
+		t.Fatalf("succeeded=%d limited=%d starts=%d", succeeded, limited, len(platform.specs))
+	}
+}
+
 func TestProjectProcessLogWriterRedactsSecretsAcrossWriteBoundaries(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "process.stdout.log")
