@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	ossignal "os/signal"
@@ -53,6 +54,7 @@ const (
 	projectProcessDatabaseFile    = "project-processes.db"
 	projectProcessLogDirectory    = "project-process-logs"
 	projectProcessWorkerDirectory = "project-process-workers"
+	projectProcessStdinDirectory  = "process-stdin"
 )
 
 var (
@@ -62,6 +64,8 @@ var (
 	ErrProjectProcessNotFound            = errors.New("project process not found")
 	ErrProjectProcessIdempotencyConflict = errors.New("project process idempotency conflict")
 	ErrProjectProcessLimitReached        = errors.New("project process limit reached")
+	ErrProjectProcessStdinConflict       = errors.New("project process stdin offset conflict")
+	ErrProjectProcessStdinClosed         = errors.New("project process stdin is closed")
 	ErrProjectProcessIdentityChanged     = errors.New("project process identity changed")
 	ErrProjectProcessNotOwned            = errors.New("project process is not owned")
 	ErrProjectProcessGroupMissing        = errors.New("project process group is missing")
@@ -85,6 +89,7 @@ type ProjectProcessPlatform interface {
 	Start(DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error)
 	Alive(ProjectProcessIdentity) (bool, error)
 	Signal(ProjectProcessIdentity, ProjectProcessSignal) error
+	WriteStdin(ProjectProcessIdentity, ProjectProcessStdinWrite) (ProjectProcessStdinReceipt, error)
 }
 
 type ProjectProcessStartRequest struct {
@@ -99,6 +104,28 @@ type ProjectProcessReadRequest struct {
 	ProcessID, ProjectAlias, TargetAlias string
 	StdoutOffset, StderrOffset           int64
 	LimitBytes                           int
+}
+
+type ProjectProcessStdinRequest struct {
+	ProcessID, ProjectAlias, TargetAlias string
+	FrameID                              string
+	ExpectedOffset                       int64
+	Data                                 string
+	Close                                bool
+}
+
+type ProjectProcessStdinWrite struct {
+	FrameID        string
+	ExpectedOffset int64
+	Data           []byte
+	Close          bool
+}
+
+type ProjectProcessStdinReceipt struct {
+	NextOffset    int64
+	AcceptedBytes int
+	Closed        bool
+	Reused        bool
 }
 
 type ProjectProcessStopRequest struct {
@@ -151,6 +178,7 @@ type ProjectProcessManagerConfig struct {
 type ProjectProcessManager struct {
 	db                             *sql.DB
 	stateRoot, logRoot, workerRoot string
+	stdinRoot                      string
 	platform                       ProjectProcessPlatform
 	resolveExecutable              bool
 	maxProcesses                   int
@@ -158,6 +186,7 @@ type ProjectProcessManager struct {
 	newID                          func() (string, error)
 	now                            func() time.Time
 	startMu                        sync.Mutex
+	effectLocks                    [64]sync.Mutex
 	watchMu                        sync.Mutex
 	watching                       map[string]bool
 }
@@ -189,6 +218,10 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 	workerRoot := filepath.Join(root, projectProcessWorkerDirectory)
 	if err := os.MkdirAll(workerRoot, 0o700); err != nil || os.Chmod(workerRoot, 0o700) != nil {
 		return nil, errors.New("project process worker state is unavailable")
+	}
+	stdinRoot := filepath.Join(root, projectProcessStdinDirectory)
+	if err := os.MkdirAll(stdinRoot, 0o700); err != nil || os.Chmod(stdinRoot, 0o700) != nil {
+		return nil, errors.New("project process stdin state is unavailable")
 	}
 	databasePath := filepath.Join(root, projectProcessDatabaseFile)
 	if info, err := os.Lstat(databasePath); err == nil {
@@ -238,7 +271,7 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 	platform := config.Platform
 	resolveExecutable := platform == nil
 	if platform == nil {
-		platform = osProjectProcessPlatform{stateRoot: root, workerRoot: workerRoot}
+		platform = osProjectProcessPlatform{stateRoot: root, workerRoot: workerRoot, stdinRoot: stdinRoot}
 	}
 	newID := config.NewID
 	if newID == nil {
@@ -248,7 +281,7 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 	if now == nil {
 		now = time.Now
 	}
-	manager := &ProjectProcessManager{db: db, stateRoot: root, logRoot: logRoot, workerRoot: workerRoot, platform: platform, resolveExecutable: resolveExecutable, maxProcesses: maxProcesses, maxLogBytes: maxLogBytes, newID: newID, now: now, watching: map[string]bool{}}
+	manager := &ProjectProcessManager{db: db, stateRoot: root, logRoot: logRoot, workerRoot: workerRoot, stdinRoot: stdinRoot, platform: platform, resolveExecutable: resolveExecutable, maxProcesses: maxProcesses, maxLogBytes: maxLogBytes, newID: newID, now: now, watching: map[string]bool{}}
 	if err := manager.Reconcile(); err != nil {
 		_ = db.Close()
 		return nil, errors.New("project process reconciliation failed")
@@ -417,10 +450,59 @@ func (manager *ProjectProcessManager) Status(request ProjectProcessReadRequest) 
 	return snapshot, nil
 }
 
+func (manager *ProjectProcessManager) WriteStdin(request ProjectProcessStdinRequest) (ProjectProcessSnapshot, ProjectProcessStdinReceipt, error) {
+	if !projectProcessIDPattern.MatchString(request.ProcessID) || !projectProcessIdempotencyPattern.MatchString(request.FrameID) || request.ExpectedOffset < 0 ||
+		request.ExpectedOffset > edge.MaxProjectProcessStdinTotalBytes-int64(len(request.Data)) || len(request.Data) > edge.MaxProjectProcessStdinBytes ||
+		!utf8.ValidString(request.Data) || strings.ContainsRune(request.Data, 0) || request.Data == "" && !request.Close {
+		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, errors.New("project process stdin request is invalid")
+	}
+	if _, redacted := policy.Redact(request.Data); redacted {
+		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, errors.New("project process stdin contains secret material")
+	}
+	effectLock := manager.projectProcessEffectLock(request.ProcessID)
+	effectLock.Lock()
+	defer effectLock.Unlock()
+	record, err := manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+	if err != nil {
+		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, err
+	}
+	if record.State != ProjectProcessRunning {
+		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, ErrProjectProcessNotFound
+	}
+	alive, err := manager.platform.Alive(record.Identity)
+	if errors.Is(err, ErrProjectProcessIdentityChanged) || err == nil && !alive {
+		_ = manager.reconcileRecord(record)
+		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, ErrProjectProcessIdentityChanged
+	}
+	if err != nil {
+		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, errors.New("project process stdin liveness unavailable")
+	}
+	receipt, err := manager.platform.WriteStdin(record.Identity, ProjectProcessStdinWrite{FrameID: request.FrameID, ExpectedOffset: request.ExpectedOffset, Data: []byte(request.Data), Close: request.Close})
+	if err != nil {
+		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, err
+	}
+	if receipt.NextOffset < 0 || receipt.AcceptedBytes < 0 || receipt.AcceptedBytes > len(request.Data) ||
+		receipt.NextOffset != request.ExpectedOffset+int64(receipt.AcceptedBytes) || receipt.AcceptedBytes < len(request.Data) && !receipt.Closed || request.Close && !receipt.Closed {
+		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, errors.New("project process stdin receipt is invalid")
+	}
+	return manager.snapshot(record), receipt, nil
+}
+
+func (manager *ProjectProcessManager) projectProcessEffectLock(processID string) *sync.Mutex {
+	index := uint32(0)
+	for position := 0; position < len(processID); position++ {
+		index = index*33 + uint32(processID[position])
+	}
+	return &manager.effectLocks[index%uint32(len(manager.effectLocks))]
+}
+
 func (manager *ProjectProcessManager) Stop(ctx context.Context, request ProjectProcessStopRequest) (ProjectProcessSnapshot, error) {
 	if !projectProcessIDPattern.MatchString(request.ProcessID) || request.GracePeriod <= 0 || request.GracePeriod > 30*time.Second {
 		return ProjectProcessSnapshot{}, errors.New("project process stop request is invalid")
 	}
+	effectLock := manager.projectProcessEffectLock(request.ProcessID)
+	effectLock.Lock()
+	defer effectLock.Unlock()
 	record, err := manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
 	if err != nil {
 		return ProjectProcessSnapshot{}, err
@@ -460,6 +542,9 @@ func (manager *ProjectProcessManager) Signal(request ProjectProcessSignalRequest
 		(request.Signal != ProjectProcessInterrupt && request.Signal != ProjectProcessTerminate && request.Signal != ProjectProcessKill) {
 		return ProjectProcessSnapshot{}, errors.New("project process signal request is invalid")
 	}
+	effectLock := manager.projectProcessEffectLock(request.ProcessID)
+	effectLock.Lock()
+	defer effectLock.Unlock()
 	record, err := manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
 	if err != nil {
 		return ProjectProcessSnapshot{}, err
@@ -788,6 +873,17 @@ func (manager *ProjectProcessManager) removeLogs(processID string) error {
 			return errors.New("project process worker cleanup failed")
 		}
 	}
+	socketPath := projectProcessStdinSocketPath(manager.stdinRoot, processID)
+	if info, err := os.Lstat(socketPath); err == nil {
+		if info.Mode()&os.ModeSocket == 0 || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) {
+			return errors.New("project process stdin endpoint is unsafe")
+		}
+		if err := os.Remove(socketPath); err != nil {
+			return errors.New("project process stdin cleanup failed")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return errors.New("project process stdin cleanup failed")
+	}
 	return nil
 }
 
@@ -1082,7 +1178,7 @@ func openPrivateProjectProcessLog(path string) (*os.File, os.FileInfo, error) {
 }
 
 type osProjectProcessPlatform struct {
-	stateRoot, workerRoot string
+	stateRoot, workerRoot, stdinRoot string
 }
 
 func (platform osProjectProcessPlatform) Start(spec DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
@@ -1142,9 +1238,33 @@ type projectProcessWorkerRequest struct {
 	MaxLogBytes int64    `json:"max_log_bytes"`
 }
 
+type projectProcessStdinWireRequest struct {
+	Identity       ProjectProcessIdentity `json:"identity"`
+	FrameID        string                 `json:"frame_id"`
+	ExpectedOffset int64                  `json:"expected_offset"`
+	Data           string                 `json:"data"`
+	Close          bool                   `json:"close"`
+}
+
+type projectProcessStdinWireResponse struct {
+	NextOffset    int64  `json:"next_offset"`
+	AcceptedBytes int    `json:"accepted_bytes"`
+	Closed        bool   `json:"closed"`
+	Reused        bool   `json:"reused"`
+	Error         string `json:"error,omitempty"`
+}
+
+type projectProcessStdinState struct {
+	NextOffset  int64
+	Closed      bool
+	HaveLast    bool
+	Last        ProjectProcessStdinWrite
+	LastReceipt ProjectProcessStdinReceipt
+}
+
 func (platform osProjectProcessPlatform) startWorker(spec DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
 	if !projectProcessIDPattern.MatchString(spec.PersistentProcessID) || filepath.Clean(spec.PersistentStateRoot) != filepath.Clean(platform.stateRoot) ||
-		platform.workerRoot != filepath.Join(platform.stateRoot, projectProcessWorkerDirectory) || spec.PersistentMaxLogBytes < 1 || spec.PersistentMaxLogBytes > 1<<30 {
+		platform.workerRoot != filepath.Join(platform.stateRoot, projectProcessWorkerDirectory) || platform.stdinRoot != filepath.Join(platform.stateRoot, projectProcessStdinDirectory) || spec.PersistentMaxLogBytes < 1 || spec.PersistentMaxLogBytes > 1<<30 {
 		return ProjectProcessIdentity{}, nil, errors.New("project process worker contract is invalid")
 	}
 	request := projectProcessWorkerRequest{
@@ -1233,7 +1353,8 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 	}
 	workerRoot := filepath.Join(root, projectProcessWorkerDirectory)
 	logRoot := filepath.Join(root, projectProcessLogDirectory)
-	for _, directory := range []string{workerRoot, logRoot} {
+	stdinRoot := filepath.Join(root, projectProcessStdinDirectory)
+	for _, directory := range []string{workerRoot, logRoot, stdinRoot} {
 		info, statErr := os.Lstat(directory)
 		if statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 || !ownedByCurrentUIDPortable(info) {
 			return errors.New("project process worker state is unsafe")
@@ -1265,6 +1386,36 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 	if err := os.Remove(requestPath); err != nil {
 		return errors.New("project process worker request cleanup failed")
 	}
+	workerPID := os.Getpid()
+	workerTicks, err := linuxProcessStartTicks(workerPID)
+	workerGroup, groupErr := syscall.Getpgid(workerPID)
+	if err != nil || groupErr != nil || workerGroup != workerPID {
+		return errors.New("project process worker identity is invalid")
+	}
+	workerIdentity := ProjectProcessIdentity{ProcessID: processID, PID: workerPID, ProcessGroupID: workerGroup, StartTicks: workerTicks}
+	stdinListener, err := openProjectProcessStdinListener(stdinRoot, processID)
+	if err != nil {
+		return err
+	}
+	stdinReader, stdinWriter, err := os.Pipe()
+	if err != nil {
+		_ = stdinListener.Close()
+		_ = os.Remove(projectProcessStdinSocketPath(stdinRoot, processID))
+		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_stdin_unavailable"})
+		return errors.New("project process stdin pipe is unavailable")
+	}
+	stdinServerDone := make(chan struct{})
+	go func() {
+		defer close(stdinServerDone)
+		serveProjectProcessStdin(stdinListener, stdinWriter, workerIdentity, int64(len(request.Stdin)))
+	}()
+	defer func() {
+		_ = stdinListener.Close()
+		_ = stdinWriter.Close()
+		_ = stdinReader.Close()
+		<-stdinServerDone
+		_ = os.Remove(projectProcessStdinSocketPath(stdinRoot, processID))
+	}()
 	stdout, err := openProjectProcessLogWriter(logRoot, processID, "stdout", request.MaxLogBytes)
 	if err != nil {
 		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_log_unavailable"})
@@ -1299,7 +1450,7 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 	command := exec.Command(request.Executable, commandArgs...)
 	command.Dir = request.Dir
 	command.Env = append([]string(nil), request.Env...)
-	command.Stdin = strings.NewReader(request.Stdin)
+	command.Stdin = stdinReader
 	command.Stdout = stdout
 	command.Stderr = stderr
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -1316,11 +1467,23 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 		_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_start_failed"})
 		return errors.New("project process worker start failed")
 	}
+	_ = stdinReader.Close()
 	if sandboxInfoWriter != nil {
 		_ = sandboxInfoWriter.Close()
 	}
 	waited := make(chan error, 1)
 	go func() { waited <- command.Wait() }()
+	if request.Stdin != "" {
+		accepted, stdinErr := writeProjectProcessStdinChunk(stdinWriter, []byte(request.Stdin), 4*time.Second)
+		if stdinErr != nil || accepted != len(request.Stdin) {
+			_ = command.Process.Kill()
+			<-waited
+			_ = stdout.Close()
+			_ = stderr.Close()
+			_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_stdin_unavailable"})
+			return errors.New("project process initial stdin is unavailable")
+		}
+	}
 	childPID := command.Process.Pid
 	if sandboxInfoReader != nil {
 		info := make(chan projectProcessSandboxInfoResult, 1)
@@ -1484,6 +1647,124 @@ func readProjectProcessSandboxInfo(reader io.Reader) projectProcessSandboxInfoRe
 
 func projectProcessWorkerPath(workerRoot, processID, kind string) string {
 	return filepath.Join(workerRoot, processID+"."+kind+".json")
+}
+
+func projectProcessStdinSocketPath(stdinRoot, processID string) string {
+	return filepath.Join(stdinRoot, processID+".sock")
+}
+
+func openProjectProcessStdinListener(stdinRoot, processID string) (*net.UnixListener, error) {
+	path := projectProcessStdinSocketPath(stdinRoot, processID)
+	if len(path) > 100 {
+		return nil, errors.New("project process stdin endpoint path is too long")
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		return nil, errors.New("project process stdin endpoint already exists")
+	}
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		return nil, errors.New("project process stdin endpoint is unavailable")
+	}
+	listener.SetUnlinkOnClose(false)
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = listener.Close()
+		_ = os.Remove(path)
+		return nil, errors.New("project process stdin endpoint is unavailable")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) {
+		_ = listener.Close()
+		_ = os.Remove(path)
+		return nil, errors.New("project process stdin endpoint is unsafe")
+	}
+	return listener, nil
+}
+
+func serveProjectProcessStdin(listener *net.UnixListener, writer io.WriteCloser, identity ProjectProcessIdentity, initialOffset int64) {
+	defer writer.Close()
+	state := projectProcessStdinState{NextOffset: initialOffset}
+	for {
+		connection, err := listener.AcceptUnix()
+		if err != nil {
+			return
+		}
+		response := handleProjectProcessStdinConnection(connection, writer, identity, &state)
+		_ = json.NewEncoder(connection).Encode(response)
+		_ = connection.Close()
+	}
+}
+
+func handleProjectProcessStdinConnection(connection *net.UnixConn, writer io.WriteCloser, identity ProjectProcessIdentity, state *projectProcessStdinState) projectProcessStdinWireResponse {
+	_ = connection.SetDeadline(time.Now().Add(5 * time.Second))
+	var request projectProcessStdinWireRequest
+	decoder := json.NewDecoder(io.LimitReader(connection, int64(edge.MaxProjectProcessStdinBytes+4096)))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&request) != nil || decoder.Decode(&struct{}{}) != io.EOF || request.Identity != identity || !projectProcessIdempotencyPattern.MatchString(request.FrameID) || request.ExpectedOffset < 0 ||
+		request.ExpectedOffset > edge.MaxProjectProcessStdinTotalBytes-int64(len(request.Data)) ||
+		len(request.Data) > edge.MaxProjectProcessStdinBytes || !utf8.ValidString(request.Data) || strings.ContainsRune(request.Data, 0) || request.Data == "" && !request.Close {
+		return projectProcessStdinWireResponse{Error: "identity_changed"}
+	}
+	write := ProjectProcessStdinWrite{FrameID: request.FrameID, ExpectedOffset: request.ExpectedOffset, Data: []byte(request.Data), Close: request.Close}
+	if state.HaveLast && write.FrameID == state.Last.FrameID && write.ExpectedOffset == state.Last.ExpectedOffset && string(write.Data) == string(state.Last.Data) && write.Close == state.Last.Close {
+		receipt := state.LastReceipt
+		receipt.Reused = true
+		return projectProcessStdinWireResponse{NextOffset: receipt.NextOffset, AcceptedBytes: receipt.AcceptedBytes, Closed: receipt.Closed, Reused: true}
+	}
+	if state.Closed {
+		return projectProcessStdinWireResponse{Error: "stdin_closed"}
+	}
+	if write.ExpectedOffset != state.NextOffset {
+		return projectProcessStdinWireResponse{Error: "offset_conflict"}
+	}
+	accepted := 0
+	var writeErr error
+	if len(write.Data) > 0 {
+		accepted, writeErr = writeProjectProcessStdinChunk(writer, write.Data, 4*time.Second)
+	}
+	state.NextOffset += int64(accepted)
+	closed := write.Close || writeErr != nil
+	state.Last = ProjectProcessStdinWrite{FrameID: write.FrameID, ExpectedOffset: write.ExpectedOffset, Data: append([]byte(nil), write.Data...), Close: write.Close}
+	state.LastReceipt = ProjectProcessStdinReceipt{NextOffset: state.NextOffset, AcceptedBytes: accepted, Closed: closed}
+	state.HaveLast = true
+	if closed {
+		state.Closed = true
+		_ = writer.Close()
+	}
+	return projectProcessStdinWireResponse{NextOffset: state.NextOffset, AcceptedBytes: accepted, Closed: state.Closed}
+}
+
+type projectProcessStdinWriteResult struct {
+	count int
+	err   error
+}
+
+func writeProjectProcessStdinChunk(writer io.WriteCloser, data []byte, timeout time.Duration) (int, error) {
+	written := make(chan projectProcessStdinWriteResult, 1)
+	go func() {
+		count, err := writer.Write(data)
+		if err == nil && count != len(data) {
+			err = io.ErrShortWrite
+		}
+		written <- projectProcessStdinWriteResult{count: count, err: err}
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case result := <-written:
+		return result.count, result.err
+	case <-timer.C:
+		select {
+		case result := <-written:
+			return result.count, result.err
+		default:
+		}
+		_ = writer.Close()
+		result := <-written
+		if result.err == nil {
+			result.err = errors.New("project process stdin backpressure exceeded")
+		}
+		return result.count, result.err
+	}
 }
 
 func writePrivateProjectProcessWorkerFile(path string, body []byte) error {
@@ -1668,6 +1949,88 @@ func (platform osProjectProcessPlatform) Signal(identity ProjectProcessIdentity,
 		return err
 	}
 }
+
+func (platform osProjectProcessPlatform) WriteStdin(identity ProjectProcessIdentity, write ProjectProcessStdinWrite) (ProjectProcessStdinReceipt, error) {
+	alive, err := platform.Alive(identity)
+	if err != nil {
+		return ProjectProcessStdinReceipt{}, err
+	}
+	if !alive || !projectProcessIDPattern.MatchString(identity.ProcessID) || !projectProcessIdempotencyPattern.MatchString(write.FrameID) || write.ExpectedOffset < 0 ||
+		write.ExpectedOffset > edge.MaxProjectProcessStdinTotalBytes-int64(len(write.Data)) || len(write.Data) > edge.MaxProjectProcessStdinBytes || !utf8.Valid(write.Data) || len(write.Data) == 0 && !write.Close {
+		return ProjectProcessStdinReceipt{}, ErrProjectProcessIdentityChanged
+	}
+	socketPath := projectProcessStdinSocketPath(platform.stdinRoot, identity.ProcessID)
+	info, err := os.Lstat(socketPath)
+	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) {
+		return ProjectProcessStdinReceipt{}, errors.New("project process stdin endpoint is unsafe")
+	}
+	connection, err := net.DialTimeout("unix", socketPath, 2*time.Second)
+	if err != nil {
+		return ProjectProcessStdinReceipt{}, errors.New("project process stdin is unavailable")
+	}
+	defer connection.Close()
+	unixConnection, ok := connection.(*net.UnixConn)
+	if !ok {
+		return ProjectProcessStdinReceipt{}, errors.New("project process stdin peer is unavailable")
+	}
+	if err := validateProjectProcessStdinPeer(unixConnection, identity); err != nil {
+		return ProjectProcessStdinReceipt{}, err
+	}
+	if alive, err := platform.Alive(identity); err != nil || !alive {
+		return ProjectProcessStdinReceipt{}, ErrProjectProcessIdentityChanged
+	}
+	if err := connection.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return ProjectProcessStdinReceipt{}, errors.New("project process stdin is unavailable")
+	}
+	request := projectProcessStdinWireRequest{Identity: identity, FrameID: write.FrameID, ExpectedOffset: write.ExpectedOffset, Data: string(write.Data), Close: write.Close}
+	if err := json.NewEncoder(connection).Encode(request); err != nil {
+		return ProjectProcessStdinReceipt{}, errors.New("project process stdin write failed")
+	}
+	if err := unixConnection.CloseWrite(); err != nil {
+		return ProjectProcessStdinReceipt{}, errors.New("project process stdin write failed")
+	}
+	var response projectProcessStdinWireResponse
+	decoder := json.NewDecoder(io.LimitReader(connection, 4096))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&response) != nil {
+		return ProjectProcessStdinReceipt{}, errors.New("project process stdin receipt is invalid")
+	}
+	switch response.Error {
+	case "":
+	case "offset_conflict":
+		return ProjectProcessStdinReceipt{}, ErrProjectProcessStdinConflict
+	case "stdin_closed":
+		return ProjectProcessStdinReceipt{}, ErrProjectProcessStdinClosed
+	case "identity_changed":
+		return ProjectProcessStdinReceipt{}, ErrProjectProcessIdentityChanged
+	default:
+		return ProjectProcessStdinReceipt{}, errors.New("project process stdin write failed")
+	}
+	return ProjectProcessStdinReceipt{NextOffset: response.NextOffset, AcceptedBytes: response.AcceptedBytes, Closed: response.Closed, Reused: response.Reused}, nil
+}
+
+func validateProjectProcessStdinPeer(connection *net.UnixConn, identity ProjectProcessIdentity) error {
+	raw, err := connection.SyscallConn()
+	if err != nil {
+		return errors.New("project process stdin peer is unavailable")
+	}
+	var credential *syscall.Ucred
+	var credentialErr error
+	if err := raw.Control(func(descriptor uintptr) {
+		credential, credentialErr = syscall.GetsockoptUcred(int(descriptor), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
+	}); err != nil || credentialErr != nil || credential == nil {
+		return errors.New("project process stdin peer is unavailable")
+	}
+	if !validProjectProcessStdinPeerCredential(identity, credential, os.Getuid()) {
+		return ErrProjectProcessIdentityChanged
+	}
+	return nil
+}
+
+func validProjectProcessStdinPeerCredential(identity ProjectProcessIdentity, credential *syscall.Ucred, currentUID int) bool {
+	return credential != nil && identity.PID > 0 && currentUID >= 0 && credential.Pid == int32(identity.PID) && credential.Uid == uint32(currentUID)
+}
+
 func linuxProcessStartTicks(pid int) (uint64, error) {
 	content, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
 	if err != nil {

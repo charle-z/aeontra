@@ -99,7 +99,7 @@ JavaScript, alternate browsers, traces and custom frameworks use the general har
 
 ## Durable background processes
 
-`project_process_start`, `project_process_status`, `project_process_stop`,
+`project_process_start`, `project_process_status`, `project_process_stdin`, `project_process_stop`,
 `project_process_signal`, `project_process_list`, and `project_process_cleanup` extend the
 same trusted-workcell executor as `project_exec`:
 
@@ -107,6 +107,15 @@ same trusted-workcell executor as `project_exec`:
   environment overlay; it never adds an implicit shell;
 - a caller idempotency key maps the same request to one opaque `pr_...` identity, while
   reuse with different parameters fails closed;
+- stdin writes accept one bounded non-secret UTF-8 chunk at an exact byte offset. The
+  offset starts after the optional start payload and covers all subsequent writes;
+  exact retries are idempotent, conflicts fail closed, and stdin closure is explicit
+  and irreversible.
+  One process can accept at most 16 MiB of total ordered input. Each bounded request is
+  retained in the private operation journal; secret-shaped chunks are rejected before
+  that journal write. If backpressure closes the channel after a partial write, the
+  receipt returns the exact accepted prefix and the closed state instead of an
+  ambiguous retryable failure;
 - private SQLite metadata and separate `0600` stdout/stderr files survive chat and
   control-plane reconnects;
 - public results expose state, safe timestamps, bounded redacted output, offsets,

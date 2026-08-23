@@ -37,3 +37,41 @@ func TestBundleEffectsBecomeNonCancellableAfterPickup(t *testing.T) {
 		t.Fatalf("status=%+v err=%v", status, err)
 	}
 }
+
+func TestProjectProcessStdinBecomesNonCancellableAfterPickup(t *testing.T) {
+	store := openHTTPTestStore(t)
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, err := store.Pair(code, "parrot-edge", publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, _, err := store.CreateOperation(device.ID, OperationProjectProcessStdin, OperationRequest{
+		Alias:               "project",
+		TargetAlias:         "parrot",
+		Profile:             "linux-workcell",
+		IdempotencyKey:      "stdin-cancellation",
+		BackgroundProcessID: "pr_44444444444444444444444444444444",
+		Stdin:               "x",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !OperationCanCancel(operation) {
+		t.Fatal("queued stdin write should be cancellable before pickup")
+	}
+	lease, err := store.LeaseOperation(device.ID, time.Minute)
+	if err != nil || lease.Operation.ID != operation.ID {
+		t.Fatalf("lease=%+v err=%v", lease, err)
+	}
+	if OperationCanCancel(lease.Operation) {
+		t.Fatal("leased stdin write reported cancellable")
+	}
+	if _, err := store.RequestOperationCancel(operation.ID); err == nil {
+		t.Fatal("leased stdin write accepted cancellation")
+	}
+	status, err := store.OperationStatus(operation.ID)
+	if err != nil || status.CancelRequested || status.State != OperationLeased {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+}

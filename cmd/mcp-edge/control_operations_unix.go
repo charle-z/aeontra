@@ -125,7 +125,7 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectExec(ctx, stateRoot, operation)
 	case edge.OperationProjectNetworkRoute, edge.OperationProjectNetworkProbe:
 		return executeProjectNetwork(ctx, stateRoot, operation)
-	case edge.OperationProjectProcessStart, edge.OperationProjectProcessStatus, edge.OperationProjectProcessStop, edge.OperationProjectProcessSignal, edge.OperationProjectProcessList, edge.OperationProjectProcessCleanup:
+	case edge.OperationProjectProcessStart, edge.OperationProjectProcessStatus, edge.OperationProjectProcessStdin, edge.OperationProjectProcessStop, edge.OperationProjectProcessSignal, edge.OperationProjectProcessList, edge.OperationProjectProcessCleanup:
 		return executeProjectProcess(ctx, stateRoot, processes, operation)
 	case edge.OperationProjectBrowserCreate, edge.OperationProjectBrowserStatus, edge.OperationProjectBrowserList, edge.OperationProjectBrowserRun, edge.OperationProjectBrowserArtifactRead, edge.OperationProjectBrowserClose, edge.OperationProjectBrowserCleanup:
 		return executeProjectBrowser(ctx, stateRoot, browsers, operation)

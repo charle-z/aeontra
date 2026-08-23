@@ -8,7 +8,11 @@ import (
 	"unicode/utf8"
 )
 
-const MaxProjectProcessReadBytes = 24 << 10
+const (
+	MaxProjectProcessReadBytes       = 24 << 10
+	MaxProjectProcessStdinBytes      = 32 << 10
+	MaxProjectProcessStdinTotalBytes = 16 << 20
+)
 
 var backgroundProcessIDPattern = regexp.MustCompile(`^pr_[a-f0-9]{32}$`)
 var backgroundProcessStatePattern = regexp.MustCompile(`^(starting|running|stopping|exited|failed|stopped)$`)
@@ -28,13 +32,26 @@ func normalizeProjectProcessRequest(kind OperationKind, request OperationRequest
 		}
 		normalized.TimeoutSeconds = 0
 		return normalized, nil
-	case OperationProjectProcessStatus, OperationProjectProcessStop, OperationProjectProcessSignal, OperationProjectProcessList, OperationProjectProcessCleanup:
+	case OperationProjectProcessStatus, OperationProjectProcessStdin, OperationProjectProcessStop, OperationProjectProcessSignal, OperationProjectProcessList, OperationProjectProcessCleanup:
 		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
 		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
 		request.Profile = strings.TrimSpace(request.Profile)
 		request.BackgroundProcessID = strings.TrimSpace(request.BackgroundProcessID)
-		if !validProjectOperationRequestCommon(request) || request.Repository != "" || request.IdempotencyKey != "" ||
-			!emptyProjectExecRequestFields(request) {
+		if !validProjectOperationRequestCommon(request) || request.Repository != "" {
+			return OperationRequest{}, errors.New("project process request is invalid")
+		}
+		if kind == OperationProjectProcessStdin {
+			request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
+			if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || !backgroundProcessIDPattern.MatchString(request.BackgroundProcessID) ||
+				request.ProcessStdinOffset < 0 || request.ProcessStdinOffset > MaxProjectProcessStdinTotalBytes-int64(len(request.Stdin)) || len(request.Stdin) > MaxProjectProcessStdinBytes || !utf8.ValidString(request.Stdin) || strings.ContainsRune(request.Stdin, 0) ||
+				projectExecSecretShaped(request.Stdin) ||
+				(request.Stdin == "" && !request.ProcessStdinClose) || len(request.Argv) != 0 || request.CWD != "" || len(request.Environment) != 0 || request.TimeoutSeconds != 0 ||
+				request.StdoutOffset != 0 || request.StderrOffset != 0 || request.OutputLimit != 0 || request.GraceSeconds != 0 || request.BackgroundSignal != "" || request.ProcessLimit != 0 {
+				return OperationRequest{}, errors.New("project process stdin request is invalid")
+			}
+			return request, nil
+		}
+		if request.IdempotencyKey != "" || !emptyProjectExecRequestFields(request) || request.ProcessStdinOffset != 0 || request.ProcessStdinClose {
 			return OperationRequest{}, errors.New("project process request is invalid")
 		}
 		if kind == OperationProjectProcessStatus {
@@ -71,7 +88,7 @@ func normalizeProjectProcessRequest(kind OperationKind, request OperationRequest
 }
 
 func emptyProjectProcessRequestFields(request OperationRequest) bool {
-	return request.BackgroundProcessID == "" && request.StdoutOffset == 0 && request.StderrOffset == 0 && request.OutputLimit == 0 && request.GraceSeconds == 0 && request.BackgroundSignal == "" && request.ProcessLimit == 0
+	return request.BackgroundProcessID == "" && request.ProcessStdinOffset == 0 && !request.ProcessStdinClose && request.StdoutOffset == 0 && request.StderrOffset == 0 && request.OutputLimit == 0 && request.GraceSeconds == 0 && request.BackgroundSignal == "" && request.ProcessLimit == 0
 }
 
 func hasProjectProcessResult(result OperationResult) bool {
@@ -80,6 +97,7 @@ func hasProjectProcessResult(result OperationResult) bool {
 		result.BackgroundTerminalSignal != "" || result.BackgroundReason != "" || result.BackgroundStdout != "" ||
 		result.BackgroundStderr != "" || result.BackgroundStdoutNext != 0 || result.BackgroundStderrNext != 0 ||
 		result.BackgroundStdoutEOF || result.BackgroundStderrEOF || result.BackgroundStdoutTruncated || result.BackgroundStderrTruncated ||
+		result.BackgroundStdinNext != 0 || result.BackgroundStdinAccepted != 0 || result.BackgroundStdinClosed || result.BackgroundStdinReused ||
 		len(result.BackgroundProcesses) != 0 || result.BackgroundCleanupRemoved != 0 || result.BackgroundCleanupActive != 0
 }
 
@@ -130,10 +148,33 @@ func validProjectProcessResult(result OperationResult) bool {
 	metadata.BackgroundStderrEOF = false
 	metadata.BackgroundStdoutTruncated = false
 	metadata.BackgroundStderrTruncated = false
+	metadata.BackgroundStdinNext = 0
+	metadata.BackgroundStdinAccepted = 0
+	metadata.BackgroundStdinClosed = false
+	metadata.BackgroundStdinReused = false
 	metadata.BackgroundProcesses = nil
 	metadata.BackgroundCleanupRemoved = 0
 	metadata.BackgroundCleanupActive = 0
 	return validProjectOperationResult(metadata)
+}
+
+func validProjectProcessStdinResult(result OperationResult) bool {
+	if result.BackgroundProcessState != "running" || result.BackgroundStdinNext < 0 || result.BackgroundStdinAccepted < 0 || result.BackgroundStdinAccepted > MaxProjectProcessStdinBytes ||
+		result.BackgroundStdinNext > MaxProjectProcessStdinTotalBytes || result.BackgroundStdinNext < int64(result.BackgroundStdinAccepted) || result.BackgroundStdinAccepted == 0 && !result.BackgroundStdinClosed ||
+		result.BackgroundStdout != "" || result.BackgroundStderr != "" || result.BackgroundStdoutNext != 0 || result.BackgroundStderrNext != 0 ||
+		result.BackgroundStdoutEOF || result.BackgroundStderrEOF || result.BackgroundStdoutTruncated || result.BackgroundStderrTruncated {
+		return false
+	}
+	metadata := result
+	metadata.BackgroundStdinNext = 0
+	metadata.BackgroundStdinAccepted = 0
+	metadata.BackgroundStdinClosed = false
+	metadata.BackgroundStdinReused = false
+	return validProjectProcessResult(metadata)
+}
+
+func hasProjectProcessStdinReceipt(result OperationResult) bool {
+	return result.BackgroundStdinNext != 0 || result.BackgroundStdinAccepted != 0 || result.BackgroundStdinClosed || result.BackgroundStdinReused
 }
 
 func validProjectProcessListResult(result OperationResult) bool {

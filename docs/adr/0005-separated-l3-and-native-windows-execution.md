@@ -192,6 +192,21 @@ enforce frame limits, write deadlines, serialization, backpressure, process iden
 an idempotent EOF transition. Stop and write races must converge without input crossing
 between processes.
 
+On Linux the client verifies Unix peer credentials against the exact recorded worker PID
+and Edge UID before sending a frame. The worker retains the last committed frame receipt
+for exact replay across an Edge manager restart. The worker and child share one lifecycle,
+so a worker replacement cannot inherit a live child after losing that receipt. A queued
+write remains cancellable, but a leased write is non-cancellable and must persist the
+exact accepted prefix. Backpressure closes the channel and returns that prefix instead of
+turning a committed write into an ambiguous retry. Frames are limited to 32 KiB and the
+complete ordered input stream, including the optional start payload, is limited to 16 MiB
+per process.
+
+The owner-only state directory is not mounted into the Bubblewrap workcell. Linux file
+permissions cannot distinguish two arbitrary processes already running as the Edge OS
+account, so that account remains part of the trusted host boundary. Untrusted project
+code receives neither the state directory nor the stdin socket path.
+
 ## Threat model
 
 | Threat | Required control |

@@ -40,12 +40,19 @@ func (*projectProcessToolStore) AutopilotStatus(string) (edge.OperationResult, e
 }
 func (store *projectProcessToolStore) WaitOperation(_ context.Context, operationID string, _ time.Duration) (edge.Operation, error) {
 	created := store.created[len(store.created)-1]
-	return edge.Operation{ID: operationID, Kind: created.Kind, State: edge.OperationSucceeded, Result: edge.OperationResult{
+	result := edge.OperationResult{
 		WorkspaceID: "ws_33333333333333333333333333333333", ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
 		ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
 		BackgroundProcessID: "pr_44444444444444444444444444444444", BackgroundProcessState: "running", BackgroundStartedAt: "2026-08-02T14:00:00Z",
 		BackgroundStdout: "ready\n", BackgroundStdoutNext: 6,
-	}}, nil
+	}
+	if created.Kind == edge.OperationProjectProcessStdin {
+		result.BackgroundStdout = ""
+		result.BackgroundStdoutNext = 0
+		result.BackgroundStdinNext = int64(len(created.Request.Stdin))
+		result.BackgroundStdinAccepted = len(created.Request.Stdin)
+	}
+	return edge.Operation{ID: operationID, Kind: created.Kind, State: edge.OperationSucceeded, Result: result}, nil
 }
 
 func TestProjectProcessToolsQueueClosedOperationsWithoutLeaks(t *testing.T) {
@@ -58,6 +65,7 @@ func TestProjectProcessToolsQueueClosedOperationsWithoutLeaks(t *testing.T) {
 	}{
 		{"project_process_start", `{"alias":"project","target":"parrot","idempotency_key":"process-1","argv":["go","run","."],"cwd":"cmd","stdin":"ready\n","environment":{"PORT":"8080"}}`, edge.OperationProjectProcessStart},
 		{"project_process_status", `{"alias":"project","target":"parrot","process_id":"pr_44444444444444444444444444444444","stdout_offset":0,"stderr_offset":0,"limit_bytes":4096}`, edge.OperationProjectProcessStatus},
+		{"project_process_stdin", `{"alias":"project","target":"parrot","process_id":"pr_44444444444444444444444444444444","idempotency_key":"stdin-1","expected_offset":0,"data":"{\"jsonrpc\":\"2.0\"}\n","close_stdin":false}`, edge.OperationProjectProcessStdin},
 		{"project_process_stop", `{"alias":"project","target":"parrot","process_id":"pr_44444444444444444444444444444444","grace_seconds":5}`, edge.OperationProjectProcessStop},
 		{"project_process_signal", `{"alias":"project","target":"parrot","process_id":"pr_44444444444444444444444444444444","signal":"interrupt"}`, edge.OperationProjectProcessSignal},
 		{"project_process_list", `{"alias":"project","target":"parrot","limit":20}`, edge.OperationProjectProcessList},

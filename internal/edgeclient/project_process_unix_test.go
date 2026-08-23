@@ -25,6 +25,9 @@ type fakeProjectProcess struct {
 	alive    bool
 	termExit bool
 	aliveErr error
+	stdin    strings.Builder
+	closed   bool
+	last     ProjectProcessStdinWrite
 }
 
 type fakeProjectProcessPlatform struct {
@@ -37,6 +40,18 @@ type fakeProjectProcessPlatform struct {
 	stderr    string
 }
 
+type blockingStdinProjectProcessPlatform struct {
+	*fakeProjectProcessPlatform
+	stdinEntered chan struct{}
+	stdinRelease chan struct{}
+}
+
+func (platform *blockingStdinProjectProcessPlatform) WriteStdin(identity ProjectProcessIdentity, write ProjectProcessStdinWrite) (ProjectProcessStdinReceipt, error) {
+	close(platform.stdinEntered)
+	<-platform.stdinRelease
+	return platform.fakeProjectProcessPlatform.WriteStdin(identity, write)
+}
+
 func newFakeProjectProcessPlatform() *fakeProjectProcessPlatform {
 	return &fakeProjectProcessPlatform{nextPID: 4000, processes: map[int]*fakeProjectProcess{}}
 }
@@ -47,6 +62,7 @@ func (platform *fakeProjectProcessPlatform) Start(spec DirectWorkcellProcessSpec
 	platform.nextPID++
 	identity := ProjectProcessIdentity{ProcessID: spec.PersistentProcessID, PID: platform.nextPID, ProcessGroupID: platform.nextPID, StartTicks: uint64(platform.nextPID * 10)}
 	process := &fakeProjectProcess{identity: identity, exit: make(chan ProjectProcessExit, 1), alive: true, termExit: true}
+	_, _ = process.stdin.WriteString(spec.PersistentStdin)
 	platform.processes[identity.PID] = process
 	platform.specs = append(platform.specs, spec)
 	_, _ = io.WriteString(spec.Stdout, platform.stdout)
@@ -82,6 +98,29 @@ func (platform *fakeProjectProcessPlatform) Signal(identity ProjectProcessIdenti
 	return nil
 }
 
+func (platform *fakeProjectProcessPlatform) WriteStdin(identity ProjectProcessIdentity, write ProjectProcessStdinWrite) (ProjectProcessStdinReceipt, error) {
+	platform.mu.Lock()
+	defer platform.mu.Unlock()
+	process := platform.processes[identity.PID]
+	if process == nil || !process.alive || process.identity != identity {
+		return ProjectProcessStdinReceipt{}, ErrProjectProcessIdentityChanged
+	}
+	next := int64(process.stdin.Len())
+	if write.FrameID == process.last.FrameID && write.ExpectedOffset+int64(len(write.Data)) == next && write.ExpectedOffset == process.last.ExpectedOffset && string(write.Data) == string(process.last.Data) && write.Close == process.last.Close {
+		return ProjectProcessStdinReceipt{NextOffset: next, AcceptedBytes: len(write.Data), Closed: process.closed, Reused: true}, nil
+	}
+	if process.closed {
+		return ProjectProcessStdinReceipt{}, ErrProjectProcessStdinClosed
+	}
+	if write.ExpectedOffset != next {
+		return ProjectProcessStdinReceipt{}, ErrProjectProcessStdinConflict
+	}
+	_, _ = process.stdin.Write(write.Data)
+	process.closed = write.Close
+	process.last = ProjectProcessStdinWrite{FrameID: write.FrameID, ExpectedOffset: write.ExpectedOffset, Data: append([]byte(nil), write.Data...), Close: write.Close}
+	return ProjectProcessStdinReceipt{NextOffset: int64(process.stdin.Len()), AcceptedBytes: len(write.Data), Closed: process.closed}, nil
+}
+
 func (platform *fakeProjectProcessPlatform) naturalExit(pid, code int) {
 	platform.mu.Lock()
 	defer platform.mu.Unlock()
@@ -104,7 +143,7 @@ func testProjectProcessRequest(t *testing.T, key string) ProjectProcessStartRequ
 	}
 }
 
-func openTestProjectProcessManager(t *testing.T, platform *fakeProjectProcessPlatform, maxLog int64) *ProjectProcessManager {
+func openTestProjectProcessManager(t *testing.T, platform ProjectProcessPlatform, maxLog int64) *ProjectProcessManager {
 	t.Helper()
 	next := 0
 	manager, err := OpenProjectProcessManager(ProjectProcessManagerConfig{
@@ -206,6 +245,392 @@ func TestProjectProcessManagerReservesProcessCapacityAtomically(t *testing.T) {
 	}
 	if succeeded != 1 || limited != 1 || len(platform.specs) != 1 {
 		t.Fatalf("succeeded=%d limited=%d starts=%d", succeeded, limited, len(platform.specs))
+	}
+}
+
+func TestProjectProcessManagerWritesOrderedIdempotentStdin(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "stdin-process"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ProjectProcessStdinRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", FrameID: "stdin-1", Data: "first\n"}
+	_, first, err := manager.WriteStdin(request)
+	if err != nil || first.NextOffset != 6 || first.AcceptedBytes != 6 || first.Closed || first.Reused {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	differentFrame := request
+	differentFrame.FrameID = "stdin-other"
+	if _, _, err := manager.WriteStdin(differentFrame); !errors.Is(err, ErrProjectProcessStdinConflict) {
+		t.Fatalf("different frame replay err=%v", err)
+	}
+	_, replay, err := manager.WriteStdin(request)
+	if err != nil || !replay.Reused || replay.NextOffset != first.NextOffset {
+		t.Fatalf("replay=%+v err=%v", replay, err)
+	}
+	request.ExpectedOffset = first.NextOffset
+	request.FrameID = "stdin-2"
+	request.Data = "second\n"
+	request.Close = true
+	_, second, err := manager.WriteStdin(request)
+	if err != nil || second.NextOffset != 13 || !second.Closed {
+		t.Fatalf("second=%+v err=%v", second, err)
+	}
+	if got := platform.processes[startedProcessPID(platform)].stdin.String(); got != "first\nsecond\n" {
+		t.Fatalf("stdin=%q", got)
+	}
+	request.ExpectedOffset = second.NextOffset
+	request.FrameID = "stdin-3"
+	request.Data = "late\n"
+	request.Close = false
+	if _, _, err := manager.WriteStdin(request); !errors.Is(err, ErrProjectProcessStdinClosed) {
+		t.Fatalf("write after close err=%v", err)
+	}
+}
+
+func TestProjectProcessManagerOffsetsIncrementalStdinAfterStartPayload(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	request := testProjectProcessRequest(t, "stdin-after-start")
+	request.Stdin = "initial\n"
+	started, _, err := manager.Start(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, receipt, err := manager.WriteStdin(ProjectProcessStdinRequest{
+		ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", FrameID: "stdin-incremental",
+		ExpectedOffset: int64(len(request.Stdin)), Data: "incremental\n", Close: true,
+	})
+	if err != nil || receipt.NextOffset != int64(len("initial\nincremental\n")) || !receipt.Closed {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+	platform.mu.Lock()
+	defer platform.mu.Unlock()
+	if got := platform.processes[startedProcessPID(platform)].stdin.String(); got != "initial\nincremental\n" {
+		t.Fatalf("stdin=%q", got)
+	}
+}
+
+func TestProjectProcessManagerSerializesConcurrentStdinOffsets(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "stdin-race"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, data := range []string{"alpha", "bravo"} {
+		data := data
+		go func() {
+			<-start
+			_, _, writeErr := manager.WriteStdin(ProjectProcessStdinRequest{
+				ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", FrameID: "stdin-" + data, Data: data,
+			})
+			results <- writeErr
+		}()
+	}
+	close(start)
+
+	succeeded := 0
+	conflicted := 0
+	for range 2 {
+		switch writeErr := <-results; {
+		case writeErr == nil:
+			succeeded++
+		case errors.Is(writeErr, ErrProjectProcessStdinConflict):
+			conflicted++
+		default:
+			t.Fatalf("unexpected concurrent stdin error: %v", writeErr)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("succeeded=%d conflicted=%d", succeeded, conflicted)
+	}
+	platform.mu.Lock()
+	got := platform.processes[startedProcessPID(platform)].stdin.String()
+	platform.mu.Unlock()
+	if got != "alpha" && got != "bravo" {
+		t.Fatalf("stdin=%q", got)
+	}
+}
+
+func TestProjectProcessManagerSerializesStdinWithTerminatingSignals(t *testing.T) {
+	base := newFakeProjectProcessPlatform()
+	platform := &blockingStdinProjectProcessPlatform{
+		fakeProjectProcessPlatform: base,
+		stdinEntered:               make(chan struct{}),
+		stdinRelease:               make(chan struct{}),
+	}
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "stdin-signal-race"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	written := make(chan error, 1)
+	go func() {
+		_, _, writeErr := manager.WriteStdin(ProjectProcessStdinRequest{
+			ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", FrameID: "stdin-before-stop", Data: "committed",
+		})
+		written <- writeErr
+	}()
+	<-platform.stdinEntered
+	signalled := make(chan error, 1)
+	go func() {
+		_, signalErr := manager.Signal(ProjectProcessSignalRequest{
+			ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", Signal: ProjectProcessTerminate,
+		})
+		signalled <- signalErr
+	}()
+	select {
+	case err := <-signalled:
+		t.Fatalf("terminating signal overtook stdin write: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(platform.stdinRelease)
+	if err := <-written; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-signalled; err != nil {
+		t.Fatal(err)
+	}
+	base.mu.Lock()
+	defer base.mu.Unlock()
+	process := base.processes[startedProcessPID(base)]
+	if process.stdin.String() != "committed" || len(base.signals) != 1 || base.signals[0] != ProjectProcessTerminate {
+		t.Fatalf("stdin=%q signals=%v", process.stdin.String(), base.signals)
+	}
+}
+
+func TestProjectProcessManagerRejectsChangedIdentityForStdin(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "stdin-identity"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform.mu.Lock()
+	process := platform.processes[startedProcessPID(platform)]
+	process.identity.StartTicks++
+	platform.mu.Unlock()
+	_, _, err = manager.WriteStdin(ProjectProcessStdinRequest{
+		ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", FrameID: "stdin-identity", Data: "x",
+	})
+	if !errors.Is(err, ErrProjectProcessIdentityChanged) {
+		t.Fatalf("changed identity err=%v", err)
+	}
+}
+
+func TestProjectProcessManagerRejectsWrongOrExitedStdinTarget(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "stdin-boundary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ProjectProcessStdinRequest{ProcessID: started.ProcessID, ProjectAlias: "other", TargetAlias: "parrot", FrameID: "stdin-boundary", Data: "x"}
+	if _, _, err := manager.WriteStdin(request); !errors.Is(err, ErrProjectProcessNotFound) {
+		t.Fatalf("cross-project write err=%v", err)
+	}
+	platform.naturalExit(startedProcessPID(platform), 0)
+	waitProjectProcessState(t, manager, started.ProcessID, ProjectProcessExited)
+	request.ProjectAlias = "project"
+	if _, _, err := manager.WriteStdin(request); !errors.Is(err, ErrProjectProcessNotFound) {
+		t.Fatalf("write after exit err=%v", err)
+	}
+}
+
+func TestProjectProcessManagerPreservesStdinReceiptAcrossManagerRestart(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	stateRoot := t.TempDir()
+	manager, err := OpenProjectProcessManager(ProjectProcessManagerConfig{StateRoot: stateRoot, Platform: platform, MaxProcesses: 4, MaxLogBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "stdin-restart"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ProjectProcessStdinRequest{
+		ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", FrameID: "stdin-restart-frame", Data: "persist",
+	}
+	_, first, err := manager.WriteStdin(request)
+	if err != nil || first.Reused {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	manager, err = OpenProjectProcessManager(ProjectProcessManagerConfig{StateRoot: stateRoot, Platform: platform, MaxProcesses: 4, MaxLogBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	_, replay, err := manager.WriteStdin(request)
+	if err != nil || !replay.Reused || replay.NextOffset != first.NextOffset {
+		t.Fatalf("replay=%+v err=%v", replay, err)
+	}
+}
+
+func TestProjectProcessPlatformWritesThroughPrivateOrderedSocket(t *testing.T) {
+	stdinRoot, err := os.MkdirTemp("", "mcpstdin-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(stdinRoot) })
+	if err := os.Chmod(stdinRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pid := os.Getpid()
+	group, err := syscall.Getpgid(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticks, err := linuxProcessStartTicks(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := ProjectProcessIdentity{ProcessID: "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PID: pid, ProcessGroupID: group, StartTicks: ticks}
+	listener, err := openProjectProcessStdinListener(stdinRoot, identity.ProcessID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, writer := io.Pipe()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		serveProjectProcessStdin(listener, writer, identity, 0)
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		_ = reader.Close()
+		<-done
+	})
+	read := make(chan string, 1)
+	go func() {
+		body := make([]byte, 4)
+		_, readErr := io.ReadFull(reader, body)
+		if readErr != nil {
+			read <- "error"
+			return
+		}
+		read <- string(body)
+	}()
+	platform := osProjectProcessPlatform{stdinRoot: stdinRoot}
+	first, err := platform.WriteStdin(identity, ProjectProcessStdinWrite{FrameID: "stdin-1", Data: []byte("ping")})
+	if err != nil || first.NextOffset != 4 || first.AcceptedBytes != 4 || first.Closed || first.Reused {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	if got := <-read; got != "ping" {
+		t.Fatalf("read=%q", got)
+	}
+	replayed, err := platform.WriteStdin(identity, ProjectProcessStdinWrite{FrameID: "stdin-1", Data: []byte("ping")})
+	if err != nil || !replayed.Reused || replayed.NextOffset != 4 {
+		t.Fatalf("replayed=%+v err=%v", replayed, err)
+	}
+	closed, err := platform.WriteStdin(identity, ProjectProcessStdinWrite{FrameID: "stdin-close", ExpectedOffset: 4, Close: true})
+	if err != nil || !closed.Closed || closed.NextOffset != 4 {
+		t.Fatalf("closed=%+v err=%v", closed, err)
+	}
+	replayedClose, err := platform.WriteStdin(identity, ProjectProcessStdinWrite{FrameID: "stdin-close", ExpectedOffset: 4, Close: true})
+	if err != nil || !replayedClose.Reused || !replayedClose.Closed || replayedClose.NextOffset != 4 {
+		t.Fatalf("replayed close=%+v err=%v", replayedClose, err)
+	}
+	if _, err := platform.WriteStdin(identity, ProjectProcessStdinWrite{FrameID: "stdin-late", ExpectedOffset: 4, Data: []byte("late")}); !errors.Is(err, ErrProjectProcessStdinClosed) {
+		t.Fatalf("write after socket close err=%v", err)
+	}
+}
+
+func TestProjectProcessStdinPeerCredentialRequiresExactWorker(t *testing.T) {
+	identity := ProjectProcessIdentity{PID: 42}
+	credential := &syscall.Ucred{Pid: 42, Uid: 1000}
+	if !validProjectProcessStdinPeerCredential(identity, credential, 1000) {
+		t.Fatal("exact worker credential rejected")
+	}
+	credential.Pid++
+	if validProjectProcessStdinPeerCredential(identity, credential, 1000) {
+		t.Fatal("different worker pid accepted")
+	}
+	credential.Pid = 42
+	credential.Uid++
+	if validProjectProcessStdinPeerCredential(identity, credential, 1000) {
+		t.Fatal("different worker uid accepted")
+	}
+}
+
+func TestProjectProcessStdinBackpressureReportsExactAcceptedPrefix(t *testing.T) {
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = reader.Close() })
+	consumed := make(chan string, 1)
+	go func() {
+		prefix := make([]byte, 2)
+		_, err := io.ReadFull(reader, prefix)
+		if err != nil {
+			consumed <- ""
+			return
+		}
+		consumed <- string(prefix)
+	}()
+	count, err := writeProjectProcessStdinChunk(writer, []byte("abcdef"), 20*time.Millisecond)
+	if err == nil || count != 2 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	if got := <-consumed; got != "ab" {
+		t.Fatalf("consumed=%q", got)
+	}
+}
+
+type shortProjectProcessStdinWriter struct {
+	closed bool
+}
+
+func (*shortProjectProcessStdinWriter) Write([]byte) (int, error) {
+	return 2, io.ErrShortWrite
+}
+
+func (writer *shortProjectProcessStdinWriter) Close() error {
+	writer.closed = true
+	return nil
+}
+
+func TestProjectProcessStdinShortWriteClosesPhysicalChannel(t *testing.T) {
+	stdinRoot, err := os.MkdirTemp("", "mcpstdin-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(stdinRoot) })
+	if err := os.Chmod(stdinRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pid := os.Getpid()
+	group, err := syscall.Getpgid(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticks, err := linuxProcessStartTicks(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := ProjectProcessIdentity{ProcessID: "pr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PID: pid, ProcessGroupID: group, StartTicks: ticks}
+	listener, err := openProjectProcessStdinListener(stdinRoot, identity.ProcessID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := &shortProjectProcessStdinWriter{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		serveProjectProcessStdin(listener, writer, identity, 0)
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-done
+	})
+	platform := osProjectProcessPlatform{stdinRoot: stdinRoot}
+	receipt, err := platform.WriteStdin(identity, ProjectProcessStdinWrite{FrameID: "stdin-short", Data: []byte("abcdef")})
+	if err != nil || receipt.AcceptedBytes != 2 || receipt.NextOffset != 2 || !receipt.Closed || !writer.closed {
+		t.Fatalf("receipt=%+v closed=%t err=%v", receipt, writer.closed, err)
 	}
 }
 
@@ -554,14 +979,18 @@ func TestProjectProcessManagerReconciliationClassifiesUnsafeOwnershipAndLogs(t *
 }
 
 func TestProjectProcessWorkerPersistsRedactedLogsAndExactExitReceipt(t *testing.T) {
-	stateRoot := t.TempDir()
-	workerRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory)
-	logRoot := filepath.Join(stateRoot, projectProcessLogDirectory)
-	if err := os.MkdirAll(workerRoot, 0o700); err != nil {
+	stateRoot, err := os.MkdirTemp("", "mcp-pr-")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(logRoot, 0o700); err != nil {
-		t.Fatal(err)
+	t.Cleanup(func() { _ = os.RemoveAll(stateRoot) })
+	workerRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory)
+	logRoot := filepath.Join(stateRoot, projectProcessLogDirectory)
+	stdinRoot := filepath.Join(stateRoot, projectProcessStdinDirectory)
+	for _, directory := range []string{workerRoot, logRoot, stdinRoot} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	helper := filepath.Join(stateRoot, "worker-helper")
 	helperBody := "#!/bin/sh\nprintf 'token=***REDACTED-SECRET***'\nprintf 'warning\\n' >&2\nsleep 0.2\nexit 7\n"
@@ -598,14 +1027,18 @@ func TestProjectProcessWorkerPersistsRedactedLogsAndExactExitReceipt(t *testing.
 }
 
 func TestProjectProcessWorkerPersistsActualSandboxLeaderIdentity(t *testing.T) {
-	stateRoot := t.TempDir()
-	workerRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory)
-	logRoot := filepath.Join(stateRoot, projectProcessLogDirectory)
-	if err := os.MkdirAll(workerRoot, 0o700); err != nil {
+	stateRoot, err := os.MkdirTemp("", "mcp-pr-")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(logRoot, 0o700); err != nil {
-		t.Fatal(err)
+	t.Cleanup(func() { _ = os.RemoveAll(stateRoot) })
+	workerRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory)
+	logRoot := filepath.Join(stateRoot, projectProcessLogDirectory)
+	stdinRoot := filepath.Join(stateRoot, projectProcessStdinDirectory)
+	for _, directory := range []string{workerRoot, logRoot, stdinRoot} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	helper := filepath.Join(stateRoot, "sandbox-helper")
 	expectedPIDPath := filepath.Join(stateRoot, "sandbox-child.pid")
@@ -686,6 +1119,84 @@ wait "$child"
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("worker did not observe sandbox leader exit")
+	}
+}
+
+func TestProjectProcessWorkerDeliversInitialAndIncrementalStdin(t *testing.T) {
+	stateRoot, err := os.MkdirTemp("", "mcp-pr-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(stateRoot) })
+	workerRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory)
+	logRoot := filepath.Join(stateRoot, projectProcessLogDirectory)
+	stdinRoot := filepath.Join(stateRoot, projectProcessStdinDirectory)
+	for _, directory := range []string{workerRoot, logRoot, stdinRoot} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	helper := filepath.Join(stateRoot, "stdin-helper")
+	helperBody := "#!/bin/sh\nIFS= read -r first\nIFS= read -r second\nprintf '%s|%s' \"$first\" \"$second\"\n"
+	if err := os.WriteFile(helper, []byte(helperBody), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	processID := "pr_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	request := projectProcessWorkerRequest{
+		Executable: helper, Args: []string{"ignored"}, Dir: stateRoot, Env: []string{"PATH=/usr/bin:/bin", "LANG=C"}, Stdin: "initial\n", MaxLogBytes: 1 << 20,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "request"), body); err != nil {
+		t.Fatal(err)
+	}
+	workerDone := make(chan error, 1)
+	go func() { workerDone <- RunProjectProcessWorker(stateRoot, processID) }()
+	identity := ProjectProcessIdentity{ProcessID: processID, PID: os.Getpid()}
+	identity.ProcessGroupID, err = syscall.Getpgid(identity.PID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity.StartTicks, err = linuxProcessStartTicks(identity.PID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Lstat(projectProcessWorkerPath(workerRoot, processID, "ready")); err == nil {
+			break
+		}
+		select {
+		case workerErr := <-workerDone:
+			stdout, _ := os.ReadFile(filepath.Join(logRoot, processID+".stdout.log"))
+			stderr, _ := os.ReadFile(filepath.Join(logRoot, processID+".stderr.log"))
+			exit, _ := readProjectProcessWorkerExit(workerRoot, processID)
+			t.Fatalf("worker exited before readiness: %v stdout=%q stderr=%q exit=%+v", workerErr, stdout, stderr, exit)
+		default:
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("worker readiness was not published")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	platform := osProjectProcessPlatform{stdinRoot: stdinRoot}
+	receipt, err := platform.WriteStdin(identity, ProjectProcessStdinWrite{FrameID: "stdin-incremental", ExpectedOffset: int64(len(request.Stdin)), Data: []byte("incremental\n"), Close: true})
+	if err != nil || receipt.NextOffset != int64(len(request.Stdin)+len("incremental\n")) || receipt.AcceptedBytes != len("incremental\n") || !receipt.Closed {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+	select {
+	case err := <-workerDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker did not finish after stdin close")
+	}
+	stdout, err := os.ReadFile(filepath.Join(logRoot, processID+".stdout.log"))
+	if err != nil || string(stdout) != "initial|incremental" {
+		t.Fatalf("stdout=%q err=%v", stdout, err)
 	}
 }
 

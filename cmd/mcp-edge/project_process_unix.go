@@ -38,6 +38,21 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
 			StdoutOffset: operation.Request.StdoutOffset, StderrOffset: operation.Request.StderrOffset, LimitBytes: operation.Request.OutputLimit,
 		})
+	case edge.OperationProjectProcessStdin:
+		var receipt edgeclient.ProjectProcessStdinReceipt
+		snapshot, receipt, err = processes.WriteStdin(edgeclient.ProjectProcessStdinRequest{
+			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
+			FrameID:        operation.Request.IdempotencyKey,
+			ExpectedOffset: operation.Request.ProcessStdinOffset, Data: operation.Request.Stdin, Close: operation.Request.ProcessStdinClose,
+		})
+		if err == nil {
+			result := projectProcessOperationResult(resolved, snapshot)
+			result.BackgroundStdinNext = receipt.NextOffset
+			result.BackgroundStdinAccepted = receipt.AcceptedBytes
+			result.BackgroundStdinClosed = receipt.Closed
+			result.BackgroundStdinReused = receipt.Reused
+			return result, ""
+		}
 	case edge.OperationProjectProcessStop:
 		snapshot, err = processes.Stop(ctx, edgeclient.ProjectProcessStopRequest{
 			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
@@ -79,6 +94,10 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 			return edge.OperationResult{}, "project_process_not_found"
 		case errors.Is(err, edgeclient.ErrProjectProcessIdempotencyConflict):
 			return edge.OperationResult{}, "project_process_idempotency_conflict"
+		case errors.Is(err, edgeclient.ErrProjectProcessStdinConflict):
+			return edge.OperationResult{}, "project_process_stdin_conflict"
+		case errors.Is(err, edgeclient.ErrProjectProcessStdinClosed):
+			return edge.OperationResult{}, "project_process_stdin_closed"
 		case errors.Is(err, context.Canceled):
 			return edge.OperationResult{}, "cancelled"
 		default:
