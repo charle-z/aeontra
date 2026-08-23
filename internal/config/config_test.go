@@ -44,3 +44,28 @@ func TestNew_CleansRootsAndDefaultsMode(t *testing.T) {
 		t.Errorf("root not cleaned: %q", got.Roots[0])
 	}
 }
+
+func TestNew_RejectsUnknownMode(t *testing.T) {
+	c := Config{Roots: []string{t.TempDir()}, Mode: Mode("alow")}
+	if _, err := New(c); !errors.Is(err, ErrUnknownMode) {
+		t.Fatalf("New(mode=alow) = %v, want ErrUnknownMode", err)
+	}
+}
+
+func TestNormalizeModeAcceptsOnlyExhaustiveValues(t *testing.T) {
+	tests := []struct {
+		input Mode
+		want  Mode
+	}{
+		{input: "", want: ModeReadOnly},
+		{input: ModeReadOnly, want: ModeReadOnly},
+		{input: ModeAsk, want: ModeAsk},
+		{input: ModeAllow, want: ModeAllow},
+	}
+	for _, test := range tests {
+		got, err := NormalizeMode(test.input)
+		if err != nil || got != test.want {
+			t.Errorf("NormalizeMode(%q) = %q, %v; want %q, nil", test.input, got, err, test.want)
+		}
+	}
+}

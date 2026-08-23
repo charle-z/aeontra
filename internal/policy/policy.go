@@ -30,9 +30,9 @@ func NewPolicy(cfg config.Config) (*Policy, error) {
 	}
 	allowed := make([]string, len(cfg.AllowedCommands))
 	copy(allowed, cfg.AllowedCommands)
-	mode := cfg.Mode
-	if mode == "" {
-		mode = config.ModeReadOnly
+	mode, err := config.NormalizeMode(cfg.Mode)
+	if err != nil {
+		return nil, err
 	}
 	return &Policy{jail: jail, allowed: allowed, mode: mode, grants: NewAccessGrants()}, nil
 }
@@ -133,8 +133,10 @@ func (p *Policy) CheckWrite(path string) (resolved string, needsApproval bool, e
 		return "", false, ErrReadOnly
 	case config.ModeAsk:
 		return resolved, true, nil
-	default: // ModeAllow
+	case config.ModeAllow:
 		return resolved, false, nil
+	default:
+		return "", false, config.ErrUnknownMode
 	}
 }
 
@@ -150,8 +152,10 @@ func (p *Policy) CheckCommand(prog string, args []string) (needsApproval bool, e
 		return false, ErrReadOnly
 	case config.ModeAsk:
 		return true, nil
-	default:
+	case config.ModeAllow:
 		return false, nil
+	default:
+		return false, config.ErrUnknownMode
 	}
 }
 
@@ -173,8 +177,10 @@ func (p *Policy) CheckAction() (needsApproval bool, err error) {
 		return false, ErrReadOnly
 	case config.ModeAsk:
 		return true, nil
-	default:
+	case config.ModeAllow:
 		return false, nil
+	default:
+		return false, config.ErrUnknownMode
 	}
 }
 

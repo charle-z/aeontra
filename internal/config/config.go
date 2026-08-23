@@ -54,9 +54,27 @@ var (
 	ErrNoRoots = errors.New("config: at least one project root is required")
 	// ErrRootNotAbsolute is returned when a root is not an absolute path.
 	ErrRootNotAbsolute = errors.New("config: project root must be an absolute path")
+	// ErrUnknownMode is returned when the access posture is not one of the
+	// exhaustive supported values.
+	ErrUnknownMode = errors.New("config: unknown mode (use read-only/ask/allow)")
 	// ErrUnknownSandboxBackend is returned for an unrecognized sandbox backend.
 	ErrUnknownSandboxBackend = errors.New("config: unknown sandbox backend (use none/docker/nsjail/gvisor)")
 )
+
+// NormalizeMode returns the exhaustive effective server access posture. Empty input
+// keeps the secure default. Workspace modes use a separate Edge type and must not be
+// passed through this validator.
+func NormalizeMode(mode Mode) (Mode, error) {
+	if mode == "" {
+		return ModeReadOnly, nil
+	}
+	switch mode {
+	case ModeReadOnly, ModeAsk, ModeAllow:
+		return mode, nil
+	default:
+		return "", ErrUnknownMode
+	}
+}
 
 // SecureDefaults returns a Config pre-populated with the secure-by-default posture:
 // read-only, a conservative command allowlist, and no test command. Callers set
@@ -84,9 +102,11 @@ func New(c Config) (Config, error) {
 		cleaned = append(cleaned, filepath.Clean(r))
 	}
 	c.Roots = cleaned
-	if c.Mode == "" {
-		c.Mode = ModeReadOnly
+	mode, err := NormalizeMode(c.Mode)
+	if err != nil {
+		return Config{}, err
 	}
+	c.Mode = mode
 
 	// Sandbox backend: empty -> "none" (disabled); otherwise must be a known name.
 	switch b := strings.ToLower(strings.TrimSpace(c.SandboxBackend)); b {
