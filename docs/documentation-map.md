@@ -151,6 +151,8 @@ above:
 - P16 scheduler specification: `specs/007-global-work-scheduler/`.
 - P16 pool architecture decision:
   `docs/adr/0004-p16-global-scheduler-separated-execution-pools.md`.
+- L3 and native Windows execution boundary decision:
+  `docs/adr/0005-separated-l3-and-native-windows-execution.md`.
 - P16 measured capacity evidence: `docs/baselines/2026-07-22-p16-capacity.md`.
 - Pre-Codex source/production/Edge reconciliation:
   `docs/baselines/2026-08-12-operational-reconciliation.md`.
