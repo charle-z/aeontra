@@ -36,7 +36,7 @@ update and repeat that gate before publishing a new digest.
 The runner requires:
 
 ```text
-MCP_DEVBOX_SANDBOX_RUNNER_ADDR=mcp-sandbox-runner:8770
+MCP_DEVBOX_SANDBOX_RUNNER_IPV4=<reserved-private-ip>
 MCP_DEVBOX_SANDBOX_RUNNER_TOKEN=<shared random secret>
 MCP_DEVBOX_SANDBOX_WORKSPACE_ID=primary
 MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT=<host-visible registered workspace>
@@ -52,6 +52,51 @@ Optional positive maxima are `MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS`,
 The state root must persist, remain private, and never overlap the writable workspace.
 Do not assign this service a public domain or published host port.
 
+Reserve one unused address from the external Coolify network in Compose. The reference
+Compose derives `MCP_DEVBOX_SANDBOX_RUNNER_ADDR=<reserved-private-ip>:8770` from that
+single value and assigns the same IP through IPAM. Coolify may also attach a
+service-specific network, so a service hostname can resolve to more than one interface
+after recreation. Hostname, wildcard and public listeners are invalid and the Compose
+publishes no host port.
+
+## Rootless storage
+
+Use a dedicated rootless graphroot with the kernel overlay driver when the target host
+passes a real `keep-id` probe:
+
+```toml
+[storage]
+driver = "overlay"
+runroot = "/run/user/10001/containers"
+graphroot = "/var/lib/aeontra-l3-user/storage-native"
+```
+
+Do not remove `keep-id` to work around a storage failure. On kernels that support
+rootless native overlay, a `fuse-overlayfs` mount program can prevent the nested
+namespace runtime from traversing the graphroot. Validate the exact pinned workcell
+with `--userns keep-id`, the configured non-root UID/GID, network disabled, a read-only
+rootfs, dropped capabilities and no new privileges.
+
+Do not convert a populated graphroot in place. Use these phases:
+
+1. **Preflight:** require zero rootless containers, record the active storage driver and
+   graphroot, verify the new graphroot is absent or empty, and run the exact pinned
+   workcell under `keep-id` against a separate temporary native-overlay store. A failed
+   probe stops the migration.
+2. **Prepare:** stop only the rootless Podman service, copy `storage.conf` to a dated
+   owner-only backup, retain the old graphroot unchanged, and create a new empty
+   owner-only graphroot.
+3. **Commit:** install the native-overlay configuration, restart the rootless service,
+   pull the exact approved workcell digest, and repeat the `keep-id` probe. The migration
+   is committed only after the socket, rootless engine identity and probe are healthy.
+4. **Rollback:** stop the rootless service, restore the saved configuration, restart the
+   service and verify that it reports the original graphroot and driver. Do not delete
+   either graphroot until the new store has passed its operational acceptance period.
+
+Docker, Coolify and the public MCP deployment are outside this migration. A failed
+probe, changed engine identity, missing socket, unexpected container or service restart
+count is a FAIL and requires rollback before the runner is restarted.
+
 The runner talks directly to the bounded Podman v5 API over the validated Unix socket;
 it does not package a container-engine CLI. The runner image defaults to UID/GID 10001.
 When it is containerized, provision the
@@ -61,10 +106,10 @@ and private state root at their exact host-visible paths. Do not mount a rootful
 socket.
 
 `deploy/sandbox-runner-compose.yml` is the reference private deployment. It publishes no
-host port, joins only the existing private Coolify network, drops every capability, uses
-a read-only root filesystem and runs as UID/GID 10001. The three writable authorities
-are explicit: the rootless Podman socket, the registered workspace and the disjoint
-receipt state. The image healthcheck authenticates to `/v1/status` and becomes healthy
+host port, reserves one private address on the existing Coolify network, drops every
+capability, uses a read-only root filesystem and runs as UID/GID 10001. The three
+writable authorities are explicit: the rootless Podman socket, the registered workspace
+and the disjoint receipt state. The image healthcheck authenticates to `/v1/status` and becomes healthy
 only after the configured image and rootless endpoint attest successfully.
 
 ## Public MCP settings

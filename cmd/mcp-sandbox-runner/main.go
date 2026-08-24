@@ -163,18 +163,14 @@ func loadConfig() (runnerConfig, error) {
 func validateListenAddress(address string) error {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil || host == "" || port == "" {
-		return fmt.Errorf("%s must be a host:port address", addrEnv)
+		return fmt.Errorf("%s must be an IP:port address", addrEnv)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err != nil || len(addresses) == 0 {
-		return fmt.Errorf("%s host must resolve to a loopback or private address", addrEnv)
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("%s must use a literal loopback or private IP", addrEnv)
 	}
-	for _, address := range addresses {
-		if !address.IP.IsLoopback() && !address.IP.IsPrivate() {
-			return fmt.Errorf("%s must bind only a loopback or private address", addrEnv)
-		}
+	if ip.IsUnspecified() || (!ip.IsLoopback() && !ip.IsPrivate()) {
+		return fmt.Errorf("%s must bind only a loopback or private IP", addrEnv)
 	}
 	return nil
 }

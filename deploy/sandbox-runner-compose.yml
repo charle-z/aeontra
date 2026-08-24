@@ -13,7 +13,7 @@ services:
     mem_limit: 256m
     cpus: 0.5
     environment:
-      MCP_DEVBOX_SANDBOX_RUNNER_ADDR: mcp-sandbox-runner:8770
+      MCP_DEVBOX_SANDBOX_RUNNER_ADDR: "${MCP_DEVBOX_SANDBOX_RUNNER_IPV4:?set one private network address}:8770"
       MCP_DEVBOX_SANDBOX_RUNNER_TOKEN: ${MCP_DEVBOX_SANDBOX_RUNNER_TOKEN:?set the private runner bearer}
       MCP_DEVBOX_SANDBOX_WORKSPACE_ID: primary
       MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT: /srv/aeontra-l3/workspace
@@ -31,7 +31,8 @@ services:
       - /srv/aeontra-l3/workspace:/srv/aeontra-l3/workspace
       - /srv/aeontra-l3/state:/srv/aeontra-l3/state
     networks:
-      - coolify
+      coolify:
+        ipv4_address: ${MCP_DEVBOX_SANDBOX_RUNNER_IPV4:?set one private network address}
 
 networks:
   coolify:
