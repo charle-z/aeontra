@@ -12,6 +12,17 @@ paths = ['''^internal/edgeclient/htb_checkpoint_redaction_test\.go$''']
 regexes = ['''ghp_012345678901234567890123456789012345''']
 
 [[allowlists]]
+description = "Synthetic sandbox idempotency key used only by executor tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''^internal/sandboxexecutor/executor_test\.go$''',
+  '''^internal/sandboxexecutor/podman_engine_test\.go$''',
+]
+regexes = ['''sx_0123456789abcdef0123456789abcdef''']
+
+[[allowlists]]
 description = "Exact synthetic values and key names used by tests and documentation"
 targetRules = ["generic-api-key"]
 condition = "AND"
