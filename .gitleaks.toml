@@ -18,6 +18,7 @@ condition = "AND"
 regexTarget = "line"
 paths = [
   '''^internal/sandboxexecutor/executor_test\.go$''',
+  '''^internal/sandboxexecutor/podman_engine_e2e_test\.go$''',
   '''^internal/sandboxexecutor/podman_engine_test\.go$''',
 ]
 regexes = ['''sx_0123456789abcdef0123456789abcdef''']

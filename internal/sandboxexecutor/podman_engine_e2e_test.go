@@ -33,7 +33,7 @@ func TestPodmanEngineAgainstRealRootlessAPI(t *testing.T) {
 		WorkspaceRoot: workspace, Argv: []string{"/probe"}, NetworkProfile: "none",
 		Timeout: 10 * time.Second, CPUMillis: 500, MemoryMiB: 128, ProcessLimit: 32,
 		OutputBytes: 4096, Image: image,
-		IdempotencyKey: "sx_0123456789abcdef0123456789abcdef",
+		IdempotencyKey: "sx_" + strings.Repeat("0", 32),
 	})
 	if err != nil {
 		t.Fatal(err)
