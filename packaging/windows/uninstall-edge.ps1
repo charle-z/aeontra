@@ -37,6 +37,23 @@ function Resolve-ManagedRoot([string]$Path, [string]$ExpectedParent, [string]$La
     return $full
 }
 
+function Resolve-ManagedInstallRoot([string]$Path) {
+    $full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $root = [IO.Path]::GetPathRoot($full)
+    if ([string]::IsNullOrWhiteSpace($root) -or $root.StartsWith('\') -or $full.StartsWith('\\?\') -or $full.StartsWith('\\.\')) {
+        throw 'InstallRoot must be an absolute path on a local drive.'
+    }
+    $volume = [IO.DriveInfo]::new($root)
+    if (-not $volume.IsReady -or $volume.DriveType -ne [IO.DriveType]::Fixed) {
+        throw 'InstallRoot must use a ready fixed local drive.'
+    }
+    if (-not (Split-Path -Leaf $full).Equals('Edge', [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Split-Path -Leaf (Split-Path -Parent $full)).Equals('Aeontra', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'InstallRoot must end in Aeontra\Edge.'
+    }
+    return $full
+}
+
 function Assert-NoReparseTree([string]$Path, [string]$Label) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $root = Get-Item -LiteralPath $Path -Force
@@ -50,9 +67,8 @@ function Assert-NoReparseTree([string]$Path, [string]$Label) {
     }
 }
 
-$programFiles = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
 $programData = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
-$InstallRoot = Resolve-ManagedRoot $InstallRoot $programFiles 'InstallRoot'
+$InstallRoot = Resolve-ManagedInstallRoot $InstallRoot
 $StateRoot = Resolve-ManagedRoot $StateRoot $programData 'StateRoot'
 $WorkspaceRoot = Resolve-ManagedRoot $WorkspaceRoot $programData 'WorkspaceRoot'
 
