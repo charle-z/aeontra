@@ -39,3 +39,22 @@ func TestWindowsScriptsAllowOnlyManagedCustomInstallRoot(t *testing.T) {
 		t.Fatal("installer still rejects every non-default fixed-drive install root")
 	}
 }
+
+func TestWindowsInstallerPreservesQuotedServiceArgumentsForSCM(t *testing.T) {
+	installBytes, err := os.ReadFile("install-edge.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	install := string(installBytes)
+	for _, required := range []string{
+		`$quotedBinary = '\"' + $targetBinary + '\" windows-agent`,
+		`--state \"' + $StateRoot + '\"`,
+		`--root \"' + $WorkspaceRoot + '\"`,
+		`--service-identity \"' + $serviceIdentity + '\"`,
+		`--pair-request \"' + $pairRequest + '\"`,
+	} {
+		if !strings.Contains(install, required) {
+			t.Errorf("installer does not preserve SCM argument %q", required)
+		}
+	}
+}
