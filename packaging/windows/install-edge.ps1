@@ -82,8 +82,8 @@ function Assert-NoReparsePath([string]$Path, [string]$Label) {
 
 function Set-PrivateDirectoryAcl([string]$Path, [Security.AccessControl.FileSystemRights]$ServiceRights) {
     $serviceAccount = [Security.Principal.NTAccount]::new($serviceIdentity)
-    $systemAccount = [Security.Principal.NTAccount]::new('NT AUTHORITY\SYSTEM')
-    $administrators = [Security.Principal.NTAccount]::new('BUILTIN\Administrators')
+    $systemAccount = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $administrators = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
     $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
     $propagation = [Security.AccessControl.PropagationFlags]::None
     $allow = [Security.AccessControl.AccessControlType]::Allow
@@ -99,8 +99,8 @@ function Set-PrivateDirectoryAcl([string]$Path, [Security.AccessControl.FileSyst
 
 function Set-PrivateFileAcl([string]$Path) {
     $serviceAccount = [Security.Principal.NTAccount]::new($serviceIdentity)
-    $systemAccount = [Security.Principal.NTAccount]::new('NT AUTHORITY\SYSTEM')
-    $administrators = [Security.Principal.NTAccount]::new('BUILTIN\Administrators')
+    $systemAccount = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $administrators = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
     $allow = [Security.AccessControl.AccessControlType]::Allow
     $acl = [Security.AccessControl.FileSecurity]::new()
     $acl.SetAccessRuleProtection($true, $false)

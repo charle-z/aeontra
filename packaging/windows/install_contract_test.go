@@ -58,3 +58,27 @@ func TestWindowsInstallerPreservesQuotedServiceArgumentsForSCM(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsInstallerUsesLocaleIndependentAclIdentities(t *testing.T) {
+	installBytes, err := os.ReadFile("install-edge.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	install := string(installBytes)
+	for _, required := range []string{
+		"[Security.Principal.SecurityIdentifier]::new('S-1-5-18')",
+		"[Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')",
+	} {
+		if !strings.Contains(install, required) {
+			t.Errorf("installer missing locale-independent identity %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"[Security.Principal.NTAccount]::new('NT AUTHORITY\\SYSTEM')",
+		"[Security.Principal.NTAccount]::new('BUILTIN\\Administrators')",
+	} {
+		if strings.Contains(install, forbidden) {
+			t.Errorf("installer retains locale-dependent identity %q", forbidden)
+		}
+	}
+}
