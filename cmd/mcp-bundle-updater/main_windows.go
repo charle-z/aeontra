@@ -96,6 +96,8 @@ type windowsUpdater struct {
 	service     windowsServiceController
 }
 
+var windowsUpdaterExecutable = os.Executable
+
 func main() { os.Exit(runWindows(os.Args[1:])) }
 
 func runWindows(args []string) int {
@@ -193,19 +195,20 @@ func compiledWindowsPublicKey() (ed25519.PublicKey, error) {
 }
 
 func managedWindowsRoots() (installRoot, stateRoot string, err error) {
-	// Resolve system known folders rather than inheriting caller-controlled
-	// ProgramFiles/ProgramData environment variables.
-	programFiles, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFiles, windows.KF_FLAG_DEFAULT)
+	// The immutable updater is inside <install>/releases/<release>/bin. Derive
+	// the selected installation from that signed binary instead of trusting a
+	// caller-controlled ProgramFiles environment variable.
+	executable, err := windowsUpdaterExecutable()
 	if err != nil {
-		return "", "", errors.New("managed Program Files root unavailable")
+		return "", "", errors.New("managed Windows updater path unavailable")
+	}
+	installRoot, err = windowsInstallRootFromUpdater(executable)
+	if err != nil {
+		return "", "", err
 	}
 	programData, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, windows.KF_FLAG_DEFAULT)
 	if err != nil {
 		return "", "", errors.New("managed ProgramData root unavailable")
-	}
-	installRoot, err = cleanLocalPath(filepath.Join(programFiles, "Aeontra", "Edge"))
-	if err != nil {
-		return "", "", err
 	}
 	stateRoot, err = cleanLocalPath(filepath.Join(programData, "Aeontra", "Edge"))
 	if err != nil || pathsOverlap(installRoot, stateRoot) {
@@ -218,6 +221,24 @@ func managedWindowsRoots() (installRoot, stateRoot string, err error) {
 		return "", "", errors.New("managed state root is unsafe")
 	}
 	return installRoot, stateRoot, nil
+}
+
+func windowsInstallRootFromUpdater(executable string) (string, error) {
+	binary, err := cleanLocalPath(executable)
+	if err != nil || !strings.EqualFold(filepath.Base(binary), "mcp-bundle-updater.exe") {
+		return "", errors.New("managed Windows updater path is invalid")
+	}
+	binRoot := filepath.Dir(binary)
+	releaseRoot := filepath.Dir(binRoot)
+	releasesRoot := filepath.Dir(releaseRoot)
+	installRoot := filepath.Dir(releasesRoot)
+	if !strings.EqualFold(filepath.Base(binRoot), "bin") ||
+		!strings.EqualFold(filepath.Base(releasesRoot), "releases") ||
+		!strings.EqualFold(filepath.Base(installRoot), "Edge") ||
+		!strings.EqualFold(filepath.Base(filepath.Dir(installRoot)), "Aeontra") {
+		return "", errors.New("managed Windows updater layout is invalid")
+	}
+	return cleanLocalPath(installRoot)
 }
 
 func cleanLocalPath(value string) (string, error) {

@@ -46,6 +46,17 @@ function Resolve-LocalAbsolutePath([string]$Path, [string]$Label) {
     return $full.TrimEnd('\')
 }
 
+function Assert-ManagedInstallRoot([string]$Path) {
+    $volume = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($Path))
+    if (-not $volume.IsReady -or $volume.DriveType -ne [IO.DriveType]::Fixed) {
+        throw 'InstallRoot must use a ready fixed local drive.'
+    }
+    if (-not (Split-Path -Leaf $Path).Equals('Edge', [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Split-Path -Leaf (Split-Path -Parent $Path)).Equals('Aeontra', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'InstallRoot must end in Aeontra\Edge.'
+    }
+}
+
 function Test-PathOverlap([string]$Left, [string]$Right) {
     $leftPath = $Left.TrimEnd('\')
     $rightPath = $Right.TrimEnd('\')
@@ -112,14 +123,12 @@ $SourceBinary = Resolve-LocalAbsolutePath $SourceBinary 'SourceBinary'
 $InstallRoot = Resolve-LocalAbsolutePath $InstallRoot 'InstallRoot'
 $StateRoot = Resolve-LocalAbsolutePath $StateRoot 'StateRoot'
 $WorkspaceRoot = Resolve-LocalAbsolutePath $WorkspaceRoot 'WorkspaceRoot'
-$managedProgramFiles = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
+$null = Assert-ManagedInstallRoot $InstallRoot
 $managedProgramData = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
-$managedInstallRoot = (Join-Path $managedProgramFiles 'Aeontra\Edge').TrimEnd('\')
 $managedStateRoot = (Join-Path $managedProgramData 'Aeontra\Edge').TrimEnd('\')
-if (-not $InstallRoot.Equals($managedInstallRoot, [StringComparison]::OrdinalIgnoreCase) -or
-    -not $StateRoot.Equals($managedStateRoot, [StringComparison]::OrdinalIgnoreCase) -or
+if (-not $StateRoot.Equals($managedStateRoot, [StringComparison]::OrdinalIgnoreCase) -or
     -not $WorkspaceRoot.StartsWith($managedProgramData.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'Install/state roots are fixed to Windows known folders and the workspace root must remain under ProgramData.'
+    throw 'StateRoot is fixed to managed ProgramData and WorkspaceRoot must remain under ProgramData.'
 }
 
 if ((Test-PathOverlap $InstallRoot $StateRoot) -or (Test-PathOverlap $InstallRoot $WorkspaceRoot) -or (Test-PathOverlap $StateRoot $WorkspaceRoot)) {

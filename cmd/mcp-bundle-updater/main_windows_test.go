@@ -46,6 +46,34 @@ func TestParseWindowsUpdaterOperationIsClosed(t *testing.T) {
 	}
 }
 
+func TestWindowsInstallRootFromUpdaterAcceptsManagedFixedDriveLayout(t *testing.T) {
+	for _, executable := range []string{
+		`C:\Program Files\Aeontra\Edge\releases\v1.2.1\bin\mcp-bundle-updater.exe`,
+		`D:\Aeontra\Edge\releases\v1.2.1\bin\mcp-bundle-updater.exe`,
+	} {
+		root, err := windowsInstallRootFromUpdater(executable)
+		if err != nil {
+			t.Fatalf("%s: %v", executable, err)
+		}
+		if !strings.EqualFold(filepath.Base(root), "Edge") || !strings.EqualFold(filepath.Base(filepath.Dir(root)), "Aeontra") {
+			t.Fatalf("unexpected install root %q", root)
+		}
+	}
+}
+
+func TestWindowsInstallRootFromUpdaterRejectsUnmanagedLayout(t *testing.T) {
+	for _, executable := range []string{
+		`D:\mcp-bundle-updater.exe`,
+		`D:\Aeontra\Edge\bin\mcp-bundle-updater.exe`,
+		`D:\Other\Edge\releases\v1.2.1\bin\mcp-bundle-updater.exe`,
+		`D:\Aeontra\Edge\releases\v1.2.1\bin\other.exe`,
+	} {
+		if _, err := windowsInstallRootFromUpdater(executable); err == nil {
+			t.Fatalf("unmanaged updater layout accepted: %s", executable)
+		}
+	}
+}
+
 func TestWindowsArchiveRejectsTraversalAndRequiresClosedLayout(t *testing.T) {
 	root := t.TempDir()
 	archive := makeWindowsArchive(t, map[string][]byte{

@@ -29,6 +29,15 @@ The default managed roots are:
 - private state: `Aeontra\Edge` under ProgramData;
 - registered workspaces: `Aeontra\Workspaces` under ProgramData.
 
+The signed installer also accepts an explicit `-InstallRoot` on another ready fixed
+local drive when the path ends in `Aeontra\Edge`, for example
+`D:\Aeontra\Edge`. State remains fixed under ProgramData and registered workspaces
+remain under ProgramData. UNC paths, device paths, volume roots, removable drives,
+reparse points and overlapping roots are rejected. Pass the same `-InstallRoot` to
+the signed uninstaller. The updater and doctor derive the selected install root from
+their active signed binary, so they do not depend on a caller-controlled environment
+variable.
+
 The installer creates the `AeontraEdge` SCM service under the virtual account
 `NT SERVICE\AeontraEdge`. Pairing uses one prompted, one-shot code. The code is
 written to a private request file, consumed by the service, and removed after use.
