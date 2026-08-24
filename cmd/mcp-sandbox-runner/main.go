@@ -61,13 +61,9 @@ func main() {
 }
 
 func runHealthcheck() error {
-	address := strings.TrimSpace(os.Getenv(addrEnv))
-	if address == "" {
-		address = "127.0.0.1:8770"
-	}
-	_, port, err := net.SplitHostPort(address)
-	if err != nil || port == "" {
-		return errors.New("sandbox runner healthcheck address is invalid")
+	baseURL, err := runnerHealthcheckURL(os.Getenv(addrEnv))
+	if err != nil {
+		return err
 	}
 	client := &http.Client{
 		Timeout: 5 * time.Second,
@@ -77,7 +73,22 @@ func runHealthcheck() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return checkRunnerHealth(ctx, "http://"+net.JoinHostPort("127.0.0.1", port), strings.TrimSpace(os.Getenv(tokenEnv)), client)
+	return checkRunnerHealth(ctx, baseURL, strings.TrimSpace(os.Getenv(tokenEnv)), client)
+}
+
+func runnerHealthcheckURL(address string) (string, error) {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		address = "127.0.0.1:8770"
+	}
+	if err := validateListenAddress(address); err != nil {
+		return "", errors.New("sandbox runner healthcheck address is invalid")
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || port == "" {
+		return "", errors.New("sandbox runner healthcheck address is invalid")
+	}
+	return "http://" + net.JoinHostPort(host, port), nil
 }
 
 func checkRunnerHealth(ctx context.Context, baseURL, token string, client *http.Client) error {

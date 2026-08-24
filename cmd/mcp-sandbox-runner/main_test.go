@@ -21,6 +21,16 @@ func TestValidateListenAddressRejectsPublicOrUnspecifiedBinds(t *testing.T) {
 	}
 }
 
+func TestRunnerHealthcheckUsesConfiguredPrivateAddress(t *testing.T) {
+	baseURL, err := runnerHealthcheckURL("10.0.1.2:8770")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if baseURL != "http://10.0.1.2:8770" {
+		t.Fatalf("healthcheck base URL=%q", baseURL)
+	}
+}
+
 func TestCheckRunnerHealthRequiresAuthenticatedAvailableRootlessStatus(t *testing.T) {
 	const token = "01234567890123456789012345678901"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
