@@ -14,6 +14,13 @@ and record the immutable `name@sha256:<digest>` identity. Build
 `Dockerfile.sandbox-runner` from the same reviewed source commit. A tag without a digest
 is rejected.
 
+The reference workcell uses a digest-pinned Wolfi base and exact package versions for
+Go, Rust, Node/npm, Python, the C toolchain and common command-line utilities. Its two
+replaced npm transitive packages are fetched over HTTPS and verified by SHA-256. The
+security workflow builds this exact image, emits an SPDX SBOM and rejects every current
+High or Critical Grype finding. Treat any package-version change as a reviewed image
+update and repeat that gate before publishing a new digest.
+
 ## Private runner settings
 
 The runner requires:

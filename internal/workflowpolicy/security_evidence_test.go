@@ -126,6 +126,39 @@ func TestSandboxRunnerDockerfileCopiesBuildDependencies(t *testing.T) {
 	}
 }
 
+func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
+	content, err := os.ReadFile("../../Dockerfile.sandbox-workcell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		"FROM cgr.dev/chainguard/wolfi-base@sha256:52604323e2a19f5e6d37dffa7e6a7ef30e2f98506a73a11cdfa3ef25100131be",
+		"go-1.26=1.26.7-r0",
+		"nodejs-24=24.19.0-r0",
+		"npm=12.0.2-r0",
+		"python-3.14=3.14.7-r1",
+		"rust-1.96=1.96.1-r0",
+		"brace-expansion-5.0.9.tgz",
+		"ip-address-10.3.1.tgz",
+		"busybox sha256sum -c -",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("Dockerfile.sandbox-workcell does not contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"FROM golang:",
+		"bookworm",
+		"apt-get",
+		"apk upgrade",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Dockerfile.sandbox-workcell contains unreviewed base or package mutation %q", forbidden)
+		}
+	}
+}
+
 func TestGitleaksPolicyKeepsSyntheticAllowlistNarrow(t *testing.T) {
 	content, err := os.ReadFile("../../.gitleaks.toml")
 	if err != nil {
