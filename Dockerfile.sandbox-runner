@@ -12,4 +12,5 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/mcp-sandbox-runner
 FROM scratch
 COPY --from=build /out/mcp-sandbox-runner /usr/local/bin/mcp-sandbox-runner
 USER 10001:10001
+HEALTHCHECK --interval=15s --timeout=6s --start-period=15s --retries=4 CMD ["/usr/local/bin/mcp-sandbox-runner", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/mcp-sandbox-runner"]

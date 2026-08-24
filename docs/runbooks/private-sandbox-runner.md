@@ -9,10 +9,20 @@ workcell receives that socket.
 
 ## Build inputs
 
-Build `Dockerfile.sandbox-workcell`, publish it to an administrator-controlled registry,
-and record the immutable `name@sha256:<digest>` identity. Build
-`Dockerfile.sandbox-runner` from the same reviewed source commit. A tag without a digest
-is rejected.
+After an exact-main pull request is green and merged, dispatch
+`.github/workflows/sandbox-image-release.yml` from `main`. Its protected
+`sandbox-image-release` environment publishes `ghcr.io/charle-z/aeontra-sandbox-runner`
+and `ghcr.io/charle-z/aeontra-sandbox-workcell`, both tagged only with the exact source
+commit and retained as immutable `name@sha256:<digest>` identities. The workflow links
+the packages to the source repository, emits registry provenance and SBOM attestations,
+and retains a bounded JSON identity artifact. A tag without a digest is rejected by the
+runner configuration.
+
+New GitHub Container Registry packages are private until an administrator changes their
+visibility. Before a credential-free production pull, make both packages public in the
+package settings and verify an anonymous digest pull. If they remain private, provision
+read-only registry authentication exclusively for the rootless Podman account; never
+place registry credentials in the public MCP container or a launched workcell.
 
 The reference workcell uses a digest-pinned Wolfi base and exact package versions for
 Go, Rust, Node/npm, Python, the C toolchain and common command-line utilities. Its two
@@ -49,6 +59,13 @@ dedicated rootless Podman account with that identity or override the container u
 the exact non-root UID/GID that owns the socket. Mount the socket, registered workspace
 and private state root at their exact host-visible paths. Do not mount a rootful Docker
 socket.
+
+`deploy/sandbox-runner-compose.yml` is the reference private deployment. It publishes no
+host port, joins only the existing private Coolify network, drops every capability, uses
+a read-only root filesystem and runs as UID/GID 10001. The three writable authorities
+are explicit: the rootless Podman socket, the registered workspace and the disjoint
+receipt state. The image healthcheck authenticates to `/v1/status` and becomes healthy
+only after the configured image and rootless endpoint attest successfully.
 
 ## Public MCP settings
 

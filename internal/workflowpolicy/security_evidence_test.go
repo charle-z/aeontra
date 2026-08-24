@@ -114,6 +114,8 @@ func TestSandboxRunnerDockerfileCopiesBuildDependencies(t *testing.T) {
 		"COPY internal/sandboxexecutor ./internal/sandboxexecutor",
 		"COPY internal/sandboxprotocol ./internal/sandboxprotocol",
 		"USER 10001:10001",
+		"HEALTHCHECK --interval=15s --timeout=6s --start-period=15s --retries=4",
+		"[\"/usr/local/bin/mcp-sandbox-runner\", \"healthcheck\"]",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("Dockerfile.sandbox-runner does not contain %q", required)

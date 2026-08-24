@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/sandboxexecutor"
+	"github.com/charle-z/mcp-devbox/internal/sandboxprotocol"
 )
 
 const (
@@ -32,6 +35,15 @@ const (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		if len(os.Args) != 2 || os.Args[1] != "healthcheck" {
+			log.Fatal("unsupported command")
+		}
+		if err := runHealthcheck(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	config, err := loadConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -46,6 +58,58 @@ func main() {
 	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+func runHealthcheck() error {
+	address := strings.TrimSpace(os.Getenv(addrEnv))
+	if address == "" {
+		address = "127.0.0.1:8770"
+	}
+	_, port, err := net.SplitHostPort(address)
+	if err != nil || port == "" {
+		return errors.New("sandbox runner healthcheck address is invalid")
+	}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("sandbox runner healthcheck redirect rejected")
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return checkRunnerHealth(ctx, "http://"+net.JoinHostPort("127.0.0.1", port), strings.TrimSpace(os.Getenv(tokenEnv)), client)
+}
+
+func checkRunnerHealth(ctx context.Context, baseURL, token string, client *http.Client) error {
+	if client == nil || strings.TrimSpace(baseURL) == "" || strings.TrimSpace(token) == "" {
+		return errors.New("sandbox runner healthcheck authority is incomplete")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/status", nil)
+	if err != nil {
+		return errors.New("sandbox runner healthcheck request is invalid")
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	response, err := client.Do(request)
+	if err != nil {
+		return errors.New("sandbox runner healthcheck request failed")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return errors.New("sandbox runner healthcheck was rejected")
+	}
+	decoder := json.NewDecoder(io.LimitReader(response.Body, 4097))
+	decoder.DisallowUnknownFields()
+	var status sandboxprotocol.Status
+	if err := decoder.Decode(&status); err != nil {
+		return errors.New("sandbox runner healthcheck response is invalid")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("sandbox runner healthcheck response has trailing data")
+	}
+	if !status.Available || !status.Rootless {
+		return errors.New("sandbox runner is not available on a rootless engine")
+	}
+	return nil
 }
 
 type runnerConfig struct {
