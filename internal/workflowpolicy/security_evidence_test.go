@@ -107,14 +107,21 @@ func TestSandboxRunnerDockerfileCopiesBuildDependencies(t *testing.T) {
 	}
 	text := string(content)
 	for _, required := range []string{
+		"FROM scratch",
 		"COPY cmd/mcp-sandbox-runner ./cmd/mcp-sandbox-runner",
 		"COPY internal/config ./internal/config",
 		"COPY internal/policy ./internal/policy",
 		"COPY internal/sandboxexecutor ./internal/sandboxexecutor",
 		"COPY internal/sandboxprotocol ./internal/sandboxprotocol",
+		"USER 10001:10001",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("Dockerfile.sandbox-runner does not contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{"apk add", "apt-get", "dnf install", "yum install"} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Dockerfile.sandbox-runner installs an unnecessary runtime package via %q", forbidden)
 		}
 	}
 }

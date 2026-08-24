@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -74,14 +75,13 @@ func NewPrivateSandboxRunner(config PrivateSandboxConfig) SandboxRunner {
 	if config.OutputBytes <= 0 {
 		config.OutputBytes = 1 << 20
 	}
-	if config.Client == nil {
-		config.Client = &http.Client{Timeout: config.Timeout + 10*time.Second}
-	}
 	runner := privateSandboxRunner{config: config}
 	u, err := url.Parse(config.URL)
 	switch {
-	case err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "":
+	case err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "":
 		runner.err = errors.New("private sandbox runner URL must be a credential-free HTTP endpoint")
+	case !privateSandboxURLHostAllowed(u.Hostname()):
+		runner.err = errors.New("private sandbox runner URL must target a loopback or private endpoint")
 	case len(config.Token) < 32:
 		runner.err = errors.New("private sandbox runner token is missing or too short")
 	case !privateSandboxWorkspacePattern.MatchString(config.WorkspaceID):
@@ -91,7 +91,65 @@ func NewPrivateSandboxRunner(config PrivateSandboxConfig) SandboxRunner {
 	case !privateSandboxDigestPattern.MatchString(config.ImageDigest):
 		runner.err = errors.New("private sandbox image digest must be sha256-pinned")
 	}
+	if config.Client == nil {
+		config.Client = newPrivateSandboxHTTPClient(config.Timeout + 10*time.Second)
+	} else {
+		client := *config.Client
+		client.CheckRedirect = rejectPrivateSandboxRedirect
+		config.Client = &client
+	}
+	runner.config.Client = config.Client
 	return runner
+}
+
+func privateSandboxURLHostAllowed(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate()
+	}
+	return !strings.ContainsAny(host, " /\\")
+}
+
+func newPrivateSandboxHTTPClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, errors.New("private sandbox endpoint address is invalid")
+		}
+		addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil || len(addresses) == 0 {
+			return nil, errors.New("private sandbox endpoint resolution failed")
+		}
+		for _, candidate := range addresses {
+			if !candidate.IP.IsLoopback() && !candidate.IP.IsPrivate() {
+				return nil, errors.New("private sandbox endpoint resolved outside private networks")
+			}
+		}
+		var lastErr error
+		for _, candidate := range addresses {
+			connection, err := dialer.DialContext(ctx, network, net.JoinHostPort(candidate.IP.String(), port))
+			if err == nil {
+				return connection, nil
+			}
+			lastErr = err
+		}
+		return nil, lastErr
+	}
+	return &http.Client{
+		Transport:     transport,
+		Timeout:       timeout,
+		CheckRedirect: rejectPrivateSandboxRedirect,
+	}
+}
+
+func rejectPrivateSandboxRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 func (r privateSandboxRunner) Status(ctx context.Context) SandboxStatusInfo {

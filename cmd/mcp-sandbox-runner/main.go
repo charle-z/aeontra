@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -21,7 +22,6 @@ const (
 	rootEnv       = "MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT"
 	stateEnv      = "MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT"
 	imageEnv      = "MCP_DEVBOX_SANDBOX_IMAGE"
-	podmanEnv     = "MCP_DEVBOX_SANDBOX_RUNNER_PODMAN"
 	socketEnv     = "MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET"
 	maxTimeoutEnv = "MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS"
 	maxCPUEnv     = "MCP_DEVBOX_SANDBOX_MAX_CPU_MILLIS"
@@ -67,11 +67,7 @@ func loadConfig() (runnerConfig, error) {
 		return runnerConfig{}, fmt.Errorf("%s must pin an image by sha256 digest", imageEnv)
 	}
 	digest := image[separator+1:]
-	podman := strings.TrimSpace(os.Getenv(podmanEnv))
-	if podman == "" {
-		podman = "/usr/bin/podman"
-	}
-	engine, err := sandboxexecutor.NewPodmanEngine(podman, strings.TrimSpace(os.Getenv(socketEnv)))
+	engine, err := sandboxexecutor.NewPodmanEngine(strings.TrimSpace(os.Getenv(socketEnv)))
 	if err != nil {
 		return runnerConfig{}, err
 	}
@@ -91,11 +87,19 @@ func loadConfig() (runnerConfig, error) {
 
 func validateListenAddress(address string) error {
 	host, port, err := net.SplitHostPort(address)
-	if err != nil || port == "" {
+	if err != nil || host == "" || port == "" {
 		return fmt.Errorf("%s must be a host:port address", addrEnv)
 	}
-	if parsed := net.ParseIP(host); parsed != nil && !parsed.IsLoopback() && !parsed.IsPrivate() && !parsed.IsUnspecified() {
-		return fmt.Errorf("%s must bind only loopback, private, or an unexposed container interface", addrEnv)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(addresses) == 0 {
+		return fmt.Errorf("%s host must resolve to a loopback or private address", addrEnv)
+	}
+	for _, address := range addresses {
+		if !address.IP.IsLoopback() && !address.IP.IsPrivate() {
+			return fmt.Errorf("%s must bind only a loopback or private address", addrEnv)
+		}
 	}
 	return nil
 }

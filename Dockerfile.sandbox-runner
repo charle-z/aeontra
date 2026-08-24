@@ -9,8 +9,7 @@ COPY internal/sandboxexecutor ./internal/sandboxexecutor
 COPY internal/sandboxprotocol ./internal/sandboxprotocol
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/mcp-sandbox-runner ./cmd/mcp-sandbox-runner
 
-FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-RUN apk add --no-cache ca-certificates podman && addgroup -g 10001 runner && adduser -D -u 10001 -G runner runner
+FROM scratch
 COPY --from=build /out/mcp-sandbox-runner /usr/local/bin/mcp-sandbox-runner
-USER runner:runner
+USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/mcp-sandbox-runner"]

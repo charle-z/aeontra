@@ -253,10 +253,13 @@ CPU, memory, process, timeout and combined-output limits. The image, mounts, eng
 socket and network namespace are never caller input. A durable digest-bound receipt
 prevents an ambiguous request from repeating an external effect after lost transport.
 
-The private runner may receive one validated user-scoped rootless Podman socket. That
-socket is never mounted into the workcell container. An unavailable endpoint, a
+The private runner may receive one validated user-scoped rootless Podman socket and
+uses a bounded HTTP client rather than packaging the container-engine CLI. That socket
+is never mounted into the workcell container. An unavailable endpoint, a
 rootful engine, an image mismatch, an overlapping state/workspace root or containment
 drift leaves `sandbox_status.available=false` and `free_terminal=false`.
+The public server resolves the runner only to loopback/private addresses and rejects
+redirects; the runner listener likewise rejects wildcard, public and mixed-DNS binds.
 
 ### Edge sandbox
 

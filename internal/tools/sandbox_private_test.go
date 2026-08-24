@@ -18,6 +18,8 @@ func TestPrivateSandboxRunnerFailsClosedWithoutCompleteAuthority(t *testing.T) {
 		{},
 		{URL: "http://127.0.0.1:9000", Token: strings.Repeat("x", 32), WorkspaceID: "primary"},
 		{URL: "https://example.com", Token: strings.Repeat("x", 32), WorkspaceID: "primary", ImageDigest: testSandboxImageDigest},
+		{URL: "http://8.8.8.8:9000", Token: strings.Repeat("x", 32), WorkspaceID: "primary", ImageDigest: testSandboxImageDigest},
+		{URL: "http://127.0.0.1:9000/unexpected", Token: strings.Repeat("x", 32), WorkspaceID: "primary", ImageDigest: testSandboxImageDigest},
 		{URL: "http://127.0.0.1:9000", Token: "short", WorkspaceID: "primary", ImageDigest: testSandboxImageDigest},
 		{URL: "http://127.0.0.1:9000", Token: strings.Repeat("x", 32), WorkspaceID: "../host", ImageDigest: testSandboxImageDigest},
 	} {
@@ -25,6 +27,26 @@ func TestPrivateSandboxRunnerFailsClosedWithoutCompleteAuthority(t *testing.T) {
 		if st := r.Status(context.Background()); st.Available || st.FreeTerminal {
 			t.Fatalf("incomplete config reported available: %#v", st)
 		}
+	}
+}
+
+func TestPrivateSandboxRunnerRejectsRedirects(t *testing.T) {
+	redirected := 0
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirected++
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	defer source.Close()
+
+	r := NewPrivateSandboxRunner(PrivateSandboxConfig{
+		URL: source.URL, Token: strings.Repeat("x", 32), WorkspaceID: "primary",
+		WorkspaceRoot: t.TempDir(), ImageDigest: testSandboxImageDigest,
+	})
+	if status := r.Status(context.Background()); status.Available || redirected != 0 {
+		t.Fatalf("private runner followed a redirect: status=%#v target_hits=%d", status, redirected)
 	}
 }
 

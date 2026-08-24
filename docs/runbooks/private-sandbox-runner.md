@@ -19,13 +19,12 @@ is rejected.
 The runner requires:
 
 ```text
-MCP_DEVBOX_SANDBOX_RUNNER_ADDR=:8770
+MCP_DEVBOX_SANDBOX_RUNNER_ADDR=mcp-sandbox-runner:8770
 MCP_DEVBOX_SANDBOX_RUNNER_TOKEN=<shared random secret>
 MCP_DEVBOX_SANDBOX_WORKSPACE_ID=primary
 MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT=<host-visible registered workspace>
 MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT=<private persistent state outside workspace>
 MCP_DEVBOX_SANDBOX_IMAGE=<immutable image@sha256:digest>
-MCP_DEVBOX_SANDBOX_RUNNER_PODMAN=/usr/bin/podman
 MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET=/run/user/<runner-uid>/podman/podman.sock
 ```
 
@@ -36,7 +35,9 @@ Optional positive maxima are `MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS`,
 The state root must persist, remain private, and never overlap the writable workspace.
 Do not assign this service a public domain or published host port.
 
-The runner image defaults to UID/GID 10001. When it is containerized, provision the
+The runner talks directly to the bounded Podman v5 API over the validated Unix socket;
+it does not package a container-engine CLI. The runner image defaults to UID/GID 10001.
+When it is containerized, provision the
 dedicated rootless Podman account with that identity or override the container user to
 the exact non-root UID/GID that owns the socket. Mount the socket, registered workspace
 and private state root at their exact host-visible paths. Do not mount a rootful Docker

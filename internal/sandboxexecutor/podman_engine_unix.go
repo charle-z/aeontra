@@ -3,25 +3,21 @@
 package sandboxexecutor
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
-func NewPodmanEngine(binary, socket string) (Engine, error) {
-	if !filepath.IsAbs(binary) || !filepath.IsAbs(socket) {
-		return nil, errors.New("podman binary and socket paths must be absolute")
-	}
-	resolvedBinary, err := filepath.EvalSymlinks(filepath.Clean(binary))
-	if err != nil {
-		return nil, errors.New("resolving Podman binary")
-	}
-	binaryInfo, err := os.Stat(resolvedBinary)
-	if err != nil || !binaryInfo.Mode().IsRegular() || binaryInfo.Mode().Perm()&0o111 == 0 {
-		return nil, errors.New("podman binary is not a regular executable")
+func NewPodmanEngine(socket string) (Engine, error) {
+	if !filepath.IsAbs(socket) {
+		return nil, errors.New("podman socket path must be absolute")
 	}
 	cleanSocket := filepath.Clean(socket)
 	resolvedSocket, err := filepath.EvalSymlinks(cleanSocket)
@@ -42,7 +38,24 @@ func NewPodmanEngine(binary, socket string) (Engine, error) {
 	if !strings.HasPrefix(cleanSocket, expectedPrefix) {
 		return nil, errors.New("podman socket is outside the executor user runtime")
 	}
-	engine := &podmanEngine{socket: cleanSocket, binary: resolvedBinary, uid: uid, gid: gid}
-	engine.run = realPodmanCommand(engine.binary, engine.socket)
-	return engine, nil
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	transport := &http.Transport{
+		Proxy: nil,
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "unix", cleanSocket)
+		},
+		DisableCompression:  true,
+		MaxIdleConns:        8,
+		MaxIdleConnsPerHost: 8,
+		IdleConnTimeout:     30 * time.Second,
+	}
+	return &podmanEngine{
+		socket: cleanSocket, uid: uid, gid: gid,
+		client: &http.Client{
+			Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+	}, nil
 }
