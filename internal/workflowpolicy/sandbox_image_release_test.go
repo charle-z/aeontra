@@ -27,6 +27,8 @@ func TestSandboxImageReleaseKeepsPublicationProtectedAndImmutable(t *testing.T) 
 		"test \"$(git rev-parse HEAD)\" = \"$(git rev-parse origin/main)\"",
 		"actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16",
 		"go-version-file: go.mod",
+		"docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f",
+		"driver: docker-container",
 		"Dockerfile.sandbox-runner",
 		"Dockerfile.sandbox-workcell",
 		"--provenance=mode=max",
