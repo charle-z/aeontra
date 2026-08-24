@@ -179,7 +179,10 @@ func (e *Executor) Execute(ctx context.Context, request sandboxprotocol.Request)
 	if err := e.config.Engine.Attest(ctx, e.config.Image, e.config.ImageDigest); err != nil {
 		return sandboxprotocol.Response{}, errors.New("sandbox executor attestation failed before execution")
 	}
-	runningPath := e.receiptPath(request.IdempotencyKey, ".running")
+	runningPath, err := e.receiptPath(request.IdempotencyKey, ".running")
+	if err != nil {
+		return sandboxprotocol.Response{}, err
+	}
 	running := receipt{SchemaVersion: 1, Digest: request.RequestDigest, State: "running"}
 	created, err := createExclusiveJSON(runningPath, running)
 	if err != nil {
@@ -209,7 +212,11 @@ func (e *Executor) Execute(ctx context.Context, request sandboxprotocol.Request)
 	response.IdempotencyKey = request.IdempotencyKey
 	response.RequestDigest = request.RequestDigest
 	completed := receipt{SchemaVersion: 1, Digest: request.RequestDigest, State: "completed", Response: &response}
-	if err := writeAtomicJSON(e.receiptPath(request.IdempotencyKey, ".done"), completed); err != nil {
+	completedPath, err := e.receiptPath(request.IdempotencyKey, ".done")
+	if err != nil {
+		return sandboxprotocol.Response{}, err
+	}
+	if err := writeAtomicJSON(completedPath, completed); err != nil {
 		return sandboxprotocol.Response{}, fmt.Errorf("persisting sandbox completion receipt: %w", err)
 	}
 	// Keep the exclusive running marker. The completed receipt is authoritative,
@@ -309,12 +316,31 @@ func scanWorkspace(root string) error {
 	})
 }
 
-func (e *Executor) receiptPath(key, suffix string) string {
-	return filepath.Join(e.config.StateRoot, "receipts", key+suffix)
+func (e *Executor) receiptPath(key, suffix string) (string, error) {
+	if !idempotencyPattern.MatchString(key) || (suffix != ".running" && suffix != ".done") {
+		return "", errors.New("sandbox receipt identity is invalid")
+	}
+	name := key + suffix
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		return "", errors.New("sandbox receipt identity is invalid")
+	}
+	receiptRoot, err := filepath.Abs(filepath.Join(e.config.StateRoot, "receipts"))
+	if err != nil {
+		return "", errors.New("sandbox receipt root is invalid")
+	}
+	candidate, err := filepath.Abs(filepath.Join(receiptRoot, name))
+	if err != nil || !strings.HasPrefix(candidate, receiptRoot+string(filepath.Separator)) {
+		return "", errors.New("sandbox receipt path escapes private state")
+	}
+	return candidate, nil
 }
 
 func (e *Executor) completedReceipt(request sandboxprotocol.Request) (sandboxprotocol.Response, bool, error) {
-	record, err := readReceipt(e.receiptPath(request.IdempotencyKey, ".done"))
+	completedPath, err := e.receiptPath(request.IdempotencyKey, ".done")
+	if err != nil {
+		return sandboxprotocol.Response{}, false, err
+	}
+	record, err := readReceipt(completedPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return sandboxprotocol.Response{}, false, nil
 	}

@@ -17,6 +17,9 @@ func canonicalDirectory(raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Workspace and state roots are administrator-controlled absolute mounts,
+	// canonicalized before use and never accepted from an execution request.
+	// codeql[go/path-injection]
 	info, err := os.Stat(resolved)
 	if err != nil || !info.IsDir() {
 		return "", errors.New("path is not a directory")

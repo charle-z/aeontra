@@ -139,6 +139,32 @@ func TestExecuteReplaysCompletedReceiptWithoutRepeatingEffect(t *testing.T) {
 	}
 }
 
+func TestReceiptPathStaysWithinPrivateState(t *testing.T) {
+	executor := testExecutor(t, &fakeEngine{})
+	key := "sx_0123456789abcdef0123456789abcdef"
+	got, err := executor.receiptPath(key, ".done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(executor.config.StateRoot, "receipts", key+".done")
+	if got != want {
+		t.Fatalf("receipt path = %q, want %q", got, want)
+	}
+	for _, input := range []struct {
+		key    string
+		suffix string
+	}{
+		{key: "../outside", suffix: ".done"},
+		{key: key + "/outside", suffix: ".done"},
+		{key: key, suffix: "/outside"},
+		{key: key, suffix: ".unknown"},
+	} {
+		if path, err := executor.receiptPath(input.key, input.suffix); err == nil {
+			t.Fatalf("unsafe receipt path accepted: %q", path)
+		}
+	}
+}
+
 func TestExecuteConcurrentSameIdentityNeverRepeatsEffect(t *testing.T) {
 	engine := &fakeEngine{
 		response: sandboxprotocol.Response{ExitCode: 0, Stdout: "once"},
