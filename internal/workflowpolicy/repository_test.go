@@ -39,3 +39,14 @@ func TestContentsWriteIsLimitedToProtectedManualEdgeRelease(t *testing.T) {
 		t.Fatalf("unprotected contents write accepted: %v", err)
 	}
 }
+
+func TestPackagesWriteIsLimitedToProtectedManualSandboxImageRelease(t *testing.T) {
+	allowed, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "sandbox-image-release.yml"))
+	if err != nil || Validate("sandbox-image-release.yml", allowed) != nil {
+		t.Fatalf("protected sandbox image release rejected: read=%v validate=%v", err, Validate("sandbox-image-release.yml", allowed))
+	}
+	unsafe := []byte("name: unsafe\non: workflow_dispatch\npermissions:\n  contents: read\njobs:\n  publish:\n    timeout-minutes: 10\n    runs-on: ubuntu-24.04\n    permissions:\n      contents: read\n      packages: write\n    steps:\n      - run: echo unsafe\n")
+	if err := Validate("other.yml", unsafe); !errors.Is(err, ErrForbiddenPermission) {
+		t.Fatalf("unprotected packages write accepted: %v", err)
+	}
+}

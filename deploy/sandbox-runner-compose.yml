@@ -1,0 +1,38 @@
+services:
+  mcp-sandbox-runner:
+    image: ${MCP_DEVBOX_SANDBOX_RUNNER_IMAGE:?set an immutable runner image digest}
+    hostname: mcp-sandbox-runner
+    user: "10001:10001"
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 256m
+    cpus: 0.5
+    environment:
+      MCP_DEVBOX_SANDBOX_RUNNER_ADDR: mcp-sandbox-runner:8770
+      MCP_DEVBOX_SANDBOX_RUNNER_TOKEN: ${MCP_DEVBOX_SANDBOX_RUNNER_TOKEN:?set the private runner bearer}
+      MCP_DEVBOX_SANDBOX_WORKSPACE_ID: primary
+      MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT: /srv/aeontra-l3/workspace
+      MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT: /srv/aeontra-l3/state
+      MCP_DEVBOX_SANDBOX_IMAGE: ${MCP_DEVBOX_SANDBOX_IMAGE:?set an immutable workcell image digest}
+      MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET: /run/user/10001/podman/podman.sock
+      MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS: "120000"
+      MCP_DEVBOX_SANDBOX_MAX_CPU_MILLIS: "1000"
+      MCP_DEVBOX_SANDBOX_MAX_MEMORY_MIB: "1024"
+      MCP_DEVBOX_SANDBOX_MAX_PROCESSES: "256"
+      MCP_DEVBOX_SANDBOX_MAX_OUTPUT_BYTES: "1048576"
+      MCP_DEVBOX_SANDBOX_MAX_CONCURRENT: "2"
+    volumes:
+      - /run/user/10001/podman/podman.sock:/run/user/10001/podman/podman.sock
+      - /srv/aeontra-l3/workspace:/srv/aeontra-l3/workspace
+      - /srv/aeontra-l3/state:/srv/aeontra-l3/state
+    networks:
+      - coolify
+
+networks:
+  coolify:
+    external: true

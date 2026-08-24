@@ -1,0 +1,117 @@
+name: Publish Aeontra sandbox images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aeontra-sandbox-image-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and publish immutable L3 images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: sandbox-image-release
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GHCR_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Validate protected release identity
+        run: |
+          test "$GITHUB_REPOSITORY" = "charle-z/aeontra"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          test -n "$GHCR_TOKEN"
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate source and containment contracts
+        run: |
+          go test ./internal/sandboxexecutor ./internal/sandboxprotocol ./internal/tools ./internal/workflowpolicy -count=1
+          go vet ./internal/sandboxexecutor ./internal/sandboxprotocol ./internal/tools ./internal/workflowpolicy
+          git diff --check
+
+      - name: Authenticate the protected publisher
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and publish exact images
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          revision="$(git rev-parse HEAD)"
+          source="https://github.com/$GITHUB_REPOSITORY"
+          runner_image="ghcr.io/$owner/aeontra-sandbox-runner"
+          workcell_image="ghcr.io/$owner/aeontra-sandbox-workcell"
+          runner_metadata="$RUNNER_TEMP/sandbox-runner-metadata.json"
+          workcell_metadata="$RUNNER_TEMP/sandbox-workcell-metadata.json"
+
+          docker buildx build \
+            --file Dockerfile.sandbox-runner \
+            --platform linux/amd64 \
+            --label "org.opencontainers.image.source=$source" \
+            --label "org.opencontainers.image.revision=$revision" \
+            --label "org.opencontainers.image.licenses=Apache-2.0" \
+            --tag "$runner_image:sha-$revision" \
+            --provenance=mode=max \
+            --sbom=true \
+            --push \
+            --metadata-file "$runner_metadata" \
+            .
+
+          docker buildx build \
+            --file Dockerfile.sandbox-workcell \
+            --platform linux/amd64 \
+            --label "org.opencontainers.image.source=$source" \
+            --label "org.opencontainers.image.revision=$revision" \
+            --label "org.opencontainers.image.licenses=Apache-2.0" \
+            --tag "$workcell_image:sha-$revision" \
+            --provenance=mode=max \
+            --sbom=true \
+            --push \
+            --metadata-file "$workcell_metadata" \
+            .
+
+          runner_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$runner_metadata")"
+          workcell_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$workcell_metadata")"
+          docker buildx imagetools inspect "$runner_image@$runner_digest" >/dev/null
+          docker buildx imagetools inspect "$workcell_image@$workcell_digest" >/dev/null
+
+          jq -n \
+            --arg commit "$revision" \
+            --arg runner "$runner_image@$runner_digest" \
+            --arg workcell "$workcell_image@$workcell_digest" \
+            '{schema_version: 1, commit: $commit, runner: $runner, workcell: $workcell}' \
+            > "$RUNNER_TEMP/sandbox-images.json"
+          {
+            echo '### Immutable Aeontra sandbox images'
+            echo
+            echo "- Commit: \`$revision\`"
+            echo "- Runner: \`$runner_image@$runner_digest\`"
+            echo "- Workcell: \`$workcell_image@$workcell_digest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain immutable image identities
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: sandbox-images-${{ github.sha }}
+          path: ${{ runner.temp }}/sandbox-images.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove registry credentials
+        if: always()
+        run: docker logout ghcr.io
