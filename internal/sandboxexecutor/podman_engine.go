@@ -98,7 +98,7 @@ type podmanCreateRequest struct {
 
 func (p *podmanEngine) Attest(ctx context.Context, image, digest string) error {
 	if p.client == nil {
-		return errors.New("Podman API client is unavailable")
+		return errors.New("podman API client is unavailable")
 	}
 	var info struct {
 		Host struct {
@@ -126,7 +126,7 @@ func (p *podmanEngine) Attest(ctx context.Context, image, digest string) error {
 
 func (p *podmanEngine) Run(parent context.Context, spec RunSpec) (sandboxprotocol.Response, error) {
 	if p.client == nil {
-		return sandboxprotocol.Response{}, errors.New("Podman API client is unavailable")
+		return sandboxprotocol.Response{}, errors.New("podman API client is unavailable")
 	}
 	ctx, cancel := context.WithTimeout(parent, spec.Timeout)
 	defer cancel()
@@ -236,7 +236,7 @@ func (p *podmanEngine) create(ctx context.Context, spec podmanCreateRequest) (st
 		return "", err
 	}
 	if !podmanContainerIDPattern.MatchString(created.ID) {
-		return "", errors.New("Podman returned an invalid container identity")
+		return "", errors.New("podman returned an invalid container identity")
 	}
 	return created.ID, nil
 }
@@ -248,7 +248,7 @@ func (p *podmanEngine) wait(ctx context.Context, containerID string) (int, error
 		return 0, err
 	}
 	if exitCode < 0 || exitCode > 255 {
-		return 0, errors.New("Podman returned an invalid exit code")
+		return 0, errors.New("podman returned an invalid exit code")
 	}
 	return exitCode, nil
 }
@@ -265,7 +265,7 @@ func (p *podmanEngine) streamLogs(ctx context.Context, containerID string, strea
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxPodmanResponseBody))
-		return fmt.Errorf("Podman API logs returned status %d", response.StatusCode)
+		return fmt.Errorf("podman API logs returned status %d", response.StatusCode)
 	}
 	return copyPodmanLogFrames(response.Body, streams)
 }
@@ -278,18 +278,18 @@ func copyPodmanLogFrames(reader io.Reader, streams *boundedStreams) error {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return errors.New("Podman log stream ended inside a frame header")
+			return errors.New("podman log stream ended inside a frame header")
 		}
 		if header[1] != 0 || header[2] != 0 || header[3] != 0 {
-			return errors.New("Podman log stream header is invalid")
+			return errors.New("podman log stream header is invalid")
 		}
 		length := binary.BigEndian.Uint32(header[4:])
 		if length > maxPodmanLogFrame {
-			return errors.New("Podman log frame exceeded its limit")
+			return errors.New("podman log frame exceeded its limit")
 		}
 		total += uint64(len(header)) + uint64(length)
 		if total > maxPodmanLogStream {
-			return errors.New("Podman log stream exceeded its limit")
+			return errors.New("podman log stream exceeded its limit")
 		}
 		var writer io.Writer
 		switch header[0] {
@@ -298,10 +298,10 @@ func copyPodmanLogFrames(reader io.Reader, streams *boundedStreams) error {
 		case 2:
 			writer = streams.stderr()
 		default:
-			return errors.New("Podman log stream type is invalid")
+			return errors.New("podman log stream type is invalid")
 		}
 		if _, err := io.CopyN(writer, reader, int64(length)); err != nil {
-			return errors.New("Podman log stream ended inside a frame")
+			return errors.New("podman log stream ended inside a frame")
 		}
 	}
 }
@@ -314,7 +314,7 @@ func (p *podmanEngine) noContent(ctx context.Context, method, endpoint string, q
 	defer response.Body.Close()
 	if !statusAllowed(response.StatusCode, expected) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxPodmanResponseBody))
-		return fmt.Errorf("Podman API returned status %d", response.StatusCode)
+		return fmt.Errorf("podman API returned status %d", response.StatusCode)
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxPodmanResponseBody))
 	return nil
@@ -328,18 +328,18 @@ func (p *podmanEngine) decodeJSON(ctx context.Context, method, endpoint string, 
 	defer response.Body.Close()
 	if response.StatusCode != expected {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxPodmanResponseBody))
-		return fmt.Errorf("Podman API returned status %d", response.StatusCode)
+		return fmt.Errorf("podman API returned status %d", response.StatusCode)
 	}
 	limited := &io.LimitedReader{R: response.Body, N: maxPodmanResponseBody + 1}
 	decoder := json.NewDecoder(limited)
 	if err := decoder.Decode(output); err != nil {
-		return errors.New("Podman API returned invalid JSON")
+		return errors.New("podman API returned invalid JSON")
 	}
 	if limited.N == 0 {
-		return errors.New("Podman API response exceeded its limit")
+		return errors.New("podman API response exceeded its limit")
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return errors.New("Podman API returned trailing data")
+		return errors.New("podman API returned trailing data")
 	}
 	return nil
 }
