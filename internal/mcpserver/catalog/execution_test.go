@@ -47,8 +47,8 @@ func TestRegisterExecutionDefinesStableContractsAndRoutesHandlers(t *testing.T) 
 
 	wantDescriptions := map[string]string{
 		"run_command":    "Run a single allowlisted program with args (e.g. [\"go\",\"vet\",\"./...\"]). NOT a shell: only allowlisted programs, no metacharacters. Optional cwd is jailed under the workspace. Mode-gated (read-only denies; ask needs approve=true). Output redacted.",
-		"sandbox_status": "Report L3 sandbox availability. Diagnostic only: unavailable by default, no free terminal, no Docker socket in the public MCP container.",
-		"sandbox_exec":   "Run an ARBITRARY command INSIDE the L3 sandbox (contained: no network, read-only rootfs, workspace-only, resource-limited). NOT allowlist-limited — the sandbox contains it. Requires a configured backend (MCP_DEVBOX_SANDBOX=docker on a host with Docker); denied in read-only; set approve=true in ask mode.",
+		"sandbox_status": "Attest and report the private rootless L3 executor. It remains unavailable on endpoint, image, rootless or profile drift; the public MCP has no container-engine socket.",
+		"sandbox_exec":   "Run explicit arbitrary argv inside the attested private L3 rootless sandbox. Network is denied, rootfs is read-only, only the registered workspace is writable, and resources/output are bounded. L1 command allowlists do not apply. Denied in read-only; approve=true is required only in ask mode.",
 	}
 	byName := map[string]Tool{}
 	for _, tool := range registered {

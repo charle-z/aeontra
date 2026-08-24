@@ -310,14 +310,21 @@ func pathContains(root, candidate string) bool {
 
 func buildSandboxRunner(cfg config.Config, primary string) tools.SandboxRunner {
 	runner := tools.NewSandboxRunner(cfg.SandboxBackend)
-	if cfg.SandboxBackend != "docker" {
+	if cfg.SandboxBackend != "private-rootless" {
 		return runner
 	}
-	image := strings.TrimSpace(os.Getenv(sandboxImageEnv))
-	if image == "" {
-		image = "golang:1.26-alpine"
+	image := strings.ToLower(strings.TrimSpace(os.Getenv(sandboxImageEnv)))
+	separator := strings.LastIndex(image, "@")
+	if separator < 0 {
+		return runner
 	}
-	return tools.NewDockerSandboxRunner(tools.DockerSandboxConfig{Image: image, Root: primary})
+	return tools.NewPrivateSandboxRunner(tools.PrivateSandboxConfig{
+		URL:           os.Getenv(sandboxRunnerURLEnv),
+		Token:         os.Getenv(sandboxRunnerTokenEnv),
+		WorkspaceID:   os.Getenv(sandboxWorkspaceIDEnv),
+		WorkspaceRoot: primary,
+		ImageDigest:   image[separator+1:],
+	})
 }
 
 func buildValidationRunnerFromEnv() tools.ValidationRunner {

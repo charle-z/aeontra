@@ -19,6 +19,7 @@ func clearRuntimeEnv(t *testing.T) {
 		oauthClientStorePathEnv, oauthAccessStorePathEnv, oauthRefreshStorePathEnv,
 		observabilityModeEnv, observabilityPathEnv, observabilityMaxBytesEnv,
 		sandboxImageEnv,
+		sandboxRunnerURLEnv, sandboxRunnerTokenEnv, sandboxWorkspaceIDEnv,
 		validationRunnerURLEnv, validationRunnerTokenEnv,
 		privilegedTasksEnv, privilegedServicesEnv, privilegedTimeoutEnv,
 		maintainerProfileEnv,
@@ -126,8 +127,13 @@ func TestBuildSandboxRunnerPreservesBackendPosture(t *testing.T) {
 
 	t.Setenv(sandboxImageEnv, "golang:1.26-alpine")
 	docker := buildSandboxRunner(config.Config{SandboxBackend: "docker"}, root).Status(context.Background())
-	if !docker.Available || docker.Backend != "docker" || docker.DefaultEgress != "none" || docker.FreeTerminal {
+	if docker.Available || docker.Backend != "docker" || docker.FreeTerminal {
 		t.Fatalf("docker sandbox status = %#v", docker)
+	}
+
+	private := buildSandboxRunner(config.Config{SandboxBackend: "private-rootless"}, root).Status(context.Background())
+	if private.Available || private.FreeTerminal || private.Backend != "private-rootless" {
+		t.Fatalf("incompletely configured private sandbox status = %#v", private)
 	}
 }
 

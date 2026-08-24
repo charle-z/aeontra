@@ -19,10 +19,13 @@ const stateRootEnv = "MCP_DEVBOX_STATE_ROOT"
 const consoleTimezoneEnv = "CONSOLE_TIMEZONE"
 
 const (
-	testCmdEnv      = "MCP_DEVBOX_TEST_CMD"
-	allowCmdEnv     = "MCP_DEVBOX_ALLOW_CMD"
-	sandboxEnv      = "MCP_DEVBOX_SANDBOX"
-	sandboxImageEnv = "MCP_DEVBOX_SANDBOX_IMAGE"
+	testCmdEnv            = "MCP_DEVBOX_TEST_CMD"
+	allowCmdEnv           = "MCP_DEVBOX_ALLOW_CMD"
+	sandboxEnv            = "MCP_DEVBOX_SANDBOX"
+	sandboxImageEnv       = "MCP_DEVBOX_SANDBOX_IMAGE"
+	sandboxRunnerURLEnv   = "MCP_DEVBOX_SANDBOX_RUNNER_URL"
+	sandboxRunnerTokenEnv = "MCP_DEVBOX_SANDBOX_RUNNER_TOKEN"
+	sandboxWorkspaceIDEnv = "MCP_DEVBOX_SANDBOX_WORKSPACE_ID"
 )
 
 // OAuth env. When both are set, the HTTP transport enables its in-process OAuth

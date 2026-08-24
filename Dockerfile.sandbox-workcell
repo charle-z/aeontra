@@ -1,0 +1,7 @@
+FROM golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      bash build-essential ca-certificates cargo curl git jq nodejs npm pkg-config python3 python3-pip rustc \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
+CMD ["/bin/bash"]

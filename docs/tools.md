@@ -246,8 +246,8 @@ manual source content is redacted before cache insertion and again before return
 | `notes_read` | 1/0/1/0 | Read one jailed, non-symlink note with redaction. |
 | `notes_write_preview` | 1/0/1/0 | Plan size-limited create/append without overwrite. |
 | `notes_write` | 0/0/0/0 | Revalidate hash/state and create or append the note. |
-| `sandbox_status` | 1/0/1/0 | Report configured L3 containment status. |
-| `sandbox_exec` | 0/1/0/0 | Run argv only inside an available L3 sandbox. |
+| `sandbox_status` | 1/0/1/0 | Attest and report the private rootless L3 executor; unavailable on endpoint/image/profile drift. |
+| `sandbox_exec` | 0/1/0/0 | Run arbitrary explicit argv in the private rootless sandbox; L1 allowlists do not apply. |
 | `privileged_task_preview` | 1/0/1/0 | Preview one fixed administrator-enabled profile. |
 | `privileged_task_execute` | 0/1/0/1 | Execute one exact short-lived profile plan with timeout. |
 

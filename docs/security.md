@@ -239,10 +239,24 @@ daemon account. This is useful confinement but not OS isolation.
 
 ### L3 sandbox
 
-`sandbox_exec` is unavailable unless a configured backend provides the reviewed
-container boundary. The intended Docker profile has no network, read-only root,
-workspace-only write access, dropped capabilities, no new privileges, and resource
-limits. The public MCP container itself does not receive the Docker socket.
+`sandbox_exec` is unavailable unless the separate private runner attests its exact
+rootless Podman endpoint, pinned workcell image, fixed `network=none` profile and
+protocol version. The public MCP process receives only an authenticated HTTP client;
+it never receives Docker, Podman or BuildKit sockets and has no host-execution fallback.
+
+The public request is converted to an opaque workspace identifier and relative working
+directory before it crosses the private boundary. The runner resolves its own
+administrator-owned workspace mapping, rejects secret-named workspace entries, and
+launches an ephemeral non-root container with a read-only rootfs, private PID and IPC
+namespaces, bounded temporary storage, dropped capabilities, no new privileges, and
+CPU, memory, process, timeout and combined-output limits. The image, mounts, engine
+socket and network namespace are never caller input. A durable digest-bound receipt
+prevents an ambiguous request from repeating an external effect after lost transport.
+
+The private runner may receive one validated user-scoped rootless Podman socket. That
+socket is never mounted into the workcell container. An unavailable endpoint, a
+rootful engine, an image mismatch, an overlapping state/workspace root or containment
+drift leaves `sandbox_status.available=false` and `free_terminal=false`.
 
 ### Edge sandbox
 

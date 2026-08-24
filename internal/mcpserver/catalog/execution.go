@@ -51,7 +51,7 @@ func RegisterExecution(register Register, service ExecutionService) {
 
 	register(Tool{
 		Name:        "sandbox_status",
-		Description: "Report L3 sandbox availability. Diagnostic only: unavailable by default, no free terminal, no Docker socket in the public MCP container.",
+		Description: "Attest and report the private rootless L3 executor. It remains unavailable on endpoint, image, rootless or profile drift; the public MCP has no container-engine socket.",
 		InputSchema: object(map[string]any{}),
 		Version:     "1",
 		Handler: func(json.RawMessage) (string, error) {
@@ -61,7 +61,7 @@ func RegisterExecution(register Register, service ExecutionService) {
 
 	register(Tool{
 		Name:        "sandbox_exec",
-		Description: "Run an ARBITRARY command INSIDE the L3 sandbox (contained: no network, read-only rootfs, workspace-only, resource-limited). NOT allowlist-limited — the sandbox contains it. Requires a configured backend (MCP_DEVBOX_SANDBOX=docker on a host with Docker); denied in read-only; set approve=true in ask mode.",
+		Description: "Run explicit arbitrary argv inside the attested private L3 rootless sandbox. Network is denied, rootfs is read-only, only the registered workspace is writable, and resources/output are bounded. L1 command allowlists do not apply. Denied in read-only; approve=true is required only in ask mode.",
 		InputSchema: object(map[string]any{
 			"command": stringArray("program and arguments; command[0] is the program"),
 			"approve": boolProp("run even when approval is required"),
