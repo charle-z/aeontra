@@ -19,6 +19,33 @@ import (
 	"time"
 )
 
+const (
+	projectProcessWorkerTestStateEnv = "MCP_DEVBOX_TEST_PROCESS_WORKER_STATE"
+	projectProcessWorkerTestIDEnv    = "MCP_DEVBOX_TEST_PROCESS_WORKER_ID"
+)
+
+// TestProjectProcessWorkerSubprocess runs only when explicitly selected by a
+// parent test. Production starts the durable worker as its own process-group
+// leader, so the tests must preserve that lifecycle boundary instead of calling
+// RunProjectProcessWorker from the shared go test process.
+func TestProjectProcessWorkerSubprocess(t *testing.T) {
+	stateRoot := os.Getenv(projectProcessWorkerTestStateEnv)
+	processID := os.Getenv(projectProcessWorkerTestIDEnv)
+	if stateRoot == "" && processID == "" {
+		return
+	}
+	if err := RunProjectProcessWorker(stateRoot, processID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func projectProcessWorkerTestCommand(stateRoot, processID string) *exec.Cmd {
+	command := exec.Command(os.Args[0], "-test.run=^TestProjectProcessWorkerSubprocess$", "-test.count=1")
+	command.Env = append(os.Environ(), projectProcessWorkerTestStateEnv+"="+stateRoot, projectProcessWorkerTestIDEnv+"="+processID)
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return command
+}
+
 type fakeProjectProcess struct {
 	identity ProjectProcessIdentity
 	exit     chan ProjectProcessExit
@@ -1009,8 +1036,8 @@ func TestProjectProcessWorkerPersistsRedactedLogsAndExactExitReceipt(t *testing.
 	if err := writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "request"), body); err != nil {
 		t.Fatal(err)
 	}
-	if err := RunProjectProcessWorker(stateRoot, processID); err != nil {
-		t.Fatal(err)
+	if output, err := projectProcessWorkerTestCommand(stateRoot, processID).CombinedOutput(); err != nil {
+		t.Fatalf("worker failed: %v output=%q", err, output)
 	}
 	stdout, err := os.ReadFile(filepath.Join(logRoot, processID+".stdout.log"))
 	if err != nil || strings.Contains(string(stdout), "ghp_") || !strings.Contains(string(stdout), "***REDACTED-SECRET***") {
@@ -1076,8 +1103,12 @@ wait "$child"
 	if err := writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "request"), body); err != nil {
 		t.Fatal(err)
 	}
+	worker := projectProcessWorkerTestCommand(stateRoot, processID)
+	if err := worker.Start(); err != nil {
+		t.Fatal(err)
+	}
 	workerDone := make(chan error, 1)
-	go func() { workerDone <- RunProjectProcessWorker(stateRoot, processID) }()
+	go func() { workerDone <- worker.Wait() }()
 	var expectedPID int
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
@@ -1152,9 +1183,13 @@ func TestProjectProcessWorkerDeliversInitialAndIncrementalStdin(t *testing.T) {
 	if err := writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "request"), body); err != nil {
 		t.Fatal(err)
 	}
+	worker := projectProcessWorkerTestCommand(stateRoot, processID)
+	if err := worker.Start(); err != nil {
+		t.Fatal(err)
+	}
 	workerDone := make(chan error, 1)
-	go func() { workerDone <- RunProjectProcessWorker(stateRoot, processID) }()
-	identity := ProjectProcessIdentity{ProcessID: processID, PID: os.Getpid()}
+	go func() { workerDone <- worker.Wait() }()
+	identity := ProjectProcessIdentity{ProcessID: processID, PID: worker.Process.Pid}
 	identity.ProcessGroupID, err = syscall.Getpgid(identity.PID)
 	if err != nil {
 		t.Fatal(err)

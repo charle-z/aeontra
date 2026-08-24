@@ -8,6 +8,11 @@ Compatibility aliases use identical safe handlers. git_commit does not push. The
 is no force push and no free host terminal. Tokens are never returned. External
 writes require explicit approval in ask mode.
 
+Registered Edge targets may be Linux/Parrot/WSL or the separate native Windows
+workcell. Native Windows service installation, signed release update, rollback and
+real-device acceptance are operator lifecycle concerns; this public catalog does
+not expose a free host shell or a caller-selected updater.
+
 ## Annotation legend
 
 Each row shows `R/D/I/O`: `readOnlyHint`, `destructiveHint`, `idempotentHint`, and

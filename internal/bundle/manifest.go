@@ -41,6 +41,10 @@ const (
 	ComponentCodexPin        = "codex-pin"
 	ComponentSystemd         = "systemd-unit"
 	ComponentSystemdPath     = "systemd-onboard-path"
+	ComponentWindowsEdge     = "windows-edge"
+	ComponentWindowsUpdater  = "windows-updater"
+	ComponentWindowsInstall  = "windows-installer"
+	ComponentWindowsRemove   = "windows-uninstaller"
 )
 
 type Code string
@@ -72,6 +76,7 @@ type Manifest struct {
 	ProtocolVersion string            `json:"protocol_version"`
 	CatalogHash     string            `json:"catalog_hash"`
 	Architecture    string            `json:"architecture"`
+	Platform        string            `json:"platform,omitempty"`
 	Components      map[string]string `json:"components"`
 }
 
@@ -81,6 +86,7 @@ type Compatibility struct {
 	ProtocolVersion string
 	CatalogHash     string
 	Architecture    string
+	Platform        string
 }
 
 type Metadata struct {
@@ -89,6 +95,7 @@ type Metadata struct {
 	ProtocolVersion string
 	CatalogHash     string
 	Architecture    string
+	Platform        string
 }
 
 type Verified struct {
@@ -104,6 +111,10 @@ func (e *VerificationError) Error() string { return string(e.Code) }
 
 func RequiredComponents() []string {
 	return []string{ComponentEdge, ComponentWorker, ComponentUpdater, ComponentGitHubCLI, ComponentCodex, ComponentCodexPin, ComponentSystemd, ComponentSystemdPath}
+}
+
+func WindowsRequiredComponents() []string {
+	return []string{ComponentWindowsEdge, ComponentWindowsUpdater, ComponentWindowsInstall, ComponentWindowsRemove}
 }
 
 func versionFourRequiredComponents() []string {
@@ -139,6 +150,19 @@ func requiredComponentsForVersion(version int) ([]string, bool) {
 	}
 }
 
+func requiredComponentsForManifest(version int, platform string) ([]string, bool) {
+	if version == 6 {
+		if platform != "windows" {
+			return nil, false
+		}
+		return WindowsRequiredComponents(), true
+	}
+	if platform != "" {
+		return nil, false
+	}
+	return requiredComponentsForVersion(version)
+}
+
 func DefaultLayout() map[string]string {
 	return map[string]string{
 		ComponentEdge:        "bin/mcp-edge",
@@ -149,6 +173,15 @@ func DefaultLayout() map[string]string {
 		ComponentCodexPin:    "codex/pin.json",
 		ComponentSystemd:     "systemd/mcp-devbox-edge@.service",
 		ComponentSystemdPath: "systemd/mcp-devbox-edge-onboard@.path",
+	}
+}
+
+func WindowsLayout() map[string]string {
+	return map[string]string{
+		ComponentWindowsEdge:    "bin/mcp-edge.exe",
+		ComponentWindowsUpdater: "bin/mcp-bundle-updater.exe",
+		ComponentWindowsInstall: "install-edge.ps1",
+		ComponentWindowsRemove:  "uninstall-edge.ps1",
 	}
 }
 
@@ -212,6 +245,19 @@ func LayoutForVersion(version int) (map[string]string, bool) {
 	return copy, true
 }
 
+// LayoutFor returns the closed component layout for a signed platform bundle.
+// Legacy Linux manifests intentionally carry no platform field so their signed
+// bytes and updater compatibility remain unchanged.
+func LayoutFor(version int, platform string) (map[string]string, bool) {
+	if version == 6 && platform == "windows" {
+		return WindowsLayout(), true
+	}
+	if platform != "" {
+		return nil, false
+	}
+	return LayoutForVersion(version)
+}
+
 func Build(root string, metadata Metadata) (Manifest, error) {
 	return BuildVersion(root, metadata, CurrentManifestVersion)
 }
@@ -220,9 +266,9 @@ func BuildVersion(root string, metadata Metadata, version int) (Manifest, error)
 	manifest := Manifest{
 		Version: version, Release: metadata.Release, Commit: metadata.Commit,
 		ProtocolVersion: metadata.ProtocolVersion, CatalogHash: metadata.CatalogHash,
-		Architecture: metadata.Architecture, Components: map[string]string{},
+		Architecture: metadata.Architecture, Platform: metadata.Platform, Components: map[string]string{},
 	}
-	layout, ok := layoutForVersion(manifest.Version)
+	layout, ok := LayoutFor(manifest.Version, manifest.Platform)
 	if !ok {
 		return Manifest{}, &VerificationError{Code: ManifestInvalid}
 	}
@@ -248,7 +294,7 @@ func LoadAndVerify(root string, publicKey ed25519.PublicKey, expected Compatibil
 	if err != nil {
 		return Verified{}, err
 	}
-	layout, ok := layoutForVersion(manifest.Version)
+	layout, ok := LayoutFor(manifest.Version, manifest.Platform)
 	if !ok {
 		return Verified{}, &VerificationError{Code: ManifestInvalid}
 	}
@@ -270,13 +316,13 @@ func LoadTrustedManifest(root string, publicKey ed25519.PublicKey) (Manifest, er
 	if err != nil {
 		return Manifest{}, err
 	}
-	layout, ok := layoutForVersion(manifest.Version)
+	layout, ok := LayoutFor(manifest.Version, manifest.Platform)
 	if !ok {
 		return Manifest{}, &VerificationError{Code: ManifestInvalid}
 	}
 	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
 		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
-		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture, Platform: manifest.Platform,
 	}); err != nil {
 		return Manifest{}, err
 	}
@@ -325,10 +371,10 @@ func Verify(root string, manifest Manifest, signature []byte, publicKey ed25519.
 		expected.Commit == "" || manifest.Commit != expected.Commit ||
 		expected.ProtocolVersion == "" || manifest.ProtocolVersion != expected.ProtocolVersion ||
 		expected.CatalogHash == "" || manifest.CatalogHash != expected.CatalogHash ||
-		expected.Architecture == "" || manifest.Architecture != expected.Architecture {
+		expected.Architecture == "" || manifest.Architecture != expected.Architecture || manifest.Platform != expected.Platform {
 		return Verified{}, &VerificationError{Code: BundleMismatch}
 	}
-	required, ok := requiredComponentsForVersion(manifest.Version)
+	required, ok := requiredComponentsForManifest(manifest.Version, manifest.Platform)
 	if !ok {
 		return Verified{}, &VerificationError{Code: ManifestInvalid}
 	}
@@ -350,7 +396,7 @@ func Verify(root string, manifest Manifest, signature []byte, publicKey ed25519.
 }
 
 func canonicalManifest(manifest Manifest) ([]byte, error) {
-	required, supported := requiredComponentsForVersion(manifest.Version)
+	required, supported := requiredComponentsForManifest(manifest.Version, manifest.Platform)
 	if !supported || !ValidRelease(manifest.Release) || !commitPattern.MatchString(manifest.Commit) ||
 		strings.TrimSpace(manifest.ProtocolVersion) == "" || !digestPattern.MatchString(manifest.CatalogHash) ||
 		(manifest.Architecture != "amd64" && manifest.Architecture != "arm64") || len(manifest.Components) != len(required) {

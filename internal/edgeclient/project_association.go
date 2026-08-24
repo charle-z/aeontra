@@ -195,8 +195,9 @@ func validateProjectAssociationPlan(config ProjectAssociationConfig, plan Projec
 		!plan.ExpiresAt.After(plan.CreatedAt) || plan.ExpiresAt.Sub(plan.CreatedAt) != projectAssociationPlanTTL {
 		return projectErr(ProjectErrorPlanChanged, errors.New("project association plan is invalid"))
 	}
-	if !filepath.IsAbs(plan.CandidatePath) || filepath.Clean(plan.CandidatePath) == filepath.Clean(config.Roots.Dev) ||
-		!pathInside(config.Roots.Dev, filepath.Clean(plan.CandidatePath)) {
+	root, rootErr := projectDevelopmentRoot(config.Roots)
+	if rootErr != nil || !filepath.IsAbs(plan.CandidatePath) || filepath.Clean(plan.CandidatePath) == filepath.Clean(root) ||
+		!pathInside(root, filepath.Clean(plan.CandidatePath)) {
 		return projectErr(ProjectErrorPlanChanged, errors.New("project association candidate escaped the development root"))
 	}
 	return nil

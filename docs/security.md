@@ -372,6 +372,29 @@ user-owned rootless Docker/Podman socket. It rejects rootful sockets and Windows
 Filesystem/process containment, runtime labels, cancellation, and cleanup still apply,
 but this profile is owner-trusted and is **not** universal target or egress isolation.
 
+### Native Windows Edge
+
+The Windows Edge is a separate trusted-host boundary. Its SCM service runs under the
+virtual account `NT SERVICE\AeontraEdge`, and the installer grants that identity only
+the private state/workspace permissions required by the configured service. Program
+files are immutable versioned releases; `service-config.json` and `active.json` are
+server-owned control records checked by the doctor. Updates and rollback use the
+signature- and digest-verifying updater, not a shell or a caller-selected executable.
+
+Windows Job Objects and ACL/reparse-point checks constrain process and filesystem use,
+but they do not provide the networkless Linux sandbox. The native package currently
+does not claim the Linux rootless toolbox, browser harness, or HTB workflow on Windows.
+Project commands run under the Edge service identity and share the host network. This
+profile is therefore limited to repositories and commands trusted by the device owner;
+untrusted repository code belongs in the Linux networkless sandbox. Windows does not
+provide an atomic handle-bound current-directory launch through this runner, so the
+profile also does not claim protection against a same-identity process racing a
+workspace rename or junction replacement. Process-control requests still bind the
+exact durable PID and creation time to prevent stale or accidental cross-process use.
+Those capabilities require their own implementation and real-host acceptance. A
+source candidate or signed package is not evidence that a Windows service is deployed
+or accepted.
+
 ### Authorized target-locked workspace
 
 The local contract adds one private target, VPN interface, machine metadata, and

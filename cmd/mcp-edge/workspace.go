@@ -38,7 +38,7 @@ func workspaceAdd(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 	state := fs.String("state", defaultStateRoot(), "private Edge state root")
 	pathFlag := fs.String("path", "", "absolute local workspace path")
-	profileFlag := fs.String("profile", string(edgeclient.WorkspaceProfileSandbox), "sandbox or linux-workcell")
+	profileFlag := fs.String("profile", string(edgeclient.WorkspaceProfileSandbox), "sandbox, linux-workcell or windows-workcell")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func workspaceAdd(args []string, stdout, stderr io.Writer) error {
 	if created {
 		status = "added"
 	}
-	if workspace.Profile == edgeclient.WorkspaceProfileLinuxWorkcell {
+	if workspace.Profile == edgeclient.WorkspaceProfileLinuxWorkcell || workspace.Profile == edgeclient.WorkspaceProfileWindowsWorkcell {
 		fmt.Fprintf(stdout, "%s %s %s %s %s\n", status, workspace.ID, workspace.Profile, workspace.Mode, workspace.Path)
 	} else {
 		fmt.Fprintf(stdout, "%s %s %s\n", status, workspace.ID, workspace.Path)
@@ -97,7 +97,7 @@ func workspaceList(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	for _, workspace := range workspaces {
-		if workspace.Profile == edgeclient.WorkspaceProfileLinuxWorkcell {
+		if workspace.Profile == edgeclient.WorkspaceProfileLinuxWorkcell || workspace.Profile == edgeclient.WorkspaceProfileWindowsWorkcell {
 			fmt.Fprintf(stdout, "%s %s %s %s %s\n", workspace.ID, workspace.Profile, workspace.Mode, workspace.NetworkPosture, workspace.Path)
 		} else {
 			fmt.Fprintf(stdout, "%s %s\n", workspace.ID, workspace.Path)

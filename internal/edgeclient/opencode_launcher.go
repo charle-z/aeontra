@@ -1359,11 +1359,6 @@ func validateOpenCodeToolPath(value string) error {
 	return nil
 }
 
-func pathInside(root, candidate string) bool {
-	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(candidate))
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
-}
-
 func openCodeRuntimeDir(socketRoot, runtimeID string) string {
 	id := strings.TrimPrefix(runtimeID, "mr_")
 	if len(id) > 16 {

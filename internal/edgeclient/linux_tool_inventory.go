@@ -1,3 +1,5 @@
+//go:build !windows
+
 package edgeclient
 
 import (
@@ -10,13 +12,6 @@ import (
 	"strings"
 	"time"
 )
-
-type LinuxToolInventoryEntry struct {
-	Name       string `json:"name"`
-	Available  bool   `json:"available"`
-	Version    string `json:"version"`
-	Capability string `json:"capability"`
-}
 
 type linuxToolDefinition struct {
 	Name        string

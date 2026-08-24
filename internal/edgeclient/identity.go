@@ -180,10 +180,15 @@ func preparePrivateRoot(root string) error {
 	if err := rejectSymlinkPath(root); err != nil {
 		return err
 	}
+	_, statErr := os.Lstat(root)
+	created := errors.Is(statErr, os.ErrNotExist)
+	if statErr != nil && !created {
+		return errors.New("edge state root unavailable")
+	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return errors.New("edge state root unavailable")
 	}
-	if err := os.Chmod(root, 0o700); err != nil {
+	if err := securePrivateRoot(root, created); err != nil {
 		return errors.New("edge state permissions failed")
 	}
 	return validatePrivateRoot(root)
@@ -198,10 +203,10 @@ func validatePrivateRoot(root string) error {
 		return err
 	}
 	info, err := os.Lstat(root)
-	if err != nil || !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("edge state root is unsafe")
 	}
-	return nil
+	return validatePrivateRootPlatform(root, info)
 }
 
 func rejectSymlinkPath(path string) error {
@@ -224,10 +229,41 @@ func rejectSymlinkPath(path string) error {
 
 func requirePrivateRegularFile(path string) error {
 	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("edge private file is unsafe")
 	}
-	return nil
+	return validatePrivateFilePlatform(path, info)
+}
+
+// ValidatePrivateRegularFile exposes the same platform-specific private-file
+// validation used by the Edge's durable stores. Windows callers use this
+// after creating an inherited state file so a plan cannot silently move to a
+// broader ACL; Unix callers retain the existing mode/ownership checks.
+func ValidatePrivateRegularFile(path string) error {
+	return requirePrivateRegularFile(path)
+}
+
+// PreparePrivateRoot creates or validates an administrator-owned private root
+// using the platform's native ownership and ACL rules. It is exported for
+// platform-specific durable stores that live below the Edge state root.
+func PreparePrivateRoot(path string) error {
+	return preparePrivateRoot(path)
+}
+
+func securePrivateRegularPath(path string) error {
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	secureErr := securePrivateFile(file)
+	closeErr := file.Close()
+	if secureErr != nil {
+		return secureErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return requirePrivateRegularFile(path)
 }
 
 func writePrivateAtomic(path string, content []byte) error {
@@ -240,7 +276,7 @@ func writePrivateAtomic(path string, content []byte) error {
 	}
 	temporaryName := temporary.Name()
 	defer os.Remove(temporaryName)
-	if err := temporary.Chmod(0o600); err != nil {
+	if err := securePrivateFile(temporary); err != nil {
 		_ = temporary.Close()
 		return err
 	}
@@ -255,7 +291,10 @@ func writePrivateAtomic(path string, content []byte) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryName, path)
+	if err := os.Rename(temporaryName, path); err != nil {
+		return err
+	}
+	return requirePrivateRegularFile(path)
 }
 
 func decodeSingleJSON(decoder *json.Decoder, output any) error {

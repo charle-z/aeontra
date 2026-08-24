@@ -133,7 +133,7 @@ func TestP12TrustedLinuxWorkcellClosureIsSynchronized(t *testing.T) {
 		}
 	}
 
-	registry := read("../internal/edgeclient/workspaces.go")
+	registry := read("../internal/edgeclient/workspaces.go") + read("../internal/edgeclient/workspace_owner_linux.go")
 	for _, required := range []string{"isWindowsMount(path)", "rejectSymlinkPath(path)", "requireCurrentOwner(info)"} {
 		if !strings.Contains(registry, required) {
 			t.Errorf("workspace registry guard missing %q", required)

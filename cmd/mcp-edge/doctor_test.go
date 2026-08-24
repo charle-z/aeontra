@@ -175,8 +175,9 @@ func stubHealthyDoctor(t *testing.T) {
 	doctorLoadIdentity = func(string) (edgeclient.Identity, ed25519.PrivateKey, error) {
 		return edgeclient.Identity{Name: "parrot", DeviceID: "ed_0123456789abcdef0123456789abcdef"}, nil, nil
 	}
+	expectedService := edgeServiceName("charles")
 	doctorInspectRuntime = func(_ string, service string) edgeRuntimeObservation {
-		if service != "mcp-devbox-opencode-edge@charles.service" {
+		if service != expectedService {
 			t.Fatalf("service=%q", service)
 		}
 		return edgeRuntimeObservation{ServiceState: "active", ServiceActive: true, ProcessState: "single", LockState: "held", Coherence: "managed", ProcessRelease: "p15.0.9", ProcessCommit: "0123456789abcdef0123456789abcdef01234567", Healthy: true}

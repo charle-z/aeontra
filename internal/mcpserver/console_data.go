@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/console"
@@ -137,12 +136,7 @@ func readSystemData() console.SystemData {
 	data := console.SystemData{CPUCount: runtime.NumCPU()}
 	memoryOK := readMemory(&data)
 	loadOK := readLoad(&data)
-	var stat syscall.Statfs_t
-	diskOK := syscall.Statfs("/", &stat) == nil
-	if diskOK {
-		data.DiskTotalBytes = stat.Blocks * uint64(stat.Bsize)
-		data.DiskAvailableBytes = stat.Bavail * uint64(stat.Bsize)
-	}
+	diskOK := readDisk(&data)
 	data.Available = data.CPUCount > 0 && memoryOK && loadOK && diskOK
 	return data
 }

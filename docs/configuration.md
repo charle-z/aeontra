@@ -165,6 +165,23 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   installed device evidence are separate facts.
 - **Optional:** local owner-bound Git authority and authorized laboratory metadata.
 
+### Native Windows Edge
+
+- **Components:** a signed Windows bundle, the `AeontraEdge` SCM service, private
+  ProgramData state, and registered workspace roots under ProgramData.
+- **Managed roots:** program files are under `%ProgramFiles%\Aeontra\Edge`;
+  service state is under `%ProgramData%\Aeontra\Edge`; workspaces are under
+  `%ProgramData%\Aeontra\Workspaces` by default. Install, state, and workspace
+  roots must be local, non-overlapping, and free of reparse points.
+- **Service identity:** the service runs as the virtual account
+  `NT SERVICE\AeontraEdge`. The installer records `service-config.json` and
+  selects one immutable release with `active.json`.
+- **Validation and updates:** use the installed `mcp-edge doctor` and
+  `lifecycle inspect/status`. Updates and rollback are delegated to the signed
+  `mcp-bundle-updater.exe`; doctor does not mutate state.
+- **Status:** native Windows packaging and source support do not prove a signed
+  release, installed service, or accepted real device. Record those gates separately.
+
 ### Privileged profiles
 
 - **Components:** server-defined fixed profiles and, where required, a separately

@@ -205,7 +205,8 @@ func validateProjectPreparationPlan(config ProjectPreparationConfig, plan Projec
 			return projectErr(ProjectErrorPlanChanged, errors.New("project clone target changed"))
 		}
 	case ProjectPreparationReuseExisting, ProjectPreparationAssociateExisting:
-		if !filepath.IsAbs(plan.CandidatePath) || filepath.Clean(plan.CandidatePath) == filepath.Clean(config.Roots.Dev) || !pathInside(config.Roots.Dev, filepath.Clean(plan.CandidatePath)) {
+		root, rootErr := projectDevelopmentRoot(config.Roots)
+		if rootErr != nil || !filepath.IsAbs(plan.CandidatePath) || filepath.Clean(plan.CandidatePath) == filepath.Clean(root) || !pathInside(root, filepath.Clean(plan.CandidatePath)) {
 			return projectErr(ProjectErrorPlanChanged, errors.New("project association target changed"))
 		}
 	default:
@@ -230,7 +231,8 @@ func projectPreparationAction(decision ProjectRecoveryDecision) (ProjectPreparat
 }
 
 func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, plan ProjectPreparationPlan) (ProjectStatus, error) {
-	if _, err := ValidateRegisteredWorkspace(config.Roots.Dev); err != nil {
+	root, err := projectDevelopmentRoot(config.Roots)
+	if err != nil {
 		return ProjectStatus{}, projectErr(ProjectErrorCheckoutUnsafe, err)
 	}
 	if err := os.Mkdir(plan.CandidatePath, 0o700); err != nil {
@@ -249,7 +251,7 @@ func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, pla
 		return ProjectStatus{}, projectErr(ProjectErrorCleanupRequired, errors.New("project clone reservation is unsafe"))
 	}
 	cleanup := func(code ProjectErrorCode, cause error) (ProjectStatus, error) {
-		if cleanupErr := removeReservedProjectClone(config.Roots.Dev, plan.CandidatePath, reserved); cleanupErr != nil {
+		if cleanupErr := removeReservedProjectClone(root, plan.CandidatePath, reserved); cleanupErr != nil {
 			return ProjectStatus{}, projectErr(ProjectErrorCleanupRequired, errors.Join(cause, cleanupErr))
 		}
 		return ProjectStatus{}, projectErr(code, cause)
