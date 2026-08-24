@@ -199,6 +199,54 @@ func TestBuildEmitsVersionFiveWithOnlyPinnedCodexHarness(t *testing.T) {
 	}
 }
 
+func TestVersionSixWindowsBundleBindsPlatformAndClosedLayout(t *testing.T) {
+	root := t.TempDir()
+	layout := WindowsLayout()
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest, err := BuildVersion(root, Metadata{
+		Release: "v1.2.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		ProtocolVersion: "mcp-devbox.edge-bundle.v1", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Architecture: "amd64", Platform: "windows",
+	}, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := Sign(manifest, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
+		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture, Platform: "windows",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
+		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
+	}); err == nil {
+		t.Fatal("Windows bundle verified without an exact platform binding")
+	}
+	if _, err := BuildVersion(root, Metadata{
+		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
+	}, 6); err == nil {
+		t.Fatal("version six accepted a platform-free bundle")
+	}
+}
+
 func TestVersionFourHybridBundleRemainsVerifiableForRollback(t *testing.T) {
 	layout, ok := layoutForVersion(4)
 	if !ok {

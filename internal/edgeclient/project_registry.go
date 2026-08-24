@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -148,7 +147,7 @@ func OpenProjectRegistry(config ProjectRegistryConfig) (*ProjectRegistry, error)
 		_ = db.Close()
 		return nil, projectErr(ProjectErrorRegistryUnavailable, err)
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := securePrivateRegularPath(path); err != nil {
 		_ = db.Close()
 		return nil, projectErr(ProjectErrorRegistryUnavailable, err)
 	}
@@ -249,8 +248,12 @@ func CanonicalProjectPath(roots WorkspaceRoots, repository string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	candidate := filepath.Join(roots.Dev, repository)
-	if filepath.Dir(candidate) != filepath.Clean(roots.Dev) || !pathInside(roots.Dev, candidate) {
+	root, err := projectDevelopmentRoot(roots)
+	if err != nil {
+		return "", err
+	}
+	candidate := filepath.Join(root, repository)
+	if filepath.Dir(candidate) != filepath.Clean(root) || !pathInside(root, candidate) {
 		return "", projectErr(ProjectErrorInvalidInput, errors.New("canonical project path escaped the development root"))
 	}
 	return candidate, nil
@@ -447,7 +450,7 @@ func normalizeProjectProfiles(input []WorkspaceProfile) ([]WorkspaceProfile, err
 	seen := map[WorkspaceProfile]bool{}
 	profiles := make([]WorkspaceProfile, 0, len(input))
 	for _, profile := range input {
-		if profile != WorkspaceProfileSandbox && profile != WorkspaceProfileLinuxWorkcell || seen[profile] {
+		if profile != WorkspaceProfileSandbox && profile != WorkspaceProfileLinuxWorkcell && profile != WorkspaceProfileWindowsWorkcell || seen[profile] {
 			return nil, projectErr(ProjectErrorInvalidInput, errors.New("project profiles are invalid"))
 		}
 		seen[profile] = true

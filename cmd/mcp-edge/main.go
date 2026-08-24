@@ -45,6 +45,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = runOpenCodeRelay(args[1:], stderr)
 	case "codex":
 		err = runCodexRelay(args[1:], stderr)
+	case "windows-agent":
+		err = runWindowsAgent(args[1:], stdin, stdout, stderr)
 	case "workspace":
 		err = workspaceCommand(args[1:], stdout, stderr)
 	case "project":
@@ -217,11 +219,7 @@ func defaultStateRoot() string {
 	if err != nil {
 		return ""
 	}
-	stateBase := strings.TrimSpace(os.Getenv("XDG_STATE_HOME"))
-	if stateBase == "" || !filepath.IsAbs(stateBase) {
-		stateBase = filepath.Join(home, ".local", "state")
-	}
-	preferred := filepath.Join(stateBase, "mcp-edge")
+	preferred := platformDefaultStateRoot(home)
 	legacy := filepath.Join(home, ".config", "mcp-devbox-edge")
 	if _, err := os.Stat(filepath.Join(preferred, "identity.json")); err == nil {
 		return preferred
@@ -260,6 +258,7 @@ Usage:
   mcp-edge project status --alias <PROJECT> [--target <ALIAS>]
   mcp-edge project resolve --alias <PROJECT> [--target <ALIAS>]
   mcp-edge run --root <ABS_LINUX_PATH> [--state <ABS_PATH>] [--poll 5s] [--lease 10m]
+  mcp-edge windows-agent --root <ABS_WINDOWS_PATH> [--state <ABS_PATH>] [--service-identity "NT SERVICE\\AeontraEdge"] [--pair-request <ABS_PATH>]
   mcp-edge opencode --opencode <ABS_PATH> --provider <ABS_PATH> --integrity <ABS_PATH> [--bubblewrap <ABS_PATH>] [--state <ABS_PATH>]
   mcp-edge workspace add [--profile sandbox|linux-workcell] <ABS_LINUX_PATH> [--state <ABS_PATH>]
   mcp-edge workspace configure <OPAQUE_ID> --mode dev|htb-linux [local metadata] [--state <ABS_PATH>]

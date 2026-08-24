@@ -30,8 +30,9 @@ func TestOnboardReusesValidIdentityWithoutPairingCodeOrDeviceIDOutput(t *testing
 		return edgeclient.Identity{}, nil
 	}
 	currentOnboardingUser = func() (*user.User, error) { return &user.User{Username: "charles"}, nil }
+	expectedService := edgeServiceName("charles")
 	waitOnboardingService = func(service string, timeout time.Duration) error {
-		if service != "mcp-devbox-opencode-edge@charles.service" || timeout != 30*time.Second {
+		if service != expectedService || timeout != 30*time.Second {
 			t.Fatalf("service=%q timeout=%s", service, timeout)
 		}
 		return nil

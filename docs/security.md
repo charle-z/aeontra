@@ -239,10 +239,27 @@ daemon account. This is useful confinement but not OS isolation.
 
 ### L3 sandbox
 
-`sandbox_exec` is unavailable unless a configured backend provides the reviewed
-container boundary. The intended Docker profile has no network, read-only root,
-workspace-only write access, dropped capabilities, no new privileges, and resource
-limits. The public MCP container itself does not receive the Docker socket.
+`sandbox_exec` is unavailable unless the separate private runner attests its exact
+rootless Podman endpoint, pinned workcell image, fixed `network=none` profile and
+protocol version. The public MCP process receives only an authenticated HTTP client;
+it never receives Docker, Podman or BuildKit sockets and has no host-execution fallback.
+
+The public request is converted to an opaque workspace identifier and relative working
+directory before it crosses the private boundary. The runner resolves its own
+administrator-owned workspace mapping, rejects secret-named workspace entries, and
+launches an ephemeral non-root container with a read-only rootfs, private PID and IPC
+namespaces, bounded temporary storage, dropped capabilities, no new privileges, and
+CPU, memory, process, timeout and combined-output limits. The image, mounts, engine
+socket and network namespace are never caller input. A durable digest-bound receipt
+prevents an ambiguous request from repeating an external effect after lost transport.
+
+The private runner may receive one validated user-scoped rootless Podman socket and
+uses a bounded HTTP client rather than packaging the container-engine CLI. That socket
+is never mounted into the workcell container. An unavailable endpoint, a
+rootful engine, an image mismatch, an overlapping state/workspace root or containment
+drift leaves `sandbox_status.available=false` and `free_terminal=false`.
+The public server resolves the runner only to loopback/private addresses and rejects
+redirects; the runner listener likewise rejects wildcard, public and mixed-DNS binds.
 
 ### Edge sandbox
 
@@ -357,6 +374,29 @@ The trusted workcell shares the host network by design and may receive one verif
 user-owned rootless Docker/Podman socket. It rejects rootful sockets and Windows mounts.
 Filesystem/process containment, runtime labels, cancellation, and cleanup still apply,
 but this profile is owner-trusted and is **not** universal target or egress isolation.
+
+### Native Windows Edge
+
+The Windows Edge is a separate trusted-host boundary. Its SCM service runs under the
+virtual account `NT SERVICE\AeontraEdge`, and the installer grants that identity only
+the private state/workspace permissions required by the configured service. Program
+files are immutable versioned releases; `service-config.json` and `active.json` are
+server-owned control records checked by the doctor. Updates and rollback use the
+signature- and digest-verifying updater, not a shell or a caller-selected executable.
+
+Windows Job Objects and ACL/reparse-point checks constrain process and filesystem use,
+but they do not provide the networkless Linux sandbox. The native package currently
+does not claim the Linux rootless toolbox, browser harness, or HTB workflow on Windows.
+Project commands run under the Edge service identity and share the host network. This
+profile is therefore limited to repositories and commands trusted by the device owner;
+untrusted repository code belongs in the Linux networkless sandbox. Windows does not
+provide an atomic handle-bound current-directory launch through this runner, so the
+profile also does not claim protection against a same-identity process racing a
+workspace rename or junction replacement. Process-control requests still bind the
+exact durable PID and creation time to prevent stale or accidental cross-process use.
+Those capabilities require their own implementation and real-host acceptance. A
+source candidate or signed package is not evidence that a Windows service is deployed
+or accepted.
 
 ### Authorized target-locked workspace
 

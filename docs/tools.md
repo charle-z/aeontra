@@ -8,6 +8,11 @@ Compatibility aliases use identical safe handlers. git_commit does not push. The
 is no force push and no free host terminal. Tokens are never returned. External
 writes require explicit approval in ask mode.
 
+Registered Edge targets may be Linux/Parrot/WSL or the separate native Windows
+workcell. Native Windows service installation, signed release update, rollback and
+real-device acceptance are operator lifecycle concerns; this public catalog does
+not expose a free host shell or a caller-selected updater.
+
 ## Annotation legend
 
 Each row shows `R/D/I/O`: `readOnlyHint`, `destructiveHint`, `idempotentHint`, and
@@ -54,6 +59,7 @@ do not replace server-side enforcement.
 | `project_browser_cleanup` | 0/1/1/0 | Convenience API: explicitly remove only closed Chromium sessions, exact private profiles and exact JPEG artifacts. Ready/busy sessions are preserved. |
 | `project_process_start` | 0/1/1/1 | Start or reuse one durable background argv through the same Bubblewrap/workcell executor as `project_exec`, keyed by a caller idempotency key. It returns an opaque process id; PID, paths, argv and environment remain private. |
 | `project_process_status` | 1/0/1/0 | Read safe durable state plus bounded incremental redacted stdout/stderr for one owned background process by opaque id and byte offsets. |
+| `project_process_stdin` | 0/1/1/1 | Write one ordered bounded non-secret UTF-8 chunk to an owned durable process stdin, or close stdin explicitly, using an idempotency key and expected byte offset. The incremental stream is capped at 16 MiB; receipts report exact accepted bytes and closed state without returning input content. |
 | `project_process_stop` | 0/1/1/0 | Idempotently stop one owned process group after PID/start-time revalidation, using TERM followed by bounded grace and KILL only when needed. |
 | `project_process_signal` | 0/1/0/0 | Send one closed `interrupt`, `terminate`, or `kill` signal to an owned process group after PID/start-time revalidation; arbitrary signals and host-wide targets are rejected. |
 | `project_process_list` | 1/0/1/0 | List at most 100 opaque process identities, states and timestamps for one project/target without exposing PID, argv, environment, paths or log contents. |
@@ -245,8 +251,8 @@ manual source content is redacted before cache insertion and again before return
 | `notes_read` | 1/0/1/0 | Read one jailed, non-symlink note with redaction. |
 | `notes_write_preview` | 1/0/1/0 | Plan size-limited create/append without overwrite. |
 | `notes_write` | 0/0/0/0 | Revalidate hash/state and create or append the note. |
-| `sandbox_status` | 1/0/1/0 | Report configured L3 containment status. |
-| `sandbox_exec` | 0/1/0/0 | Run argv only inside an available L3 sandbox. |
+| `sandbox_status` | 1/0/1/0 | Attest and report the private rootless L3 executor; unavailable on endpoint/image/profile drift. |
+| `sandbox_exec` | 0/1/0/0 | Run arbitrary explicit argv in the private rootless sandbox; L1 allowlists do not apply. |
 | `privileged_task_preview` | 1/0/1/0 | Preview one fixed administrator-enabled profile. |
 | `privileged_task_execute` | 0/1/0/1 | Execute one exact short-lived profile plan with timeout. |
 

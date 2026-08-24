@@ -6,13 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
-
-const installedBundleRoot = "/opt/mcp-devbox/current"
 
 func bundleCommand(args []string, stdout io.Writer) error {
 	if len(args) != 1 || args[0] != "verify" {
@@ -40,7 +37,7 @@ func verifyInstalledEdgeBundleAt(root string) (bundle.Verified, error) {
 		Release: buildinfo.EdgeBundleRelease, Commit: buildinfo.Commit,
 		ProtocolVersion: buildinfo.EdgeBundleProtocolVersion,
 		CatalogHash:     buildinfo.EdgeBundleCatalogHash,
-		Architecture:    runtime.GOARCH,
+		Architecture:    installedBundleArchitecture(), Platform: installedBundlePlatform(),
 	})
 }
 func installedBundlePublicKey() (ed25519.PublicKey, error) {

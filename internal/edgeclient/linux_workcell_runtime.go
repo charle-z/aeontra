@@ -1,3 +1,5 @@
+//go:build !windows
+
 package edgeclient
 
 import (
@@ -21,11 +23,6 @@ const (
 	linuxWorkcellInventoryFile    = "tool-inventory.json"
 	linuxWorkcellStateLimit       = int64(1 << 20)
 )
-
-type LinuxNetworkProbe interface {
-	InterfaceIPv4(context.Context, string) (string, error)
-	RouteInterface(context.Context, string) (string, error)
-}
 
 type LinuxWorkcellPreparation struct {
 	Workspace         Workspace

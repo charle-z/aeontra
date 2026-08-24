@@ -28,6 +28,16 @@ type projectProcessStatusParams struct {
 	LimitBytes   int    `json:"limit_bytes"`
 }
 
+type projectProcessStdinParams struct {
+	Alias          string `json:"alias"`
+	Target         string `json:"target"`
+	ProcessID      string `json:"process_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	ExpectedOffset int64  `json:"expected_offset"`
+	Data           string `json:"data"`
+	CloseStdin     bool   `json:"close_stdin"`
+}
+
 type projectProcessStopParams struct {
 	Alias        string `json:"alias"`
 	Target       string `json:"target"`
@@ -77,6 +87,9 @@ type projectProcessPublicView struct {
 	StderrEOF       bool                            `json:"stderr_eof"`
 	StdoutTruncated bool                            `json:"stdout_truncated"`
 	StderrTruncated bool                            `json:"stderr_truncated"`
+	StdinNext       int64                           `json:"stdin_next"`
+	StdinAccepted   int                             `json:"stdin_accepted"`
+	StdinClosed     bool                            `json:"stdin_closed"`
 	Reused          bool                            `json:"reused"`
 	Reason          string                          `json:"reason,omitempty"`
 	Processes       []edge.BackgroundProcessSummary `json:"processes,omitempty"`
@@ -107,6 +120,17 @@ func (s *Server) addProjectProcessTools(projectSchema map[string]any) {
 		}, []string{"alias", "target", "process_id", "stdout_offset", "stderr_offset", "limit_bytes"}), Version: "1",
 		Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 	}, s.handleProjectProcessStatus)
+	s.addDirectTool(toolDef{
+		Name: "project_process_stdin", Description: "Write one ordered bounded UTF-8 chunk to the stdin of an owned durable project process, or close stdin explicitly. The expected byte offset and idempotency key make retries safe; content, PID and local paths are never returned.",
+		InputSchema: closedObject(map[string]any{
+			"alias": projectSchema["alias"], "target": projectSchema["target"], "process_id": processID,
+			"idempotency_key": stringSchema("caller-generated stdin write key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, 128),
+			"expected_offset": map[string]any{"type": "integer", "minimum": 0, "maximum": edge.MaxProjectProcessStdinTotalBytes},
+			"data":            map[string]any{"type": "string", "maxLength": edge.MaxProjectProcessStdinBytes},
+			"close_stdin":     map[string]any{"type": "boolean"},
+		}, []string{"alias", "target", "process_id", "idempotency_key", "expected_offset", "data", "close_stdin"}), Version: "1",
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true},
+	}, s.handleProjectProcessStdin)
 	s.addDirectTool(toolDef{
 		Name: "project_process_stop", Description: "Idempotently stop one owned durable project process by opaque id. The Edge revalidates process identity, sends TERM to only its process group, waits a finite grace period, and escalates to KILL only when needed.",
 		InputSchema: closedObject(map[string]any{
@@ -158,6 +182,17 @@ func (s *Server) handleProjectProcessStatus(arguments json.RawMessage) (string, 
 	return s.runProjectProcessOperation(params.Target, edge.OperationProjectProcessStatus, edge.OperationRequest{
 		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", BackgroundProcessID: params.ProcessID,
 		StdoutOffset: params.StdoutOffset, StderrOffset: params.StderrOffset, OutputLimit: params.LimitBytes,
+	}, params.Alias, params.Target)
+}
+
+func (s *Server) handleProjectProcessStdin(arguments json.RawMessage) (string, error) {
+	var params projectProcessStdinParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	return s.runProjectProcessOperation(params.Target, edge.OperationProjectProcessStdin, edge.OperationRequest{
+		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", BackgroundProcessID: params.ProcessID,
+		IdempotencyKey: params.IdempotencyKey, ProcessStdinOffset: params.ExpectedOffset, Stdin: params.Data, ProcessStdinClose: params.CloseStdin,
 	}, params.Alias, params.Target)
 }
 
@@ -227,7 +262,8 @@ func (s *Server) runProjectProcessOperation(target string, kind edge.OperationKi
 		StdoutNext: result.BackgroundStdoutNext, StderrNext: result.BackgroundStderrNext,
 		StdoutEOF: result.BackgroundStdoutEOF, StderrEOF: result.BackgroundStderrEOF,
 		StdoutTruncated: result.BackgroundStdoutTruncated, StderrTruncated: result.BackgroundStderrTruncated,
-		Reused:    err == nil && !created,
+		StdinNext: result.BackgroundStdinNext, StdinAccepted: result.BackgroundStdinAccepted, StdinClosed: result.BackgroundStdinClosed,
+		Reused:    err == nil && (!created || result.BackgroundStdinReused),
 		Processes: result.BackgroundProcesses, Removed: result.BackgroundCleanupRemoved, Active: result.BackgroundCleanupActive,
 	}
 	if operation.State == edge.OperationSucceeded {

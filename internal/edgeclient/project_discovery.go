@@ -76,7 +76,8 @@ func DiscoverProjectCheckout(ctx context.Context, config ProjectDiscoveryConfig,
 	if err != nil {
 		return ProjectRecoveryDecision{}, projectErr(ProjectErrorCheckoutUnsafe, err)
 	}
-	if _, err := ValidateRegisteredWorkspace(roots.Dev); err != nil {
+	root, err := projectDevelopmentRoot(roots)
+	if err != nil {
 		return ProjectRecoveryDecision{}, projectErr(ProjectErrorCheckoutUnsafe, err)
 	}
 	inspector := config.Inspector
@@ -141,7 +142,7 @@ func DiscoverProjectCheckout(ctx context.Context, config ProjectDiscoveryConfig,
 		return decision, nil
 	}
 
-	entries, err := os.ReadDir(roots.Dev)
+	entries, err := os.ReadDir(root)
 	if err != nil {
 		return ProjectRecoveryDecision{}, projectErr(ProjectErrorCheckoutUnsafe, errors.New("project development root is unavailable"))
 	}
@@ -154,8 +155,8 @@ func DiscoverProjectCheckout(ctx context.Context, config ProjectDiscoveryConfig,
 		if entry.Name() == repository || entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(roots.Dev, entry.Name())
-		if filepath.Dir(path) != filepath.Clean(roots.Dev) || !pathInside(roots.Dev, path) {
+		path := filepath.Join(root, entry.Name())
+		if filepath.Dir(path) != filepath.Clean(root) || !pathInside(root, path) {
 			continue
 		}
 		if discoveryCtx.Err() != nil {

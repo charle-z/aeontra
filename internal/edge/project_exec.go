@@ -55,7 +55,7 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if kind == OperationProjectExec {
 		return normalizeProjectExecRequest(request)
 	}
-	if kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup {
+	if kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStdin || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup {
 		return normalizeProjectProcessRequest(kind, request)
 	}
 	if kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish {
@@ -188,6 +188,7 @@ func operationRequestsEqual(left, right OperationRequest) bool {
 
 func projectOperationUsesIdempotency(kind OperationKind) bool {
 	return kind == OperationProjectSnapshot || kind == OperationProjectExec || kind == OperationProjectProcessStart ||
+		kind == OperationProjectProcessStdin ||
 		kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup ||
 		kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup ||
 		kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish ||

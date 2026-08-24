@@ -151,6 +151,10 @@ above:
 - P16 scheduler specification: `specs/007-global-work-scheduler/`.
 - P16 pool architecture decision:
   `docs/adr/0004-p16-global-scheduler-separated-execution-pools.md`.
+- L3 and native Windows execution boundary decision:
+  `docs/adr/0005-separated-l3-and-native-windows-execution.md`.
+- Private rootless L3 deployment and acceptance:
+  `docs/runbooks/private-sandbox-runner.md`.
 - P16 measured capacity evidence: `docs/baselines/2026-07-22-p16-capacity.md`.
 - Pre-Codex source/production/Edge reconciliation:
   `docs/baselines/2026-08-12-operational-reconciliation.md`.
@@ -158,6 +162,7 @@ above:
   `docs/analysis/codex-harness-compatibility.md`.
 - Edge lifecycle state migration: `docs/edge-lifecycle-migration.md`.
 - P16 package/install candidate: `docs/install-edge-parrot-p16.md`.
+- Native Windows Edge package and operator boundary: `docs/install-edge-windows.md`.
 - Human project aliases and workspace resolution:
   `docs/project-workspace-resolution.md`.
 - Durable local Edge execution journal: `docs/edge-job-journal.md`.

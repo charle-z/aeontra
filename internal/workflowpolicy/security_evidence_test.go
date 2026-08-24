@@ -34,6 +34,8 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"docker build --file Dockerfile.front-door --tag mcp-front-door:ci .",
 		"docker build --file Dockerfile.front-door-coordinator --tag mcp-front-door-coordinator:ci .",
 		"docker build --file Dockerfile.validation-runner --tag mcp-validation-runner:ci .",
+		"docker build --file Dockerfile.sandbox-runner --tag mcp-sandbox-runner:ci .",
+		"docker build --file Dockerfile.sandbox-workcell --tag mcp-sandbox-workcell:ci .",
 		"Verify private coordinator named-volume startup",
 		"sh scripts/test-front-door-coordinator-volume.sh",
 		"output-file: front-door-sbom.spdx.json",
@@ -54,6 +56,14 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"test -s validation-runner-sbom.spdx.json",
 		"test -s validation-runner-grype.json",
 		"go run ./cmd/grype-gate --report validation-runner-grype.json --minimum high --annotation-file Dockerfile.validation-runner",
+		"output-file: sandbox-runner-sbom.spdx.json",
+		"image: mcp-sandbox-runner:ci",
+		"output-file: sandbox-runner-grype.json",
+		"go run ./cmd/grype-gate --report sandbox-runner-grype.json --minimum high --annotation-file Dockerfile.sandbox-runner",
+		"output-file: sandbox-workcell-sbom.spdx.json",
+		"image: mcp-sandbox-workcell:ci",
+		"output-file: sandbox-workcell-grype.json",
+		"go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell",
 		"anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610",
 		"output-file: sbom.spdx.json",
 		"upload-artifact: false",
@@ -87,6 +97,65 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 	}
 	if got := strings.Count(text, "timeout-minutes:"); got != 4 {
 		t.Fatalf("timeout count = %d, want 4", got)
+	}
+}
+
+func TestSandboxRunnerDockerfileCopiesBuildDependencies(t *testing.T) {
+	content, err := os.ReadFile("../../Dockerfile.sandbox-runner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		"FROM scratch",
+		"COPY cmd/mcp-sandbox-runner ./cmd/mcp-sandbox-runner",
+		"COPY internal/config ./internal/config",
+		"COPY internal/policy ./internal/policy",
+		"COPY internal/sandboxexecutor ./internal/sandboxexecutor",
+		"COPY internal/sandboxprotocol ./internal/sandboxprotocol",
+		"USER 10001:10001",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("Dockerfile.sandbox-runner does not contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{"apk add", "apt-get", "dnf install", "yum install"} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Dockerfile.sandbox-runner installs an unnecessary runtime package via %q", forbidden)
+		}
+	}
+}
+
+func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
+	content, err := os.ReadFile("../../Dockerfile.sandbox-workcell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		"FROM cgr.dev/chainguard/wolfi-base@sha256:52604323e2a19f5e6d37dffa7e6a7ef30e2f98506a73a11cdfa3ef25100131be",
+		"go-1.26=1.26.7-r0",
+		"nodejs-24=24.19.0-r0",
+		"npm=12.0.2-r0",
+		"python-3.14=3.14.7-r1",
+		"rust-1.96=1.96.1-r0",
+		"brace-expansion-5.0.9.tgz",
+		"ip-address-10.3.1.tgz",
+		"busybox sha256sum -c -",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("Dockerfile.sandbox-workcell does not contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"FROM golang:",
+		"bookworm",
+		"apt-get",
+		"apk upgrade",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("Dockerfile.sandbox-workcell contains unreviewed base or package mutation %q", forbidden)
+		}
 	}
 }
 

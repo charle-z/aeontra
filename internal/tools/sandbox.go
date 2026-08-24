@@ -115,7 +115,7 @@ func (s *ExecutionCapability) SandboxExec(argv []string, approve bool) (string, 
 	}
 	// No broad execution without containment.
 	if !s.sandbox.Status(context.Background()).Available {
-		err := fmt.Errorf("sandbox_exec requires an L3 sandbox backend (set MCP_DEVBOX_SANDBOX=docker on a host with Docker); broad execution is disabled without containment")
+		err := fmt.Errorf("sandbox_exec requires an attested private L3 executor; broad execution is disabled without containment")
 		sp.Finish(audit.Deny, summarize(argv...), nil, err)
 		return "", err
 	}

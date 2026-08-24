@@ -1,0 +1,38 @@
+FROM cgr.dev/chainguard/wolfi-base@sha256:52604323e2a19f5e6d37dffa7e6a7ef30e2f98506a73a11cdfa3ef25100131be
+RUN apk add --no-cache \
+      bash=5.3-r12 \
+      build-base=1-r9 \
+      ca-certificates=20260413-r1 \
+      curl=8.21.0-r2 \
+      git=2.55.0-r4 \
+      go-1.26=1.26.7-r0 \
+      jq=1.8.2-r1 \
+      nodejs-24=24.19.0-r0 \
+      npm=12.0.2-r0 \
+      py3-pip=26.2.1-r0 \
+      python-3.14=3.14.7-r1 \
+      rust-1.96=1.96.1-r0
+RUN brace_archive=/tmp/brace-expansion-5.0.9.tgz \
+ && ip_archive=/tmp/ip-address-10.3.1.tgz \
+ && curl --fail --location --proto '=https' --proto-redir '=https' \
+      --output "$brace_archive" https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz \
+ && curl --fail --location --proto '=https' --proto-redir '=https' \
+      --output "$ip_archive" https://registry.npmjs.org/ip-address/-/ip-address-10.3.1.tgz \
+ && printf '%s  %s\n' 5d06001fddd25cbee90c96db4dc5b7b57711b984c3141e28d10f143deb52dbaf "$brace_archive" \
+      | busybox sha256sum -c - \
+ && printf '%s  %s\n' ad1790063beea11a312c801df30d58e147de762f4f77787552376eb7424623e5 "$ip_archive" \
+      | busybox sha256sum -c - \
+ && mkdir -p /tmp/brace-unpack /tmp/ip-unpack \
+ && busybox tar -xzf "$brace_archive" -C /tmp/brace-unpack \
+ && busybox tar -xzf "$ip_archive" -C /tmp/ip-unpack \
+ && rm -rf /usr/lib/node_modules/npm/node_modules/brace-expansion \
+             /usr/lib/node_modules/npm/node_modules/ip-address \
+ && mkdir -p /usr/lib/node_modules/npm/node_modules/brace-expansion \
+             /usr/lib/node_modules/npm/node_modules/ip-address \
+ && cp -a /tmp/brace-unpack/package/. /usr/lib/node_modules/npm/node_modules/brace-expansion/ \
+ && cp -a /tmp/ip-unpack/package/. /usr/lib/node_modules/npm/node_modules/ip-address/ \
+ && test "$(node -p "require('/usr/lib/node_modules/npm/node_modules/brace-expansion/package.json').version")" = 5.0.9 \
+ && test "$(node -p "require('/usr/lib/node_modules/npm/node_modules/ip-address/package.json').version")" = 10.3.1 \
+ && rm -rf "$brace_archive" "$ip_archive" /tmp/brace-unpack /tmp/ip-unpack
+WORKDIR /workspace
+CMD ["/bin/bash"]

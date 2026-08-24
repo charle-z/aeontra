@@ -45,6 +45,7 @@ const (
 	OperationProjectNetworkProbe               OperationKind = "project_network_probe"
 	OperationProjectProcessStart               OperationKind = "project_process_start"
 	OperationProjectProcessStatus              OperationKind = "project_process_status"
+	OperationProjectProcessStdin               OperationKind = "project_process_stdin"
 	OperationProjectProcessStop                OperationKind = "project_process_stop"
 	OperationProjectProcessSignal              OperationKind = "project_process_signal"
 	OperationProjectProcessList                OperationKind = "project_process_list"
@@ -122,6 +123,8 @@ type OperationRequest struct {
 	NetworkPorts                 []int             `json:"network_ports,omitempty"`
 	NetworkTimeoutMillis         int               `json:"network_timeout_millis,omitempty"`
 	BackgroundProcessID          string            `json:"background_process_id,omitempty"`
+	ProcessStdinOffset           int64             `json:"process_stdin_offset,omitempty"`
+	ProcessStdinClose            bool              `json:"process_stdin_close,omitempty"`
 	StdoutOffset                 int64             `json:"stdout_offset,omitempty"`
 	StderrOffset                 int64             `json:"stderr_offset,omitempty"`
 	OutputLimit                  int               `json:"output_limit,omitempty"`
@@ -287,6 +290,10 @@ type OperationResult struct {
 	BackgroundStderrEOF              bool                            `json:"background_stderr_eof,omitempty"`
 	BackgroundStdoutTruncated        bool                            `json:"background_stdout_truncated,omitempty"`
 	BackgroundStderrTruncated        bool                            `json:"background_stderr_truncated,omitempty"`
+	BackgroundStdinNext              int64                           `json:"background_stdin_next,omitempty"`
+	BackgroundStdinAccepted          int                             `json:"background_stdin_accepted,omitempty"`
+	BackgroundStdinClosed            bool                            `json:"background_stdin_closed,omitempty"`
+	BackgroundStdinReused            bool                            `json:"background_stdin_reused,omitempty"`
 	BackgroundProcesses              []BackgroundProcessSummary      `json:"background_processes,omitempty"`
 	BackgroundCleanupRemoved         int                             `json:"background_cleanup_removed,omitempty"`
 	BackgroundCleanupActive          int                             `json:"background_cleanup_active,omitempty"`
@@ -821,6 +828,12 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 		return validProjectProcessCleanupResult(result)
 	}
 	if hasProjectProcessResult(result) {
+		if kind == OperationProjectProcessStdin {
+			return validProjectProcessStdinResult(result)
+		}
+		if hasProjectProcessStdinReceipt(result) {
+			return false
+		}
 		return (kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal) && validOperationCompletion(result, "")
 	}
 	if hasProjectGitSyncResult(result) {
@@ -841,7 +854,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
 		return false
 	}
-	if kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
+	if kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStdin || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")

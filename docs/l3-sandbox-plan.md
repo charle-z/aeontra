@@ -1,6 +1,12 @@
-# L3 Sandbox Plan
+# L3 Sandbox Plan (historical)
 
-Status: accepted direction, implementation pending.
+Status: **Superseded by ADR 0005 and the private-runner implementation candidate.**
+
+This file records the earlier Docker exploration. It is not current deployment
+guidance. The accepted boundary is `public MCP -> authenticated private runner ->
+rootless Podman`; the public MCP never receives a container-engine socket. See
+`docs/adr/0005-separated-l3-and-native-windows-execution.md`, `docs/security.md`, and
+`docs/runbooks/private-sandbox-runner.md`.
 
 ## Goal
 

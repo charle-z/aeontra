@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/config"
 )
@@ -88,28 +87,5 @@ func TestSandboxExec_AllowRunsArbitraryCommandAndRedacts(t *testing.T) {
 	}
 	if !strings.Contains(out, "exit 0") {
 		t.Errorf("result should report exit status: %q", out)
-	}
-}
-
-// End-to-end: sandbox_exec runs an arbitrary command in a REAL Docker sandbox,
-// contained and as a non-root user. Linux + Docker only (skips elsewhere).
-func TestSandboxExec_Integration_RealDocker(t *testing.T) {
-	requireDockerSandbox(t)
-	svc, root := newTestService(t, config.ModeAllow)
-	svc.WithSandboxRunner(NewDockerSandboxRunner(DockerSandboxConfig{
-		Image:   "alpine:3.22",
-		Root:    root,
-		Timeout: 60 * time.Second,
-	}))
-	// An arbitrary shell command runs inside the sandbox.
-	out, err := svc.SandboxExec([]string{"sh", "-c", "echo SANDBOXOK; id -u"}, false)
-	if err != nil {
-		t.Fatalf("sandbox_exec e2e: %v\n%s", err, out)
-	}
-	if !strings.Contains(out, "SANDBOXOK") || !strings.Contains(out, "exit 0") {
-		t.Fatalf("expected successful contained execution, got: %q", out)
-	}
-	if !strings.Contains(out, "10001") {
-		t.Errorf("command should run as the non-root sandbox user (uid 10001): %q", out)
 	}
 }

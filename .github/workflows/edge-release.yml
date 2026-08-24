@@ -19,14 +19,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: aeontra-edge-release
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Build, verify, and publish official stable bundle
+    needs: build-windows
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment: edge-release
     permissions:
       contents: write
+
     env:
       EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
       DEB_GPG_PRIVATE_KEY_B64: ${{ secrets.EDGE_DEB_GPG_PRIVATE_KEY_B64 }}
@@ -34,7 +40,7 @@ jobs:
       - name: Checkout exact main commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Validate immutable release input
@@ -49,6 +55,7 @@ jobs:
           fi
           test -n "$EDGE_PRIVATE_KEY_B64"
           test -n "$DEB_GPG_PRIVATE_KEY_B64"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           ! git rev-parse "$RELEASE" >/dev/null 2>&1
 
       - name: Set up Go
@@ -149,6 +156,12 @@ jobs:
           upload-release-assets: false
           dependency-snapshot: false
 
+      - name: Download verified Windows release assets
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: windows-edge-build-${{ github.sha }}
+          path: ${{ runner.temp }}/release/windows-assets
+
       - name: Publish immutable release and stable signed channel
         env:
           GH_TOKEN: ${{ github.token }}
@@ -156,11 +169,12 @@ jobs:
           GENERATION: ${{ inputs.generation }}
         run: |
           release_dir="$RUNNER_TEMP/release/assets/$RELEASE"
-          gh release create "$RELEASE" "$release_dir"/* --target "$(git rev-parse HEAD)" --title "Aeontra Edge $RELEASE" --notes "Official signed Aeontra Edge $GENERATION bundle, Debian installer, checksums, signatures, and SBOM."
+          gh release create "$RELEASE" "$release_dir"/* "$RUNNER_TEMP/release/windows-assets"/* --target "$(git rev-parse HEAD)" --title "Aeontra Edge $RELEASE" --notes "Official signed Aeontra Edge $GENERATION bundles, installers, checksums, signatures, and SBOMs."
           if ! gh release view stable >/dev/null 2>&1; then
             gh release create stable --target "$(git rev-parse HEAD)" --title 'Aeontra Edge stable channel' --notes 'Mutable pointer containing only the currently signed stable channel metadata.'
           fi
           gh release upload stable --clobber "$RUNNER_TEMP/release/assets/stable/channel-amd64.json" "$RUNNER_TEMP/release/assets/stable/channel-amd64.json.sig"
+          gh release upload stable --clobber "$RUNNER_TEMP/release/windows-assets/channel-windows-amd64.json" "$RUNNER_TEMP/release/windows-assets/channel-windows-amd64.json.sig"
 
       - name: Upload retained workflow evidence
         if: always()
@@ -168,5 +182,93 @@ jobs:
         with:
           name: edge-release-${{ inputs.release }}-${{ github.sha }}
           path: ${{ runner.temp }}/release/assets
+          if-no-files-found: error
+          retention-days: 30
+
+  build-windows:
+    name: Build and verify signed Windows Edge bundle
+    runs-on: windows-2025
+    timeout-minutes: 30
+    environment: edge-release
+    permissions:
+      contents: read
+    env:
+      EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
+      RELEASE: ${{ inputs.release }}
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build and sign platform-bound bundle
+        shell: pwsh
+        run: |
+          if ($env:RELEASE -notmatch '^(p15\.[0-9]+\.[0-9]+|v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$') { throw 'invalid release' }
+          if ([string]::IsNullOrWhiteSpace($env:EDGE_PRIVATE_KEY_B64)) { throw 'missing signing identity' }
+          $commit = (git rev-parse HEAD).Trim()
+          if ($commit -ne (git rev-parse origin/main).Trim()) { throw 'release commit is not the exact main head' }
+          $catalog = (go run ./cmd/mcp-catalog-id).Trim()
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'windows-release'
+          $bundleRoot = Join-Path $releaseRoot 'bundle'
+          $assetRoot = Join-Path $releaseRoot 'assets'
+          New-Item -ItemType Directory -Path (Join-Path $bundleRoot 'bin'), $assetRoot -Force | Out-Null
+          $keyPath = Join-Path $releaseRoot 'edge.key'
+          [IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:EDGE_PRIVATE_KEY_B64))
+          if ((Get-Item -LiteralPath $keyPath).Length -ne 64) { throw 'invalid signing identity' }
+          $publicKey = (go run ./cmd/mcp-bundle-public-key $keyPath).Trim()
+          $ldflags = "-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=$commit -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleRelease=$env:RELEASE -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleCatalogHash=$catalog -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundlePublicKey=$publicKey"
+          go build -trimpath -buildvcs=false -ldflags $ldflags -o (Join-Path $bundleRoot 'bin\mcp-edge.exe') ./cmd/mcp-edge
+          go build -trimpath -buildvcs=false -ldflags $ldflags -o (Join-Path $bundleRoot 'bin\mcp-bundle-updater.exe') ./cmd/mcp-bundle-updater
+          Copy-Item packaging/windows/install-edge.ps1 (Join-Path $bundleRoot 'install-edge.ps1')
+          Copy-Item packaging/windows/uninstall-edge.ps1 (Join-Path $bundleRoot 'uninstall-edge.ps1')
+          go run ./cmd/mcp-bundle-manifest --root $bundleRoot --release $env:RELEASE --commit $commit --protocol mcp-devbox.edge-bundle.v1 --catalog $catalog --architecture amd64 --platform windows --manifest-version 6 --private-key $keyPath
+          $archive = Join-Path $assetRoot "mcp-devbox-edge_$env:RELEASE`_windows_amd64.zip"
+          $reproArchive = Join-Path $releaseRoot 'reproducible-check.zip'
+          ./packaging/windows/new-deterministic-archive.ps1 -Root $bundleRoot -Output $archive
+          ./packaging/windows/new-deterministic-archive.ps1 -Root $bundleRoot -Output $reproArchive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $reproArchive -Algorithm SHA256).Hash) { throw 'Windows archive is not reproducible' }
+          Remove-Item -LiteralPath $reproArchive -Force
+          go run ./cmd/mcp-release-channel --archive $archive --output $assetRoot --release $env:RELEASE --commit $commit --protocol mcp-devbox.edge-bundle.v1 --catalog $catalog --architecture amd64 --platform windows --private-key $keyPath
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText((Join-Path $assetRoot 'mcp-devbox-edge_windows_amd64.sha256'), "$hash  $([IO.Path]::GetFileName($archive))`n", [Text.UTF8Encoding]::new($false))
+          Remove-Item -LiteralPath $keyPath -Force
+
+      - name: Run native Windows gates
+        shell: pwsh
+        run: |
+          go test ./internal/bundle ./cmd/mcp-bundle-manifest ./cmd/mcp-release-channel ./cmd/mcp-bundle-updater -count=1
+          go test ./internal/edgeclient ./cmd/mcp-edge -run 'Windows|CollectWindows|IsWindows' -count=1
+          go vet ./...
+          go build ./...
+          git diff --check
+          $errors = $null
+          foreach ($script in @('packaging/windows/install-edge.ps1', 'packaging/windows/uninstall-edge.ps1', 'packaging/windows/new-deterministic-archive.ps1')) {
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$null, [ref]$errors)
+            if ($errors.Count -ne 0) { throw "PowerShell syntax failed for $script" }
+          }
+
+      - name: Generate Windows Edge SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: ${{ runner.temp }}/windows-release/bundle
+          format: spdx-json
+          output-file: ${{ runner.temp }}/windows-release/assets/mcp-devbox-edge_${{ inputs.release }}_windows_amd64.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+
+      - name: Upload retained Windows evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-edge-build-${{ github.sha }}
+          path: ${{ runner.temp }}/windows-release/assets
           if-no-files-found: error
           retention-days: 30

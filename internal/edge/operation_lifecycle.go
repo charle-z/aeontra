@@ -162,7 +162,7 @@ func OperationCanCancel(operation Operation) bool {
 
 func operationKindInterruptible(kind OperationKind) bool {
 	switch kind {
-	case OperationBundleUpdate, OperationBundleRollback, OperationEdgeRepair:
+	case OperationBundleUpdate, OperationBundleRollback, OperationEdgeRepair, OperationProjectProcessStdin:
 		return false
 	default:
 		return true

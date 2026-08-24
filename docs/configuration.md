@@ -165,6 +165,23 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   installed device evidence are separate facts.
 - **Optional:** local owner-bound Git authority and authorized laboratory metadata.
 
+### Native Windows Edge
+
+- **Components:** a signed Windows bundle, the `AeontraEdge` SCM service, private
+  ProgramData state, and registered workspace roots under ProgramData.
+- **Managed roots:** program files are under `%ProgramFiles%\Aeontra\Edge`;
+  service state is under `%ProgramData%\Aeontra\Edge`; workspaces are under
+  `%ProgramData%\Aeontra\Workspaces` by default. Install, state, and workspace
+  roots must be local, non-overlapping, and free of reparse points.
+- **Service identity:** the service runs as the virtual account
+  `NT SERVICE\AeontraEdge`. The installer records `service-config.json` and
+  selects one immutable release with `active.json`.
+- **Validation and updates:** use the installed `mcp-edge doctor` and
+  `lifecycle inspect/status`. Updates and rollback are delegated to the signed
+  `mcp-bundle-updater.exe`; doctor does not mutate state.
+- **Status:** native Windows packaging and source support do not prove a signed
+  release, installed service, or accepted real device. Record those gates separately.
+
 ### Privileged profiles
 
 - **Components:** server-defined fixed profiles and, where required, a separately
@@ -211,8 +228,21 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_MODE` | Docker entrypoint/policy | Optional; not secret | `read-only`; `read-only`, `ask`, `allow` | `read-only`; platform env | Missing is safe. Unsupported mode is rejected during policy initialization. |
 | `MCP_DEVBOX_TEST_CMD` | test runner | Required only for `run_tests`; not secret | none; argv parsed without a shell | `go test ./... -count=1`; platform env | Missing disables a useful test command. Unsafe/unallowlisted execution is denied. |
 | `MCP_DEVBOX_ALLOW_CMD` | command policy | Optional; not secret | secure list `git,go,ls,cat`; comma-separated basenames | `git,go`; platform env | Missing keeps the secure list. Invalid/unsafe commands remain denied by policy. |
-| `MCP_DEVBOX_SANDBOX` | L3 runner selection | Optional; not secret | `none`; `none`, `docker`, `nsjail`, `gvisor` | `none`; platform env | Unknown value fails startup. A named backend does not bypass availability checks. |
-| `MCP_DEVBOX_SANDBOX_IMAGE` | Docker sandbox | Only with Docker backend; not secret | `golang:1.26-alpine` | a reviewed pinned image; platform env | Missing uses default. Runtime creation fails if the image/backend is unavailable. |
+| `MCP_DEVBOX_SANDBOX` | L3 runner selection | Optional; not secret | `none`; `private-rootless` enables only a verified private runner; legacy `docker`, `nsjail`, `gvisor` remain unavailable compatibility names | `private-rootless`; platform env | Unknown value fails startup. Missing or incomplete private authority leaves broad execution unavailable. |
+| `MCP_DEVBOX_SANDBOX_IMAGE` | private L3 image identity | Required with `private-rootless`; not secret | administrator-owned image reference pinned with `@sha256:<64 lowercase hex>` | `registry.example/aeontra-l3@sha256:...`; matching env on both services | Missing, tag-only or mismatched identity leaves the private runner unavailable. The caller cannot choose an image. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_URL` | public MCP to private runner | Required with `private-rootless`; sensitive topology | credential-free internal HTTP origin resolving exclusively to loopback/private addresses | `http://mcp-sandbox-runner:8770`; platform env | Missing, invalid, public, mixed-DNS, redirected or unreachable endpoint leaves `sandbox_exec` unavailable. Do not assign a public domain. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_TOKEN` | private L3 authentication | Required with `private-rootless`; secret | at least 32 random characters, equal on both services | secret manager | Missing, short or mismatched token leaves execution unavailable. Never pass it to a workcell. |
+| `MCP_DEVBOX_SANDBOX_WORKSPACE_ID` | private workspace mapping | Required with `private-rootless`; not secret | lowercase opaque identifier `[a-z0-9._-]`, max 64 | `primary`; platform env | Invalid identifier leaves execution unavailable. It is not a path. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_ADDR` | private runner listener | Runner only; not secret | loopback or a hostname/IP resolving exclusively to private addresses | `mcp-sandbox-runner:8770`; private service env | Empty, unspecified, public or mixed-DNS bind fails runner startup. Do not publish the port. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT` | private runner mapping | Runner only; sensitive host path | existing absolute directory, disjoint from state | `/srv/aeontra/workspace`; exact private mount | Missing, symlink-invalid, inaccessible or overlapping root fails startup/execution. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT` | L3 receipts | Runner only; sensitive persistent path | existing/creatable absolute directory outside workspace | `/var/lib/aeontra-l3`; private volume | Missing, inaccessible or overlapping state fails startup. Completed receipts prevent effect replay. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET` | rootless engine authority | Runner only; sensitive socket path | direct Unix socket under `/run/user/<runner-uid>/`, owned by that UID; the runner uses the bounded Podman v5 HTTP API and packages no engine CLI | `/run/user/1000/podman/podman.sock`; exact mount | Missing, symlinked, foreign-owned or rootful endpoint fails startup. Never mount it into public MCP or workcells. |
+| `MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS` | L3 resource policy | Runner only; not secret | positive, max 30 minutes; `120000` default | `120000` | Invalid maximum fails startup. |
+| `MCP_DEVBOX_SANDBOX_MAX_CPU_MILLIS` | L3 resource policy | Runner only; not secret | positive; `1000` default | `1000` | Invalid maximum fails startup. |
+| `MCP_DEVBOX_SANDBOX_MAX_MEMORY_MIB` | L3 resource policy | Runner only; not secret | positive; `1024` default | `1024` | Invalid maximum fails startup. |
+| `MCP_DEVBOX_SANDBOX_MAX_PROCESSES` | L3 resource policy | Runner only; not secret | positive; `256` default | `256` | Invalid maximum fails startup. |
+| `MCP_DEVBOX_SANDBOX_MAX_OUTPUT_BYTES` | L3 resource policy | Runner only; not secret | positive, max 8 MiB; `1048576` default | `1048576` | Invalid maximum fails startup. Stdout and stderr share this total budget. |
+| `MCP_DEVBOX_SANDBOX_MAX_CONCURRENT` | L3 resource policy | Runner only; not secret | integer `1..64`; `2` default | `2` | Invalid maximum fails startup. Waiting requests remain bound to their context deadline. |
 | `MCP_DEVBOX_ADMIN_TOKEN` | `mcp-devbox grant` CLI | Only as an alternative to `--admin-token`; secret | none | inject into the local operator process only | Missing requires the flag. It is not a daemon startup setting; the daemon generates its own loopback token. |
 
 ### HTTP, OAuth, and console
