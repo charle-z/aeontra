@@ -20,7 +20,18 @@ import (
 	"golang.org/x/sys/windows/svc"
 )
 
-const windowsAgentPairRequestLimit = 4096
+const (
+	windowsAgentPairRequestLimit = 4096
+	windowsAgentServiceIdentity  = `NT SERVICE\AeontraEdge`
+)
+
+var (
+	windowsAgentIsService             = svc.IsWindowsService
+	windowsAgentRunService            = runWindowsAgentService
+	windowsAgentEnsureWorkcellUser    = ensureWorkcellUser
+	windowsAgentEnsureServiceIdentity = ensureWindowsServiceIdentity
+	windowsAgentLoadIdentity          = edgeclient.LoadIdentity
+)
 
 // windowsPairRequest is deliberately a one-shot, operator-created handoff.
 // It is not a replacement for SCM onboarding: it only permits the first
@@ -40,29 +51,44 @@ func runWindowsAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) e
 	leaseTTL := fs.Duration("lease", 10*time.Minute, "operation lease duration")
 	once := fs.Bool("once", false, "process at most one operation lease")
 	pairRequest := fs.String("pair-request", "", "one-shot private pairing request JSON")
-	serviceIdentity := fs.String("service-identity", `NT SERVICE\AeontraEdge`, "required SCM service identity (name or SID)")
+	serviceIdentity := fs.String("service-identity", windowsAgentServiceIdentity, "required SCM service identity")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 || strings.TrimSpace(*root) == "" || *poll <= 0 || *poll > time.Minute || *leaseTTL < 15*time.Second || *leaseTTL > 10*time.Minute {
 		return errors.New("windows-agent arguments are invalid")
 	}
-	if err := ensureWorkcellUser(); err != nil {
-		return err
+	config := windowsAgentConfig{
+		stateRoot:       *state,
+		workspaceRoot:   strings.TrimSpace(*root),
+		poll:            *poll,
+		leaseTTL:        *leaseTTL,
+		once:            *once,
+		pairRequest:     strings.TrimSpace(*pairRequest),
+		serviceIdentity: strings.TrimSpace(*serviceIdentity),
+		stderr:          stderr,
 	}
-	if err := ensureWindowsServiceIdentity(*serviceIdentity); err != nil {
-		return err
-	}
-	if err := edgeclient.ConfigureWindowsWorkspaceRoot(*root); err != nil {
-		return err
-	}
-	config := windowsAgentConfig{stateRoot: *state, poll: *poll, leaseTTL: *leaseTTL, once: *once, pairRequest: strings.TrimSpace(*pairRequest), stderr: stderr}
-	isService, err := svc.IsWindowsService()
+	isService, err := windowsAgentIsService()
 	if err != nil {
 		return errors.New("Windows service context is unavailable")
 	}
 	if isService {
-		return runWindowsAgentService(config)
+		// Register with SCM before filesystem or identity preflight. A service
+		// process that exits before StartServiceCtrlDispatcher is reached is
+		// reported only as a startup timeout and cannot expose its real error.
+		return windowsAgentRunService(config)
+	}
+	if !strings.EqualFold(config.serviceIdentity, windowsAgentServiceIdentity) {
+		return errors.New("Windows Edge service identity is invalid")
+	}
+	if err := windowsAgentEnsureWorkcellUser(); err != nil {
+		return err
+	}
+	if err := windowsAgentEnsureServiceIdentity(windowsAgentServiceIdentity); err != nil {
+		return err
+	}
+	if err := edgeclient.ConfigureWindowsWorkspaceRoot(config.workspaceRoot); err != nil {
+		return err
 	}
 	if config.pairRequest != "" {
 		if err := consumeWindowsPairRequest(config.stateRoot, config.pairRequest, stdin, stdout); err != nil {
@@ -75,12 +101,14 @@ func runWindowsAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) e
 }
 
 type windowsAgentConfig struct {
-	stateRoot   string
-	poll        time.Duration
-	leaseTTL    time.Duration
-	once        bool
-	pairRequest string
-	stderr      io.Writer
+	stateRoot       string
+	workspaceRoot   string
+	poll            time.Duration
+	leaseTTL        time.Duration
+	once            bool
+	pairRequest     string
+	serviceIdentity string
+	stderr          io.Writer
 }
 
 func runWindowsAgentService(config windowsAgentConfig) error {
@@ -93,6 +121,20 @@ type windowsAgentService struct {
 
 func (service windowsAgentService) Execute(_ []string, requests <-chan svc.ChangeRequest, status chan<- svc.Status) (bool, uint32) {
 	status <- svc.Status{State: svc.StartPending, WaitHint: 10_000}
+	if !strings.EqualFold(service.config.serviceIdentity, windowsAgentServiceIdentity) {
+		return true, 1
+	}
+	if err := windowsAgentEnsureWorkcellUser(); err != nil {
+		return true, 1
+	}
+	if err := windowsAgentEnsureServiceIdentity(windowsAgentServiceIdentity); err != nil {
+		return true, 1
+	}
+	status <- svc.Status{State: svc.StartPending, CheckPoint: 1, WaitHint: 10_000}
+	if err := edgeclient.ConfigureWindowsWorkspaceRoot(service.config.workspaceRoot); err != nil {
+		return true, 1
+	}
+	status <- svc.Status{State: svc.StartPending, CheckPoint: 2, WaitHint: 10_000}
 	if service.config.pairRequest != "" {
 		if err := consumeWindowsPairRequest(service.config.stateRoot, service.config.pairRequest, nil, nil); err != nil {
 			return true, 1
@@ -228,8 +270,8 @@ func consumeWindowsPairRequest(stateRoot, requestPath string, _ io.Reader, _ io.
 	if !filepath.IsAbs(root) || !filepath.IsAbs(path) || !pathInsideWindows(root, path) || path == root {
 		return errors.New("Windows pairing request path is invalid")
 	}
-	if _, _, err := edgeclient.LoadIdentity(root); err == nil {
-		return errors.New("Windows Edge is already paired")
+	if _, _, err := windowsAgentLoadIdentity(root); err == nil {
+		return discardWindowsPairRequest(path)
 	}
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 || info.Size() > windowsAgentPairRequestLimit {
@@ -255,14 +297,28 @@ func consumeWindowsPairRequest(stateRoot, requestPath string, _ io.Reader, _ io.
 	if err := pair([]string{"--server", server, "--state", root, "--name", name}, strings.NewReader(code+"\n"), io.Discard, io.Discard); err != nil {
 		return errors.New("Windows Edge pairing failed")
 	}
-	if err := os.Remove(path); err != nil {
-		// The request is single-use even if deletion is temporarily denied: do
-		// not leave a readable code behind.
-		file, openErr := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
-		if openErr != nil {
-			return errors.New("Windows pairing request cleanup failed")
-		}
-		_ = file.Close()
+	return discardWindowsPairRequest(path)
+}
+
+func discardWindowsPairRequest(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > windowsAgentPairRequestLimit {
+		return errors.New("Windows pairing request cleanup failed")
+	}
+	if err := os.Remove(path); err == nil {
+		return nil
+	}
+	// A sharing violation can temporarily prevent deletion. Removing the
+	// pairing capability is sufficient for restart safety; a later start can
+	// retry deletion without reusing the code.
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return errors.New("Windows pairing request cleanup failed")
+	}
+	if err := file.Close(); err != nil {
 		return errors.New("Windows pairing request cleanup failed")
 	}
 	return nil
