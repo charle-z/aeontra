@@ -205,7 +205,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'The installed Windows bundle failed verification.'
 }
 
-$quotedBinary = '"' + $targetBinary + '" windows-agent --state "' + $StateRoot + '" --root "' + $WorkspaceRoot + '" --service-identity "' + $serviceIdentity + '" --pair-request "' + $pairRequest + '"'
+$quotedBinary = '\"' + $targetBinary + '\" windows-agent --state \"' + $StateRoot + '\" --root \"' + $WorkspaceRoot + '\" --service-identity \"' + $serviceIdentity + '\" --pair-request \"' + $pairRequest + '\"'
 Invoke-Sc @('create', $serviceName, 'binPath=', $quotedBinary, 'start=', 'auto', 'obj=', $serviceIdentity, 'DisplayName=', 'Aeontra Windows Edge')
 $createdService = $true
 Invoke-Sc @('sidtype', $serviceName, 'unrestricted')
