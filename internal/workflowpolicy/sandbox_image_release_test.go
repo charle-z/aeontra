@@ -67,6 +67,8 @@ func TestSandboxRunnerComposeKeepsEngineAuthorityPrivate(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"MCP_DEVBOX_SANDBOX_RUNNER_IMAGE:?set an immutable runner image digest",
+		`MCP_DEVBOX_SANDBOX_RUNNER_ADDR: "${MCP_DEVBOX_SANDBOX_RUNNER_IPV4:?set one private network address}:8770"`,
+		"MCP_DEVBOX_SANDBOX_RUNNER_IPV4:?set one private network address",
 		"user: \"10001:10001\"",
 		"read_only: true",
 		"no-new-privileges:true",
@@ -87,6 +89,8 @@ func TestSandboxRunnerComposeKeepsEngineAuthorityPrivate(t *testing.T) {
 		"privileged:",
 		"network_mode: host",
 		"pid: host",
+		"MCP_DEVBOX_SANDBOX_RUNNER_ADDR: mcp-sandbox-runner:8770",
+		"MCP_DEVBOX_SANDBOX_RUNNER_ADDR: 0.0.0.0:8770",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("sandbox runner compose contains %q", forbidden)
