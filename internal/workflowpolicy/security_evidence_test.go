@@ -100,6 +100,25 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 	}
 }
 
+func TestSandboxRunnerDockerfileCopiesBuildDependencies(t *testing.T) {
+	content, err := os.ReadFile("../../Dockerfile.sandbox-runner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		"COPY cmd/mcp-sandbox-runner ./cmd/mcp-sandbox-runner",
+		"COPY internal/config ./internal/config",
+		"COPY internal/policy ./internal/policy",
+		"COPY internal/sandboxexecutor ./internal/sandboxexecutor",
+		"COPY internal/sandboxprotocol ./internal/sandboxprotocol",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("Dockerfile.sandbox-runner does not contain %q", required)
+		}
+	}
+}
+
 func TestGitleaksPolicyKeepsSyntheticAllowlistNarrow(t *testing.T) {
 	content, err := os.ReadFile("../../.gitleaks.toml")
 	if err != nil {
