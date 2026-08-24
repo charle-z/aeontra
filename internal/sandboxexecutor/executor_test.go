@@ -46,8 +46,15 @@ func (f *fakeEngine) Run(_ context.Context, spec RunSpec) (sandboxprotocol.Respo
 func testExecutor(t *testing.T, engine Engine) *Executor {
 	t.Helper()
 	root := t.TempDir()
+	stateRoot := t.TempDir()
+	// testing.TempDir creates numbered child directories with 0777 before
+	// umask. Production requires an existing operator-owned 0700 state root,
+	// so the fixture must model that boundary explicitly.
+	if err := os.Chmod(stateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	executor, err := New(Config{
-		Token: strings.Repeat("t", 32), WorkspaceID: "primary", WorkspaceRoot: root, StateRoot: t.TempDir(),
+		Token: strings.Repeat("t", 32), WorkspaceID: "primary", WorkspaceRoot: root, StateRoot: stateRoot,
 		Image: "localhost/aeontra-l3@" + executorTestDigest, ImageDigest: executorTestDigest,
 		MaxTimeoutMS: 120000, MaxCPUMillis: 1000, MaxMemoryMiB: 1024,
 		MaxProcessLimit: 256, MaxOutputBytes: 1 << 20, MaxConcurrent: 2, Engine: engine,

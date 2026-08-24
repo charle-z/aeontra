@@ -13,7 +13,7 @@ import (
 
 func NewPodmanEngine(binary, socket string) (Engine, error) {
 	if !filepath.IsAbs(binary) || !filepath.IsAbs(socket) {
-		return nil, errors.New("Podman binary and socket paths must be absolute")
+		return nil, errors.New("podman binary and socket paths must be absolute")
 	}
 	resolvedBinary, err := filepath.EvalSymlinks(filepath.Clean(binary))
 	if err != nil {
@@ -21,7 +21,7 @@ func NewPodmanEngine(binary, socket string) (Engine, error) {
 	}
 	binaryInfo, err := os.Stat(resolvedBinary)
 	if err != nil || !binaryInfo.Mode().IsRegular() || binaryInfo.Mode().Perm()&0o111 == 0 {
-		return nil, errors.New("Podman binary is not a regular executable")
+		return nil, errors.New("podman binary is not a regular executable")
 	}
 	cleanSocket := filepath.Clean(socket)
 	resolvedSocket, err := filepath.EvalSymlinks(cleanSocket)
@@ -40,7 +40,7 @@ func NewPodmanEngine(binary, socket string) (Engine, error) {
 	}
 	expectedPrefix := fmt.Sprintf("/run/user/%d/", uid)
 	if !strings.HasPrefix(cleanSocket, expectedPrefix) {
-		return nil, errors.New("Podman socket is outside the executor user runtime")
+		return nil, errors.New("podman socket is outside the executor user runtime")
 	}
 	engine := &podmanEngine{socket: cleanSocket, binary: resolvedBinary, uid: uid, gid: gid}
 	engine.run = realPodmanCommand(engine.binary, engine.socket)

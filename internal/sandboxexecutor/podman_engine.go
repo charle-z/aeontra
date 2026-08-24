@@ -30,7 +30,7 @@ type podmanEngine struct {
 func (p *podmanEngine) Attest(ctx context.Context, image, digest string) error {
 	rootless, err := p.capture(ctx, []string{"info", "--format", "{{.Host.Security.Rootless}}"}, 4096)
 	if err != nil || strings.TrimSpace(rootless) != "true" {
-		return errors.New("Podman endpoint is not an attested rootless engine")
+		return errors.New("podman endpoint is not an attested rootless engine")
 	}
 	actualDigest, err := p.capture(ctx, []string{"image", "inspect", "--format", "{{.Digest}}", image}, 4096)
 	if err != nil || strings.TrimSpace(actualDigest) != digest {
@@ -41,7 +41,7 @@ func (p *podmanEngine) Attest(ctx context.Context, image, digest string) error {
 
 func (p *podmanEngine) Run(ctx context.Context, spec RunSpec) (sandboxprotocol.Response, error) {
 	if p.run == nil {
-		return sandboxprotocol.Response{}, errors.New("Podman command runner is unavailable")
+		return sandboxprotocol.Response{}, errors.New("podman command runner is unavailable")
 	}
 	ctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
@@ -73,7 +73,7 @@ func (p *podmanEngine) capture(ctx context.Context, argv []string, limit int) (s
 	code, err := p.run(ctx, argv, streams.stdout(), streams.stderr())
 	stdout, _, truncated := streams.result()
 	if err != nil || code != 0 || truncated {
-		return "", errors.New("Podman attestation command failed")
+		return "", errors.New("podman attestation command failed")
 	}
 	return stdout, nil
 }
