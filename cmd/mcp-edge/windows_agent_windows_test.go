@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 )
 
@@ -70,7 +71,7 @@ func TestWindowsAgentServiceReportsStartPendingBeforePreflight(t *testing.T) {
 	}
 }
 
-func TestWindowsAgentServiceRejectsElevatedTokenBeforeIdentity(t *testing.T) {
+func TestWindowsAgentServiceUsesFixedIdentityAuthorityInsteadOfInteractiveElevation(t *testing.T) {
 	originalEnsureWorkcell := windowsAgentEnsureWorkcellUser
 	originalEnsureIdentity := windowsAgentEnsureServiceIdentity
 	t.Cleanup(func() {
@@ -78,11 +79,14 @@ func TestWindowsAgentServiceRejectsElevatedTokenBeforeIdentity(t *testing.T) {
 		windowsAgentEnsureServiceIdentity = originalEnsureIdentity
 	})
 
-	elevationRejected := errors.New("elevated token rejected")
-	windowsAgentEnsureWorkcellUser = func() error { return elevationRejected }
-	windowsAgentEnsureServiceIdentity = func(string) error {
-		t.Fatal("service identity validation ran after elevation rejection")
+	windowsAgentEnsureWorkcellUser = func() error {
+		t.Fatal("SCM service used the interactive UAC elevation guard")
 		return nil
+	}
+	identityChecked := false
+	windowsAgentEnsureServiceIdentity = func(string) error {
+		identityChecked = true
+		return errors.New("identity check sentinel")
 	}
 	statuses := make(chan svc.Status, 3)
 	service := windowsAgentService{config: windowsAgentConfig{
@@ -94,8 +98,32 @@ func TestWindowsAgentServiceRejectsElevatedTokenBeforeIdentity(t *testing.T) {
 	if !serviceSpecific || exitCode != 1 {
 		t.Fatalf("Execute() = (%t, %d), want service-specific failure 1", serviceSpecific, exitCode)
 	}
+	if !identityChecked {
+		t.Fatal("fixed service identity authority was not checked")
+	}
 	if status := <-statuses; status.State != svc.StartPending {
 		t.Fatalf("first status = %v, want StartPending", status.State)
+	}
+}
+
+func TestValidateWindowsServiceIdentityRejectsWrongOrAdministrativeToken(t *testing.T) {
+	expected, err := windows.StringToSid("S-1-5-80-100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := windows.StringToSid("S-1-5-80-200")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := validateWindowsServiceIdentity(expected, expected, false); err != nil {
+		t.Fatalf("matching non-administrative identity rejected: %v", err)
+	}
+	if err := validateWindowsServiceIdentity(other, expected, false); err == nil {
+		t.Fatal("different service identity accepted")
+	}
+	if err := validateWindowsServiceIdentity(expected, expected, true); err == nil {
+		t.Fatal("administrative service identity accepted")
 	}
 }
 

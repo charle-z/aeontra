@@ -124,9 +124,6 @@ func (service windowsAgentService) Execute(_ []string, requests <-chan svc.Chang
 	if !strings.EqualFold(service.config.serviceIdentity, windowsAgentServiceIdentity) {
 		return true, 1
 	}
-	if err := windowsAgentEnsureWorkcellUser(); err != nil {
-		return true, 1
-	}
 	if err := windowsAgentEnsureServiceIdentity(windowsAgentServiceIdentity); err != nil {
 		return true, 1
 	}
