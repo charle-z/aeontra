@@ -24,6 +24,7 @@ func run(args []string) int {
 	protocol := fs.String("protocol", "", "bundle protocol")
 	catalog := fs.String("catalog", "", "catalog sha256")
 	architecture := fs.String("architecture", "", "amd64 or arm64")
+	platform := fs.String("platform", "", "empty for the legacy Linux channel or windows")
 	keyPath := fs.String("private-key", "", "absolute raw Ed25519 private key")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 || !filepath.IsAbs(*archive) || !filepath.IsAbs(*output) || !filepath.IsAbs(*keyPath) {
 		return 2
@@ -39,9 +40,14 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, "release signing key is invalid")
 		return 1
 	}
+	version := 1
+	if *platform != "" {
+		version = 2
+	}
 	channel := bundle.Channel{
-		Version: 1, Release: *release, Commit: *commit, ProtocolVersion: *protocol,
+		Version: version, Release: *release, Commit: *commit, ProtocolVersion: *protocol,
 		CatalogHash: *catalog, Architecture: *architecture,
+		Platform:    *platform,
 		ArchiveHash: "sha256:" + hex.EncodeToString(sum[:]),
 	}
 	canonical, signature, err := bundle.SignChannel(channel, key)
@@ -52,7 +58,11 @@ func run(args []string) int {
 	if err := os.MkdirAll(*output, 0o755); err != nil {
 		return 1
 	}
-	base := filepath.Join(*output, "channel-"+*architecture+".json")
+	name := "channel-" + *architecture + ".json"
+	if *platform != "" {
+		name = "channel-" + *platform + "-" + *architecture + ".json"
+	}
+	base := filepath.Join(*output, name)
 	if err := writeNew(base, canonical, 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, "release channel already exists")
 		return 1

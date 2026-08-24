@@ -58,7 +58,9 @@ remains credential-gated. See
 This deployment is evidence that the architecture can run remotely; its host, domain,
 accounts, and application identifiers are not project defaults or contributor
 requirements. Aeontra can run locally over stdio without Coolify or the maintainer's
-infrastructure.
+infrastructure. A separate native Windows Edge package is documented in
+[`docs/install-edge-windows.md`](docs/install-edge-windows.md); its source, signed
+release, installed service, and real-device acceptance remain separate identities.
 
 Do not copy a commit, release, tool count, or catalog hash from this README. Read the
 live deployment identity from [`/version`](https://mcp-devbox-charlez.duckdns.org/version)
@@ -177,6 +179,15 @@ runtime evidence stay within their intended local boundary.
 Configuration and security differ by profile. Read
 [`docs/configuration.md`](docs/configuration.md) and
 [`docs/security.md`](docs/security.md) before deployment.
+
+### Native Windows Edge
+
+The native Windows package uses an SCM service under a virtual account, private
+ACL-protected state, immutable signed release directories, and a signed updater.
+It provides a trusted host-shared Windows workcell. It is not interchangeable with
+the networkless Linux Edge sandbox, and it does not claim Linux toolbox, browser
+harness, or HTB acceptance on Windows. See
+[`docs/install-edge-windows.md`](docs/install-edge-windows.md).
 
 ## Local quick start
 

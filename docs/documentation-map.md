@@ -162,6 +162,7 @@ above:
   `docs/analysis/codex-harness-compatibility.md`.
 - Edge lifecycle state migration: `docs/edge-lifecycle-migration.md`.
 - P16 package/install candidate: `docs/install-edge-parrot-p16.md`.
+- Native Windows Edge package and operator boundary: `docs/install-edge-windows.md`.
 - Human project aliases and workspace resolution:
   `docs/project-workspace-resolution.md`.
 - Durable local Edge execution journal: `docs/edge-job-journal.md`.

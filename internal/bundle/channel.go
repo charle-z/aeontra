@@ -12,11 +12,13 @@ type Channel struct {
 	ProtocolVersion string `json:"protocol_version"`
 	CatalogHash     string `json:"catalog_hash"`
 	Architecture    string `json:"architecture"`
+	Platform        string `json:"platform,omitempty"`
 	ArchiveHash     string `json:"archive_hash"`
 }
 
 func CanonicalChannel(channel Channel) ([]byte, error) {
-	if channel.Version != 1 || !ValidRelease(channel.Release) || !commitPattern.MatchString(channel.Commit) ||
+	validIdentity := channel.Version == 1 && channel.Platform == "" || channel.Version == 2 && channel.Platform == "windows"
+	if !validIdentity || !ValidRelease(channel.Release) || !commitPattern.MatchString(channel.Commit) ||
 		channel.ProtocolVersion == "" || !digestPattern.MatchString(channel.CatalogHash) ||
 		(channel.Architecture != "amd64" && channel.Architecture != "arm64") || !digestPattern.MatchString(channel.ArchiveHash) {
 		return nil, &VerificationError{Code: ManifestInvalid}
