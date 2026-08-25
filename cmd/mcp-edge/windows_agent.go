@@ -28,7 +28,16 @@ const (
 	windowsAgentExitAuthority     uint32 = 11
 	windowsAgentExitWorkspace     uint32 = 12
 	windowsAgentExitPairing       uint32 = 13
-	windowsAgentExitRuntime       uint32 = 14
+	windowsAgentExitTransport     uint32 = 14
+	windowsAgentExitRegistry      uint32 = 15
+	windowsAgentExitProcessState  uint32 = 16
+	windowsAgentExitRuntime       uint32 = 17
+)
+
+var (
+	errWindowsAgentTransport    = errors.New("Windows Edge transport is unavailable")
+	errWindowsAgentRegistry     = errors.New("Windows workspace registry is unavailable")
+	errWindowsAgentProcessState = errors.New("Windows project process state is unavailable")
 )
 
 var (
@@ -170,7 +179,7 @@ func (service windowsAgentService) Execute(_ []string, requests <-chan svc.Chang
 			}
 		case err := <-result:
 			if err != nil && !errors.Is(err, context.Canceled) {
-				return true, windowsAgentExitRuntime
+				return true, windowsAgentRuntimeExitCode(err)
 			}
 			return false, 0
 		}
@@ -180,16 +189,16 @@ func (service windowsAgentService) Execute(_ []string, requests <-chan svc.Chang
 func runWindowsAgentLoop(ctx context.Context, config windowsAgentConfig) error {
 	transport, err := edgeclient.NewTransport(config.stateRoot, nil)
 	if err != nil {
-		return err
+		return errWindowsAgentTransport
 	}
 	registry, err := edgeclient.OpenWorkspaceRegistry(config.stateRoot)
 	if err != nil {
-		return err
+		return errWindowsAgentRegistry
 	}
 	defer registry.Close()
 	processes, err := edgeclient.OpenProjectProcessManager(edgeclient.ProjectProcessManagerConfig{StateRoot: config.stateRoot, MaxProcesses: 256, MaxLogBytes: 64 << 20})
 	if err != nil {
-		return errors.New("Windows project process journal is unavailable")
+		return errWindowsAgentProcessState
 	}
 	defer processes.Close()
 	for {
@@ -253,6 +262,19 @@ func runWindowsAgentLoop(ctx context.Context, config windowsAgentConfig) error {
 		if config.once {
 			return nil
 		}
+	}
+}
+
+func windowsAgentRuntimeExitCode(err error) uint32 {
+	switch {
+	case errors.Is(err, errWindowsAgentTransport):
+		return windowsAgentExitTransport
+	case errors.Is(err, errWindowsAgentRegistry):
+		return windowsAgentExitRegistry
+	case errors.Is(err, errWindowsAgentProcessState):
+		return windowsAgentExitProcessState
+	default:
+		return windowsAgentExitRuntime
 	}
 }
 

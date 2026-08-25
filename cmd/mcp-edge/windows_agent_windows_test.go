@@ -118,6 +118,26 @@ func TestValidateWindowsServiceAuthorityRequiresExactNonAdministrativeMembership
 	}
 }
 
+func TestWindowsAgentRuntimeExitCodesRemainStageSpecific(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want uint32
+	}{
+		{name: "transport", err: errWindowsAgentTransport, want: windowsAgentExitTransport},
+		{name: "registry", err: errWindowsAgentRegistry, want: windowsAgentExitRegistry},
+		{name: "process state", err: errWindowsAgentProcessState, want: windowsAgentExitProcessState},
+		{name: "runtime", err: errors.New("unexpected"), want: windowsAgentExitRuntime},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := windowsAgentRuntimeExitCode(test.err); got != test.want {
+				t.Fatalf("windowsAgentRuntimeExitCode() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
 func TestOpenWindowsMembershipTokenSupportsEnabledGroupChecks(t *testing.T) {
 	token, err := openWindowsMembershipToken()
 	if err != nil {
