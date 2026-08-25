@@ -177,6 +177,10 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   `%ProgramData%\Aeontra\Edge` state suffix remains valid for compatibility. Roots
   must be local, non-overlapping, and free of reparse points; UNC, device, volume-root,
   removable, and reparse paths are rejected.
+- **Operator visibility:** the installing Windows operator receives inherited
+  read-and-execute access only on the workspace root. Program releases and service
+  state remain private to the service, SYSTEM, and Administrators. Additional
+  workspace writers remain rejected by the Edge ACL contract.
 - **Service identity:** the service runs as the virtual account
   `NT SERVICE\AeontraEdge`. The installer records `service-config.json` and
   selects one immutable release with `active.json`.

@@ -48,6 +48,12 @@ selected install root from their active signed binary and read the protected sta
 workspace roots from `service-config.json`; they do not trust caller-controlled path
 environment variables.
 
+The operator account that runs the installer receives inherited read-and-execute
+access on the workspace root so it can inspect managed checkouts and build output
+without elevation. It receives no access to private service state or installed release
+contents. The operator grant is read-only: adding another writer would violate the
+Windows workspace ACL contract and the Edge would reject that workspace.
+
 The installer creates the `AeontraEdge` SCM service under the virtual account
 `NT SERVICE\AeontraEdge`. Pairing uses one prompted, one-shot code. The code is
 written to a private request file, consumed by the service, and removed after use.

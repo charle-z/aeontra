@@ -96,7 +96,11 @@ function Assert-NoReparsePath([string]$Path, [string]$Label) {
     }
 }
 
-function Set-PrivateDirectoryAcl([string]$Path, [Security.AccessControl.FileSystemRights]$ServiceRights) {
+function Set-PrivateDirectoryAcl(
+    [string]$Path,
+    [Security.AccessControl.FileSystemRights]$ServiceRights,
+    [bool]$OperatorReadable = $false
+) {
     $serviceAccount = [Security.Principal.NTAccount]::new($serviceIdentity)
     $systemAccount = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
     $administrators = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
@@ -110,6 +114,13 @@ function Set-PrivateDirectoryAcl([string]$Path, [Security.AccessControl.FileSyst
     $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($serviceAccount, $ServiceRights, $inherit, $propagation, $allow))
     $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($systemAccount, [Security.AccessControl.FileSystemRights]::FullControl, $inherit, $propagation, $allow))
     $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($administrators, [Security.AccessControl.FileSystemRights]::FullControl, $inherit, $propagation, $allow))
+    if ($OperatorReadable) {
+        $operator = [Security.Principal.WindowsIdentity]::GetCurrent().User
+        if ($null -eq $operator) {
+            throw 'The installing operator SID is unavailable.'
+        }
+        $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($operator, [Security.AccessControl.FileSystemRights]::ReadAndExecute, $inherit, $propagation, $allow))
+    }
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
@@ -228,7 +239,7 @@ Invoke-Sc @('failureflag', $serviceName, '1')
 
 Set-PrivateDirectoryAcl $InstallRoot ([Security.AccessControl.FileSystemRights]::ReadAndExecute)
 Set-PrivateDirectoryAcl $StateRoot ([Security.AccessControl.FileSystemRights]::FullControl)
-Set-PrivateDirectoryAcl $WorkspaceRoot ([Security.AccessControl.FileSystemRights]::Modify)
+Set-PrivateDirectoryAcl $WorkspaceRoot ([Security.AccessControl.FileSystemRights]::Modify) $true
 
 $serviceConfigNext = $serviceConfig + '.next'
 $configuration = [ordered]@{
