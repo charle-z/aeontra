@@ -51,8 +51,8 @@ func ensureWindowsServiceIdentity(expected string) error {
 			return errors.New("Windows service identity cannot be resolved")
 		}
 	}
-	var token windows.Token
-	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
+	token, err := openWindowsMembershipToken()
+	if err != nil {
 		return errors.New("Windows service identity is unavailable")
 	}
 	defer token.Close()
@@ -71,6 +71,20 @@ func ensureWindowsServiceIdentity(expected string) error {
 		return errors.New("Windows service authority is unavailable")
 	}
 	return validateWindowsServiceAuthority(serviceMember, administrative)
+}
+
+func openWindowsMembershipToken() (windows.Token, error) {
+	var primary windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY|windows.TOKEN_DUPLICATE, &primary); err != nil {
+		return 0, err
+	}
+	defer primary.Close()
+
+	var impersonation windows.Token
+	if err := windows.DuplicateTokenEx(primary, windows.TOKEN_QUERY, nil, windows.SecurityImpersonation, windows.TokenImpersonation, &impersonation); err != nil {
+		return 0, err
+	}
+	return impersonation, nil
 }
 
 func validateWindowsServiceAuthority(serviceMember, administrative bool) error {
