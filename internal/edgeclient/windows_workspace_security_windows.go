@@ -248,7 +248,7 @@ func validateWindowsWorkspaceACL(root, candidate string) error {
 	if err != nil {
 		return fmt.Errorf("%w: candidate path", ErrWindowsWorkspaceACLUnsafe)
 	}
-	const directoryModify = windows.FILE_LIST_DIRECTORY | 0x00000002 | 0x00000004 | windows.FILE_TRAVERSE | 0x00000040 | windowsFileReadAttributes | windows.FILE_WRITE_ATTRIBUTES | windows.READ_CONTROL
+	const directoryModify = windows.FILE_LIST_DIRECTORY | 0x00000002 | 0x00000004 | windows.FILE_TRAVERSE | windowsFileReadAttributes | windows.FILE_WRITE_ATTRIBUTES | windows.READ_CONTROL
 	handle, err := windows.CreateFile(pathPtr, directoryModify, windowsFileShareRead|windowsFileShareWrite|windowsFileShareDelete, nil, windowsOpenExisting, windowsFileFlagOpenReparsePoint|windowsFileFlagBackupSemantics, 0)
 	if err != nil {
 		return fmt.Errorf("%w: service modify access", ErrWindowsWorkspaceACLUnsafe)
