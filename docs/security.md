@@ -386,6 +386,11 @@ releases; `service-config.json` and `active.json` are server-owned control recor
 checked by the doctor. Updates and rollback use the signature- and digest-verifying
 updater, not a shell or a caller-selected executable.
 
+The installing operator has inherited read-and-execute access only on the Windows
+workspace root. This permits inspection without making the operator another workspace
+writer. Release and state roots remain private, and the workspace validator continues
+to reject write-capable principals other than the service, SYSTEM, and Administrators.
+
 Windows Job Objects and ACL/reparse-point checks constrain process and filesystem use,
 but they do not provide the networkless Linux sandbox. The native package currently
 does not claim the Linux rootless toolbox, browser harness, or HTB workflow on Windows.

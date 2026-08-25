@@ -107,6 +107,31 @@ func TestWindowsInstallerUsesLocaleIndependentAclIdentities(t *testing.T) {
 	}
 }
 
+func TestWindowsInstallerGrantsOnlyOperatorReadAccessToWorkspaces(t *testing.T) {
+	installBytes, err := os.ReadFile("install-edge.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	install := string(installBytes)
+	for _, required := range []string{
+		"[Security.Principal.WindowsIdentity]::GetCurrent().User",
+		"[Security.AccessControl.FileSystemRights]::ReadAndExecute",
+		"Set-PrivateDirectoryAcl $WorkspaceRoot ([Security.AccessControl.FileSystemRights]::Modify) $true",
+	} {
+		if !strings.Contains(install, required) {
+			t.Errorf("installer missing operator workspace read contract %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"Set-PrivateDirectoryAcl $InstallRoot ([Security.AccessControl.FileSystemRights]::ReadAndExecute) $true",
+		"Set-PrivateDirectoryAcl $StateRoot ([Security.AccessControl.FileSystemRights]::FullControl) $true",
+	} {
+		if strings.Contains(install, forbidden) {
+			t.Errorf("installer exposes private root through %q", forbidden)
+		}
+	}
+}
+
 func TestWindowsInstallerReportsBoundedServiceStartupStage(t *testing.T) {
 	installBytes, err := os.ReadFile("install-edge.ps1")
 	if err != nil {
