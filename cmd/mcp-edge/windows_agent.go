@@ -23,6 +23,12 @@ import (
 const (
 	windowsAgentPairRequestLimit = 4096
 	windowsAgentServiceIdentity  = `NT SERVICE\AeontraEdge`
+
+	windowsAgentExitInvalidConfig uint32 = 10
+	windowsAgentExitAuthority     uint32 = 11
+	windowsAgentExitWorkspace     uint32 = 12
+	windowsAgentExitPairing       uint32 = 13
+	windowsAgentExitRuntime       uint32 = 14
 )
 
 var (
@@ -122,19 +128,19 @@ type windowsAgentService struct {
 func (service windowsAgentService) Execute(_ []string, requests <-chan svc.ChangeRequest, status chan<- svc.Status) (bool, uint32) {
 	status <- svc.Status{State: svc.StartPending, WaitHint: 10_000}
 	if !strings.EqualFold(service.config.serviceIdentity, windowsAgentServiceIdentity) {
-		return true, 1
+		return true, windowsAgentExitInvalidConfig
 	}
 	if err := windowsAgentEnsureServiceIdentity(windowsAgentServiceIdentity); err != nil {
-		return true, 1
+		return true, windowsAgentExitAuthority
 	}
 	status <- svc.Status{State: svc.StartPending, CheckPoint: 1, WaitHint: 10_000}
 	if err := edgeclient.ConfigureWindowsWorkspaceRoot(service.config.workspaceRoot); err != nil {
-		return true, 1
+		return true, windowsAgentExitWorkspace
 	}
 	status <- svc.Status{State: svc.StartPending, CheckPoint: 2, WaitHint: 10_000}
 	if service.config.pairRequest != "" {
 		if err := consumeWindowsPairRequest(service.config.stateRoot, service.config.pairRequest, nil, nil); err != nil {
-			return true, 1
+			return true, windowsAgentExitPairing
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -158,13 +164,13 @@ func (service windowsAgentService) Execute(_ []string, requests <-chan svc.Chang
 				status <- svc.Status{State: svc.StopPending, WaitHint: 20_000}
 				cancel()
 				if err := <-result; err != nil && !errors.Is(err, context.Canceled) {
-					return true, 1
+					return true, windowsAgentExitRuntime
 				}
 				return false, 0
 			}
 		case err := <-result:
 			if err != nil && !errors.Is(err, context.Canceled) {
-				return true, 1
+				return true, windowsAgentExitRuntime
 			}
 			return false, 0
 		}

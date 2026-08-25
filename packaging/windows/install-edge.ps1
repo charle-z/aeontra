@@ -260,7 +260,22 @@ Move-Item -LiteralPath $activeNext -Destination $activeMarker -Force
 $createdActiveMarker = $true
 Set-PrivateFileAcl $activeMarker
 
-Start-Service -Name $serviceName
+try {
+    Start-Service -Name $serviceName
+}
+catch {
+    $serviceRecord = Get-CimInstance -ClassName Win32_Service -Filter "Name='$serviceName'" -ErrorAction SilentlyContinue
+    $serviceCode = if ($null -ne $serviceRecord) { [uint32]$serviceRecord.ServiceSpecificExitCode } else { [uint32]0 }
+    $serviceStage = switch ($serviceCode) {
+        10 { 'configuration' }
+        11 { 'service-authority' }
+        12 { 'workspace' }
+        13 { 'pairing' }
+        14 { 'runtime' }
+        default { 'unknown' }
+    }
+    throw "AeontraEdge failed during $serviceStage startup (service code $serviceCode)."
+}
 $service = Get-Service -Name $serviceName
 $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))
 
