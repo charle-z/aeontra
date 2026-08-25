@@ -70,6 +70,73 @@ func TestWindowsWorkspaceACLRejectsBroadWriteAndInvalidOwner(t *testing.T) {
 	}
 }
 
+func TestSelectWindowsWorkspaceWriterSIDPrefersEnabledServiceSID(t *testing.T) {
+	userSID, err := windows.StringToSid(`S-1-5-21-1-2-3-1001`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allServicesSID, err := windows.StringToSid(`S-1-5-80-0`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serviceSID, err := windows.StringToSid(`S-1-5-80-1-2-3-4-5`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups := []windows.SIDAndAttributes{
+		{Sid: allServicesSID, Attributes: windows.SE_GROUP_ENABLED | windows.SE_GROUP_OWNER},
+		{Sid: serviceSID, Attributes: windows.SE_GROUP_ENABLED | windows.SE_GROUP_OWNER},
+	}
+
+	writer, err := selectWindowsWorkspaceWriterSID(userSID, groups)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !writer.Equals(serviceSID) {
+		t.Fatalf("workspace writer SID = %s, want service SID %s", writer.String(), serviceSID.String())
+	}
+}
+
+func TestSelectWindowsWorkspaceWriterSIDFailsClosedForInvalidServiceGroups(t *testing.T) {
+	userSID, err := windows.StringToSid(`S-1-5-21-1-2-3-1001`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serviceA, err := windows.StringToSid(`S-1-5-80-1-2-3-4-5`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serviceB, err := windows.StringToSid(`S-1-5-80-6-7-8-9-10`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabledOwner := uint32(windows.SE_GROUP_ENABLED | windows.SE_GROUP_OWNER)
+	for name, groups := range map[string][]windows.SIDAndAttributes{
+		"disabled":  {{Sid: serviceA, Attributes: windows.SE_GROUP_OWNER}},
+		"ambiguous": {{Sid: serviceA, Attributes: enabledOwner}, {Sid: serviceB, Attributes: enabledOwner}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := selectWindowsWorkspaceWriterSID(userSID, groups); err == nil {
+				t.Fatal("invalid service SID groups selected a workspace writer")
+			}
+		})
+	}
+}
+
+func TestSelectWindowsWorkspaceWriterSIDFallsBackOutsideServiceContext(t *testing.T) {
+	userSID, err := windows.StringToSid(`S-1-5-21-1-2-3-1001`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, err := selectWindowsWorkspaceWriterSID(userSID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !writer.Equals(userSID) {
+		t.Fatalf("workspace writer SID = %s, want token user %s", writer.String(), userSID.String())
+	}
+}
+
 func TestWindowsPathContainedIsCaseInsensitiveAndComponentAware(t *testing.T) {
 	for _, test := range []struct {
 		root, candidate string
