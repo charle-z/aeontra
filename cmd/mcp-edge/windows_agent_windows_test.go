@@ -58,8 +58,8 @@ func TestWindowsAgentServiceReportsStartPendingBeforePreflight(t *testing.T) {
 	}}
 
 	serviceSpecific, exitCode := service.Execute(nil, make(chan svc.ChangeRequest), statuses)
-	if !serviceSpecific || exitCode != 1 {
-		t.Fatalf("Execute() = (%t, %d), want service-specific failure 1", serviceSpecific, exitCode)
+	if !serviceSpecific || exitCode != 10 {
+		t.Fatalf("Execute() = (%t, %d), want invalid-config failure 10", serviceSpecific, exitCode)
 	}
 	select {
 	case status := <-statuses:
@@ -95,8 +95,8 @@ func TestWindowsAgentServiceUsesFixedIdentityAuthorityInsteadOfInteractiveElevat
 	}}
 
 	serviceSpecific, exitCode := service.Execute(nil, make(chan svc.ChangeRequest), statuses)
-	if !serviceSpecific || exitCode != 1 {
-		t.Fatalf("Execute() = (%t, %d), want service-specific failure 1", serviceSpecific, exitCode)
+	if !serviceSpecific || exitCode != 11 {
+		t.Fatalf("Execute() = (%t, %d), want service-authority failure 11", serviceSpecific, exitCode)
 	}
 	if !identityChecked {
 		t.Fatal("fixed service identity authority was not checked")

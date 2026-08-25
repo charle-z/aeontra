@@ -82,3 +82,24 @@ func TestWindowsInstallerUsesLocaleIndependentAclIdentities(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsInstallerReportsBoundedServiceStartupStage(t *testing.T) {
+	installBytes, err := os.ReadFile("install-edge.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	install := string(installBytes)
+	for _, required := range []string{
+		"ServiceSpecificExitCode",
+		"10 { 'configuration' }",
+		"11 { 'service-authority' }",
+		"12 { 'workspace' }",
+		"13 { 'pairing' }",
+		"14 { 'runtime' }",
+		"AeontraEdge failed during $serviceStage startup (service code $serviceCode).",
+	} {
+		if !strings.Contains(install, required) {
+			t.Errorf("installer missing bounded startup diagnostic %q", required)
+		}
+	}
+}
