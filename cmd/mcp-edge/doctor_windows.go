@@ -51,6 +51,13 @@ type windowsDoctorSnapshot struct {
 
 var windowsDoctorLoadConfig = loadWindowsDoctorServiceConfig
 var windowsDoctorInspectService = inspectWindowsDoctorService
+var windowsDoctorLegacyStateRoot = func() (string, error) {
+	programData, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, windows.KF_FLAG_DEFAULT)
+	if err != nil {
+		return "", errors.New("managed Windows state root unavailable")
+	}
+	return cleanWindowsDoctorPath(filepath.Join(programData, "Aeontra", "Edge"))
+}
 
 func doctorCommand(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
@@ -84,11 +91,7 @@ func inspectWindowsDoctor() (windowsDoctorSnapshot, error) {
 	if err != nil {
 		return windowsDoctorSnapshot{}, err
 	}
-	stateRoot, err := windowsDoctorManagedStateRoot()
-	if err != nil {
-		return windowsDoctorSnapshot{}, err
-	}
-	config, err := windowsDoctorLoadConfig(filepath.Join(installRoot, "service-config.json"), stateRoot)
+	config, err := windowsDoctorLoadConfig(filepath.Join(installRoot, "service-config.json"), installRoot)
 	if err != nil {
 		return windowsDoctorSnapshot{}, err
 	}
@@ -120,21 +123,14 @@ func inspectWindowsDoctor() (windowsDoctorSnapshot, error) {
 
 func windowsDoctorInstallRoot() (string, error) {
 	root := filepath.Dir(filepath.Dir(filepath.Clean(installedBundleRoot)))
-	if root == "" || !filepath.IsAbs(root) || filepath.VolumeName(root) == "" || windowsDoctorIsReparse(root) {
+	clean, err := cleanWindowsDoctorManagedRoot(root, "Edge", false)
+	if err != nil || windowsDoctorIsReparse(clean) {
 		return "", errors.New("Windows Edge install root is invalid")
 	}
-	return filepath.Clean(root), nil
+	return clean, nil
 }
 
-func windowsDoctorManagedStateRoot() (string, error) {
-	programData, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, windows.KF_FLAG_DEFAULT)
-	if err != nil {
-		return "", errors.New("managed Windows state root unavailable")
-	}
-	return filepath.Clean(filepath.Join(programData, "Aeontra", "Edge")), nil
-}
-
-func loadWindowsDoctorServiceConfig(filename, expectedStateRoot string) (windowsDoctorServiceConfig, error) {
+func loadWindowsDoctorServiceConfig(filename, installRoot string) (windowsDoctorServiceConfig, error) {
 	info, err := os.Lstat(filename)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 || info.Size() > windowsDoctorConfigLimit || windowsDoctorIsReparse(filename) {
 		return windowsDoctorServiceConfig{}, errors.New("Windows service configuration is unavailable")
@@ -152,12 +148,12 @@ func loadWindowsDoctorServiceConfig(filename, expectedStateRoot string) (windows
 	if config.Version != 1 || config.Service != windowsDoctorServiceName || config.ServiceIdentity != windowsDoctorServiceIdentity {
 		return windowsDoctorServiceConfig{}, errors.New("Windows service configuration identity is invalid")
 	}
-	state, err := cleanWindowsDoctorPath(config.StateRoot)
-	if err != nil || !strings.EqualFold(state, filepath.Clean(expectedStateRoot)) {
+	state, err := cleanWindowsDoctorManagedRoot(config.StateRoot, "State", true)
+	if err != nil {
 		return windowsDoctorServiceConfig{}, errors.New("Windows service state root is not managed")
 	}
-	workspace, err := cleanWindowsDoctorPath(config.WorkspaceRoot)
-	if err != nil || pathsOverlap(state, workspace) {
+	workspace, err := cleanWindowsDoctorManagedRoot(config.WorkspaceRoot, "Workspaces", false)
+	if err != nil || pathsOverlap(state, workspace) || pathsOverlap(installRoot, state) || pathsOverlap(installRoot, workspace) {
 		return windowsDoctorServiceConfig{}, errors.New("Windows service workspace root is invalid")
 	}
 	config.StateRoot, config.WorkspaceRoot = state, workspace
@@ -245,6 +241,33 @@ func cleanWindowsDoctorPath(value string) (string, error) {
 	volumeRoot := filepath.VolumeName(clean) + string(filepath.Separator)
 	if strings.EqualFold(strings.TrimRight(clean, `\`), strings.TrimRight(volumeRoot, `\`)) {
 		return "", errors.New("Windows path must not be a volume root")
+	}
+	return clean, nil
+}
+
+func cleanWindowsDoctorManagedRoot(value, expectedLeaf string, allowLegacyState bool) (string, error) {
+	clean, err := cleanWindowsDoctorPath(value)
+	if err != nil {
+		return "", err
+	}
+	root := filepath.VolumeName(clean) + string(filepath.Separator)
+	rootPointer, err := windows.UTF16PtrFromString(root)
+	if err != nil || windows.GetDriveType(rootPointer) != windows.DRIVE_FIXED {
+		return "", errors.New("Windows managed root is not on a fixed local drive")
+	}
+	rootInfo, err := os.Stat(root)
+	if err != nil || !rootInfo.IsDir() {
+		return "", errors.New("Windows managed fixed drive is unavailable")
+	}
+	leaf := filepath.Base(clean)
+	legacyState := false
+	if allowLegacyState && strings.EqualFold(leaf, "Edge") {
+		legacyRoot, legacyErr := windowsDoctorLegacyStateRoot()
+		legacyState = legacyErr == nil && strings.EqualFold(clean, legacyRoot)
+	}
+	if !strings.EqualFold(filepath.Base(filepath.Dir(clean)), "Aeontra") ||
+		(!strings.EqualFold(leaf, expectedLeaf) && !legacyState) {
+		return "", errors.New("Windows managed root layout is invalid")
 	}
 	return clean, nil
 }

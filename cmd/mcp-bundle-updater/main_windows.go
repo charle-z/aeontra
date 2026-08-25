@@ -97,6 +97,24 @@ type windowsUpdater struct {
 }
 
 var windowsUpdaterExecutable = os.Executable
+var windowsManagedDriveType = func(root string) uint32 {
+	pointer, err := windows.UTF16PtrFromString(root)
+	if err != nil {
+		return windows.DRIVE_UNKNOWN
+	}
+	return windows.GetDriveType(pointer)
+}
+var windowsManagedDriveReady = func(root string) bool {
+	info, err := os.Stat(root)
+	return err == nil && info.IsDir()
+}
+var windowsLegacyStateRoot = func() (string, error) {
+	programData, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, windows.KF_FLAG_DEFAULT)
+	if err != nil {
+		return "", errors.New("managed ProgramData root unavailable")
+	}
+	return cleanLocalPath(filepath.Join(programData, "Aeontra", "Edge"))
+}
 
 func main() { os.Exit(runWindows(os.Args[1:])) }
 
@@ -115,12 +133,12 @@ func runWindows(args []string) int {
 		fmt.Fprintln(os.Stderr, bundle.ManifestInvalid)
 		return 1
 	}
-	installRoot, stateRoot, err := managedWindowsRoots()
+	installRoot, err := managedWindowsInstallRoot()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "managed Windows Edge roots are invalid")
 		return 1
 	}
-	config, err := readWindowsServiceConfig(filepath.Join(installRoot, "service-config.json"), stateRoot)
+	config, err := readWindowsServiceConfig(filepath.Join(installRoot, "service-config.json"), installRoot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Windows Edge service configuration is invalid")
 		return 1
@@ -194,33 +212,23 @@ func compiledWindowsPublicKey() (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(key), nil
 }
 
-func managedWindowsRoots() (installRoot, stateRoot string, err error) {
+func managedWindowsInstallRoot() (string, error) {
 	// The immutable updater is inside <install>/releases/<release>/bin. Derive
 	// the selected installation from that signed binary instead of trusting a
-	// caller-controlled ProgramFiles environment variable.
+	// caller-controlled environment variable. State and workspace roots come
+	// from the protected service configuration written by the installer.
 	executable, err := windowsUpdaterExecutable()
 	if err != nil {
-		return "", "", errors.New("managed Windows updater path unavailable")
+		return "", errors.New("managed Windows updater path unavailable")
 	}
-	installRoot, err = windowsInstallRootFromUpdater(executable)
+	installRoot, err := windowsInstallRootFromUpdater(executable)
 	if err != nil {
-		return "", "", err
-	}
-	programData, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, windows.KF_FLAG_DEFAULT)
-	if err != nil {
-		return "", "", errors.New("managed ProgramData root unavailable")
-	}
-	stateRoot, err = cleanLocalPath(filepath.Join(programData, "Aeontra", "Edge"))
-	if err != nil || pathsOverlap(installRoot, stateRoot) {
-		return "", "", errors.New("managed Windows roots overlap")
+		return "", err
 	}
 	if err := ensureWindowsPathNoReparse(installRoot); err != nil {
-		return "", "", errors.New("managed install root is unsafe")
+		return "", errors.New("managed install root is unsafe")
 	}
-	if err := ensureWindowsPathNoReparse(stateRoot); err != nil {
-		return "", "", errors.New("managed state root is unsafe")
-	}
-	return installRoot, stateRoot, nil
+	return installRoot, nil
 }
 
 func windowsInstallRootFromUpdater(executable string) (string, error) {
@@ -238,7 +246,7 @@ func windowsInstallRootFromUpdater(executable string) (string, error) {
 		!strings.EqualFold(filepath.Base(filepath.Dir(installRoot)), "Aeontra") {
 		return "", errors.New("managed Windows updater layout is invalid")
 	}
-	return cleanLocalPath(installRoot)
+	return cleanManagedWindowsRoot(installRoot, "Edge", false)
 }
 
 func cleanLocalPath(value string) (string, error) {
@@ -259,13 +267,38 @@ func cleanLocalPath(value string) (string, error) {
 	return strings.TrimRight(filepath.Clean(full), `\`), nil
 }
 
+func cleanManagedWindowsRoot(value, expectedLeaf string, allowLegacyState bool) (string, error) {
+	clean, err := cleanLocalPath(value)
+	if err != nil {
+		return "", err
+	}
+	root := filepath.VolumeName(clean) + string(filepath.Separator)
+	if windowsManagedDriveType(root) != windows.DRIVE_FIXED {
+		return "", errors.New("managed path is not on a fixed local drive")
+	}
+	if !windowsManagedDriveReady(root) {
+		return "", errors.New("managed fixed drive is unavailable")
+	}
+	leaf := filepath.Base(clean)
+	legacyState := false
+	if allowLegacyState && strings.EqualFold(leaf, "Edge") {
+		legacyRoot, legacyErr := windowsLegacyStateRoot()
+		legacyState = legacyErr == nil && strings.EqualFold(clean, legacyRoot)
+	}
+	if !strings.EqualFold(filepath.Base(filepath.Dir(clean)), "Aeontra") ||
+		(!strings.EqualFold(leaf, expectedLeaf) && !legacyState) {
+		return "", errors.New("managed path layout is invalid")
+	}
+	return clean, nil
+}
+
 func pathsOverlap(left, right string) bool {
 	l, r := strings.TrimRight(left, `\`), strings.TrimRight(right, `\`)
 	lowerL, lowerR := strings.ToLower(l), strings.ToLower(r)
 	return strings.EqualFold(l, r) || strings.HasPrefix(lowerL, lowerR+`\`) || strings.HasPrefix(lowerR, lowerL+`\`)
 }
 
-func readWindowsServiceConfig(filename, stateRoot string) (windowsServiceConfig, error) {
+func readWindowsServiceConfig(filename, installRoot string) (windowsServiceConfig, error) {
 	if err := ensureWindowsPathNoReparse(filename); err != nil {
 		return windowsServiceConfig{}, errors.New("service configuration is unsafe")
 	}
@@ -283,14 +316,21 @@ func readWindowsServiceConfig(filename, stateRoot string) (windowsServiceConfig,
 	if err := decoder.Decode(&config); err != nil || decoder.Decode(&struct{}{}) != io.EOF || config.Version != 1 || config.Service != windowsServiceName || config.ServiceIdentity != windowsServiceIdentity {
 		return windowsServiceConfig{}, errors.New("service configuration identity is invalid")
 	}
-	if !strings.EqualFold(config.StateRoot, stateRoot) {
+	state, err := cleanManagedWindowsRoot(config.StateRoot, "State", true)
+	if err != nil {
 		return windowsServiceConfig{}, errors.New("service state root is not managed")
 	}
-	workspace, err := cleanLocalPath(config.WorkspaceRoot)
-	if err != nil || pathsOverlap(config.StateRoot, workspace) {
+	workspace, err := cleanManagedWindowsRoot(config.WorkspaceRoot, "Workspaces", false)
+	if err != nil || pathsOverlap(state, workspace) || pathsOverlap(installRoot, state) || pathsOverlap(installRoot, workspace) {
 		return windowsServiceConfig{}, errors.New("service workspace root is invalid")
 	}
-	config.StateRoot, config.WorkspaceRoot = stateRoot, workspace
+	if err := ensureWindowsPathNoReparse(state); err != nil {
+		return windowsServiceConfig{}, errors.New("service state root is unsafe")
+	}
+	if err := ensureWindowsPathNoReparse(workspace); err != nil {
+		return windowsServiceConfig{}, errors.New("service workspace root is unsafe")
+	}
+	config.StateRoot, config.WorkspaceRoot = state, workspace
 	return config, nil
 }
 

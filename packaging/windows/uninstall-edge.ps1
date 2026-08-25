@@ -15,15 +15,28 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw 'Aeontra Edge removal requires an elevated PowerShell session.'
 }
 
-function Resolve-ManagedRoot([string]$Path, [string]$ExpectedParent, [string]$Label) {
+function Resolve-ManagedDataRoot([string]$Path, [string]$ExpectedLeaf, [string]$Label) {
     $full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
-    $parent = [IO.Path]::GetFullPath($ExpectedParent).TrimEnd('\')
-    $volume = [IO.Path]::GetPathRoot($full).TrimEnd('\')
-    if ([string]::IsNullOrWhiteSpace($full) -or $full -eq $volume -or
-        (-not $full.StartsWith($parent + '\', [StringComparison]::OrdinalIgnoreCase))) {
-        throw "$Label is outside its managed installation parent."
-    }
     $root = [IO.Path]::GetPathRoot($full)
+    if ([string]::IsNullOrWhiteSpace($root) -or $root.StartsWith('\') -or $full.StartsWith('\\?\') -or $full.StartsWith('\\.\') -or
+        $full.TrimEnd('\') -eq $root.TrimEnd('\')) {
+        throw "$Label must be an absolute non-root path on a local drive."
+    }
+    $volume = [IO.DriveInfo]::new($root)
+    if (-not $volume.IsReady -or $volume.DriveType -ne [IO.DriveType]::Fixed) {
+        throw "$Label must use a ready fixed local drive."
+    }
+    $leaf = Split-Path -Leaf $full
+    $parentLeaf = Split-Path -Leaf (Split-Path -Parent $full)
+    $legacyStateRoot = $false
+    if ($Label -eq 'StateRoot' -and $leaf.Equals('Edge', [StringComparison]::OrdinalIgnoreCase)) {
+        $programDataState = (Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)) 'Aeontra\Edge').TrimEnd('\')
+        $legacyStateRoot = $full.Equals($programDataState, [StringComparison]::OrdinalIgnoreCase)
+    }
+    if (-not $parentLeaf.Equals('Aeontra', [StringComparison]::OrdinalIgnoreCase) -or
+        (-not $leaf.Equals($ExpectedLeaf, [StringComparison]::OrdinalIgnoreCase) -and -not $legacyStateRoot)) {
+        throw "$Label must end in Aeontra\$ExpectedLeaf."
+    }
     $current = $root.TrimEnd('\')
     foreach ($part in $full.Substring($root.Length).Split('\', [StringSplitOptions]::RemoveEmptyEntries)) {
         $current = Join-Path $current $part
@@ -67,10 +80,20 @@ function Assert-NoReparseTree([string]$Path, [string]$Label) {
     }
 }
 
-$programData = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
+function Test-PathOverlap([string]$Left, [string]$Right) {
+    $leftPath = $Left.TrimEnd('\')
+    $rightPath = $Right.TrimEnd('\')
+    return $leftPath.Equals($rightPath, [StringComparison]::OrdinalIgnoreCase) -or
+        $leftPath.StartsWith($rightPath + '\', [StringComparison]::OrdinalIgnoreCase) -or
+        $rightPath.StartsWith($leftPath + '\', [StringComparison]::OrdinalIgnoreCase)
+}
+
 $InstallRoot = Resolve-ManagedInstallRoot $InstallRoot
-$StateRoot = Resolve-ManagedRoot $StateRoot $programData 'StateRoot'
-$WorkspaceRoot = Resolve-ManagedRoot $WorkspaceRoot $programData 'WorkspaceRoot'
+$StateRoot = Resolve-ManagedDataRoot $StateRoot 'State' 'StateRoot'
+$WorkspaceRoot = Resolve-ManagedDataRoot $WorkspaceRoot 'Workspaces' 'WorkspaceRoot'
+if ((Test-PathOverlap $InstallRoot $StateRoot) -or (Test-PathOverlap $InstallRoot $WorkspaceRoot) -or (Test-PathOverlap $StateRoot $WorkspaceRoot)) {
+    throw 'Install, state and workspace roots must not overlap.'
+}
 
 $service = Get-Service -Name 'AeontraEdge' -ErrorAction SilentlyContinue
 if ($null -ne $service -and $PSCmdlet.ShouldProcess('AeontraEdge', 'stop and delete Windows service')) {

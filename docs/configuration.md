@@ -168,11 +168,15 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 ### Native Windows Edge
 
 - **Components:** a signed Windows bundle, the `AeontraEdge` SCM service, private
-  ProgramData state, and registered workspace roots under ProgramData.
+  ACL-protected state, and registered workspace roots.
 - **Managed roots:** program files are under `%ProgramFiles%\Aeontra\Edge`;
   service state is under `%ProgramData%\Aeontra\Edge`; workspaces are under
   `%ProgramData%\Aeontra\Workspaces` by default. Install, state, and workspace
-  roots must be local, non-overlapping, and free of reparse points.
+  roots may be placed on any ready fixed local drive using the managed suffixes
+  `Aeontra\Edge`, `Aeontra\State`, and `Aeontra\Workspaces`. The historical
+  `%ProgramData%\Aeontra\Edge` state suffix remains valid for compatibility. Roots
+  must be local, non-overlapping, and free of reparse points; UNC, device, volume-root,
+  removable, and reparse paths are rejected.
 - **Service identity:** the service runs as the virtual account
   `NT SERVICE\AeontraEdge`. The installer records `service-config.json` and
   selects one immutable release with `active.json`.
