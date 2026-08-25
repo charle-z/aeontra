@@ -85,7 +85,7 @@ func TestSelectWindowsWorkspaceWriterSIDPrefersEnabledServiceSID(t *testing.T) {
 	}
 	groups := []windows.SIDAndAttributes{
 		{Sid: allServicesSID, Attributes: windows.SE_GROUP_ENABLED | windows.SE_GROUP_OWNER},
-		{Sid: serviceSID, Attributes: windows.SE_GROUP_ENABLED | windows.SE_GROUP_OWNER},
+		{Sid: serviceSID, Attributes: windows.SE_GROUP_ENABLED},
 	}
 
 	writer, err := selectWindowsWorkspaceWriterSID(userSID, groups)
@@ -110,10 +110,10 @@ func TestSelectWindowsWorkspaceWriterSIDFailsClosedForInvalidServiceGroups(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	enabledOwner := uint32(windows.SE_GROUP_ENABLED | windows.SE_GROUP_OWNER)
+	enabled := uint32(windows.SE_GROUP_ENABLED)
 	for name, groups := range map[string][]windows.SIDAndAttributes{
 		"disabled":  {{Sid: serviceA, Attributes: windows.SE_GROUP_OWNER}},
-		"ambiguous": {{Sid: serviceA, Attributes: enabledOwner}, {Sid: serviceB, Attributes: enabledOwner}},
+		"ambiguous": {{Sid: serviceA, Attributes: enabled}, {Sid: serviceB, Attributes: enabled}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := selectWindowsWorkspaceWriterSID(userSID, groups); err == nil {
