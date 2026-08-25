@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 )
 
@@ -114,6 +115,26 @@ func TestValidateWindowsServiceAuthorityRequiresExactNonAdministrativeMembership
 	}
 	if err := validateWindowsServiceAuthority(true, true); err == nil {
 		t.Fatal("administrative service token accepted")
+	}
+}
+
+func TestOpenWindowsMembershipTokenSupportsEnabledGroupChecks(t *testing.T) {
+	token, err := openWindowsMembershipToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer token.Close()
+
+	worldSID, err := windows.CreateWellKnownSid(windows.WinWorldSid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := token.IsMember(worldSID)
+	if err != nil {
+		t.Fatalf("membership check failed: %v", err)
+	}
+	if !member {
+		t.Fatal("duplicated process token is not a member of Everyone")
 	}
 }
 
