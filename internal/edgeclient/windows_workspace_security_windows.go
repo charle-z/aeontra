@@ -284,8 +284,7 @@ func selectWindowsWorkspaceWriterSID(userSID *windows.SID, groups []windows.SIDA
 			continue
 		}
 		sawServiceSID = true
-		const required = windows.SE_GROUP_ENABLED | windows.SE_GROUP_OWNER
-		if group.Attributes&required != required {
+		if group.Attributes&windows.SE_GROUP_ENABLED == 0 {
 			continue
 		}
 		if selected != nil {
