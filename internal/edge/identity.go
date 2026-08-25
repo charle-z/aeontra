@@ -133,6 +133,10 @@ func Open(cfg Config) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := store.ensureOperationStorageCapacityLocked(); err != nil {
+		_ = db.Close()
+		return nil, errors.New("edge database maintenance failed")
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = db.Close()
 		return nil, errors.New("edge database permissions failed")
