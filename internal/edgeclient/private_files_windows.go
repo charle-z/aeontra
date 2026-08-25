@@ -26,6 +26,15 @@ func securePrivateRoot(path string, created bool) error {
 }
 
 func validatePrivateRootPlatform(path string, _ os.FileInfo) error {
+	token, sid, err := currentWindowsTokenSID()
+	if err != nil {
+		return errors.New("edge state root owner is unavailable")
+	}
+	defer token.Close()
+	return validateWindowsPrivateRootForSID(path, sid)
+}
+
+func validateWindowsPrivateRootForSID(path string, sid *windows.SID) error {
 	if !IsWindowsLocalPath(path) {
 		return errors.New("edge state root namespace is unsafe")
 	}
@@ -39,7 +48,7 @@ func validatePrivateRootPlatform(path string, _ os.FileInfo) error {
 	if !requestedOK || !resolvedOK || !strings.EqualFold(trimWindowsTrailingSeparators(requested), trimWindowsTrailingSeparators(resolved)) {
 		return errors.New("edge state root namespace changed")
 	}
-	return validateWindowsPrivateACL(path, true)
+	return validateWindowsPrivateACLForSID(path, true, sid)
 }
 
 func securePrivateFile(file *os.File) error {
@@ -74,20 +83,32 @@ func reconcilePrivateRegularFilePlatform(path string) error {
 }
 
 func validatePrivateFilePlatform(path string, _ os.FileInfo) error {
-	return validateWindowsPrivateACL(path, false)
-}
-
-func validateWindowsPrivateACL(path string, directory bool) error {
-	handle, err := openWindowsSecurityHandle(path, directory, windows.READ_CONTROL)
-	if err != nil {
-		return errors.New("edge private path ACL is unavailable")
-	}
-	defer windows.CloseHandle(handle)
 	token, sid, err := currentWindowsTokenSID()
 	if err != nil {
 		return errors.New("edge private path owner is unavailable")
 	}
 	defer token.Close()
+	return validateWindowsPrivateACLForSID(path, false, sid)
+}
+
+func validateWindowsPrivateACL(path string, directory bool) error {
+	token, sid, err := currentWindowsTokenSID()
+	if err != nil {
+		return errors.New("edge private path owner is unavailable")
+	}
+	defer token.Close()
+	return validateWindowsPrivateACLForSID(path, directory, sid)
+}
+
+func validateWindowsPrivateACLForSID(path string, directory bool, sid *windows.SID) error {
+	if sid == nil {
+		return errors.New("edge private path owner is unavailable")
+	}
+	handle, err := openWindowsSecurityHandle(path, directory, windows.READ_CONTROL)
+	if err != nil {
+		return errors.New("edge private path ACL is unavailable")
+	}
+	defer windows.CloseHandle(handle)
 	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil || descriptor == nil {
 		return errors.New("edge private path ACL is unavailable")

@@ -107,7 +107,7 @@ func inspectWindowsDoctor() (windowsDoctorSnapshot, error) {
 	if err != nil || verified.Release != marker.Release || verified.Commit != marker.Commit {
 		return windowsDoctorSnapshot{}, errors.New("active Windows Edge bundle is invalid")
 	}
-	identity, _, err := edgeclient.LoadIdentity(config.StateRoot)
+	identity, _, err := edgeclient.LoadWindowsServiceIdentity(config.StateRoot, windowsDoctorServiceIdentity)
 	if err != nil {
 		return windowsDoctorSnapshot{}, errors.New("Windows Edge identity is unavailable")
 	}
