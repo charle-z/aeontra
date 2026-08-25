@@ -50,6 +50,8 @@ type rolloutFixture struct {
 	mcpCalls        int
 	mcpFail         bool
 	description     string
+	runtimeFailures int
+	runtimeProbes   int
 }
 
 func newRolloutFixture() *rolloutFixture {
@@ -157,6 +159,12 @@ func (f *rolloutFixture) probeHandler(w http.ResponseWriter, r *http.Request) {
 	catalogAllowed := f.runtime.CatalogHash == f.frontPrimary || (f.frontTransition != "" && f.runtime.CatalogHash == f.frontTransition)
 	switch r.URL.Path {
 	case "/readyz":
+		f.runtimeProbes++
+		if f.runtimeFailures > 0 {
+			f.runtimeFailures--
+			http.Error(w, "starting", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	case "/version":
 		w.Header().Set("X-MCP-Server-Commit", f.runtime.Commit)
@@ -299,5 +307,25 @@ func TestCatalogPlatformObserveRejectsEnabledAutoDeploy(t *testing.T) {
 	defer closeFn()
 	if _, err := platform.Observe(context.Background()); err == nil || !strings.Contains(err.Error(), "auto-deploy") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestCatalogPlatformObserveRetriesTransientRuntimeReadiness(t *testing.T) {
+	fixture := newRolloutFixture()
+	fixture.runtimeFailures = 1
+	platform, closeFn := testCatalogPlatform(t, fixture)
+	defer closeFn()
+
+	observation, err := platform.Observe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.Backend != fixture.previous {
+		t.Fatalf("backend=%+v", observation.Backend)
+	}
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	if fixture.runtimeProbes != 2 {
+		t.Fatalf("runtime probes=%d", fixture.runtimeProbes)
 	}
 }

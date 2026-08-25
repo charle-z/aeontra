@@ -79,12 +79,19 @@ func (p *CatalogPlatform) Observe(ctx context.Context) (catalogrollout.Observati
 	if application.IsAutoDeployEnabled || application.InstantDeploy {
 		return catalogrollout.Observation{}, errors.New("managed backend auto-deploy is not disabled")
 	}
-	info, err := p.runtimeInfo(ctx, BackendOrigin)
-	if err != nil {
+	var info catalogRuntimeInfo
+	if err := p.poll(ctx, func(ctx context.Context) error {
+		current, err := p.runtimeInfo(ctx, BackendOrigin)
+		if err != nil {
+			return err
+		}
+		if application.GitCommitSHA != current.Commit {
+			return errors.New("managed backend commit pin does not match the running backend")
+		}
+		info = current
+		return nil
+	}); err != nil {
 		return catalogrollout.Observation{}, err
-	}
-	if application.GitCommitSHA != info.Commit {
-		return catalogrollout.Observation{}, errors.New("managed backend commit pin does not match the running backend")
 	}
 	front, protocol, err := p.frontContract(ctx)
 	if err != nil {
