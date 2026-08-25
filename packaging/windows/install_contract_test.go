@@ -95,7 +95,10 @@ func TestWindowsInstallerReportsBoundedServiceStartupStage(t *testing.T) {
 		"11 { 'service-authority' }",
 		"12 { 'workspace' }",
 		"13 { 'pairing' }",
-		"14 { 'runtime' }",
+		"14 { 'transport' }",
+		"15 { 'workspace-registry' }",
+		"16 { 'project-process-state' }",
+		"17 { 'runtime' }",
 		"AeontraEdge failed during $serviceStage startup (service code $serviceCode).",
 	} {
 		if !strings.Contains(install, required) {
