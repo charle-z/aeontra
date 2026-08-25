@@ -379,10 +379,12 @@ but this profile is owner-trusted and is **not** universal target or egress isol
 
 The Windows Edge is a separate trusted-host boundary. Its SCM service runs under the
 virtual account `NT SERVICE\AeontraEdge`, and the installer grants that identity only
-the private state/workspace permissions required by the configured service. Program
-files are immutable versioned releases; `service-config.json` and `active.json` are
-server-owned control records checked by the doctor. Updates and rollback use the
-signature- and digest-verifying updater, not a shell or a caller-selected executable.
+the private state/workspace permissions required by the configured service. Each root
+may use any ready fixed local drive, but must retain its managed `Aeontra` layout and
+remain disjoint and free of reparse points. Program files are immutable versioned
+releases; `service-config.json` and `active.json` are server-owned control records
+checked by the doctor. Updates and rollback use the signature- and digest-verifying
+updater, not a shell or a caller-selected executable.
 
 Windows Job Objects and ACL/reparse-point checks constrain process and filesystem use,
 but they do not provide the networkless Linux sandbox. The native package currently

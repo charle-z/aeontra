@@ -18,6 +18,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/bundle"
+	"golang.org/x/sys/windows"
 )
 
 func TestParseWindowsUpdaterOperationIsClosed(t *testing.T) {
@@ -47,6 +48,12 @@ func TestParseWindowsUpdaterOperationIsClosed(t *testing.T) {
 }
 
 func TestWindowsInstallRootFromUpdaterAcceptsManagedFixedDriveLayout(t *testing.T) {
+	originalType, originalReady := windowsManagedDriveType, windowsManagedDriveReady
+	windowsManagedDriveType = func(string) uint32 { return windows.DRIVE_FIXED }
+	windowsManagedDriveReady = func(string) bool { return true }
+	t.Cleanup(func() {
+		windowsManagedDriveType, windowsManagedDriveReady = originalType, originalReady
+	})
 	for _, executable := range []string{
 		`C:\Program Files\Aeontra\Edge\releases\v1.2.1\bin\mcp-bundle-updater.exe`,
 		`D:\Aeontra\Edge\releases\v1.2.1\bin\mcp-bundle-updater.exe`,
@@ -71,6 +78,32 @@ func TestWindowsInstallRootFromUpdaterRejectsUnmanagedLayout(t *testing.T) {
 		if _, err := windowsInstallRootFromUpdater(executable); err == nil {
 			t.Fatalf("unmanaged updater layout accepted: %s", executable)
 		}
+	}
+}
+
+func TestCleanManagedWindowsRootRequiresFixedManagedLayout(t *testing.T) {
+	originalType, originalReady := windowsManagedDriveType, windowsManagedDriveReady
+	windowsManagedDriveType = func(string) uint32 { return windows.DRIVE_FIXED }
+	windowsManagedDriveReady = func(string) bool { return true }
+	t.Cleanup(func() {
+		windowsManagedDriveType, windowsManagedDriveReady = originalType, originalReady
+	})
+	valid := filepath.Join(t.TempDir(), "Aeontra", "State")
+	if _, err := cleanManagedWindowsRoot(valid, "State", true); err != nil {
+		t.Fatalf("managed state rejected: %v", err)
+	}
+	if _, err := cleanManagedWindowsRoot(filepath.Join(t.TempDir(), "Other", "State"), "State", true); err == nil {
+		t.Fatal("unmanaged parent accepted")
+	}
+	if _, err := cleanManagedWindowsRoot(filepath.Join(t.TempDir(), "Aeontra", "Other"), "State", true); err == nil {
+		t.Fatal("unmanaged leaf accepted")
+	}
+	if _, err := cleanManagedWindowsRoot(filepath.Join(t.TempDir(), "Aeontra", "Edge"), "State", true); err == nil {
+		t.Fatal("non-ProgramData legacy state accepted")
+	}
+	windowsManagedDriveType = func(string) uint32 { return windows.DRIVE_REMOVABLE }
+	if _, err := cleanManagedWindowsRoot(valid, "State", true); err == nil {
+		t.Fatal("removable drive accepted")
 	}
 }
 
@@ -136,12 +169,15 @@ func TestWindowsArchiveRejectsBackslashAndDuplicateEntries(t *testing.T) {
 
 func TestWindowsServiceConfigRejectsUnknownFieldsAndWrongOwner(t *testing.T) {
 	root := t.TempDir()
-	state, err := cleanLocalPath(filepath.Join(root, "state"))
-	if err != nil {
-		t.Fatal(err)
+	installRoot := filepath.Join(root, "install", "Aeontra", "Edge")
+	state := filepath.Join(root, "state-drive", "Aeontra", "State")
+	workspace := filepath.Join(root, "workspace-drive", "Aeontra", "Workspaces")
+	for _, path := range []string{installRoot, state, workspace} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
-	workspace := filepath.Join(root, "workspace")
-	filename := filepath.Join(root, "service-config.json")
+	filename := filepath.Join(installRoot, "service-config.json")
 	validBytes, err := json.Marshal(windowsServiceConfig{Version: 1, Service: windowsServiceName, ServiceIdentity: windowsServiceIdentity, StateRoot: state, WorkspaceRoot: workspace})
 	if err != nil {
 		t.Fatal(err)
@@ -150,14 +186,14 @@ func TestWindowsServiceConfigRejectsUnknownFieldsAndWrongOwner(t *testing.T) {
 	if err := os.WriteFile(filename, []byte(valid), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	config, err := readWindowsServiceConfig(filename, state)
+	config, err := readWindowsServiceConfig(filename, installRoot)
 	if err != nil || config.WorkspaceRoot != workspace {
 		t.Fatalf("valid config rejected: %+v %v", config, err)
 	}
 	if err := os.WriteFile(filename, []byte(strings.TrimSuffix(valid, "}")+`,"extra":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readWindowsServiceConfig(filename, state); err == nil {
+	if _, err := readWindowsServiceConfig(filename, installRoot); err == nil {
 		t.Fatal("unknown config field accepted")
 	}
 	foreignBytes, err := json.Marshal(windowsServiceConfig{Version: 1, Service: windowsServiceName, ServiceIdentity: windowsServiceIdentity, StateRoot: filepath.Join(root, "other"), WorkspaceRoot: workspace})
@@ -167,8 +203,35 @@ func TestWindowsServiceConfigRejectsUnknownFieldsAndWrongOwner(t *testing.T) {
 	if err := os.WriteFile(filename, foreignBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readWindowsServiceConfig(filename, state); err == nil {
+	if _, err := readWindowsServiceConfig(filename, installRoot); err == nil {
 		t.Fatal("foreign state root accepted")
+	}
+}
+
+func TestWindowsServiceConfigAcceptsLegacyStateAndDifferentFixedDrives(t *testing.T) {
+	root := t.TempDir()
+	installRoot := filepath.Join(root, "install", "Aeontra", "Edge")
+	legacyState := filepath.Join(root, "legacy", "Aeontra", "Edge")
+	workspace := filepath.Join(root, "workspace", "Aeontra", "Workspaces")
+	originalLegacyRoot := windowsLegacyStateRoot
+	windowsLegacyStateRoot = func() (string, error) { return legacyState, nil }
+	t.Cleanup(func() { windowsLegacyStateRoot = originalLegacyRoot })
+	for _, path := range []string{installRoot, legacyState, workspace} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	filename := filepath.Join(installRoot, "service-config.json")
+	content, err := json.Marshal(windowsServiceConfig{Version: 1, Service: windowsServiceName, ServiceIdentity: windowsServiceIdentity, StateRoot: legacyState, WorkspaceRoot: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filename, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := readWindowsServiceConfig(filename, installRoot)
+	if err != nil || config.StateRoot != legacyState || config.WorkspaceRoot != workspace {
+		t.Fatalf("legacy managed config rejected: %#v %v", config, err)
 	}
 }
 

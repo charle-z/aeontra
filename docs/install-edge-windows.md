@@ -29,14 +29,24 @@ The default managed roots are:
 - private state: `Aeontra\Edge` under ProgramData;
 - registered workspaces: `Aeontra\Workspaces` under ProgramData.
 
-The signed installer also accepts an explicit `-InstallRoot` on another ready fixed
-local drive when the path ends in `Aeontra\Edge`, for example
-`D:\Aeontra\Edge`. State remains fixed under ProgramData and registered workspaces
-remain under ProgramData. UNC paths, device paths, volume roots, removable drives,
-reparse points and overlapping roots are rejected. Pass the same `-InstallRoot` to
-the signed uninstaller. The updater and doctor derive the selected install root from
-their active signed binary, so they do not depend on a caller-controlled environment
-variable.
+The signed installer also accepts explicit roots on any ready fixed local drive. The
+managed layouts are `Aeontra\Edge` for program files, `Aeontra\State` for new private
+state roots, and `Aeontra\Workspaces` for registered workspaces. For example:
+
+```powershell
+.\install-edge.ps1 -Server https://example.invalid `
+  -InstallRoot 'D:\Aeontra\Edge' `
+  -StateRoot 'D:\Aeontra\State' `
+  -WorkspaceRoot 'D:\Aeontra\Workspaces'
+```
+
+The historical `%ProgramData%\Aeontra\Edge` state layout remains valid for existing
+installations. UNC paths, device paths, volume roots, removable drives, reparse points
+and overlapping roots are rejected. Pass the same explicit roots to the signed
+uninstaller when removing a custom installation. The updater and doctor derive the
+selected install root from their active signed binary and read the protected state and
+workspace roots from `service-config.json`; they do not trust caller-controlled path
+environment variables.
 
 The installer creates the `AeontraEdge` SCM service under the virtual account
 `NT SERVICE\AeontraEdge`. Pairing uses one prompted, one-shot code. The code is
@@ -55,6 +65,9 @@ Run the installed binary from an elevated or operator PowerShell prompt:
 & "$env:ProgramFiles\Aeontra\Edge\releases\<release>\bin\mcp-edge.exe" doctor
 & "$env:ProgramFiles\Aeontra\Edge\releases\<release>\bin\mcp-edge.exe" lifecycle inspect
 ```
+
+Replace the program root in these commands when the package was installed on another
+fixed drive.
 
 The checks are read-only. They verify the signed Windows manifest, active release,
 service configuration, SCM service identity and binary command, paired identity,
@@ -84,7 +97,8 @@ validation fails. The update lock prevents concurrent transactions.
 Use the signed `uninstall-edge.ps1` script. It stops and removes only the managed
 `AeontraEdge` service and installed program releases. State and registered workspaces
 remain by default. `-RemoveData` is an explicit destructive operation that also
-removes the paired identity and workspaces; back up the state before using it.
+removes the paired identity and workspaces; back up the state before using it. Supply
+the installed `-InstallRoot`, `-StateRoot`, and `-WorkspaceRoot` for a custom layout.
 
 ## Boundary and limitations
 

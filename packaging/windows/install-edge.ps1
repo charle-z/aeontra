@@ -20,8 +20,6 @@ $ErrorActionPreference = 'Stop'
 
 $serviceName = 'AeontraEdge'
 $serviceIdentity = 'NT SERVICE\AeontraEdge'
-$pairRequest = Join-Path $StateRoot 'pair-request.json'
-$serviceConfig = Join-Path $InstallRoot 'service-config.json'
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -54,6 +52,24 @@ function Assert-ManagedInstallRoot([string]$Path) {
     if (-not (Split-Path -Leaf $Path).Equals('Edge', [StringComparison]::OrdinalIgnoreCase) -or
         -not (Split-Path -Leaf (Split-Path -Parent $Path)).Equals('Aeontra', [StringComparison]::OrdinalIgnoreCase)) {
         throw 'InstallRoot must end in Aeontra\Edge.'
+    }
+}
+
+function Assert-ManagedDataRoot([string]$Path, [string]$ExpectedLeaf, [string]$Label) {
+    $volume = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($Path))
+    if (-not $volume.IsReady -or $volume.DriveType -ne [IO.DriveType]::Fixed) {
+        throw "$Label must use a ready fixed local drive."
+    }
+    $leaf = Split-Path -Leaf $Path
+    $parentLeaf = Split-Path -Leaf (Split-Path -Parent $Path)
+    $legacyStateRoot = $false
+    if ($Label -eq 'StateRoot' -and $leaf.Equals('Edge', [StringComparison]::OrdinalIgnoreCase)) {
+        $programDataState = (Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)) 'Aeontra\Edge').TrimEnd('\')
+        $legacyStateRoot = $Path.Equals($programDataState, [StringComparison]::OrdinalIgnoreCase)
+    }
+    if (-not $parentLeaf.Equals('Aeontra', [StringComparison]::OrdinalIgnoreCase) -or
+        (-not $leaf.Equals($ExpectedLeaf, [StringComparison]::OrdinalIgnoreCase) -and -not $legacyStateRoot)) {
+        throw "$Label must end in Aeontra\$ExpectedLeaf."
     }
 }
 
@@ -124,12 +140,10 @@ $InstallRoot = Resolve-LocalAbsolutePath $InstallRoot 'InstallRoot'
 $StateRoot = Resolve-LocalAbsolutePath $StateRoot 'StateRoot'
 $WorkspaceRoot = Resolve-LocalAbsolutePath $WorkspaceRoot 'WorkspaceRoot'
 $null = Assert-ManagedInstallRoot $InstallRoot
-$managedProgramData = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonApplicationData)
-$managedStateRoot = (Join-Path $managedProgramData 'Aeontra\Edge').TrimEnd('\')
-if (-not $StateRoot.Equals($managedStateRoot, [StringComparison]::OrdinalIgnoreCase) -or
-    -not $WorkspaceRoot.StartsWith($managedProgramData.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'StateRoot is fixed to managed ProgramData and WorkspaceRoot must remain under ProgramData.'
-}
+$null = Assert-ManagedDataRoot $StateRoot 'State' 'StateRoot'
+$null = Assert-ManagedDataRoot $WorkspaceRoot 'Workspaces' 'WorkspaceRoot'
+$pairRequest = Join-Path $StateRoot 'pair-request.json'
+$serviceConfig = Join-Path $InstallRoot 'service-config.json'
 
 if ((Test-PathOverlap $InstallRoot $StateRoot) -or (Test-PathOverlap $InstallRoot $WorkspaceRoot) -or (Test-PathOverlap $StateRoot $WorkspaceRoot)) {
     throw 'Install, state and workspace roots must not overlap.'
