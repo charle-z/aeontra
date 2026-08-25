@@ -122,6 +122,12 @@ func LoadIdentity(root string) (Identity, ed25519.PrivateKey, error) {
 	if err := reconcilePrivateRegularFilePlatform(keyPath); err != nil {
 		return Identity{}, nil, errors.New("device key permissions unavailable")
 	}
+	return loadIdentityContents(root)
+}
+
+func loadIdentityContents(root string) (Identity, ed25519.PrivateKey, error) {
+	identityPath := filepath.Join(root, identityFile)
+	keyPath := filepath.Join(root, privateKeyFile)
 	identityBytes, err := os.ReadFile(identityPath)
 	if err != nil || len(identityBytes) > 4<<10 {
 		return Identity{}, nil, errors.New("edge identity unavailable")
