@@ -504,7 +504,7 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.recoverExpiredOperationLeasesForDeviceLocked(deviceID); err != nil {
-		return Operation{}, false, errors.New("edge operation persistence failed")
+		return Operation{}, false, errors.New("edge operation persistence failed: recovery")
 	}
 	var state State
 	if err := s.db.QueryRow(`SELECT state FROM devices WHERE device_id=?`, deviceID).Scan(&state); err != nil || state != StateActive {
@@ -518,7 +518,7 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 			return existing, false, nil
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return Operation{}, false, errors.New("edge operation persistence failed")
+		return Operation{}, false, errors.New("edge operation persistence failed: lookup")
 	}
 	id, err := randomOpaque("eo_", 16)
 	if err != nil {
@@ -526,7 +526,7 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 	}
 	now := s.now().UTC()
 	if _, err := s.db.Exec(`INSERT INTO edge_operations(operation_id,device_id,kind,request_json,request_digest,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`, id, deviceID, kind, body, digest, OperationQueued, now.UnixNano(), now.UnixNano()); err != nil {
-		return Operation{}, false, errors.New("edge operation persistence failed")
+		return Operation{}, false, errors.New("edge operation persistence failed: insert")
 	}
 	return Operation{ID: id, DeviceID: deviceID, Kind: kind, Request: request, State: OperationQueued, CreatedAt: now, UpdatedAt: now}, true, nil
 }
