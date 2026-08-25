@@ -22,6 +22,8 @@ func securePrivateFile(file *os.File) error {
 	return file.Chmod(0o600)
 }
 
+func reconcilePrivateRegularFilePlatform(string) error { return nil }
+
 func validatePrivateFilePlatform(_ string, info os.FileInfo) error {
 	if info.Mode().Perm()&0o077 != 0 {
 		return errors.New("edge private file is unsafe")

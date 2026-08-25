@@ -113,6 +113,15 @@ func LoadIdentity(root string) (Identity, ed25519.PrivateKey, error) {
 	if err := requirePrivateRegularFile(keyPath); err != nil {
 		return Identity{}, nil, err
 	}
+	// Native Windows services created before operator ACL support retain a
+	// safe service-and-SYSTEM DACL. Reconcile those files while the service
+	// identity still owns them so elevated operator diagnostics remain usable.
+	if err := reconcilePrivateRegularFilePlatform(identityPath); err != nil {
+		return Identity{}, nil, errors.New("edge identity permissions unavailable")
+	}
+	if err := reconcilePrivateRegularFilePlatform(keyPath); err != nil {
+		return Identity{}, nil, errors.New("device key permissions unavailable")
+	}
 	identityBytes, err := os.ReadFile(identityPath)
 	if err != nil || len(identityBytes) > 4<<10 {
 		return Identity{}, nil, errors.New("edge identity unavailable")

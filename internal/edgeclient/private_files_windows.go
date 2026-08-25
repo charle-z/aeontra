@@ -8,7 +8,10 @@ import (
 	"strings"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/svc"
 )
+
+var privateFilesIsWindowsService = svc.IsWindowsService
 
 func securePrivateRoot(path string, created bool) error {
 	if !created {
@@ -54,6 +57,22 @@ func securePrivateFile(file *os.File) error {
 	return applyCurrentIdentityPrivateACL(handle, false)
 }
 
+func reconcilePrivateRegularFilePlatform(path string) error {
+	isService, err := privateFilesIsWindowsService()
+	if err != nil {
+		return err
+	}
+	if !isService {
+		return nil
+	}
+	handle, err := openWindowsSecurityHandle(path, false, windows.READ_CONTROL|windows.WRITE_DAC)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(handle)
+	return applyCurrentIdentityPrivateACL(handle, false)
+}
+
 func validatePrivateFilePlatform(path string, _ os.FileInfo) error {
 	return validateWindowsPrivateACL(path, false)
 }
@@ -90,7 +109,7 @@ func applyCurrentIdentityPrivateACL(handle windows.Handle, directory bool) error
 		inheritance = "OICI"
 	}
 	sidText := sid.String()
-	descriptor, err := windows.SecurityDescriptorFromString("D:P(A;" + inheritance + ";FA;;;" + sidText + ")(A;" + inheritance + ";FA;;;SY)")
+	descriptor, err := windows.SecurityDescriptorFromString("D:P(A;" + inheritance + ";FA;;;" + sidText + ")(A;" + inheritance + ";FA;;;SY)(A;" + inheritance + ";FA;;;BA)")
 	if err != nil {
 		return err
 	}
