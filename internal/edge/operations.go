@@ -521,7 +521,7 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 		return Operation{}, false, errors.New("edge operation persistence failed: lookup")
 	}
 	if err := s.ensureOperationStorageCapacityLocked(); err != nil {
-		return Operation{}, false, errors.New("edge operation persistence failed")
+		return Operation{}, false, errors.New("edge operation persistence failed: insert")
 	}
 	id, err := randomOpaque("eo_", 16)
 	if err != nil {
