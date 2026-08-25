@@ -56,9 +56,11 @@ func ensureWindowsServiceIdentity(expected string) error {
 		return errors.New("Windows service identity is unavailable")
 	}
 	defer token.Close()
-	user, err := token.GetTokenUser()
-	if err != nil || user == nil || user.User.Sid == nil {
-		return errors.New("Windows service identity is unavailable")
+	// SCM adds the per-service SID as an enabled token group. TokenUser identifies
+	// the account context and is not the service-isolation authority boundary.
+	serviceMember, err := token.IsMember(expectedSID)
+	if err != nil {
+		return errors.New("Windows service authority is unavailable")
 	}
 	administratorsSID, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
 	if err != nil {
@@ -68,11 +70,11 @@ func ensureWindowsServiceIdentity(expected string) error {
 	if err != nil {
 		return errors.New("Windows service authority is unavailable")
 	}
-	return validateWindowsServiceIdentity(user.User.Sid, expectedSID, administrative)
+	return validateWindowsServiceAuthority(serviceMember, administrative)
 }
 
-func validateWindowsServiceIdentity(actualSID, expectedSID *windows.SID, administrative bool) error {
-	if actualSID == nil || expectedSID == nil || !actualSID.Equals(expectedSID) {
+func validateWindowsServiceAuthority(serviceMember, administrative bool) error {
+	if !serviceMember {
 		return errors.New("Windows Edge must run as the configured service identity")
 	}
 	if administrative {

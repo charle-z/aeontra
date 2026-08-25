@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
-	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 )
 
@@ -106,24 +105,15 @@ func TestWindowsAgentServiceUsesFixedIdentityAuthorityInsteadOfInteractiveElevat
 	}
 }
 
-func TestValidateWindowsServiceIdentityRejectsWrongOrAdministrativeToken(t *testing.T) {
-	expected, err := windows.StringToSid("S-1-5-80-100")
-	if err != nil {
-		t.Fatal(err)
+func TestValidateWindowsServiceAuthorityRequiresExactNonAdministrativeMembership(t *testing.T) {
+	if err := validateWindowsServiceAuthority(true, false); err != nil {
+		t.Fatalf("matching non-administrative service membership rejected: %v", err)
 	}
-	other, err := windows.StringToSid("S-1-5-80-200")
-	if err != nil {
-		t.Fatal(err)
+	if err := validateWindowsServiceAuthority(false, false); err == nil {
+		t.Fatal("token without the configured service SID accepted")
 	}
-
-	if err := validateWindowsServiceIdentity(expected, expected, false); err != nil {
-		t.Fatalf("matching non-administrative identity rejected: %v", err)
-	}
-	if err := validateWindowsServiceIdentity(other, expected, false); err == nil {
-		t.Fatal("different service identity accepted")
-	}
-	if err := validateWindowsServiceIdentity(expected, expected, true); err == nil {
-		t.Fatal("administrative service identity accepted")
+	if err := validateWindowsServiceAuthority(true, true); err == nil {
+		t.Fatal("administrative service token accepted")
 	}
 }
 
