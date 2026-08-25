@@ -70,6 +70,37 @@ func TestWindowsWorkspaceACLRejectsBroadWriteAndInvalidOwner(t *testing.T) {
 	}
 }
 
+func TestWindowsWorkspaceACLMatchesInstallerModifyGrant(t *testing.T) {
+	root := t.TempDir()
+	token, userSID, err := currentWindowsTokenSID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer token.Close()
+
+	descriptor, err := windows.SecurityDescriptorFromString("D:P(A;OICI;0x1301bf;;;" + userSID.String() + ")(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil || dacl == nil {
+		t.Fatal("installer-equivalent workspace DACL is unavailable")
+	}
+	handle, err := openWindowsSecurityHandle(root, true, windows.READ_CONTROL|windows.WRITE_DAC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
+		_ = windows.CloseHandle(handle)
+		t.Fatal(err)
+	}
+	_ = windows.CloseHandle(handle)
+
+	if err := validateWindowsWorkspaceACL(root, root); err != nil {
+		t.Fatalf("installer-equivalent Modify ACL rejected: %v", err)
+	}
+}
+
 func TestSelectWindowsWorkspaceWriterSIDPrefersEnabledServiceSID(t *testing.T) {
 	userSID, err := windows.StringToSid(`S-1-5-21-1-2-3-1001`)
 	if err != nil {
