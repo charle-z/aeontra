@@ -224,7 +224,7 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 	}
 	databasePath := filepath.Join(root, projectProcessDatabaseFile)
 	if info, err := os.Lstat(databasePath); err == nil {
-		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) || info.Size() > 32<<20 {
+		if !validWindowsPrivateProjectProcessFile(databasePath, info) || info.Size() > 32<<20 {
 			return nil, errors.New("project process journal is unsafe")
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -251,7 +251,7 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 			return nil, errors.New("project process journal initialization failed")
 		}
 	}
-	if err := os.Chmod(databasePath, 0o600); err != nil {
+	if err := securePrivateRegularPath(databasePath); err != nil {
 		_ = db.Close()
 		return nil, errors.New("project process journal permissions failed")
 	}
@@ -356,7 +356,7 @@ func (manager *ProjectProcessManager) Start(ctx context.Context, request Project
 	// durable manager adds the private worker fields below after the ordinary
 	// Windows workcell request has been validated; the platform Start method
 	// then requires those fields before it can launch the worker.
-	spec, err := prepareDirectWorkcellProcessSpec(DirectWorkcellCommandRequest{OperationID: request.OperationID, Workspace: request.Workspace, Argv: request.Argv, CWD: request.CWD, Stdin: request.Stdin, Environment: request.Environment, TimeoutSeconds: 1}, stdoutTarget, stderrTarget, manager.resolveExecutable)
+	spec, err := prepareDirectWorkcellProcessSpec(DirectWorkcellCommandRequest{OperationID: request.OperationID, Workspace: request.Workspace, WindowsDevRoot: request.Workspace.WindowsDevRoot, Argv: request.Argv, CWD: request.CWD, Stdin: request.Stdin, Environment: request.Environment, TimeoutSeconds: 1}, stdoutTarget, stderrTarget, manager.resolveExecutable)
 	if err != nil {
 		_ = stdoutCloser.Close()
 		_ = stderrCloser.Close()
@@ -860,7 +860,7 @@ func (manager *ProjectProcessManager) removeLogs(processID string) error {
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
-		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) {
+		if err != nil || !validWindowsPrivateProjectProcessFile(path, info) {
 			return errors.New("project process log is unsafe")
 		}
 		if err := os.Remove(path); err != nil {
@@ -873,7 +873,7 @@ func (manager *ProjectProcessManager) removeLogs(processID string) error {
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
-		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) {
+		if err != nil || !validWindowsPrivateProjectProcessFile(path, info) {
 			return errors.New("project process worker state is unsafe")
 		}
 		if err := os.Remove(path); err != nil {
@@ -1045,6 +1045,11 @@ func openProjectProcessLogWriter(logRoot, processID, stream string, maxBytes int
 	if err != nil {
 		return nil, errors.New("project process log unavailable")
 	}
+	if err := securePrivateFile(file); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return nil, errors.New("project process log unavailable")
+	}
 	return &projectProcessLogWriter{file: file, marker: path + ".truncated", max: maxBytes}, nil
 }
 func (writer *projectProcessLogWriter) Write(input []byte) (int, error) {
@@ -1113,6 +1118,11 @@ func (writer *projectProcessLogWriter) writeSanitized(data []byte) error {
 func (writer *projectProcessLogWriter) markTruncated() {
 	file, err := os.OpenFile(writer.marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err == nil {
+		if secureErr := securePrivateFile(file); secureErr != nil {
+			_ = file.Close()
+			_ = os.Remove(writer.marker)
+			return
+		}
 		_ = file.Close()
 	}
 }
@@ -1157,7 +1167,7 @@ func (manager *ProjectProcessManager) readLog(processID, stream string, offset i
 	next := offset + int64(read)
 	markerInfo, markerErr := os.Lstat(path + ".truncated")
 	truncated := markerErr == nil
-	if markerErr == nil && (!markerInfo.Mode().IsRegular() || markerInfo.Mode()&os.ModeSymlink != 0 || markerInfo.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(markerInfo)) {
+	if markerErr == nil && !validWindowsPrivateProjectProcessFile(path+".truncated", markerInfo) {
 		return "", 0, false, false, errors.New("project process log is unsafe")
 	}
 	if markerErr != nil && !errors.Is(markerErr, os.ErrNotExist) {
@@ -1168,7 +1178,7 @@ func (manager *ProjectProcessManager) readLog(processID, stream string, offset i
 
 func openPrivateProjectProcessLog(path string) (*os.File, os.FileInfo, error) {
 	before, err := os.Lstat(path)
-	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(before) {
+	if err != nil || !validWindowsPrivateProjectProcessFile(path, before) {
 		return nil, nil, errors.New("project process log is unsafe")
 	}
 	file, err := os.OpenFile(path, os.O_RDONLY, 0)
@@ -1412,6 +1422,11 @@ func writePrivateProjectProcessWorkerFile(path string, body []byte) error {
 	if err != nil {
 		return errors.New("project process worker state is unavailable")
 	}
+	if err := securePrivateFile(file); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return errors.New("project process worker state is unavailable")
+	}
 	_, writeErr := file.Write(append(append([]byte(nil), body...), '\n'))
 	syncErr := file.Sync()
 	closeErr := file.Close()
@@ -1423,7 +1438,7 @@ func writePrivateProjectProcessWorkerFile(path string, body []byte) error {
 }
 func readPrivateProjectProcessWorkerFile(path string, limit int64) ([]byte, error) {
 	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !ownedByCurrentUIDPortable(info) || info.Size() <= 0 || info.Size() > limit {
+	if err != nil || !validWindowsPrivateProjectProcessFile(path, info) || info.Size() <= 0 || info.Size() > limit {
 		return nil, errors.New("project process worker state is unsafe")
 	}
 	file, err := os.Open(path)
@@ -1760,7 +1775,7 @@ func persistWindowsStdinReceipt(state *windowsProcessWorkerState, persisted wind
 	}
 	path := projectProcessWorkerPath(state.workerRoot, state.identity.ProcessID, "stdin-receipt")
 	if info, statErr := os.Lstat(path); statErr == nil {
-		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !ownedByCurrentUIDPortable(info) {
+		if !validWindowsPrivateProjectProcessFile(path, info) {
 			return errors.New("project process stdin receipt is unsafe")
 		}
 		file, openErr := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o600)
@@ -1779,4 +1794,9 @@ func persistWindowsStdinReceipt(state *windowsProcessWorkerState, persisted wind
 		return closeErr
 	}
 	return writePrivateProjectProcessWorkerFile(path, body)
+}
+
+func validWindowsPrivateProjectProcessFile(path string, info os.FileInfo) bool {
+	return info != nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 &&
+		ownedByCurrentUIDPortable(info) && requirePrivateRegularFile(path) == nil
 }

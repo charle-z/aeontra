@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
 )
@@ -65,29 +66,52 @@ func (p *fakeWindowsProcessPlatform) WriteStdin(identity ProjectProcessIdentity,
 
 func openWindowsTestProcessManager(t *testing.T, platform ProjectProcessPlatform) *ProjectProcessManager {
 	t.Helper()
-	root := t.TempDir()
+	root := filepath.Join(t.TempDir(), "state")
 	manager, err := OpenProjectProcessManager(ProjectProcessManagerConfig{
 		StateRoot: root, Platform: platform, MaxProcesses: 2, MaxLogBytes: 1 << 20,
 		NewID: func() (string, error) { return "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil },
 	})
 	if err != nil {
-		t.Skipf("native process journal requires the configured Windows service ACL: %v", err)
+		t.Fatalf("open native process manager: %v", err)
 	}
 	t.Cleanup(func() { _ = manager.Close() })
 	return manager
 }
 
+func TestWindowsProjectProcessManagerReopensPrivateJournal(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "state")
+	config := ProjectProcessManagerConfig{StateRoot: root, Platform: &fakeWindowsProcessPlatform{}, MaxProcesses: 2, MaxLogBytes: 1 << 20}
+	manager, err := OpenProjectProcessManager(config)
+	if err != nil {
+		t.Fatalf("create manager: %v", err)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatalf("close manager: %v", err)
+	}
+	reopened, err := OpenProjectProcessManager(config)
+	if err != nil {
+		t.Fatalf("reopen manager: %v", err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatalf("close reopened manager: %v", err)
+	}
+}
+
 func TestWindowsProjectProcessManagerBindsOwnershipAndReplaysStdin(t *testing.T) {
 	platform := &fakeWindowsProcessPlatform{}
 	manager := openWindowsTestProcessManager(t, platform)
+	workspace := windowsDirectWorkcellFixture(t)
 	request := ProjectProcessStartRequest{
 		OperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", IdempotencyKey: "windows-process",
-		ProjectAlias: "project", TargetAlias: "windows", Workspace: Workspace{ID: "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Profile: WorkspaceProfileWindowsWorkcell, Mode: WorkspaceModeDev, Path: `C:\work\repo`, WindowsDevRoot: `C:\work`},
+		ProjectAlias: "project", TargetAlias: "windows", Workspace: workspace,
 		Argv: []string{"cmd.exe", "/c", "echo", "ok"}, Stdin: "initial\n",
 	}
 	started, created, err := manager.Start(context.Background(), request)
 	if err != nil || !created || started.State != ProjectProcessRunning {
 		t.Fatalf("start=%+v created=%v err=%v", started, created, err)
+	}
+	if _, err := manager.Status(ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "windows", LimitBytes: 1024}); err != nil {
+		t.Fatalf("status after start: %v", err)
 	}
 	first := ProjectProcessStdinRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "windows", FrameID: "frame-1", ExpectedOffset: int64(len(request.Stdin)), Data: "next\n"}
 	if _, receipt, err := manager.WriteStdin(first); err != nil || receipt.NextOffset != int64(len(request.Stdin)+len(first.Data)) {
@@ -98,6 +122,10 @@ func TestWindowsProjectProcessManagerBindsOwnershipAndReplaysStdin(t *testing.T)
 	}
 	if _, _, err := manager.WriteStdin(ProjectProcessStdinRequest{ProcessID: started.ProcessID, ProjectAlias: "other", TargetAlias: "windows", FrameID: "frame-2", ExpectedOffset: first.ExpectedOffset, Data: "x"}); !errors.Is(err, ErrProjectProcessNotFound) {
 		t.Fatalf("cross-project stdin err=%v", err)
+	}
+	stopped, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "windows", GracePeriod: time.Second})
+	if err != nil || stopped.State != ProjectProcessStopped {
+		t.Fatalf("stop=%+v err=%v", stopped, err)
 	}
 }
 
