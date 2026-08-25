@@ -289,6 +289,11 @@ If the Edge disappears after an accepted cancellation request, lease expiry clos
 
 Device ids, workspace ids, local paths, request bodies, idempotency keys, credentials, raw output and result payloads are never returned by these lifecycle tools.
 
+Terminal operation rows are retained within the bounded Edge database page budget.
+After an old terminal row is reclaimed, lifecycle lookup returns not found and its
+idempotency key no longer resolves that historical operation. Long-term evidence
+belongs in the audit, observability, or explicit result stores.
+
 ## Deliberate boundary
 
 This layer provides operation identity, queueing, cancellation, bounded result

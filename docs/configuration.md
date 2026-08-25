@@ -374,7 +374,7 @@ because they appear in source.
 | `/state/logs` | audit and observability segments | persistent; private fixed rotation | back up when audit retention requires it |
 | `/state/telemetry` | content-free aggregate SQLite metrics | persistent but reconstructability is limited | retain per operational policy; never treat it as request-content evidence |
 | `/state/model-turns` | durable model-turn coordination | persistent | private control-plane state; never expose to repository tools |
-| `/state/edge` | paired Edge/control operations | persistent | private authority state; back up and protect separately |
+| `/state/edge` | paired Edge/control operations | persistent; oldest terminal operations are reclaimed within the fixed page budget | private authority state; queued and leased operations are never reclaimed; back up and protect separately |
 | `/state/console` | console sessions | persistent when login continuity matters | private; never agent-writable |
 | `/state/brain` | Brain console node identity | persistent | private runtime identity, distinct from Brain truth |
 | `/brain` | Brain Markdown truth, local Git, and disposable `.cache` | dedicated persistent volume; dirs `0700`, files `0600`, UID/GID `10001:10001` in image | outside the repository jail; back up `.git`, `.gitignore`, `curated`, `working`; `.cache` is disposable |

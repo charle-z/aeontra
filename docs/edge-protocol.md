@@ -139,6 +139,13 @@ database mode `0600`. The SQLite store uses full synchronization, a single
 connection, and a bounded 8192-page maximum. Symlink roots or ancestors are
 rejected.
 
+The operation journal keeps a storage reserve of one sixteenth of that page budget,
+capped at 512 pages. When the reserve is exhausted, the server deletes the oldest
+terminal `succeeded`, `failed`, or `cancelled` operations in bounded batches. Queued
+and leased operations are never reclaimed. Terminal operation IDs are durable
+coordination handles, not permanent audit records; the separate bounded audit and
+observability logs remain the historical evidence sources.
+
 ## WSL development workcell
 
 `cmd/mcp-edge` is the separately installed outbound client. Pairing reads the code
