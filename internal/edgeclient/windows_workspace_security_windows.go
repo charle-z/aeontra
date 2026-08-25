@@ -227,16 +227,16 @@ func validateWindowsWorkspaceACL(root, candidate string) error {
 		return fmt.Errorf("%w: token", ErrWindowsWorkspaceACLUnsafe)
 	}
 	defer token.Close()
-	user, err := token.GetTokenUser()
-	if err != nil || user == nil || user.User.Sid == nil {
-		return fmt.Errorf("%w: token user", ErrWindowsWorkspaceACLUnsafe)
+	serviceSID, err := windowsWorkspaceWriterSID(token)
+	if err != nil {
+		return fmt.Errorf("%w: token service SID", ErrWindowsWorkspaceACLUnsafe)
 	}
 	for index, current := range windowsPathPrefixesFromRoot(root, candidate) {
 		handle, _, err := openAndInspectWindowsDirectory(current)
 		if err != nil {
 			return fmt.Errorf("%w: open ancestor", ErrWindowsWorkspaceACLUnsafe)
 		}
-		err = validateWindowsDirectoryDescriptor(handle, user.User.Sid, true)
+		err = validateWindowsDirectoryDescriptor(handle, serviceSID, true)
 		_ = windows.CloseHandle(handle)
 		if err != nil {
 			return fmt.Errorf("%w at ACL component %d", err, index)
@@ -255,6 +255,55 @@ func validateWindowsWorkspaceACL(root, candidate string) error {
 	}
 	_ = windows.CloseHandle(handle)
 	return nil
+}
+
+func windowsWorkspaceWriterSID(token windows.Token) (*windows.SID, error) {
+	user, err := token.GetTokenUser()
+	if err != nil || user == nil || user.User.Sid == nil {
+		return nil, errors.New("Windows token user is unavailable")
+	}
+	groups, err := token.GetTokenGroups()
+	if err != nil || groups == nil {
+		return nil, errors.New("Windows token groups are unavailable")
+	}
+	return selectWindowsWorkspaceWriterSID(user.User.Sid, groups.AllGroups())
+}
+
+func selectWindowsWorkspaceWriterSID(userSID *windows.SID, groups []windows.SIDAndAttributes) (*windows.SID, error) {
+	if userSID == nil {
+		return nil, errors.New("Windows token user is unavailable")
+	}
+	var selected *windows.SID
+	sawServiceSID := false
+	for _, group := range groups {
+		if group.Sid == nil {
+			continue
+		}
+		value := group.Sid.String()
+		if value == "S-1-5-80-0" || !strings.HasPrefix(value, "S-1-5-80-") {
+			continue
+		}
+		sawServiceSID = true
+		const required = windows.SE_GROUP_ENABLED | windows.SE_GROUP_OWNER
+		if group.Attributes&required != required {
+			continue
+		}
+		if selected != nil {
+			return nil, errors.New("Windows service SID is ambiguous")
+		}
+		copySID, err := group.Sid.Copy()
+		if err != nil {
+			return nil, errors.New("Windows service SID is unavailable")
+		}
+		selected = copySID
+	}
+	if selected != nil {
+		return selected, nil
+	}
+	if sawServiceSID {
+		return nil, errors.New("Windows service SID is disabled")
+	}
+	return userSID.Copy()
 }
 
 func validateWindowsDirectoryDescriptor(handle windows.Handle, serviceSID *windows.SID, requireOwner bool) error {
