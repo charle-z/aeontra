@@ -868,7 +868,7 @@ func validProjectOperationResult(result OperationResult) bool {
 		!projectOperationAliasPattern.MatchString(result.ProjectAlias) || !githubOwnerOperationPattern.MatchString(result.ProjectOwner) ||
 		!projectOperationRepositoryPattern.MatchString(result.ProjectRepository) || strings.ContainsAny(result.ProjectRepository, `/\\`) ||
 		!projectOperationTargetPattern.MatchString(result.ProjectTarget) || (result.ProjectState != "ready" && result.ProjectState != "dirty") ||
-		result.ProjectProfile != "linux-workcell" || result.ProjectMode != "dev" {
+		(result.ProjectProfile != "linux-workcell" && result.ProjectProfile != "windows-workcell") || result.ProjectMode != "dev" {
 		return false
 	}
 	metadata := result

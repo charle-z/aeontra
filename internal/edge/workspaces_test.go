@@ -30,11 +30,13 @@ func TestWorkspaceRegistrationResolvesOnlyRecognizedActiveBindings(t *testing.T)
 	device := pairWorkspaceTestDevice(t, store, "parrot-workcell")
 	devID := "ws_11111111111111111111111111111111"
 	htbID := "ws_22222222222222222222222222222222"
+	windowsID := "ws_33333333333333333333333333333333"
 	status, err := store.RegisterWorkspaces(device.ID, []WorkspaceRegistration{
 		{WorkspaceID: devID, Profile: "linux-workcell", Mode: "dev"},
 		{WorkspaceID: htbID, Profile: "linux-workcell", Mode: "htb-linux"},
+		{WorkspaceID: windowsID, Profile: "windows-workcell", Mode: "dev"},
 	})
-	if err != nil || status.Count != 2 || status.UpdatedAt.IsZero() {
+	if err != nil || status.Count != 3 || status.UpdatedAt.IsZero() {
 		t.Fatalf("status=%+v err=%v", status, err)
 	}
 	binding, err := store.ResolveWorkspace(htbID)
@@ -44,7 +46,11 @@ func TestWorkspaceRegistrationResolvesOnlyRecognizedActiveBindings(t *testing.T)
 	if binding.DeviceID != device.ID || binding.Profile != "linux-workcell" || binding.Mode != "htb-linux" || binding.UpdatedAt.IsZero() {
 		t.Fatalf("binding=%+v", binding)
 	}
-	if _, err := store.ResolveWorkspace("ws_33333333333333333333333333333333"); err == nil || !strings.Contains(err.Error(), "not found") {
+	binding, err = store.ResolveWorkspace(windowsID)
+	if err != nil || binding.DeviceID != device.ID || binding.Profile != "windows-workcell" || binding.Mode != "dev" {
+		t.Fatalf("Windows binding=%+v err=%v", binding, err)
+	}
+	if _, err := store.ResolveWorkspace("ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("missing workspace error=%v", err)
 	}
 	if err := store.Revoke(device.ID); err != nil {
@@ -69,6 +75,7 @@ func TestWorkspaceRegistrationReplacesSnapshotAndRejectsCrossDeviceOrModeConfusi
 	for _, item := range []WorkspaceRegistration{
 		{WorkspaceID: workspaceID, Profile: "sandbox", Mode: "htb-linux"},
 		{WorkspaceID: workspaceID, Profile: "linux-workcell", Mode: "unknown"},
+		{WorkspaceID: workspaceID, Profile: "windows-workcell", Mode: "htb-linux"},
 		{WorkspaceID: workspaceID, Profile: "unknown", Mode: "dev"},
 	} {
 		if _, err := store.RegisterWorkspaces(first.ID, []WorkspaceRegistration{item}); err == nil || !strings.Contains(err.Error(), "invalid") {
