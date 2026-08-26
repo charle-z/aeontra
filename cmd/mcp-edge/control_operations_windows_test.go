@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
+	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
 type windowsProgressFake struct {
@@ -55,5 +56,20 @@ func TestWindowsControlCancellationStopsExecutorBeforeReturn(t *testing.T) {
 	}
 	if len(fake.seen) != 1 || fake.seen[0].Phase != "running" {
 		t.Fatalf("progress=%+v", fake.seen)
+	}
+}
+
+func TestWindowsProjectPreparationOwnsWorkspaceProfile(t *testing.T) {
+	request := windowsProjectPreparationRequest(edge.OperationRequest{
+		Alias:       "project",
+		Repository:  "repo",
+		TargetAlias: "windows-trusted",
+		Profile:     "linux-workcell",
+	})
+	if request.Profile != edgeclient.WorkspaceProfileWindowsWorkcell {
+		t.Fatalf("profile=%q want=%q", request.Profile, edgeclient.WorkspaceProfileWindowsWorkcell)
+	}
+	if request.Alias != "project" || request.Repository != "repo" || request.TargetAlias != "windows-trusted" {
+		t.Fatalf("request fields changed: %+v", request)
 	}
 }

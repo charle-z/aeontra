@@ -74,7 +74,7 @@ func executeWindowsProjectPrepare(ctx context.Context, stateRoot string, request
 	defer workspaces.Close()
 	defer projects.Close()
 	config := edgeclient.ProjectPreparationConfig{StateRoot: stateRoot, Projects: projects, Workspaces: workspaces, Roots: roots, Credential: credential, Runner: edgeclient.NewDevGitCommandRunner(stateRoot, "")}
-	plan, err := edgeclient.PlanProjectPreparation(ctx, config, edgeclient.ProjectPreparationRequest{Alias: request.Alias, Repository: request.Repository, TargetAlias: request.TargetAlias, Profile: edgeclient.WorkspaceProfile(request.Profile)})
+	plan, err := edgeclient.PlanProjectPreparation(ctx, config, windowsProjectPreparationRequest(request))
 	if err != nil {
 		return edge.OperationResult{}, safeWindowsProjectFailure(err)
 	}
@@ -82,6 +82,15 @@ func executeWindowsProjectPrepare(ctx context.Context, stateRoot string, request
 		return edge.OperationResult{}, safeWindowsProjectFailure(err)
 	}
 	return windowsProjectControlResult(ctx, projects, request.Alias, request.TargetAlias)
+}
+
+func windowsProjectPreparationRequest(request edge.OperationRequest) edgeclient.ProjectPreparationRequest {
+	return edgeclient.ProjectPreparationRequest{
+		Alias:       request.Alias,
+		Repository:  request.Repository,
+		TargetAlias: request.TargetAlias,
+		Profile:     edgeclient.WorkspaceProfileWindowsWorkcell,
+	}
 }
 
 func executeWindowsProjectStatus(ctx context.Context, stateRoot string, request edge.OperationRequest) (edge.OperationResult, string) {
