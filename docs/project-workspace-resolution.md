@@ -186,6 +186,8 @@ discovery_timeout
 plan_changed
 plan_expired
 registry_unavailable
+workspace_registration_failed
+project_registration_failed
 credential_unavailable
 clone_failed
 cleanup_required

@@ -185,6 +185,80 @@ func TestProjectPreparationCloneFailureCleansOnlyReservedDirectory(t *testing.T)
 	}
 }
 
+func TestProjectPreparationReportsRegistrationStageAndCleansClone(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		close     func(*WorkspaceRegistry, *ProjectRegistry) error
+		wantError ProjectErrorCode
+	}{
+		{
+			name: "workspace registry write",
+			close: func(workspaces *WorkspaceRegistry, _ *ProjectRegistry) error {
+				return workspaces.Close()
+			},
+			wantError: ProjectErrorWorkspaceRegistration,
+		},
+		{
+			name: "project registry write",
+			close: func(_ *WorkspaceRegistry, projects *ProjectRegistry) error {
+				return projects.Close()
+			},
+			wantError: ProjectErrorProjectRegistration,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := t.TempDir()
+			roots := newProjectDiscoveryRoots(t)
+			candidate := filepath.Join(roots.Dev, "repo")
+			states := map[string]ProjectCheckoutState{}
+			workspaces, projects := openProjectPreparationRegistries(t, state, roots, pathProjectInspector{states: states})
+			runner := &projectPreparationRunner{after: func(dir string) {
+				if err := os.Mkdir(filepath.Join(dir, ".git"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				states[dir] = ProjectCheckoutReady
+			}}
+			config := ProjectPreparationConfig{
+				StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+				Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)}, Runner: runner,
+			}
+			plan, err := PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+				Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := test.close(workspaces, projects); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyProjectPreparation(context.Background(), config, plan); !projectErrorIs(err, test.wantError) {
+				t.Fatalf("err=%v want=%s", err, test.wantError)
+			}
+			if _, err := os.Lstat(candidate); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("failed clone was not removed: %v", err)
+			}
+		})
+	}
+}
+
+func TestProjectRegistrationFailureCodePreservesActionableProjectErrors(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		want ProjectErrorCode
+	}{
+		{name: "checkout", err: projectErr(ProjectErrorCheckoutUnsafe, errors.New("unsafe")), want: ProjectErrorCheckoutUnsafe},
+		{name: "registry", err: projectErr(ProjectErrorRegistryUnavailable, errors.New("closed")), want: ProjectErrorProjectRegistration},
+		{name: "unclassified", err: errors.New("failed"), want: ProjectErrorProjectRegistration},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := projectRegistrationFailureCode(test.err); got != test.want {
+				t.Fatalf("got=%s want=%s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestProjectPreparationRejectsExpiredChangedAndMissingAuthority(t *testing.T) {
 	state := t.TempDir()
 	roots := newProjectDiscoveryRoots(t)

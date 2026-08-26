@@ -37,6 +37,8 @@ func TestP16ProjectAliasRegistryContractIsDocumented(t *testing.T) {
 		"holds an open directory descriptor",
 		"git clone --single-branch -- URL .",
 		"credential_unavailable",
+		"workspace_registration_failed",
+		"project_registration_failed",
 		"clone_failed",
 		"cleanup_required",
 		"associate one unique safe legacy path",
@@ -59,6 +61,8 @@ func TestP16ProjectAliasRegistryContractIsDocumented(t *testing.T) {
 		"project_status(alias=ekoparty",
 		"git clone --single-branch -- URL .",
 		"credential_unavailable",
+		"workspace_registration_failed",
+		"project_registration_failed",
 		"clone_failed",
 		"cleanup_required",
 	} {

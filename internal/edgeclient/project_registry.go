@@ -54,6 +54,8 @@ const (
 	ProjectErrorPlanChanged           ProjectErrorCode = "plan_changed"
 	ProjectErrorPlanExpired           ProjectErrorCode = "plan_expired"
 	ProjectErrorRegistryUnavailable   ProjectErrorCode = "registry_unavailable"
+	ProjectErrorWorkspaceRegistration ProjectErrorCode = "workspace_registration_failed"
+	ProjectErrorProjectRegistration   ProjectErrorCode = "project_registration_failed"
 	ProjectErrorCredentialUnavailable ProjectErrorCode = "credential_unavailable"
 	ProjectErrorCloneFailed           ProjectErrorCode = "clone_failed"
 	ProjectErrorCleanupRequired       ProjectErrorCode = "cleanup_required"
