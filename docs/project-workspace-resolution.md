@@ -187,6 +187,7 @@ plan_changed
 plan_expired
 registry_unavailable
 workspace_registration_failed
+workspace_validation_failed
 workspace_lookup_failed
 workspace_write_failed
 project_registration_failed
