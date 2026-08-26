@@ -3,7 +3,6 @@ package edgeclient
 import (
 	"errors"
 	"os"
-	"path/filepath"
 )
 
 func prepareProjectRegistryFile(path string) error {
@@ -21,7 +20,7 @@ func prepareProjectRegistryFile(path string) error {
 			_ = os.Remove(path)
 			return secureErr
 		}
-		if syncErr := syncProjectRegistryDirectory(filepath.Dir(path)); syncErr != nil {
+		if syncErr := syncProjectRegistryCreation(path); syncErr != nil {
 			_ = os.Remove(path)
 			return syncErr
 		}
@@ -34,13 +33,4 @@ func prepareProjectRegistryFile(path string) error {
 		return errors.New("project registry is unsafe")
 	}
 	return nil
-}
-
-func syncProjectRegistryDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
 }
