@@ -64,6 +64,28 @@ var (
 	vpnInterfacePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,31}$`)
 )
 
+type workspaceRegistrationStage uint8
+
+const (
+	workspaceRegistrationValidation workspaceRegistrationStage = iota + 1
+	workspaceRegistrationLookup
+	workspaceRegistrationIdentity
+	workspaceRegistrationWrite
+	workspaceRegistrationProfile
+)
+
+type workspaceRegistrationError struct {
+	stage workspaceRegistrationStage
+	err   error
+}
+
+func (e *workspaceRegistrationError) Error() string { return e.err.Error() }
+func (e *workspaceRegistrationError) Unwrap() error { return e.err }
+
+func workspaceRegistrationErr(stage workspaceRegistrationStage, err error) error {
+	return &workspaceRegistrationError{stage: stage, err: err}
+}
+
 func DefaultWorkspaceRoots() (WorkspaceRoots, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" || !filepath.IsAbs(home) {
@@ -186,34 +208,34 @@ func (r *WorkspaceRegistry) AddProfile(path string, profile WorkspaceProfile) (W
 		validated, err = ValidateRegisteredWorkspace(path)
 	}
 	if err != nil {
-		return Workspace{}, false, err
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationValidation, err)
 	}
 	if existing, lookupErr := r.byPath(validated); lookupErr == nil {
 		if existing.Profile != profile {
-			return Workspace{}, false, errors.New("workspace is already registered with another profile")
+			return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationProfile, errors.New("workspace is already registered with another profile"))
 		}
 		return existing, false, nil
 	} else if !errors.Is(lookupErr, sql.ErrNoRows) {
-		return Workspace{}, false, errors.New("workspace registry lookup failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationLookup, errors.New("workspace registry lookup failed"))
 	}
 	id, err := newWorkspaceID()
 	if err != nil {
-		return Workspace{}, false, errors.New("workspace id generation failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationIdentity, errors.New("workspace id generation failed"))
 	}
 	now := r.now().UTC()
 	tx, err := r.db.Begin()
 	if err != nil {
-		return Workspace{}, false, errors.New("workspace registration failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationWrite, errors.New("workspace registration failed"))
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`INSERT INTO workspaces(workspace_id,path,created_at,updated_at) VALUES(?,?,?,?)`, id, validated, now.UnixNano(), now.UnixNano()); err != nil {
-		return Workspace{}, false, errors.New("workspace registration failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationWrite, errors.New("workspace registration failed"))
 	}
 	if _, err := tx.Exec(`INSERT INTO workspace_configs(workspace_id,profile,mode,machine_name,target_ip,difficulty,os,vpn_interface,authorization_revision) VALUES(?,?,?,?,?,?,?,?,0)`, id, profile, WorkspaceModeDev, "", "", "", "", ""); err != nil {
-		return Workspace{}, false, errors.New("workspace registration failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationWrite, errors.New("workspace registration failed"))
 	}
 	if err := tx.Commit(); err != nil {
-		return Workspace{}, false, errors.New("workspace registration failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationWrite, errors.New("workspace registration failed"))
 	}
 	return r.decorateWorkspace(Workspace{ID: id, Path: validated, Profile: profile, Mode: WorkspaceModeDev, NetworkPosture: networkPosture(profile), CreatedAt: now, UpdatedAt: now}), true, nil
 }

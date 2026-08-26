@@ -266,7 +266,7 @@ func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, pla
 	}
 	workspace, created, err := config.Workspaces.AddProfile(plan.CandidatePath, plan.Profile)
 	if err != nil {
-		return cleanup(ProjectErrorWorkspaceRegistration, err)
+		return cleanup(workspaceRegistrationFailureCode(err), err)
 	}
 	project, _, err := config.Projects.Register(ProjectRegistration{
 		Alias: plan.Alias, Owner: plan.Owner, Repository: plan.Repository,
@@ -282,6 +282,25 @@ func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, pla
 		return cleanup(projectRegistrationFailureCode(err), err)
 	}
 	return (ProjectResolution{Project: project, TargetAlias: plan.TargetAlias, Workspace: workspace}).SafeStatus(), nil
+}
+
+func workspaceRegistrationFailureCode(err error) ProjectErrorCode {
+	var failure *workspaceRegistrationError
+	if !errors.As(err, &failure) {
+		return ProjectErrorWorkspaceRegistration
+	}
+	switch failure.stage {
+	case workspaceRegistrationValidation:
+		return ProjectErrorCheckoutUnsafe
+	case workspaceRegistrationLookup:
+		return ProjectErrorWorkspaceLookup
+	case workspaceRegistrationWrite:
+		return ProjectErrorWorkspaceWrite
+	case workspaceRegistrationProfile:
+		return ProjectErrorProfileDenied
+	default:
+		return ProjectErrorWorkspaceRegistration
+	}
 }
 
 func projectRegistrationFailureCode(err error) ProjectErrorCode {

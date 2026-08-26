@@ -196,7 +196,7 @@ func TestProjectPreparationReportsRegistrationStageAndCleansClone(t *testing.T) 
 			close: func(workspaces *WorkspaceRegistry, _ *ProjectRegistry) error {
 				return workspaces.Close()
 			},
-			wantError: ProjectErrorWorkspaceRegistration,
+			wantError: ProjectErrorWorkspaceLookup,
 		},
 		{
 			name: "project registry write",
@@ -253,6 +253,27 @@ func TestProjectRegistrationFailureCodePreservesActionableProjectErrors(t *testi
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := projectRegistrationFailureCode(test.err); got != test.want {
+				t.Fatalf("got=%s want=%s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestWorkspaceRegistrationFailureCodeReportsSafeStage(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		stage workspaceRegistrationStage
+		want  ProjectErrorCode
+	}{
+		{name: "validation", stage: workspaceRegistrationValidation, want: ProjectErrorCheckoutUnsafe},
+		{name: "lookup", stage: workspaceRegistrationLookup, want: ProjectErrorWorkspaceLookup},
+		{name: "identity", stage: workspaceRegistrationIdentity, want: ProjectErrorWorkspaceRegistration},
+		{name: "write", stage: workspaceRegistrationWrite, want: ProjectErrorWorkspaceWrite},
+		{name: "profile", stage: workspaceRegistrationProfile, want: ProjectErrorProfileDenied},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := workspaceRegistrationErr(test.stage, errors.New("failed"))
+			if got := workspaceRegistrationFailureCode(err); got != test.want {
 				t.Fatalf("got=%s want=%s", got, test.want)
 			}
 		})
