@@ -251,7 +251,7 @@ func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, pla
 		return ProjectStatus{}, projectErr(ProjectErrorCleanupRequired, errors.New("project clone reservation is unsafe"))
 	}
 	cleanup := func(code ProjectErrorCode, cause error) (ProjectStatus, error) {
-		if cleanupErr := removeReservedProjectClone(root, plan.CandidatePath, reserved); cleanupErr != nil {
+		if cleanupErr := removeReservedProjectClone(root, plan.CandidatePath, reservation, reserved); cleanupErr != nil {
 			return ProjectStatus{}, projectErr(ProjectErrorCleanupRequired, errors.Join(cause, cleanupErr))
 		}
 		return ProjectStatus{}, projectErr(code, cause)
@@ -284,9 +284,12 @@ func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, pla
 	return (ProjectResolution{Project: project, TargetAlias: plan.TargetAlias, Workspace: workspace}).SafeStatus(), nil
 }
 
-func removeReservedProjectClone(root, path string, reserved os.FileInfo) error {
-	if reserved == nil || filepath.Dir(filepath.Clean(path)) != filepath.Clean(root) || !pathInside(root, filepath.Clean(path)) {
+func removeReservedProjectClone(root, path string, reservation *os.File, reserved os.FileInfo) error {
+	if reservation == nil || reserved == nil || filepath.Dir(filepath.Clean(path)) != filepath.Clean(root) || !pathInside(root, filepath.Clean(path)) {
 		return errors.New("project clone cleanup target is invalid")
+	}
+	if err := reservation.Close(); err != nil {
+		return errors.New("project clone cleanup reservation could not be released")
 	}
 	current, err := os.Lstat(path)
 	if err != nil || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(reserved, current) {
