@@ -266,7 +266,7 @@ func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, pla
 	}
 	workspace, created, err := config.Workspaces.AddProfile(plan.CandidatePath, plan.Profile)
 	if err != nil {
-		return cleanup(ProjectErrorRegistryUnavailable, err)
+		return cleanup(ProjectErrorWorkspaceRegistration, err)
 	}
 	project, _, err := config.Projects.Register(ProjectRegistration{
 		Alias: plan.Alias, Owner: plan.Owner, Repository: plan.Repository,
@@ -279,9 +279,17 @@ func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, pla
 				return ProjectStatus{}, projectErr(ProjectErrorCleanupRequired, errors.Join(err, rollbackErr))
 			}
 		}
-		return cleanup(ProjectErrorRegistryUnavailable, err)
+		return cleanup(projectRegistrationFailureCode(err), err)
 	}
 	return (ProjectResolution{Project: project, TargetAlias: plan.TargetAlias, Workspace: workspace}).SafeStatus(), nil
+}
+
+func projectRegistrationFailureCode(err error) ProjectErrorCode {
+	var failure *ProjectError
+	if errors.As(err, &failure) && failure.Code != "" && failure.Code != ProjectErrorRegistryUnavailable {
+		return failure.Code
+	}
+	return ProjectErrorProjectRegistration
 }
 
 func removeReservedProjectClone(root, path string, reservation *os.File, reserved os.FileInfo) error {
