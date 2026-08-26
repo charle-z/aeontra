@@ -55,6 +55,8 @@ const (
 	ProjectErrorPlanExpired           ProjectErrorCode = "plan_expired"
 	ProjectErrorRegistryUnavailable   ProjectErrorCode = "registry_unavailable"
 	ProjectErrorWorkspaceRegistration ProjectErrorCode = "workspace_registration_failed"
+	ProjectErrorWorkspaceLookup       ProjectErrorCode = "workspace_lookup_failed"
+	ProjectErrorWorkspaceWrite        ProjectErrorCode = "workspace_write_failed"
 	ProjectErrorProjectRegistration   ProjectErrorCode = "project_registration_failed"
 	ProjectErrorCredentialUnavailable ProjectErrorCode = "credential_unavailable"
 	ProjectErrorCloneFailed           ProjectErrorCode = "clone_failed"
