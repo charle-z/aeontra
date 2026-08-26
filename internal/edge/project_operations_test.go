@@ -35,6 +35,15 @@ func TestProjectOperationsUseHumanAliasesAndSafeResults(t *testing.T) {
 	if _, err := store.CompleteOperation(device.ID, op.ID, lease.LeaseID, result, ""); err != nil {
 		t.Fatal(err)
 	}
+	windowsResult := result
+	windowsResult.ProjectProfile = "windows-workcell"
+	if !validOperationCompletion(windowsResult, "") {
+		t.Fatal("Windows development project result rejected")
+	}
+	windowsResult.ProjectMode = "htb-linux"
+	if validOperationCompletion(windowsResult, "") {
+		t.Fatal("Windows HTB project result accepted")
+	}
 	if _, _, err := store.CreateOperation(device.ID, OperationProjectStatus, OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell"}); err != nil {
 		t.Fatal(err)
 	}
