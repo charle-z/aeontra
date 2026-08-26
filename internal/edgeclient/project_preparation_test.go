@@ -265,7 +265,7 @@ func TestWorkspaceRegistrationFailureCodeReportsSafeStage(t *testing.T) {
 		stage workspaceRegistrationStage
 		want  ProjectErrorCode
 	}{
-		{name: "validation", stage: workspaceRegistrationValidation, want: ProjectErrorCheckoutUnsafe},
+		{name: "validation", stage: workspaceRegistrationValidation, want: ProjectErrorWorkspaceValidation},
 		{name: "lookup", stage: workspaceRegistrationLookup, want: ProjectErrorWorkspaceLookup},
 		{name: "identity", stage: workspaceRegistrationIdentity, want: ProjectErrorWorkspaceRegistration},
 		{name: "write", stage: workspaceRegistrationWrite, want: ProjectErrorWorkspaceWrite},

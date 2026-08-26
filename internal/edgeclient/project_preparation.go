@@ -291,7 +291,7 @@ func workspaceRegistrationFailureCode(err error) ProjectErrorCode {
 	}
 	switch failure.stage {
 	case workspaceRegistrationValidation:
-		return ProjectErrorCheckoutUnsafe
+		return ProjectErrorWorkspaceValidation
 	case workspaceRegistrationLookup:
 		return ProjectErrorWorkspaceLookup
 	case workspaceRegistrationWrite:
