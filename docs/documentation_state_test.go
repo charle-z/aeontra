@@ -25,6 +25,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	roadmap := read("product-roadmap.md")
 	reconciliation := read("baselines/2026-08-12-operational-reconciliation.md")
 	dualEdge := read("baselines/2026-08-27-v1_2_24-dual-edge.md")
+	releaseAcceptance := read("baselines/2026-08-27-v1_2_25-release.md")
 	changelog := read("../CHANGELOG.md")
 	versioning := read("versioning.md")
 
@@ -69,6 +70,18 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	} {
 		if !strings.Contains(constitution, required) {
 			t.Errorf("constitution does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"v1.2.25 signed release and device update",
+		"194eda433669ab449fd0587e25174fb9d374bec1",
+		"33121917992",
+		"diagnostic_unavailable_windows",
+		"project-process-worker",
+		"No live rollback was executed",
+	} {
+		if !strings.Contains(releaseAcceptance, required) {
+			t.Errorf("v1.2.25 release baseline does not contain %q", required)
 		}
 	}
 	if !strings.Contains(gitignore, "/.agent-memory/") {
