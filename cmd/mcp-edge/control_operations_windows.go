@@ -5,14 +5,16 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+	"golang.org/x/sys/windows/svc"
 )
 
-func executeWindowsControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, operation edge.Operation) (edge.OperationResult, string) {
+func executeWindowsControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, workspaceCount int, operation edge.Operation) (edge.OperationResult, string) {
 	switch operation.Kind {
 	case edge.OperationProjectPrepare:
 		return executeWindowsProjectPrepare(ctx, stateRoot, operation.Request)
@@ -39,10 +41,43 @@ func executeWindowsControlOperation(ctx context.Context, stateRoot string, proce
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:
 		return edge.OperationResult{}, "bundle_mutation_unavailable_windows"
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
-		return edge.OperationResult{}, "diagnostic_unavailable_windows"
+		return collectWindowsEdgeDiagnostic(workspaceCount)
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}
+}
+
+var collectWindowsEdgeDiagnostic = collectWindowsEdgeDiagnosticResult
+
+func collectWindowsEdgeDiagnosticResult(workspaceCount int) (edge.OperationResult, string) {
+	snapshot, err := inspectWindowsDoctor()
+	if err != nil {
+		return edge.OperationResult{}, "diagnostic_unavailable_windows"
+	}
+	return windowsDiagnosticResult(snapshot, uint32(os.Getpid()), workspaceCount)
+}
+
+func windowsDiagnosticResult(snapshot windowsDoctorSnapshot, responderPID uint32, workspaceCount int) (edge.OperationResult, string) {
+	if snapshot.ServiceStatus.State != svc.Running || snapshot.ServiceStatus.ProcessId == 0 {
+		return edge.OperationResult{}, "diagnostic_service_inactive_windows"
+	}
+	if responderPID == 0 || snapshot.ServiceStatus.ProcessId != responderPID {
+		return edge.OperationResult{}, "diagnostic_process_mismatch_windows"
+	}
+	paired := snapshot.Identity.DeviceID != ""
+	blockers := []string{}
+	if !paired {
+		blockers = append(blockers, "edge_unpaired")
+	}
+	return edge.OperationResult{
+		Release: snapshot.BundleRelease, Commit: snapshot.BundleCommit,
+		ManifestStatus: "valid", ComponentsCompatible: true,
+		ServiceActive: true, ServiceState: "active",
+		ProcessState: "single", LockState: "held", Coherence: "managed",
+		ProcessRelease: snapshot.BundleRelease, ProcessCommit: snapshot.BundleCommit,
+		Paired: paired, WorkspaceCount: workspaceCount,
+		ProviderValid: true, DriverValid: true, Blockers: blockers,
+	}, ""
 }
 
 func openWindowsProjectControlState(stateRoot string) (edgeclient.GitHubCredential, *edgeclient.WorkspaceRegistry, *edgeclient.ProjectRegistry, edgeclient.WorkspaceRoots, string) {

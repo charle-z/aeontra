@@ -236,7 +236,7 @@ func runWindowsAgentLoop(ctx context.Context, config windowsAgentConfig) error {
 			}
 			continue
 		}
-		result, safeCode, cancelRequested, lifecycleErr := executeWindowsControlOperationWithProgress(ctx, config.stateRoot, transport, processes, *lease)
+		result, safeCode, cancelRequested, lifecycleErr := executeWindowsControlOperationWithProgress(ctx, config.stateRoot, transport, processes, len(workspaces), *lease)
 		if lifecycleErr != nil {
 			fmt.Fprintln(config.stderr, "mcp-edge: Windows control operation stopped safely")
 			if config.once {

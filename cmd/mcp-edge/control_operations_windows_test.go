@@ -35,10 +35,40 @@ func TestWindowsControlRejectsUnownedCapabilities(t *testing.T) {
 		edge.OperationBundleUpdate,
 		edge.OperationEdgeRepair,
 	} {
-		_, code := executeWindowsControlOperation(context.Background(), t.TempDir(), nil, edge.Operation{Kind: kind})
+		_, code := executeWindowsControlOperation(context.Background(), t.TempDir(), nil, 0, edge.Operation{Kind: kind})
 		if code == "" || code == "operation_invalid" {
 			t.Fatalf("kind=%s was not rejected with a capability-specific safe code: %q", kind, code)
 		}
+	}
+}
+
+func TestWindowsControlRoutesReadOnlyDiagnosticsToNativeCollector(t *testing.T) {
+	original := collectWindowsEdgeDiagnostic
+	t.Cleanup(func() { collectWindowsEdgeDiagnostic = original })
+	want := edge.OperationResult{
+		Release:              "v1.2.25",
+		Commit:               "0123456789abcdef0123456789abcdef01234567",
+		ManifestStatus:       "valid",
+		ComponentsCompatible: true,
+		ProviderValid:        true,
+		DriverValid:          true,
+	}
+	called := 0
+	collectWindowsEdgeDiagnostic = func(workspaceCount int) (edge.OperationResult, string) {
+		called++
+		if workspaceCount != 2 {
+			t.Fatalf("workspace count=%d", workspaceCount)
+		}
+		return want, ""
+	}
+	for _, kind := range []edge.OperationKind{edge.OperationBundleStatus, edge.OperationOnboardingStatus} {
+		got, code := executeWindowsControlOperation(context.Background(), `D:\Aeontra\State`, nil, 2, edge.Operation{Kind: kind})
+		if code != "" || !reflect.DeepEqual(got, want) {
+			t.Fatalf("kind=%s result=%+v code=%q", kind, got, code)
+		}
+	}
+	if called != 2 {
+		t.Fatalf("diagnostic collector calls=%d want=2", called)
 	}
 }
 

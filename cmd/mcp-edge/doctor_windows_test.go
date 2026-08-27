@@ -7,7 +7,40 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+	"golang.org/x/sys/windows/svc"
 )
+
+func TestWindowsDiagnosticResultBindsExactManagedServiceProcess(t *testing.T) {
+	snapshot := windowsDoctorSnapshot{
+		BundleRelease: "v1.2.25",
+		BundleCommit:  "0123456789abcdef0123456789abcdef01234567",
+		Identity:      edgeclient.Identity{DeviceID: "ed_0123456789abcdef0123456789abcdef", Name: "windows-trusted"},
+		ServiceStatus: svc.Status{State: svc.Running, ProcessId: 4321},
+	}
+	result, code := windowsDiagnosticResult(snapshot, 4321, 2)
+	if code != "" {
+		t.Fatalf("diagnostic code=%q", code)
+	}
+	if result.Release != snapshot.BundleRelease || result.Commit != snapshot.BundleCommit || !result.ServiceActive ||
+		result.ServiceState != "active" || result.ProcessState != "single" || result.LockState != "held" ||
+		result.Coherence != "managed" || result.ProcessRelease != snapshot.BundleRelease || result.ProcessCommit != snapshot.BundleCommit ||
+		!result.Paired || result.WorkspaceCount != 2 || !result.ComponentsCompatible || !result.ProviderValid || !result.DriverValid {
+		t.Fatalf("unexpected Windows diagnostic: %+v", result)
+	}
+	if result.ServiceRestartsKnown || result.ServiceRestarts != 0 {
+		t.Fatalf("Windows diagnostic invented an SCM restart count: %+v", result)
+	}
+
+	if _, code := windowsDiagnosticResult(snapshot, 4322, 2); code != "diagnostic_process_mismatch_windows" {
+		t.Fatalf("mismatched responder code=%q", code)
+	}
+	snapshot.ServiceStatus.State = svc.Stopped
+	if _, code := windowsDiagnosticResult(snapshot, 4321, 2); code != "diagnostic_service_inactive_windows" {
+		t.Fatalf("inactive service code=%q", code)
+	}
+}
 
 func TestLoadWindowsDoctorServiceConfigRejectsUnknownFieldsAndOverlappingRoots(t *testing.T) {
 	root := t.TempDir()

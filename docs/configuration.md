@@ -185,8 +185,12 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   `NT SERVICE\AeontraEdge`. The installer records `service-config.json` and
   selects one immutable release with `active.json`.
 - **Validation and updates:** use the installed `mcp-edge doctor` and
-  `lifecycle inspect/status`. Updates and rollback are delegated to the signed
-  `mcp-bundle-updater.exe`; doctor does not mutate state.
+  `lifecycle inspect/status`. The paired `edge_bundle_status` and
+  `edge_onboarding_status` operations bind the responder to SCM's current PID and
+  return the same signed release/service identity without exposing paths. Windows
+  reports the restart counter as unknown because SCM has no `NRestarts` equivalent.
+  Updates and rollback are delegated to the signed `mcp-bundle-updater.exe`; doctor
+  does not mutate state.
 - **Status:** native Windows packaging and source support do not prove a signed
   release, installed service, or accepted real device. Record those gates separately.
 

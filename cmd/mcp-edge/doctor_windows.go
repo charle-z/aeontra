@@ -46,7 +46,7 @@ type windowsDoctorSnapshot struct {
 	BundleRelease string
 	BundleCommit  string
 	Identity      edgeclient.Identity
-	ServiceState  svc.State
+	ServiceStatus svc.Status
 }
 
 var windowsDoctorLoadConfig = loadWindowsDoctorServiceConfig
@@ -82,7 +82,7 @@ func doctorCommand(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	fmt.Fprintf(stdout, "edge_doctor status=ready bundle=valid layout=valid identity=valid service=%s release=%s commit=%s\n",
-		windowsDoctorServiceState(snapshot.ServiceState), snapshot.BundleRelease, snapshot.BundleCommit)
+		windowsDoctorServiceState(snapshot.ServiceStatus.State), snapshot.BundleRelease, snapshot.BundleCommit)
 	return nil
 }
 
@@ -114,11 +114,11 @@ func inspectWindowsDoctor() (windowsDoctorSnapshot, error) {
 	if err != nil {
 		return windowsDoctorSnapshot{}, errors.New("Windows Edge identity is unavailable")
 	}
-	state, err := windowsDoctorInspectService(marker.Path, config)
+	status, err := windowsDoctorInspectService(marker.Path, config)
 	if err != nil {
 		return windowsDoctorSnapshot{}, err
 	}
-	return windowsDoctorSnapshot{BundleRelease: marker.Release, BundleCommit: marker.Commit, Identity: identity, ServiceState: state}, nil
+	return windowsDoctorSnapshot{BundleRelease: marker.Release, BundleCommit: marker.Commit, Identity: identity, ServiceStatus: status}, nil
 }
 
 func windowsDoctorInstallRoot() (string, error) {
@@ -196,33 +196,33 @@ func validateWindowsDoctorRoots(config windowsDoctorServiceConfig, installRoot s
 	return nil
 }
 
-func inspectWindowsDoctorService(activePath string, config windowsDoctorServiceConfig) (svc.State, error) {
+func inspectWindowsDoctorService(activePath string, config windowsDoctorServiceConfig) (svc.Status, error) {
 	manager, err := mgr.Connect()
 	if err != nil {
-		return svc.Stopped, errors.New("Windows Service Control Manager is unavailable")
+		return svc.Status{State: svc.Stopped}, errors.New("Windows Service Control Manager is unavailable")
 	}
 	defer manager.Disconnect()
 	service, err := manager.OpenService(windowsDoctorServiceName)
 	if err != nil {
-		return svc.Stopped, errors.New("Aeontra Windows Edge service is unavailable")
+		return svc.Status{State: svc.Stopped}, errors.New("Aeontra Windows Edge service is unavailable")
 	}
 	defer service.Close()
 	serviceConfig, err := service.Config()
 	if err != nil || serviceConfig.ServiceStartName != windowsDoctorServiceIdentity {
-		return svc.Stopped, errors.New("Aeontra Windows Edge service identity is invalid")
+		return svc.Status{State: svc.Stopped}, errors.New("Aeontra Windows Edge service identity is invalid")
 	}
 	expectedBinary := filepath.Join(activePath, "bin", "mcp-edge.exe")
 	if !strings.EqualFold(serviceConfig.BinaryPathName, windowsDoctorServiceCommand(expectedBinary, config)) {
-		return svc.Stopped, errors.New("Aeontra Windows Edge service binary is not the active signed release")
+		return svc.Status{State: svc.Stopped}, errors.New("Aeontra Windows Edge service binary is not the active signed release")
 	}
 	status, err := service.Query()
 	if err != nil {
-		return svc.Stopped, errors.New("Aeontra Windows Edge service state is unavailable")
+		return svc.Status{State: svc.Stopped}, errors.New("Aeontra Windows Edge service state is unavailable")
 	}
-	if status.State != svc.Running {
-		return status.State, errors.New("Aeontra Windows Edge service is not running")
+	if status.State != svc.Running || status.ProcessId == 0 {
+		return status, errors.New("Aeontra Windows Edge service is not running")
 	}
-	return status.State, nil
+	return status, nil
 }
 
 func windowsDoctorServiceState(state svc.State) string {

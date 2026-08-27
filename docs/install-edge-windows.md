@@ -83,6 +83,64 @@ pairing material, private identity fields, or service credentials.
 `doctor --repair` does not mutate the installation. It reports that the signed
 `mcp-bundle-updater.exe` is the only supported repair path.
 
+### Remote diagnostic parity
+
+`edge_bundle_status` and `edge_onboarding_status` execute the same native Windows
+inspection inside the paired service. A successful result binds the responding PID to
+the PID registered by SCM, verifies that SCM points at the active signed binary, and
+reports the bounded runtime state as `service=active`, `process=single`, `lock=held`,
+and `coherence=managed`. On Windows, `lock=held` represents that exact SCM ownership
+fence; it is not the Linux `flock` file.
+
+SCM does not expose a counter equivalent to systemd `NRestarts`. Windows therefore
+returns `service_restarts_known=false` and never presents an unknown restart count as
+zero. Linux-only capabilities such as Bubblewrap and the rootless container endpoint
+remain absent from the Windows diagnostic instead of being reported as failed Windows
+components.
+
+The remote diagnostic fails closed if the service is inactive, the response comes from
+a PID other than SCM's current process, the signed bundle or managed roots are invalid,
+or the private workspace registry cannot be read. It does not repair or restart the
+service.
+
+### Durable worker reconciliation
+
+`project-process-worker` processes are separate from the single `windows-agent`
+daemon. A valid running worker may survive a signed daemon update so its command and
+logs remain durable. The release of the worker executable alone does not prove that the
+worker is stale.
+
+Use project ownership before changing lifecycle state:
+
+1. `project_process_list` for the exact project and `windows-trusted` target;
+2. `project_process_status` to read the bounded state and remaining output;
+3. `project_process_stop` for work that should end;
+4. repeat status or list until the state is terminal;
+5. `project_process_cleanup` only after terminal state.
+
+A recovered `stopping` row carries prior operator intent. Reconciliation retries
+termination only against the stored PID plus creation-time identity. A `running` row
+is never converted into stop intent, and an inaccessible exact worker remains visible
+as `stopping` for another bounded retry. Never use `taskkill /IM mcp-edge.exe`: that
+would also target the daemon and unrelated durable workers by name.
+
+### Optimization checklist
+
+Optimize from lifecycle evidence rather than process count alone:
+
+- require exactly one SCM `windows-agent` daemon;
+- group durable workers by project through `project_process_list`;
+- investigate a `stopping` state that survives two reconciliation reads;
+- record total worker working set, oldest active age, terminal rows and log growth;
+- clean terminal rows explicitly so private logs do not accumulate;
+- reduce concurrency or log ceilings only through a reviewed signed configuration
+  change followed by real-device acceptance.
+
+The process and log limits are emergency ceilings, not a scheduling target or a TTL.
+P17 may add higher-level admission and semantic supervision later; it must use this
+existing project-owned lifecycle rather than enumerate or kill Windows processes by
+name.
+
 ## Update and rollback
 
 Updates and rollback are direct invocations of the signed updater, never a shell or

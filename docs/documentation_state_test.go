@@ -28,6 +28,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	releaseAcceptance := read("baselines/2026-08-27-v1_2_25-release.md")
 	changelog := read("../CHANGELOG.md")
 	versioning := read("versioning.md")
+	windowsEdge := read("install-edge-windows.md")
 
 	for path, content := range map[string]string{
 		"spec.md":         spec,
@@ -86,6 +87,19 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 	if !strings.Contains(gitignore, "/.agent-memory/") {
 		t.Error("repository does not ignore operator-local .agent-memory state")
+	}
+	for _, required := range []string{
+		"Remote diagnostic parity",
+		"service_restarts_known=false",
+		"project_process_list",
+		"project_process_stop",
+		"project_process_cleanup",
+		"Never use `taskkill /IM mcp-edge.exe`",
+		"Optimization checklist",
+	} {
+		if !strings.Contains(windowsEdge, required) {
+			t.Errorf("Windows Edge guide does not contain %q", required)
+		}
 	}
 
 	for _, required := range []string{
