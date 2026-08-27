@@ -52,8 +52,9 @@ Never publish:
       digest; dependency/license gates and container SBOM/checksum evidence are produced.
 - [x] CI builds and initializes the local read-only stdio server through
       `scripts/verify-clean-install.sh` without private infrastructure values.
-- [ ] Generate and review artifact-level third-party notice bundles from the exact
-      release artifacts and their SBOMs.
+- [x] Generate and review artifact-level third-party notice bundles from the exact
+      release commit and dependency graph; `v1.2.25` publishes separate Linux and
+      Windows notice assets alongside the signed archives and SBOMs.
 - [ ] A clean Linux/WSL Edge installation, pairing, signed update, and rollback are
       reproduced by an independent operator without private maintainer defaults.
 - [x] Fixed managed-deployment tools are moved behind an explicit maintainer profile or

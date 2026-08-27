@@ -167,6 +167,8 @@ above:
 - Native Windows Edge package and operator boundary: `docs/install-edge-windows.md`.
 - Dual Linux/Parrot and native Windows `v1.2.24` operational acceptance:
   `docs/baselines/2026-08-27-v1_2_24-dual-edge.md`.
+- Signed `v1.2.25` release, notice assets and device updates:
+  `docs/baselines/2026-08-27-v1_2_25-release.md`.
 - Human project aliases and workspace resolution:
   `docs/project-workspace-resolution.md`.
 - Durable local Edge execution journal: `docs/edge-job-journal.md`.
