@@ -52,6 +52,8 @@ Never publish:
       digest; dependency/license gates and container SBOM/checksum evidence are produced.
 - [x] CI builds and initializes the local read-only stdio server through
       `scripts/verify-clean-install.sh` without private infrastructure values.
+- [ ] Generate and review artifact-level third-party notice bundles from the exact
+      release artifacts and their SBOMs.
 - [ ] A clean Linux/WSL Edge installation, pairing, signed update, and rollback are
       reproduced by an independent operator without private maintainer defaults.
 - [x] Fixed managed-deployment tools are moved behind an explicit maintainer profile or
@@ -59,7 +61,8 @@ Never publish:
       Coolify application IDs, domains, or release repository as operative defaults.
 - [x] The public console uses only synthetic/sanitized fixtures; repository tests reject
       maintainer usernames, private domains, and personal absolute paths in those fixtures.
-- [ ] A tagged release and rollback procedure are tested.
+- [ ] Signed releases and update paths are accepted on Linux/Parrot and Windows; live
+      rollback acceptance remains pending on both device profiles.
 
 ## Positioning rule
 

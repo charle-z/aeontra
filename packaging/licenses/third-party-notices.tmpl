@@ -1,0 +1,9 @@
+{{ range . -}}
+--------------------------------------------------------------------------------
+Component: {{ .Name }}
+Version: {{ .Version }}
+License: {{ .LicenseName }}
+Source: {{ .LicenseURL }}
+
+{{ .LicenseText }}
+{{ end }}

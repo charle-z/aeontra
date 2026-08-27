@@ -156,6 +156,23 @@ jobs:
           upload-release-assets: false
           dependency-snapshot: false
 
+      - name: Generate deterministic third-party notices
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          command -v jq >/dev/null
+          metadata="$(go mod download -json github.com/google/go-licenses/v2@v2.0.1)"
+          test "$(printf '%s' "$metadata" | jq -r .Sum)" = 'h1:ti+9bi5o7DKbeeg5eBb/uZTgsaPNoJaLCh93cRcXsW8='
+          test "$(printf '%s' "$metadata" | jq -r .GoModSum)" = 'h1:efibo0EDNGkau6AIMOViGW+rTNPudhxX9rCxtfw5zKE='
+          install -d -m 0755 "$RUNNER_TEMP/release/tools"
+          GOBIN="$RUNNER_TEMP/release/tools" go install github.com/google/go-licenses/v2@v2.0.1
+          bash packaging/licenses/generate-edge-notices.sh \
+            --go-licenses "$RUNNER_TEMP/release/tools/go-licenses" \
+            --output "$RUNNER_TEMP/release/assets/$RELEASE" \
+            --release "$RELEASE"
+          test -s "$RUNNER_TEMP/release/assets/$RELEASE/mcp-devbox-edge_${RELEASE}_amd64.third-party-notices.txt"
+          test -s "$RUNNER_TEMP/release/assets/$RELEASE/mcp-devbox-edge_${RELEASE}_windows_amd64.third-party-notices.txt"
+
       - name: Download verified Windows release assets
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
