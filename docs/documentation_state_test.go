@@ -24,6 +24,9 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 
 	roadmap := read("product-roadmap.md")
 	reconciliation := read("baselines/2026-08-12-operational-reconciliation.md")
+	dualEdge := read("baselines/2026-08-27-v1_2_24-dual-edge.md")
+	changelog := read("../CHANGELOG.md")
+	versioning := read("versioning.md")
 
 	for path, content := range map[string]string{
 		"spec.md":         spec,
@@ -97,13 +100,42 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"Last updated: 2026-08-15",
-		"Codex harness compatibility spike",
-		"worktrees and deterministic parallelism",
-		"durable task graph and multiagent",
+		"Last updated: 2026-08-27",
+		"Codex harness",
+		"P16 worktrees and parallel tasks",
+		"P17 durable objective supervisor",
+		"Managed image and asset broker",
+		"Native Windows Edge",
 	} {
 		if !strings.Contains(roadmap, required) {
 			t.Errorf("current product roadmap does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"v1.2.24 dual-Edge operational acceptance",
+		"48e8deb6e45c104736291c4fe883771ec063696a",
+		"project_checkout_unsafe",
+		"No live rollback was executed",
+	} {
+		if !strings.Contains(dualEdge, required) {
+			t.Errorf("dual-Edge baseline does not contain %q", required)
+		}
+	}
+	for _, required := range []string{"## Unreleased", "## v1.2.24", "third-party notice assets"} {
+		if !strings.Contains(changelog, required) {
+			t.Errorf("changelog does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"vMAJOR.MINOR.PATCH",
+		"## Release identities",
+		"## Retention",
+		"stable",
+		"Removing a GitHub release",
+		"Git tag",
+	} {
+		if !strings.Contains(versioning, required) {
+			t.Errorf("versioning policy does not contain %q", required)
 		}
 	}
 	for _, required := range []string{

@@ -48,13 +48,18 @@ its SBOM and the license/notice material required by the components it actually 
 The repository-level policy is not a substitute for copying required license texts into
 a binary or image distribution.
 
-Before the first tagged public release, generate the release artifacts from the exact
-candidate commit, inspect their SBOMs, and add the required artifact-level third-party
-notice bundle. The project-level `NOTICE` records Aeontra attribution and compatibility
-names; it does not claim to enumerate every component shipped by every artifact. The
-source provenance gate is satisfied in [`docs/provenance.md`](provenance.md), while this
-artifact-level notice gate remains independently pending until exact release artifacts
-exist.
+The official Edge workflow generates separate Linux and Windows third-party notice
+assets from the exact release commit. It resolves the Go binary dependency graph through
+the pinned `go-licenses` module, includes full detected license texts, and adds the
+reviewed notices for the pinned Codex and GitHub CLI binaries shipped by Linux. Unknown
+licenses fail the release. The notice assets accompany the immutable archives, packages,
+checksums, signatures and SBOMs; they do not replace those SBOMs.
+
+The project-level `NOTICE` records Aeontra attribution and compatibility names. It does
+not enumerate every component shipped by every artifact. Verify the generated notice
+assets on the exact published release before marking the artifact-level gate complete.
+The source provenance gate remains satisfied independently through
+[`docs/provenance.md`](provenance.md).
 
 ## Contributor check
 

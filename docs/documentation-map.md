@@ -19,6 +19,8 @@ state.
 | `docs/provenance.md` | Historical human/automation identity mapping and future DCO boundary | a replacement for Git history or legal advice |
 | `docs/brand-compatibility.md` | Public product name, compatibility identifiers, and rename boundary | a mass-replacement checklist or deployment identity source |
 | `docs/dependency-licenses.md` | Reviewed dependency-license classes and distribution-notice requirements | legal clearance for project source or a release SBOM |
+| `CHANGELOG.md` | User-visible release changes | a full Git history or mutable live deployment identity |
+| `docs/versioning.md` | Public version format, release identities, process and retention | permission to delete an artifact or rewrite a Git tag without review |
 | `docs/tools.md` | Canonical public MCP tool catalog, schemas, annotations, aliases, approval posture, and workflows | a hardcoded live deployment claim |
 | `/version` and `system_runtime_info` | Live server version, commit, protocol, tool count, and catalog hash | documentation to be copied into operational prose |
 | `docs/baselines/` | Dated historical evidence, including exact commits, releases, hashes, counts, checks, deployments, and real-host observations | current operational instructions rewritten to match later state |
@@ -163,6 +165,8 @@ above:
 - Edge lifecycle state migration: `docs/edge-lifecycle-migration.md`.
 - P16 package/install candidate: `docs/install-edge-parrot-p16.md`.
 - Native Windows Edge package and operator boundary: `docs/install-edge-windows.md`.
+- Dual Linux/Parrot and native Windows `v1.2.24` operational acceptance:
+  `docs/baselines/2026-08-27-v1_2_24-dual-edge.md`.
 - Human project aliases and workspace resolution:
   `docs/project-workspace-resolution.md`.
 - Durable local Edge execution journal: `docs/edge-job-journal.md`.

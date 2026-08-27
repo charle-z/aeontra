@@ -1,49 +1,37 @@
-# MCP Devbox product roadmap
+# Aeontra product roadmap
 
-Last updated: 2026-08-15
+Last updated: 2026-08-27
 
-## Direct GPT Web to Edge roadmap
+## Current delivery state
 
-The current product sequence keeps GPT Web as the reasoning client and MCP Devbox as
-the durable execution authority. Direct execution does not create an OpenCode/model
-runtime; OpenCode remains a tested optional fallback.
+GPT Web and other MCP clients provide reasoning. Aeontra owns durable execution,
+repository and deployment authority. The installed signed Edge uses the stock Codex
+harness by default; historical OpenCode integration remains compatibility evidence, not
+the active runtime contract.
 
-| Hito | Status | Current evidence / next gate |
+| Surface | Status | Evidence / next boundary |
 |---|---|---|
-| 1 direct vertical slice | Deployed | Direct signed control operations reached the paired Edge without a second model session. |
-| 2 durable Edge operations | Deployed | Server-owned operation identity, leases, progress, cancellation and restart-safe queue state are in production. |
-| 3 foreground execution | Deployed | `project_exec` uses arbitrary argv without an implicit shell in the trusted workcell. |
-| 3A background start/status/stop | Real-device accepted on p15.0.18 | The real Parrot Edge passed idempotent start, incremental split output, repeated stop and explicit cleanup without OpenCode or a model runtime. |
-| 3B recovery/list/signal/cleanup | Real-device accepted on p15.0.23 | A fresh process streamed incrementally, survived exactly one managed Edge restart and resumed at the next record without replay. Closed `interrupt` stopped the inner sandbox with known exit code 130 and no operator signal; repeated interrupt/stop were idempotent, exclusive cleanup succeeded, the final list was empty and doctor remained ready with `NRestarts=0`. |
-| Safe Edge checkout synchronization | Real-device accepted on p15.0.20 | Status and authenticated fetch completed on the real checkout as a clean synchronized no-op: attached `main`, exact HEAD/upstream, ahead=0, behind=0 and no mutation. |
-| 4 persistent universal toolbox | Real-device accepted on p15.0.20 | The real toolbox retained rootfs, marker, installed tools, rootless Podman socket and the same durable service across the coordinated Edge restart. Repeated service stop was idempotent and exclusive cleanup removed only that toolbox/service. |
-| 5 split GitHub authority | Publication candidate; validation pending | Control-plane owner/public-OSS publication, PR, checks, merge and workflow operations are deployed. The direct Edge candidate adds an exact single-use same-name no-force publication handoff for registered checkouts; a signed release and one complete real project delivery remain the acceptance gate. |
-| 6 direct GPT Web parity | Validation pending | Foreground/background execution, persistent toolbox, rootless container access, managed browser harness, Git synchronization and durable results are deployed. One complete project delivery through only the direct path remains the acceptance gate. |
-| 7 worktrees and deterministic parallelism | Real-device accepted on p15.0.39 | Two writers from one exact base produced distinct commits containing only their assigned files in separate worktrees/workspaces/runtimes/branches. Cleanup revalidated fences and was idempotent; a separate pre-turn cancellation was idempotent and cleaned exactly its own worktree. |
-| 8 full benchmark | Planned | Complete project delivery through the direct/Codex path with retained latency, resource, CI, browser and deployment evidence. |
-| 9 durable task graph and multiagent | Real-device accepted on p15.0.39; semantic-status refinement in progress | The corrective two-worker acceptance produced isolated commits and passed idempotent cancellation/cleanup. The remaining product correction separates runtime completion from semantic acceptance and reports bounded Git evidence instead of presenting an ended model loop as task success. |
-| 10 Codex harness compatibility spike | Deployed and real-device accepted | Stock Codex 0.147.0 is pinned in signed Edge release p15.0.37. A real Parrot runtime completed a two-turn GPT Web loop and executed a bounded workcell command without an OpenAI API credential. Built-in Codex multiagent remains disabled because MCP Devbox owns task, lease, worktree and fencing authority. |
+| Public control plane and Front Door | Deployed | The backend, stable Front Door, OAuth discovery and catalog-aware rollout are live. Resolve moving identity through `/version` or `system_runtime_info`. |
+| Direct Linux/Parrot Edge execution | Deployed and real-device accepted | Foreground and durable processes, Git synchronization/publication, persistent toolbox, rootless engine access, managed browser harness and restart reconciliation have real-device evidence. |
+| GitHub and managed delivery | Deployed | Exact preview/execute publication, PR checks, merge, workflow dispatch and catalog-aware Coolify rollout completed a real project delivery without exposing broker credentials to the workcell. |
+| P16 worktrees and parallel tasks | Deployed and real-device accepted | Independent exact-base workers produced isolated commits; semantic acceptance, cancellation, fences and cleanup were verified on a signed Edge. |
+| Codex harness | Deployed and real-device accepted | The signed Edge runs a pinned stock Codex harness while Aeontra retains task, lease, worktree and fencing authority. |
+| Native Windows Edge | Deployed and real-device accepted | The signed SCM service, custom fixed-drive roots, updater, Windows workcell result handling and a registered project were accepted on a real device. |
+| Current dual-Edge release | Deployed and accepted | Linux/Parrot and native Windows were reconciled on `v1.2.24`; see [`baselines/2026-08-27-v1_2_24-dual-edge.md`](baselines/2026-08-27-v1_2_24-dual-edge.md). |
+| P17 durable objective supervisor | Planned | Add semantic objective evaluation, fair pending-turn attention, reviewed integration, compact handoff and content-free efficiency metrics without adding execution authority. |
+| Managed image and asset broker | Not started | A browser can acquire files, but no server-owned workflow yet searches, validates licensing, records attribution and delivers assets as an auditable product operation. |
+| CubePath migration or removal | Deferred | No core execution contract depends on CubePath. Historical evidence remains unchanged until an explicit hosting/branding migration is approved. |
+| Multi-user and fleet operation | Deferred | Tenant identity, RBAC, quotas, abuse controls, audit ownership, billing and recovery must be designed before shared service operation. |
 
-## Accepted execution sequence — 2026-08-12
+## Next execution sequence
 
-The next implementation order is deliberately narrower than the older milestone list:
-
-1. Reconcile source, production, signed Edge release, live device state and continuation
-   documents. Do not restart or update the Edge while operator-reported long-running
-   work lacks a durable checkpoint.
-2. Publish one stabilization release from an exact-head-green `main` and validate the
-   real Edge independently from the backend deployment.
-3. Run a Codex compatibility spike with a pinned official artifact and a scripted model
-   provider. Prefer stock CLI/App Server; fork only after a recorded incompatibility.
-4. Productize Codex as an optional signed Edge harness while retaining OpenCode as a
-   rollback path for at least one accepted release.
-5. Close the split GitHub handoff, then implement server-owned worktrees with one writer
-   per worktree, exact base identities and explicit cleanup.
-6. Connect the existing P16 workqueue to task, worktree, process/toolbox, model-turn and
-   result identities. Begin with read-only and non-model parallel workers before
-   allowing multiple writing agents.
-7. Execute one full project benchmark and one public-OSS contribution benchmark before
-   product-directory, multi-user or large-fleet work.
+1. Complete public release hygiene: protected `main`, current documentation, bounded
+   branch/release retention, artifact notices and clean install/update/rollback evidence.
+2. Implement P17 as a supervisor over the accepted P16 execution primitives.
+3. Design the managed asset broker as a separate authority and provenance workflow.
+4. Decide the CubePath hosting/branding migration without rewriting dated evidence.
+5. Validate the owner-operated single-user product before designing multi-user service
+   boundaries.
 
 Automatic ChatGPT browser driving is not a durability primitive. The core continuation
 contract is a content-bounded checkpoint plus a resumable task identity. Any later UI
@@ -51,6 +39,10 @@ automation must remain optional, use a manually authenticated browser profile an
 without replaying consequential effects.
 
 ## Status snapshot — 2026-07-18
+
+> **Historical.** This snapshot and the milestone decomposition below explain how the
+> current system evolved. They are not current installation or deployment status; use
+> the delivery table above and live identity sources for that.
 
 This table distinguishes implemented state from roadmap intent. Detailed acceptance
 criteria below remain future requirements until their status changes with evidence.
@@ -135,7 +127,7 @@ ChatGPT / OpenCode Go / MiniMax / other MCP client
           |              |                |
       repositories   execution profiles   deployment adapters
           |              |                |
-       Git/GitHub   Node/Python/Go/...   Coolify/CubePath/...
+      Git/GitHub   Node/Python/Go/...   Coolify/other platforms
                          |
                    private edge channel
                          |
@@ -189,12 +181,13 @@ Authenticated console scope:
 - Sanitized replay of a real run, including one failure and recovery.
 - Interactive policy explorer using local simulation/data only: secret read denied,
   force push denied, expired plan denied, approved deployment allowed.
-- Architecture map showing control plane, runner, GitHub, Coolify, and CubePath.
+- Architecture map showing control plane, runner, GitHub, Coolify, and the selected
+  hosting platform.
 - Capability/profile view distinguishing implemented, experimental, and planned
   features.
 - Safe live health indicator containing only public version/commit/availability.
-- Visible `Hosted on CubePath` badge/footer and links to source, demo, security
-  limitations, and creator profile.
+- Operator-selected hosting attribution and links to source, demo, security limitations,
+  and creator profile.
 
 The console must not proxy MCP calls or contain production credentials. A replay
 must be clearly labeled as recorded/sanitized rather than live execution.
@@ -461,18 +454,9 @@ Acceptance:
 - Multi-user/team mode only after identity, tenant isolation, audit ownership, and
   authorization are designed explicitly.
 
-## Prioritized implementation order
+## Historical implementation order
 
-1. Finish and prove the end-to-end product path.
-2. Ship the public-safe console and demonstration package.
-3. Generalize the validation runner into universal execution profiles.
-4. Add the private edge transport and one personal development edge.
-5. Add provider-neutral orchestration, then OpenCode Go and MiniMax adapters.
-6. Add administrator-owned engagements and a Parrot security edge.
-7. Add narrow authorized-research profiles, expanding only with evidence and tests.
-8. Productize installation, upgrades, profile distribution, diagnostics, and team
-   use.
-
-This order keeps the public demonstration focused while preserving the universal
-architecture required for development, infrastructure, personal edge work,
-multi-model orchestration, and authorized security research.
+The original sequence was end-to-end demonstration, public-safe console, universal
+profiles, private Edge transport, provider-neutral orchestration, authorized security
+profiles and productization. Delivered work has overtaken several of those checkpoints.
+The current order is the bounded sequence at the top of this document.
