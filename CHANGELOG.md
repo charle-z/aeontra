@@ -6,6 +6,8 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+## v1.2.25 — 2026-08-27
+
 - Generate deterministic Linux and Windows third-party notice assets alongside each
   signed Edge release.
 - Reconcile the public roadmap with the accepted Linux/Parrot, Windows, Codex and P16
