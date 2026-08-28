@@ -6,6 +6,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
@@ -101,5 +102,24 @@ func TestWindowsProjectPreparationOwnsWorkspaceProfile(t *testing.T) {
 	}
 	if request.Alias != "project" || request.Repository != "repo" || request.TargetAlias != "windows-trusted" {
 		t.Fatalf("request fields changed: %+v", request)
+	}
+}
+
+func TestWindowsControlProcessListPreservesTerminalMetadata(t *testing.T) {
+	startedAt := time.Date(2026, time.August, 28, 1, 0, 0, 0, time.UTC)
+	finishedAt := startedAt.Add(5 * time.Minute)
+	result := windowsProjectProcessListResult(edgeclient.ProjectResolution{}, []edgeclient.ProjectProcessSnapshot{{
+		ProcessID:  "pr_0123456789abcdef0123456789abcdef",
+		State:      edgeclient.ProjectProcessStopped,
+		StartedAt:  startedAt,
+		FinishedAt: finishedAt,
+		Reason:     "process_stopped_while_offline",
+	}})
+	if len(result.BackgroundProcesses) != 1 {
+		t.Fatalf("process count=%d want=1", len(result.BackgroundProcesses))
+	}
+	got := result.BackgroundProcesses[0]
+	if got.StartedAt != startedAt.Format(time.RFC3339Nano) || got.FinishedAt != finishedAt.Format(time.RFC3339Nano) || got.Reason != "process_stopped_while_offline" {
+		t.Fatalf("terminal metadata was not preserved: %+v", got)
 	}
 }
