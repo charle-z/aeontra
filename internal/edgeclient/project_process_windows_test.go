@@ -6,7 +6,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -16,13 +19,14 @@ import (
 )
 
 type fakeWindowsProcessPlatform struct {
-	mu        sync.Mutex
-	identity  ProjectProcessIdentity
-	alive     bool
-	exits     chan ProjectProcessExit
-	frames    map[string]ProjectProcessStdinReceipt
-	signals   []ProjectProcessSignal
-	signalErr error
+	mu              sync.Mutex
+	identity        ProjectProcessIdentity
+	alive           bool
+	exits           chan ProjectProcessExit
+	frames          map[string]ProjectProcessStdinReceipt
+	signals         []ProjectProcessSignal
+	signalErr       error
+	terminateSticks bool
 }
 
 func (p *fakeWindowsProcessPlatform) Start(DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
@@ -52,6 +56,9 @@ func (p *fakeWindowsProcessPlatform) Signal(identity ProjectProcessIdentity, sig
 		return p.signalErr
 	}
 	p.signals = append(p.signals, signal)
+	if signal == ProjectProcessTerminate && p.terminateSticks {
+		return nil
+	}
 	p.alive = false
 	if p.exits != nil {
 		p.exits <- ProjectProcessExit{ExitKnown: true, ExitCode: 0}
@@ -211,6 +218,146 @@ func TestWindowsProjectProcessReconcileContinuesExactStoppingIntent(t *testing.T
 	if len(signals) != 1 || signals[0] != ProjectProcessTerminate {
 		t.Fatalf("signals=%v want=[%s]", signals, ProjectProcessTerminate)
 	}
+}
+
+func TestWindowsProjectProcessStopReconcilesUnwatchedWorker(t *testing.T) {
+	platform := &fakeWindowsProcessPlatform{
+		identity:        ProjectProcessIdentity{ProcessID: "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PID: 4321, ProcessGroupID: 4321, StartTicks: 77},
+		alive:           true,
+		terminateSticks: true,
+	}
+	manager := openWindowsTestProcessManager(t, platform)
+	record := projectProcessRecord{
+		ProcessID:      platform.identity.ProcessID,
+		IdempotencyKey: "stop-unwatched",
+		RequestDigest:  strings.Repeat("b", 64),
+		OperationID:    "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		WorkspaceID:    "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ProjectAlias:   "project",
+		TargetAlias:    "windows",
+		Identity:       platform.identity,
+		State:          ProjectProcessRunning,
+		StartedAt:      time.Now().UTC().Add(-time.Minute),
+	}
+	if err := manager.insertRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.db.Exec(`UPDATE project_processes SET pid=?,process_group_id=?,start_ticks=?,state=? WHERE process_id=?`,
+		record.Identity.PID, record.Identity.ProcessGroupID, record.Identity.StartTicks, record.State, record.ProcessID); err != nil {
+		t.Fatal(err)
+	}
+	for _, stream := range []string{"stdout", "stderr"} {
+		writer, err := manager.openLogWriter(record.ProcessID, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	stopped, err := manager.Stop(ctx, ProjectProcessStopRequest{
+		ProcessID: record.ProcessID, ProjectAlias: record.ProjectAlias, TargetAlias: record.TargetAlias, GracePeriod: 50 * time.Millisecond,
+	})
+	if err != nil || stopped.State != ProjectProcessStopped || stopped.Reason != "process_stopped_while_offline" {
+		t.Fatalf("stop=%+v err=%v", stopped, err)
+	}
+	platform.mu.Lock()
+	signals := append([]ProjectProcessSignal(nil), platform.signals...)
+	platform.mu.Unlock()
+	if !slices.Equal(signals, []ProjectProcessSignal{ProjectProcessTerminate, ProjectProcessKill}) {
+		t.Fatalf("signals=%v", signals)
+	}
+}
+
+func TestWindowsProjectProcessSignalUsesExactFallbackOnlyForStopSignals(t *testing.T) {
+	identity := ProjectProcessIdentity{ProcessID: "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PID: 4321, ProcessGroupID: 4321, StartTicks: 77}
+	for _, test := range []struct {
+		name         string
+		signal       ProjectProcessSignal
+		response     projectProcessStdinWireResponse
+		pipeErr      error
+		wantFallback bool
+		wantIdentity bool
+		wantErr      bool
+	}{
+		{name: "terminate transport failure", signal: ProjectProcessTerminate, pipeErr: errors.New("pipe unavailable"), wantFallback: true},
+		{name: "kill worker failure", signal: ProjectProcessKill, response: projectProcessStdinWireResponse{Error: "signal_failed"}, wantFallback: true},
+		{name: "kill verifies cooperative success", signal: ProjectProcessKill, wantFallback: true},
+		{name: "interrupt remains cooperative", signal: ProjectProcessInterrupt, pipeErr: errors.New("pipe unavailable"), wantErr: true},
+		{name: "identity change fails closed", signal: ProjectProcessTerminate, response: projectProcessStdinWireResponse{Error: "identity_changed"}, wantIdentity: true, wantErr: true},
+		{name: "cooperative success", signal: ProjectProcessTerminate},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fallbacks := 0
+			platform := &windowsProjectProcessPlatform{
+				sendControl: func(got ProjectProcessIdentity, request projectProcessControlRequest) (projectProcessStdinWireResponse, error) {
+					if got != identity || request.Identity != identity || request.Signal != string(test.signal) {
+						t.Fatalf("identity=%+v request=%+v", got, request)
+					}
+					return test.response, test.pipeErr
+				},
+				terminateExact: func(got ProjectProcessIdentity) error {
+					fallbacks++
+					if got != identity {
+						t.Fatalf("fallback identity=%+v", got)
+					}
+					return nil
+				},
+			}
+			err := platform.Signal(identity, test.signal)
+			if (err != nil) != test.wantErr || errors.Is(err, ErrProjectProcessIdentityChanged) != test.wantIdentity {
+				t.Fatalf("err=%v wantErr=%v wantIdentity=%v", err, test.wantErr, test.wantIdentity)
+			}
+			wantFallbacks := 0
+			if test.wantFallback {
+				wantFallbacks = 1
+			}
+			if fallbacks != wantFallbacks {
+				t.Fatalf("fallbacks=%d want=%d", fallbacks, wantFallbacks)
+			}
+		})
+	}
+}
+
+func TestTerminateWindowsProjectProcessWorkerBindsCreationTime(t *testing.T) {
+	if os.Getenv("MCP_DEVBOX_WINDOWS_TERMINATE_HELPER") == "1" {
+		time.Sleep(time.Minute)
+		return
+	}
+	command := exec.Command(os.Args[0], "-test.run=^TestTerminateWindowsProjectProcessWorkerBindsCreationTime$")
+	command.Env = append(os.Environ(), "MCP_DEVBOX_WINDOWS_TERMINATE_HELPER=1")
+	if err := command.Start(); err != nil {
+		t.Fatalf("start helper: %v", err)
+	}
+	t.Cleanup(func() {
+		if command.Process != nil {
+			_ = command.Process.Kill()
+			_, _ = command.Process.Wait()
+		}
+	})
+	identity, err := windowsWorkerIdentity(uint32(command.Process.Pid), "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	if err != nil {
+		t.Fatalf("helper identity: %v", err)
+	}
+	stale := identity
+	stale.StartTicks++
+	if err := terminateWindowsProjectProcessWorkerExact(stale); !errors.Is(err, ErrProjectProcessIdentityChanged) {
+		t.Fatalf("stale identity err=%v", err)
+	}
+	alive, err := (&windowsProjectProcessPlatform{}).Alive(identity)
+	if err != nil || !alive {
+		t.Fatalf("helper after stale identity alive=%v err=%v", alive, err)
+	}
+	if err := terminateWindowsProjectProcessWorkerExact(identity); err != nil {
+		t.Fatalf("terminate helper: %v", err)
+	}
+	if err := command.Wait(); err == nil {
+		t.Fatal("terminated helper exited successfully")
+	}
+	command.Process = nil
 }
 
 func TestWindowsProcessPipeNameIsPrivateNamespace(t *testing.T) {

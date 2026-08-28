@@ -120,9 +120,14 @@ Use project ownership before changing lifecycle state:
 
 A recovered `stopping` row carries prior operator intent. Reconciliation retries
 termination only against the stored PID plus creation-time identity. A `running` row
-is never converted into stop intent, and an inaccessible exact worker remains visible
-as `stopping` for another bounded retry. Never use `taskkill /IM mcp-edge.exe`: that
-would also target the daemon and unrelated durable workers by name.
+is never converted into stop intent. `terminate` first uses the worker's private named
+pipe. If that endpoint is unavailable or rejects termination, the Edge opens only the
+stored PID, revalidates its creation time on the same kernel handle and terminates that
+exact wrapper. `kill` performs the exact kernel termination even after a cooperative
+success so an old wrapper cannot acknowledge the request and remain alive. `interrupt`
+never uses this fallback. An inaccessible identity remains visible as `stopping` for
+another bounded retry. Never use `taskkill /IM mcp-edge.exe`: that would also target the
+daemon and unrelated durable workers by name.
 
 ### Optimization checklist
 
