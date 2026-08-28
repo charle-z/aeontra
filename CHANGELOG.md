@@ -6,6 +6,10 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Preserve terminal timestamps in native Windows process listings so reconciled stopped
+  workers remain valid list results.
+- Add a bounded public-alpha install, acceptance, and feedback path and describe signed
+  Edge assets directly in release notes.
 - Report native Windows bundle/onboarding diagnostics through the paired Edge with an
   exact SCM process binding instead of returning `diagnostic_unavailable_windows`.
 - Continue an already-persisted durable process stop during identity-safe

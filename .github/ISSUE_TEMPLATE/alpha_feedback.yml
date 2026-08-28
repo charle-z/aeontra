@@ -1,0 +1,45 @@
+name: Public alpha feedback
+description: Share setup friction and product feedback without private data.
+title: "feedback: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for trying Aeontra. Do not include credentials, private URLs, OAuth material, repository contents, production logs, personal data, or unpatched vulnerability details.
+  - type: textarea
+    id: trial
+    attributes:
+      label: What did you try?
+      description: Name the guide, client, operating system, and read-only or ask mode.
+    validations:
+      required: true
+  - type: textarea
+    id: friction
+    attributes:
+      label: Where did you get stuck?
+      description: Describe the first unclear or failed step and the expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What worked well?
+      description: Note the useful behavior and what you would try next.
+  - type: textarea
+    id: identity
+    attributes:
+      label: Redacted environment and identity
+      description: Include the client, OS, source or release, and bounded safe codes. Remove paths and private infrastructure details.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I checked that this report is redacted and contains no secrets or private repository data.
+          required: true
+        - label: This is not an undisclosed vulnerability that belongs in private vulnerability reporting.
+          required: true

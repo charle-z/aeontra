@@ -9,6 +9,8 @@ state.
 | Source | Canonical role | Must not become |
 |---|---|---|
 | `README.md` | Short product introduction, architecture overview, safe quick start, and navigation | a phase diary, full configuration table, tool catalog, or threat model |
+| `docs/public-alpha.md` | One bounded local evaluation path, first acceptance, and feedback boundary | a second configuration reference, hosted-service promise, or live deployment report |
+| `docs/install-edge-linux.md` | Short signed Linux/Parrot/WSL Edge installation and verification path | a release baseline, package internals reference, or private maintainer setup |
 | `docs/configuration.md` | The only canonical inventory of supported profiles, flags, environment variables, build inputs, ports, routes, paths, volumes, permissions, defaults, and secret handling | a deployment-status report or historical baseline |
 | `docs/security.md` | Technical security architecture: trust boundaries, threat model, authority model, profile isolation, persistence, audit, limitations, and evidence | the public vulnerability inbox or a duplicate configuration reference |
 | `SECURITY.md` | Public reporting, scope, supported-version posture, disclosure, and license status | a copy of the full technical threat model |
@@ -139,6 +141,8 @@ These references remain useful, but they do not replace the canonical product so
 above:
 
 - Public presentation landing contract: `docs/landing/public-showcase.md`.
+- Public alpha local evaluation and feedback path: `docs/public-alpha.md`.
+- Signed Linux/Parrot/WSL installation entry point: `docs/install-edge-linux.md`.
 - Stable independently deployed MCP facade: `docs/stable-mcp-front-door.md`.
 - Frozen historical Pixelgrama presentation snapshot: `docs/showcase/pixelgrama-evidence.json`.
 - GitHub Actions diagnosis and bounded log retrieval: `docs/github-actions-diagnostics.md`.
@@ -164,6 +168,7 @@ above:
   `docs/analysis/codex-harness-compatibility.md`.
 - Edge lifecycle state migration: `docs/edge-lifecycle-migration.md`.
 - P16 package/install candidate: `docs/install-edge-parrot-p16.md`.
+- Public signed Linux/Parrot/WSL install path: `docs/install-edge-linux.md`.
 - Native Windows Edge package and operator boundary: `docs/install-edge-windows.md`.
 - Dual Linux/Parrot and native Windows `v1.2.24` operational acceptance:
   `docs/baselines/2026-08-27-v1_2_24-dual-edge.md`.

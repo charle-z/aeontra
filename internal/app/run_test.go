@@ -29,8 +29,12 @@ func TestRunPreservesVersionAndHelpCommands(t *testing.T) {
 	if code := run([]string{"help"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("help exit code = %d", code)
 	}
-	if !strings.Contains(stderr.String(), "Usage:") || stdout.Len() != 0 {
+	help := stderr.String()
+	if !strings.Contains(help, "scoped local MCP server") || !strings.Contains(help, "Usage:") || stdout.Len() != 0 {
 		t.Fatalf("help stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if strings.Contains(strings.ToLower(help), "secure-by-default") {
+		t.Fatalf("help contains stock security positioning: %q", help)
 	}
 }
 
