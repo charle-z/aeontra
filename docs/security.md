@@ -477,6 +477,13 @@ identities are never signalled. Missing/unsafe logs are demonstrated state corru
 the still-owned group is killed fail-closed and the row becomes terminal. Public list
 and cleanup responses remain metadata-only and never disclose the private journal.
 
+Windows durable workers use the same opaque lifecycle with a PID plus kernel creation
+time. Graceful stop uses a private named pipe. Authorized terminate or kill may fall
+back to an exact process handle when that pipe is unavailable or a legacy wrapper
+acknowledges kill without exiting. The creation time is revalidated on that same handle
+before termination, and `interrupt` has no forced fallback. The worker-owned Job Object
+kills its contained descendants when the wrapper exits.
+
 Redaction is not a substitute for keeping secrets out of inputs and storage.
 
 ## Secure deployment checklist

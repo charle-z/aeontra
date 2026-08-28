@@ -954,6 +954,20 @@ func (manager *ProjectProcessManager) waitTerminal(ctx context.Context, processI
 		if err == nil && projectProcessTerminal(record.State) {
 			return record, true
 		}
+		if err == nil && record.State == ProjectProcessStopping {
+			manager.watchMu.Lock()
+			watched := manager.watching[record.ProcessID]
+			manager.watchMu.Unlock()
+			if !watched {
+				alive, aliveErr := manager.platform.Alive(record.Identity)
+				if errors.Is(aliveErr, ErrProjectProcessIdentityChanged) || aliveErr == nil && !alive {
+					_ = manager.reconcileRecord(record)
+					if terminal, terminalErr := manager.recordByID(processID); terminalErr == nil && projectProcessTerminal(terminal.State) {
+						return terminal, true
+					}
+				}
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return projectProcessRecord{}, false
@@ -1249,9 +1263,11 @@ type projectProcessControlRequest struct {
 }
 
 type windowsProjectProcessPlatform struct {
-	stateRoot  string
-	workerRoot string
-	stdinRoot  string
+	stateRoot      string
+	workerRoot     string
+	stdinRoot      string
+	sendControl    func(ProjectProcessIdentity, projectProcessControlRequest) (projectProcessStdinWireResponse, error)
+	terminateExact func(ProjectProcessIdentity) error
 }
 
 func (platform *windowsProjectProcessPlatform) Start(spec DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
@@ -1358,11 +1374,65 @@ func (platform *windowsProjectProcessPlatform) Alive(identity ProjectProcessIden
 }
 
 func (platform *windowsProjectProcessPlatform) Signal(identity ProjectProcessIdentity, signal ProjectProcessSignal) error {
-	if signal != ProjectProcessInterrupt && signal != ProjectProcessTerminate && signal != ProjectProcessKill {
+	if platform == nil || signal != ProjectProcessInterrupt && signal != ProjectProcessTerminate && signal != ProjectProcessKill {
 		return errors.New("project process signal is invalid")
 	}
-	_, err := platform.sendPipe(identity, projectProcessControlRequest{Kind: "signal", Signal: string(signal), Identity: identity})
-	return err
+	request := projectProcessControlRequest{Kind: "signal", Signal: string(signal), Identity: identity}
+	var response projectProcessStdinWireResponse
+	var err error
+	if platform.sendControl != nil {
+		response, err = platform.sendControl(identity, request)
+	} else {
+		response, err = platform.sendPipe(identity, request)
+	}
+	if err == nil {
+		switch response.Error {
+		case "":
+			if signal != ProjectProcessKill {
+				return nil
+			}
+		case "identity_changed":
+			return ErrProjectProcessIdentityChanged
+		default:
+			err = errors.New("project process cooperative signal failed")
+		}
+	}
+	if errors.Is(err, ErrProjectProcessIdentityChanged) || signal == ProjectProcessInterrupt {
+		return err
+	}
+	if platform.terminateExact != nil {
+		return platform.terminateExact(identity)
+	}
+	return terminateWindowsProjectProcessWorkerExact(identity)
+}
+
+func terminateWindowsProjectProcessWorkerExact(identity ProjectProcessIdentity) error {
+	if identity.PID < 1 || identity.ProcessGroupID != identity.PID || identity.StartTicks == 0 {
+		return ErrProjectProcessIdentityChanged
+	}
+	process, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.PROCESS_TERMINATE, false, uint32(identity.PID))
+	if err != nil {
+		if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+			return nil
+		}
+		return err
+	}
+	defer windows.CloseHandle(process)
+	current, err := windowsProcessIdentityFromHandle(process, uint32(identity.PID))
+	if err != nil {
+		return err
+	}
+	if current.CreationTime != identity.StartTicks {
+		return ErrProjectProcessIdentityChanged
+	}
+	var exitCode uint32
+	if err := windows.GetExitCodeProcess(process, &exitCode); err != nil {
+		return err
+	}
+	if exitCode != windowsProcessStillActive {
+		return nil
+	}
+	return windows.TerminateProcess(process, 1)
 }
 
 func (platform *windowsProjectProcessPlatform) WriteStdin(identity ProjectProcessIdentity, write ProjectProcessStdinWrite) (ProjectProcessStdinReceipt, error) {
