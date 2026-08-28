@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,11 +16,13 @@ import (
 )
 
 type fakeWindowsProcessPlatform struct {
-	mu       sync.Mutex
-	identity ProjectProcessIdentity
-	alive    bool
-	exits    chan ProjectProcessExit
-	frames   map[string]ProjectProcessStdinReceipt
+	mu        sync.Mutex
+	identity  ProjectProcessIdentity
+	alive     bool
+	exits     chan ProjectProcessExit
+	frames    map[string]ProjectProcessStdinReceipt
+	signals   []ProjectProcessSignal
+	signalErr error
 }
 
 func (p *fakeWindowsProcessPlatform) Start(DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
@@ -39,14 +42,20 @@ func (p *fakeWindowsProcessPlatform) Alive(identity ProjectProcessIdentity) (boo
 	}
 	return p.alive, nil
 }
-func (p *fakeWindowsProcessPlatform) Signal(identity ProjectProcessIdentity, _ ProjectProcessSignal) error {
+func (p *fakeWindowsProcessPlatform) Signal(identity ProjectProcessIdentity, signal ProjectProcessSignal) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if identity != p.identity {
 		return ErrProjectProcessIdentityChanged
 	}
+	if p.signalErr != nil {
+		return p.signalErr
+	}
+	p.signals = append(p.signals, signal)
 	p.alive = false
-	p.exits <- ProjectProcessExit{ExitKnown: true, ExitCode: 0}
+	if p.exits != nil {
+		p.exits <- ProjectProcessExit{ExitKnown: true, ExitCode: 0}
+	}
 	return nil
 }
 func (p *fakeWindowsProcessPlatform) WriteStdin(identity ProjectProcessIdentity, write ProjectProcessStdinWrite) (ProjectProcessStdinReceipt, error) {
@@ -134,6 +143,73 @@ func TestWindowsProjectProcessManagerRejectsInitialStdinOverTotalLimit(t *testin
 	request := ProjectProcessStartRequest{OperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", IdempotencyKey: "too-large", ProjectAlias: "project", TargetAlias: "windows", Workspace: Workspace{ID: "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Profile: WorkspaceProfileWindowsWorkcell, Mode: WorkspaceModeDev, Path: filepath.FromSlash("C:/work/repo"), WindowsDevRoot: filepath.FromSlash("C:/work")}, Argv: []string{"cmd.exe"}, Stdin: string(make([]byte, edge.MaxProjectProcessStdinTotalBytes+1))}
 	if _, _, err := manager.Start(context.Background(), request); err == nil {
 		t.Fatal("oversized initial stdin was accepted")
+	}
+}
+
+func TestWindowsProjectProcessReconcileContinuesExactStoppingIntent(t *testing.T) {
+	platform := &fakeWindowsProcessPlatform{
+		identity:  ProjectProcessIdentity{ProcessID: "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PID: 4321, ProcessGroupID: 4321, StartTicks: 77},
+		alive:     true,
+		signalErr: errors.New("transient signal failure"),
+	}
+	manager := openWindowsTestProcessManager(t, platform)
+	record := projectProcessRecord{
+		ProcessID:      platform.identity.ProcessID,
+		IdempotencyKey: "reconcile-stopping",
+		RequestDigest:  strings.Repeat("a", 64),
+		OperationID:    "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		WorkspaceID:    "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ProjectAlias:   "project",
+		TargetAlias:    "windows",
+		Identity:       platform.identity,
+		State:          ProjectProcessStopping,
+		StartedAt:      time.Now().UTC().Add(-time.Minute),
+	}
+	if err := manager.insertRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.db.Exec(`UPDATE project_processes SET pid=?,process_group_id=?,start_ticks=?,state=? WHERE process_id=?`,
+		record.Identity.PID, record.Identity.ProcessGroupID, record.Identity.StartTicks, record.State, record.ProcessID); err != nil {
+		t.Fatal(err)
+	}
+	for _, stream := range []string{"stdout", "stderr"} {
+		writer, err := manager.openLogWriter(record.ProcessID, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := manager.Reconcile(); err != nil {
+		t.Fatalf("reconcile stopping process: %v", err)
+	}
+	got, err := manager.recordByID(record.ProcessID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform.mu.Lock()
+	signals := append([]ProjectProcessSignal(nil), platform.signals...)
+	platform.signalErr = nil
+	platform.mu.Unlock()
+	if got.State != ProjectProcessStopping || len(signals) != 0 {
+		t.Fatalf("transient reconciliation record=%+v signals=%v", got, signals)
+	}
+	if err := manager.Reconcile(); err != nil {
+		t.Fatalf("retry stopping process: %v", err)
+	}
+	got, err = manager.recordByID(record.ProcessID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != ProjectProcessStopped || got.Reason != "process_stopped_while_offline" {
+		t.Fatalf("reconciled record=%+v", got)
+	}
+	platform.mu.Lock()
+	signals = append([]ProjectProcessSignal(nil), platform.signals...)
+	platform.mu.Unlock()
+	if len(signals) != 1 || signals[0] != ProjectProcessTerminate {
+		t.Fatalf("signals=%v want=[%s]", signals, ProjectProcessTerminate)
 	}
 }
 

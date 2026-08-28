@@ -6,6 +6,11 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Report native Windows bundle/onboarding diagnostics through the paired Edge with an
+  exact SCM process binding instead of returning `diagnostic_unavailable_windows`.
+- Continue an already-persisted durable process stop during identity-safe
+  reconciliation while preserving ordinary running workers across Edge updates.
+
 ## v1.2.25 — 2026-08-27
 
 - Generate deterministic Linux and Windows third-party notice assets alongside each

@@ -24,9 +24,9 @@ type windowsOperationProgressReporter interface {
 // until the executor exits. In particular, cancellation only acknowledges at
 // the end; it never releases a lease while a Windows Job Object may still
 // have descendants alive.
-func executeWindowsControlOperationWithProgress(ctx context.Context, stateRoot string, transport windowsOperationProgressReporter, processes *edgeclient.ProjectProcessManager, lease edge.OperationLease) (edge.OperationResult, string, bool, error) {
+func executeWindowsControlOperationWithProgress(ctx context.Context, stateRoot string, transport windowsOperationProgressReporter, processes *edgeclient.ProjectProcessManager, workspaceCount int, lease edge.OperationLease) (edge.OperationResult, string, bool, error) {
 	return executeWindowsControlOperationLifecycle(ctx, transport, lease, func(executionCtx context.Context) (edge.OperationResult, string) {
-		return executeWindowsControlOperation(executionCtx, stateRoot, processes, lease.Operation)
+		return executeWindowsControlOperation(executionCtx, stateRoot, processes, workspaceCount, lease.Operation)
 	})
 }
 

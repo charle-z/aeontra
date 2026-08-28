@@ -25,7 +25,7 @@ func lifecycleCommand(args []string, stdout, stderr io.Writer) error {
 			return errors.New("Windows Edge lifecycle inspection failed")
 		}
 		fmt.Fprintf(stdout, "edge_lifecycle status=ready operation=%s bundle=valid identity=valid service=%s release=%s commit=%s\n",
-			args[0], windowsDoctorServiceState(snapshot.ServiceState), snapshot.BundleRelease, snapshot.BundleCommit)
+			args[0], windowsDoctorServiceState(snapshot.ServiceStatus.State), snapshot.BundleRelease, snapshot.BundleCommit)
 		return nil
 	case "update":
 		if len(args) != 2 || args[1] != "stable" {

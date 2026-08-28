@@ -730,6 +730,33 @@ func (manager *ProjectProcessManager) reconcileRecord(record projectProcessRecor
 			_ = manager.platform.Signal(record.Identity, ProjectProcessKill)
 			return failureErr
 		}
+		if record.State == ProjectProcessStopping {
+			// A persisted stopping state is durable operator intent. Continue only
+			// that already-authorized effect against the exact PID/start identity;
+			// never infer stop intent for an ordinary running process.
+			if signalErr := manager.platform.Signal(record.Identity, ProjectProcessTerminate); signalErr != nil {
+				if errors.Is(signalErr, ErrProjectProcessIdentityChanged) {
+					return manager.finishFailed(record.ProcessID, "process_identity_changed")
+				}
+				// Preserve stopping for a later bounded reconciliation pass. Failing
+				// manager startup here would turn one inaccessible worker into an
+				// Edge service restart loop and would hide its public lifecycle.
+				return nil
+			}
+			stillAlive, aliveErr := manager.platform.Alive(record.Identity)
+			if errors.Is(aliveErr, ErrProjectProcessIdentityChanged) {
+				return manager.finishFailed(record.ProcessID, "process_identity_changed")
+			}
+			if aliveErr != nil || stillAlive {
+				return nil
+			}
+			if exit, receiptErr := readProjectProcessWorkerExit(manager.workerRoot, record.ProcessID); receiptErr == nil {
+				return manager.finishRecoveredExit(record, exit)
+			}
+			_, err = manager.db.Exec(`UPDATE project_processes SET state=?,finished_at=?,reason=? WHERE process_id=? AND state=?`,
+				ProjectProcessStopped, manager.now().UTC().UnixNano(), "process_stopped_while_offline", record.ProcessID, ProjectProcessStopping)
+			return err
+		}
 		if record.State == ProjectProcessStarting {
 			_, err = manager.db.Exec(`UPDATE project_processes SET state=? WHERE process_id=? AND state=?`, ProjectProcessRunning, record.ProcessID, ProjectProcessStarting)
 		}

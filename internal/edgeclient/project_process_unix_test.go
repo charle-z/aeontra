@@ -47,14 +47,15 @@ func projectProcessWorkerTestCommand(stateRoot, processID string) *exec.Cmd {
 }
 
 type fakeProjectProcess struct {
-	identity ProjectProcessIdentity
-	exit     chan ProjectProcessExit
-	alive    bool
-	termExit bool
-	aliveErr error
-	stdin    strings.Builder
-	closed   bool
-	last     ProjectProcessStdinWrite
+	identity  ProjectProcessIdentity
+	exit      chan ProjectProcessExit
+	alive     bool
+	termExit  bool
+	aliveErr  error
+	signalErr error
+	stdin     strings.Builder
+	closed    bool
+	last      ProjectProcessStdinWrite
 }
 
 type fakeProjectProcessPlatform struct {
@@ -116,6 +117,9 @@ func (platform *fakeProjectProcessPlatform) Signal(identity ProjectProcessIdenti
 	process := platform.processes[identity.PID]
 	if process == nil || !process.alive || process.identity != identity {
 		return ErrProjectProcessIdentityChanged
+	}
+	if process.signalErr != nil {
+		return process.signalErr
 	}
 	platform.signals = append(platform.signals, signal)
 	if signal == ProjectProcessKill || signal == ProjectProcessTerminate && process.termExit {
@@ -223,6 +227,68 @@ func TestProjectProcessManagerStartsOnceAndReadsRedactedSeparatedOutput(t *testi
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("sandbox spec exposed %q: %s", forbidden, joined)
 		}
+	}
+}
+
+func TestProjectProcessReconcileContinuesExactStoppingIntent(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	identity := ProjectProcessIdentity{ProcessID: "pr_0123456789abcdef0123456789abcdef", PID: 4321, ProcessGroupID: 4321, StartTicks: 77}
+	platform.processes[identity.PID] = &fakeProjectProcess{
+		identity: identity, exit: make(chan ProjectProcessExit, 1), alive: true, termExit: true,
+		signalErr: errors.New("transient signal failure"),
+	}
+	record := projectProcessRecord{
+		ProcessID:      identity.ProcessID,
+		IdempotencyKey: "reconcile-stopping",
+		RequestDigest:  strings.Repeat("a", 64),
+		OperationID:    "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		WorkspaceID:    "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ProjectAlias:   "project",
+		TargetAlias:    "parrot",
+		Identity:       identity,
+		State:          ProjectProcessStopping,
+		StartedAt:      time.Now().UTC().Add(-time.Minute),
+	}
+	if err := manager.insertRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.db.Exec(`UPDATE project_processes SET pid=?,process_group_id=?,start_ticks=?,state=? WHERE process_id=?`,
+		record.Identity.PID, record.Identity.ProcessGroupID, record.Identity.StartTicks, record.State, record.ProcessID); err != nil {
+		t.Fatal(err)
+	}
+	for _, stream := range []string{"stdout", "stderr"} {
+		writer, err := manager.openLogWriter(record.ProcessID, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := manager.Reconcile(); err != nil {
+		t.Fatalf("reconcile stopping process: %v", err)
+	}
+	got, err := manager.recordByID(record.ProcessID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != ProjectProcessStopping || len(platform.signals) != 0 {
+		t.Fatalf("transient reconciliation record=%+v signals=%v", got, platform.signals)
+	}
+	platform.processes[identity.PID].signalErr = nil
+	if err := manager.Reconcile(); err != nil {
+		t.Fatalf("retry stopping process: %v", err)
+	}
+	got, err = manager.recordByID(record.ProcessID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != ProjectProcessStopped || got.Reason != "process_stopped_while_offline" {
+		t.Fatalf("reconciled record=%+v", got)
+	}
+	if len(platform.signals) != 1 || platform.signals[0] != ProjectProcessTerminate {
+		t.Fatalf("signals=%v want=[%s]", platform.signals, ProjectProcessTerminate)
 	}
 }
 
