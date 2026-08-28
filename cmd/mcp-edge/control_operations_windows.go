@@ -236,11 +236,7 @@ func executeWindowsProjectProcess(ctx context.Context, stateRoot string, process
 			err = listErr
 			break
 		}
-		result := windowsProjectProcessBase(resolved)
-		for _, item := range items {
-			result.BackgroundProcesses = append(result.BackgroundProcesses, edge.BackgroundProcessSummary{ProcessID: item.ProcessID, State: string(item.State), StartedAt: item.StartedAt.UTC().Format(time.RFC3339Nano), ExitKnown: item.ExitKnown, ExitCode: item.ExitCode, TerminalSignal: string(item.TerminalSignal), Reason: item.Reason})
-		}
-		return result, ""
+		return windowsProjectProcessListResult(resolved, items), ""
 	case edge.OperationProjectProcessCleanup:
 		cleanup, cleanupErr := processes.Cleanup(edgeclient.ProjectProcessCleanupRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias})
 		if cleanupErr != nil {
@@ -272,6 +268,15 @@ func executeWindowsProjectProcess(ctx context.Context, stateRoot string, process
 
 func windowsProjectProcessBase(resolved edgeclient.ProjectResolution) edge.OperationResult {
 	return edge.OperationResult{WorkspaceID: resolved.Workspace.ID, ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository, ProjectTarget: resolved.TargetAlias, ProjectState: resolved.SafeState(), ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode)}
+}
+
+func windowsProjectProcessListResult(resolved edgeclient.ProjectResolution, snapshots []edgeclient.ProjectProcessSnapshot) edge.OperationResult {
+	result := windowsProjectProcessBase(resolved)
+	result.BackgroundProcesses = make([]edge.BackgroundProcessSummary, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		result.BackgroundProcesses = append(result.BackgroundProcesses, projectProcessSummary(snapshot))
+	}
+	return result
 }
 
 func windowsProjectProcessResult(resolved edgeclient.ProjectResolution, snapshot edgeclient.ProjectProcessSnapshot) edge.OperationResult {

@@ -12,6 +12,10 @@ compatibility names.
 See [`docs/brand-compatibility.md`](docs/brand-compatibility.md) before renaming an
 identifier.
 
+The shortest evaluation path is a local read-only server against a disposable
+repository. Follow the [public alpha guide](docs/public-alpha.md) for the install,
+client configuration, first acceptance, and feedback form.
+
 ## What Aeontra is
 
 Aeontra is a Go MCP server for inspecting, changing, validating, publishing, and
@@ -192,6 +196,17 @@ harness, or HTB acceptance on Windows. See
 ## Local quick start
 
 Requirements: Go 1.26 and an absolute repository path.
+
+```bash
+go install github.com/charle-z/mcp-devbox/cmd/mcp-devbox@latest
+mcp-devbox serve --root /absolute/path/to/repository --mode read-only
+```
+
+Use a disposable repository for the first run. The complete guided path, MCP client
+configuration, success checks, and feedback boundary are in
+[`docs/public-alpha.md`](docs/public-alpha.md).
+
+To validate the current source instead of installing the latest tag:
 
 ```bash
 git clone https://github.com/charle-z/aeontra.git

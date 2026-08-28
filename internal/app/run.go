@@ -51,7 +51,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(output io.Writer) {
-	fmt.Fprint(output, `mcp-devbox `+buildinfo.Version+` — secure-by-default local MCP server
+	fmt.Fprint(output, `mcp-devbox `+buildinfo.Version+` — scoped local MCP server
 
 Usage:
   mcp-devbox serve --root <ABS_PATH> [--mode read-only|ask|allow] [flags]

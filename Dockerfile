@@ -73,9 +73,9 @@ FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d650
 
 # OCI metadata (good practice; helps registries/scanners identify the image).
 # Tags remain readable while the digest fixes the exact multi-platform image index.
-LABEL org.opencontainers.image.title="mcp-devbox" \
-	org.opencontainers.image.description="Secure-by-default local MCP server for AI coding agents" \
-	org.opencontainers.image.source="https://github.com/charle-z/mcp-devbox"
+LABEL org.opencontainers.image.title="Aeontra" \
+	org.opencontainers.image.description="Scoped, auditable MCP operations for software development" \
+	org.opencontainers.image.source="https://github.com/charle-z/aeontra"
 
 COPY --from=build /usr/local/go /usr/local/go
 COPY --from=node-runtime /node/bin/node /usr/local/bin/node

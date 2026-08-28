@@ -183,10 +183,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE: ${{ inputs.release }}
-          GENERATION: ${{ inputs.generation }}
+          RELEASE_NOTES: |
+            Signed Aeontra Edge release `${{ inputs.release }}` for generation `${{ inputs.generation }}`.
+
+            Choose the package for the Edge host:
+
+            - **Windows package:** download the `_windows_amd64.zip` archive and follow the [Windows installation guide](https://github.com/charle-z/aeontra/blob/main/docs/install-edge-windows.md).
+            - **Debian, Parrot, or WSL:** use the amd64 `.deb` package and follow the [Linux installation guide](https://github.com/charle-z/aeontra/blob/main/docs/install-edge-linux.md).
+
+            Each platform includes checksums, signatures, SBOMs, and third-party notices. Verify the signed manifest before installation. The control-plane source, this signed release, an installed Edge, and real-device acceptance are separate identities.
         run: |
           release_dir="$RUNNER_TEMP/release/assets/$RELEASE"
-          gh release create "$RELEASE" "$release_dir"/* "$RUNNER_TEMP/release/windows-assets"/* --target "$(git rev-parse HEAD)" --title "Aeontra Edge $RELEASE" --notes "Official signed Aeontra Edge $GENERATION bundles, installers, checksums, signatures, and SBOMs."
+          gh release create "$RELEASE" "$release_dir"/* "$RUNNER_TEMP/release/windows-assets"/* --target "$(git rev-parse HEAD)" --title "Aeontra Edge $RELEASE" --notes "$RELEASE_NOTES"
           if ! gh release view stable >/dev/null 2>&1; then
             gh release create stable --target "$(git rev-parse HEAD)" --title 'Aeontra Edge stable channel' --notes 'Mutable pointer containing only the currently signed stable channel metadata.'
           fi
