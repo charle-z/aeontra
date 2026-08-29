@@ -33,9 +33,6 @@ jobs:
     permissions:
       contents: write
 
-    env:
-      EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
-      DEB_GPG_PRIVATE_KEY_B64: ${{ secrets.EDGE_DEB_GPG_PRIVATE_KEY_B64 }}
     steps:
       - name: Checkout exact main commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -53,8 +50,6 @@ jobs:
           if [[ "$RELEASE" = v* ]]; then
             [[ "$GENERATION" = codex-v4 || "$GENERATION" = codex-v5 ]]
           fi
-          test -n "$EDGE_PRIVATE_KEY_B64"
-          test -n "$DEB_GPG_PRIVATE_KEY_B64"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           ! git rev-parse "$RELEASE" >/dev/null 2>&1
 
@@ -76,28 +71,41 @@ jobs:
         if: inputs.generation != 'codex-v5'
         run: npm ci --prefix test/opencode-e2e --no-audit --no-fund
 
-      - name: Import offline release identities
+      - name: Verify release source before exposing signing identities
         run: |
-          install -d -m 0700 "$RUNNER_TEMP/release" "$RUNNER_TEMP/gnupg"
-          printf '%s' "$EDGE_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/release/edge.key"
-          chmod 0600 "$RUNNER_TEMP/release/edge.key"
-          test "$(stat -c %s "$RUNNER_TEMP/release/edge.key")" = 64
-          GNUPGHOME="$RUNNER_TEMP/gnupg"
-          export GNUPGHOME
-          printf '%s' "$DEB_GPG_PRIVATE_KEY_B64" | base64 --decode | gpg --batch --import
-          key_id="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="sec" {print $5; exit}')"
-          test -n "$key_id"
-          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
-          echo "GPG_KEY_ID=$key_id" >> "$GITHUB_ENV"
+          go test -p 1 ./internal/bundle ./internal/edgeupdate ./internal/autopilot ./cmd/mcp-edge ./cmd/mcp-bundle-updater ./packaging/debian ./packaging/parrot -count=1
+          go vet ./...
+          go build ./...
+          git diff --check
 
-      - name: Build and verify signed artifacts
+      - name: Build minimal signing executables
+        run: |
+          install -d -m 0755 "$RUNNER_TEMP/release/signers"
+          go build -trimpath -o "$RUNNER_TEMP/release/signers/mcp-bundle-manifest" ./cmd/mcp-bundle-manifest
+          go build -trimpath -o "$RUNNER_TEMP/release/signers/mcp-release-channel" ./cmd/mcp-release-channel
+
+      - name: Derive non-secret release public key
+        env:
+          EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
+        run: |
+          test -n "$EDGE_PRIVATE_KEY_B64"
+          key_path="$RUNNER_TEMP/release/edge.key"
+          trap 'rm -f "$key_path"' EXIT
+          printf '%s' "$EDGE_PRIVATE_KEY_B64" | base64 --decode > "$key_path"
+          chmod 0600 "$key_path"
+          test "$(stat -c %s "$key_path")" = 64
+          public_key="$(tail -c 32 "$key_path" | od -An -tx1 | tr -d ' \n')"
+          [[ "$public_key" =~ ^[a-f0-9]{64}$ ]]
+          printf '%s\n' "$public_key" > "$RUNNER_TEMP/release/edge-public-key.hex"
+
+      - name: Build unsigned release payloads
         env:
           RELEASE: ${{ inputs.release }}
           GENERATION: ${{ inputs.generation }}
         run: |
           commit="$(git rev-parse HEAD)"
           catalog="$(go run ./cmd/mcp-catalog-id)"
-          public_key="$(go run ./cmd/mcp-bundle-public-key "$RUNNER_TEMP/release/edge.key")"
+          public_key="$(cat "$RUNNER_TEMP/release/edge-public-key.hex")"
           bash packaging/github-cli/stage-pinned.sh --output "$RUNNER_TEMP/release/gh"
           manifest_version=3
           codex_args=()
@@ -107,6 +115,9 @@ jobs:
           elif [ "$GENERATION" = codex-v5 ]; then
             manifest_version=5
           fi
+          printf '%s\n' "$commit" > "$RUNNER_TEMP/release/commit.txt"
+          printf '%s\n' "$catalog" > "$RUNNER_TEMP/release/catalog.txt"
+          printf '%s\n' "$manifest_version" > "$RUNNER_TEMP/release/manifest-version.txt"
           if [ "$GENERATION" = codex-v4 ] || [ "$GENERATION" = codex-v5 ]; then
             bash packaging/codex/stage-pinned.sh \
               --output-bin "$RUNNER_TEMP/release/codex" \
@@ -123,28 +134,83 @@ jobs:
           stage_args=(
             --output "$RUNNER_TEMP/release/bundle" --release "$RELEASE" --commit "$commit"
             --manifest-version "$manifest_version"
-            --catalog "$catalog" --private-key "$RUNNER_TEMP/release/edge.key" --public-key "$public_key"
+            --catalog "$catalog" --public-key "$public_key"
             --gh-bin "$RUNNER_TEMP/release/gh"
           )
           stage_args+=("${legacy_args[@]}")
           stage_args+=("${codex_args[@]}")
           bash packaging/parrot/stage-edge-bundle.sh "${stage_args[@]}"
-          go build -trimpath -o "$RUNNER_TEMP/release/mcp-release-channel" ./cmd/mcp-release-channel
+
+      - name: Sign Linux bundle manifest with isolated executable
+        env:
+          EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
+          RELEASE: ${{ inputs.release }}
+          GENERATION: ${{ inputs.generation }}
+        run: |
+          key_path="$RUNNER_TEMP/release/edge.key"
+          trap 'rm -f "$key_path"' EXIT
+          printf '%s' "$EDGE_PRIVATE_KEY_B64" | base64 --decode > "$key_path"
+          chmod 0600 "$key_path"
+          test "$(stat -c %s "$key_path")" = 64
+          "$RUNNER_TEMP/release/signers/mcp-bundle-manifest" \
+            --root "$RUNNER_TEMP/release/bundle" --release "$RELEASE" \
+            --commit "$(cat "$RUNNER_TEMP/release/commit.txt")" --protocol mcp-devbox.edge-bundle.v1 \
+            --catalog "$(cat "$RUNNER_TEMP/release/catalog.txt")" --architecture amd64 \
+            --manifest-version "$(cat "$RUNNER_TEMP/release/manifest-version.txt")" --private-key "$key_path"
+
+      - name: Build deterministic archives and unsigned Debian package
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
           export SOURCE_DATE_EPOCH
           bash packaging/parrot/build-edge-release.sh \
             --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/release/assets" \
-            --release "$RELEASE" --architecture amd64 \
-            --channel-tool "$RUNNER_TEMP/release/mcp-release-channel" \
-            --private-key "$RUNNER_TEMP/release/edge.key" --commit "$commit" \
-            --protocol mcp-devbox.edge-bundle.v1 --catalog "$catalog"
+            --release "$RELEASE" --architecture amd64
           bash packaging/debian/build-edge-deb.sh \
             --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/release/assets/$RELEASE" \
-            --release "$RELEASE" --signing-key "$GPG_KEY_ID"
-          go test -p 1 ./internal/bundle ./internal/edgeupdate ./internal/autopilot ./cmd/mcp-edge ./cmd/mcp-bundle-updater ./packaging/debian ./packaging/parrot -count=1
-          go vet ./...
-          go build ./...
-          git diff --check
+            --release "$RELEASE"
+
+      - name: Sign stable Linux channel with isolated executable
+        env:
+          EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          key_path="$RUNNER_TEMP/release/edge.key"
+          trap 'rm -f "$key_path"' EXIT
+          printf '%s' "$EDGE_PRIVATE_KEY_B64" | base64 --decode > "$key_path"
+          chmod 0600 "$key_path"
+          test "$(stat -c %s "$key_path")" = 64
+          "$RUNNER_TEMP/release/signers/mcp-release-channel" \
+            --archive "$RUNNER_TEMP/release/assets/$RELEASE/mcp-devbox-edge_${RELEASE}_amd64.tar.gz" \
+            --output "$RUNNER_TEMP/release/assets/stable" --release "$RELEASE" \
+            --commit "$(cat "$RUNNER_TEMP/release/commit.txt")" --protocol mcp-devbox.edge-bundle.v1 \
+            --catalog "$(cat "$RUNNER_TEMP/release/catalog.txt")" --architecture amd64 \
+            --private-key "$key_path"
+
+      - name: Sign Debian package with isolated GPG identity
+        env:
+          DEB_GPG_PRIVATE_KEY_B64: ${{ secrets.EDGE_DEB_GPG_PRIVATE_KEY_B64 }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          GNUPGHOME="$RUNNER_TEMP/gnupg"
+          export GNUPGHOME
+          trap 'gpgconf --homedir "$GNUPGHOME" --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$GNUPGHOME"' EXIT
+          install -d -m 0700 "$GNUPGHOME"
+          printf '%s' "$DEB_GPG_PRIVATE_KEY_B64" | base64 --decode | gpg --batch --import
+          key_id="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1=="sec" {print $5; exit}')"
+          test -n "$key_id"
+          deb="$RUNNER_TEMP/release/assets/$RELEASE/mcp-devbox-edge_${RELEASE#v}_amd64.deb"
+          if [[ "$RELEASE" = p* ]]; then deb="$RUNNER_TEMP/release/assets/$RELEASE/mcp-devbox-edge_${RELEASE#p}_amd64.deb"; fi
+          test -f "$deb"
+          gpg --batch --yes --local-user "$key_id" --armor --detach-sign --output "$deb.asc" "$deb"
+
+      - name: Remove release signing identities
+        if: always()
+        run: |
+          gpgconf --homedir "$RUNNER_TEMP/gnupg" --kill gpg-agent >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/release/edge.key"
+          rm -rf "$RUNNER_TEMP/gnupg"
 
       - name: Generate Edge bundle SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
@@ -217,9 +283,6 @@ jobs:
     environment: edge-release
     permissions:
       contents: read
-    env:
-      EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
-      RELEASE: ${{ inputs.release }}
     steps:
       - name: Checkout exact main commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -232,39 +295,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Build and sign platform-bound bundle
-        shell: pwsh
-        run: |
-          if ($env:RELEASE -notmatch '^(p15\.[0-9]+\.[0-9]+|v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$') { throw 'invalid release' }
-          if ([string]::IsNullOrWhiteSpace($env:EDGE_PRIVATE_KEY_B64)) { throw 'missing signing identity' }
-          $commit = (git rev-parse HEAD).Trim()
-          if ($commit -ne (git rev-parse origin/main).Trim()) { throw 'release commit is not the exact main head' }
-          $catalog = (go run ./cmd/mcp-catalog-id).Trim()
-          $releaseRoot = Join-Path $env:RUNNER_TEMP 'windows-release'
-          $bundleRoot = Join-Path $releaseRoot 'bundle'
-          $assetRoot = Join-Path $releaseRoot 'assets'
-          New-Item -ItemType Directory -Path (Join-Path $bundleRoot 'bin'), $assetRoot -Force | Out-Null
-          $keyPath = Join-Path $releaseRoot 'edge.key'
-          [IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:EDGE_PRIVATE_KEY_B64))
-          if ((Get-Item -LiteralPath $keyPath).Length -ne 64) { throw 'invalid signing identity' }
-          $publicKey = (go run ./cmd/mcp-bundle-public-key $keyPath).Trim()
-          $ldflags = "-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=$commit -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleRelease=$env:RELEASE -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleCatalogHash=$catalog -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundlePublicKey=$publicKey"
-          go build -trimpath -buildvcs=false -ldflags $ldflags -o (Join-Path $bundleRoot 'bin\mcp-edge.exe') ./cmd/mcp-edge
-          go build -trimpath -buildvcs=false -ldflags $ldflags -o (Join-Path $bundleRoot 'bin\mcp-bundle-updater.exe') ./cmd/mcp-bundle-updater
-          Copy-Item packaging/windows/install-edge.ps1 (Join-Path $bundleRoot 'install-edge.ps1')
-          Copy-Item packaging/windows/uninstall-edge.ps1 (Join-Path $bundleRoot 'uninstall-edge.ps1')
-          go run ./cmd/mcp-bundle-manifest --root $bundleRoot --release $env:RELEASE --commit $commit --protocol mcp-devbox.edge-bundle.v1 --catalog $catalog --architecture amd64 --platform windows --manifest-version 6 --private-key $keyPath
-          $archive = Join-Path $assetRoot "mcp-devbox-edge_$env:RELEASE`_windows_amd64.zip"
-          $reproArchive = Join-Path $releaseRoot 'reproducible-check.zip'
-          ./packaging/windows/new-deterministic-archive.ps1 -Root $bundleRoot -Output $archive
-          ./packaging/windows/new-deterministic-archive.ps1 -Root $bundleRoot -Output $reproArchive
-          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $reproArchive -Algorithm SHA256).Hash) { throw 'Windows archive is not reproducible' }
-          Remove-Item -LiteralPath $reproArchive -Force
-          go run ./cmd/mcp-release-channel --archive $archive --output $assetRoot --release $env:RELEASE --commit $commit --protocol mcp-devbox.edge-bundle.v1 --catalog $catalog --architecture amd64 --platform windows --private-key $keyPath
-          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-          [IO.File]::WriteAllText((Join-Path $assetRoot 'mcp-devbox-edge_windows_amd64.sha256'), "$hash  $([IO.Path]::GetFileName($archive))`n", [Text.UTF8Encoding]::new($false))
-          Remove-Item -LiteralPath $keyPath -Force
 
       - name: Run native Windows gates
         shell: pwsh
@@ -279,6 +309,112 @@ jobs:
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$null, [ref]$errors)
             if ($errors.Count -ne 0) { throw "PowerShell syntax failed for $script" }
           }
+
+      - name: Build minimal Windows signing executables
+        shell: pwsh
+        run: |
+          $signerRoot = Join-Path $env:RUNNER_TEMP 'windows-release\signers'
+          New-Item -ItemType Directory -Path $signerRoot -Force | Out-Null
+          go build -trimpath -o (Join-Path $signerRoot 'mcp-bundle-manifest.exe') ./cmd/mcp-bundle-manifest
+          go build -trimpath -o (Join-Path $signerRoot 'mcp-release-channel.exe') ./cmd/mcp-release-channel
+
+      - name: Derive non-secret Windows release public key
+        shell: pwsh
+        env:
+          EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:EDGE_PRIVATE_KEY_B64)) { throw 'missing signing identity' }
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'windows-release'
+          $keyPath = Join-Path $releaseRoot 'edge.key'
+          try {
+            $key = [Convert]::FromBase64String($env:EDGE_PRIVATE_KEY_B64)
+            if ($key.Length -ne 64) { throw 'invalid signing identity' }
+            [IO.File]::WriteAllBytes($keyPath, $key)
+            $publicKey = -join $key[32..63].ForEach({ $_.ToString('x2') })
+            [IO.File]::WriteAllText((Join-Path $releaseRoot 'edge-public-key.hex'), "$publicKey`n", [Text.UTF8Encoding]::new($false))
+          } finally {
+            Remove-Item -LiteralPath $keyPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build unsigned Windows bundle
+        shell: pwsh
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          if ($env:RELEASE -notmatch '^(p15\.[0-9]+\.[0-9]+|v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$') { throw 'invalid release' }
+          $commit = (git rev-parse HEAD).Trim()
+          if ($commit -ne (git rev-parse origin/main).Trim()) { throw 'release commit is not the exact main head' }
+          $catalog = (go run ./cmd/mcp-catalog-id).Trim()
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'windows-release'
+          $bundleRoot = Join-Path $releaseRoot 'bundle'
+          $assetRoot = Join-Path $releaseRoot 'assets'
+          New-Item -ItemType Directory -Path (Join-Path $bundleRoot 'bin'), $assetRoot -Force | Out-Null
+          $publicKey = (Get-Content -LiteralPath (Join-Path $releaseRoot 'edge-public-key.hex') -Raw).Trim()
+          [IO.File]::WriteAllText((Join-Path $releaseRoot 'commit.txt'), "$commit`n", [Text.UTF8Encoding]::new($false))
+          [IO.File]::WriteAllText((Join-Path $releaseRoot 'catalog.txt'), "$catalog`n", [Text.UTF8Encoding]::new($false))
+          $ldflags = "-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=$commit -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleRelease=$env:RELEASE -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundleCatalogHash=$catalog -X github.com/charle-z/mcp-devbox/internal/buildinfo.EdgeBundlePublicKey=$publicKey"
+          go build -trimpath -buildvcs=false -ldflags $ldflags -o (Join-Path $bundleRoot 'bin\mcp-edge.exe') ./cmd/mcp-edge
+          go build -trimpath -buildvcs=false -ldflags $ldflags -o (Join-Path $bundleRoot 'bin\mcp-bundle-updater.exe') ./cmd/mcp-bundle-updater
+          Copy-Item packaging/windows/install-edge.ps1 (Join-Path $bundleRoot 'install-edge.ps1')
+          Copy-Item packaging/windows/uninstall-edge.ps1 (Join-Path $bundleRoot 'uninstall-edge.ps1')
+
+      - name: Sign Windows bundle manifest with isolated executable
+        shell: pwsh
+        env:
+          EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'windows-release'
+          $keyPath = Join-Path $releaseRoot 'edge.key'
+          try {
+            [IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:EDGE_PRIVATE_KEY_B64))
+            if ((Get-Item -LiteralPath $keyPath).Length -ne 64) { throw 'invalid signing identity' }
+            & (Join-Path $releaseRoot 'signers\mcp-bundle-manifest.exe') --root (Join-Path $releaseRoot 'bundle') --release $env:RELEASE --commit (Get-Content -LiteralPath (Join-Path $releaseRoot 'commit.txt') -Raw).Trim() --protocol mcp-devbox.edge-bundle.v1 --catalog (Get-Content -LiteralPath (Join-Path $releaseRoot 'catalog.txt') -Raw).Trim() --architecture amd64 --platform windows --manifest-version 6 --private-key $keyPath
+            if ($LASTEXITCODE -ne 0) { throw 'Windows bundle manifest signing failed' }
+          } finally {
+            Remove-Item -LiteralPath $keyPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build deterministic Windows archive
+        shell: pwsh
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'windows-release'
+          $bundleRoot = Join-Path $releaseRoot 'bundle'
+          $assetRoot = Join-Path $releaseRoot 'assets'
+          $archive = Join-Path $assetRoot "mcp-devbox-edge_$env:RELEASE`_windows_amd64.zip"
+          $reproArchive = Join-Path $releaseRoot 'reproducible-check.zip'
+          ./packaging/windows/new-deterministic-archive.ps1 -Root $bundleRoot -Output $archive
+          ./packaging/windows/new-deterministic-archive.ps1 -Root $bundleRoot -Output $reproArchive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $reproArchive -Algorithm SHA256).Hash) { throw 'Windows archive is not reproducible' }
+          Remove-Item -LiteralPath $reproArchive -Force
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText((Join-Path $assetRoot 'mcp-devbox-edge_windows_amd64.sha256'), "$hash  $([IO.Path]::GetFileName($archive))`n", [Text.UTF8Encoding]::new($false))
+
+      - name: Sign stable Windows channel with isolated executable
+        shell: pwsh
+        env:
+          EDGE_PRIVATE_KEY_B64: ${{ secrets.EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64 }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'windows-release'
+          $keyPath = Join-Path $releaseRoot 'edge.key'
+          try {
+            [IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:EDGE_PRIVATE_KEY_B64))
+            if ((Get-Item -LiteralPath $keyPath).Length -ne 64) { throw 'invalid signing identity' }
+            & (Join-Path $releaseRoot 'signers\mcp-release-channel.exe') --archive (Join-Path $releaseRoot "assets\mcp-devbox-edge_$env:RELEASE`_windows_amd64.zip") --output (Join-Path $releaseRoot 'assets') --release $env:RELEASE --commit (Get-Content -LiteralPath (Join-Path $releaseRoot 'commit.txt') -Raw).Trim() --protocol mcp-devbox.edge-bundle.v1 --catalog (Get-Content -LiteralPath (Join-Path $releaseRoot 'catalog.txt') -Raw).Trim() --architecture amd64 --platform windows --private-key $keyPath
+            if ($LASTEXITCODE -ne 0) { throw 'Windows release channel signing failed' }
+          } finally {
+            Remove-Item -LiteralPath $keyPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Remove Windows release signing identity
+        if: always()
+        shell: pwsh
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP 'windows-release\edge.key'
+          Remove-Item -LiteralPath $keyPath -Force -ErrorAction SilentlyContinue
 
       - name: Generate Windows Edge SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0

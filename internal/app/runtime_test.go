@@ -140,7 +140,8 @@ func TestBuildSandboxRunnerPreservesBackendPosture(t *testing.T) {
 func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 	clearRuntimeEnv(t)
 	root := t.TempDir()
-	auditPath := filepath.Join(root, "logs", "audit.jsonl")
+	state := filepath.Join(t.TempDir(), "state")
+	auditPath := filepath.Join(state, "logs", "audit.jsonl")
 	cfg, err := config.New(config.Config{
 		Roots:           []string{root},
 		Mode:            config.ModeReadOnly,
@@ -152,7 +153,7 @@ func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime, err := buildRuntime(serveOptions{Config: cfg, AuditPath: auditPath})
+	runtime, err := buildRuntime(serveOptions{Config: cfg, StateRoot: state, AuditPath: auditPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +222,7 @@ func TestBuildRuntimePersistsMetricsWhenJSONLIsOff(t *testing.T) {
 func TestBuildRuntimeOpensPrivateObservabilityFile(t *testing.T) {
 	clearRuntimeEnv(t)
 	root := t.TempDir()
-	path := filepath.Join(root, "private", "observability.jsonl")
+	path := filepath.Join(t.TempDir(), "private", "observability.jsonl")
 	cfg, err := config.New(config.Config{
 		Roots:           []string{root},
 		Mode:            config.ModeReadOnly,
@@ -254,5 +255,85 @@ func TestBuildRuntimeOpensPrivateObservabilityFile(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"event":"server_start"`) {
 		t.Fatalf("events = %s", data)
+	}
+}
+
+func TestBuildRuntimeRejectsPrivateStorageOverlap(t *testing.T) {
+	clearRuntimeEnv(t)
+	base := t.TempDir()
+	repository := filepath.Join(base, "repository")
+	if err := os.Mkdir(repository, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	safeState := filepath.Join(t.TempDir(), "state")
+	safeAudit := filepath.Join(t.TempDir(), "audit", "audit.jsonl")
+	cfg, err := config.New(config.Config{Roots: []string{repository}, Mode: config.ModeReadOnly, AllowedCommands: []string{"git"}, SandboxBackend: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		opts serveOptions
+	}{
+		{name: "state inside repository", opts: serveOptions{Config: cfg, StateRoot: filepath.Join(repository, ".private"), AuditPath: safeAudit}},
+		{name: "state contains repository", opts: serveOptions{Config: cfg, StateRoot: base, AuditPath: safeAudit}},
+		{name: "relative audit", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: filepath.Join(".private", "audit.jsonl")}},
+		{name: "audit inside repository", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: filepath.Join(repository, ".private", "audit.jsonl")}},
+		{name: "audit contains repository", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: filepath.Join(base, "audit.jsonl")}},
+		{name: "observability inside repository", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: safeAudit, Observability: observability.Config{Mode: observability.ModeFile, Path: filepath.Join(repository, ".private", "observability.jsonl"), MaxBytes: observability.MinMaxBytes}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if runtime, err := buildRuntime(tt.opts); err == nil {
+				_ = runtime.Close()
+				t.Fatal("overlapping private storage should be rejected")
+			}
+		})
+	}
+}
+
+func TestBuildRuntimeRejectsSymlinkedPrivateStorageOverlap(t *testing.T) {
+	clearRuntimeEnv(t)
+	repository := t.TempDir()
+	outside := t.TempDir()
+	stateLink := filepath.Join(outside, "state-link")
+	auditLink := filepath.Join(outside, "audit-link")
+	if err := os.Symlink(repository, stateLink); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(repository, auditLink); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	cfg, err := config.New(config.Config{Roots: []string{repository}, Mode: config.ModeReadOnly, AllowedCommands: []string{"git"}, SandboxBackend: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	safeState := filepath.Join(t.TempDir(), "state")
+	safeAudit := filepath.Join(t.TempDir(), "audit", "audit.jsonl")
+	for _, tt := range []struct {
+		name string
+		opts serveOptions
+	}{
+		{name: "state symlink", opts: serveOptions{Config: cfg, StateRoot: filepath.Join(stateLink, "state"), AuditPath: safeAudit}},
+		{name: "audit symlink", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: filepath.Join(auditLink, "audit.jsonl")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if runtime, err := buildRuntime(tt.opts); err == nil {
+				_ = runtime.Close()
+				t.Fatal("symlinked private storage overlap should be rejected")
+			}
+		})
+	}
+}
+
+func TestValidateRuntimeStateRootRejectsFilesystemRoot(t *testing.T) {
+	repository := t.TempDir()
+	volumeRoot := filepath.VolumeName(repository) + string(os.PathSeparator)
+	if volumeRoot == "" {
+		volumeRoot = string(os.PathSeparator)
+	}
+	if err := validateRuntimeStateRoot(volumeRoot, []string{repository}); err == nil {
+		t.Fatalf("filesystem root %q should be rejected", volumeRoot)
 	}
 }

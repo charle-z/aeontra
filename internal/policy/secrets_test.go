@@ -22,6 +22,8 @@ func TestIsSecretPath_Denied(t *testing.T) {
 		".git-credentials",
 		"project/.aws/credentials",
 		".gnupg/secring.gpg",
+		".agent-memory/state/grant-admin/channel-test.json",
+		"GRANT-ADMIN/channel-test.json",
 		// Casing must not bypass.
 		".ENV",
 		"Config/.Env.Local",

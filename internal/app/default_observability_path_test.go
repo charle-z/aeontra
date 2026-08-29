@@ -48,7 +48,10 @@ func TestBuildRuntimeDefaultFileObservabilityUsesPrivateSubdirectory(t *testing.
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
 	}
-	privateDir := filepath.Join(memoryDir, "state", "logs")
+	if pathsOverlap(runtime.StateRoot, root) {
+		t.Fatalf("default state root overlaps repository: state=%q repo=%q", runtime.StateRoot, root)
+	}
+	privateDir := filepath.Join(runtime.StateRoot, "logs")
 	filePath := filepath.Join(privateDir, "observability.jsonl")
 	dirInfo, err := os.Stat(privateDir)
 	if err != nil {
@@ -63,5 +66,8 @@ func TestBuildRuntimeDefaultFileObservabilityUsesPrivateSubdirectory(t *testing.
 	}
 	if fileInfo.Mode().Perm() != 0o600 {
 		t.Fatalf("file mode = %o", fileInfo.Mode().Perm())
+	}
+	if _, err := os.Stat(filepath.Join(memoryDir, "state")); !os.IsNotExist(err) {
+		t.Fatalf("legacy in-repository state was created: %v", err)
 	}
 }

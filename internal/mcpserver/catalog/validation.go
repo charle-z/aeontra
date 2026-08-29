@@ -5,7 +5,7 @@ import "encoding/json"
 // ValidationService is the narrow domain contract required by configured tests
 // and private fixed-profile project validation tools.
 type ValidationService interface {
-	RunTestsIn(approve bool, cwd string, extra ...string) (string, error)
+	RunTestsIn(cwd string, extra ...string) (string, error)
 	ValidationPreview(repo, profile string) (string, error)
 	ValidationExecute(planID string, approve bool) (string, error)
 }
@@ -15,9 +15,8 @@ type ValidationService interface {
 func RegisterValidation(register Register, service ValidationService) {
 	register(Tool{
 		Name:        "run_tests",
-		Description: "Run the project's configured test command (allowlisted). Optional cwd is jailed under the workspace. In ask mode, set approve=true to run.",
+		Description: "Run the project's configured allowlisted test command inside the attested private L3 executor. Network is denied and the optional cwd is jailed under the workspace. Only administrator-selected allow mode enables execution; read-only and ask modes deny.",
 		InputSchema: object(map[string]any{
-			"approve": boolProp("run even when approval is required"),
 			"extra": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
@@ -25,15 +24,16 @@ func RegisterValidation(register Register, service ValidationService) {
 			},
 			"cwd": strProp("optional working directory, absolute or relative to the workspace root"),
 		}),
-		Version: "1",
+		Version: "3",
 		Handler: func(arguments json.RawMessage) (string, error) {
 			var params struct {
-				Approve bool     `json:"approve"`
-				Extra   []string `json:"extra"`
-				CWD     string   `json:"cwd"`
+				Extra []string `json:"extra"`
+				CWD   string   `json:"cwd"`
 			}
-			_ = json.Unmarshal(arguments, &params)
-			return service.RunTestsIn(params.Approve, params.CWD, params.Extra...)
+			if err := json.Unmarshal(arguments, &params); err != nil {
+				return "", err
+			}
+			return service.RunTestsIn(params.CWD, params.Extra...)
 		},
 	})
 

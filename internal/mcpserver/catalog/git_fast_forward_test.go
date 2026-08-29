@@ -44,7 +44,7 @@ func TestRegisterGitFastForwardDefinesStableContractsAndRoutesHandlers(t *testin
 
 	wantDescriptions := map[string]string{
 		"repo_fast_forward_preview": "Create a read-only, short-lived, single-use plan for an exact clean-tree fast-forward of the current attached branch to its existing upstream tracking ref. It does not fetch or modify the repository.",
-		"repo_fast_forward":         "Execute one previously reviewed, unexpired and unused fast-forward plan using exactly 'git merge --ff-only <upstream>'. Repository, branch, HEAD, target and clean state are revalidated; requires approval in ask mode.",
+		"repo_fast_forward":         "Execute one previously reviewed, unexpired and unused fast-forward plan using exactly 'git merge --ff-only <upstream>' inside the attested private L3 executor. Repository, branch, HEAD, target and clean state are revalidated; available only in administrator-selected allow mode with no host fallback.",
 	}
 	byName := map[string]Tool{}
 	for _, tool := range registered {
@@ -60,7 +60,7 @@ func TestRegisterGitFastForwardDefinesStableContractsAndRoutesHandlers(t *testin
 		}, "repo"),
 		"repo_fast_forward": object(map[string]any{
 			"plan_id": strProp("plan id returned by repo_fast_forward_preview"),
-			"approve": boolProp("execute the plan when approval is required"),
+			"approve": boolProp("legacy compatibility field; does not grant execution authority"),
 		}, "plan_id"),
 	}
 	for name, want := range wantSchemas {

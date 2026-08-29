@@ -26,7 +26,7 @@ func TestTokenStoreConcurrentSingleUseCodeAndRefresh(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			if _, ok := store.consumeRefresh("refresh"); ok {
+			if _, ok, _ := store.consumeRefresh("refresh"); ok {
 				refreshSuccess.Add(1)
 			}
 		}()

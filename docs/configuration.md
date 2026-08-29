@@ -15,8 +15,9 @@ MCP tool. Use `read-only` by default and `ask` when reviewed writes are required
 - **Components:** the `mcp-devbox` binary and one or more absolute repository roots.
 - **Minimum configuration:** `serve --root <ABSOLUTE_PATH>`; mode defaults to
   `read-only`.
-- **Volumes:** none. Outside the production image, durable operational state falls
-  back below the primary root at `.agent-memory/state`.
+- **Volumes:** none. Outside the production image, durable operational state defaults
+  to an Aeontra user-configuration directory keyed by the primary-root digest and
+  disjoint from every repository root.
 - **Security posture:** no writes, commands, tests, or commits. Reads still pass
   through the jail, secret-path denial, content redaction, and audit.
 - **Validation:** start the process through an MCP stdio client, call
@@ -34,10 +35,12 @@ mcp-devbox serve --root /absolute/path/to/repository --mode read-only
   `--allow-cmd` only when those operations are needed.
 - **Volumes:** none required; use an administrator-owned state directory when local
   state must survive repository replacement.
-- **Security posture:** writes and commands remain jailed and allowlisted. Risky
-  actions require an explicit `approve=true`; preview is not approval.
-- **Validation:** inspect with `repo_status`, apply a disposable patch, run the
-  configured test, and verify the approval boundary before using a real repository.
+- **Security posture:** writes remain jailed. Repository code execution is denied in
+  ask mode because an argv approval cannot bind mutable workspace bytes. Use a private
+  L3 executor plus administrator-selected allow mode only for an explicitly trusted
+  workspace. Preview is not approval.
+- **Validation:** inspect with `repo_status`, apply a disposable patch, and verify the
+  write boundary before using a real repository.
 - **Optional:** GitHub, Coolify, Brain, and a private validation runner.
 
 ```bash
@@ -256,7 +259,6 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_SANDBOX_MAX_PROCESSES` | L3 resource policy | Runner only; not secret | positive; `256` default | `256` | Invalid maximum fails startup. |
 | `MCP_DEVBOX_SANDBOX_MAX_OUTPUT_BYTES` | L3 resource policy | Runner only; not secret | positive, max 8 MiB; `1048576` default | `1048576` | Invalid maximum fails startup. Stdout and stderr share this total budget. |
 | `MCP_DEVBOX_SANDBOX_MAX_CONCURRENT` | L3 resource policy | Runner only; not secret | integer `1..64`; `2` default | `2` | Invalid maximum fails startup. Waiting requests remain bound to their context deadline. |
-| `MCP_DEVBOX_ADMIN_TOKEN` | `mcp-devbox grant` CLI | Only as an alternative to `--admin-token`; secret | none | inject into the local operator process only | Missing requires the flag. It is not a daemon startup setting; the daemon generates its own loopback token. |
 
 ### HTTP, OAuth, and console
 
@@ -299,13 +301,22 @@ routes. This is the recommended deployment for a marketing domain.
 
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
 |---|---|---|---|---|---|
-| `MCP_DEVBOX_STATE_ROOT` | all durable server state | Recommended in production; sensitive path | local fallback `<primary-root>/.agent-memory/state`; absolute path | `/state`; persistent volume outside the repository jail | Missing uses local fallback. Relative/NUL path fails startup. |
+| `MCP_DEVBOX_STATE_ROOT` | all durable server state | Recommended in production; sensitive path | user-configuration state keyed by primary-root digest; absolute path disjoint from every repository root | `/state`; persistent volume outside the repository jail | Missing uses the private user-level default. Relative, root, NUL, or repository-overlapping paths fail startup. |
 | `MCP_DEVBOX_TASK_ROOT` | durable task journal | Optional; sensitive path | none outside image; image `/state/tasks`; absolute path | `/state/tasks`; `/state` volume | Missing disables the task journal. Invalid path or open failure fails startup. |
 | `MCP_DEVBOX_BRAIN_ROOT` | Brain | Required to enable Brain; sensitive path | unset/disabled; absolute and disjoint from repo roots | `/brain`; dedicated volume | Missing leaves Brain tools registered but unavailable. Invalid source, permissions, overlap, Git, or index state fails startup. |
 | `MCP_DEVBOX_MAINTAINER_PROFILE` | repository-maintainer operations | Optional; not secret | unset/disabled or exact `charle-z-production` | maintainer-controlled platform env only | Missing is the portable default: fixed Front Door, production backend, Brain deployment, and official Edge-release maintenance operations fail closed. Unsupported values fail startup. Third-party operators must leave it unset. |
 | `MCP_DEVBOX_OBSERVABILITY` | structured events | Optional; not secret | library default `stderr`; image `file`; `off`, `stderr`, `file`, `both` | `file`; platform env | Missing uses the applicable default. Invalid mode fails startup. |
 | `MCP_DEVBOX_OBSERVABILITY_PATH` | JSONL sink | Required only for an explicit path; sensitive path | in file/both mode defaults to `<state>/logs/observability.jsonl`; absolute path | `/state/logs/observability.jsonl`; `/state` volume | Invalid, unsafe, or unwritable path fails startup. |
 | `MCP_DEVBOX_OBSERVABILITY_MAX_BYTES` | log rotation | Optional; not secret | `16777216`; integer 1 MiB–1 GiB | `16777216`; platform env | Invalid or out-of-range value fails startup. |
+
+The server writes each local secret-read grant channel descriptor under
+`<state-root>/grant-admin/channel-*.json` with mode `0600` inside a `0700` directory.
+The descriptor contains the ephemeral loopback origin and bearer and is removed during
+clean shutdown. Its path is printed only in local operator diagnostics so the CLI can
+open it; the bearer and origin are never printed to MCP stdio, observability, or logs.
+Run `mcp-devbox grant --admin-file <that-private-file> ...` only from a local operator
+shell that can access the configured state root. Grant-admin state is always denied by
+repository read and search policy even if an administrator later misconfigures a path.
 
 ### GitHub adapter
 

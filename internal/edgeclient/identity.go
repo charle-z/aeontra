@@ -258,6 +258,31 @@ func ValidatePrivateRegularFile(path string) error {
 	return requirePrivateRegularFile(path)
 }
 
+// SecurePrivateOpenFile applies the platform-native private-file policy to an
+// already-open regular file and verifies the resulting descriptor.
+func SecurePrivateOpenFile(file *os.File) error {
+	if file == nil {
+		return errors.New("edge private file is unavailable")
+	}
+	if err := securePrivateFile(file); err != nil {
+		return err
+	}
+	return ValidatePrivateOpenFile(file)
+}
+
+// ValidatePrivateOpenFile verifies permissions or ACLs through the retained
+// file descriptor so a path replacement cannot change the object being checked.
+func ValidatePrivateOpenFile(file *os.File) error {
+	if file == nil {
+		return errors.New("edge private file is unavailable")
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("edge private file is unsafe")
+	}
+	return validatePrivateOpenFilePlatform(file, info)
+}
+
 // PreparePrivateRoot creates or validates an administrator-owned private root
 // using the platform's native ownership and ACL rules. It is exported for
 // platform-specific durable stores that live below the Edge state root.

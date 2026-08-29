@@ -177,10 +177,7 @@ func (s *GitCapability) RepoPublish(planID string, approve bool) (string, error)
 		sp.Finish(audit.Deny, planID, []string{st.Dir}, err)
 		return "", err
 	}
-	args := []string{"push", plan.Args["remote"], plan.Args["branch"]}
-	if !wantRemoteExists {
-		args = []string{"push", "-u", plan.Args["remote"], plan.Args["branch"]}
-	}
+	args := []string{"push", "--porcelain", remoteURL, st.Head + ":refs/heads/" + plan.Args["branch"]}
 	// Deliberately do not route this through the generic command allowlist: generic
 	// git push is always blocked there. This exact argv is generated and validated
 	// by the publication plan and still passes the central action posture above.
@@ -197,7 +194,7 @@ func (s *GitCapability) readRemoteBranch(dir, remoteURL, remote, branch string) 
 	if !safeGitName(remote) || strings.Contains(remote, "/") || !safeGitName(branch) {
 		return remoteBranchState{}, fmt.Errorf("unsafe remote or branch")
 	}
-	args := []string{"ls-remote", "--heads", remote, "refs/heads/" + branch}
+	args := []string{"ls-remote", "--heads", remoteURL, "refs/heads/" + branch}
 	if err := s.pol.CheckCommandAllowed("git", args); err != nil {
 		return remoteBranchState{}, err
 	}

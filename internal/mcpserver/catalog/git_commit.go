@@ -11,10 +11,10 @@ type GitCommitService interface {
 func RegisterGitCommit(register Register, service GitCommitService) {
 	register(Tool{
 		Name:        "git_commit",
-		Description: "Stage all changes and commit them in the root or optional selected repo. Write action: denied in read-only; in ask mode set approve=true. Does not push.",
+		Description: "Stage all changes and commit them in the root or optional selected repo through the attested private L3 executor. Available only in administrator-selected allow mode; no host fallback. Does not push.",
 		InputSchema: object(map[string]any{
 			"message": strProp("commit message"),
-			"approve": boolProp("commit even when approval is required"),
+			"approve": boolProp("legacy compatibility field; does not grant execution authority"),
 			"repo":    strProp("optional repo directory, absolute or relative to the workspace root"),
 		}, "message"),
 		Version: "1",

@@ -66,7 +66,7 @@ func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
 		"cpu_millis":    map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxCPUMillis, "maximum": edge.MaxProjectToolboxCPUMillis},
 		"memory_mib":    map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxMemoryMiB, "maximum": edge.MaxProjectToolboxMemoryMiB},
 		"process_limit": map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxProcessLimit, "maximum": edge.MaxProjectToolboxProcessLimit}}
-	s.addDirectTool(toolDef{Name: "project_toolbox_create", Description: "Create or recover the project's persistent rootless Debian toolbox with optional bounded CPU, memory and process limits. The server owns the base image and container identity; packages, caches and writable rootfs remain until explicit cleanup.", InputSchema: closedObject(createProperties, []string{"alias", "target", "idempotency_key"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
+	s.addDirectTool(toolDef{Name: "project_toolbox_create", Description: "Create or recover the project's persistent rootless Debian toolbox with optional bounded CPU, memory and process limits. The server owns the base image and container identity; packages, caches and writable rootfs remain until explicit cleanup. No host container-engine socket is mounted.", InputSchema: closedObject(createProperties, []string{"alias", "target", "idempotency_key"}), Version: "2", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
 		return s.handleProjectToolbox(raw, edge.OperationProjectToolboxCreate)
 	})
 	s.addDirectTool(toolDef{Name: "project_toolbox_status", Description: "Inspect the registered project's persistent rootless toolbox without exposing host paths, engine names or container identifiers.", InputSchema: closedObject(common, []string{"alias", "target"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
@@ -79,7 +79,7 @@ func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
 		name, description string
 		kind              edge.OperationKind
 	}{
-		{name: "project_toolbox_exec", description: "Execute arbitrary argv inside the persistent rootless toolbox with the project at /workspace and its validated user-owned rootless engine at a fixed private endpoint. No implicit shell or command allowlist is added.", kind: edge.OperationProjectToolboxExec},
+		{name: "project_toolbox_exec", description: "Execute arbitrary argv inside the persistent rootless toolbox with the project at /workspace. No host container-engine socket, implicit shell or command allowlist is added.", kind: edge.OperationProjectToolboxExec},
 		{name: "project_toolbox_install", description: "Install toolchains, system packages, rootless container clients or project dependencies by explicit argv as container root; the host package database is not modified.", kind: edge.OperationProjectToolboxInstall},
 	} {
 		definition := definition

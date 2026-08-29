@@ -257,7 +257,7 @@ func applyProjectClone(ctx context.Context, config ProjectPreparationConfig, pla
 		return ProjectStatus{}, projectErr(code, cause)
 	}
 	remoteURL := "https://github.com/" + plan.Owner + "/" + plan.Repository + ".git"
-	if _, err := config.Runner.Run(ctx, plan.CandidatePath, []string{"clone", "--single-branch", "--", remoteURL, "."}, config.Credential); err != nil {
+	if _, err := config.Runner.Run(ctx, plan.CandidatePath, []string{"clone", "--single-branch", "--", remoteURL, plan.CandidatePath}, config.Credential); err != nil {
 		return cleanup(ProjectErrorCloneFailed, errors.New("project clone failed"))
 	}
 	state, inspectErr := config.Projects.inspector.Inspect(ctx, plan.CandidatePath, plan.Owner, plan.Repository)

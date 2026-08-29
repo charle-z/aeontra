@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,10 @@ const (
 	projectBrowserHarnessOutputLimit  = 24 << 10
 	projectBrowserHarnessMaxRuns      = 128
 	projectBrowserHarnessMaxArtifacts = 100
+	projectBrowserHarnessMaxScanItems = 512
+	projectBrowserHarnessMaxDepth     = 8
+	projectBrowserHarnessMaxFileBytes = 128 << 20
+	projectBrowserHarnessMaxReadBytes = 1 << 30
 )
 
 var (
@@ -521,12 +526,16 @@ func applyProjectBrowserHarnessControlFiles(root string, run *projectBrowserHarn
 
 func readBrowserHarnessSmallFile(root, name string, limit int64) (string, error) {
 	path := filepath.Join(root, name)
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !ownedByCurrentUIDPortable(info) || info.Size() < 1 || info.Size() > limit {
+	file, info, err := openStableOwnedRegularUnder(root, path)
+	if err != nil {
 		return "", ErrProjectToolboxUnsafeState
 	}
-	body, err := os.ReadFile(path)
-	if err != nil {
+	defer file.Close()
+	if info.Size() < 1 || info.Size() > limit {
+		return "", ErrProjectToolboxUnsafeState
+	}
+	body, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil || int64(len(body)) != info.Size() {
 		return "", ErrProjectToolboxUnsafeState
 	}
 	value := strings.TrimSpace(string(body))
@@ -538,18 +547,17 @@ func readBrowserHarnessSmallFile(root, name string, limit int64) (string, error)
 
 func readProjectBrowserHarnessLog(root, name string, offset int64, limit int) (string, int64, bool, bool, error) {
 	path := filepath.Join(root, name)
-	info, err := os.Lstat(path)
+	file, info, err := openStableOwnedRegularUnder(root, path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", offset, true, false, nil
 	}
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !ownedByCurrentUIDPortable(info) || offset > info.Size() {
-		return "", 0, false, false, ErrProjectToolboxUnsafeState
-	}
-	file, err := os.Open(path)
 	if err != nil {
 		return "", 0, false, false, ErrProjectToolboxUnsafeState
 	}
 	defer file.Close()
+	if offset > info.Size() {
+		return "", 0, false, false, ErrProjectToolboxUnsafeState
+	}
 	if _, err := file.Seek(offset, 0); err != nil {
 		return "", 0, false, false, ErrProjectToolboxUnsafeState
 	}

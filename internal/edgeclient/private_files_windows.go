@@ -91,6 +91,25 @@ func validatePrivateFilePlatform(path string, _ os.FileInfo) error {
 	return validateWindowsPrivateACLForSID(path, false, sid)
 }
 
+func validatePrivateOpenFilePlatform(file *os.File, _ os.FileInfo) error {
+	if file == nil || file.Fd() == ^uintptr(0) {
+		return errors.New("edge private file is unavailable")
+	}
+	token, sid, err := currentWindowsTokenSID()
+	if err != nil {
+		return errors.New("edge private path owner is unavailable")
+	}
+	defer token.Close()
+	descriptor, err := windows.GetSecurityInfo(windows.Handle(file.Fd()), windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil || descriptor == nil {
+		return errors.New("edge private path ACL is unavailable")
+	}
+	if err := validateWindowsSecurityDescriptor(descriptor, sid, true); err != nil {
+		return errors.New("edge private path ACL is unsafe")
+	}
+	return nil
+}
+
 func validateWindowsPrivateACL(path string, directory bool) error {
 	token, sid, err := currentWindowsTokenSID()
 	if err != nil {

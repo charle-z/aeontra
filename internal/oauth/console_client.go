@@ -88,12 +88,15 @@ func (c *ConsoleClient) Complete(codeValue, verifier string) bool {
 		c.provider.store.revokeAccess(access)
 		return false
 	}
-	c.provider.store.putRefresh(refresh, refreshGrant{
+	if err := c.provider.store.putRefresh(refresh, refreshGrant{
 		clientID:  c.clientID,
 		scope:     consoleClientScope,
 		resource:  c.provider.resource,
 		expiresAt: time.Now().Add(time.Minute),
-	})
+	}); err != nil {
+		c.provider.store.revokeAccess(access)
+		return false
+	}
 	c.provider.store.revokeAccess(access)
 	c.provider.store.revokeRefresh(refresh)
 	return true

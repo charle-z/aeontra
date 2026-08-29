@@ -17,7 +17,7 @@ func TestRunAcceptsMatchingDeployedCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if local.ToolCount != 176 || local.CatalogHash != "sha256:e1e4b93f3f15dc38895249e269e0e2d84162c1b8177ae85fab406c14c2bdd7c2" {
+	if local.ToolCount != 176 || local.CatalogHash != "sha256:6baef470e2a1f872374df6b118ef9de8c0d2c716daf79c59debbd8ee1d9e6a25" {
 		t.Fatalf("Step 6 catalog identity = %d %s", local.ToolCount, local.CatalogHash)
 	}
 	server := versionServer(t, versionResponse{

@@ -70,16 +70,29 @@ func TestResolveWindowsGitPathUsesOnlyAbsoluteRegularExecutables(t *testing.T) {
 
 func TestWindowsGitEnvironmentScopesCredentialToBrokerProcess(t *testing.T) {
 	token := "gho_test_token_1234567890"
-	values := windowsEnvironmentMap(windowsGitEnvironment(`C:\Program Files\Git\cmd`, `C:\state\github-runtime`, `C:\state\github-runtime\tmp`, `C:\state\github-runtime\.askpass.cmd`, token))
+	values := windowsEnvironmentMap(windowsGitEnvironment(`C:\Program Files\Git\cmd`, `C:\state\github-runtime`, `C:\state\github-runtime\tmp`, `C:\state\github-runtime\.askpass.cmd`, token, false))
 	if values["MCP_DEVBOX_GITHUB_TOKEN"] != token {
 		t.Fatal("broker token was not attached to the Git child environment")
 	}
 	if values["GIT_TERMINAL_PROMPT"] != "0" || values["GIT_CONFIG_NOSYSTEM"] != "1" || values["GIT_CONFIG_GLOBAL"] != "NUL" {
 		t.Fatalf("Git credential environment is not isolated: %#v", values)
 	}
+	if values["GIT_CONFIG"] != "NUL" {
+		t.Fatalf("repository Git config was not disabled: %#v", values)
+	}
 	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN", "SSH_AUTH_SOCK", "USERPROFILE"} {
 		if _, ok := values[key]; ok {
 			t.Errorf("Git child environment leaked %s", key)
 		}
+	}
+
+	localValues := windowsEnvironmentMap(windowsGitEnvironment(`C:\Program Files\Git\cmd`, `C:\state\github-runtime`, `C:\state\github-runtime\tmp`, "", "", true))
+	for _, forbidden := range []string{"GIT_ASKPASS", "MCP_DEVBOX_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"} {
+		if _, ok := localValues[forbidden]; ok {
+			t.Errorf("local Git child environment leaked %s", forbidden)
+		}
+	}
+	if localValues["GIT_CONFIG"] != "" {
+		t.Fatalf("explicit local-config inspection was disabled: %#v", localValues)
 	}
 }

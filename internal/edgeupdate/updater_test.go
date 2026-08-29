@@ -52,6 +52,9 @@ func TestStableAvailableUsesOnlySignedOfficialChannel(t *testing.T) {
 	if err != nil || available {
 		t.Fatalf("current available=%t err=%v", available, err)
 	}
+	if _, err := resolver.StableAvailable(context.Background(), "p15.10.0"); err == nil {
+		t.Fatal("signed stable-channel downgrade accepted")
+	}
 	resolver.Client = &http.Client{Transport: officialRoundTripper{channel: body, signature: bytes.Repeat([]byte{0}, ed25519.SignatureSize)}}
 	if _, err := resolver.StableAvailable(context.Background(), "p15.8.0"); err == nil {
 		t.Fatal("tampered channel accepted")
@@ -160,6 +163,29 @@ func TestUpdaterTransitionsFromLegacyReleaseToSemanticReleaseAndRollsBack(t *tes
 		t.Fatalf("legacy rollback = %+v, %v", status, err)
 	}
 	assertCurrentRelease(t, root, "p15.0.45")
+}
+
+func TestUpdaterRejectsImplicitDowngradeButKeepsExplicitRollback(t *testing.T) {
+	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	root := t.TempDir()
+	service := &fakeService{healthy: true}
+	engine := Engine{Root: root, PublicKey: publicKey, Service: service}
+
+	olderSource, olderCompatibility := signedRelease(t, "v1.2.8", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", privateKey)
+	newerSource, newerCompatibility := signedRelease(t, "v1.2.9", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", privateKey)
+	if _, err := engine.Install(olderSource, olderCompatibility); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Install(newerSource, newerCompatibility); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Install(olderSource, olderCompatibility); err == nil {
+		t.Fatal("implicit signed downgrade was accepted")
+	}
+	status, err := engine.Rollback()
+	if err != nil || status.Release != olderCompatibility.Release {
+		t.Fatalf("explicit rollback failed: status=%+v err=%v", status, err)
+	}
 }
 
 func TestUpdaterRestoresPreviousReleaseWhenHealthCheckFails(t *testing.T) {

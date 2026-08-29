@@ -60,6 +60,7 @@ const (
 	maxClients                = 100
 	maxRegistrationsPerWindow = 20
 	registrationWindow        = time.Minute
+	unactivatedClientTTL      = 10 * time.Minute
 )
 
 // clientReg is a dynamically-registered public client (RFC 7591). No secret is stored:
@@ -67,6 +68,7 @@ const (
 type clientReg struct {
 	redirectURIs []string
 	createdAt    time.Time
+	activated    bool
 }
 
 // tokenStore holds short-lived OAuth state. Access grants are keyed by SHA-256 digest;
@@ -82,16 +84,17 @@ type tokenStore struct {
 	clientStorePath  string
 	accessStorePath  string
 	refreshStorePath string
-	regTimes         []time.Time // sliding window of recent registration timestamps
-	failTimes        []time.Time // sliding window of recent passphrase failures
+	regTimes         []time.Time            // sliding window of recent registration timestamps
+	failTimes        map[string][]time.Time // recent passphrase failures by registered client
 }
 
 func newTokenStore() *tokenStore {
 	return &tokenStore{
-		access:  make(map[string]accessGrant),
-		codes:   make(map[string]authCode),
-		refresh: make(map[string]refreshGrant),
-		clients: make(map[string]clientReg),
+		access:    make(map[string]accessGrant),
+		codes:     make(map[string]authCode),
+		refresh:   make(map[string]refreshGrant),
+		clients:   make(map[string]clientReg),
+		failTimes: make(map[string][]time.Time),
 	}
 }
 
@@ -104,6 +107,7 @@ type clientStoreRecord struct {
 	ID           string    `json:"id"`
 	RedirectURIs []string  `json:"redirect_uris"`
 	CreatedAt    time.Time `json:"created_at"`
+	Activated    bool      `json:"activated,omitempty"`
 }
 
 func (s *tokenStore) enableClientPersistence(path string) error {
@@ -132,7 +136,7 @@ func (s *tokenStore) loadClientsLocked() error {
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return fmt.Errorf("decode %s: %w", s.clientStorePath, err)
 	}
-	if doc.Version != 1 {
+	if doc.Version != 1 && doc.Version != 2 {
 		return fmt.Errorf("unsupported client store version %d", doc.Version)
 	}
 	if len(doc.Clients) > maxClients {
@@ -157,7 +161,13 @@ func (s *tokenStore) loadClientsLocked() error {
 		if _, exists := loaded[c.ID]; exists {
 			return fmt.Errorf("client store contains duplicate client id %s", c.ID)
 		}
-		loaded[c.ID] = clientReg{redirectURIs: append([]string(nil), c.RedirectURIs...), createdAt: c.CreatedAt}
+		activated := c.Activated
+		if doc.Version == 1 {
+			// Version 1 predates activation tracking. Preserve existing connectors
+			// rather than treating them as attacker-created pending registrations.
+			activated = true
+		}
+		loaded[c.ID] = clientReg{redirectURIs: append([]string(nil), c.RedirectURIs...), createdAt: c.CreatedAt, activated: activated}
 	}
 	s.clients = loaded
 	return nil
@@ -173,12 +183,13 @@ func (s *tokenStore) persistClientsLocked() error {
 			ID:           id,
 			RedirectURIs: append([]string(nil), c.redirectURIs...),
 			CreatedAt:    c.createdAt,
+			Activated:    c.activated,
 		})
 	}
 	sort.Slice(clients, func(i, j int) bool {
 		return clients[i].ID < clients[j].ID
 	})
-	body, err := json.MarshalIndent(clientStoreFile{Version: 1, Clients: clients}, "", "  ")
+	body, err := json.MarshalIndent(clientStoreFile{Version: 2, Clients: clients}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -229,6 +240,12 @@ func (s *tokenStore) registerClient(redirectURIs []string) (string, error) {
 	defer s.mu.Unlock()
 
 	now := time.Now()
+	for id, client := range s.clients {
+		if !client.activated && now.Sub(client.createdAt) >= unactivatedClientTTL {
+			delete(s.clients, id)
+			delete(s.failTimes, id)
+		}
+	}
 	// Drop timestamps outside the window.
 	kept := s.regTimes[:0]
 	for _, t := range s.regTimes {
@@ -259,6 +276,12 @@ func (s *tokenStore) getClient(id string) (clientReg, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c, ok := s.clients[id]
+	if ok && !c.activated && time.Since(c.createdAt) >= unactivatedClientTTL {
+		delete(s.clients, id)
+		delete(s.failTimes, id)
+		_ = s.persistClientsLocked()
+		return clientReg{}, false
+	}
 	return c, ok
 }
 
@@ -266,13 +289,27 @@ func (s *tokenStore) getClient(id string) (clientReg, bool) {
 const (
 	maxPassphraseFailures = 5
 	passphraseWindow      = time.Minute
+	passphraseGlobalKey   = "*"
 )
 
-// putCode stores a single-use authorization code.
-func (s *tokenStore) putCode(code string, c authCode) {
+// putCode stores a single-use authorization code. The first authorization also marks
+// the dynamic client as activated. That transition must be durable before the code is
+// exposed, otherwise a restart could incorrectly prune a client that already completed
+// owner authorization.
+func (s *tokenStore) putCode(code string, c authCode) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if client, ok := s.clients[c.clientID]; ok && !client.activated {
+		previous := client
+		client.activated = true
+		s.clients[c.clientID] = client
+		if err := s.persistClientsLocked(); err != nil {
+			s.clients[c.clientID] = previous
+			return err
+		}
+	}
 	s.codes[code] = c
+	return nil
 }
 
 // consumeCode atomically returns and deletes a code if present and unexpired. The
@@ -294,66 +331,201 @@ func (s *tokenStore) consumeCode(code string) (authCode, bool) {
 	return c, true
 }
 
-// passphraseThrottled reports whether too many failed passphrase attempts occurred
-// within the window (a simple global backoff; this is a single-owner server).
-func (s *tokenStore) passphraseThrottled() bool {
+// passphraseThrottled enforces both a per-client bucket and one global bucket for the
+// single owner passphrase. The global bucket prevents anonymous DCR registrations from
+// multiplying the brute-force budget.
+func (s *tokenStore) passphraseThrottled(clientID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pruneFailuresLocked()
-	return len(s.failTimes) >= maxPassphraseFailures
+	s.pruneFailuresLocked(clientID)
+	s.pruneFailuresLocked(passphraseGlobalKey)
+	return len(s.failTimes[clientID]) >= maxPassphraseFailures || len(s.failTimes[passphraseGlobalKey]) >= maxPassphraseFailures
 }
 
-func (s *tokenStore) recordPassphraseFailure() {
+func (s *tokenStore) recordPassphraseFailure(clientID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pruneFailuresLocked()
-	s.failTimes = append(s.failTimes, time.Now())
+	s.pruneFailuresLocked(clientID)
+	s.pruneFailuresLocked(passphraseGlobalKey)
+	s.failTimes[clientID] = append(s.failTimes[clientID], time.Now())
+	s.failTimes[passphraseGlobalKey] = append(s.failTimes[passphraseGlobalKey], time.Now())
 }
 
-func (s *tokenStore) resetPassphraseFailures() {
+func (s *tokenStore) resetPassphraseFailures(clientID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.failTimes = nil
+	delete(s.failTimes, clientID)
 }
 
-func (s *tokenStore) pruneFailuresLocked() {
+func (s *tokenStore) pruneFailuresLocked(clientID string) {
 	now := time.Now()
-	kept := s.failTimes[:0]
-	for _, t := range s.failTimes {
+	failures := s.failTimes[clientID]
+	kept := failures[:0]
+	for _, t := range failures {
 		if now.Sub(t) < passphraseWindow {
 			kept = append(kept, t)
 		}
 	}
-	s.failTimes = kept
+	if len(kept) == 0 {
+		delete(s.failTimes, clientID)
+		return
+	}
+	s.failTimes[clientID] = kept
 }
 
-func (s *tokenStore) putRefresh(token string, g refreshGrant) {
+func (s *tokenStore) putRefresh(token string, g refreshGrant) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.refresh[token] = g
-	// Persistence is best-effort: a write error (e.g. full disk) must not break token
-	// issuance. The grant stays in memory for this process's lifetime regardless.
-	_ = s.persistRefreshLocked()
+	return withAccessStoreFileLock(s.refreshStorePath, func() error {
+		if s.refreshStorePath != "" {
+			if err := s.loadRefreshLocked(); err != nil {
+				return err
+			}
+		}
+		s.refresh[token] = g
+		if err := s.persistRefreshLocked(); err != nil {
+			delete(s.refresh, token)
+			return err
+		}
+		return nil
+	})
 }
 
 // consumeRefresh atomically returns and deletes a refresh token (rotation: a refresh
 // token is valid at most once). Expired tokens are rejected.
-func (s *tokenStore) consumeRefresh(token string) (refreshGrant, bool) {
+func (s *tokenStore) consumeRefresh(token string) (refreshGrant, bool, error) {
 	if token == "" {
-		return refreshGrant{}, false
+		return refreshGrant{}, false, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	g, ok := s.refresh[token]
-	if !ok {
-		return refreshGrant{}, false
+	var g refreshGrant
+	var ok bool
+	err := withAccessStoreFileLock(s.refreshStorePath, func() error {
+		if s.refreshStorePath != "" {
+			if err := s.loadRefreshLocked(); err != nil {
+				return err
+			}
+		}
+		g, ok = s.refresh[token]
+		if !ok {
+			return nil
+		}
+		delete(s.refresh, token)
+		if err := s.persistRefreshLocked(); err != nil {
+			s.refresh[token] = g
+			return err
+		}
+		if time.Now().After(g.expiresAt) {
+			ok = false
+		}
+		return nil
+	})
+	if err != nil || !ok {
+		return refreshGrant{}, false, err
 	}
-	delete(s.refresh, token)
-	_ = s.persistRefreshLocked() // rotation must be durable; best-effort on write error
-	if time.Now().After(g.expiresAt) {
-		return refreshGrant{}, false
+	return g, true, nil
+}
+
+// rotateRefresh durably replaces one refresh grant and adds its access grant as one
+// coordinated transaction. The old refresh remains usable after every reported
+// persistence failure; no token pair is returned until both stores are durable.
+func (s *tokenStore) rotateRefresh(oldToken, newToken string, newRefresh refreshGrant, accessToken string, newAccess accessGrant, now time.Time) (refreshGrant, bool, error) {
+	if oldToken == "" || newToken == "" || accessToken == "" {
+		return refreshGrant{}, false, nil
 	}
-	return g, true
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var oldGrant refreshGrant
+	var ok bool
+	err := withAccessStoreFileLock(s.accessStorePath, func() error {
+		return withAccessStoreFileLock(s.refreshStorePath, func() error {
+			if s.accessStorePath != "" {
+				if err := s.loadAccessLocked(); err != nil {
+					return err
+				}
+			}
+			if s.refreshStorePath != "" {
+				if err := s.loadRefreshLocked(); err != nil {
+					return err
+				}
+			}
+			oldGrant, ok = s.refresh[oldToken]
+			if !ok {
+				return nil
+			}
+			if now.After(oldGrant.expiresAt) {
+				delete(s.refresh, oldToken)
+				if err := s.persistRefreshLocked(); err != nil {
+					s.refresh[oldToken] = oldGrant
+					return err
+				}
+				ok = false
+				return nil
+			}
+			if _, exists := s.refresh[newToken]; exists {
+				return fmt.Errorf("refresh token collision")
+			}
+			digest := accessTokenDigest(accessToken)
+			s.pruneAccessLocked(now)
+			if _, exists := s.access[digest]; exists {
+				return fmt.Errorf("access token collision")
+			}
+			if len(s.access) >= maxAccessGrants {
+				return fmt.Errorf("access grant limit reached")
+			}
+
+			accessBefore := cloneAccessGrants(s.access)
+			refreshBefore := cloneRefreshGrants(s.refresh)
+			newAccess.clientID = oldGrant.clientID
+			newAccess.resource = oldGrant.resource
+			newAccess.scope = oldGrant.scope
+			newAccess.expiresAt = now.Add(accessTokenTTL)
+			newRefresh.clientID = oldGrant.clientID
+			newRefresh.resource = oldGrant.resource
+			newRefresh.scope = oldGrant.scope
+			newRefresh.expiresAt = now.Add(refreshTokenTTL)
+			s.access[digest] = newAccess
+			delete(s.refresh, oldToken)
+			s.refresh[newToken] = newRefresh
+
+			if err := s.persistAccessLocked(); err != nil {
+				s.access = accessBefore
+				s.refresh = refreshBefore
+				return err
+			}
+			if err := s.persistRefreshLocked(); err != nil {
+				s.access = accessBefore
+				s.refresh = refreshBefore
+				if rollbackErr := s.persistAccessLocked(); rollbackErr != nil {
+					return fmt.Errorf("persist refresh rotation: %v; roll back access store: %w", err, rollbackErr)
+				}
+				return err
+			}
+			return nil
+		})
+	})
+	if err != nil || !ok {
+		return refreshGrant{}, false, err
+	}
+	return oldGrant, true, nil
+}
+
+func cloneAccessGrants(src map[string]accessGrant) map[string]accessGrant {
+	dst := make(map[string]accessGrant, len(src))
+	for key, grant := range src {
+		dst[key] = grant
+	}
+	return dst
+}
+
+func cloneRefreshGrants(src map[string]refreshGrant) map[string]refreshGrant {
+	dst := make(map[string]refreshGrant, len(src))
+	for key, grant := range src {
+		dst[key] = grant
+	}
+	return dst
 }
 
 type refreshStoreFile struct {

@@ -55,6 +55,8 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		serviceCore:      core,
 		SourceCapability: source,
 		githubRun:        execGitHubHTTPSRunner,
+		gitReadRun:       newGitReadRunner(pol.Roots()),
+		gitMutation:      disabledSandboxRunner{},
 	}
 	repository := &RepositoryCapability{serviceCore: core, GitCapability: git}
 	platform := &PlatformCapability{
@@ -102,6 +104,7 @@ func (s *Service) WithRunner(r Runner) *Service {
 // WithSandboxRunner overrides the L3 sandbox runner (tests/future backends).
 func (s *Service) WithSandboxRunner(r SandboxRunner) *Service {
 	s.ExecutionCapability.configureSandbox(r)
+	s.GitCapability.configureSandbox(r)
 	return s
 }
 

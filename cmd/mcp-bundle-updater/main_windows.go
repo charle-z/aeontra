@@ -359,9 +359,16 @@ func (u *windowsUpdater) updateStable(ctx context.Context, config windowsService
 	if err := u.recoverPendingTransaction(config); err != nil {
 		return windowsStatus{}, err
 	}
+	active, previous, err := u.readMarkers()
+	if err != nil {
+		return windowsStatus{}, err
+	}
 	channel, archive, err := u.fetchStable(ctx)
 	if err != nil {
 		return windowsStatus{}, err
+	}
+	if order, compareErr := bundle.CompareRelease(channel.Release, active.Release); compareErr != nil || order < 0 {
+		return windowsStatus{}, errors.New("stable channel release is older than active release")
 	}
 	if err := verifyDigest(archive, channel.ArchiveHash); err != nil {
 		return windowsStatus{}, err
@@ -382,10 +389,6 @@ func (u *windowsUpdater) updateStable(ctx context.Context, config windowsService
 		return windowsStatus{}, &bundle.VerificationError{Code: bundle.BundleMismatch}
 	}
 	if err := installWindowsRelease(u.installRoot, staging, expected, u.publicKey); err != nil {
-		return windowsStatus{}, err
-	}
-	active, previous, err := u.readMarkers()
-	if err != nil {
 		return windowsStatus{}, err
 	}
 	if active.Release == channel.Release {

@@ -42,11 +42,11 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 		}
 		return []byte("tb_11111111111111111111111111111111|" + imageID + "\n"), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "json .Mounts"):
-		return []byte(`[{"Type":"bind","Source":"` + runner.workspace + `","Destination":"/workspace","RW":true},{"Type":"bind","Source":"` + runner.socket + `","Destination":"/run/mcp-devbox/container.sock","RW":true}]`), nil
+		return []byte(`[{"Type":"bind","Source":"` + runner.workspace + `","Destination":"/workspace","RW":true}]`), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "HostConfig.Memory"):
 		return []byte("8589934592|4000000000|2048\n"), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "json .Config.Env"):
-		return []byte(`["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","DOCKER_HOST=unix:///run/mcp-devbox/container.sock","CONTAINER_HOST=unix:///run/mcp-devbox/container.sock","MCP_DEVBOX_CONTAINER_ENGINE=podman","MCP_DEVBOX_CONTAINER_LABEL=mcp.devbox.toolbox.parent=tb_11111111111111111111111111111111","COMPOSE_PROJECT_NAME=mcp-tb-1111111111111111"]`), nil
+		return []byte(`["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS=disabled"]`), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "SizeRw"):
 		return []byte("4096|83886080\n"), nil
 	case strings.Contains(joined, " inspect "):
@@ -190,10 +190,15 @@ func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *test
 			createCall = strings.Join(call, " ")
 		}
 	}
-	if !containsToolboxArgs(createCall, "--cpus 4.000", "--memory 8192m", "--pids-limit 2048", "--volume "+filepath.Join(stateRoot, "podman.sock")+":/run/mcp-devbox/container.sock:rw", "--env DOCKER_HOST=unix:///run/mcp-devbox/container.sock", "--env CONTAINER_HOST=unix:///run/mcp-devbox/container.sock", "--env MCP_DEVBOX_CONTAINER_ENGINE=podman", "--env MCP_DEVBOX_CONTAINER_LABEL=mcp.devbox.toolbox.parent=tb_11111111111111111111111111111111", "--env COMPOSE_PROJECT_NAME=mcp-tb-1111111111111111") {
+	if !containsToolboxArgs(createCall, "--cpus 4.000", "--memory 8192m", "--pids-limit 2048", "--env MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS=disabled", "--volume "+workspaceRoot+":/workspace:rw") {
 		t.Fatalf("create call=%q", createCall)
 	}
-	if !created.ContainerAccess || created.WritableBytes != 4096 || created.RootFSBytes != 80<<20 {
+	for _, forbidden := range []string{"container.sock", "DOCKER_HOST", "CONTAINER_HOST", "MCP_DEVBOX_CONTAINER_ENGINE", "MCP_DEVBOX_CONTAINER_LABEL", "COMPOSE_PROJECT_NAME"} {
+		if strings.Contains(createCall, forbidden) {
+			t.Fatalf("create call exposes container authority %q: %q", forbidden, createCall)
+		}
+	}
+	if created.ContainerAccess || created.WritableBytes != 4096 || created.RootFSBytes != 80<<20 {
 		t.Fatalf("storage/container metadata=%+v", created)
 	}
 	if info, err := os.Lstat(filepath.Join(stateRoot, projectToolboxStateDirectory, workspace.ID+".json")); err != nil || info.Mode().Perm() != 0o600 || info.Mode()&os.ModeSymlink != 0 {
@@ -390,7 +395,7 @@ func TestProjectToolboxManagerUsesValidatedRootlessSocketForPullAndCreate(t *tes
 		}
 		if strings.Contains(joined, " create ") {
 			createSeen = true
-			if !strings.Contains(joined, " --volume "+socketPath+":"+projectToolboxContainerSocket+":rw ") || strings.Contains(joined, "/var/run/docker.sock") {
+			if strings.Contains(joined, socketPath+":") || strings.Contains(joined, "container.sock") || strings.Contains(joined, "/var/run/docker.sock") {
 				t.Fatalf("create authority=%q", call)
 			}
 		}

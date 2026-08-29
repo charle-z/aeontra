@@ -22,39 +22,57 @@ func (runner *fakeDevGitRunner) Run(_ context.Context, dir string, args []string
 	runner.calls = append(runner.calls, append([]string(nil), args...))
 	runner.token = credential.Token
 	joined := strings.Join(args, " ")
+	remoteURL := "https://github.com/" + runner.owner + "/" + runner.repository + ".git"
 	if strings.Contains(joined, credential.Token) {
 		return "", errors.New("token appeared in argv")
 	}
 	switch {
 	case len(args) > 0 && args[0] == "clone":
-		target := filepath.Join(dir, args[len(args)-1])
+		target := args[len(args)-1]
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(dir, target)
+		}
 		if err := os.MkdirAll(filepath.Join(target, ".git"), 0o700); err != nil {
 			return "", err
 		}
 		return "cloned", nil
-	case joined == "remote get-url origin":
-		return "https://github.com/" + runner.owner + "/" + runner.repository + ".git\n", nil
-	case joined == "remote get-url --push origin":
-		return "https://github.com/" + runner.owner + "/" + runner.repository + ".git\n", nil
+	case joined == `config --local --no-includes --get-regexp ^remote\.origin\.(url|pushurl)$`:
+		return "remote.origin.url " + remoteURL + "\n", nil
 	case joined == "branch --show-current":
 		return runner.branch + "\n", nil
 	case joined == "rev-parse HEAD":
 		return runner.head + "\n", nil
 	case joined == "status --porcelain=v1 --untracked-files=normal":
 		return runner.status, nil
-	case strings.HasPrefix(joined, "ls-remote --heads origin "):
+	case strings.HasPrefix(joined, "ls-remote --heads "+remoteURL+" "):
 		if runner.remoteHead == "" {
 			return "", nil
 		}
 		return runner.remoteHead + "\trefs/heads/" + runner.branch + "\n", nil
-	case strings.HasPrefix(joined, "fetch --no-tags origin "), strings.HasPrefix(joined, "merge-base --is-ancestor "):
+	case strings.HasPrefix(joined, "fetch --no-tags "+remoteURL+" "), strings.HasPrefix(joined, "merge-base --is-ancestor "):
 		return "", nil
-	case joined == "push --porcelain origin "+runner.branch:
+	case joined == "push --porcelain "+remoteURL+" "+runner.head+":refs/heads/"+runner.branch:
 		runner.remoteHead = runner.head
 		return "published", nil
 	default:
 		return "", errors.New("unexpected git call: " + joined)
 	}
+}
+
+func (runner *fakeDevGitRunner) VerifyRemoteAncestor(_ context.Context, _ string, _ string, _ string, remoteHead, head string, _ GitHubCredential) error {
+	if remoteHead == "" || head == "" {
+		return errors.New("missing commit")
+	}
+	return nil
+}
+
+func (runner *fakeDevGitRunner) PublishCommit(_ context.Context, _ string, _ string, head, branch string, _ GitHubCredential) (string, error) {
+	if head != runner.head || branch != runner.branch {
+		return "", errors.New("publication binding changed")
+	}
+	runner.calls = append(runner.calls, []string{"isolated-push", head, branch})
+	runner.remoteHead = head
+	return "published", nil
 }
 
 func newDevGitBrokerTest(t *testing.T) (*devGitBroker, *fakeDevGitRunner) {

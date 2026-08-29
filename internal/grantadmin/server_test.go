@@ -71,6 +71,12 @@ func TestHandler_ApproveGrantRequiresAdminToken(t *testing.T) {
 		!strings.Contains(auditBuf.String(), `"decision":"allow"`) {
 		t.Fatalf("approval should be audited, got %s", auditBuf.String())
 	}
+	if strings.Contains(auditBuf.String(), req.ID) {
+		t.Fatalf("audit leaked capability request id: %s", auditBuf.String())
+	}
+	if !strings.Contains(auditBuf.String(), "request_correlation=sha256:") {
+		t.Fatalf("audit omitted irreversible request correlation: %s", auditBuf.String())
+	}
 }
 
 func TestParseTTL(t *testing.T) {

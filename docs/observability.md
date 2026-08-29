@@ -36,8 +36,9 @@ mount. Recommended container mount:
 
 The daemon creates directories with `0700`, files with `0600`, rotates at the byte
 limit, and keeps four total fixed segments (active plus `.1`, `.2`, `.3`). Audit uses
-the same secure writer with four 32 MiB segments. The fallback outside the production
-image is `<primary-root>/.agent-memory/state`. Symlink files/ancestors and broadly
+the same secure writer with four 32 MiB segments. Outside the production image, the
+default is an Aeontra user-configuration state directory keyed by the primary-root
+digest and disjoint from repository roots. Symlink files/ancestors and broadly
 accessible target directories are rejected.
 
 ## Persistent metrics

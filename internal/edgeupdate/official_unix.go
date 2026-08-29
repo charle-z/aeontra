@@ -36,6 +36,16 @@ func (r OfficialResolver) UpdateStable(ctx context.Context, engine Engine) (Stat
 	if err != nil {
 		return Status{}, err
 	}
+	current, err := engine.Status()
+	if err != nil {
+		return Status{}, err
+	}
+	if current.Release != "" {
+		order, compareErr := bundle.CompareRelease(channel.Release, current.Release)
+		if compareErr != nil || order < 0 {
+			return Status{}, errors.New("stable channel release is older than active release")
+		}
+	}
 	archiveURL := OfficialBaseURL + "/" + channel.Release + "/mcp-devbox-edge_" + channel.Release + "_" + channel.Architecture + ".tar.gz"
 	archive, err := getBounded(ctx, client, archiveURL, 512<<20)
 	if err != nil || digestBytes(archive) != channel.ArchiveHash {
@@ -60,7 +70,14 @@ func (r OfficialResolver) StableAvailable(ctx context.Context, currentRelease st
 	if err != nil {
 		return false, err
 	}
-	return channel.Release != currentRelease, nil
+	if currentRelease == "" {
+		return true, nil
+	}
+	order, err := bundle.CompareRelease(channel.Release, currentRelease)
+	if err != nil || order < 0 {
+		return false, errors.New("stable channel release is older than active release")
+	}
+	return order > 0, nil
 }
 
 func (r OfficialResolver) stableChannel(ctx context.Context) (bundle.Channel, *http.Client, error) {

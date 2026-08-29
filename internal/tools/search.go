@@ -17,6 +17,7 @@ import (
 var ignoredDirs = map[string]bool{
 	".git": true, "node_modules": true, "vendor": true,
 	"dist": true, "build": true, ".idea": true, ".vscode": true,
+	"grant-admin": true,
 }
 
 const maxSearchMatches = 200
@@ -72,7 +73,7 @@ func (s *RepositoryCapability) SearchCode(query string) (string, error) {
 // searchFile scans one file and writes "relpath:line: text" for each match,
 // incrementing the shared match counter via total.
 func searchFile(b *strings.Builder, s *RepositoryCapability, re *regexp.Regexp, path string, total *int) {
-	f, err := os.Open(path)
+	f, _, err := openContainedRegular(s.root, path)
 	if err != nil {
 		return
 	}

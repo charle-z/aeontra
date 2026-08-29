@@ -13,10 +13,11 @@ var ErrSecretDenied = errors.New("policy: access to secret path denied")
 // secretSegments are directory/file names that, if they appear as ANY path
 // segment, mark the whole path as secret (e.g. ".ssh/known_hosts" is denied).
 var secretSegments = map[string]bool{
-	".ssh":   true,
-	".aws":   true,
-	".gnupg": true,
-	".gpg":   true,
+	".ssh":        true,
+	".aws":        true,
+	".gnupg":      true,
+	".gpg":        true,
+	"grant-admin": true,
 }
 
 // secretBasenames are exact (case-insensitive) file names that are always secret.

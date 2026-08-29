@@ -49,6 +49,11 @@ type projectBrowserHarnessPaths struct {
 	ContainerRoot, ContainerRunRoot, ContainerProfileRoot string
 }
 
+type projectBrowserArtifactDigest struct {
+	Info   os.FileInfo
+	SHA256 string
+}
+
 func projectBrowserHarnessPathsFor(workspace Workspace, runID, profile string) projectBrowserHarnessPaths {
 	hostRoot := filepath.Join(workspace.Path, filepath.FromSlash(projectBrowserHarnessRootRelative))
 	containerRoot := "/workspace/" + projectBrowserHarnessRootRelative
@@ -103,42 +108,58 @@ func ensureProjectBrowserHarnessDirectory(path string) error {
 
 func (manager *ProjectToolboxManager) BrowserHarnessArtifactList(request ProjectBrowserHarnessArtifactListRequest) ([]ProjectBrowserHarnessArtifactSummary, error) {
 	manager.mu.Lock()
-	defer manager.mu.Unlock()
 	if request.Limit < 1 || request.Limit > projectBrowserHarnessMaxArtifacts {
+		manager.mu.Unlock()
 		return nil, ErrProjectToolboxUnsafeState
 	}
 	if _, _, err := manager.browserHarnessRecord(request.ProjectAlias, request.TargetAlias, request.Workspace, request.RunID); err != nil {
+		manager.mu.Unlock()
 		return nil, err
 	}
+	manager.mu.Unlock()
 	_, _, artifacts, err := collectProjectBrowserHarnessArtifacts(request.Workspace, request.RunID, request.Limit)
 	return artifacts, err
 }
 
 func (manager *ProjectToolboxManager) BrowserHarnessArtifactRead(request ProjectBrowserHarnessArtifactReadRequest) (ProjectBrowserHarnessArtifactChunk, error) {
 	manager.mu.Lock()
-	defer manager.mu.Unlock()
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > projectBrowserHarnessOutputLimit {
+		manager.mu.Unlock()
 		return ProjectBrowserHarnessArtifactChunk{}, ErrProjectToolboxUnsafeState
 	}
 	if _, _, err := manager.browserHarnessRecord(request.ProjectAlias, request.TargetAlias, request.Workspace, request.RunID); err != nil {
+		manager.mu.Unlock()
 		return ProjectBrowserHarnessArtifactChunk{}, err
 	}
 	path, relative, err := resolveProjectBrowserHarnessArtifact(request.Workspace, request.RunID, request.Path)
 	if err != nil {
+		manager.mu.Unlock()
 		return ProjectBrowserHarnessArtifactChunk{}, err
 	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !ownedByCurrentUIDPortable(info) || request.Offset > info.Size() {
-		return ProjectBrowserHarnessArtifactChunk{}, ErrProjectToolboxUnsafeState
-	}
-	file, err := os.Open(path)
+	manager.mu.Unlock()
+	paths := projectBrowserHarnessPathsFor(request.Workspace, request.RunID, "default")
+	file, info, err := openStableOwnedRegularUnder(paths.HostRunRoot, path)
 	if err != nil {
 		return ProjectBrowserHarnessArtifactChunk{}, ErrProjectToolboxUnsafeState
 	}
 	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
+	if info.Size() < 0 || info.Size() > projectBrowserHarnessMaxFileBytes || request.Offset > info.Size() {
 		return ProjectBrowserHarnessArtifactChunk{}, ErrProjectToolboxUnsafeState
+	}
+	cacheKey := request.Workspace.ID + "\x00" + request.RunID + "\x00" + relative
+	manager.mu.Lock()
+	cached, cacheHit := manager.artifactHash[cacheKey]
+	manager.mu.Unlock()
+	digest := cached.SHA256
+	if !cacheHit || cached.Info == nil || !os.SameFile(cached.Info, info) || cached.Info.Size() != info.Size() || !cached.Info.ModTime().Equal(info.ModTime()) {
+		hash := sha256.New()
+		if _, err := io.Copy(hash, file); err != nil {
+			return ProjectBrowserHarnessArtifactChunk{}, ErrProjectToolboxUnsafeState
+		}
+		digest = hex.EncodeToString(hash.Sum(nil))
+		manager.mu.Lock()
+		manager.artifactHash[cacheKey] = projectBrowserArtifactDigest{Info: info, SHA256: digest}
+		manager.mu.Unlock()
 	}
 	if _, err := file.Seek(request.Offset, io.SeekStart); err != nil {
 		return ProjectBrowserHarnessArtifactChunk{}, ErrProjectToolboxUnsafeState
@@ -155,7 +176,7 @@ func (manager *ProjectToolboxManager) BrowserHarnessArtifactRead(request Project
 	}
 	buffer = buffer[:n]
 	next := request.Offset + int64(n)
-	return ProjectBrowserHarnessArtifactChunk{RunID: request.RunID, Path: relative, MediaType: browserHarnessMediaType(relative), SHA256: hex.EncodeToString(hash.Sum(nil)), Bytes: info.Size(), Offset: request.Offset, Next: next, EOF: next == info.Size(), DataBase64: base64.StdEncoding.EncodeToString(buffer)}, nil
+	return ProjectBrowserHarnessArtifactChunk{RunID: request.RunID, Path: relative, MediaType: browserHarnessMediaType(relative), SHA256: digest, Bytes: info.Size(), Offset: request.Offset, Next: next, EOF: next == info.Size(), DataBase64: base64.StdEncoding.EncodeToString(buffer)}, nil
 }
 
 func scanProjectBrowserHarnessArtifacts(workspace Workspace, runID string, limit int) (int, int64, error) {
@@ -168,59 +189,74 @@ func collectProjectBrowserHarnessArtifacts(workspace Workspace, runID string, li
 		return 0, 0, nil, ErrProjectToolboxUnsafeState
 	}
 	paths := projectBrowserHarnessPathsFor(workspace, runID, "default")
-	entries := []ProjectBrowserHarnessArtifactSummary{}
-	var total int64
-	count := 0
+	state := projectBrowserArtifactScan{limit: limit}
 	for _, rootName := range []string{"artifacts", "downloads"} {
-		root := filepath.Join(paths.HostRunRoot, rootName)
-		if info, err := os.Lstat(root); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return 0, 0, nil, ErrProjectToolboxUnsafeState
-		}
-		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return ErrProjectToolboxUnsafeState
-			}
-			if path == root {
-				return nil
-			}
-			info, err := entry.Info()
-			if err != nil {
-				return ErrProjectToolboxUnsafeState
-			}
-			if info.Mode()&os.ModeSymlink != 0 {
-				return ErrProjectToolboxUnsafeState
-			}
-			if info.IsDir() {
-				return nil
-			}
-			if !info.Mode().IsRegular() || !ownedByCurrentUIDPortable(info) {
-				return ErrProjectToolboxUnsafeState
-			}
-			rel, err := filepath.Rel(paths.HostRunRoot, path)
-			if err != nil {
-				return ErrProjectToolboxUnsafeState
-			}
-			rel = filepath.ToSlash(rel)
-			if len(rel) > 1024 || strings.ContainsRune(rel, 0) {
-				return ErrProjectToolboxUnsafeState
-			}
-			total += info.Size()
-			count++
-			if len(entries) < limit {
-				hash, err := sha256ProjectBrowserArtifact(path)
-				if err != nil {
-					return err
-				}
-				entries = append(entries, ProjectBrowserHarnessArtifactSummary{Path: rel, MediaType: browserHarnessMediaType(rel), SHA256: hash, Bytes: info.Size(), UpdatedAt: info.ModTime().UTC()})
-			}
-			return nil
-		})
-		if err != nil {
+		if err := scanProjectBrowserHarnessDirectory(paths.HostRunRoot, rootName, 1, &state); err != nil {
 			return 0, 0, nil, err
 		}
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
-	return count, total, entries, nil
+	sort.Slice(state.entries, func(i, j int) bool { return state.entries[i].Path < state.entries[j].Path })
+	return state.count, state.total, state.entries, nil
+}
+
+type projectBrowserArtifactScan struct {
+	entries []ProjectBrowserHarnessArtifactSummary
+	count   int
+	scanned int
+	total   int64
+	limit   int
+}
+
+func scanProjectBrowserHarnessDirectory(runRoot, relative string, depth int, state *projectBrowserArtifactScan) error {
+	if state == nil || depth > projectBrowserHarnessMaxDepth || len(relative) > 1024 {
+		return ErrProjectToolboxUnsafeState
+	}
+	directory, _, err := openStableOwnedDirectoryUnder(runRoot, filepath.Join(runRoot, filepath.FromSlash(relative)))
+	if err != nil {
+		return ErrProjectToolboxUnsafeState
+	}
+	defer directory.Close()
+	for {
+		infos, readErr := directory.Readdir(32)
+		for _, info := range infos {
+			state.scanned++
+			if state.scanned > projectBrowserHarnessMaxScanItems || info.Name() == "" || strings.ContainsAny(info.Name(), "/\\\x00") || info.Mode()&os.ModeSymlink != 0 || !ownedByCurrentUIDPortable(info) {
+				return ErrProjectToolboxUnsafeState
+			}
+			child := filepath.ToSlash(filepath.Join(relative, info.Name()))
+			if len(child) > 1024 {
+				return ErrProjectToolboxUnsafeState
+			}
+			if info.IsDir() {
+				if err := scanProjectBrowserHarnessDirectory(runRoot, child, depth+1, state); err != nil {
+					return err
+				}
+				continue
+			}
+			if !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > projectBrowserHarnessMaxFileBytes || state.total > projectBrowserHarnessMaxReadBytes-info.Size() {
+				return ErrProjectToolboxUnsafeState
+			}
+			state.count++
+			state.total += info.Size()
+			if state.count > projectBrowserHarnessMaxArtifacts {
+				return ErrProjectToolboxUnsafeState
+			}
+			if len(state.entries) < state.limit {
+				path := filepath.Join(runRoot, filepath.FromSlash(child))
+				digest, err := sha256ProjectBrowserArtifact(runRoot, path)
+				if err != nil {
+					return err
+				}
+				state.entries = append(state.entries, ProjectBrowserHarnessArtifactSummary{Path: child, MediaType: browserHarnessMediaType(child), SHA256: digest, Bytes: info.Size(), UpdatedAt: info.ModTime().UTC()})
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			return nil
+		}
+		if readErr != nil {
+			return ErrProjectToolboxUnsafeState
+		}
+	}
 }
 
 func resolveProjectBrowserHarnessArtifact(workspace Workspace, runID, value string) (string, string, error) {
@@ -240,8 +276,8 @@ func resolveProjectBrowserHarnessArtifact(workspace Workspace, runID, value stri
 	return path, clean, nil
 }
 
-func sha256ProjectBrowserArtifact(path string) (string, error) {
-	file, err := os.Open(path)
+func sha256ProjectBrowserArtifact(root, path string) (string, error) {
+	file, _, err := openStableOwnedRegularUnder(root, path)
 	if err != nil {
 		return "", ErrProjectToolboxUnsafeState
 	}

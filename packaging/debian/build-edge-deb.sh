@@ -2,32 +2,29 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: build-edge-deb.sh --bundle <SIGNED_RELEASE_DIR> --output <DIR> --release <p15.x.y|vMAJOR.MINOR.PATCH> --signing-key <GPG_KEY_ID>\n' >&2
+  printf 'usage: build-edge-deb.sh --bundle <SIGNED_RELEASE_DIR> --output <DIR> --release <p15.x.y|vMAJOR.MINOR.PATCH>\n' >&2
   exit 2
 }
 
 BUNDLE=""
 OUTPUT=""
 RELEASE=""
-SIGNING_KEY=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --bundle) BUNDLE="${2:-}"; shift 2 ;;
     --output) OUTPUT="${2:-}"; shift 2 ;;
     --release) RELEASE="${2:-}"; shift 2 ;;
-    --signing-key) SIGNING_KEY="${2:-}"; shift 2 ;;
     *) usage ;;
   esac
 done
 
 [[ "$BUNDLE" = /* && "$OUTPUT" = /* ]] || usage
 [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ || "$RELEASE" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || usage
-[ -n "$SIGNING_KEY" ] || usage
 PACKAGE_VERSION="${RELEASE#p}"
 if [[ "$RELEASE" = v* ]]; then
   PACKAGE_VERSION="${RELEASE#v}"
 fi
-for command in dpkg-deb gpg sha256sum install mktemp; do
+for command in dpkg-deb sha256sum install mktemp; do
   command -v "$command" >/dev/null 2>&1 || { printf 'missing build command: %s\n' "$command" >&2; exit 1; }
 done
 
@@ -146,6 +143,5 @@ find "$PACKAGE_ROOT" -print0 | xargs -0 touch --no-dereference --date="@$SOURCE_
 install -d -m 0755 "$OUTPUT"
 DEB="$OUTPUT/mcp-devbox-edge_${PACKAGE_VERSION}_amd64.deb"
 dpkg-deb --root-owner-group --build "$PACKAGE_ROOT" "$DEB"
-gpg --batch --yes --local-user "$SIGNING_KEY" --armor --detach-sign --output "$DEB.asc" "$DEB"
 (cd "$OUTPUT" && sha256sum "$(basename "$DEB")") >"$DEB.sha256"
-printf 'built signed package %s\n' "$DEB"
+printf 'built unsigned package %s\n' "$DEB"

@@ -103,10 +103,10 @@ func (p pendingSandboxRunner) Run(context.Context, SandboxRunRequest) (SandboxRu
 // is NOT allowlist-limited: the sandbox (network-denied, read-only rootfs, workspace-
 // only, resource-limited) is what contains it, so shells and arbitrary tools are
 // permitted — but ONLY when a real sandbox backend is available. It is mode-gated
-// (read-only denies; ask needs approve=true; allow runs), audited, and its combined
+// (read-only and ask deny; allow runs), audited, and its combined
 // output is redacted before return. This is "broad execution, contained": it never
 // grants the model a general-purpose control plane over the host.
-func (s *ExecutionCapability) SandboxExec(argv []string, approve bool) (string, error) {
+func (s *ExecutionCapability) SandboxExec(argv []string) (string, error) {
 	sp := s.log.Start("sandbox_exec")
 	if len(argv) == 0 {
 		err := fmt.Errorf("command is required")
@@ -119,14 +119,9 @@ func (s *ExecutionCapability) SandboxExec(argv []string, approve bool) (string, 
 		sp.Finish(audit.Deny, summarize(argv...), nil, err)
 		return "", err
 	}
-	needsApproval, err := s.pol.CheckSandboxExec()
-	if err != nil {
+	if err := s.pol.CheckContainedExecution(); err != nil {
 		sp.Finish(audit.Deny, summarize(argv...), nil, err)
 		return "", err
-	}
-	if needsApproval && !approve {
-		sp.Finish(audit.Ask, summarize(argv...), nil, nil)
-		return fmt.Sprintf("APPROVAL REQUIRED: sandbox_exec would run %q in the L3 sandbox. Re-invoke with approve=true.", argv[0]), nil
 	}
 
 	res, runErr := s.sandbox.Run(context.Background(), SandboxRunRequest{Dir: s.root, Argv: argv})

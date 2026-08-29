@@ -158,7 +158,7 @@ func (broker *devGitBroker) clone(ctx context.Context, request DevGitRequest) (D
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return DevGitResponse{}, errors.New("development clone target is unavailable")
 	}
-	args := []string{"clone", "--single-branch", "--branch", request.Branch, "--", remoteURL, request.Directory}
+	args := []string{"clone", "--single-branch", "--branch", request.Branch, "--", remoteURL, target}
 	if _, err := broker.config.Runner.Run(ctx, broker.config.Workspace.Path, args, broker.config.Credential); err != nil {
 		if pathInside(broker.config.Workspace.Path, target) {
 			_ = os.RemoveAll(target)
@@ -173,13 +173,9 @@ func (broker *devGitBroker) existingClone(ctx context.Context, request DevGitReq
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return DevGitResponse{}, errors.New("development clone target is unsafe")
 	}
-	remote, err := broker.git(ctx, target, "remote", "get-url", "origin")
-	if err != nil || strings.TrimSpace(remote) != remoteURL {
+	remote, err := broker.configuredRemoteURL(ctx, target)
+	if err != nil || remote != remoteURL {
 		return DevGitResponse{}, errors.New("development clone remote does not match")
-	}
-	pushRemote, err := broker.git(ctx, target, "remote", "get-url", "--push", "origin")
-	if err != nil || strings.TrimSpace(pushRemote) != remoteURL {
-		return DevGitResponse{}, errors.New("development clone push remote does not match")
 	}
 	branch, err := broker.git(ctx, target, "branch", "--show-current")
 	if err != nil || strings.TrimSpace(branch) != request.Branch {
@@ -233,10 +229,14 @@ func (broker *devGitBroker) publish(ctx context.Context, request DevGitRequest) 
 	if err != nil || remoteURL != plan.RemoteURL || head != plan.Head || remoteHead != plan.RemoteHead {
 		return DevGitResponse{}, errors.New("development publication state changed")
 	}
-	if _, err := broker.git(ctx, dir, "push", "--porcelain", "origin", plan.Branch); err != nil {
+	transport, ok := broker.config.Runner.(devGitTransportRunner)
+	if !ok {
+		return DevGitResponse{}, errors.New("development Git transport boundary is unavailable")
+	}
+	if _, err := transport.PublishCommit(ctx, dir, remoteURL, head, plan.Branch, broker.config.Credential); err != nil {
 		return DevGitResponse{}, errors.New("development Git publish failed")
 	}
-	after, err := broker.remoteHead(ctx, dir, plan.Branch)
+	after, err := broker.remoteHead(ctx, dir, remoteURL, plan.Branch)
 	if err != nil || after != head {
 		return DevGitResponse{}, errors.New("development Git publish verification failed")
 	}
@@ -264,24 +264,17 @@ func (broker *devGitBroker) revalidate(ctx context.Context, directory, branch st
 	if err != nil {
 		return "", "", "", "", err
 	}
-	remoteURLText, err := broker.git(ctx, dir, "remote", "get-url", "origin")
-	remoteURL := strings.TrimSpace(remoteURLText)
+	remoteURL, err := broker.configuredRemoteURL(ctx, dir)
 	if err != nil || !broker.validRemoteURL(remoteURL) {
 		return "", "", "", "", errors.New("development Git remote is not owner-bound")
 	}
-	pushURLText, err := broker.git(ctx, dir, "remote", "get-url", "--push", "origin")
-	if err != nil || strings.TrimSpace(pushURLText) != remoteURL {
-		return "", "", "", "", errors.New("development Git push remote is not owner-bound")
-	}
-	remoteHead, err := broker.remoteHead(ctx, dir, branch)
+	remoteHead, err := broker.remoteHead(ctx, dir, remoteURL, branch)
 	if err != nil {
 		return "", "", "", "", err
 	}
 	if remoteHead != "" {
-		if _, err := broker.git(ctx, dir, "fetch", "--no-tags", "origin", "refs/heads/"+branch+":refs/remotes/origin/"+branch); err != nil {
-			return "", "", "", "", errors.New("development remote state could not be fetched")
-		}
-		if _, err := broker.git(ctx, dir, "merge-base", "--is-ancestor", remoteHead, head); err != nil {
+		transport, ok := broker.config.Runner.(devGitTransportRunner)
+		if !ok || transport.VerifyRemoteAncestor(ctx, dir, remoteURL, branch, remoteHead, head, broker.config.Credential) != nil {
 			return "", "", "", "", errors.New("development branch is behind or diverged")
 		}
 	}
@@ -297,8 +290,8 @@ func (broker *devGitBroker) head(ctx context.Context, dir string) (string, error
 	return head, nil
 }
 
-func (broker *devGitBroker) remoteHead(ctx context.Context, dir, branch string) (string, error) {
-	output, err := broker.git(ctx, dir, "ls-remote", "--heads", "origin", "refs/heads/"+branch)
+func (broker *devGitBroker) remoteHead(ctx context.Context, dir, remoteURL, branch string) (string, error) {
+	output, err := broker.git(ctx, dir, "ls-remote", "--heads", remoteURL, "refs/heads/"+branch)
 	if err != nil {
 		return "", errors.New("development remote state is unavailable")
 	}
@@ -310,6 +303,29 @@ func (broker *devGitBroker) remoteHead(ctx context.Context, dir, branch string) 
 		return "", errors.New("development remote state is invalid")
 	}
 	return fields[0], nil
+}
+
+func (broker *devGitBroker) configuredRemoteURL(ctx context.Context, dir string) (string, error) {
+	output, err := broker.git(ctx, dir, devGitRemoteConfigArguments...)
+	if err != nil {
+		return "", errors.New("development Git remote configuration is unavailable")
+	}
+	var remoteURL string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || (fields[0] != "remote.origin.url" && fields[0] != "remote.origin.pushurl") {
+			return "", errors.New("development Git remote configuration is invalid")
+		}
+		if remoteURL == "" {
+			remoteURL = fields[1]
+		} else if remoteURL != fields[1] {
+			return "", errors.New("development Git fetch and push remotes differ")
+		}
+	}
+	if remoteURL == "" {
+		return "", errors.New("development Git remote configuration is empty")
+	}
+	return remoteURL, nil
 }
 
 func (broker *devGitBroker) git(ctx context.Context, dir string, args ...string) (string, error) {
@@ -333,42 +349,68 @@ func (runner execDevGitCommandRunner) Run(ctx context.Context, dir string, args 
 	if !ok {
 		return "", errors.New("git is unavailable")
 	}
+	if devGitFastForwardArguments(args) {
+		if credential != (GitHubCredential{}) {
+			return "", errors.New("development Git fast-forward does not accept credentials")
+		}
+		return runContainedDevGitFastForward(ctx, dir, gitPath, runner.toolPath, args)
+	}
+	remoteURL, network, err := devGitNetworkCommand(args, credential.Owner)
+	if err != nil {
+		return "", err
+	}
+	if network && (credential.SchemaVersion != 1 || !validGitHubToken(credential.Token)) {
+		return "", errors.New("development Git authority is unavailable")
+	}
 	secretRoot := filepath.Join(runner.stateRoot, "github-runtime")
 	if err := preparePrivateRoot(secretRoot); err != nil {
 		return "", errors.New("GitHub runtime root is unsafe")
 	}
-	askpass, err := os.CreateTemp(secretRoot, ".askpass-*")
-	if err != nil {
-		return "", errors.New("GitHub askpass staging failed")
-	}
-	askpassPath := askpass.Name()
-	defer os.Remove(askpassPath)
-	if askpass.Chmod(0o700) != nil || func() error {
-		_, err := askpass.WriteString("#!/bin/sh\ncase \"$1\" in *Username*) printf '%s' x-access-token ;; *) printf '%s' \"$MCP_DEVBOX_GITHUB_TOKEN\" ;; esac\n")
-		return err
-	}() != nil || askpass.Close() != nil {
-		return "", errors.New("GitHub askpass staging failed")
+	askpassPath := ""
+	if network {
+		askpass, createErr := os.CreateTemp(secretRoot, ".askpass-*")
+		if createErr != nil {
+			return "", errors.New("GitHub askpass staging failed")
+		}
+		askpassPath = askpass.Name()
+		defer os.Remove(askpassPath)
+		if askpass.Chmod(0o700) != nil || func() error {
+			_, writeErr := askpass.WriteString("#!/bin/sh\ncase \"$1\" in *Username*) printf '%s' x-access-token ;; *) printf '%s' \"$MCP_DEVBOX_GITHUB_TOKEN\" ;; esac\n")
+			return writeErr
+		}() != nil || askpass.Close() != nil {
+			return "", errors.New("GitHub askpass staging failed")
+		}
 	}
 	commandCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	command := exec.CommandContext(commandCtx, gitPath, args...)
+	command := exec.CommandContext(commandCtx, gitPath, devGitProtectedArguments(args, remoteURL)...)
 	command.Dir = dir
+	if len(args) > 0 && (args[0] == "clone" || args[0] == "ls-remote") {
+		command.Dir = secretRoot
+	}
 	command.Env = []string{
 		"PATH=" + runner.toolPath, "HOME=" + secretRoot, "LANG=C.UTF-8", "LC_ALL=C.UTF-8",
-		"GIT_ASKPASS=" + askpassPath, "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1",
-		"GIT_CONFIG_COUNT=4",
-		"GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
-		"GIT_CONFIG_KEY_1=core.hooksPath", "GIT_CONFIG_VALUE_1=/dev/null",
-		"GIT_CONFIG_KEY_2=core.fsmonitor", "GIT_CONFIG_VALUE_2=false",
-		"GIT_CONFIG_KEY_3=protocol.file.allow", "GIT_CONFIG_VALUE_3=never",
-		"MCP_DEVBOX_GITHUB_TOKEN=" + credential.Token,
+		"GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_OPTIONAL_LOCKS=0",
+	}
+	if !devGitReadsLocalConfig(args) {
+		// Executable Git operations must not inherit transport, credential,
+		// hook, filter, or include directives from the checkout.
+		command.Env = append(command.Env, "GIT_CONFIG=/dev/null")
+	}
+	if network {
+		command.Env = append(command.Env, "GIT_ASKPASS="+askpassPath, "MCP_DEVBOX_GITHUB_TOKEN="+credential.Token)
 	}
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	output := &boundedHTBLabCapture{limit: 1 << 20}
 	command.Stdout = output
 	command.Stderr = output
 	err = command.Run()
-	text := redactDevGitCommandOutput(output.buffer.String(), credential.Token)
+	redactionToken := ""
+	if network {
+		redactionToken = credential.Token
+	}
+	text := redactDevGitCommandOutput(output.buffer.String(), redactionToken)
 	return text, err
 }
 
@@ -377,4 +419,46 @@ func redactDevGitCommandOutput(output, token string) string {
 		return output
 	}
 	return strings.ReplaceAll(output, token, "[REDACTED]")
+}
+
+func (runner execDevGitCommandRunner) VerifyRemoteAncestor(ctx context.Context, dir, remoteURL, branch, remoteHead, head string, credential GitHubCredential) error {
+	if !validDevGitBranch(branch) || !devGitCommitPattern.MatchString(remoteHead) || !devGitCommitPattern.MatchString(head) {
+		return errors.New("development Git ancestry binding is invalid")
+	}
+	transportRoot, cleanup, err := createDevGitTransportRoot(runner.stateRoot, dir)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	if _, err := runner.Run(ctx, transportRoot, []string{"init", "--bare", "--quiet"}, credential); err != nil {
+		return errors.New("development Git transport initialization failed")
+	}
+	if err := configureDevGitAlternates(transportRoot, dir); err != nil {
+		return err
+	}
+	if _, err := runner.Run(ctx, transportRoot, []string{"fetch", "--no-tags", remoteURL, "refs/heads/" + branch + ":refs/remotes/origin/" + branch}, credential); err != nil {
+		return errors.New("development remote state could not be fetched")
+	}
+	if _, err := runner.Run(ctx, transportRoot, []string{"merge-base", "--is-ancestor", remoteHead, head}, credential); err != nil {
+		return errors.New("development branch is behind or diverged")
+	}
+	return nil
+}
+
+func (runner execDevGitCommandRunner) PublishCommit(ctx context.Context, dir, remoteURL, head, branch string, credential GitHubCredential) (string, error) {
+	if !validDevGitBranch(branch) || !devGitCommitPattern.MatchString(head) {
+		return "", errors.New("development Git publication binding is invalid")
+	}
+	transportRoot, cleanup, err := createDevGitTransportRoot(runner.stateRoot, dir)
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+	if _, err := runner.Run(ctx, transportRoot, []string{"init", "--bare", "--quiet"}, credential); err != nil {
+		return "", errors.New("development Git transport initialization failed")
+	}
+	if err := configureDevGitAlternates(transportRoot, dir); err != nil {
+		return "", err
+	}
+	return runner.Run(ctx, transportRoot, []string{"push", "--porcelain", remoteURL, head + ":refs/heads/" + branch}, credential)
 }

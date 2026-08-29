@@ -677,13 +677,13 @@ func (m *ProjectBrowserManager) storeArtifact(sessionID string, body []byte) (br
 	return a, nil
 }
 func openPrivateBrowserArtifact(path string) (*os.File, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 {
+	f, info, err := openStableOwnedRegular(path)
+	if err != nil {
 		return nil, errors.New("project browser artifact is unsafe")
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("project browser artifact unavailable")
+	if info.Mode().Perm() != 0o600 {
+		_ = f.Close()
+		return nil, errors.New("project browser artifact is unsafe")
 	}
 	return f, nil
 }

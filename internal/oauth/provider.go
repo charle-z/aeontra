@@ -20,6 +20,9 @@ package oauth
 import (
 	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -68,6 +71,9 @@ func NewProvider(cfg Config) (*Provider, error) {
 	if err := validatePublicURL(resource); err != nil {
 		return nil, fmt.Errorf("oauth: resource: %w", err)
 	}
+	if err := validateDistinctStorePaths(cfg.ClientStorePath, cfg.AccessStorePath, cfg.RefreshStorePath); err != nil {
+		return nil, fmt.Errorf("oauth: persistence stores: %w", err)
+	}
 	store := newTokenStore()
 	if strings.TrimSpace(cfg.ClientStorePath) != "" {
 		if err := store.enableClientPersistence(cfg.ClientStorePath); err != nil {
@@ -90,6 +96,39 @@ func NewProvider(cfg Config) (*Provider, error) {
 		passphrase: cfg.Passphrase,
 		store:      store,
 	}, nil
+}
+
+func validateDistinctStorePaths(paths ...string) error {
+	seen := make(map[string]struct{}, len(paths))
+	var seenFiles []os.FileInfo
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		clean := filepath.Clean(path)
+		if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+			clean = resolved
+		} else if resolved, err := filepath.EvalSymlinks(filepath.Dir(clean)); err == nil {
+			clean = filepath.Join(resolved, filepath.Base(clean))
+		}
+		if runtime.GOOS == "windows" {
+			clean = strings.ToLower(clean)
+		}
+		if _, exists := seen[clean]; exists {
+			return fmt.Errorf("client, access, and refresh stores must use distinct files")
+		}
+		seen[clean] = struct{}{}
+		if info, err := os.Stat(clean); err == nil {
+			for _, prior := range seenFiles {
+				if os.SameFile(prior, info) {
+					return fmt.Errorf("client, access, and refresh stores must use distinct files")
+				}
+			}
+			seenFiles = append(seenFiles, info)
+		}
+	}
+	return nil
 }
 
 // validatePublicURL enforces: absolute http(s) URL, no fragment, and HTTPS unless the

@@ -54,7 +54,7 @@ func (s *RepositoryCapability) BuildContextPackIn(repo string) (string, error) {
 		if err != nil {
 			continue
 		}
-		content, err := readContained(resolved)
+		content, err := readContained(dir, resolved)
 		if err != nil {
 			continue
 		}
