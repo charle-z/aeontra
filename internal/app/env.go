@@ -90,7 +90,6 @@ func envFallback(flagVal, envName string) string {
 	return os.Getenv(envName)
 }
 
-
 // commitEnvVars are consulted (in order) at startup to stamp the running git commit when
 // it was not baked in via -ldflags. SOURCE_COMMIT is injected by Coolify at deploy time.
 var commitEnvVars = []string{"MCP_DEVBOX_COMMIT", "SOURCE_COMMIT"}
