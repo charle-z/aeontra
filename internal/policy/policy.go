@@ -11,6 +11,11 @@ import (
 // in read-only mode (the secure default).
 var ErrReadOnly = errors.New("policy: blocked: server is read-only (writes/commands disabled)")
 
+// ErrExecutionRequiresAllow is returned when repository code execution is
+// requested in ask mode. Execution approval cannot safely bind mutable workspace
+// bytes, so execution is enabled only by the operator-selected allow posture.
+var ErrExecutionRequiresAllow = errors.New("policy: execution requires server mode allow")
+
 // Policy is the single security decision surface. Every MCP tool consults it; no
 // tool re-implements path/secret/command checks. Its fields are unexported and set
 // only by NewPolicy — there is no setter and no MCP-reachable mutator, so the agent
@@ -46,6 +51,22 @@ func (p *Policy) Roots() []string { return p.jail.Roots() }
 // AccessGrants returns the in-memory grant manager used by the local admin
 // channel. It does not expose a policy/config mutator to MCP tools.
 func (p *Policy) AccessGrants() *AccessGrants { return p.grants }
+
+// CheckContainedExecution requires the administrator-selected allow posture.
+// Ask mode is intentionally insufficient: an argv approval cannot bind the
+// mutable repository bytes that a compiler, test runner, or script may execute.
+func (p *Policy) CheckContainedExecution() error {
+	switch p.mode {
+	case config.ModeReadOnly:
+		return ErrReadOnly
+	case config.ModeAllow:
+		return nil
+	case config.ModeAsk:
+		return ErrExecutionRequiresAllow
+	default:
+		return config.ErrUnknownMode
+	}
+}
 
 // CheckRead authorizes reading a path. It denies secret paths (by name) regardless
 // of the jail, then enforces jail containment. Returns the resolved absolute path.

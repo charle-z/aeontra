@@ -78,6 +78,21 @@ type e2eRun struct {
 	turnIdentity []modelturn.Record
 }
 
+type e2eSandbox struct{}
+
+func (e2eSandbox) Status(context.Context) tools.SandboxStatusInfo {
+	return tools.SandboxStatusInfo{Available: true, Backend: "e2e-attested", DefaultEgress: "deny"}
+}
+
+func (e2eSandbox) Run(context.Context, tools.SandboxRunRequest) (tools.SandboxRunResult, error) {
+	return tools.SandboxRunResult{
+		ExitCode:       0,
+		Stdout:         "ok\n",
+		SandboxBackend: "e2e-attested",
+		EgressProfile:  "deny",
+	}, nil
+}
+
 type e2eNetworkEvidence struct {
 	ContainerNetwork       string   `json:"container_network"`
 	DNS                    string   `json:"dns"`
@@ -203,7 +218,7 @@ func runGranularBaseline(t *testing.T, repo string) e2eResult {
 	mcpTool(t, server, meter, "search_code", map[string]any{"query": "return a - b"})
 	patch := "--- a/calc/calc.go\n+++ b/calc/calc.go\n@@ -3,3 +3,3 @@\n func Add(a, b int) int {\n-\treturn a - b\n+\treturn a + b\n }\n"
 	mcpTool(t, server, meter, "apply_patch", map[string]any{"patch": patch, "approve": true})
-	mcpTool(t, server, meter, "run_tests", map[string]any{"approve": true})
+	mcpTool(t, server, meter, "run_tests", map[string]any{})
 	return e2eResult{
 		Mode:             "A: granular MCP",
 		Elapsed:          time.Since(started),
@@ -616,7 +631,8 @@ func e2eServer(t *testing.T, root string, store *modelturn.Store) (*Server, *too
 	}
 	auditBuffer := &bytes.Buffer{}
 	svc := tools.NewService(pol, audit.New(auditBuffer), pol.Roots()[0]).
-		WithTestCommand([]string{"go", "test", "./..."})
+		WithTestCommand([]string{"go", "test", "./..."}).
+		WithSandboxRunner(e2eSandbox{})
 	server := New(svc)
 	if store != nil {
 		server.WithModelTurnStore(store)

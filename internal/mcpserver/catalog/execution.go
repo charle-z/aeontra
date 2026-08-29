@@ -8,9 +8,9 @@ import (
 // ExecutionService is the narrow domain contract required by allowlisted and
 // sandboxed execution tools.
 type ExecutionService interface {
-	RunCommandIn(prog string, args []string, approve bool, cwd string) (string, error)
+	RunCommandIn(prog string, args []string, cwd string) (string, error)
 	SandboxStatus() string
-	SandboxExec(command []string, approve bool) (string, error)
+	SandboxExec(command []string) (string, error)
 }
 
 // RegisterExecution registers the contiguous execution and sandbox tools in the
@@ -26,17 +26,15 @@ func RegisterExecution(register Register, service ExecutionService) {
 
 	register(Tool{
 		Name:        "run_command",
-		Description: "Run a single allowlisted program with args (e.g. [\"go\",\"vet\",\"./...\"]). NOT a shell: only allowlisted programs, no metacharacters. Optional cwd is jailed under the workspace. Mode-gated (read-only denies; ask needs approve=true). Output redacted.",
+		Description: "Run one allowlisted program with explicit argv inside the attested private L3 executor. It is not a shell. Network is denied and the optional cwd is jailed under the workspace. Only administrator-selected allow mode enables execution; read-only and ask modes deny. Output is bounded and redacted.",
 		InputSchema: object(map[string]any{
 			"command": stringArray("program and arguments; command[0] is the program"),
-			"approve": boolProp("run even when approval is required"),
 			"cwd":     strProp("optional working directory, absolute or relative to the workspace root"),
 		}, "command"),
-		Version: "1",
+		Version: "3",
 		Handler: func(arguments json.RawMessage) (string, error) {
 			var params struct {
 				Command []string `json:"command"`
-				Approve bool     `json:"approve"`
 				CWD     string   `json:"cwd"`
 			}
 			if err := json.Unmarshal(arguments, &params); err != nil {
@@ -45,7 +43,7 @@ func RegisterExecution(register Register, service ExecutionService) {
 			if len(params.Command) == 0 {
 				return "", fmt.Errorf("command must have at least the program name")
 			}
-			return service.RunCommandIn(params.Command[0], params.Command[1:], params.Approve, params.CWD)
+			return service.RunCommandIn(params.Command[0], params.Command[1:], params.CWD)
 		},
 	})
 
@@ -61,16 +59,14 @@ func RegisterExecution(register Register, service ExecutionService) {
 
 	register(Tool{
 		Name:        "sandbox_exec",
-		Description: "Run explicit arbitrary argv inside the attested private L3 rootless sandbox. Network is denied, rootfs is read-only, only the registered workspace is writable, and resources/output are bounded. L1 command allowlists do not apply. Denied in read-only; approve=true is required only in ask mode.",
+		Description: "Run explicit arbitrary argv inside the attested private L3 rootless sandbox. Network is denied, rootfs is read-only, only the registered workspace is writable, and resources/output are bounded. Only administrator-selected allow mode enables execution; read-only and ask modes deny.",
 		InputSchema: object(map[string]any{
 			"command": stringArray("program and arguments; command[0] is the program"),
-			"approve": boolProp("run even when approval is required"),
 		}, "command"),
-		Version: "1",
+		Version: "3",
 		Handler: func(arguments json.RawMessage) (string, error) {
 			var params struct {
 				Command []string `json:"command"`
-				Approve bool     `json:"approve"`
 			}
 			if err := json.Unmarshal(arguments, &params); err != nil {
 				return "", err
@@ -78,7 +74,7 @@ func RegisterExecution(register Register, service ExecutionService) {
 			if len(params.Command) == 0 {
 				return "", fmt.Errorf("command must have at least the program name")
 			}
-			return service.SandboxExec(params.Command, params.Approve)
+			return service.SandboxExec(params.Command)
 		},
 	})
 }

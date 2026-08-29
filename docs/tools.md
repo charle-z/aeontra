@@ -5,8 +5,9 @@ Repository file contents are untrusted data. Every handler reuses the central ja
 secret redaction, mode/approval and audit mechanisms.
 
 Compatibility aliases use identical safe handlers. git_commit does not push. There
-is no force push and no free host terminal. Tokens are never returned. External
-writes require explicit approval in ask mode.
+is no force push and no free host terminal. Tokens are never returned. Read-only and
+ask modes deny command execution; only administrator-selected allow mode can use the
+attested private L3 executor. External writes retain their documented plan and mode gates.
 
 Registered Edge targets may be Linux/Parrot/WSL or the separate native Windows
 workcell. Native Windows service installation, signed release update, rollback and
@@ -71,10 +72,10 @@ do not replace server-side enforcement.
 | `project_git_fast_forward` | 0/0/1/1 | Consume and revalidate one exact plan, then run only `git merge --ff-only <bound-commit>`; no reset, checkout, force, tags, URL or free refspec exists. |
 | `project_git_publish_preview` | 1/0/1/1 | Create a five-minute Edge-owned single-use publication plan bound to the exact clean attached branch, local HEAD and current same-name remote-branch state. An existing remote commit must be locally resolvable and a proven ancestor; a stale optional tracking ref does not replace that proof. |
 | `project_git_publish` | 0/0/1/1 | Consume and revalidate one exact publication plan, then push only the bound branch to its same-name branch on the fixed owner-bound `origin` with no force, tags, caller URL or caller refspec. |
-| `project_toolbox_create` | 0/1/1/1 | Create or recover one persistent Debian rootfs through the registered workspace's user-owned rootless engine. Optional CPU, memory and process limits are range-checked; omitted values receive broad server-owned defaults. The fixed rootless endpoint is available inside the toolbox; packages and caches persist until explicit cleanup. |
-| `project_toolbox_status` | 1/0/1/1 | Return only opaque lifecycle/base identity, applied resource limits, rootless-engine availability, writable/rootfs byte usage and timestamps; host paths, socket path and container identity remain private. |
+| `project_toolbox_create` | 0/1/1/1 | Create or recover one persistent Debian rootfs through the registered workspace's user-owned rootless engine. Optional CPU, memory and process limits are range-checked; omitted values receive broad server-owned defaults. Packages and caches persist until explicit cleanup; no host engine socket is mounted. |
+| `project_toolbox_status` | 1/0/1/1 | Return only opaque lifecycle/base identity, applied resource limits, writable/rootfs byte usage and timestamps; host paths, socket paths and container identity remain private. |
 | `project_toolbox_repair` | 0/1/1/1 | Restart only a stopped server-owned toolbox after revalidating its recorded image, labels and single workspace mount. Missing, unknown or unsafe state is never recreated. |
-| `project_toolbox_exec` | 0/1/1/1 | Execute explicit arbitrary argv inside the persistent toolbox with the project at `/workspace`, relative cwd, non-secret environment overlay, bounded redacted output and no implicit shell or command allowlist. Installed Podman/Docker/Compose clients use the fixed user-owned rootless endpoint. |
+| `project_toolbox_exec` | 0/1/1/1 | Execute explicit arbitrary argv inside the persistent toolbox with the project at `/workspace`, relative cwd, non-secret environment overlay, bounded redacted output and no implicit shell or command allowlist. Host container-engine sockets are absent. |
 | `project_toolbox_install` | 0/1/1/1 | Run explicit package, toolchain or rootless container-client installation argv as container root inside the rootless user namespace; the host WSL package database and global toolchains are not modified. |
 | `project_toolbox_service_start` | 0/1/1/1 | Start or reuse one named background argv inside the persistent toolbox. Only an opaque service id, name, state and timestamps are returned; caller argv is positional and never interpolated into the fixed supervisor script. |
 | `project_toolbox_service_status` | 1/0/1/1 | Revalidate one opaque service identity and report `running` or `stopped` without starting a stopped toolbox or exposing PID, argv, paths, logs or container internals. |
@@ -110,8 +111,8 @@ do not replace server-side enforcement.
 | `result_stage` | 1/0/1/0 | Read one indexed result stage by opaque ref in fragments capped at 16 KiB. |
 | `apply_patch` | 0/1/0/0 | Validate and apply a diff that may replace or delete content. |
 | `create_file` | 0/0/0/0 | Create a new file through the patch pipeline; no overwrite. |
-| `run_command` | 0/1/0/1 | Run one allowlisted argv without a shell; may reach network. |
-| `run_tests` | 0/1/0/1 | Run the configured allowlisted test command; may reach network. |
+| `run_command` | 0/1/0/0 | Run one allowlisted argv without a shell inside the network-denied private L3 executor; only allow mode enables it. |
+| `run_tests` | 0/1/0/0 | Run the configured allowlisted test command inside the network-denied private L3 executor; only allow mode enables it. |
 | `project_validation_preview` | 1/0/1/0 | Preview one fixed `pnpm-lockfile` or `pnpm-validate` private-runner profile. |
 | `project_validation_execute` | 0/1/0/1 | Execute one reviewed fixed Node/pnpm profile through the private runner. |
 | `git_status` | 1/0/1/0 | Compatibility name for `repo_status`. |
@@ -121,8 +122,8 @@ do not replace server-side enforcement.
 | `git_clone` | 0/0/0/1 | Clone a credential-free URL into a new jailed directory. |
 | `repo_fetch` | 0/0/1/1 | Run exactly `git fetch <remote>`; approval-gated in ask mode. |
 | `repo_fast_forward_preview` | 1/0/1/0 | Plan an exact clean-tree fast-forward to the tracked upstream. |
-| `repo_fast_forward` | 0/0/0/0 | Revalidate and run exactly `git merge --ff-only <upstream>`. |
-| `git_commit` | 0/0/0/0 | Stage and commit locally. It does not push. |
+| `repo_fast_forward` | 0/0/0/0 | Revalidate and run exactly `git merge --ff-only <upstream>` in the attested private L3 executor; allow mode only. |
+| `git_commit` | 0/0/0/0 | Stage and commit locally in the attested private L3 executor; allow mode only. It does not push. |
 
 ## GitHub source hosting and publication
 
@@ -252,7 +253,7 @@ manual source content is redacted before cache insertion and again before return
 | `notes_write_preview` | 1/0/1/0 | Plan size-limited create/append without overwrite. |
 | `notes_write` | 0/0/0/0 | Revalidate hash/state and create or append the note. |
 | `sandbox_status` | 1/0/1/0 | Attest and report the private rootless L3 executor; unavailable on endpoint/image/profile drift. |
-| `sandbox_exec` | 0/1/0/0 | Run arbitrary explicit argv in the private rootless sandbox; L1 allowlists do not apply. |
+| `sandbox_exec` | 0/1/0/0 | Run arbitrary explicit argv in the private rootless sandbox; L1 allowlists do not apply. Read-only and ask deny; allow mode is administrator-selected. |
 | `privileged_task_preview` | 1/0/1/0 | Preview one fixed administrator-enabled profile. |
 | `privileged_task_execute` | 0/1/0/1 | Execute one exact short-lived profile plan with timeout. |
 
@@ -275,7 +276,11 @@ message sequencing:
 12. `repo_publish`
 
 Steps 7-10 are needed only when creating/configuring a new GitHub repository.
-`git_commit` does not push. External writes require explicit approval in ask mode.
+`git_commit` does not push. Repository-code execution, including Git mutations that can
+invoke hooks or filters, requires administrator-selected allow mode and the attested
+private L3 executor. Its legacy `approve` input is retained for compatibility and does
+not grant execution authority. External writes require explicit approval through their
+documented mode or preview/execute gate.
 
 ## Recommended public OSS contribution workflow
 

@@ -22,10 +22,24 @@ func repoFile(t *testing.T, relative string) string {
 	return string(content)
 }
 
+func workflowStep(t *testing.T, workflow, name string) string {
+	t.Helper()
+	marker := "      - name: " + name + "\n"
+	start := strings.Index(workflow, marker)
+	if start < 0 {
+		t.Fatalf("workflow step %q is missing", name)
+	}
+	rest := workflow[start+len(marker):]
+	if end := strings.Index(rest, "\n      - name: "); end >= 0 {
+		rest = rest[:end]
+	}
+	return marker + rest
+}
+
 func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	build := repoFile(t, "packaging/debian/build-edge-deb.sh")
 	for _, required := range []string{
-		"SOURCE_DATE_EPOCH", "dpkg-deb --root-owner-group", "gpg --batch", "sha256sum",
+		"SOURCE_DATE_EPOCH", "dpkg-deb --root-owner-group", "sha256sum",
 		"mcp-autopilot-worker", "model-turn-driver", "opencode-provider/htb-actions.js", "opencode-provider/dev-actions.js",
 		"libexec/node", "libexec/gh", "gh", "golang-go", "chromium", "catatonit", "podman", "util-linux",
 		"mcp-bundle-updater", "mcp-devbox-bundle-updater.service",
@@ -48,6 +62,9 @@ func TestDebianPackageBuildIsSignedReproducibleAndComplete(t *testing.T) {
 	}
 	if strings.Contains(build, "\"$RELEASE_ROOT/opencode\" \"$RELEASE_ROOT/opencode-provider\" \"$RELEASE_ROOT/codex\" \"$RELEASE_ROOT/systemd\"") {
 		t.Fatal("package builder must not materialize absent optional component directories")
+	}
+	if strings.Contains(build, "gpg") || strings.Contains(build, "signing-key") {
+		t.Fatal("package builder must not receive or use a signing identity")
 	}
 
 	postinst := repoFile(t, "packaging/debian/postinst.in")
@@ -135,9 +152,18 @@ func TestPrivilegedUpdaterAuthorityIsLimitedToFixedUnits(t *testing.T) {
 
 func TestEdgeReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 	stage := repoFile(t, "packaging/parrot/stage-edge-bundle.sh")
-	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "mcp-bundle-manifest", "EdgeBundlePublicKey", "--gh-bin", "libexec/gh", "--manifest-version", "mcp-devbox-opencode-edge-bridge@.service", "mcp-devbox-edge@.service", "mcp-devbox-edge-onboard@.path", "codex/codex", "codex/pin.json"} {
+	for _, required := range []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "mcp-autopilot-worker", "mcp-bundle-updater", "EdgeBundlePublicKey", "--gh-bin", "libexec/gh", "--manifest-version", "mcp-devbox-opencode-edge-bridge@.service", "mcp-devbox-edge@.service", "mcp-devbox-edge-onboard@.path", "codex/codex", "codex/pin.json"} {
 		if !strings.Contains(stage, required) {
 			t.Fatalf("bundle staging missing %q", required)
+		}
+	}
+	if strings.Contains(stage, "private-key") || strings.Contains(stage, "mcp-bundle-manifest") {
+		t.Fatal("unsigned bundle staging must not receive or use a signing identity")
+	}
+	archive := repoFile(t, "packaging/parrot/build-edge-release.sh")
+	for _, forbidden := range []string{"private-key", "channel-tool", "mcp-release-channel"} {
+		if strings.Contains(archive, forbidden) {
+			t.Fatalf("archive builder must not receive signing authority %q", forbidden)
 		}
 	}
 	pinnedCodex := repoFile(t, "packaging/codex/stage-pinned.sh")
@@ -161,6 +187,39 @@ func TestEdgeReleaseAutomationBuildsOneClosedSignedArtifactSet(t *testing.T) {
 	for _, required := range []string{"Publish signed Aeontra Edge release", "p15.x.y bridge or vMAJOR.MINOR.PATCH", "workflow_dispatch", "environment: edge-release", "EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64", "stage-edge-bundle.sh", "build-edge-release.sh", "build-edge-deb.sh", "Generate Edge bundle SBOM", "gh release create", "gh release upload stable --clobber", "bridge-v3", "codex-v4", "codex-v5", "packaging/codex/stage-pinned.sh"} {
 		if !strings.Contains(release, required) {
 			t.Fatalf("release workflow missing %q", required)
+		}
+	}
+	for _, required := range []string{"Remove release signing identities", "Remove Windows release signing identity", "if: always()", `gpgconf --homedir "$RUNNER_TEMP/gnupg" --kill gpg-agent`, `rm -f "$RUNNER_TEMP/release/edge.key"`, `Remove-Item -LiteralPath $keyPath -Force -ErrorAction SilentlyContinue`} {
+		if !strings.Contains(release, required) {
+			t.Fatalf("release workflow does not guarantee signing cleanup %q", required)
+		}
+	}
+	secretSteps := []string{
+		"Derive non-secret release public key",
+		"Sign Linux bundle manifest with isolated executable",
+		"Sign stable Linux channel with isolated executable",
+		"Sign Debian package with isolated GPG identity",
+		"Derive non-secret Windows release public key",
+		"Sign Windows bundle manifest with isolated executable",
+		"Sign stable Windows channel with isolated executable",
+	}
+	for _, name := range secretSteps {
+		step := workflowStep(t, release, name)
+		for _, forbidden := range []string{"go build", "go run", "go test", "go vet", "npm ", "bash packaging/", "./packaging/"} {
+			if strings.Contains(step, forbidden) {
+				t.Fatalf("secret-bearing step %q executes repository build or script command %q", name, forbidden)
+			}
+		}
+	}
+	for _, name := range []string{"Build unsigned release payloads", "Build deterministic archives and unsigned Debian package", "Build unsigned Windows bundle", "Build deterministic Windows archive"} {
+		step := workflowStep(t, release, name)
+		if strings.Contains(step, "EDGE_PRIVATE_KEY_B64") || strings.Contains(step, "DEB_GPG_PRIVATE_KEY_B64") || strings.Contains(step, "edge.key") {
+			t.Fatalf("unsigned build step %q receives signing material", name)
+		}
+	}
+	for _, forbidden := range []string{"env:\n      EDGE_PRIVATE_KEY_B64:", "env:\n      DEB_GPG_PRIVATE_KEY_B64:"} {
+		if strings.Contains(release, forbidden) {
+			t.Fatalf("release workflow exposes signing material at job scope %q", forbidden)
 		}
 	}
 	packageBuilder := repoFile(t, "packaging/debian/build-edge-deb.sh")

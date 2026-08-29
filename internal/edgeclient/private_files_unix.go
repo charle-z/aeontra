@@ -30,3 +30,10 @@ func validatePrivateFilePlatform(_ string, info os.FileInfo) error {
 	}
 	return nil
 }
+
+func validatePrivateOpenFilePlatform(_ *os.File, info os.FileInfo) error {
+	if info.Mode().Perm()&0o077 != 0 {
+		return errors.New("edge private file is unsafe")
+	}
+	return nil
+}

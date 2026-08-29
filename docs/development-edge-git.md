@@ -128,8 +128,11 @@ part of the public MCP catalog:
 
 Git runs outside the model sandbox in the Edge broker. A fixed askpass helper receives
 the PAT only in the child environment. System/global credential helpers, repository
-hooks, fsmonitor commands, and the file protocol are disabled for those operations;
-output is bounded and token-redacted. Code editing, tests, dependency installation,
+configuration, hooks, fsmonitor commands, URL rewrites, HTTP overrides, includes, and
+the file protocol are disabled for executable Git operations. The broker reads only
+the exact local `remote.origin.url`/`pushurl` keys without includes, validates them,
+then uses a constructed owner-bound HTTPS URL; output is bounded and token-redacted.
+Code editing, tests, dependency installation,
 rootless containers, commits, and checkpoint updates still happen inside the normal
 Linux workcell.
 
@@ -196,3 +199,8 @@ The credential stays in the askpass child environment, while the public result c
 only bounded Git identity and relationship metadata. Write plans are durable across an
 Edge restart but expire after five minutes solely as transaction guards; they are
 single-use and do not impose a workspace TTL.
+
+Linux applies the direct fast-forward inside a networkless Bubblewrap namespace with
+only the registered checkout writable. Windows rejects direct fast-forward execution
+until an equivalent isolated Git mutation boundary is available; status, fetch and
+publication retain their documented Windows support.

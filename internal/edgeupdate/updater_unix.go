@@ -65,6 +65,12 @@ func (e Engine) Install(source string, expected bundle.Compatibility) (Status, e
 	desiredTarget := filepath.Join(ReleasesDirectory, expected.Release)
 	rawCurrentTarget, _ := os.Readlink(filepath.Join(root, CurrentLink))
 	before, _ := statusFromLinks(root, e.Service)
+	if before.Release != "" {
+		order, compareErr := bundle.CompareRelease(expected.Release, before.Release)
+		if compareErr != nil || order < 0 {
+			return Status{}, errors.New("automatic release installation cannot downgrade the active release")
+		}
+	}
 	replaceInvalidActive := rawCurrentTarget == desiredTarget
 	if before.Release == expected.Release {
 		activeRoot := filepath.Join(root, ReleasesDirectory, expected.Release)

@@ -2,6 +2,7 @@ package grantadmin
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -63,7 +64,7 @@ func approve(w http.ResponseWriter, r *http.Request, pol *policy.Policy, log *au
 		_ = log.Log(audit.Entry{
 			Tool:     "access_grant",
 			Decision: audit.Deny,
-			Args:     fmt.Sprintf("approve request_id=%s raw=%t ttl=%s", id, req.Raw, req.TTL),
+			Args:     fmt.Sprintf("approve request_correlation=%s raw=%t ttl=%s", grantRequestCorrelation(id), req.Raw, req.TTL),
 			Error:    err.Error(),
 		})
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -72,16 +73,22 @@ func approve(w http.ResponseWriter, r *http.Request, pol *policy.Policy, log *au
 	_ = log.Log(audit.Entry{
 		Tool:     "access_grant",
 		Decision: audit.Allow,
-		Args:     fmt.Sprintf("approve request_id=%s raw=%t ttl=%s", id, req.Raw, ttl),
+		Args:     fmt.Sprintf("approve request_correlation=%s raw=%t ttl=%s", grantRequestCorrelation(decision.RequestID), req.Raw, ttl),
 		Files:    []string{decision.Path},
 	})
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	payload := map[string]any{
 		"request_id": decision.RequestID,
-		"path":       decision.Path,
 		"raw":        decision.Raw,
 		"expires_at": decision.ExpiresAt.Format(time.RFC3339Nano),
-	})
+	}
+	payload["path"] = decision.Path
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func grantRequestCorrelation(requestID string) string {
+	digest := sha256.Sum256([]byte(requestID))
+	return fmt.Sprintf("sha256:%x", digest[:])
 }
 
 func parseTTL(s string) (time.Duration, error) {

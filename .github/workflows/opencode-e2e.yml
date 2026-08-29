@@ -190,12 +190,12 @@ jobs:
             --manifest-version 3 \
             --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
             --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-            --private-key "$release_key" \
             --public-key "$public_key" \
             --node-bin "$(command -v node)" \
             --gh-bin "$bin/gh-2.97.0" \
             --opencode-bin "$bin/opencode-1.18.1" \
             --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+          go run ./cmd/mcp-bundle-manifest --root "$bundle" --release p15.0.0 --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --protocol mcp-devbox.edge-bundle.v1 --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --architecture amd64 --manifest-version 3 --private-key "$release_key"
           rm "$release_key"
           install -m 0755 "$bundle/bin/mcp-edge" "$bin/mcp-edge"
           install -m 0755 "$bundle/libexec/model-turn-driver" "$bin/model-turn-driver"

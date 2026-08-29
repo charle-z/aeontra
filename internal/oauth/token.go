@@ -69,12 +69,33 @@ func (p *Provider) grantAuthorizationCode(w http.ResponseWriter, r *http.Request
 // grantRefreshToken rotates a refresh token: the presented token is consumed and a fresh
 // access+refresh pair is issued (OAuth 2.1 requires rotation for public clients).
 func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
-	g, ok := p.store.consumeRefresh(r.PostForm.Get("refresh_token"))
+	oldRefresh := r.PostForm.Get("refresh_token")
+	access := randToken()
+	refresh := randToken()
+	if access == "" || refresh == "" {
+		tokenError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "token generation is temporarily unavailable")
+		return
+	}
+	now := time.Now()
+	g, ok, err := p.store.rotateRefresh(oldRefresh, refresh, refreshGrant{}, access, accessGrant{}, now)
+	if err != nil {
+		tokenError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "token storage is temporarily unavailable")
+		return
+	}
 	if !ok {
 		tokenError(w, http.StatusBadRequest, "invalid_grant", "refresh token is invalid or expired")
 		return
 	}
-	p.issueTokenPair(w, g.clientID, g.resource, g.scope)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"access_token":  access,
+		"token_type":    "Bearer",
+		"expires_in":    int(accessTokenTTL.Seconds()),
+		"refresh_token": refresh,
+		"scope":         g.scope,
+	})
 }
 
 // issueTokenPair mints an access token (audience-bound to resource) and a rotating
@@ -86,12 +107,16 @@ func (p *Provider) issueTokenPair(w http.ResponseWriter, clientID, resource, sco
 		return
 	}
 	refresh := randToken()
-	p.store.putRefresh(refresh, refreshGrant{
+	if err := p.store.putRefresh(refresh, refreshGrant{
 		clientID:  clientID,
 		scope:     scope,
 		resource:  resource,
 		expiresAt: time.Now().Add(refreshTokenTTL),
-	})
+	}); err != nil {
+		p.store.revokeAccess(access)
+		tokenError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "refresh token storage is temporarily unavailable")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)

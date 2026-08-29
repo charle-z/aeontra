@@ -167,7 +167,9 @@ The registered development checkout has a separate closed Git synchronization pa
   remote-tracking state, zero local-only commits and an ancestor relationship, then
   persists a private `0600` five-minute plan bound to the exact two commits;
 - `project_git_fast_forward` consumes that plan once, revalidates every bound field and
-  runs only `git merge --ff-only` of the recorded remote commit;
+  runs only `git merge --ff-only` of the recorded remote commit. On Linux the mutation
+  executes in a networkless Bubblewrap namespace with only that workspace writable;
+  Windows fails closed until an equivalent isolated mutation runner is available;
 - `project_git_publish_preview` requires a clean attached branch and binds a private
   five-minute plan to the exact local HEAD plus the current same-name remote branch.
   An existing remote commit must already be locally resolvable and be a proven ancestor
@@ -182,9 +184,9 @@ Fetch does not touch the working tree. Fast-forward and publication reject dirty
 detached, non-fast-forward, owner-mismatched, stale-remote, expired, replayed, malformed
 or symlinked state. There is no `reset --hard`, checkout mutation, force, tag fetch,
 arbitrary remote, caller refspec or credential-bearing output. Only `ls-remote`, fetch
-and the fixed publication push receive the private askpass credential. Local inspection,
-ancestor checks and `merge --ff-only` run with an empty credential environment, so
-repository-controlled filters cannot inherit the GitHub token.
+and the fixed publication push receive the private askpass credential. Local inspection
+and ancestor checks run without it. The Linux fast-forward namespace also has no network,
+so repository-controlled hooks or filters cannot inherit or exfiltrate the GitHub token.
 
 ## Private GitHub authority preflight
 
@@ -212,9 +214,8 @@ OpenCode or a model runtime:
 
 - `project_toolbox_create` pulls the server-owned Debian base through the Edge user's
   validated rootless Podman/Docker endpoint, records its exact image ID, creates a
-  labelled container with the selected workspace at `/workspace` plus the already
-  validated user-owned rootless engine socket at a fixed internal path, and starts it
-  with an idle process;
+  labelled container with only the selected workspace at `/workspace`, and starts it
+  with an idle process. The host container-engine socket is not mounted into the toolbox;
 - creation accepts optional CPU millicores, memory MiB and process-count caps. Missing
   values receive server-owned defaults of 4 CPUs, 8 GiB and 2048 processes; accepted
   ranges remain broad enough for builds while rejecting zero, negative or excessive
@@ -236,13 +237,11 @@ OpenCode or a model runtime:
   container's memory bytes, nano-CPU quota and PID cap against the private record.
   Reusing a toolbox with different requested limits fails closed rather than mutating
   a long-lived environment implicitly;
-- the fixed toolbox environment owns `DOCKER_HOST`, `CONTAINER_HOST`, engine kind, a
-  parent label and a deterministic Compose project name. Caller environment cannot
-  override them. An installed remote client can therefore perform rootless Podman,
-  Docker, Compose and engine-native builds without receiving the host socket path;
-- ownership requires exactly two writable binds: the selected workspace and the
-  current validated rootless socket. Any extra mount, rootful endpoint, socket drift,
-  reserved-environment drift or resource drift rejects the toolbox;
+- the fixed toolbox environment reserves `DOCKER_HOST`, `CONTAINER_HOST`, engine kind,
+  parent labels and Compose project names. Caller environment cannot introduce or
+  override them. Persistent toolboxes do not receive a host container-engine socket;
+- ownership requires exactly one writable bind: the selected workspace. Any extra
+  mount, socket, reserved-environment drift or resource drift rejects the toolbox;
 - `project_toolbox_repair` revalidates the recorded image, labels and exact single
   workspace mount before restarting a stopped or created container. It does not create
   a replacement when private state, ownership or container identity is missing or

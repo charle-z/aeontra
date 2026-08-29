@@ -25,6 +25,30 @@ func TestReleaseNameAcceptsLegacyBridgeAndStableSemanticVersions(t *testing.T) {
 	}
 }
 
+func TestCompareReleaseOrdersBridgeAndSemanticVersions(t *testing.T) {
+	tests := []struct {
+		left  string
+		right string
+		want  int
+	}{
+		{"p15.0.44", "p15.0.43", 1},
+		{"p15.0.44", "p15.0.44", 0},
+		{"p15.0.43", "p15.0.44", -1},
+		{"v1.0.0", "p15.999.999", 1},
+		{"p15.999.999", "v0.0.0", -1},
+		{"v1.2.10", "v1.2.9", 1},
+	}
+	for _, test := range tests {
+		got, err := CompareRelease(test.left, test.right)
+		if err != nil || got != test.want {
+			t.Errorf("CompareRelease(%q, %q) = %d, %v; want %d", test.left, test.right, got, err, test.want)
+		}
+	}
+	if _, err := CompareRelease("stable", "v1.0.0"); err == nil {
+		t.Fatal("invalid release accepted for ordering")
+	}
+}
+
 func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 	root := t.TempDir()
 	paths, ok := layoutForVersion(3)

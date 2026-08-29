@@ -25,7 +25,7 @@ The system has several distinct authorities. They must not be collapsed into one
 | Public OSS GitHub broker | Public external issue/PR reads plus planned fork, comment and cross-repository PR writes | Public control-plane schemas, fixed API routes, owner/upstream validation, expiring single-use plans and exact state revalidation | GitHub API for one named public upstream and the configured owner's fork | Reuses the server-side `GITHUB_TOKEN`; it never enters the Edge toolbox, repository, argv, tool schema, output or audit |
 | Direct Edge checkout Git | Registered project checkout and fixed `origin` only | Read status/fetch plus exact single-use fast-forward and same-name no-force publication plans; dirty, detached, non-fast-forward, stale or replayed state fails closed | Existing owner-bound GitHub transport only | Reuses the private askpass authority; public results omit credential, URL, path, argv and PID |
 | Direct Edge GitHub broker | Repository already bound to a registered development project | Only server-constructed official `gh api` argv execute outside the workcell; no arbitrary endpoint, header, command or caller repository is accepted | GitHub API for the exact owner/repository only | `GH_TOKEN` exists only in the bounded child process environment under a private HOME; results are parsed, bounded and token-redacted before safe capability metadata leaves the Edge |
-| Managed browser harness | Any authorized `dev` workcell and its persistent rootless toolbox, project workspace, installed browser/tooling rootfs, managed run trees and named persistent profiles | Arbitrary caller argv runs inside the existing workcell/toolbox boundary; no new host terminal, Windows mount, host home, rootful socket or external Edge state is added. The validated user-owned rootless engine remains the workcell authority already documented for toolbox use | General workcell networking: ordinary HTTP/HTTPS Internet, private development endpoints and localhost services are available. MCP Devbox does not impose a browser-domain/action/JavaScript allowlist | Caller code, cookies, authentication stores, downloads and artifacts stay on the Edge. Public tools return only opaque lifecycle, bounded redacted logs, relative artifact metadata and exact bounded chunks; argv, environment, PID, container identity, profile content and host paths remain private |
+| Managed browser harness | Any authorized `dev` workcell and its persistent rootless toolbox, project workspace, installed browser/tooling rootfs, managed run trees and named persistent profiles | Arbitrary caller argv runs inside the existing workcell/toolbox boundary; no host terminal, Windows mount, host home, container-engine socket or external Edge state is added | General workcell networking: ordinary HTTP/HTTPS Internet, private development endpoints and localhost services are available. MCP Devbox does not impose a browser-domain/action/JavaScript allowlist | Caller code, cookies, authentication stores, downloads and artifacts stay on the Edge. Public tools return only opaque lifecycle, bounded redacted logs, relative artifact metadata and exact bounded chunks; argv, environment, PID, container identity, profile content and host paths remain private |
 
 Additional boundaries:
 
@@ -130,6 +130,13 @@ cannot change its target or arguments. If branch HEAD, upstream, remote, applica
 configuration, target, or another bound value changes, execution fails and a new preview
 is required.
 
+`run_command`, `run_tests`, `sandbox_exec`, `git_commit`, and `repo_fast_forward`
+execute repository-controlled bytes only inside the attested private L3 rootless
+executor. They fail closed when that executor is unavailable and never fall back to the
+daemon's host process runner. They are disabled in both read-only and ask mode; only an
+administrator-selected allow posture enables them. This avoids presenting an argv or
+Git-plan approval as authority over mutable workspace bytes.
+
 Examples include publication, merge, default-branch change, repository/application
 creation, deployment, notes, fixed privileged tasks, and managed validation-runner
 creation. There is no force push, mirror, tags, caller refspec, caller credential, free
@@ -148,10 +155,16 @@ Defense is layered:
 5. Audit and observability exclude values and redact errors.
 
 When an authorized human needs a secret-path read, the normal tool returns an opaque
-access request. Approval occurs only through a loopback local admin channel whose random
-token is printed to the local operator. Grants are path-bound, short-lived, non-reusable,
-and redacted by default. Raw output requires an explicit local `--raw --confirm-raw`
-decision. No MCP tool can approve a grant.
+request. Approval occurs only through a loopback local admin channel whose ephemeral
+credentials live only in a private descriptor below the configured state root. State
+and audit paths must be disjoint from every repository root; `grant-admin` is also an
+unconditionally denied path segment. Local operator diagnostics print the private
+descriptor path, but never its bearer or loopback origin; none of those values enter MCP
+output or audit records. The requesting MCP client receives the opaque
+request ID, but it is not persisted in audit or observability logs. Read grants are exact-path,
+short-lived, and non-reusable. Read output is redacted by default, and raw output
+requires an explicit local `--raw --confirm-raw` decision. No MCP tool can approve a
+grant.
 
 Content scanning is heuristic. It reduces accidental leakage but cannot identify every
 possible secret format. Do not use a real secret as a test fixture.

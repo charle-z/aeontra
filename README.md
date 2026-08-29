@@ -38,7 +38,7 @@ General filesystem-and-terminal agents are convenient but give untrusted model o
 too much ambient authority. Aeontra replaces that ambient authority with explicit
 contracts:
 
-- repository roots form a filesystem and command jail;
+- repository roots confine MCP file operations and command working directories;
 - secret paths are denied and returned content is redacted;
 - commands are argv-only and allowlisted unless a real isolated profile owns broader
   execution;
@@ -124,8 +124,11 @@ preview
 → audit
 ```
 
-A preview is not approval. Approval is not a bypass. Plans expire, are single-use, and
-fail if the relevant repository, branch, application, target, or configuration changed.
+A preview is not approval. Plans expire, are single-use, and fail if the relevant
+repository, branch, application, target, or configuration changed. Repository code
+execution is stricter: `run_command`, `run_tests`, and `sandbox_exec` require an
+attested private L3 executor and administrator-selected `allow` mode. `ask` mode does
+not grant mutable-code execution.
 
 ## Main capabilities
 
@@ -158,7 +161,7 @@ See [`docs/tools.md`](docs/tools.md) for the complete current catalog and exact 
 Aeontra does not provide:
 
 - a free host shell;
-- automatic self-approval;
+- repository-code execution in read-only or ask mode;
 - force push, arbitrary refspecs, mirror publication, or caller-selected Git credentials;
 - unrestricted secret reads or an MCP tool that approves secret grants;
 - unrestricted access to the host filesystem or every repository on a machine;

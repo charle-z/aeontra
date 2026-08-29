@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -94,11 +96,27 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 	primary := pol.Roots()[0]
 	stateRoot := opts.StateRoot
 	if stateRoot == "" {
-		stateRoot = filepath.Join(primary, ".agent-memory", "state")
+		stateRoot, err = defaultRuntimeStateRoot(primary)
+		if err != nil {
+			return nil, err
+		}
+	}
+	stateRoot = resolveRuntimePath(stateRoot)
+	if err := validateRuntimeStateRoot(stateRoot, pol.Roots()); err != nil {
+		return nil, err
 	}
 	auditPath := opts.AuditPath
 	if auditPath == "" {
 		auditPath = filepath.Join(stateRoot, "logs", "audit.jsonl")
+	}
+	if !filepath.IsAbs(auditPath) {
+		return nil, errors.New("audit path must be absolute")
+	}
+	auditPath = resolveRuntimePath(auditPath)
+	for _, root := range pol.Roots() {
+		if pathsOverlap(auditPath, root) {
+			return nil, errors.New("audit path must not overlap repository roots")
+		}
 	}
 	logger, err := audit.Open(auditPath)
 	if err != nil {
@@ -108,6 +126,15 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 	if err != nil {
 		_ = logger.Close()
 		return nil, err
+	}
+	if observabilityConfig.Mode == observability.ModeFile || observabilityConfig.Mode == observability.ModeBoth {
+		observabilityConfig.Path = resolveRuntimePath(observabilityConfig.Path)
+		for _, root := range pol.Roots() {
+			if pathsOverlap(observabilityConfig.Path, root) {
+				_ = logger.Close()
+				return nil, errors.New("observability path must not overlap repository roots")
+			}
+		}
 	}
 	observer, err := observability.Open(observabilityConfig, os.Stderr)
 	if err != nil {
@@ -206,6 +233,32 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 	}, nil
 }
 
+func defaultRuntimeStateRoot(primary string) (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil || !filepath.IsAbs(base) {
+		return "", fmt.Errorf("resolving private default state root: configure %s explicitly", stateRootEnv)
+	}
+	digest := sha256.Sum256([]byte(filepath.Clean(primary)))
+	vendor := "aeontra"
+	if runtime.GOOS == "windows" {
+		vendor = "Aeontra"
+	}
+	return filepath.Join(base, vendor, "mcp-devbox", "state", fmt.Sprintf("%x", digest[:8])), nil
+}
+
+func validateRuntimeStateRoot(stateRoot string, repositoryRoots []string) error {
+	cleaned := filepath.Clean(stateRoot)
+	if !filepath.IsAbs(cleaned) || filepath.Dir(cleaned) == cleaned {
+		return errors.New("state root must be an absolute non-root path")
+	}
+	for _, root := range repositoryRoots {
+		if pathsOverlap(stateRoot, root) {
+			return errors.New("state root must not overlap repository roots")
+		}
+	}
+	return nil
+}
+
 func buildTaskJournal(root string) (*taskjournal.Journal, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, nil
@@ -298,6 +351,27 @@ func pathsOverlap(left, right string) bool {
 	left = filepath.Clean(left)
 	right = filepath.Clean(right)
 	return pathContains(left, right) || pathContains(right, left)
+}
+
+// resolveRuntimePath follows symlinks on the longest existing prefix and then
+// rejoins any not-yet-created suffix. Private runtime paths are validated and
+// opened using this canonical location so a symlink or junction cannot redirect
+// state or audit data into a repository after the lexical overlap check.
+func resolveRuntimePath(path string) string {
+	path = filepath.Clean(path)
+	remainder := ""
+	current := path
+	for {
+		if resolved, err := filepath.EvalSymlinks(current); err == nil {
+			return filepath.Clean(filepath.Join(resolved, remainder))
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return path
+		}
+		remainder = filepath.Join(filepath.Base(current), remainder)
+		current = parent
+	}
 }
 
 func pathContains(root, candidate string) bool {

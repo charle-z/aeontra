@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	"github.com/charle-z/mcp-devbox/internal/policy"
 )
+
+var errAccessApprovalRequired = errors.New("access approval required")
 
 // ReadFile returns the (redacted) content of a single file inside the jail.
 // Secret-named files are denied; content is secret-scanned before return; the file
@@ -27,15 +28,17 @@ func (s *RepositoryCapability) ReadFileWithAccess(path, accessRequestID string, 
 	if err != nil {
 		decision := audit.Deny
 		var files []string
+		auditErr := err
 		var required *policy.AccessRequiredError
 		if errors.As(err, &required) {
 			decision = audit.Ask
 			files = []string{required.Path}
+			auditErr = errAccessApprovalRequired
 		}
-		sp.Finish(decision, summarize(path), files, err)
+		sp.Finish(decision, summarize(path), files, auditErr)
 		return "", err
 	}
-	content, err := readContained(resolved)
+	content, err := readContained(s.root, resolved)
 	if err != nil {
 		sp.Finish(audit.Error, summarize(path), []string{resolved}, err)
 		return "", err
@@ -63,14 +66,14 @@ func (s *RepositoryCapability) ReadManyFiles(paths []string) (string, error) {
 				_ = s.log.Log(audit.Entry{
 					Tool:     "access_request",
 					Decision: audit.Ask,
-					Args:     err.Error(),
+					Args:     "access-required raw=false",
 					Files:    []string{required.Path},
 				})
 			}
 			fmt.Fprintf(&b, "===== %s =====\n[denied: %v]\n\n", p, err)
 			continue
 		}
-		content, err := readContained(resolved)
+		content, err := readContained(s.root, resolved)
 		if err != nil {
 			fmt.Fprintf(&b, "===== %s =====\n[error: %v]\n\n", p, err)
 			continue
@@ -85,15 +88,8 @@ func (s *RepositoryCapability) ReadManyFiles(paths []string) (string, error) {
 
 // readContained reads a file with a size cap and rejects binary content (so the
 // tool stays focused on source/text and cannot dump arbitrary blobs).
-func readContained(resolved string) (string, error) {
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return "", err
-	}
-	if info.IsDir() {
-		return "", fmt.Errorf("is a directory: %s", resolved)
-	}
-	f, err := os.Open(resolved)
+func readContained(root, resolved string) (string, error) {
+	f, info, err := openContainedRegular(root, resolved)
 	if err != nil {
 		return "", err
 	}

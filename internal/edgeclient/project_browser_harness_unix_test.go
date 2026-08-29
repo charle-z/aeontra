@@ -5,6 +5,7 @@ package edgeclient
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,6 +156,79 @@ func TestProjectBrowserHarnessArtifactBoundaryRejectsTraversalAndSymlink(t *test
 	}
 	if _, err := manager.BrowserHarnessArtifactRead(ProjectBrowserHarnessArtifactReadRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, RunID: started.RunID, Path: "artifacts/link.txt", Limit: 10}); err == nil {
 		t.Fatal("symlink artifact accepted")
+	}
+}
+
+func TestProjectBrowserHarnessArtifactInventoryFailsClosedAtCountLimit(t *testing.T) {
+	manager, _, workspace := testBrowserHarnessManager(t)
+	started, _, err := manager.BrowserHarnessStart(context.Background(), ProjectBrowserHarnessStartRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, IdempotencyKey: "artifact-count-limit", Profile: "default", Argv: []string{"true"}, TimeoutSeconds: 60, StorageMiB: 128})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runRoot := filepath.Join(workspace.Path, ".mcp-devbox", "browser-harness", "runs", started.RunID)
+	for index := 0; index <= projectBrowserHarnessMaxArtifacts; index++ {
+		name := filepath.Join(runRoot, "artifacts", fmt.Sprintf("artifact-%03d.txt", index))
+		if err := os.WriteFile(name, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := manager.BrowserHarnessArtifactList(ProjectBrowserHarnessArtifactListRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, RunID: started.RunID, Limit: projectBrowserHarnessMaxArtifacts}); err == nil {
+		t.Fatal("artifact inventory above the global count cap was accepted")
+	}
+}
+
+func TestProjectBrowserHarnessArtifactRejectsOversizedSparseFile(t *testing.T) {
+	manager, _, workspace := testBrowserHarnessManager(t)
+	started, _, err := manager.BrowserHarnessStart(context.Background(), ProjectBrowserHarnessStartRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, IdempotencyKey: "artifact-size-limit", Profile: "default", Argv: []string{"true"}, TimeoutSeconds: 60, StorageMiB: 128})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runRoot := filepath.Join(workspace.Path, ".mcp-devbox", "browser-harness", "runs", started.RunID)
+	path := filepath.Join(runRoot, "artifacts", "oversized.bin")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(projectBrowserHarnessMaxFileBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.BrowserHarnessArtifactList(ProjectBrowserHarnessArtifactListRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, RunID: started.RunID, Limit: 1}); err == nil {
+		t.Fatal("oversized artifact was listed")
+	}
+	if _, err := manager.BrowserHarnessArtifactRead(ProjectBrowserHarnessArtifactReadRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, RunID: started.RunID, Path: "artifacts/oversized.bin", Limit: 1}); err == nil {
+		t.Fatal("oversized artifact was read")
+	}
+}
+
+func TestProjectBrowserHarnessArtifactDigestCacheInvalidatesOnChange(t *testing.T) {
+	manager, _, workspace := testBrowserHarnessManager(t)
+	started, _, err := manager.BrowserHarnessStart(context.Background(), ProjectBrowserHarnessStartRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, IdempotencyKey: "artifact-digest-cache", Profile: "default", Argv: []string{"true"}, TimeoutSeconds: 60, StorageMiB: 128})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runRoot := filepath.Join(workspace.Path, ".mcp-devbox", "browser-harness", "runs", started.RunID)
+	path := filepath.Join(runRoot, "artifacts", "result.txt")
+	if err := os.WriteFile(path, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := manager.BrowserHarnessArtifactRead(ProjectBrowserHarnessArtifactReadRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, RunID: started.RunID, Path: "artifacts/result.txt", Limit: 16})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	if err := os.WriteFile(path, []byte("second-longer"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.BrowserHarnessArtifactRead(ProjectBrowserHarnessArtifactReadRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, RunID: started.RunID, Path: "artifacts/result.txt", Limit: 16})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.SHA256 == second.SHA256 || second.DataBase64 != base64.StdEncoding.EncodeToString([]byte("second-longer")) {
+		t.Fatalf("stale digest cache reused: first=%+v second=%+v", first, second)
 	}
 }
 

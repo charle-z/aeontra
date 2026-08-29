@@ -39,7 +39,9 @@ type SourceCapability struct {
 type GitCapability struct {
 	*serviceCore
 	*SourceCapability
-	githubRun GitHubHTTPSRunner
+	githubRun   GitHubHTTPSRunner
+	gitReadRun  Runner
+	gitMutation SandboxRunner
 }
 
 // PlatformCapability owns deployment-platform behavior and reuses source-hosting
@@ -88,9 +90,17 @@ func (c *serviceCore) configureRunner(r Runner) {
 }
 
 func (c *GitCapability) configureRunner(r Runner) {
+	c.gitReadRun = r
 	c.githubRun = func(ctx context.Context, dir, prog string, args []string, _ string) (string, error) {
 		return r(ctx, dir, prog, args)
 	}
+}
+
+func (c *GitCapability) configureSandbox(runner SandboxRunner) {
+	if runner == nil {
+		runner = disabledSandboxRunner{}
+	}
+	c.gitMutation = runner
 }
 
 func (c *SourceCapability) configureGitHub(client *GitHubClient) {

@@ -93,12 +93,62 @@ func TestReadFile_AccessRequestIsAudited(t *testing.T) {
 	var auditBuf bytes.Buffer
 	svc := NewService(pol, audit.New(&auditBuf), pol.Roots()[0])
 	secret := write(t, root, ".env", "API_KEY=supersecretvalue123")
-	_, _ = svc.ReadFile(secret)
+	_, readErr := svc.ReadFile(secret)
+	var required *policy.AccessRequiredError
+	if !errors.As(readErr, &required) {
+		t.Fatalf("secret read should return access-required, got %v", readErr)
+	}
 	log := auditBuf.String()
 	if !strings.Contains(log, `"decision":"ask"`) ||
 		!strings.Contains(log, `"tool":"read_file"`) ||
-		!strings.Contains(log, `\"type\":\"access-required\"`) {
+		!strings.Contains(log, `"error":"access approval required"`) {
 		t.Fatalf("access request should be audited as ask, got %s", log)
+	}
+	if strings.Contains(log, required.RequestID) || strings.Contains(log, `request_id`) {
+		t.Fatalf("audit must not persist the access request id: %s", log)
+	}
+}
+
+func TestReadManyFiles_AccessRequestIDIsNotAudited(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := config.New(config.Config{
+		Roots:           []string{root},
+		Mode:            config.ModeReadOnly,
+		AllowedCommands: []string{"git", "go"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pol, err := policy.NewPolicy(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var auditBuf bytes.Buffer
+	svc := NewService(pol, audit.New(&auditBuf), pol.Roots()[0])
+	secret := write(t, root, ".env", "API_KEY=supersecretvalue123")
+	out, err := svc.ReadManyFiles([]string{secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(out, "{")
+	end := strings.LastIndex(out, "}")
+	if start < 0 || end < start {
+		t.Fatalf("expected structured access-required marker, got %q", out)
+	}
+	var required policy.AccessRequiredError
+	if err := json.Unmarshal([]byte(out[start:end+1]), &required); err != nil {
+		t.Fatalf("access marker should be JSON: %v", err)
+	}
+	if required.RequestID == "" {
+		t.Fatal("client response should contain a request id")
+	}
+	log := auditBuf.String()
+	if !strings.Contains(log, `"tool":"access_request"`) ||
+		!strings.Contains(log, `"args":"access-required raw=false"`) {
+		t.Fatalf("access request should be audited without credentials: %s", log)
+	}
+	if strings.Contains(log, required.RequestID) || strings.Contains(log, `request_id`) {
+		t.Fatalf("audit must not persist the access request id: %s", log)
 	}
 }
 

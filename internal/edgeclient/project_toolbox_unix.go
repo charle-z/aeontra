@@ -31,11 +31,10 @@ const (
 	ProjectToolboxStopped ProjectToolboxState = "stopped"
 	ProjectToolboxUnknown ProjectToolboxState = "unknown"
 
-	projectToolboxStateDirectory  = "project-toolboxes"
-	projectToolboxBaseImage       = "docker.io/library/debian:bookworm-slim"
-	projectToolboxLabelKey        = "mcp.devbox.toolbox"
-	projectToolboxOutputLimit     = 24 << 10
-	projectToolboxContainerSocket = "/run/mcp-devbox/container.sock"
+	projectToolboxStateDirectory = "project-toolboxes"
+	projectToolboxBaseImage      = "docker.io/library/debian:bookworm-slim"
+	projectToolboxLabelKey       = "mcp.devbox.toolbox"
+	projectToolboxOutputLimit    = 24 << 10
 )
 
 var (
@@ -79,6 +78,7 @@ type ProjectToolboxManager struct {
 	newServiceID func() (string, error)
 	newHarnessID func() (string, error)
 	now          func() time.Time
+	artifactHash map[string]projectBrowserArtifactDigest
 	mu           sync.Mutex
 }
 
@@ -218,7 +218,7 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 	if now == nil {
 		now = time.Now
 	}
-	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, environment: environment, cgroupParent: cgroupParent, newID: newID, newServiceID: newServiceID, newHarnessID: newHarnessID, now: now}, nil
+	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, environment: environment, cgroupParent: cgroupParent, newID: newID, newServiceID: newServiceID, newHarnessID: newHarnessID, now: now, artifactHash: make(map[string]projectBrowserArtifactDigest)}, nil
 }
 
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
@@ -265,10 +265,7 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 		createArgs = append(createArgs, "--cgroup-parent", manager.cgroupParent)
 	}
 	createArgs = append(createArgs,
-		"--volume", manager.endpoint.SocketPath+":"+projectToolboxContainerSocket+":rw",
-		"--env", "DOCKER_HOST=unix://"+projectToolboxContainerSocket, "--env", "CONTAINER_HOST=unix://"+projectToolboxContainerSocket,
-		"--env", "MCP_DEVBOX_CONTAINER_ENGINE="+manager.endpoint.Engine, "--env", "MCP_DEVBOX_CONTAINER_LABEL=mcp.devbox.toolbox.parent="+toolboxID,
-		"--env", "COMPOSE_PROJECT_NAME="+projectToolboxComposeProject(toolboxID),
+		"--env", "MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS=disabled",
 		"--volume", request.Workspace.Path+":/workspace:rw", "--workdir", "/workspace", imageID, "sleep", "infinity")
 	createOutput, err := manager.run(ctx, createArgs...)
 	containerID := strings.TrimSpace(string(createOutput))
@@ -656,7 +653,7 @@ func (manager *ProjectToolboxManager) status(ctx context.Context, record project
 	if err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
-	return ProjectToolboxSnapshot{ToolboxID: record.ToolboxID, State: state, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit, ContainerAccess: true, WritableBytes: writableBytes, RootFSBytes: rootFSBytes}, nil
+	return ProjectToolboxSnapshot{ToolboxID: record.ToolboxID, State: state, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit, ContainerAccess: false, WritableBytes: writableBytes, RootFSBytes: rootFSBytes}, nil
 }
 
 func (manager *ProjectToolboxManager) recoverOwnedContainer(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
@@ -716,7 +713,7 @@ func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Conte
 		Type, Source, Destination string
 		RW                        bool
 	}
-	if err != nil || json.Unmarshal(mountOutput, &mounts) != nil || !validProjectToolboxMounts(mounts, workspace.Path, manager.endpoint.SocketPath) {
+	if err != nil || json.Unmarshal(mountOutput, &mounts) != nil || !validProjectToolboxMounts(mounts, workspace.Path) {
 		return ErrProjectToolboxMountMismatch
 	}
 	resourceOutput, err := manager.run(ctx, "inspect", "--format", "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}", reference)
@@ -726,7 +723,7 @@ func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Conte
 	}
 	environmentOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Config.Env}}", reference)
 	var environment []string
-	if err != nil || json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment, manager.endpoint.Engine, record.ToolboxID) {
+	if err != nil || json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment) {
 		return ErrProjectToolboxEnvironmentMismatch
 	}
 	return nil
@@ -735,32 +732,25 @@ func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Conte
 func validProjectToolboxMounts(mounts []struct {
 	Type, Source, Destination string
 	RW                        bool
-}, workspacePath, socketPath string) bool {
-	if len(mounts) != 2 {
+}, workspacePath string) bool {
+	if len(mounts) != 1 {
 		return false
 	}
-	want := map[string]string{"/workspace": workspacePath, projectToolboxContainerSocket: socketPath}
-	seen := map[string]bool{}
-	for _, mount := range mounts {
-		if mount.Type != "bind" || !mount.RW || want[mount.Destination] != mount.Source || seen[mount.Destination] {
-			return false
-		}
-		seen[mount.Destination] = true
-	}
-	return seen["/workspace"] && seen[projectToolboxContainerSocket]
+	mount := mounts[0]
+	return mount.Type == "bind" && mount.RW && mount.Source == workspacePath && mount.Destination == "/workspace"
 }
 
-func validProjectToolboxContainerEnvironment(environment []string, engine, toolboxID string) bool {
+func validProjectToolboxContainerEnvironment(environment []string) bool {
 	want := map[string]string{
-		"DOCKER_HOST":                 "unix://" + projectToolboxContainerSocket,
-		"CONTAINER_HOST":              "unix://" + projectToolboxContainerSocket,
-		"MCP_DEVBOX_CONTAINER_ENGINE": engine,
-		"MCP_DEVBOX_CONTAINER_LABEL":  "mcp.devbox.toolbox.parent=" + toolboxID,
-		"COMPOSE_PROJECT_NAME":        projectToolboxComposeProject(toolboxID),
+		"MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS": "disabled",
 	}
+	forbidden := map[string]bool{"DOCKER_HOST": true, "CONTAINER_HOST": true, "DOCKER_CONFIG": true, "MCP_DEVBOX_CONTAINER_ENGINE": true, "MCP_DEVBOX_CONTAINER_LABEL": true, "COMPOSE_PROJECT_NAME": true}
 	found := map[string]bool{}
 	for _, item := range environment {
 		key, value, ok := strings.Cut(item, "=")
+		if forbidden[key] {
+			return false
+		}
 		if expected, tracked := want[key]; tracked {
 			if !ok || found[key] || value != expected {
 				return false
@@ -769,10 +759,6 @@ func validProjectToolboxContainerEnvironment(environment []string, engine, toolb
 		}
 	}
 	return len(found) == len(want)
-}
-
-func projectToolboxComposeProject(toolboxID string) string {
-	return "mcp-tb-" + strings.TrimPrefix(toolboxID, "tb_")[:16]
 }
 
 func (manager *ProjectToolboxManager) storage(ctx context.Context, containerName string) (int64, int64, error) {

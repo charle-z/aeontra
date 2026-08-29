@@ -86,7 +86,6 @@ jobs:
             --manifest-version 4 \
             --commit "$(git rev-parse HEAD)" \
             --catalog "$catalog" \
-            --private-key "$RUNNER_TEMP/release/edge.key" \
             --public-key "$PUBLIC_KEY" \
             --node-bin "$(command -v node)" \
             --gh-bin "$RUNNER_TEMP/release/gh" \
@@ -100,11 +99,12 @@ jobs:
             --manifest-version 5 \
             --commit "$(git rev-parse HEAD)" \
             --catalog "$catalog" \
-            --private-key "$RUNNER_TEMP/release/edge.key" \
             --public-key "$PUBLIC_KEY" \
             --gh-bin "$RUNNER_TEMP/release/gh" \
             --codex-bin "$RUNNER_TEMP/release/codex" \
             --codex-pin "$RUNNER_TEMP/release/codex-pin.json"
+          go run ./cmd/mcp-bundle-manifest --root "$RUNNER_TEMP/release/bundle-v4" --release v1.0.1 --commit "$(git rev-parse HEAD)" --protocol mcp-devbox.edge-bundle.v1 --catalog "$catalog" --architecture amd64 --manifest-version 4 --private-key "$RUNNER_TEMP/release/edge.key"
+          go run ./cmd/mcp-bundle-manifest --root "$RUNNER_TEMP/release/bundle" --release v1.1.0 --commit "$(git rev-parse HEAD)" --protocol mcp-devbox.edge-bundle.v1 --catalog "$catalog" --architecture amd64 --manifest-version 5 --private-key "$RUNNER_TEMP/release/edge.key"
           test -x "$RUNNER_TEMP/release/bundle-v4/opencode/opencode"
           test ! -e "$RUNNER_TEMP/release/bundle/opencode"
           test ! -e "$RUNNER_TEMP/release/bundle/opencode-provider"
@@ -115,8 +115,10 @@ jobs:
         run: |
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
           export SOURCE_DATE_EPOCH
-          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-a" --release v1.1.0 --signing-key "$GPG_KEY_ID"
-          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-b" --release v1.1.0 --signing-key "$GPG_KEY_ID"
+          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-a" --release v1.1.0
+          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-b" --release v1.1.0
+          gpg --batch --yes --local-user "$GPG_KEY_ID" --armor --detach-sign --output "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb.asc" "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb"
+          gpg --batch --yes --local-user "$GPG_KEY_ID" --armor --detach-sign --output "$RUNNER_TEMP/deb-b/mcp-devbox-edge_1.1.0_amd64.deb.asc" "$RUNNER_TEMP/deb-b/mcp-devbox-edge_1.1.0_amd64.deb"
           cmp "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb" "$RUNNER_TEMP/deb-b/mcp-devbox-edge_1.1.0_amd64.deb"
           dpkg-deb --info "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb"
           dpkg-deb --contents "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb" > "$RUNNER_TEMP/package-contents.txt"

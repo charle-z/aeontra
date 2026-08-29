@@ -2,11 +2,11 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: stage-edge-bundle.sh --output <ABS_DIR> --release <p15.x.y|vMAJOR.MINOR.PATCH> --manifest-version <3|4|5> --commit <SHA> --catalog <SHA256> --private-key <ABS_FILE> --public-key <HEX> --gh-bin <ABS_FILE> [--node-bin <ABS_FILE> --opencode-bin <ABS_FILE> --opencode-lock <ABS_FILE>] [--codex-bin <ABS_FILE> --codex-pin <ABS_FILE>]\n' >&2
+  printf 'usage: stage-edge-bundle.sh --output <ABS_DIR> --release <p15.x.y|vMAJOR.MINOR.PATCH> --manifest-version <3|4|5> --commit <SHA> --catalog <SHA256> --public-key <HEX> --gh-bin <ABS_FILE> [--node-bin <ABS_FILE> --opencode-bin <ABS_FILE> --opencode-lock <ABS_FILE>] [--codex-bin <ABS_FILE> --codex-pin <ABS_FILE>]\n' >&2
   exit 2
 }
 
-OUTPUT=''; RELEASE=''; MANIFEST_VERSION=''; COMMIT=''; CATALOG=''; PRIVATE_KEY=''; PUBLIC_KEY=''; NODE_BIN=''; GH_BIN=''; OPENCODE_BIN=''; OPENCODE_LOCK=''; CODEX_BIN=''; CODEX_PIN=''
+OUTPUT=''; RELEASE=''; MANIFEST_VERSION=''; COMMIT=''; CATALOG=''; PUBLIC_KEY=''; NODE_BIN=''; GH_BIN=''; OPENCODE_BIN=''; OPENCODE_LOCK=''; CODEX_BIN=''; CODEX_PIN=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output) OUTPUT="${2:-}"; shift 2 ;;
@@ -14,7 +14,6 @@ while [ "$#" -gt 0 ]; do
     --manifest-version) MANIFEST_VERSION="${2:-}"; shift 2 ;;
     --commit) COMMIT="${2:-}"; shift 2 ;;
     --catalog) CATALOG="${2:-}"; shift 2 ;;
-    --private-key) PRIVATE_KEY="${2:-}"; shift 2 ;;
     --public-key) PUBLIC_KEY="${2:-}"; shift 2 ;;
     --node-bin) NODE_BIN="${2:-}"; shift 2 ;;
     --gh-bin) GH_BIN="${2:-}"; shift 2 ;;
@@ -26,13 +25,12 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[[ "$OUTPUT" = /* && "$PRIVATE_KEY" = /* && "$GH_BIN" = /* ]] || usage
+[[ "$OUTPUT" = /* && "$GH_BIN" = /* ]] || usage
 [[ "$MANIFEST_VERSION" = 3 || "$MANIFEST_VERSION" = 4 || "$MANIFEST_VERSION" = 5 ]] || usage
 [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ || "$RELEASE" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || usage
 [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] || usage
 [[ "$CATALOG" =~ ^sha256:[a-f0-9]{64}$ ]] || usage
 [[ "$PUBLIC_KEY" =~ ^[a-f0-9]{64}$ ]] || usage
-[ -f "$PRIVATE_KEY" ] && [ ! -L "$PRIVATE_KEY" ] || usage
 [ -x "$GH_BIN" ] && [ ! -L "$GH_BIN" ] || usage
 if [ "$MANIFEST_VERSION" = 3 ] || [ "$MANIFEST_VERSION" = 4 ]; then
   [[ "$NODE_BIN" = /* && "$OPENCODE_BIN" = /* && "$OPENCODE_LOCK" = /* ]] || usage
@@ -84,7 +82,4 @@ else
   install -m 0644 packaging/systemd/mcp-devbox-opencode-edge-bridge@.service "$OUTPUT/systemd/mcp-devbox-opencode-edge@.service"
 fi
 
-go run ./cmd/mcp-bundle-manifest --root "$OUTPUT" --release "$RELEASE" --commit "$COMMIT" \
-  --protocol mcp-devbox.edge-bundle.v1 --catalog "$CATALOG" --architecture amd64 --private-key "$PRIVATE_KEY" \
-  --manifest-version "$MANIFEST_VERSION"
-printf 'staged signed Edge bundle %s\n' "$RELEASE"
+printf 'staged unsigned Edge bundle %s\n' "$RELEASE"

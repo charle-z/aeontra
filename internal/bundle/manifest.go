@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -67,6 +68,63 @@ var (
 // semantic versions. The closed format is also safe as one release-directory name.
 func ValidRelease(release string) bool {
 	return legacyReleasePattern.MatchString(release) || semanticReleasePattern.MatchString(release)
+}
+
+// CompareRelease orders two valid Edge release identifiers. Historical p15 bridge
+// releases precede every Aeontra semantic release. Callers use this only to prevent an
+// automatic stable-channel update from becoming an implicit rollback; the explicit
+// rollback operation remains independent.
+func CompareRelease(left, right string) (int, error) {
+	leftGeneration, leftParts, err := releaseOrder(left)
+	if err != nil {
+		return 0, err
+	}
+	rightGeneration, rightParts, err := releaseOrder(right)
+	if err != nil {
+		return 0, err
+	}
+	if leftGeneration < rightGeneration {
+		return -1, nil
+	}
+	if leftGeneration > rightGeneration {
+		return 1, nil
+	}
+	for index := range leftParts {
+		if leftParts[index] < rightParts[index] {
+			return -1, nil
+		}
+		if leftParts[index] > rightParts[index] {
+			return 1, nil
+		}
+	}
+	return 0, nil
+}
+
+func releaseOrder(release string) (int, [3]uint64, error) {
+	generation := 0
+	numbers := ""
+	switch {
+	case legacyReleasePattern.MatchString(release):
+		numbers = strings.TrimPrefix(release, "p")
+	case semanticReleasePattern.MatchString(release):
+		generation = 1
+		numbers = strings.TrimPrefix(release, "v")
+	default:
+		return 0, [3]uint64{}, &VerificationError{Code: ManifestInvalid}
+	}
+	fields := strings.Split(numbers, ".")
+	if len(fields) != 3 {
+		return 0, [3]uint64{}, &VerificationError{Code: ManifestInvalid}
+	}
+	var parts [3]uint64
+	for index, field := range fields {
+		value, parseErr := strconv.ParseUint(field, 10, 64)
+		if parseErr != nil {
+			return 0, [3]uint64{}, &VerificationError{Code: ManifestInvalid}
+		}
+		parts[index] = value
+	}
+	return generation, parts, nil
 }
 
 type Manifest struct {

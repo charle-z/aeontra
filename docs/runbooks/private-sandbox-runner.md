@@ -122,9 +122,9 @@ MCP_DEVBOX_SANDBOX_WORKSPACE_ID=primary
 MCP_DEVBOX_SANDBOX_IMAGE=<same immutable image@sha256:digest>
 ```
 
-No change to `MCP_DEVBOX_ALLOW_CMD` is needed. That list continues to govern only L1
-`run_command`. `read-only` denies `sandbox_exec`; `ask` requires `approve=true`; and
-`allow` runs without that mode prompt after the runner reattests.
+No change to `MCP_DEVBOX_ALLOW_CMD` is needed. That list continues to govern
+`run_command` inside L3. Both `read-only` and `ask` deny contained execution. An
+administrator must select `allow`, after which the runner still reattests before each run.
 
 ## Acceptance
 

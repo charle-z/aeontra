@@ -130,7 +130,7 @@ func validProjectToolboxResult(result OperationResult) bool {
 	if !projectToolboxIDPattern.MatchString(result.ToolboxID) || !projectToolboxStatePattern.MatchString(result.ToolboxState) ||
 		result.ToolboxBase != "debian-bookworm-slim" || !projectToolboxImageIDPattern.MatchString(result.ToolboxBaseImageID) ||
 		!validProjectToolboxResources(result.ToolboxCPUMillis, result.ToolboxMemoryMiB, result.ToolboxProcessLimit) ||
-		!result.ToolboxContainerAccess || result.ToolboxWritableBytes < 0 || result.ToolboxRootFSBytes <= 0 ||
+		result.ToolboxContainerAccess || result.ToolboxWritableBytes < 0 || result.ToolboxRootFSBytes <= 0 ||
 		len(result.ToolboxOutput) > MaxProjectToolboxOutputBytes || !utf8.ValidString(result.ToolboxOutput) || strings.ContainsRune(result.ToolboxOutput, 0) {
 		return false
 	}

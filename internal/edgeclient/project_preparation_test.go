@@ -80,7 +80,7 @@ func TestProjectPreparationCloneUsesClosedGitAuthorityAndRegistersAlias(t *testi
 	if runner.calls != 1 || runner.dir != candidate {
 		t.Fatalf("runner=%+v", runner)
 	}
-	wantArgs := []string{"clone", "--single-branch", "--", "https://github.com/charle-z/repo.git", "."}
+	wantArgs := []string{"clone", "--single-branch", "--", "https://github.com/charle-z/repo.git", candidate}
 	if !reflect.DeepEqual(runner.args, wantArgs) {
 		t.Fatalf("args=%q want=%q", runner.args, wantArgs)
 	}

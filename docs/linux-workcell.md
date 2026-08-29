@@ -544,11 +544,9 @@ persistent toolbox rootfs and the same general network available to other truste
 workcell commands. Projects install Playwright, Puppeteer, Selenium, WebDriver, browsers,
 drivers and supporting libraries through the existing toolbox installation surface.
 
-The workcell boundary remains unchanged. Windows mounts and the general host home are not
-added. Rootful Docker sockets and Edge-private identity/state remain excluded. The
-validated user-owned rootless engine endpoint already assigned to the toolbox remains
-available under its fixed private mount and retains the broad owner-user authority
-documented elsewhere; the harness does not add another socket or host control channel.
+The workcell boundary remains unchanged. Windows mounts, the general host home,
+container-engine sockets and Edge-private identity/state are not added. Browser tooling
+runs directly in the persistent toolbox and receives no host control channel.
 
 Project services started inside the toolbox share its localhost, so browser scripts can
 test a local web server directly. Browser code may also reach normal HTTP/HTTPS Internet
