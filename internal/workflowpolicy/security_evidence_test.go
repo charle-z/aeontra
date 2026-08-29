@@ -142,7 +142,7 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 	}
 	text := string(content)
 	for _, required := range []string{
-		"FROM cgr.dev/chainguard/wolfi-base@sha256:52604323e2a19f5e6d37dffa7e6a7ef30e2f98506a73a11cdfa3ef25100131be",
+		"FROM cgr.dev/chainguard/wolfi-base@sha256:03c6561658909fc4eadd0b2dc717375df40a22cc05455b8f82f1f1974e7e4427",
 		"go-1.26=1.26.7-r0",
 		"nodejs-24=24.19.0-r0",
 		"npm=12.0.2-r0",
