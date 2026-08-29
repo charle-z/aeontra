@@ -109,11 +109,9 @@ func TestPublicLandingAssetsAreEmbeddedAndHardened(t *testing.T) {
 	handler.Register(mux)
 
 	for path, wantType := range map[string]string{
-		"/landing/assets/app.css":            "text/css",
-		"/landing/assets/app.js":             "text/javascript",
-		"/landing/assets/request-path.svg":   "image/svg+xml",
-		"/landing/assets/social-card.svg":    "image/svg+xml",
-		"/showcase/pixelgrama-evidence.json": "application/json",
+		"/landing/assets/app.css":         "text/css",
+		"/landing/assets/app.js":          "text/javascript",
+		"/landing/assets/social-card.svg": "image/svg+xml",
 	} {
 		response := serveLanding(mux, http.MethodGet, path)
 		if response.Code != http.StatusOK {
@@ -129,15 +127,21 @@ func TestPublicLandingAssetsAreEmbeddedAndHardened(t *testing.T) {
 	}
 }
 
-func TestPublicLandingFailsClosedWhenEvidenceIsUnavailable(t *testing.T) {
-	loaders := []func() ([]byte, error){
-		nil,
-		func() ([]byte, error) { return nil, http.ErrAbortHandler },
-		func() ([]byte, error) { return nil, nil },
+func TestPublicLandingDoesNotServeHistoricalShowcaseAssets(t *testing.T) {
+	handler, err := New()
+	if err != nil {
+		t.Fatal(err)
 	}
-	for index, loader := range loaders {
-		if _, err := newHandler(loader); err == nil || err.Error() != "pixelgrama evidence is unavailable" {
-			t.Fatalf("loader %d error=%v", index, err)
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	for _, path := range []string{
+		"/landing/assets/request-path.svg",
+		"/showcase/pixelgrama-evidence.json",
+	} {
+		response := serveLanding(mux, http.MethodGet, path)
+		if response.Code != http.StatusNotFound {
+			t.Errorf("GET %s status=%d want 404", path, response.Code)
 		}
 	}
 }

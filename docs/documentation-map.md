@@ -140,7 +140,7 @@ current product behavior.
 These references remain useful, but they do not replace the canonical product sources
 above:
 
-- Public presentation landing contract: `docs/landing/public-showcase.md`.
+- Public product site contract: `docs/landing/public-site.md`.
 - Public alpha local evaluation and feedback path: `docs/public-alpha.md`.
 - Signed Linux/Parrot/WSL installation entry point: `docs/install-edge-linux.md`.
 - Stable independently deployed MCP facade: `docs/stable-mcp-front-door.md`.

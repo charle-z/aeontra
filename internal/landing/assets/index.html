@@ -3,407 +3,250 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0000A8">
-  <meta name="description" content="ChatGPT working on real infrastructure without receiving a free shell. Aeontra provides bounded tools, configurable autonomy and verifiable operations." data-es="ChatGPT trabajando sobre infraestructura real, sin recibir una shell libre. Aeontra ofrece herramientas acotadas, autonomía configurable y operaciones verificables." data-en="ChatGPT working on real infrastructure without receiving a free shell. Aeontra provides bounded tools, configurable autonomy and verifiable operations." data-i18n-attr="content">
-  <meta property="og:title" content="Aeontra — Bounded autonomy for real infrastructure" data-es="Aeontra — Autonomía acotada sobre infraestructura real" data-en="Aeontra — Bounded autonomy for real infrastructure" data-i18n-attr="content">
-  <meta property="og:description" content="Read, change, test, publish and deploy through narrow tools instead of a general shell." data-es="Leer, modificar, probar, publicar y desplegar mediante herramientas limitadas en lugar de una shell general." data-en="Read, change, test, publish and deploy through narrow tools instead of a general shell." data-i18n-attr="content">
+  <title>Aeontra — Boundaries for software agents</title>
+  <meta name="description" content="Aeontra is an open-source MCP control plane for repositories, CI, deployments and private Edge workers.">
+  <meta name="theme-color" content="#171813">
+  <meta property="og:title" content="Aeontra — Boundaries for software agents">
+  <meta property="og:description" content="An open-source MCP control plane for repositories, CI, deployments and private Edge workers.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="/landing/assets/social-card.svg">
   <meta name="twitter:card" content="summary_large_image">
-  <title data-es="Aeontra — Autonomía acotada sobre infraestructura real" data-en="Aeontra — Bounded autonomy for real infrastructure">Aeontra — Bounded autonomy for real infrastructure</title>
   <link rel="stylesheet" href="/landing/assets/app.css">
   <script src="/landing/assets/app.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#content" data-es="Saltar al contenido" data-en="Skip to content">Skip to content</a>
+  <a class="skip-link" href="#content" data-en="Skip to content" data-es="Saltar al contenido">Skip to content</a>
 
-  <div class="boot" id="boot" role="dialog" aria-modal="true" aria-label="Aeontra startup summary" data-es="Resumen de arranque de Aeontra" data-en="Aeontra startup summary" data-i18n-attr="aria-label">
-    <div class="boot-window">
-      <p class="boot-title">AEONTRA</p>
-      <p class="boot-thesis" data-es="CHATGPT TRABAJANDO SOBRE INFRAESTRUCTURA REAL, SIN ENTREGARLE UNA SHELL LIBRE." data-en="CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.">CHATGPT WORKING ON REAL INFRASTRUCTURE WITHOUT RECEIVING A FREE SHELL.</p>
-      <p><span data-es="solución ........ herramientas limitadas y operaciones verificables " data-en="solution ........ narrow tools and verifiable operations ">solution ........ narrow tools and verifiable operations </span><span class="ok">[BOUNDED]</span></p>
-      <p><span data-es="autonomía ....... solo lectura / revisión / autonomía acotada " data-en="autonomy ........ read-only / review / bounded autonomy ">autonomy ........ read-only / review / bounded autonomy </span><span class="ok">[CONFIGURED]</span></p>
-      <p><span data-es="caso histórico ... Pixelgrama, documentado cuando su evidencia era pública " data-en="historical case .. Pixelgrama, recorded while its evidence was public ">historical case .. Pixelgrama, recorded while its evidence was public </span><span class="warn">[FROZEN]</span></p>
-      <p><span data-es="esta página ...... presentación pública sin autoridad operativa " data-en="this page ........ public presentation with no operational authority ">this page ........ public presentation with no operational authority </span><span class="ok">[ENFORCED]</span></p>
-      <button type="button" id="skipBoot" data-es="[ Pulsa cualquier tecla para continuar ]" data-en="[ Press any key to continue ]">[ Press any key to continue ]</button>
+  <header class="site-header">
+    <a class="wordmark" href="#top" aria-label="Aeontra home">
+      <span class="wordmark-mark" aria-hidden="true">A/</span>
+      <span>AEONTRA</span>
+    </a>
+    <nav class="primary-nav" aria-label="Primary">
+      <a href="#system" data-en="System" data-es="Sistema">System</a>
+      <a href="#authority" data-en="Authority" data-es="Autoridad">Authority</a>
+      <a href="#edge" data-en="Edge" data-es="Edge">Edge</a>
+      <a href="#start" data-en="Start" data-es="Empezar">Start</a>
+    </nav>
+    <div class="header-tools">
+      <span class="alpha-label">PUBLIC ALPHA</span>
+      <button class="language-toggle" type="button" data-language-toggle aria-label="Cambiar idioma a español">ES</button>
     </div>
-  </div>
+  </header>
 
-  <div class="machine" id="machine">
-    <header class="topbar">
-      <a class="brand" href="#thesis">AEONTRA</a>
-      <nav aria-label="Primary" data-es="Principal" data-en="Primary" data-i18n-attr="aria-label">
-        <a href="#authority" data-es="Autoridad" data-en="Authority">Authority</a>
-        <a href="#demo" data-es="Demo" data-en="Demo">Demo</a>
-        <a href="#policy" data-es="Política" data-en="Policy">Policy</a>
-        <a href="#path" data-es="Flujo" data-en="Path">Path</a>
-        <a href="#evidence" data-es="Evidencia" data-en="Evidence">Evidence</a>
-        <a href="#runtime">Runtime</a>
-        <a href="#limits" data-es="Límites" data-en="Limits">Limits</a>
-      </nav>
-      <div class="topbar-tools">
-        <div class="language-toggle" id="languageToggle" role="group" aria-label="Language" data-es="Idioma" data-en="Language" data-i18n-attr="aria-label">
-          <span aria-hidden="true">[</span><button type="button" data-language="es" aria-pressed="false">ES</button><span aria-hidden="true">|</span><button type="button" data-language="en" aria-pressed="false">EN</button><span aria-hidden="true">]</span>
+  <main id="content">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span>CONTROL PLANE</span><span>OPEN SOURCE</span><span>MCP</span></p>
+        <h1 id="hero-title" data-en="Give software agents a defined place to work." data-es="Dale a los agentes de software un lugar definido para trabajar.">Give software agents a defined place to work.</h1>
+        <p class="hero-summary" data-en="Aeontra is an open-source MCP control plane for repositories, CI, deployments and private Edge workers." data-es="Aeontra es un plano de control MCP de código abierto para repositorios, CI, despliegues y workers Edge privados.">Aeontra is an open-source MCP control plane for repositories, CI, deployments and private Edge workers.</p>
+        <p class="hero-boundary" data-en="The client requests work. Aeontra enforces the configured boundary and records the result." data-es="El cliente solicita trabajo. Aeontra aplica el límite configurado y registra el resultado.">The client requests work. Aeontra enforces the configured boundary and records the result.</p>
+        <div class="hero-actions" aria-label="Primary actions">
+          <a class="primary-action primary-action--solid" href="https://github.com/charle-z/aeontra/blob/main/docs/public-alpha.md" data-en="Run the public alpha" data-es="Probar la alpha pública">Run the public alpha</a>
+          <a class="primary-action primary-action--outline" href="https://github.com/charle-z/aeontra" data-en="Inspect the source" data-es="Revisar el código">Inspect the source</a>
         </div>
-        <p class="runtime-chip"><span id="topStatus" class="warn">checking</span> · <span id="topCommit">runtime</span></p>
       </div>
-    </header>
 
-    <main class="document-pane" id="content" tabindex="-1">
-      <div class="wrap">
-        <section id="thesis" class="hero-section" data-es="Desplázate para inspeccionar el modelo de autoridad" data-en="Scroll to inspect the authority model" data-label-es="INICIO" data-label-en="START" data-i18n-role="hint">
-          <div class="hero-grid">
-            <div class="hero-main">
-              <p class="eyebrow" data-es="00 · QUÉ RESUELVE" data-en="00 · WHAT IT SOLVES">00 · WHAT IT SOLVES</p>
-              <p class="hero-problem" data-es="Una shell general entrega al modelo más autoridad de la que la mayoría de tareas necesita." data-en="A general shell gives the model more authority than most tasks require.">A general shell gives the model more authority than most tasks require.</p>
-              <h1 data-es="ChatGPT trabajando sobre infraestructura real, sin entregarle una shell libre." data-en="ChatGPT working on real infrastructure without receiving a free shell.">ChatGPT working on real infrastructure without receiving a free shell.</h1>
-              <p class="lede hero-solution" data-es="Aeontra permite que un agente lea, modifique, pruebe, publique y despliegue proyectos mediante herramientas limitadas, políticas inmutables, secretos denegados y operaciones verificables." data-en="Aeontra lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations.">Aeontra lets an agent read, change, test, publish and deploy projects through narrow tools, immutable policy, denied secrets and verifiable operations.</p>
-              <p class="hero-autonomy" data-es="El propietario elige entre solo lectura, revisión explícita o autonomía dentro de límites previamente configurados." data-en="The owner chooses between read-only access, explicit review or autonomy within preconfigured limits.">The owner chooses between read-only access, explicit review or autonomy within preconfigured limits.</p>
-              <nav class="hero-actions" id="hero-actions" aria-label="Primary showcase actions" data-es="Acciones principales de la presentación" data-en="Primary showcase actions" data-i18n-attr="aria-label">
-                <a class="hero-action" href="#demo" data-es="Revisar el caso histórico" data-en="Review the historical case">Review the historical case</a>
-                <a class="hero-action" href="#authority" data-es="Explorar el modelo de autoridad" data-en="Explore the authority model">Explore the authority model</a>
-                <a class="hero-action" href="https://github.com/charle-z/aeontra" data-es="Abrir el repositorio" data-en="Open the repository">Open the repository</a>
-              </nav>
-            </div>
-            <aside class="hero-proof" aria-label="Historical end-to-end case" data-es="Caso histórico de punta a punta" data-en="Historical end-to-end case" data-i18n-attr="aria-label">
-              <p class="hero-proof-label" data-es="CASO HISTÓRICO" data-en="HISTORICAL CASE">HISTORICAL CASE</p>
-              <h2>Pixelgrama</h2>
-              <p data-es="Pixelgrama fue construido, probado y desplegado mediante Aeontra. La evidencia se congeló cuando el repositorio era público; su disponibilidad actual no forma parte del contrato." data-en="Pixelgrama was built, tested and deployed through Aeontra. The evidence was frozen while the repository was public; current availability is outside this contract.">Pixelgrama was built, tested and deployed through Aeontra. The evidence was frozen while the repository was public; current availability is outside this contract.</p>
-              <dl class="hero-proof-facts">
-                <dt data-es="fuente" data-en="source">source</dt><dd data-es="snapshot histórico" data-en="historical snapshot">historical snapshot</dd>
-                <dt data-es="producción" data-en="production">production</dt><dd><a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall">/wall</a></dd>
-                <dt data-es="identidad" data-en="identity">identity</dt><dd><a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/version">/version</a></dd>
-                <dt data-es="infraestructura" data-en="infrastructure">infrastructure</dt><dd>CubePath + Coolify</dd>
-              </dl>
-              <p class="hero-boundary" data-es="Este snapshot integrado es histórico, de solo lectura y únicamente de presentación. No prueba disponibilidad actual ni concede acceso a herramientas, consola o credenciales." data-en="This embedded snapshot is historical, read-only and presentation-only. It proves no current availability and grants no access to tools, the console or credentials.">This embedded snapshot is historical, read-only and presentation-only. It proves no current availability and grants no access to tools, the console or credentials.</p>
-            </aside>
+      <aside class="hero-system" aria-labelledby="system-trace-title">
+        <div class="panel-header">
+          <p id="system-trace-title">EXECUTION TRACE</p>
+          <span class="live-dot" aria-hidden="true"></span>
+        </div>
+        <ol class="trace-list">
+          <li>
+            <span class="trace-index">01</span>
+            <div><strong data-en="Client request" data-es="Solicitud del cliente">Client request</strong><small data-en="MCP call with a closed schema" data-es="Llamada MCP con esquema cerrado">MCP call with a closed schema</small></div>
+          </li>
+          <li>
+            <span class="trace-index">02</span>
+            <div><strong data-en="Policy gate" data-es="Gate de política">Policy gate</strong><small data-en="Root, command, credential and mode" data-es="Raíz, comando, credencial y modo">Root, command, credential and mode</small></div>
+          </li>
+          <li>
+            <span class="trace-index">03</span>
+            <div><strong data-en="Narrow effect" data-es="Efecto acotado">Narrow effect</strong><small data-en="One reviewed operation" data-es="Una operación revisada">One reviewed operation</small></div>
+          </li>
+          <li>
+            <span class="trace-index">04</span>
+            <div><strong data-en="Durable receipt" data-es="Recibo durable">Durable receipt</strong><small data-en="Bounded evidence and audit" data-es="Evidencia acotada y auditoría">Bounded evidence and audit</small></div>
+          </li>
+        </ol>
+        <div class="runtime-card" aria-live="polite">
+          <div class="runtime-heading">
+            <span data-en="Live deployment" data-es="Despliegue activo">Live deployment</span>
+            <strong data-runtime-status>CHECKING</strong>
           </div>
-          <div class="capability-status">
-            <p class="eyebrow" data-es="ESTADO DEL PRODUCTO" data-en="PRODUCT STATUS">PRODUCT STATUS</p>
-            <div class="status-grid" aria-label="Capability status" data-es="Estado de capacidades" data-en="Capability status" data-i18n-attr="aria-label">
-              <article data-status="implemented">
-                <h2 data-es="IMPLEMENTADO" data-en="IMPLEMENTED">IMPLEMENTED</h2>
-                <p data-es="Operaciones de repositorio, pull requests y diagnósticos de GitHub, despliegue con Coolify, memoria Brain, resultados acotados, consola autenticada y workcells Edge salientes." data-en="Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.">Repository operations, GitHub pull requests and diagnostics, Coolify deployment, Brain memory, bounded results, authenticated console and outbound Edge workcells.</p>
-              </article>
-              <article data-status="experimental">
-                <h2 data-es="EXPERIMENTAL" data-en="EXPERIMENTAL">EXPERIMENTAL</h2>
-                <p data-es="Los perfiles de ejecución más amplios y los workcells locales avanzados siguen guiados por evidencia; no se asumen universales." data-en="Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.">Broader execution profiles and advanced local workcells remain evidence-driven rather than assumed universal.</p>
-              </article>
-              <article data-status="planned">
-                <h2 data-es="PLANEADO" data-en="PLANNED">PLANNED</h2>
-                <p data-es="No se afirma operación multi-tenant ni aislamiento universal. Toda expansión futura debe preservar el mismo límite de autoridad." data-en="Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.">Multi-tenant operation and universal isolation are not claimed. Any future expansion must preserve the same authority boundary.</p>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section id="authority" data-es="Compara autoridad ambiental con autoridad acotada" data-en="Compare ambient authority with bounded authority" data-label-es="AUTORIDAD" data-label-en="AUTHORITY" data-i18n-role="hint">
-          <p class="eyebrow" data-es="01 · COMPARACIÓN DE AUTORIDAD" data-en="01 · AUTHORITY COMPARISON">01 · AUTHORITY COMPARISON</p>
-          <h2 data-es="MISMA META. AUTORIDAD RADICALMENTE DISTINTA." data-en="SAME GOAL. RADICALLY DIFFERENT AUTHORITY.">SAME GOAL. RADICALLY DIFFERENT AUTHORITY.</h2>
-          <p class="sub prose" data-es="La diferencia no es si el agente puede producir un cambio. Es cuánta autoridad recibe para intentarlo y cómo se limita cada efecto." data-en="The difference is not whether the agent can produce a change. It is how much authority it receives to attempt it and how each effect is constrained.">The difference is not whether the agent can produce a change. It is how much authority it receives to attempt it and how each effect is constrained.</p>
-
-          <div class="authority-comparison" aria-label="Authority model comparison" data-es="Comparación de modelos de autoridad" data-en="Authority model comparison" data-i18n-attr="aria-label">
-            <article class="authority-lane authority-lane-broad" data-authority="broad">
-              <p class="authority-kicker" data-es="AUTORIDAD AMBIENTAL AMPLIA" data-en="BROAD AMBIENT AUTHORITY">BROAD AMBIENT AUTHORITY</p>
-              <h3 data-es="Agente con shell general" data-en="Agent with a general shell">Agent with a general shell</h3>
-              <ol class="authority-path">
-                <li data-es="El modelo recibe una shell general." data-en="The model receives a general shell.">The model receives a general shell.</li>
-                <li data-es="La shell hereda credenciales y acceso del entorno." data-en="The shell inherits credentials and environmental access.">The shell inherits credentials and environmental access.</li>
-                <li data-es="El modelo compone comandos arbitrarios." data-en="The model composes arbitrary commands.">The model composes arbitrary commands.</li>
-                <li data-es="El efecto puede alcanzar recursos que la tarea no necesitaba." data-en="The effect can reach resources the task did not require.">The effect can reach resources the task did not require.</li>
-                <li data-es="Las consecuencias son difíciles de limitar antes de ejecutar." data-en="Consequences are difficult to bound before execution.">Consequences are difficult to bound before execution.</li>
-              </ol>
-              <p class="authority-outcome" data-es="RESULTADO: la autoridad disponible depende del ambiente." data-en="OUTCOME: available authority depends on the environment.">OUTCOME: available authority depends on the environment.</p>
-            </article>
-
-            <article class="authority-lane authority-lane-bounded" data-authority="bounded">
-              <p class="authority-kicker" data-es="AUTORIDAD EXPLÍCITA Y ACOTADA" data-en="EXPLICIT BOUNDED AUTHORITY">EXPLICIT BOUNDED AUTHORITY</p>
-              <h3>Aeontra</h3>
-              <ol class="authority-path">
-                <li data-es="El modelo solo ve herramientas con esquemas cerrados." data-en="The model sees only tools with closed schemas.">The model sees only tools with closed schemas.</li>
-                <li data-es="Repositorios, ramas, aplicaciones y objetivos están autorizados previamente." data-en="Repositories, branches, applications and targets are authorized in advance.">Repositories, branches, applications and targets are authorized in advance.</li>
-                <li data-es="Rutas y secretos se deniegan; comandos y parámetros se validan." data-en="Paths and secrets are denied; commands and parameters are validated.">Paths and secrets are denied; commands and parameters are validated.</li>
-                <li data-es="El modo read-only, ask o allow define cómo avanza el trabajo autorizado." data-en="The read-only, ask or allow mode defines how authorized work proceeds.">The read-only, ask or allow mode defines how authorized work proceeds.</li>
-                <li data-es="Los planes vinculados revalidan el estado antes de un efecto consecuente." data-en="Bound plans revalidate state before a consequential effect.">Bound plans revalidate state before a consequential effect.</li>
-                <li data-es="El resultado queda acotado, redactado y auditado." data-en="The result remains bounded, redacted and audited.">The result remains bounded, redacted and audited.</li>
-              </ol>
-              <p class="authority-outcome" data-es="RESULTADO: el efecto se mantiene dentro de autoridad configurada." data-en="OUTCOME: the effect stays inside configured authority.">OUTCOME: the effect stays inside configured authority.</p>
-            </article>
-          </div>
-
-          <div class="mode-selector">
-            <div class="mode-selector-head">
-              <div>
-                <h3 data-es="ELIGE CÓMO AVANZA EL AGENTE" data-en="CHOOSE HOW THE AGENT PROCEEDS">CHOOSE HOW THE AGENT PROCEEDS</h3>
-                <p class="sub" data-es="El modo cambia el flujo de trabajo, no elimina los límites del servidor." data-en="The mode changes the workflow; it does not remove server boundaries.">The mode changes the workflow; it does not remove server boundaries.</p>
-              </div>
-              <p class="mode-layer" data-es="MODO ≠ PLAN ≠ GRANT HUMANO" data-en="MODE ≠ PLAN ≠ HUMAN GRANT">MODE ≠ PLAN ≠ HUMAN GRANT</p>
-            </div>
-
-            <div class="mode-tabs" role="tablist" aria-label="Conceptual authority modes" data-es="Modos conceptuales de autoridad" data-en="Conceptual authority modes" data-i18n-attr="aria-label">
-              <button type="button" id="mode-tab-read-only" role="tab" aria-selected="true" aria-controls="mode-panel-read-only" tabindex="0" data-mode-id="read-only">READ-ONLY</button>
-              <button type="button" id="mode-tab-ask" role="tab" aria-selected="false" aria-controls="mode-panel-ask" tabindex="-1" data-mode-id="ask">ASK</button>
-              <button type="button" id="mode-tab-allow" role="tab" aria-selected="false" aria-controls="mode-panel-allow" tabindex="-1" data-mode-id="allow">ALLOW</button>
-            </div>
-
-            <div class="mode-panels">
-              <article id="mode-panel-read-only" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-read-only" data-mode-panel="read-only">
-                <p class="mode-summary" data-es="Observa y diagnostica sin modificar archivos ni ejecutar comandos." data-en="Observe and diagnose without changing files or executing commands.">Observe and diagnose without changing files or executing commands.</p>
-                <p data-es="Siguen activos la jaula de rutas, la denegación de secretos, la redacción, los límites de entrada y salida y la auditoría." data-en="The path jail, secret denial, redaction, input and output bounds, and audit remain active.">The path jail, secret denial, redaction, input and output bounds, and audit remain active.</p>
-              </article>
-              <article id="mode-panel-ask" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-ask" data-mode-panel="ask" hidden>
-                <p class="mode-summary" data-es="Trabaja y solicita aprobación explícita para los efectos que la política marca como revisables." data-en="Work and request explicit approval for effects that policy marks as reviewable.">Work and request explicit approval for effects that policy marks as reviewable.</p>
-                <p data-es="No significa que toda lectura o paso seguro se detenga. Los planes siguen siendo exactos, temporales y revalidados." data-en="It does not mean every read or safe step stops. Plans remain exact, temporary and revalidated.">It does not mean every read or safe step stops. Plans remain exact, temporary and revalidated.</p>
-              </article>
-              <article id="mode-panel-allow" class="mode-panel" role="tabpanel" aria-labelledby="mode-tab-allow" data-mode-panel="allow" hidden>
-                <p class="mode-summary" data-es="Trabaja autónomamente dentro de la autoridad configurada previamente por el administrador." data-en="Work autonomously inside authority previously configured by the administrator.">Work autonomously inside authority previously configured by the administrator.</p>
-                <p data-es="No es una shell libre: continúan jails, secretos denegados, allowlists, esquemas, validación, redacción, auditoría, planes y revalidación." data-en="It is not a free shell: jails, denied secrets, allowlists, schemas, validation, redaction, audit, plans and revalidation remain active.">It is not a free shell: jails, denied secrets, allowlists, schemas, validation, redaction, audit, plans and revalidation remain active.</p>
-              </article>
-            </div>
-          </div>
-
-          <div class="safety-statement" role="note">
-            <p><strong data-es="ADVERTENCIA" data-en="CAUTION">CAUTION</strong><span aria-hidden="true">: </span><span data-es="Aeontra reduce la autoridad disponible. No convierte el código generado ni toda operación permitida en inherentemente segura." data-en="Aeontra reduces the authority available. It does not make generated code or every allowed operation inherently safe.">Aeontra reduces the authority available. It does not make generated code or every allowed operation inherently safe.</span></p>
-          </div>
-
-          <div class="firmware-note">
-            <p><strong>ABSENT BY CONSTRUCTION</strong></p>
-            <p data-es="Force push, rutas arbitrarias del host, aprobación pública de planes y ejecución no autenticada de herramientas no son interruptores ocultos. No forman parte de esta superficie." data-en="Force push, arbitrary host paths, public plan approval and unauthenticated tool execution are not hidden switches. They are not part of this surface.">Force push, arbitrary host paths, public plan approval and unauthenticated tool execution are not hidden switches. They are not part of this surface.</p>
-          </div>
-        </section>
-
-        <section id="demo" aria-busy="true" data-es="Recorre el snapshot histórico de Pixelgrama en seis pasos" data-en="Walk through the historical Pixelgrama snapshot in six steps" data-label-es="CASO" data-label-en="CASE" data-i18n-role="hint">
-          <p class="eyebrow" data-es="02 · DEMO GUIADA DE SOLO LECTURA" data-en="02 · READ-ONLY GUIDED DEMO">02 · READ-ONLY GUIDED DEMO</p>
-          <h2 data-es="DE LA SOLICITUD AL COMMIT EN PRODUCCIÓN" data-en="FROM REQUEST TO PRODUCTION COMMIT">FROM REQUEST TO PRODUCTION COMMIT</h2>
-          <p class="sub prose" data-es="Esta historia se genera desde un manifiesto versionado, congelado cuando la evidencia era pública. No consulta GitHub, no promete acceso actual y no concede autoridad sobre Aeontra." data-en="This story is generated from a versioned manifest frozen while the evidence was public. It does not query GitHub, promise current access or grant authority over Aeontra.">This story is generated from a versioned manifest frozen while the evidence was public. It does not query GitHub, promise current access or grant authority over Aeontra.</p>
-
-          <div class="demo-boundary" role="note">
-            <p><strong data-es="PERÍMETRO DE LA DEMO" data-en="DEMO BOUNDARY">DEMO BOUNDARY</strong></p>
-            <p data-es="El snapshot es público, sin autenticación y de solo lectura. No puede invocar herramientas, abrir la consola, aprobar planes, pedir grants, leer credenciales ni acceder al repositorio histórico." data-en="The snapshot is public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access the historical repository.">The snapshot is public, unauthenticated and read-only. It cannot invoke tools, open the console, approve plans, request grants, read credentials or access the historical repository.</p>
-          </div>
-
-          <p class="demo-status warn" id="demoStatus" aria-live="polite" data-demo-state="loading" data-es="Cargando el snapshot histórico integrado..." data-en="Loading the embedded historical snapshot...">Loading the embedded historical snapshot...</p>
-
-          <ol class="demo-steps" aria-label="Historical Pixelgrama walkthrough" data-es="Recorrido histórico de Pixelgrama" data-en="Historical Pixelgrama walkthrough" data-i18n-attr="aria-label">
-            <li class="demo-step" data-demo-step="1">
-              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">01</span><h3 data-es="SOLICITUD" data-en="REQUEST">REQUEST</h3></div>
-              <p id="demoRequestSummary" class="demo-primary-value" data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</p>
-              <p class="demo-source-note" data-es="El resumen canónico se muestra textualmente desde el manifiesto público." data-en="The canonical summary is shown verbatim from the public manifest.">The canonical summary is shown verbatim from the public manifest.</p>
-            </li>
-
-            <li class="demo-step" data-demo-step="2">
-              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">02</span><h3 data-es="PERÍMETRO" data-en="PERIMETER">PERIMETER</h3></div>
-              <dl class="demo-kv">
-                <dt data-es="repositorio" data-en="repository">repository</dt><dd id="demoRepository" data-es="privado actualmente" data-en="currently private">currently private</dd>
-                <dt data-es="rama base" data-en="base branch">base branch</dt><dd id="demoBaseBranch">—</dd>
-                <dt data-es="modo histórico" data-en="historical mode">historical mode</dt><dd id="demoAuthorityPosture" class="warn">—</dd>
-                <dt data-es="herramientas exactas" data-en="exact tools">exact tools</dt><dd data-es="No publicadas en la evidencia histórica." data-en="Not published in the historical evidence.">Not published in the historical evidence.</dd>
-              </dl>
-              <p class="demo-subheading" data-es="Incluye" data-en="Includes">Includes</p>
-              <ul class="demo-list" id="demoPerimeterIncludes"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
-              <p class="demo-subheading" data-es="Excluye" data-en="Excludes">Excludes</p>
-              <ul class="demo-list" id="demoPerimeterExcludes"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
-            </li>
-
-            <li class="demo-step" data-demo-step="3">
-              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">03</span><h3 data-es="CAMBIO" data-en="CHANGE">CHANGE</h3></div>
-              <p data-es="Los propósitos y SHAs vienen del manifiesto. La vista pública «Files changed» de cada PR conserva el detalle de archivos sin duplicarlo aquí." data-en="Purposes and SHAs come from the manifest. Each PR's public Files changed view keeps the file-level detail without duplicating it here.">Purposes and SHAs come from the manifest. Each PR's public Files changed view keeps the file-level detail without duplicating it here.</p>
-              <ol class="demo-records" id="demoPullRequests"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ol>
-            </li>
-
-            <li class="demo-step" data-demo-step="4">
-              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">04</span><h3 data-es="VALIDACIÓN" data-en="VALIDATION">VALIDATION</h3></div>
-              <p id="demoValidationSummary" class="demo-primary-value">—</p>
-              <ul class="demo-records" id="demoChecks"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
-            </li>
-
-            <li class="demo-step" data-demo-step="5">
-              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">05</span><h3 data-es="OPERACIONES EXTERNAS" data-en="EXTERNAL OPERATIONS">EXTERNAL OPERATIONS</h3></div>
-              <p data-es="Las clases directas y protegidas por planes están documentadas públicamente; los IDs de planes, aprobaciones y auditoría permanecen privados." data-en="Direct and plan-protected operation classes are documented publicly; plan IDs, approvals and audit remain private.">Direct and plan-protected operation classes are documented publicly; plan IDs, approvals and audit remain private.</p>
-              <p class="demo-subheading" data-es="Operaciones directas documentadas" data-en="Documented direct operations">Documented direct operations</p>
-              <ul class="demo-list" id="demoDirectOperations"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
-              <p class="demo-subheading" data-es="Operaciones protegidas por planes" data-en="Plan-protected operations">Plan-protected operations</p>
-              <ul class="demo-list" id="demoPlanOperations"><li data-es="Esperando evidencia..." data-en="Awaiting evidence...">Awaiting evidence...</li></ul>
-              <p class="demo-mode-note" data-es="En ask, un efecto revisable espera aprobación. En allow, una operación autorizada puede continuar sin esa pausa. En ambos casos, el plan sigue siendo exacto, temporal, revalidado y de un solo uso. El modo histórico exacto de Pixelgrama no está demostrado públicamente." data-en="In ask, a reviewable effect waits for approval. In allow, an authorized operation may continue without that pause. In both cases, the plan remains exact, temporary, revalidated and single-use. Pixelgrama's exact historical mode is not publicly proven.">In ask, a reviewable effect waits for approval. In allow, an authorized operation may continue without that pause. In both cases, the plan remains exact, temporary, revalidated and single-use. Pixelgrama's exact historical mode is not publicly proven.</p>
-            </li>
-
-            <li class="demo-step demo-step-result" data-demo-step="6">
-              <div class="demo-step-head"><span class="demo-step-number" aria-hidden="true">06</span><h3 data-es="RESULTADO" data-en="RESULT">RESULT</h3></div>
-              <dl class="demo-kv">
-                <dt data-es="producción" data-en="production">production</dt><dd><a id="demoProductionURL" href="/showcase/pixelgrama-evidence.json">—</a></dd>
-                <dt data-es="muro público" data-en="public wall">public wall</dt><dd><a id="demoWallURL" href="/showcase/pixelgrama-evidence.json">—</a></dd>
-                <dt data-es="identidad" data-en="identity">identity</dt><dd><a id="demoVersionURL" href="/showcase/pixelgrama-evidence.json">—</a></dd>
-                <dt data-es="commit observado" data-en="observed commit">observed commit</dt><dd id="demoObservedCommit">—</dd>
-                <dt data-es="source main" data-en="source main">source main</dt><dd id="demoSourceCommit">—</dd>
-                <dt data-es="verificado" data-en="verified">verified</dt><dd id="demoVerifiedOn">—</dd>
-                <dt data-es="infraestructura" data-en="infrastructure">infrastructure</dt><dd id="demoInfrastructure">—</dd>
-              </dl>
-              <p class="demo-result-match warn" id="demoProductionMatch" data-es="Esperando comparación..." data-en="Awaiting comparison...">Awaiting comparison...</p>
-              <p class="demo-history-note" data-es="Los SHAs de los PR anteriores son evidencia histórica. El commit observado arriba es el estado productivo verificado en la fecha indicada." data-en="Earlier PR SHAs are historical evidence. The observed commit above is the production state verified on the stated date.">Earlier PR SHAs are historical evidence. The observed commit above is the production state verified on the stated date.</p>
-            </li>
-          </ol>
-
-          <div class="demo-links">
-            <a href="/showcase/pixelgrama-evidence.json" data-es="Abrir manifiesto canónico" data-en="Open canonical manifest">Open canonical manifest</a>
-            <span data-es="El repositorio del caso es privado actualmente" data-en="The case-study repository is currently private">The case-study repository is currently private</span>
-            <a href="https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall" data-es="Abrir Pixelgrama" data-en="Open Pixelgrama">Open Pixelgrama</a>
-          </div>
-        </section>
-
-        <section id="policy" data-es="Ocho casos locales; ninguna solicitud llega al control plane" data-en="Eight local cases; no request reaches the control plane" data-label-es="POLÍTICA" data-label-en="POLICY" data-i18n-role="hint">
-          <p class="eyebrow" data-es="03 · EXPLORADOR DE POLÍTICAS" data-en="03 · POLICY EXPLORER">03 · POLICY EXPLORER</p>
-          <h2 data-es="PÍDELE AL AGENTE QUE SE PORTE MAL" data-en="ASK THE AGENT TO MISBEHAVE">ASK THE AGENT TO MISBEHAVE</h2>
-          <p class="sub prose"><span data-es="Elige una solicitud. Esta es una " data-en="Choose a request. This is a ">Choose a request. This is a </span><strong data-es="simulación local" data-en="local simulation">local simulation</strong><span data-es=" de los resultados documentados de la política. No envía ninguna solicitud a Aeontra ni concede autoridad." data-en=" of documented policy outcomes. It sends no request to Aeontra and grants no authority."> of documented policy outcomes. It sends no request to Aeontra and grants no authority.</span></p>
-          <div class="policy-grid">
-            <div class="policy-requests" role="group" aria-label="Simulated requests" data-es="Solicitudes simuladas" data-en="Simulated requests" data-i18n-attr="aria-label">
-              <button type="button" data-policy-id="secret" aria-pressed="false">cat .env</button>
-              <button type="button" data-policy-id="force" aria-pressed="false">git push --force origin main</button>
-              <button type="button" data-policy-id="outside" aria-pressed="false">rm -rf /etc</button>
-              <button type="button" data-policy-id="shell" aria-pressed="false">bash -c anything</button>
-              <button type="button" data-policy-id="deploy" aria-pressed="false">deploy production now</button>
-              <button type="button" data-policy-id="credential" aria-pressed="false">print a provider credential</button>
-              <button type="button" data-policy-id="read" aria-pressed="false">read src/app.go</button>
-              <button type="button" data-policy-id="tests" aria-pressed="false">run the test suite</button>
-            </div>
-            <div class="verdict" aria-live="polite" aria-atomic="true">
-              <p class="stamp pending" id="policyStamp" data-es="SELECCIONA UNA SOLICITUD" data-en="SELECT A REQUEST">SELECT A REQUEST</p>
-              <pre id="policyOutput" data-es="policy&gt; esperando entrada local" data-en="policy&gt; awaiting local input">policy&gt; awaiting local input</pre>
-              <p class="rule" id="policyRule" data-es="Cada veredicto nombra la invariante que lo produce." data-en="Every verdict names the invariant that produces it.">Every verdict names the invariant that produces it.</p>
-            </div>
-          </div>
-        </section>
-
-        <section id="path" data-es="Edge solo se conecta hacia afuera" data-en="The Edge connects outbound only" data-label-es="FLUJO" data-label-en="PATH" data-i18n-role="hint">
-          <p class="eyebrow" data-es="04 · FLUJO DE SOLICITUD" data-en="04 · REQUEST PATH">04 · REQUEST PATH</p>
-          <h2 data-es="CÓMO VIAJA UNA SOLICITUD" data-en="HOW A REQUEST TRAVELS">HOW A REQUEST TRAVELS</h2>
-          <figure class="diagram">
-            <img src="/landing/assets/request-path.svg" alt="Request path with a direct policy route for reads and allowlisted commands, and an approval route for consequential actions." data-es="Flujo de solicitud con una ruta directa bajo policy para lecturas y comandos allowlisted, y una ruta de aprobación para acciones consecuentes." data-en="Request path with a direct policy route for reads and allowlisted commands, and an approval route for consequential actions." data-i18n-attr="alt">
-            <figcaption data-es="La landing pública está fuera de este flujo. No puede enviar solicitudes, aprobar planes ni alcanzar un adaptador privado." data-en="The public landing is outside this path. It cannot submit a request, approve a plan or reach a private adapter.">The public landing is outside this path. It cannot submit a request, approve a plan or reach a private adapter.</figcaption>
-          </figure>
-        </section>
-
-        <section id="host" data-es="La capacidad está medida; CPU es el recurso limitante" data-en="Capacity is measured; CPU is the binding resource" data-label-es="HOST" data-label-en="HOST" data-i18n-role="hint">
-          <p class="eyebrow" data-es="05 · HOST Y ADMISIÓN" data-en="05 · HOST &amp; ADMISSION">05 · HOST &amp; ADMISSION</p>
-          <h2 data-es="UNA MICRO VPS, MEDIDA EN VEZ DE SUPUESTA" data-en="A MICRO VPS, MEASURED INSTEAD OF GUESSED">A MICRO VPS, MEASURED INSTEAD OF GUESSED</h2>
-          <p class="sub prose" data-es="El control plane corre en una máquina KVM de 2 vCPU y 3.805 GiB. La línea base fechada 2026-07-22 midió reposo y un despliegue real sin caché. CPU, no memoria, fue el recurso limitante demostrado." data-en="The control plane runs on a 2 vCPU, 3.805 GiB KVM guest. The dated 2026-07-22 baseline measured idle and a real no-cache deployment. CPU, not memory, was the demonstrated binding resource.">The control plane runs on a 2 vCPU, 3.805 GiB KVM guest. The dated 2026-07-22 baseline measured idle and a real no-cache deployment. CPU, not memory, was the demonstrated binding resource.</p>
-          <div class="table-scroll" tabindex="0" aria-label="Measured host capacity" data-es="Capacidad medida del host" data-en="Measured host capacity" data-i18n-attr="aria-label">
-            <table>
-              <thead><tr><th data-es="MEDIDA" data-en="MEASURE">MEASURE</th><th data-es="RESULTADO" data-en="RESULT">RESULT</th><th data-es="INTERPRETACIÓN" data-en="INTERPRETATION">INTERPRETATION</th></tr></thead>
-              <tbody>
-                <tr><td data-es="CPU p95 en reposo" data-en="idle CPU p95">idle CPU p95</td><td class="value">41.10%</td><td data-es="línea base del control plane" data-en="control-plane baseline">control-plane baseline</td></tr>
-                <tr><td data-es="CPU p95 durante build intensivo" data-en="intensive build CPU p95">intensive build CPU p95</td><td class="danger">93.20%</td><td data-es="trabajo pesado serializado" data-en="serialized heavy work">serialized heavy work</td></tr>
-                <tr><td data-es="pico de memoria del host" data-en="host memory peak">host memory peak</td><td class="value">2.33 GiB</td><td data-es="sin OOM observado" data-en="no OOM observed">no OOM observed</td></tr>
-                <tr><td>CPU steal</td><td class="ok" data-es="insignificante" data-en="negligible">negligible</td><td data-es="contención dentro del guest" data-en="guest workload contention">guest workload contention</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="acceptance-panel">
-            <h3 data-es="ACEPTACIÓN P16 EN LA VPS OBJETIVO · CERRADA" data-en="P16 TARGET-VPS ACCEPTANCE · CLOSED">P16 TARGET-VPS ACCEPTANCE · CLOSED</h3>
-            <p><span data-es="Ambos preflights devolvieron 0. Las seis ejecuciones de calibración terminaron con exit status 0 y cero OOM. El selector determinista eligió " data-en="Both preflights returned 0. All six calibration runs completed with exit status 0 and zero OOM. The deterministic selector chose ">Both preflights returned 0. All six calibration runs completed with exit status 0 and zero OOM. The deterministic selector chose </span><strong>65%</strong><span data-es="; 50% fue descartado por regresión de duración." data-en="; 50% was rejected by duration regression.">; 50% was rejected by duration regression.</span></p>
-            <dl class="kv">
-              <dt data-es="cuota de CPU" data-en="CPU quota">CPU quota</dt><dd data-es="650 ms por segundo" data-en="650 ms per second">650 ms per second</dd>
-              <dt>MemoryHigh</dt><dd>1280 MiB</dd>
-              <dt>MemoryMax</dt><dd>1792 MiB</dd>
-              <dt>TasksMax</dt><dd>512</dd>
-              <dt data-es="servicio" data-en="service">service</dt><dd class="ok" data-es="activo y habilitado" data-en="active and enabled">active and enabled</dd>
-            </dl>
-          </div>
-        </section>
-
-        <section id="evidence" data-es="Los fallos solo son evidencia cuando el gate puede detener el merge" data-en="Failures are evidence only when the gate can stop the merge" data-label-es="EVIDENCIA" data-label-en="EVIDENCE" data-i18n-role="hint">
-          <p class="eyebrow" data-es="06 · EVIDENCIA" data-en="06 · EVIDENCE">06 · EVIDENCE</p>
-          <h2 data-es="GATES REALES, INCLUIDOS LOS FALLOS" data-en="REAL GATES, INCLUDING THE FAILURES">REAL GATES, INCLUDING THE FAILURES</h2>
-          <div class="evidence-log" aria-label="Dated project evidence" data-es="Evidencia fechada del proyecto" data-en="Dated project evidence" data-i18n-attr="aria-label">
-            <p><time datetime="2026-07-13">2026-07-13</time> <span class="label fail">FAIL</span><span data-es=" cinco hallazgos High del contenedor y una vulnerabilidad Go alcanzable bloquearon el cierre." data-en=" five High container findings and one reachable Go vulnerability blocked closure."> five High container findings and one reachable Go vulnerability blocked closure.</span></p>
-            <p><time datetime="2026-07-13">2026-07-13</time> <span class="label pass">FIXED</span><span data-es=" los paquetes afectados se actualizaron o eliminaron; el gate final de imagen demostró cero hallazgos High/Critical." data-en=" affected packages were upgraded or removed; the final image gate proved zero High/Critical findings."> affected packages were upgraded or removed; the final image gate proved zero High/Critical findings.</span></p>
-            <p><time datetime="2026-07-16">2026-07-16</time> <span class="label pass">CLOSED</span><span data-es=" los hallazgos de CodeQL sobre rutas y cookies se corrigieron en el código fuente con regresiones adversariales." data-en=" CodeQL path and cookie findings were remediated at source with adversarial regression tests."> CodeQL path and cookie findings were remediated at source with adversarial regression tests.</span></p>
-            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">SEALED</span><span data-es=" PR #57 hizo descubrible el catálogo y pasó 16 checks sobre el HEAD exacto." data-en=" PR #57 made the catalog discoverable and passed 16 exact-head checks."> PR #57 made the catalog discoverable and passed 16 exact-head checks.</span></p>
-            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">SEALED</span><span data-es=" PR #58 normalizó el whitespace documental sin debilitar contratos literales; pasaron 16 checks." data-en=" PR #58 normalized documentary whitespace without weakening literal contracts; 16 checks passed."> PR #58 normalized documentary whitespace without weakening literal contracts; 16 checks passed.</span></p>
-            <p><time datetime="2026-07-26">2026-07-26</time> <span class="label pass">ACCEPTED</span><span data-es=" la calibración P16 de la VPS objetivo seleccionó 65% después de dos preflights y seis ejecuciones exitosas." data-en=" P16 target-VPS calibration selected 65% after two preflights and six successful runs."> P16 target-VPS calibration selected 65% after two preflights and six successful runs.</span></p>
-          </div>
-          <p class="sub prose" data-es="No se edita un umbral para obtener verde. Se diagnostica el fallo, se realiza un cambio acotado y se vuelve a ejecutar el conjunto completo de gates sobre el HEAD exacto." data-en="A threshold is not edited to obtain green. A failure is diagnosed, a bounded change is made, and the full exact-head gate set runs again.">A threshold is not edited to obtain green. A failure is diagnosed, a bounded change is made, and the full exact-head gate set runs again.</p>
-        </section>
-
-        <section id="vulnerabilities" data-es="Los hallazgos se corrigieron; no se ocultaron" data-en="Findings were fixed, not hidden" data-label-es="VULNERABILIDADES" data-label-en="VULNERABILITIES" data-i18n-role="hint">
-          <p class="eyebrow" data-es="07 · REGISTRO DE VULNERABILIDADES" data-en="07 · VULNERABILITY LEDGER">07 · VULNERABILITY LEDGER</p>
-          <h2 data-es="DETECTADAS, CORREGIDAS Y CUBIERTAS POR REGRESIÓN" data-en="DETECTED, REMEDIATED, REGRESSION-TESTED">DETECTED, REMEDIATED, REGRESSION-TESTED</h2>
-          <div class="cards">
-            <article class="card">
-              <h3><span data-es="HALLAZGO GO TLS ALCANZABLE" data-en="REACHABLE GO TLS FINDING">REACHABLE GO TLS FINDING</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
-              <p class="finding" data-es="GO-2026-5856 era alcanzable mediante rutas de llamada del repositorio." data-en="GO-2026-5856 was reachable through repository call paths.">GO-2026-5856 was reachable through repository call paths.</p>
-              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd data-es="job bloqueante de Govulncheck" data-en="Govulncheck blocking job">Govulncheck blocking job</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="Go avanzó a la versión corregida en builds y workflows" data-en="Go advanced to the patched release across builds and workflows">Go advanced to the patched release across builds and workflows</dd></dl>
-            </article>
-            <article class="card">
-              <h3><span data-es="HALLAZGOS GNU WGET" data-en="GNU WGET FINDINGS">GNU WGET FINDINGS</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
-              <p class="finding" data-es="Existían tres hallazgos High en la imagen final del runtime." data-en="Three High findings existed in the final runtime image.">Three High findings existed in the final runtime image.</p>
-              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd data-es="SBOM más gate de Grype" data-en="SBOM plus Grype gate">SBOM plus Grype gate</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="se eliminó Wget independiente; el applet de BusyBox se usa en health checks" data-en="standalone Wget removed; BusyBox applet used for health checks">standalone Wget removed; BusyBox applet used for health checks</dd></dl>
-            </article>
-            <article class="card">
-              <h3><span data-es="ÁRBOL EMPAQUETADO DE NPM" data-en="NPM BUNDLED TREE">NPM BUNDLED TREE</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
-              <p class="finding" data-es="Las copias afectadas de sigstore y picomatch permanecieron después del primer intento de actualización." data-en="Affected sigstore and picomatch copies remained after the first attempted upgrade.">Affected sigstore and picomatch copies remained after the first attempted upgrade.</p>
-              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd data-es="segundo escaneo de imagen" data-en="second image scan">second image scan</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="se instaló npm corregido y se eliminó por completo el árbol bootstrap vulnerable" data-en="patched npm installed and the vulnerable bootstrap tree removed entirely">patched npm installed and the vulnerable bootstrap tree removed entirely</dd></dl>
-            </article>
-            <article class="card">
-              <h3><span data-es="FLUJO DE PATH INJECTION" data-en="PATH INJECTION FLOW">PATH INJECTION FLOW</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
-              <p class="finding" data-es="La entrada remota del repositorio participaba antes en rutas del validation-runner." data-en="Remote repository input previously participated in validation-runner paths.">Remote repository input previously participated in validation-runner paths.</p>
-              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd>CodeQL</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="entradas de registro propiedad del servidor y revalidación de descriptores Linux antes de ejecutar" data-en="server-owned registry entries and Linux descriptor revalidation before execution">server-owned registry entries and Linux descriptor revalidation before execution</dd></dl>
-            </article>
-            <article class="card card-wide">
-              <h3><span data-es="POSTURA DE LA COOKIE DE SESIÓN" data-en="SESSION COOKIE POSTURE">SESSION COOKIE POSTURE</span> <span class="state" data-es="CERRADO" data-en="CLOSED">CLOSED</span></h3>
-              <p class="finding" data-es="La seguridad dinámica de la cookie no podía demostrarse en todas las rutas." data-en="Dynamic cookie security could not be proven on every path.">Dynamic cookie security could not be proven on every path.</p>
-              <dl><dt data-es="detectado" data-en="detected">detected</dt><dd>CodeQL</dd><dt data-es="corregido" data-en="fixed">fixed</dt><dd data-es="la creación y eliminación siempre usan Secure, HttpOnly y SameSite Strict" data-en="creation and deletion always use Secure, HttpOnly and SameSite Strict">creation and deletion always use Secure, HttpOnly and SameSite Strict</dd></dl>
-            </article>
-          </div>
-        </section>
-
-        <section id="runtime" data-es="Los valores vivos provienen únicamente del contrato público /version" data-en="Live values come only from the public /version contract" data-label-es="RUNTIME" data-label-en="RUNTIME" data-i18n-role="hint">
-          <p class="eyebrow" data-es="08 · IDENTIDAD VIVA DEL RUNTIME" data-en="08 · LIVE RUNTIME IDENTITY">08 · LIVE RUNTIME IDENTITY</p>
-          <h2 data-es="VERIFICA EL PROCESO DESPLEGADO" data-en="VERIFY THE DEPLOYED PROCESS">VERIFY THE DEPLOYED PROCESS</h2>
-          <p class="sub prose"><span data-es="Este panel lee la misma identidad pública segura expuesta por " data-en="This panel reads the same safe public identity exposed by ">This panel reads the same safe public identity exposed by </span><a href="/version">/version</a><span data-es=". No se envía ninguna credencial ni se solicita estado privado." data-en=". No credential is sent and no private state is requested.">. No credential is sent and no private state is requested.</span></p>
-          <dl class="kv runtime-values" id="runtimeValues">
-            <dt>status</dt><dd id="runtimeStatus" class="warn">checking</dd>
-            <dt>version</dt><dd id="runtimeVersion">—</dd>
-            <dt>commit</dt><dd id="runtimeCommit">—</dd>
-            <dt>built at</dt><dd id="runtimeBuiltAt">—</dd>
-            <dt>protocol</dt><dd id="runtimeProtocol">—</dd>
-            <dt>tool count</dt><dd id="runtimeToolCount">—</dd>
-            <dt>catalog hash</dt><dd id="runtimeCatalogHash">—</dd>
+          <dl>
+            <div><dt data-en="Version" data-es="Versión">Version</dt><dd data-runtime-version>—</dd></div>
+            <div><dt data-en="Tools" data-es="Herramientas">Tools</dt><dd data-runtime-tools>—</dd></div>
+            <div><dt data-en="Commit" data-es="Commit">Commit</dt><dd data-runtime-commit>—</dd></div>
           </dl>
-          <p class="runtime-error" id="runtimeMessage" role="status" data-es="Cargando la identidad pública del runtime." data-en="Loading public runtime identity.">Loading public runtime identity.</p>
-          <p class="runtime-checks sub prose">
-            <span data-es="Comprobaciones independientes:" data-en="Independent checks:">Independent checks:</span>
-            <span class="runtime-check"><a href="/healthz" data-es="disponibilidad" data-en="liveness">liveness</a></span>
-            <span class="runtime-check"><a href="/version" data-es="identidad JSON" data-en="JSON identity">JSON identity</a></span>
-            <span class="runtime-check"><a href="/console" data-es="consola autenticada del operador" data-en="authenticated operator console">authenticated operator console</a>.</span>
-          </p>
-        </section>
+        </div>
+      </aside>
+    </section>
 
-        <section id="limits" data-es="La autoridad acotada reduce el riesgo; no elimina la confianza" data-en="Narrow authority reduces risk; it does not abolish trust" data-label-es="LÍMITES" data-label-en="LIMITS" data-i18n-role="hint">
-          <p class="eyebrow" data-es="09 · LÍMITES HONESTOS" data-en="09 · HONEST LIMITS">09 · HONEST LIMITS</p>
-          <h2 data-es="LO QUE ESTO NO ES" data-en="WHAT THIS IS NOT">WHAT THIS IS NOT</h2>
-          <ul class="limits">
-            <li data-es="No es un panel de control público. Esta landing no puede llamar tools, aprobar planes ni inspeccionar estado privado." data-en="Not a public control panel. This landing cannot call tools, approve plans or inspect private state.">Not a public control panel. This landing cannot call tools, approve plans or inspect private state.</li>
-            <li data-es="No es multi-tenant. El sistema está diseñado para un solo propietario." data-en="Not multi-tenant. The system is single-owner by design.">Not multi-tenant. The system is single-owner by design.</li>
-            <li data-es="No es una terminal universal. El acceso arbitrario a un shell está ausente deliberadamente." data-en="Not a universal terminal. Arbitrary shell access is deliberately absent.">Not a universal terminal. Arbitrary shell access is deliberately absent.</li>
-            <li data-es="No es aislamiento universal del sistema operativo. La contención local fuerte está orientada a Linux; Windows usa WSL." data-en="Not universal OS isolation. Hard local containment is Linux-oriented; Windows use runs through WSL.">Not universal OS isolation. Hard local containment is Linux-oriented; Windows use runs through WSL.</li>
-            <li data-es="No es prueba contra credenciales robadas del propietario. La autoridad acotada reduce el radio de impacto, pero no elimina la confianza." data-en="Not proof against stolen owner credentials. Narrow authority reduces blast radius but cannot remove trust.">Not proof against stolen owner credentials. Narrow authority reduces blast radius but cannot remove trust.</li>
-            <li data-es="No afirma que todos los perfiles u orquestadores planeados estén implementados." data-en="Not a claim that every planned profile or orchestrator is implemented.">Not a claim that every planned profile or orchestrator is implemented.</li>
-          </ul>
-          <div class="closing">
-            <p><strong data-es="Cualquier agente. Cualquier stack. Guardrails explícitos. Entrega auditable." data-en="Any agent. Any stack. Explicit guardrails. Auditable delivery.">Any agent. Any stack. Explicit guardrails. Auditable delivery.</strong></p>
-            <p><a href="https://github.com/charle-z/aeontra" rel="noreferrer noopener" data-es="Código fuente y documentación públicos" data-en="Public source and documentation">Public source and documentation</a></p>
-          </div>
-        </section>
+    <section class="system-section" id="system" aria-labelledby="system-title">
+      <div class="section-heading">
+        <p class="section-index">01 / SYSTEM</p>
+        <div>
+          <h2 id="system-title" data-en="One control plane. Four working surfaces." data-es="Un plano de control. Cuatro superficies de trabajo.">One control plane. Four working surfaces.</h2>
+          <p data-en="The public server exposes registered tools. Private execution stays behind administrator-owned roots, policies and credentials." data-es="El servidor público expone herramientas registradas. La ejecución privada permanece detrás de raíces, políticas y credenciales controladas por el administrador.">The public server exposes registered tools. Private execution stays behind administrator-owned roots, policies and credentials.</p>
+        </div>
       </div>
-    </main>
 
-    <footer class="keybar">
-      <span class="section-label" id="sectionLabel" data-es="TESIS" data-en="THESIS">THESIS</span>
-      <span id="sectionHint" data-es="Desplázate para inspeccionar el modelo de autoridad" data-en="Scroll to inspect the authority model">Scroll to inspect the authority model</span>
-      <span class="spacer"></span>
-      <span data-es="Alojado en CubePath · desplegado con Coolify" data-en="Hosted on CubePath · deployed with Coolify">Hosted on CubePath · deployed with Coolify</span>
-    </footer>
-  </div>
+      <div class="capability-grid">
+        <article class="capability-card">
+          <span class="card-number">A.01</span>
+          <h3 data-en="Repository work" data-es="Trabajo en repositorios">Repository work</h3>
+          <p data-en="Read, search, patch and validate inside configured roots. Secret paths remain denied." data-es="Leer, buscar, modificar y validar dentro de raíces configuradas. Las rutas secretas permanecen denegadas.">Read, search, patch and validate inside configured roots. Secret paths remain denied.</p>
+          <ul><li>read_file</li><li>apply_patch</li><li>run_tests</li></ul>
+        </article>
+        <article class="capability-card capability-card--ink">
+          <span class="card-number">A.02</span>
+          <h3 data-en="Delivery" data-es="Entrega">Delivery</h3>
+          <p data-en="Prepare exact plans for publication, pull requests, CI diagnosis, merge and deployment." data-es="Preparar planes exactos para publicación, pull requests, diagnóstico de CI, merge y despliegue.">Prepare exact plans for publication, pull requests, CI diagnosis, merge and deployment.</p>
+          <ul><li>preview</li><li>revalidate</li><li>execute once</li></ul>
+        </article>
+        <article class="capability-card">
+          <span class="card-number">A.03</span>
+          <h3 data-en="Durable work" data-es="Trabajo durable">Durable work</h3>
+          <p data-en="Processes, worktrees and task state survive client interruptions without replaying accepted effects." data-es="Los procesos, worktrees y el estado de tareas sobreviven interrupciones del cliente sin repetir efectos aceptados.">Processes, worktrees and task state survive client interruptions without replaying accepted effects.</p>
+          <ul><li>receipts</li><li>fences</li><li>cleanup</li></ul>
+        </article>
+        <article class="capability-card capability-card--signal">
+          <span class="card-number">A.04</span>
+          <h3 data-en="Private Edge" data-es="Edge privado">Private Edge</h3>
+          <p data-en="Signed outbound workers run beside the repositories and tools they are allowed to reach." data-es="Workers firmados y salientes se ejecutan junto a los repositorios y herramientas que tienen permitido alcanzar.">Signed outbound workers run beside the repositories and tools they are allowed to reach.</p>
+          <ul><li>Linux</li><li>WSL</li><li>Windows</li></ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="authority-section" id="authority" aria-labelledby="authority-title">
+      <div class="section-heading section-heading--light">
+        <p class="section-index">02 / AUTHORITY</p>
+        <div>
+          <h2 id="authority-title" data-en="Authority is configured before the model arrives." data-es="La autoridad se configura antes de que llegue el modelo.">Authority is configured before the model arrives.</h2>
+          <p data-en="Policy is loaded by the operator, not written by the model." data-es="La política la carga el operador; el modelo no la escribe.">Policy is loaded by the operator, not written by the model.</p>
+        </div>
+      </div>
+
+      <div class="mode-explorer">
+        <div class="mode-tabs" role="tablist" aria-label="Authority modes">
+          <button type="button" role="tab" id="mode-read-only" aria-controls="panel-read-only" aria-selected="true" tabindex="0" data-mode="read-only" data-en="Read only" data-es="Solo lectura">Read only</button>
+          <button type="button" role="tab" id="mode-ask" aria-controls="panel-ask" aria-selected="false" tabindex="-1" data-mode="ask" data-en="Ask" data-es="Preguntar">Ask</button>
+          <button type="button" role="tab" id="mode-allow" aria-controls="panel-allow" aria-selected="false" tabindex="-1" data-mode="allow" data-en="Allow" data-es="Permitir">Allow</button>
+        </div>
+        <div class="mode-panels">
+          <article role="tabpanel" id="panel-read-only" aria-labelledby="mode-read-only" tabindex="0">
+            <p class="mode-code">MODE / R</p>
+            <h3 data-en="Inspect without changing state" data-es="Inspeccionar sin cambiar estado">Inspect without changing state</h3>
+            <p data-en="Use for first contact, reviews and diagnostics. Reads still pass through roots, bounds, redaction and audit." data-es="Úsalo para el primer contacto, revisiones y diagnósticos. Las lecturas aún pasan por raíces, límites, redacción y auditoría.">Use for first contact, reviews and diagnostics. Reads still pass through roots, bounds, redaction and audit.</p>
+          </article>
+          <article role="tabpanel" id="panel-ask" aria-labelledby="mode-ask" tabindex="0" hidden>
+            <p class="mode-code">MODE / A</p>
+            <h3 data-en="Review consequential effects" data-es="Revisar efectos consecuentes">Review consequential effects</h3>
+            <p data-en="The client can prepare an exact, expiring plan. Execution waits for the configured approval step and fresh revalidation." data-es="El cliente puede preparar un plan exacto y temporal. La ejecución espera el paso de aprobación configurado y una nueva validación.">The client can prepare an exact, expiring plan. Execution waits for the configured approval step and fresh revalidation.</p>
+          </article>
+          <article role="tabpanel" id="panel-allow" aria-labelledby="mode-allow" tabindex="0" hidden>
+            <p class="mode-code">MODE / L</p>
+            <h3 data-en="Run inside preconfigured limits" data-es="Ejecutar dentro de límites preconfigurados">Run inside preconfigured limits</h3>
+            <p data-en="Configured operations can proceed autonomously. Roots, schemas, command policy, credentials, fences and audit still apply." data-es="Las operaciones configuradas pueden continuar de forma autónoma. Siguen aplicando raíces, esquemas, política de comandos, credenciales, fences y auditoría.">Configured operations can proceed autonomously. Roots, schemas, command policy, credentials, fences and audit still apply.</p>
+          </article>
+        </div>
+      </div>
+
+      <div class="effect-sequence" aria-label="Consequential operation sequence">
+        <div><span>01</span><strong data-en="Preview" data-es="Previsualizar">Preview</strong></div>
+        <div><span>02</span><strong data-en="Approve" data-es="Aprobar">Approve</strong></div>
+        <div><span>03</span><strong data-en="Revalidate" data-es="Revalidar">Revalidate</strong></div>
+        <div><span>04</span><strong data-en="Execute once" data-es="Ejecutar una vez">Execute once</strong></div>
+        <div><span>05</span><strong data-en="Audit" data-es="Auditar">Audit</strong></div>
+      </div>
+      <p class="authority-note" data-en="Reduced authority is not absolute safety. Operators still own configuration, credentials, dependencies and recovery." data-es="Reducir la autoridad no equivale a seguridad absoluta. Los operadores siguen siendo responsables de la configuración, credenciales, dependencias y recuperación.">Reduced authority is not absolute safety. Operators still own configuration, credentials, dependencies and recovery.</p>
+    </section>
+
+    <section class="edge-section" id="edge" aria-labelledby="edge-title">
+      <div class="edge-copy">
+        <p class="section-index">03 / EDGE</p>
+        <h2 id="edge-title" data-en="The workspace can remain on your machine." data-es="El workspace puede permanecer en tu máquina.">The workspace can remain on your machine.</h2>
+        <p data-en="An Edge device makes an outbound authenticated connection to the control plane. Local paths, tools and credentials stay inside the device boundary configured by its owner." data-es="Un dispositivo Edge realiza una conexión saliente autenticada al plano de control. Las rutas, herramientas y credenciales locales permanecen dentro del límite configurado por su propietario.">An Edge device makes an outbound authenticated connection to the control plane. Local paths, tools and credentials stay inside the device boundary configured by its owner.</p>
+        <div class="edge-platforms">
+          <div><strong data-en="Linux / Parrot / WSL" data-es="Linux / Parrot / WSL">Linux / Parrot / WSL</strong><span data-en="Rootless toolbox and browser harness where supported" data-es="Toolbox rootless y browser harness cuando están soportados">Rootless toolbox and browser harness where supported</span></div>
+          <div><strong data-en="Native Windows" data-es="Windows nativo">Native Windows</strong><span data-en="Signed service, fixed-drive workspaces and Windows workcells" data-es="Servicio firmado, workspaces en discos configurados y workcells de Windows">Signed service, fixed-drive workspaces and Windows workcells</span></div>
+        </div>
+      </div>
+      <div class="edge-diagram" aria-label="Aeontra control plane and private Edge topology">
+        <div class="diagram-node diagram-node--client"><span>CLIENT</span><strong>ChatGPT / Codex / MCP</strong></div>
+        <div class="diagram-link"><span>HTTPS + OAUTH</span></div>
+        <div class="diagram-node diagram-node--control"><span>CONTROL PLANE</span><strong>AEONTRA</strong></div>
+        <div class="diagram-link"><span>OUTBOUND EDGE CHANNEL</span></div>
+        <div class="diagram-node diagram-node--edge"><span>PRIVATE DEVICE</span><strong>EDGE + WORKSPACES</strong></div>
+      </div>
+    </section>
+
+    <section class="start-section" id="start" aria-labelledby="start-title">
+      <div class="section-heading">
+        <p class="section-index">04 / START</p>
+        <div>
+          <h2 id="start-title" data-en="Start with a disposable repository." data-es="Empieza con un repositorio desechable.">Start with a disposable repository.</h2>
+          <p data-en="The smallest evaluation is local, read-only and independent of the maintainer's hosted infrastructure." data-es="La evaluación más pequeña es local, de solo lectura e independiente de la infraestructura alojada por el mantenedor.">The smallest evaluation is local, read-only and independent of the maintainer's hosted infrastructure.</p>
+        </div>
+      </div>
+
+      <div class="install-shell">
+        <div class="shell-bar"><span>LOCAL / READ-ONLY</span><span>GO 1.26+</span></div>
+        <div class="command-row">
+          <pre><code data-install-command>go install github.com/charle-z/mcp-devbox/cmd/mcp-devbox@latest
+mcp-devbox serve --root /absolute/path/to/disposable-repo --mode read-only</code></pre>
+          <button type="button" data-copy-command data-en="Copy" data-es="Copiar">Copy</button>
+        </div>
+        <p class="copy-status" data-copy-status aria-live="polite"></p>
+      </div>
+
+      <div class="start-links">
+        <a href="https://github.com/charle-z/aeontra/blob/main/docs/public-alpha.md"><span>01</span><strong data-en="Public alpha guide" data-es="Guía de alpha pública">Public alpha guide</strong><small data-en="Install, connect, verify, report" data-es="Instalar, conectar, verificar, reportar">Install, connect, verify, report</small></a>
+        <a href="https://github.com/charle-z/aeontra/blob/main/docs/security.md"><span>02</span><strong data-en="Security model" data-es="Modelo de seguridad">Security model</strong><small data-en="Threats, boundaries, limitations" data-es="Amenazas, límites, limitaciones">Threats, boundaries, limitations</small></a>
+        <a href="https://github.com/charle-z/aeontra/blob/main/docs/tools.md"><span>03</span><strong data-en="Tool contract" data-es="Contrato de herramientas">Tool contract</strong><small data-en="Registered operations and effects" data-es="Operaciones registradas y efectos">Registered operations and effects</small></a>
+      </div>
+    </section>
+
+    <section class="alpha-section" aria-labelledby="alpha-title">
+      <div>
+        <p class="section-index">PUBLIC ALPHA / 2026</p>
+        <h2 id="alpha-title" data-en="Useful now. Still operator-owned." data-es="Útil hoy. Aún operado por su mantenedor.">Useful now. Still operator-owned.</h2>
+      </div>
+      <div class="alpha-columns">
+        <div>
+          <h3 data-en="Available" data-es="Disponible">Available</h3>
+          <ul>
+            <li data-en="Local stdio and authenticated HTTP MCP" data-es="MCP local por stdio y HTTP autenticado">Local stdio and authenticated HTTP MCP</li>
+            <li data-en="Repository, GitHub, CI and deployment workflows" data-es="Flujos de repositorio, GitHub, CI y despliegue">Repository, GitHub, CI and deployment workflows</li>
+            <li data-en="Signed Linux and Windows Edge packages" data-es="Paquetes Edge firmados para Linux y Windows">Signed Linux and Windows Edge packages</li>
+            <li data-en="Apache-2.0 source and reproducible gates" data-es="Código Apache-2.0 y gates reproducibles">Apache-2.0 source and reproducible gates</li>
+          </ul>
+        </div>
+        <div>
+          <h3 data-en="Current limits" data-es="Límites actuales">Current limits</h3>
+          <ul>
+            <li data-en="Single-maintainer support and no service-level agreement" data-es="Soporte de un solo mantenedor y sin acuerdo de nivel de servicio">Single-maintainer support and no service-level agreement</li>
+            <li data-en="Multi-user tenancy is not part of the current product" data-es="La tenencia multiusuario no forma parte del producto actual">Multi-user tenancy is not part of the current product</li>
+            <li data-en="Execution guarantees depend on the selected profile and host" data-es="Las garantías de ejecución dependen del perfil y host seleccionados">Execution guarantees depend on the selected profile and host</li>
+            <li data-en="The public deployment is maintained as evaluation infrastructure" data-es="El despliegue público se mantiene como infraestructura de evaluación">The public deployment is maintained as evaluation infrastructure</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-mark"><span aria-hidden="true">A/</span><strong>AEONTRA</strong></div>
+    <p data-en="Boundaries for software agents." data-es="Límites para agentes de software.">Boundaries for software agents.</p>
+    <nav aria-label="Footer">
+      <a href="https://github.com/charle-z/aeontra">GitHub</a>
+      <a href="https://github.com/charle-z/aeontra/blob/main/LICENSE">Apache-2.0</a>
+      <a href="https://github.com/charle-z/aeontra/blob/main/SECURITY.md" data-en="Security" data-es="Seguridad">Security</a>
+      <a href="https://github.com/charle-z/aeontra/issues" data-en="Feedback" data-es="Comentarios">Feedback</a>
+    </nav>
+  </footer>
 </body>
 </html>
