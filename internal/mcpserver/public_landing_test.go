@@ -15,7 +15,7 @@ func TestPublicLandingIsUnauthenticatedWithoutChangingPrivateRoutes(t *testing.T
 	if landing.Code != http.StatusOK {
 		t.Fatalf("GET / status=%d body=%s", landing.Code, landing.Body.String())
 	}
-	for _, required := range []string{"Aeontra", "presentation-only", "/landing/assets/app.css"} {
+	for _, required := range []string{"Aeontra", "open-source MCP control plane", "/landing/assets/app.css"} {
 		if !strings.Contains(landing.Body.String(), required) {
 			t.Errorf("GET / missing %q", required)
 		}

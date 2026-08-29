@@ -1,0 +1,93 @@
+# Aeontra public product site
+
+Status: **implemented in source**. Production closure still requires exact-head CI,
+merge, managed deployment, DNS/TLS validation and live commit verification.
+
+## Purpose
+
+The package under `internal/landing` owns an open-source product site at the exact
+public route `GET /`. It explains Aeontra's current software boundary, links to the
+public alpha and source, and exposes a bounded live deployment identity. It is part of
+the existing Go server rather than a second web application or deployment.
+
+The site does not act as an MCP client. It cannot call tools, approve plans, inspect
+repositories, read audit data, reuse console sessions or obtain credentials. `/mcp`
+and `/console` retain their existing authentication and route ownership.
+
+## Brand and content direction
+
+The page uses a typographic Aeontra wordmark while no standalone logo exists. Its
+visual system is an editorial operations sheet: warm paper, black structure, one blue
+authority field and a chartreuse signal color. It uses square geometry, visible rules,
+system typefaces and direct product language. It includes no generated illustration,
+remote font, stock image, animation-led intro, gradient, analytics or tracking tag.
+There are no analytics.
+
+Current content is organized around:
+
+1. a concrete product statement and bounded execution trace;
+2. repository, delivery, durable-work and private-Edge surfaces;
+3. the `read-only`, `ask`, and `allow` authority modes;
+4. the exact preview, approval, revalidation, effect and audit sequence;
+5. Linux/Parrot/WSL and native Windows Edge boundaries;
+6. the smallest local read-only evaluation path;
+7. current public-alpha capabilities and limitations.
+
+Historical Pixelgrama and CubePath evidence remains under `docs/showcase` and dated
+baselines. It is not fetched or served by the current public site.
+
+## Assets and requests
+
+The handler embeds:
+
+- `assets/index.html`;
+- `assets/app.css`;
+- `assets/app.js`;
+- `assets/social-card.svg`.
+
+The document performs exactly one same-origin public request: `GET /version`. The
+browser accepts only bounded version, tool-count and commit fields for presentation.
+Unavailable or malformed identity produces a generic unavailable state. No request is
+made to MCP, console, GitHub, analytics or another origin.
+
+The social card is a self-contained typographic SVG with no script, external reference
+or runtime identity. Branding can later replace it with a raster asset without changing
+the page contract.
+
+## Interaction and accessibility
+
+- semantic header, navigation, main sections and footer;
+- skip link and visible `:focus-visible` treatment;
+- bilingual English/Spanish copy changed with `textContent` only;
+- three authority tabs that support click and arrow/Home/End keyboard navigation;
+- tab labels and descriptions ensure the comparison does not depend only on color;
+- copy control with an explicit manual-copy fallback;
+- live runtime status announced through `aria-live`;
+- layouts for 320-pixel mobile width and wide desktop displays;
+- reduced-motion behavior through `prefers-reduced-motion`;
+- no horizontal body overflow, modal, autoplay or forced boot sequence.
+
+The page states that reduced authority is not absolute safety. Operators still own
+configuration, credentials, dependency posture and recovery.
+
+## Public security boundary
+
+The document CSP permits only same-origin CSS, JavaScript, images and `/version`. It
+rejects inline script/style attributes, objects, forms, framing, base URL mutation and
+third-party resources. Responses also set `nosniff`, frame denial, no-referrer,
+restrictive permissions, same-origin isolation headers and `no-store` caching.
+
+Tests must fail when the site:
+
+- loses exact unauthenticated `GET /` or hardened 404/405 handling;
+- changes `/mcp`, `/console` or `/version` route ownership;
+- introduces inline executable content, remote assets, browser storage, cookies,
+  WebSockets, SSE or control-plane requests;
+- embeds moving release, commit, tool-count or catalog identity;
+- restores historical showcase dependencies to the runtime landing;
+- loses bilingual, mobile, keyboard or reduced-motion behavior;
+- uses unsupported capability claims or generic marketing slogans.
+
+Production closure requires the final pull-request HEAD to pass every applicable gate,
+a merge commit into `main`, a managed deployment of that exact merge, verified HTTPS
+for the selected domain, and live `/version` identity matching the merge.

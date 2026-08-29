@@ -52,17 +52,16 @@ Operators still own configuration, review, credentials, deployment, and recovery
 
 ## Maintainer-operated demo
 
-The maintainer currently operates a public landing and credential-gated MCP endpoint at:
+The source includes a public product site at `GET /`; the project domain is
+[`aeontra.com`](https://aeontra.com/). The site does not grant repository, deployment,
+Edge, or secret authority. `/console` remains authenticated and `/mcp` remains
+credential-gated. See [`docs/landing/public-site.md`](docs/landing/public-site.md).
+
+The maintainer's existing MCP connector remains available during the domain migration:
 
 ```text
-https://mcp-devbox-charlez.duckdns.org/
 https://mcp-devbox-charlez.duckdns.org/mcp
 ```
-
-The public presentation landing is presentation-only. It does not grant repository,
-deployment, Edge, or secret authority. `/console` remains authenticated and `/mcp`
-remains credential-gated. See
-[`docs/landing/public-showcase.md`](docs/landing/public-showcase.md).
 
 This deployment is evidence that the architecture can run remotely; its host, domain,
 accounts, and application identifiers are not project defaults or contributor
@@ -72,7 +71,7 @@ infrastructure. A separate native Windows Edge package is documented in
 release, installed service, and real-device acceptance remain separate identities.
 
 Do not copy a commit, release, tool count, or catalog hash from this README. Read the
-live deployment identity from [`/version`](https://mcp-devbox-charlez.duckdns.org/version)
+live deployment identity from its `/version` route
 or call `system_runtime_info`. The canonical public tool contract is
 [`docs/tools.md`](docs/tools.md). Historical release evidence remains under
 [`docs/baselines/`](docs/baselines/).

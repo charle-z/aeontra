@@ -1,17 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
-  <title id="title">Aeontra bounded autonomy for real infrastructure</title>
-  <desc id="desc">A blue VGA card explaining that ChatGPT can work on real infrastructure through narrow tools without receiving a free shell.</desc>
-  <rect width="1200" height="630" fill="#0000A8"/>
-  <rect x="36" y="36" width="1128" height="558" fill="#000050" stroke="#D8D8D8" stroke-width="4"/>
-  <rect x="36" y="36" width="1128" height="58" fill="#A8A8A8"/>
-  <text x="70" y="75" fill="#000000" font-family="Cascadia Mono,Consolas,Courier New,monospace" font-size="28" font-weight="700">AEONTRA — BOUNDED AUTONOMY</text>
-  <g font-family="Cascadia Mono,Consolas,Courier New,monospace">
-    <text x="80" y="190" fill="#FCFC54" font-size="56" font-weight="700">REAL INFRASTRUCTURE.</text>
-    <text x="80" y="262" fill="#FCFC54" font-size="56" font-weight="700">NO FREE SHELL.</text>
-    <text x="82" y="342" fill="#F8F8F8" font-size="28">Read · change · test · publish · deploy</text>
-    <text x="82" y="390" fill="#54FCFC" font-size="28">Narrow tools · denied secrets · verifiable operations</text>
-    <rect x="80" y="448" width="1040" height="78" fill="#0000A8" stroke="#54FC54" stroke-width="3"/>
-    <text x="104" y="497" fill="#54FC54" font-size="30" font-weight="700">Bounded tools · verifiable operations · durable evidence</text>
-    <text x="80" y="568" fill="#A8A8A8" font-size="22">Hosted on CubePath · deployed with Coolify</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">Aeontra — Boundaries for software agents</title>
+  <desc id="description">Open-source MCP control plane for repositories, CI, deployments and private Edge workers.</desc>
+  <metadata>AEONTRA · BOUNDARIES FOR SOFTWARE AGENTS · OPEN SOURCE</metadata>
+  <rect width="1200" height="630" fill="#f2efe6"/>
+  <rect x="0" y="0" width="1200" height="54" fill="#171813"/>
+  <rect x="0" y="576" width="1200" height="54" fill="#d8ff3e"/>
+  <rect x="64" y="99" width="84" height="84" fill="#171813"/>
+  <text x="106" y="153" fill="#d8ff3e" font-family="monospace" font-size="25" font-weight="700" text-anchor="middle">A/</text>
+  <text x="178" y="154" fill="#171813" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="700" letter-spacing="8">AEONTRA</text>
+  <line x1="64" y1="216" x2="1136" y2="216" stroke="#171813" stroke-width="2"/>
+  <text x="64" y="304" fill="#171813" font-family="Arial, Helvetica, sans-serif" font-size="65" font-weight="700" letter-spacing="-3">BOUNDARIES FOR</text>
+  <text x="64" y="374" fill="#171813" font-family="Arial, Helvetica, sans-serif" font-size="65" font-weight="700" letter-spacing="-3">SOFTWARE AGENTS</text>
+  <rect x="64" y="438" width="542" height="54" fill="#2948ff"/>
+  <text x="84" y="473" fill="#fffef8" font-family="monospace" font-size="20" font-weight="700">OPEN SOURCE / MCP CONTROL PLANE</text>
+  <text x="64" y="611" fill="#171813" font-family="monospace" font-size="17" font-weight="700">REPOSITORIES · CI · DEPLOYMENTS · PRIVATE EDGE</text>
+  <text x="1136" y="611" fill="#171813" font-family="monospace" font-size="17" font-weight="700" text-anchor="end">AEONTRA.COM</text>
 </svg>

@@ -1,18 +1,21 @@
 # Frozen historical showcase evidence
 
-`pixelgrama-evidence.json` is the frozen historical Pixelgrama snapshot used by the
-Aeontra presentation. It was captured while the referenced source evidence was public;
-the repository is now private, so the landing must not promise current GitHub access.
+`pixelgrama-evidence.json` is the frozen historical Pixelgrama snapshot retained from
+the earlier Aeontra presentation. It was captured while the referenced source evidence
+was public; the repository is now private. The current public product site does not
+load or serve this snapshot.
 
 The file stays under `docs/showcase` because the snapshot itself is public, versioned
-documentation, while `evidence.go` embeds those exact bytes into the Go binary. The
-public server exposes the embedded resource at:
+documentation, while `evidence.go` keeps those exact bytes available to historical
+validation. The canonical location is:
 
 ```text
-/showcase/pixelgrama-evidence.json
+docs/showcase/pixelgrama-evidence.json
 ```
 
-This design adds no runtime GitHub or Pixelgrama dependency. An invalid, incomplete, missing, or unrecognized manifest fails Go tests and prevents the landing handler from starting with partial evidence.
+This evidence adds no runtime GitHub or Pixelgrama dependency. An invalid, incomplete,
+missing, or unrecognized manifest fails its own Go tests without affecting the public
+landing handler.
 
 Schema version 1 validates:
 
@@ -23,6 +26,5 @@ Schema version 1 validates:
 - an honest authority status when the exact historical policy mode is not publicly verifiable;
 - direct operations separately from consequential operations whose public result is visible but whose one-time plan artifacts remain private.
 
-The manifest is static historical evidence, not a live availability check. The landing
-must not query GitHub on page load, and the public resource grants no repository or
-control-plane authority.
+The manifest is static historical evidence, not a live availability check. It grants
+no repository or control-plane authority.
