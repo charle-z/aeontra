@@ -282,6 +282,7 @@ routes. This is the recommended deployment for a marketing domain.
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
 |---|---|---|---|---|---|
 | `AEONTRA_PUBLIC_RUNTIME_URL` | isolated public site | Required; not secret | exact HTTPS `/version` URL on an existing public Aeontra control plane; DNS hostname only, no credentials, port, query, or fragment | `https://mcp.example.com/version`; platform env | Missing or invalid configuration fails startup. Unavailable, redirected, oversized, malformed, or invalid upstream identity makes only the site's `/version` return 503. |
+| `AEONTRA_SITE_COMMIT` | isolated public site | Optional; not secret | exact 40-character lowercase Git commit; normally the platform's resolved source commit | `$SOURCE_COMMIT`; platform env | Missing or invalid input leaves the compile-time identity unchanged. If neither source provides a valid commit, `/healthz` reports `unknown`. |
 | `AEONTRA_SITE_ADDR` | isolated public site | Optional; not secret | `:8080`; valid Go HTTP listen address | `:8080`; image env | Missing uses the image default. Invalid or unavailable bind fails startup. |
 
 ### Stable MCP Front Door service

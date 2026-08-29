@@ -1,7 +1,9 @@
 package landing
 
 import (
+	"bytes"
 	"encoding/xml"
+	"image/png"
 	"regexp"
 	"strings"
 	"testing"
@@ -12,6 +14,10 @@ func TestEmbeddedLandingAssetsDefineTheAeontraPublicSite(t *testing.T) {
 	css := string(mustLandingAsset(t, "assets/app.css"))
 	js := string(mustLandingAsset(t, "assets/app.js"))
 	socialCard := string(mustLandingAsset(t, "assets/social-card.svg"))
+	socialCardPNG := mustLandingAsset(t, "assets/social-card.png")
+	favicon := string(mustLandingAsset(t, "assets/favicon.svg"))
+	robots := string(mustLandingAsset(t, "assets/robots.txt"))
+	sitemap := string(mustLandingAsset(t, "assets/sitemap.xml"))
 
 	indexLower := strings.ToLower(index)
 	for _, forbidden := range []string{
@@ -26,14 +32,21 @@ func TestEmbeddedLandingAssetsDefineTheAeontraPublicSite(t *testing.T) {
 	for _, required := range []string{
 		`<header`, `<nav`, `<main`, `<section`, `<footer`,
 		`href="#content"`, `aria-label="Primary"`,
-		`/landing/assets/app.css`, `/landing/assets/app.js`, `/landing/assets/social-card.svg`,
-		`property="og:title"`, `property="og:description"`, `property="og:type"`, `property="og:image"`,
+		`/landing/assets/app.css`, `/landing/assets/app.js`, `/landing/assets/social-card.png`,
+		`rel="canonical" href="https://aeontra.com/"`, `rel="icon" href="/favicon.svg"`,
+		`property="og:title"`, `property="og:description"`, `property="og:type"`,
+		`property="og:url" content="https://aeontra.com/"`,
+		`property="og:image" content="https://aeontra.com/landing/assets/social-card.png"`,
+		`name="twitter:title"`, `name="twitter:description"`, `name="twitter:image"`,
 		`href="https://github.com/charle-z/aeontra"`,
 		`href="https://github.com/charle-z/aeontra/blob/main/docs/public-alpha.md"`,
 		`id="system"`, `id="authority"`, `id="edge"`, `id="start"`,
 		`data-runtime-status`, `data-runtime-version`, `data-runtime-tools`, `data-runtime-commit`,
 		`data-mode="read-only"`, `data-mode="ask"`, `data-mode="allow"`,
 		`data-copy-command`, `data-language-toggle`,
+		`id="proof"`, `data-en="A concrete repository path"`,
+		`issues/new?template=alpha_feedback.yml`,
+		`The Go module and binaries retain their historical names for compatibility.`,
 	} {
 		if !strings.Contains(index, required) {
 			t.Errorf("landing index missing %q", required)
@@ -51,6 +64,7 @@ func TestEmbeddedLandingAssetsDefineTheAeontraPublicSite(t *testing.T) {
 	for _, required := range []string{
 		"--paper:", "--ink:", "--signal:", "border-radius: 0", "prefers-reduced-motion", ":focus-visible",
 		"@media (max-width: 760px)", "@media (max-width: 420px)", "overflow-wrap: anywhere",
+		".proof-section", "justify-content: flex-start", "font-size: clamp(3.15rem, 5.6vw, 5.5rem)",
 	} {
 		if !strings.Contains(cssLower, required) {
 			t.Errorf("landing CSS missing %q", required)
@@ -94,6 +108,22 @@ func TestEmbeddedLandingAssetsDefineTheAeontraPublicSite(t *testing.T) {
 	for _, forbidden := range []string{"Pixelgrama", "CubePath", "href=\"http", "xlink:href", "<script", "foreignObject"} {
 		if strings.Contains(socialCard, forbidden) {
 			t.Errorf("social card contains stale or executable content %q", forbidden)
+		}
+	}
+	if _, err := png.Decode(bytes.NewReader(socialCardPNG)); err != nil {
+		t.Fatalf("social card PNG is invalid: %v", err)
+	}
+	if !strings.Contains(favicon, "<svg") || !strings.Contains(favicon, "A/") {
+		t.Fatal("favicon does not contain the Aeontra mark")
+	}
+	for _, required := range []string{"User-agent: *", "Allow: /", "Sitemap: https://aeontra.com/sitemap.xml"} {
+		if !strings.Contains(robots, required) {
+			t.Errorf("robots.txt missing %q", required)
+		}
+	}
+	for _, required := range []string{"<urlset", "<loc>https://aeontra.com/</loc>"} {
+		if !strings.Contains(sitemap, required) {
+			t.Errorf("sitemap.xml missing %q", required)
 		}
 	}
 }

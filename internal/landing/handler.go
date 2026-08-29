@@ -15,11 +15,15 @@ const (
 	cssPath       = "/landing/assets/app.css"
 	jsPath        = "/landing/assets/app.js"
 	socialCardSVG = "/landing/assets/social-card.svg"
+	socialCardPNG = "/landing/assets/social-card.png"
+	faviconPath   = "/favicon.svg"
+	robotsPath    = "/robots.txt"
+	sitemapPath   = "/sitemap.xml"
 )
 
 const landingPageCSP = "default-src 'none'; connect-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
-//go:embed assets/index.html assets/app.css assets/app.js assets/social-card.svg
+//go:embed assets/index.html assets/app.css assets/app.js assets/social-card.svg assets/social-card.png assets/favicon.svg assets/robots.txt assets/sitemap.xml
 var embeddedAssets embed.FS
 
 // Handler owns the immutable public landing assets.
@@ -28,6 +32,10 @@ type Handler struct {
 	css           []byte
 	js            []byte
 	socialCardSVG []byte
+	socialCardPNG []byte
+	favicon       []byte
+	robots        []byte
+	sitemap       []byte
 }
 
 // New loads the embedded assets once so missing build inputs fail at startup.
@@ -48,11 +56,31 @@ func New() (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	socialCardPNGBytes, err := readAsset("assets/social-card.png", "landing social card PNG")
+	if err != nil {
+		return nil, err
+	}
+	favicon, err := readAsset("assets/favicon.svg", "landing favicon")
+	if err != nil {
+		return nil, err
+	}
+	robots, err := readAsset("assets/robots.txt", "landing robots policy")
+	if err != nil {
+		return nil, err
+	}
+	sitemap, err := readAsset("assets/sitemap.xml", "landing sitemap")
+	if err != nil {
+		return nil, err
+	}
 	return &Handler{
 		indexHTML:     indexHTML,
 		css:           css,
 		js:            js,
 		socialCardSVG: socialCard,
+		socialCardPNG: socialCardPNGBytes,
+		favicon:       favicon,
+		robots:        robots,
+		sitemap:       sitemap,
 	}, nil
 }
 
@@ -79,6 +107,18 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	})
 	mux.HandleFunc(socialCardSVG, func(w http.ResponseWriter, r *http.Request) {
 		h.handleAsset(w, r, "image/svg+xml; charset=utf-8", h.socialCardSVG)
+	})
+	mux.HandleFunc(socialCardPNG, func(w http.ResponseWriter, r *http.Request) {
+		h.handleAsset(w, r, "image/png", h.socialCardPNG)
+	})
+	mux.HandleFunc(faviconPath, func(w http.ResponseWriter, r *http.Request) {
+		h.handleAsset(w, r, "image/svg+xml; charset=utf-8", h.favicon)
+	})
+	mux.HandleFunc(robotsPath, func(w http.ResponseWriter, r *http.Request) {
+		h.handleAsset(w, r, "text/plain; charset=utf-8", h.robots)
+	})
+	mux.HandleFunc(sitemapPath, func(w http.ResponseWriter, r *http.Request) {
+		h.handleAsset(w, r, "application/xml; charset=utf-8", h.sitemap)
 	})
 	mux.HandleFunc(rootPath, h.handleRoot)
 }
@@ -122,6 +162,7 @@ func hardenLandingResponse(w http.ResponseWriter, csp string) {
 	w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 	w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 	w.Header().Set("Origin-Agent-Cluster", "?1")
+	w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
 }

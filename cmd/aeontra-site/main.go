@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/publicsite"
 )
 
@@ -23,6 +24,7 @@ func main() {
 }
 
 func run() error {
+	stampSiteCommitFromEnvironment()
 	runtimeURL := strings.TrimSpace(os.Getenv("AEONTRA_PUBLIC_RUNTIME_URL"))
 	handler, err := publicsite.New(publicsite.Options{RuntimeURL: runtimeURL})
 	if err != nil {
@@ -67,4 +69,27 @@ func run() error {
 		}
 		return nil
 	}
+}
+
+func stampSiteCommitFromEnvironment() {
+	if buildinfo.Commit != "unknown" {
+		return
+	}
+	commit := strings.TrimSpace(os.Getenv("AEONTRA_SITE_COMMIT"))
+	if !isLowerHexCommit(commit) {
+		return
+	}
+	buildinfo.Commit = commit
+}
+
+func isLowerHexCommit(value string) bool {
+	if len(value) != 40 {
+		return false
+	}
+	for _, char := range []byte(value) {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
 }

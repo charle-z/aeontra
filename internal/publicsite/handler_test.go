@@ -82,7 +82,7 @@ func TestHandlerServesSiteHealthAndSanitizedRuntimeIdentity(t *testing.T) {
 	if strings.Contains(version.Body.String(), "built_at") {
 		t.Fatalf("public version response exposes unused upstream build metadata: %s", version.Body.String())
 	}
-	for _, header := range []string{"Content-Security-Policy", "X-Content-Type-Options", "Referrer-Policy", "Cache-Control"} {
+	for _, header := range []string{"Content-Security-Policy", "X-Content-Type-Options", "Referrer-Policy", "Cache-Control", "Strict-Transport-Security"} {
 		if version.Header().Get(header) == "" {
 			t.Fatalf("version response lacks %s", header)
 		}
