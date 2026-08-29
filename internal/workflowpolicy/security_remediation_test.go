@@ -13,6 +13,7 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"security.yml":                      "../../.github/workflows/security.yml",
 		"fuzz.yml":                          "../../.github/workflows/fuzz.yml",
 		"Dockerfile":                        "../../Dockerfile",
+		"Dockerfile.site":                   "../../Dockerfile.site",
 		"Dockerfile.validation-runner":      "../../Dockerfile.validation-runner",
 		"Dockerfile.front-door":             "../../Dockerfile.front-door",
 		"Dockerfile.front-door-coordinator": "../../Dockerfile.front-door-coordinator",
@@ -34,13 +35,14 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 			t.Errorf("%s must use Go 1.26.6", workflow)
 		}
 	}
-	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator"} {
+	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator"} {
 		if !strings.Contains(contents[dockerfile], "golang:1.26.6-") {
 			t.Errorf("%s must use the fixed versioned Go base", dockerfile)
 		}
 	}
 	for dockerfile, runtimeBase := range map[string]string{
 		"Dockerfile":                        "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+		"Dockerfile.site":                   "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
 		"Dockerfile.validation-runner":      "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
 		"Dockerfile.front-door":             "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
 		"Dockerfile.front-door-coordinator": "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",

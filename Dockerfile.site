@@ -1,0 +1,44 @@
+# syntax=docker/dockerfile:1.7
+
+FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
+
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY cmd/aeontra-site ./cmd/aeontra-site
+COPY internal/buildinfo ./internal/buildinfo
+COPY internal/landing ./internal/landing
+COPY internal/publicsite ./internal/publicsite
+
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+	--mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+	CGO_ENABLED=0 go build -trimpath \
+	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=${GIT_SHA} -X github.com/charle-z/mcp-devbox/internal/buildinfo.BuiltAt=${BUILD_TIME}" \
+	-o /out/aeontra-site ./cmd/aeontra-site
+
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+
+LABEL org.opencontainers.image.title="Aeontra public site" \
+	org.opencontainers.image.description="Isolated public product site for Aeontra" \
+	org.opencontainers.image.source="https://github.com/charle-z/aeontra"
+
+RUN apk upgrade --no-cache \
+	&& apk add --no-cache ca-certificates \
+	&& addgroup -S -g 10001 aeontra \
+	&& adduser -S -D -H -u 10001 -G aeontra aeontra \
+	&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)
+
+COPY --from=build /out/aeontra-site /usr/local/bin/aeontra-site
+
+ENV AEONTRA_SITE_ADDR=:8080
+USER 10001:10001
+WORKDIR /srv
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=12 \
+	CMD busybox wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1
+
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/local/bin/aeontra-site"]

@@ -53,9 +53,13 @@ Operators still own configuration, review, credentials, deployment, and recovery
 ## Maintainer-operated demo
 
 The source includes a public product site at `GET /`; the project domain is
-[`aeontra.com`](https://aeontra.com/). The site does not grant repository, deployment,
-Edge, or secret authority. `/console` remains authenticated and `/mcp` remains
-credential-gated. See [`docs/landing/public-site.md`](docs/landing/public-site.md).
+[`aeontra.com`](https://aeontra.com/). Its recommended deployment uses the isolated
+`aeontra-site` executable and `Dockerfile.site`, which expose no MCP, OAuth, console,
+repository, deployment, Edge, or secret authority. A control-plane deployment may
+serve the same assets while preserving authenticated `/console` and credential-gated
+`/mcp` route ownership. See [`docs/landing/public-site.md`](docs/landing/public-site.md).
+When the assets are served by that control plane, `/console` remains authenticated and
+`/mcp` remains credential-gated.
 
 The maintainer's existing MCP connector remains available during the domain migration:
 

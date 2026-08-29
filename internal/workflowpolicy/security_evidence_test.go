@@ -31,6 +31,7 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294",
 		"fail-on-severity: moderate",
 		"docker build --file Dockerfile --tag mcp-devbox:ci .",
+		"docker build --file Dockerfile.site --tag aeontra-site:ci .",
 		"docker build --file Dockerfile.front-door --tag mcp-front-door:ci .",
 		"docker build --file Dockerfile.front-door-coordinator --tag mcp-front-door-coordinator:ci .",
 		"docker build --file Dockerfile.validation-runner --tag mcp-validation-runner:ci .",
@@ -77,6 +78,12 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"test -s sbom.spdx.json",
 		"test -s grype.json",
 		"go run ./cmd/grype-gate --report grype.json --minimum high --annotation-file Dockerfile",
+		"output-file: aeontra-site-sbom.spdx.json",
+		"image: aeontra-site:ci",
+		"output-file: aeontra-site-grype.json",
+		"test -s aeontra-site-sbom.spdx.json",
+		"test -s aeontra-site-grype.json",
+		"go run ./cmd/grype-gate --report aeontra-site-grype.json --minimum high --annotation-file Dockerfile.site",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("security.yml does not contain %q", required)

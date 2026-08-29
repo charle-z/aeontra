@@ -270,6 +270,18 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_OAUTH_REFRESH_STORE` | refresh-token persistence | Optional; secret-bearing state path | under state root when configured; absolute override | `/state/oauth-refresh.json`; `/state` volume | Missing with a state root uses the default; without it refresh grants are memory-only. Invalid/unwritable store fails OAuth startup. |
 | `CONSOLE_TIMEZONE` | console presentation | Optional; not secret | `America/Bogota`; valid IANA name or `UTC` | `America/Bogota`; platform env | Empty uses default. Invalid or ambiguous timezone fails startup. |
 
+### Isolated public product site
+
+The `aeontra-site` executable and `Dockerfile.site` serve only the public landing,
+health/readiness, and a sanitized view of an existing public MCP `/version` response.
+They do not register MCP, OAuth, console, repository, deployment, credential, or Edge
+routes. This is the recommended deployment for a marketing domain.
+
+| Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
+|---|---|---|---|---|---|
+| `AEONTRA_PUBLIC_RUNTIME_URL` | isolated public site | Required; not secret | exact HTTPS `/version` URL on an existing public Aeontra control plane; DNS hostname only, no credentials, port, query, or fragment | `https://mcp.example.com/version`; platform env | Missing or invalid configuration fails startup. Unavailable, redirected, oversized, malformed, or invalid upstream identity makes only the site's `/version` return 503. |
+| `AEONTRA_SITE_ADDR` | isolated public site | Optional; not secret | `:8080`; valid Go HTTP listen address | `:8080`; image env | Missing uses the image default. Invalid or unavailable bind fails startup. |
+
 ### Stable MCP Front Door service
 
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
