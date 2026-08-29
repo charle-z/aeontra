@@ -23,6 +23,11 @@ deploying software through narrow tools. It is designed for ChatGPT and other MC
 clients, but the security boundary lives in the server rather than in a prompt or a
 specific model provider.
 
+Supported integrations are client-initiated: ChatGPT or another authorized MCP client
+invokes Aeontra through the documented MCP transport. Aeontra does not automate a
+client UI or call undocumented ChatGPT endpoints. It does not import consumer session
+cookies or tokens.
+
 The public control plane exposes only the registered MCP contract. Local and Edge
 components can add private capabilities without turning the public server into a
 generic proxy.

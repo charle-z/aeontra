@@ -5,11 +5,13 @@ an ephemeral execution lease created for one explicit continuation request. Remo
 or finishing a runtime does not remove the workspace, its local contract, its
 checkpoint, or its evidence.
 
-This is the primary interactive mode for ChatGPT web. While the chat remains active,
-ChatGPT drives each Edge request with `model_turn_next` and `model_turn_respond`.
-OpenCode is only the pinned local execution harness in this path; it is not the model
-and does not require model credits or an API key. The P15 loopback autopilot provider
-is optional and is used only when execution must continue without an active chat.
+This is the primary interactive mode for an authorized MCP client such as ChatGPT.
+While the client conversation remains active, the client drives each Edge request with
+`model_turn_next` and `model_turn_respond`. OpenCode is only the pinned local execution
+harness in this path; it is not the model or model provider and receives no OpenAI or
+ChatGPT credential or browser state. The P15 loopback autopilot provider is optional
+and is used only when execution must continue without an active client conversation.
+No daemon drives the client UI or creates a replacement conversation automatically.
 
 ## Public MCP contract
 

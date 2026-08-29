@@ -6,10 +6,11 @@ Official documentation posture refreshed: 2026-08-14
 
 ## Decision
 
-MCP Devbox can evaluate stock Codex as an optional local execution harness without forking Codex
-and without giving it an OpenAI API key or a Codex subscription. The supported integration seam is
-a private loopback OpenAI-compatible Responses provider, not browser automation and not reuse of a
-ChatGPT browser token.
+MCP Devbox can evaluate stock Codex without forking Codex. It remains an optional local
+execution harness. Host acceptance uses a credential-free scripted provider;
+production model turns reach the harness only through an active authorized MCP client.
+The supported integration seam is a private loopback OpenAI-compatible Responses
+provider, not browser automation and not reuse of a ChatGPT browser token.
 
 The official App Server documentation currently labels the App Server command and its WebSocket
 transport experimental and unsupported for production workloads. Its initialize acceptance remains
@@ -50,7 +51,8 @@ namespace/search declarations do not cross the model-turn boundary.
 The production adapter should be a signed MCP Devbox process beside Codex:
 
 ```text
-GPT Web model_turn_next/model_turn_respond
+ChatGPT or authorized MCP client
+       model_turn_next/model_turn_respond
                  |
        durable model-turn store
                  |
@@ -69,6 +71,11 @@ request and translates the validated external text/tool response back to Respons
 SSE. Codex retains its agent loop; MCP Devbox retains runtime identity, replay
 protection, cancellation, workcell scope, GitHub brokerage and audit.
 
+The MCP client initiates every model-turn call. The adapter never opens or drives the
+ChatGPT UI, creates ChatGPT conversations, calls undocumented ChatGPT endpoints, or
+imports consumer subscription session state. It is not a service for turning a
+consumer ChatGPT plan into a programmatic API.
+
 The active neutral Edge unit launches the pinned stock CLI inside the existing trusted Linux
 workcell Bubblewrap boundary. It passes no OpenAI credential or ChatGPT browser state,
 fixes the provider URL to the server-owned loopback listener, sets
@@ -84,6 +91,8 @@ but it is not a prerequisite for this adapter or the initial signed release.
 - Do not install Codex in the public MCP container.
 - Do not pass ChatGPT cookies, browser storage, OAuth tokens or Codex account state to
   the adapter.
+- Do not market or operate the adapter as a consumer-subscription bridge, quota
+  workaround or unattended ChatGPT UI controller.
 - Do not expose the provider beyond loopback or the private workcell namespace.
 - Do not let Codex select a socket, host path, provider URL or GitHub credential.
 - Do not replace the P16 workqueue with Codex session storage.
