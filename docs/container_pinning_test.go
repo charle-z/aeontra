@@ -15,6 +15,7 @@ var inlineDockerfileBaseImage = regexp.MustCompile(`FROM[ \t]+([a-z0-9./_-]+:[a-
 func TestEveryDockerfileBaseImageIsPinnedByDigest(t *testing.T) {
 	for _, path := range []string{
 		"../Dockerfile",
+		"../Dockerfile.site",
 		"../Dockerfile.front-door",
 		"../Dockerfile.front-door-coordinator",
 		"../Dockerfile.validation-runner",

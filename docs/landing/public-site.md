@@ -1,18 +1,24 @@
 # Aeontra public product site
 
 Status: **implemented in source**. Production closure still requires exact-head CI,
-merge, managed deployment, DNS/TLS validation and live commit verification.
+merge, isolated managed deployment, DNS/TLS validation and live identity verification.
 
 ## Purpose
 
 The package under `internal/landing` owns an open-source product site at the exact
 public route `GET /`. It explains Aeontra's current software boundary, links to the
-public alpha and source, and exposes a bounded live deployment identity. It is part of
-the existing Go server rather than a second web application or deployment.
+public alpha and source, and exposes a bounded live control-plane identity.
+
+The same embedded assets remain available on an Aeontra control plane. The recommended
+marketing-domain deployment uses the separate `aeontra-site` executable and
+`Dockerfile.site`. That process serves only the landing, `/healthz`, `/readyz`, and a
+strict sanitized proxy of one administrator-configured public `/version` endpoint. It
+keeps a marketing domain outside the MCP/OAuth/console trust boundary.
 
 The site does not act as an MCP client. It cannot call tools, approve plans, inspect
-repositories, read audit data, reuse console sessions or obtain credentials. `/mcp`
-and `/console` retain their existing authentication and route ownership.
+repositories, read audit data, reuse console sessions or obtain credentials. In the
+isolated deployment, `/mcp`, OAuth and `/console` do not exist. In a control-plane
+deployment, those routes retain their existing authentication and ownership.
 
 ## Brand and content direction
 
@@ -47,8 +53,10 @@ The handler embeds:
 
 The document performs exactly one same-origin public request: `GET /version`. The
 browser accepts only bounded version, tool-count and commit fields for presentation.
-Unavailable or malformed identity produces a generic unavailable state. No request is
-made to MCP, console, GitHub, analytics or another origin.
+In the isolated deployment, the server obtains that identity from one exact HTTPS
+`/version` URL, rejects redirects and unexpected fields, and returns no upstream error
+detail. Unavailable or malformed identity produces a generic unavailable state. No
+browser request is made to MCP, console, GitHub, analytics or another origin.
 
 The social card is a self-contained typographic SVG with no script, external reference
 or runtime identity. Branding can later replace it with a raster asset without changing
@@ -89,5 +97,6 @@ Tests must fail when the site:
 - uses unsupported capability claims or generic marketing slogans.
 
 Production closure requires the final pull-request HEAD to pass every applicable gate,
-a merge commit into `main`, a managed deployment of that exact merge, verified HTTPS
-for the selected domain, and live `/version` identity matching the merge.
+a merge commit into `main`, an isolated deployment built from that exact merge,
+verified HTTPS for the selected domain, and a successful sanitized `/version` probe of
+the configured control plane.
