@@ -24,11 +24,12 @@ func TestCodexCompatibilityDecisionDocumentsBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(body)
+	text := strings.Join(strings.Fields(string(body)), " ")
 	for _, required := range []string{
 		"without forking Codex",
 		"private loopback OpenAI-compatible Responses provider",
-		"without giving it an OpenAI API key",
+		"Host acceptance uses a credential-free scripted provider",
+		"production model turns reach the harness only through an active authorized MCP client",
 		"experimental and unsupported for production workloads",
 		"Retain the signed v4 bridge release",
 		"Managed parallel writers use server-owned worktrees",

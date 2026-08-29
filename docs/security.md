@@ -317,6 +317,11 @@ language. JavaScript and normal browser APIs are available through that project 
 The seven `project_browser_*` tools remain only a convenience wrapper for common Chromium
 actions.
 
+This general capability does not create a special integration with any website.
+Aeontra ships no ChatGPT-specific browser preset, UI driver, private-endpoint client or
+consumer-session import. Browser automation remains subject to the operator's authority
+and the rules of the target service.
+
 The harness reuses the existing toolbox boundary. The workspace is mounted at
 `/workspace`; package managers may install browsers, drivers, libraries and utilities in
 the persistent toolbox rootfs. The caller receives standard environment variables for a
