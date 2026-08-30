@@ -75,11 +75,13 @@ func stampSiteCommitFromEnvironment() {
 	if buildinfo.Commit != "unknown" {
 		return
 	}
-	commit := strings.TrimSpace(os.Getenv("AEONTRA_SITE_COMMIT"))
-	if !isLowerHexCommit(commit) {
-		return
+	for _, name := range []string{"AEONTRA_SITE_COMMIT", "SOURCE_COMMIT"} {
+		commit := strings.TrimSpace(os.Getenv(name))
+		if isLowerHexCommit(commit) {
+			buildinfo.Commit = commit
+			return
+		}
 	}
-	buildinfo.Commit = commit
 }
 
 func isLowerHexCommit(value string) bool {

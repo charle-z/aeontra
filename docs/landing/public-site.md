@@ -107,6 +107,7 @@ Tests must fail when the site:
 Production closure requires the final pull-request HEAD to pass every applicable gate,
 a merge commit into `main`, an isolated deployment built from that exact merge,
 verified HTTPS for the selected domain, and a successful sanitized `/version` probe of
-the configured control plane. The isolated deployment should set
-`AEONTRA_SITE_COMMIT` from its resolved source commit so `/healthz` exposes exact build
-identity without embedding a moving value in the page.
+the configured control plane. The isolated deployment reads Coolify's predefined
+`SOURCE_COMMIT` so `/healthz` exposes exact build identity without embedding a moving
+value in the page. `AEONTRA_SITE_COMMIT` remains an explicit validated override for
+other deployment platforms.
