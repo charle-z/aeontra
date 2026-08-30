@@ -31,13 +31,14 @@ There are no analytics.
 
 Current content is organized around:
 
-1. a concrete product statement and bounded execution trace;
-2. repository, delivery, durable-work and private-Edge surfaces;
-3. the `read-only`, `ask`, and `allow` authority modes;
-4. the exact preview, approval, revalidation, effect and audit sequence;
-5. Linux/Parrot/WSL and native Windows Edge boundaries;
-6. the smallest local read-only evaluation path;
-7. current public-alpha capabilities and limitations.
+1. a concrete product statement and representative request-to-receipt path;
+2. a bounded execution trace;
+3. repository, delivery, durable-work and private-Edge surfaces;
+4. the `read-only`, `ask`, and `allow` authority modes;
+5. the exact preview, approval, revalidation, effect and audit sequence;
+6. Linux/Parrot/WSL and native Windows Edge boundaries;
+7. the smallest local read-only evaluation path;
+8. current public-alpha capabilities, limitations and feedback route.
 
 Historical Pixelgrama and CubePath evidence remains under `docs/showcase` and dated
 baselines. It is not fetched or served by the current public site.
@@ -49,7 +50,11 @@ The handler embeds:
 - `assets/index.html`;
 - `assets/app.css`;
 - `assets/app.js`;
-- `assets/social-card.svg`.
+- `assets/social-card.svg`;
+- `assets/social-card.png`;
+- `assets/favicon.svg`;
+- `assets/robots.txt`;
+- `assets/sitemap.xml`.
 
 The document performs exactly one same-origin public request: `GET /version`. The
 browser accepts only bounded version, tool-count and commit fields for presentation.
@@ -58,9 +63,10 @@ In the isolated deployment, the server obtains that identity from one exact HTTP
 detail. Unavailable or malformed identity produces a generic unavailable state. No
 browser request is made to MCP, console, GitHub, analytics or another origin.
 
-The social card is a self-contained typographic SVG with no script, external reference
-or runtime identity. Branding can later replace it with a raster asset without changing
-the page contract.
+The social cards are self-contained typographic SVG and PNG assets with no script,
+external reference or runtime identity. The PNG is the canonical Open Graph and Twitter
+preview. The page also publishes an SVG favicon, a same-domain sitemap and an explicit
+robots policy. Canonical and social metadata use the HTTPS apex domain.
 
 ## Interaction and accessibility
 
@@ -84,6 +90,8 @@ The document CSP permits only same-origin CSS, JavaScript, images and `/version`
 rejects inline script/style attributes, objects, forms, framing, base URL mutation and
 third-party resources. Responses also set `nosniff`, frame denial, no-referrer,
 restrictive permissions, same-origin isolation headers and `no-store` caching.
+The isolated site also emits HTTP Strict Transport Security for the apex domain and its
+subdomains. TLS termination remains owned by the managed deployment platform.
 
 Tests must fail when the site:
 
@@ -99,4 +107,6 @@ Tests must fail when the site:
 Production closure requires the final pull-request HEAD to pass every applicable gate,
 a merge commit into `main`, an isolated deployment built from that exact merge,
 verified HTTPS for the selected domain, and a successful sanitized `/version` probe of
-the configured control plane.
+the configured control plane. The isolated deployment should set
+`AEONTRA_SITE_COMMIT` from its resolved source commit so `/healthz` exposes exact build
+identity without embedding a moving value in the page.

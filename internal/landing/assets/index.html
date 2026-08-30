@@ -5,12 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Aeontra — Boundaries for software agents</title>
   <meta name="description" content="Aeontra is an open-source MCP control plane for repositories, CI, deployments and private Edge workers.">
+  <meta name="robots" content="index,follow,max-image-preview:large">
   <meta name="theme-color" content="#171813">
+  <link rel="canonical" href="https://aeontra.com/">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <meta property="og:title" content="Aeontra — Boundaries for software agents">
   <meta property="og:description" content="An open-source MCP control plane for repositories, CI, deployments and private Edge workers.">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="/landing/assets/social-card.svg">
+  <meta property="og:url" content="https://aeontra.com/">
+  <meta property="og:site_name" content="Aeontra">
+  <meta property="og:image" content="https://aeontra.com/landing/assets/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Aeontra — Boundaries for software agents">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Aeontra — Boundaries for software agents">
+  <meta name="twitter:description" content="An open-source MCP control plane for repositories, CI, deployments and private Edge workers.">
+  <meta name="twitter:image" content="https://aeontra.com/landing/assets/social-card.png">
+  <meta name="twitter:image:alt" content="Aeontra — Boundaries for software agents">
   <link rel="stylesheet" href="/landing/assets/app.css">
   <script src="/landing/assets/app.js" defer></script>
 </head>
@@ -82,6 +95,23 @@
           </dl>
         </div>
       </aside>
+    </section>
+
+    <section class="proof-section" id="proof" aria-labelledby="proof-title">
+      <div class="proof-intro">
+        <p class="section-index">LIVE PATH / 01</p>
+        <div>
+          <h2 id="proof-title" data-en="A concrete repository path" data-es="Un recorrido concreto por el repositorio">A concrete repository path</h2>
+          <p data-en="A representative task moves through explicit state instead of an unbounded terminal session." data-es="Una tarea representativa avanza mediante estados explícitos en lugar de una sesión de terminal sin límites.">A representative task moves through explicit state instead of an unbounded terminal session.</p>
+        </div>
+      </div>
+      <ol class="proof-path">
+        <li><span>01 / REQUEST</span><strong data-en="Fix the failing test" data-es="Corregir el test fallido">Fix the failing test</strong><small data-en="Registered repository and exact goal" data-es="Repositorio registrado y objetivo exacto">Registered repository and exact goal</small></li>
+        <li><span>02 / WORKTREE</span><strong data-en="Isolate and validate" data-es="Aislar y validar">Isolate and validate</strong><small data-en="Dedicated branch, configured commands and bounded output" data-es="Rama dedicada, comandos configurados y salida acotada">Dedicated branch, configured commands and bounded output</small></li>
+        <li><span>03 / DELIVERY</span><strong data-en="Publish the exact head" data-es="Publicar el head exacto">Publish the exact head</strong><small data-en="Brokered Git credentials, pull request and terminal CI" data-es="Credenciales Git del broker, pull request y CI terminal">Brokered Git credentials, pull request and terminal CI</small></li>
+        <li><span>04 / RECEIPT</span><strong data-en="Return reviewable evidence" data-es="Devolver evidencia revisable">Return reviewable evidence</strong><small data-en="Commit, checks, result and durable operation state" data-es="Commit, checks, resultado y estado durable de la operación">Commit, checks, result and durable operation state</small></li>
+      </ol>
+      <a class="proof-link" href="https://github.com/charle-z/aeontra/tree/main/docs/baselines" data-en="Review dated acceptance evidence" data-es="Revisar evidencia de aceptación fechada">Review dated acceptance evidence</a>
     </section>
 
     <section class="system-section" id="system" aria-labelledby="system-title">
@@ -202,6 +232,7 @@ mcp-devbox serve --root /absolute/path/to/disposable-repo --mode read-only</code
         </div>
         <p class="copy-status" data-copy-status aria-live="polite"></p>
       </div>
+      <p class="compatibility-note" data-en="The Go module and binaries retain their historical names for compatibility." data-es="El módulo Go y los binarios conservan sus nombres históricos por compatibilidad.">The Go module and binaries retain their historical names for compatibility.</p>
 
       <div class="start-links">
         <a href="https://github.com/charle-z/aeontra/blob/main/docs/public-alpha.md"><span>01</span><strong data-en="Public alpha guide" data-es="Guía de alpha pública">Public alpha guide</strong><small data-en="Install, connect, verify, report" data-es="Instalar, conectar, verificar, reportar">Install, connect, verify, report</small></a>
@@ -235,6 +266,7 @@ mcp-devbox serve --root /absolute/path/to/disposable-repo --mode read-only</code
           </ul>
         </div>
       </div>
+      <a class="alpha-feedback" href="https://github.com/charle-z/aeontra/issues/new?template=alpha_feedback.yml" data-en="Share alpha feedback" data-es="Compartir feedback de la alpha">Share alpha feedback</a>
     </section>
   </main>
 

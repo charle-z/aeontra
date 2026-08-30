@@ -31,6 +31,7 @@ func TestPublicLandingRoutesAndSecurityHeaders(t *testing.T) {
 		"Cross-Origin-Opener-Policy",
 		"Cross-Origin-Resource-Policy",
 		"Origin-Agent-Cluster",
+		"Strict-Transport-Security",
 	} {
 		if response.Header().Get(header) == "" {
 			t.Errorf("GET / missing %s", header)
@@ -112,6 +113,10 @@ func TestPublicLandingAssetsAreEmbeddedAndHardened(t *testing.T) {
 		"/landing/assets/app.css":         "text/css",
 		"/landing/assets/app.js":          "text/javascript",
 		"/landing/assets/social-card.svg": "image/svg+xml",
+		"/landing/assets/social-card.png": "image/png",
+		"/favicon.svg":                    "image/svg+xml",
+		"/robots.txt":                     "text/plain",
+		"/sitemap.xml":                    "application/xml",
 	} {
 		response := serveLanding(mux, http.MethodGet, path)
 		if response.Code != http.StatusOK {

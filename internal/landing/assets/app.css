@@ -221,16 +221,16 @@ main,
 .hero-copy {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 0;
-  padding: clamp(3.5rem, 8vw, 8rem) var(--gutter) clamp(3.5rem, 7vw, 7rem);
+  padding: clamp(3rem, 4.3vw, 4rem) var(--gutter) clamp(2.5rem, 4vw, 4rem);
 }
 
 .eyebrow {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem 1.6rem;
-  margin-bottom: clamp(2.5rem, 6vw, 5.5rem);
+  margin-bottom: clamp(1.75rem, 3vw, 2.75rem);
   font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 0.7rem;
   font-weight: 700;
@@ -245,8 +245,8 @@ main,
 
 .hero h1 {
   max-width: 12ch;
-  margin-bottom: 2rem;
-  font-size: clamp(3.15rem, 7vw, 7.8rem);
+  margin-bottom: 1.5rem;
+  font-size: clamp(3.15rem, 5.6vw, 5.5rem);
   font-weight: 700;
   letter-spacing: -0.075em;
   line-height: 0.88;
@@ -316,6 +316,97 @@ main,
   color: var(--white);
   background: var(--ink);
   border-left: 1px solid var(--ink);
+}
+
+.proof-section {
+  padding: clamp(3rem, 6vw, 5.5rem) var(--gutter);
+  color: var(--white);
+  background: var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.proof-intro {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.35fr) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+  margin-bottom: 2.5rem;
+}
+
+.proof-intro h2 {
+  max-width: 15ch;
+  margin-bottom: 0.9rem;
+  font-size: clamp(2.7rem, 5vw, 5.5rem);
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+}
+
+.proof-intro p:last-child {
+  max-width: 50rem;
+  color: #c8cabf;
+  font-size: 1.05rem;
+}
+
+.proof-path {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #4e5047;
+  border-left: 1px solid #4e5047;
+  list-style: none;
+}
+
+.proof-path li {
+  display: flex;
+  flex-direction: column;
+  min-height: 13rem;
+  padding: 1.25rem;
+  border-right: 1px solid #4e5047;
+  border-bottom: 1px solid #4e5047;
+}
+
+.proof-path span,
+.proof-path small,
+.proof-link,
+.compatibility-note,
+.alpha-feedback {
+  font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.proof-path span {
+  margin-bottom: auto;
+  color: var(--signal);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.proof-path strong {
+  margin: 2rem 0 0.55rem;
+  font-size: 1.15rem;
+}
+
+.proof-path small {
+  color: #b9bbb0;
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.proof-link {
+  display: inline-flex;
+  margin-top: 1.5rem;
+  color: var(--signal);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.proof-link::after,
+.alpha-feedback::after {
+  content: "↗";
+  margin-left: 0.75rem;
 }
 
 .panel-header,
@@ -785,6 +876,12 @@ main,
   border: 1px solid var(--ink);
 }
 
+.compatibility-note {
+  margin: 0.9rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+}
+
 .command-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -889,6 +986,25 @@ main,
   background: var(--signal);
 }
 
+.alpha-feedback {
+  align-self: end;
+  justify-self: start;
+  padding: 0.9rem 1rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.alpha-feedback:hover {
+  color: var(--white);
+  background: var(--blue);
+}
+
 .alpha-section h2 {
   max-width: 10ch;
 }
@@ -990,6 +1106,10 @@ main,
     border-left: 0;
   }
 
+  .proof-path {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .trace-list {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -1072,14 +1192,16 @@ main,
   }
 
   .section-heading,
-  .alpha-section {
+  .alpha-section,
+  .proof-intro {
     grid-template-columns: 1fr;
     gap: 1.5rem;
   }
 
   .capability-grid,
   .alpha-columns,
-  .start-links {
+  .start-links,
+  .proof-path {
     grid-template-columns: 1fr;
   }
 
