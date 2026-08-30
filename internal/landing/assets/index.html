@@ -51,9 +51,9 @@
     <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="hero-copy">
         <p class="eyebrow"><span>CONTROL PLANE</span><span>OPEN SOURCE</span><span>MCP</span></p>
-        <h1 id="hero-title" data-en="Give software agents a defined place to work." data-es="Dale a los agentes de software un lugar definido para trabajar.">Give software agents a defined place to work.</h1>
+        <h1 id="hero-title" data-en="Connect your MCP client to the repositories and tools you choose." data-es="Conecta tu cliente MCP a los repositorios y herramientas que elijas.">Connect your MCP client to the repositories and tools you choose.</h1>
         <p class="hero-summary" data-en="Aeontra is an open-source MCP control plane for repositories, CI, deployments and private Edge workers." data-es="Aeontra es un plano de control MCP de código abierto para repositorios, CI, despliegues y workers Edge privados.">Aeontra is an open-source MCP control plane for repositories, CI, deployments and private Edge workers.</p>
-        <p class="hero-boundary" data-en="The client requests work. Aeontra enforces the configured boundary and records the result." data-es="El cliente solicita trabajo. Aeontra aplica el límite configurado y registra el resultado.">The client requests work. Aeontra enforces the configured boundary and records the result.</p>
+        <p class="hero-boundary" data-en="You choose the repository and the limits. Aeontra runs the approved work and keeps a record." data-es="Tú eliges el repositorio y los límites. Aeontra ejecuta el trabajo aprobado y deja registro.">You choose the repository and the limits. Aeontra runs the approved work and keeps a record.</p>
         <div class="hero-actions" aria-label="Primary actions">
           <a class="primary-action primary-action--solid" href="https://github.com/charle-z/aeontra/blob/main/docs/public-alpha.md" data-en="Run the public alpha" data-es="Probar la alpha pública">Run the public alpha</a>
           <a class="primary-action primary-action--outline" href="https://github.com/charle-z/aeontra" data-en="Inspect the source" data-es="Revisar el código">Inspect the source</a>
@@ -85,14 +85,14 @@
         </ol>
         <div class="runtime-card" aria-live="polite">
           <div class="runtime-heading">
-            <span data-en="Live deployment" data-es="Despliegue activo">Live deployment</span>
+            <span data-en="Public control plane" data-es="Control plane público">Public control plane</span>
             <strong data-runtime-status>CHECKING</strong>
           </div>
-          <dl>
-            <div><dt data-en="Version" data-es="Versión">Version</dt><dd data-runtime-version>—</dd></div>
-            <div><dt data-en="Tools" data-es="Herramientas">Tools</dt><dd data-runtime-tools>—</dd></div>
-            <div><dt data-en="Commit" data-es="Commit">Commit</dt><dd data-runtime-commit>—</dd></div>
-          </dl>
+          <p class="runtime-count">
+            <strong data-runtime-tools>—</strong>
+            <span data-en="tools available" data-es="herramientas disponibles">tools available</span>
+          </p>
+          <p class="runtime-note" data-en="Public demo. It cannot access your repositories." data-es="Demo pública. No puede acceder a tus repositorios.">Public demo. It cannot access your repositories.</p>
         </div>
       </aside>
     </section>
@@ -101,8 +101,8 @@
       <div class="proof-intro">
         <p class="section-index">LIVE PATH / 01</p>
         <div>
-          <h2 id="proof-title" data-en="A concrete repository path" data-es="Un recorrido concreto por el repositorio">A concrete repository path</h2>
-          <p data-en="A representative task moves through explicit state instead of an unbounded terminal session." data-es="Una tarea representativa avanza mediante estados explícitos en lugar de una sesión de terminal sin límites.">A representative task moves through explicit state instead of an unbounded terminal session.</p>
+          <h2 id="proof-title" data-en="From request to review" data-es="De la solicitud a la revisión">From request to review</h2>
+          <p data-en="See how a task moves from a clear request to a result you can review." data-es="Mira cómo una tarea pasa de una solicitud clara a un resultado que puedes revisar.">See how a task moves from a clear request to a result you can review.</p>
         </div>
       </div>
       <ol class="proof-path">
@@ -118,7 +118,7 @@
       <div class="section-heading">
         <p class="section-index">01 / SYSTEM</p>
         <div>
-          <h2 id="system-title" data-en="One control plane. Four working surfaces." data-es="Un plano de control. Cuatro superficies de trabajo.">One control plane. Four working surfaces.</h2>
+          <h2 id="system-title" data-en="Where Aeontra fits" data-es="Dónde encaja Aeontra">Where Aeontra fits</h2>
           <p data-en="The public server exposes registered tools. Private execution stays behind administrator-owned roots, policies and credentials." data-es="El servidor público expone herramientas registradas. La ejecución privada permanece detrás de raíces, políticas y credenciales controladas por el administrador.">The public server exposes registered tools. Private execution stays behind administrator-owned roots, policies and credentials.</p>
         </div>
       </div>
@@ -155,8 +155,8 @@
       <div class="section-heading section-heading--light">
         <p class="section-index">02 / AUTHORITY</p>
         <div>
-          <h2 id="authority-title" data-en="Authority is configured before the model arrives." data-es="La autoridad se configura antes de que llegue el modelo.">Authority is configured before the model arrives.</h2>
-          <p data-en="Policy is loaded by the operator, not written by the model." data-es="La política la carga el operador; el modelo no la escribe.">Policy is loaded by the operator, not written by the model.</p>
+          <h2 id="authority-title" data-en="You decide what an agent can do." data-es="Tú decides qué puede hacer un agente.">You decide what an agent can do.</h2>
+          <p data-en="You set the policy. Aeontra applies it to every operation." data-es="Tú defines la política. Aeontra la aplica en cada operación.">You set the policy. Aeontra applies it to every operation.</p>
         </div>
       </div>
 
@@ -192,7 +192,7 @@
         <div><span>04</span><strong data-en="Execute once" data-es="Ejecutar una vez">Execute once</strong></div>
         <div><span>05</span><strong data-en="Audit" data-es="Auditar">Audit</strong></div>
       </div>
-      <p class="authority-note" data-en="Reduced authority is not absolute safety. Operators still own configuration, credentials, dependencies and recovery." data-es="Reducir la autoridad no equivale a seguridad absoluta. Los operadores siguen siendo responsables de la configuración, credenciales, dependencias y recuperación.">Reduced authority is not absolute safety. Operators still own configuration, credentials, dependencies and recovery.</p>
+      <p class="authority-note" data-en="Aeontra limits authority. You still manage configuration, credentials, dependencies and recovery." data-es="Aeontra limita la autoridad. Tú sigues gestionando la configuración, las credenciales, las dependencias y la recuperación.">Aeontra limits authority. You still manage configuration, credentials, dependencies and recovery.</p>
     </section>
 
     <section class="edge-section" id="edge" aria-labelledby="edge-title">
@@ -218,8 +218,8 @@
       <div class="section-heading">
         <p class="section-index">04 / START</p>
         <div>
-          <h2 id="start-title" data-en="Start with a disposable repository." data-es="Empieza con un repositorio desechable.">Start with a disposable repository.</h2>
-          <p data-en="The smallest evaluation is local, read-only and independent of the maintainer's hosted infrastructure." data-es="La evaluación más pequeña es local, de solo lectura e independiente de la infraestructura alojada por el mantenedor.">The smallest evaluation is local, read-only and independent of the maintainer's hosted infrastructure.</p>
+          <h2 id="start-title" data-en="Try it on a disposable repository." data-es="Pruébalo en un repositorio desechable.">Try it on a disposable repository.</h2>
+          <p data-en="Run it locally in read-only mode. You don't need the hosted Aeontra service." data-es="Ejecútalo localmente en modo de solo lectura. No necesitas el servicio alojado de Aeontra.">Run it locally in read-only mode. You don't need the hosted Aeontra service.</p>
         </div>
       </div>
 
@@ -244,7 +244,7 @@ mcp-devbox serve --root /absolute/path/to/disposable-repo --mode read-only</code
     <section class="alpha-section" aria-labelledby="alpha-title">
       <div>
         <p class="section-index">PUBLIC ALPHA / 2026</p>
-        <h2 id="alpha-title" data-en="Useful now. Still operator-owned." data-es="Útil hoy. Aún operado por su mantenedor.">Useful now. Still operator-owned.</h2>
+        <h2 id="alpha-title" data-en="What you can use today." data-es="Lo que puedes usar hoy.">What you can use today.</h2>
       </div>
       <div class="alpha-columns">
         <div>

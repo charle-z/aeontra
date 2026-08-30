@@ -59,7 +59,7 @@ func TestHandlerServesSiteHealthAndSanitizedRuntimeIdentity(t *testing.T) {
 
 	root := httptest.NewRecorder()
 	handler.ServeHTTP(root, httptest.NewRequest(http.MethodGet, "/", nil))
-	if root.Code != http.StatusOK || !strings.Contains(root.Body.String(), "Give software agents a defined place to work") {
+	if root.Code != http.StatusOK || !strings.Contains(root.Body.String(), "Connect your MCP client to the repositories and tools you choose") {
 		t.Fatalf("landing response = %d %q", root.Code, root.Body.String())
 	}
 

@@ -10,6 +10,10 @@ func TestPublicAlphaGuideProvidesOneBoundedFirstRun(t *testing.T) {
 	for _, required := range []string{
 		"# Public alpha",
 		"single operator",
+		"Choose a setup",
+		"Local MCP client",
+		"ChatGPT + remote control plane",
+		"ChatGPT + Edge on your computer",
 		"Go 1.26",
 		"go install github.com/charle-z/mcp-devbox/cmd/mcp-devbox@latest",
 		"--mode read-only",

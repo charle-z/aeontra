@@ -32,6 +32,10 @@ func TestConnectRemoteDocumentsCurrentToolSurface(t *testing.T) {
 		"apply_patch",
 		"preview",
 		"single-use plan",
+		"single operator",
+		"Developer mode",
+		"stable public HTTPS hostname",
+		"multitenant isolation",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Fatalf("connect-remote.md does not document %q", want)

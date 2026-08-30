@@ -510,35 +510,37 @@ main,
   background: var(--red);
 }
 
-.runtime-card dl {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+.runtime-count {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
   margin: 0;
+  padding: 0.75rem;
   border: 1px solid var(--ink);
 }
 
-.runtime-card dl div {
-  min-width: 0;
-  padding: 0.65rem;
-  border-right: 1px solid var(--ink);
-}
-
-.runtime-card dl div:last-child {
-  border-right: 0;
-}
-
-.runtime-card dt {
-  margin-bottom: 0.2rem;
+.runtime-count strong,
+.runtime-count span {
   font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 0.58rem;
+}
+
+.runtime-count strong {
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.runtime-count span {
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-.runtime-card dd {
-  margin: 0;
-  font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 0.75rem;
-  font-weight: 800;
+.runtime-note {
+  max-width: 38ch;
+  margin: 0.65rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
 }
 
 .system-section,
@@ -1176,19 +1178,6 @@ main,
 
   .hero h1 {
     font-size: clamp(3.2rem, 16vw, 5.2rem);
-  }
-
-  .runtime-card dl {
-    grid-template-columns: 1fr;
-  }
-
-  .runtime-card dl div {
-    border-right: 0;
-    border-bottom: 1px solid var(--ink);
-  }
-
-  .runtime-card dl div:last-child {
-    border-bottom: 0;
   }
 
   .section-heading,

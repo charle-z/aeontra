@@ -75,32 +75,20 @@
     });
   }
 
-  function safeText(value, pattern, fallback) {
-    if (typeof value !== "string" || !pattern.test(value)) return fallback;
-    return value;
-  }
-
   function setRuntimeState(state, payload) {
     const status = document.querySelector("[data-runtime-status]");
-    const version = document.querySelector("[data-runtime-version]");
     const tools = document.querySelector("[data-runtime-tools]");
-    const commit = document.querySelector("[data-runtime-commit]");
-    if (!status || !version || !tools || !commit) return;
+    if (!status || !tools) return;
 
     status.dataset.state = state;
     if (state !== "ready") {
       status.textContent = language === "es" ? "NO DISPONIBLE" : "UNAVAILABLE";
-      version.textContent = "—";
       tools.textContent = "—";
-      commit.textContent = "—";
       return;
     }
 
     status.textContent = "READY";
-    version.textContent = safeText(payload.version, /^[0-9A-Za-z._+-]{1,32}$/, "—");
     tools.textContent = Number.isSafeInteger(payload.tool_count) && payload.tool_count >= 0 ? String(payload.tool_count) : "—";
-    const exactCommit = safeText(payload.commit, /^[0-9a-f]{40}$/, "");
-    commit.textContent = exactCommit ? exactCommit.slice(0, 8) : "—";
   }
 
   async function loadRuntime() {

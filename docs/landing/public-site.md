@@ -9,7 +9,8 @@ The dated acceptance record is
 
 The package under `internal/landing` owns an open-source product site at the exact
 public route `GET /`. It explains Aeontra's current software boundary, links to the
-public alpha and source, and exposes a bounded live control-plane identity.
+public alpha and source, and shows whether the public control plane is available and
+how many tools it currently exposes.
 
 The same embedded assets remain available on an Aeontra control plane. The recommended
 marketing-domain deployment uses the separate `aeontra-site` executable and
@@ -59,7 +60,8 @@ The handler embeds:
 - `assets/sitemap.xml`.
 
 The document performs exactly one same-origin public request: `GET /version`. The
-browser accepts only bounded version, tool-count and commit fields for presentation.
+browser renders only availability and the bounded tool count. The site's sanitized
+`/version` route still returns the full validated runtime identity for direct inspection.
 In the isolated deployment, the server obtains that identity from one exact HTTPS
 `/version` URL, rejects redirects and unexpected fields, and returns no upstream error
 detail. Unavailable or malformed identity produces a generic unavailable state. No
@@ -83,7 +85,7 @@ robots policy. Canonical and social metadata use the HTTPS apex domain.
 - reduced-motion behavior through `prefers-reduced-motion`;
 - no horizontal body overflow, modal, autoplay or forced boot sequence.
 
-The page states that reduced authority is not absolute safety. Operators still own
+The page states plainly that Aeontra limits authority while operators still manage
 configuration, credentials, dependency posture and recovery.
 
 ## Public security boundary
