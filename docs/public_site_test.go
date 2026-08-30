@@ -5,7 +5,7 @@ import "testing"
 func TestPublicSiteDocumentationContract(t *testing.T) {
 	implementation := readDoc(t, "landing/public-site.md")
 	for _, required := range []string{
-		"Status: **implemented in source**",
+		"Status: **deployed and verified**",
 		"internal/landing",
 		"exact public route `GET /`",
 		"open-source product site",
@@ -38,9 +38,10 @@ func TestPublicSiteDocumentationContract(t *testing.T) {
 
 	roadmap := readDoc(t, "product-roadmap.md")
 	for _, required := range []string{
-		"| Public product site | Implemented in source |",
-		"exact public `GET /`",
-		"live commit matches the merge",
+		"| Public product site | Deployed and verified |",
+		"https://aeontra.com/",
+		"responsive browser acceptance",
+		"exact site-build identity",
 	} {
 		if !containsNormalizedProse(roadmap, required) {
 			t.Errorf("product roadmap public site status missing %q", required)

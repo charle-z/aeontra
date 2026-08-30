@@ -1,6 +1,6 @@
 # Aeontra product roadmap
 
-Last updated: 2026-08-27
+Last updated: 2026-08-29
 
 ## Current delivery state
 
@@ -18,7 +18,7 @@ the active runtime contract.
 | Codex harness | Deployed and real-device accepted | The signed Edge runs a pinned stock Codex harness while Aeontra retains task, lease, worktree and fencing authority. |
 | Native Windows Edge | Deployed and real-device accepted | The signed SCM service, custom fixed-drive roots, updater, Windows workcell result handling and a registered project were accepted on a real device. |
 | Current dual-Edge release | Deployed and accepted | Linux/Parrot and native Windows were reconciled on `v1.2.24`; see [`baselines/2026-08-27-v1_2_24-dual-edge.md`](baselines/2026-08-27-v1_2_24-dual-edge.md). |
-| Public product site | Implemented in source | The exact public `GET /` is a bilingual, dependency-free Aeontra product surface. Production closure requires exact-head gates, managed deployment, HTTPS and proof that the live commit matches the merge. |
+| Public product site | Deployed and verified | The bilingual, dependency-free site is live at `https://aeontra.com/`; exact-head gates, managed deployment, HTTPS, responsive browser acceptance and exact site-build identity are recorded in [`baselines/2026-08-29-public-site.md`](baselines/2026-08-29-public-site.md). |
 | P17 durable objective supervisor | Planned | Add semantic objective evaluation, fair pending-turn attention, reviewed integration, compact handoff and content-free efficiency metrics without adding execution authority. |
 | Managed image and asset broker | Not started | A browser can acquire files, but no server-owned workflow yet searches, validates licensing, records attribution and delivers assets as an auditable product operation. |
 | CubePath migration or removal | Deferred | No core execution contract depends on CubePath. Historical evidence remains unchanged until an explicit hosting/branding migration is approved. |

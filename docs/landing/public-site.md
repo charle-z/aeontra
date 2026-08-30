@@ -1,7 +1,9 @@
 # Aeontra public product site
 
-Status: **implemented in source**. Production closure still requires exact-head CI,
-merge, isolated managed deployment, DNS/TLS validation and live identity verification.
+Status: **deployed and verified**. The isolated site at `https://aeontra.com/` passed
+exact-head CI, managed deployment, DNS/TLS validation and live identity verification.
+The dated acceptance record is
+[`docs/baselines/2026-08-29-public-site.md`](../baselines/2026-08-29-public-site.md).
 
 ## Purpose
 

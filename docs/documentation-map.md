@@ -141,6 +141,8 @@ These references remain useful, but they do not replace the canonical product so
 above:
 
 - Public product site contract: `docs/landing/public-site.md`.
+- Public product site production acceptance:
+  `docs/baselines/2026-08-29-public-site.md`.
 - Public alpha local evaluation and feedback path: `docs/public-alpha.md`.
 - Signed Linux/Parrot/WSL installation entry point: `docs/install-edge-linux.md`.
 - Stable independently deployed MCP facade: `docs/stable-mcp-front-door.md`.
