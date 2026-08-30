@@ -41,10 +41,11 @@ func TestEmbeddedLandingAssetsDefineTheAeontraPublicSite(t *testing.T) {
 		`href="https://github.com/charle-z/aeontra"`,
 		`href="https://github.com/charle-z/aeontra/blob/main/docs/public-alpha.md"`,
 		`id="system"`, `id="authority"`, `id="edge"`, `id="start"`,
-		`data-runtime-status`, `data-runtime-version`, `data-runtime-tools`, `data-runtime-commit`,
+		`data-runtime-status`, `data-runtime-tools`,
+		`data-en="Public control plane"`, `data-es="Control plane público"`,
 		`data-mode="read-only"`, `data-mode="ask"`, `data-mode="allow"`,
 		`data-copy-command`, `data-language-toggle`,
-		`id="proof"`, `data-en="A concrete repository path"`,
+		`id="proof"`, `data-en="From request to review"`,
 		`issues/new?template=alpha_feedback.yml`,
 		`The Go module and binaries retain their historical names for compatibility.`,
 	} {
@@ -132,14 +133,28 @@ func TestLandingNarrativeIsConcreteBilingualAndOperatorOwned(t *testing.T) {
 	index := string(mustLandingAsset(t, "assets/index.html"))
 
 	for _, required := range []string{
-		`data-en="Give software agents a defined place to work."`,
-		`data-es="Dale a los agentes de software un lugar definido para trabajar."`,
+		`data-en="Connect your MCP client to the repositories and tools you choose."`,
+		`data-es="Conecta tu cliente MCP a los repositorios y herramientas que elijas."`,
 		`data-en="Aeontra is an open-source MCP control plane for repositories, CI, deployments and private Edge workers."`,
 		`data-es="Aeontra es un plano de control MCP de código abierto para repositorios, CI, despliegues y workers Edge privados."`,
-		`data-en="The client requests work. Aeontra enforces the configured boundary and records the result."`,
-		`data-es="El cliente solicita trabajo. Aeontra aplica el límite configurado y registra el resultado."`,
+		`data-en="You choose the repository and the limits. Aeontra runs the approved work and keeps a record."`,
+		`data-es="Tú eliges el repositorio y los límites. Aeontra ejecuta el trabajo aprobado y deja registro."`,
+		`data-en="From request to review"`, `data-es="De la solicitud a la revisión"`,
+		`data-en="See how a task moves from a clear request to a result you can review."`,
+		`data-es="Mira cómo una tarea pasa de una solicitud clara a un resultado que puedes revisar."`,
+		`data-en="Where Aeontra fits"`, `data-es="Dónde encaja Aeontra"`,
+		`data-en="You decide what an agent can do."`, `data-es="Tú decides qué puede hacer un agente."`,
+		`data-en="You set the policy. Aeontra applies it to every operation."`,
+		`data-es="Tú defines la política. Aeontra la aplica en cada operación."`,
+		`data-en="Aeontra limits authority. You still manage configuration, credentials, dependencies and recovery."`,
+		`data-es="Aeontra limita la autoridad. Tú sigues gestionando la configuración, las credenciales, las dependencias y la recuperación."`,
+		`data-en="Try it on a disposable repository."`, `data-es="Pruébalo en un repositorio desechable."`,
+		`data-en="Run it locally in read-only mode. You don't need the hosted Aeontra service."`,
+		`data-es="Ejecútalo localmente en modo de solo lectura. No necesitas el servicio alojado de Aeontra."`,
+		`data-en="What you can use today."`, `data-es="Lo que puedes usar hoy."`,
+		`data-en="Public demo. It cannot access your repositories."`,
+		`data-es="Demo pública. No puede acceder a tus repositorios."`,
 		`data-en="Read only"`, `data-en="Ask"`, `data-en="Allow"`,
-		`data-en="Policy is loaded by the operator, not written by the model."`,
 		`data-en="Linux / Parrot / WSL"`, `data-en="Native Windows"`,
 		`go install github.com/charle-z/mcp-devbox/cmd/mcp-devbox@latest`,
 		`mcp-devbox serve --root /absolute/path/to/disposable-repo --mode read-only`,
@@ -152,6 +167,8 @@ func TestLandingNarrativeIsConcreteBilingualAndOperatorOwned(t *testing.T) {
 
 	for _, slogan := range []string{
 		"secure by default", "not just", "not a shell", "the future of", "supercharge", "unleash",
+		"one control plane. four working surfaces", "authority is configured before the model arrives",
+		"useful now. still operator-owned", "instead of an unbounded terminal session",
 	} {
 		if strings.Contains(strings.ToLower(index), slogan) {
 			t.Errorf("landing uses stock contrast or marketing language %q", slogan)
@@ -175,6 +192,17 @@ func TestLandingRuntimeAndModeInteractionsRemainLocalAndBounded(t *testing.T) {
 	for _, required := range []string{"ArrowLeft", "ArrowRight", "Home", "End", "clipboard.writeText"} {
 		if !strings.Contains(js, required) {
 			t.Errorf("landing interactions missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		`data-runtime-version`, `data-runtime-commit`,
+		`data-en="Live deployment"`, `data-es="Despliegue activo"`,
+	} {
+		if strings.Contains(index, forbidden) {
+			t.Errorf("landing runtime card still exposes %q", forbidden)
+		}
+		if strings.Contains(js, forbidden) {
+			t.Errorf("landing runtime script still depends on %q", forbidden)
 		}
 	}
 }

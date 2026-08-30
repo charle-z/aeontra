@@ -8,6 +8,23 @@ No service-level agreement, compatibility guarantee, or managed recovery service
 provided. The latest release and `main` may move independently; report both identities
 when something fails.
 
+## Choose a setup
+
+| Goal | What you run |
+|---|---|
+| **Local MCP client** | Run Aeontra beside the client over `stdio`. No Edge, public URL, OAuth, or VPS is required. |
+| **ChatGPT + remote control plane** | Run one operator-owned Aeontra control plane behind a stable public HTTPS hostname with OAuth and persistent state. Add its clean `/mcp` URL to that operator's ChatGPT account. |
+| **ChatGPT + Edge on your computer** | Use the previous control plane, then install and pair the signed Edge on Windows, Linux, Parrot, or WSL. The Edge connects outbound; the computer does not need an inbound public port. |
+
+The current product is single-operator. Each person runs and configures their own
+control plane, OAuth owner identity, ChatGPT MCP connection, Edge devices, policies,
+and repository roots. One deployment must not be shared by unrelated users because
+Aeontra does not yet provide multitenant isolation.
+
+The supported remote path uses a stable HTTPS hostname rather than a bare IP address.
+The maintainer's `aeontra.com` site and public runtime indicator are product evidence,
+not a shared connector for visitor repositories.
+
 ## Ten-minute local trial
 
 Requirements:

@@ -13,6 +13,19 @@ The complete configuration inventory is canonical in
 [`configuration.md`](configuration.md). This guide lists only the settings needed for
 connection.
 
+## Operator boundary
+
+A remote Aeontra deployment belongs to a single operator. That operator configures the
+server, OAuth owner passphrase, policies, credentials, Edge devices, repository roots,
+and their own MCP connection in ChatGPT. The current service does not provide
+multitenant isolation, so do not reuse one deployment for unrelated users.
+
+The supported public endpoint uses a stable public HTTPS hostname with a valid
+certificate. A VPS is one way to host it, but it is not mandatory: a server, managed
+container platform, or reviewed outbound tunnel is also valid when it preserves the
+routes and transport behavior documented below. A bare IP address is not the supported
+ChatGPT/OAuth setup.
+
 ## Local stdio
 
 Start with `read-only`:
@@ -124,15 +137,25 @@ Configure the clean endpoint:
 https://mcp.example.com/mcp
 ```
 
-1. Open ChatGPT connector/app settings and create an MCP connection.
+For an unverified private MCP, enable **Developer mode** in ChatGPT first. In the
+current web interface, open **Settings → Plugins → Developer mode**; the link opens the
+Developer mode control under **Security & sign-in**. Read ChatGPT's elevated-risk
+warning and OpenAI's [MCP risks and safety guidance](https://platform.openai.com/docs/mcp#risks-and-safety)
+before enabling it. The exact labels can vary by client or plan.
+
+Then configure one connection for this operator:
+
+1. Return to ChatGPT's plugin/MCP settings and use the developer connection flow.
 2. Enter the clean `/mcp` URL without credentials in the query string.
 3. Select OAuth.
-4. Complete the owner authorization step.
+4. Complete the owner authorization step using this deployment's owner identity.
 5. After connection, call a read-only tool and verify the server identity with
    `system_runtime_info`.
 
 A ChatGPT connector generally cannot inject an arbitrary recovery bearer. That is
-expected; use OAuth.
+expected; use OAuth. The connection controls only the operator's own Aeontra deployment
+and paired Edge devices. It does not grant access to the maintainer's demo or another
+operator's repositories.
 
 ## Other remote MCP clients
 
