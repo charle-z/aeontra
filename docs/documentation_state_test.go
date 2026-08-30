@@ -26,6 +26,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	reconciliation := read("baselines/2026-08-12-operational-reconciliation.md")
 	dualEdge := read("baselines/2026-08-27-v1_2_24-dual-edge.md")
 	releaseAcceptance := read("baselines/2026-08-27-v1_2_25-release.md")
+	publicSiteAcceptance := read("baselines/2026-08-29-public-site.md")
 	changelog := read("../CHANGELOG.md")
 	versioning := read("versioning.md")
 	windowsEdge := read("install-edge-windows.md")
@@ -127,7 +128,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"Last updated: 2026-08-27",
+		"Last updated: 2026-08-29",
 		"Codex harness",
 		"P16 worktrees and parallel tasks",
 		"P17 durable objective supervisor",
@@ -136,6 +137,17 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	} {
 		if !strings.Contains(roadmap, required) {
 			t.Errorf("current product roadmap does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"Public product site acceptance",
+		"e084ac02a2440b8fc055a8188020fcd008f0301c",
+		"bs6zifxam5wwejzrfeixs44o",
+		"https://aeontra.com/",
+		"The site build identity and proxied control-plane identity are intentionally separate",
+	} {
+		if !strings.Contains(publicSiteAcceptance, required) {
+			t.Errorf("public site acceptance baseline does not contain %q", required)
 		}
 	}
 	for _, required := range []string{
