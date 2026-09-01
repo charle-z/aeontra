@@ -239,6 +239,26 @@ func (c *GitHubClient) publicIssue(ctx context.Context, owner, repo string, numb
 	return result, nil
 }
 
+func (c *GitHubClient) createPublicIssue(ctx context.Context, owner, repo, title, description string) (githubPublicIssueResponse, error) {
+	body, err := json.Marshal(map[string]string{"title": title, "body": description})
+	if err != nil {
+		return githubPublicIssueResponse{}, err
+	}
+	path := "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(repo) + "/issues"
+	status, responseBody, err := c.doJSONLimit(ctx, http.MethodPost, path, body, githubPublicOSSResponseLimit)
+	if err != nil {
+		return githubPublicIssueResponse{}, err
+	}
+	if status < 200 || status >= 300 {
+		return githubPublicIssueResponse{}, fmt.Errorf("GitHub create public issue -> HTTP %d", status)
+	}
+	var result githubPublicIssueResponse
+	if err := json.Unmarshal([]byte(responseBody), &result); err != nil {
+		return githubPublicIssueResponse{}, fmt.Errorf("decoding created GitHub public issue: %w", err)
+	}
+	return result, nil
+}
+
 func githubPublicPages[T any](ctx context.Context, client *GitHubClient, pathForPage func(int) string, label string) ([]T, error) {
 	var result []T
 	for page := 1; page <= githubPublicOSSMaxPages; page++ {

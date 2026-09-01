@@ -14,6 +14,14 @@ func (f *fakeSourcePublicOSSService) SourcePublicIssueStatus(owner, repo string,
 	f.calls = append(f.calls, "issue-status:"+owner+":"+repo)
 	return "issue-status", nil
 }
+func (f *fakeSourcePublicOSSService) SourcePublicIssueCreatePreview(owner, repo, title, description string) (string, error) {
+	f.calls = append(f.calls, "issue-create-preview:"+owner+":"+repo+":"+title)
+	return "issue-create-preview", nil
+}
+func (f *fakeSourcePublicOSSService) SourcePublicIssueCreate(planID string, approve bool) (string, error) {
+	f.calls = append(f.calls, "issue-create:"+planID)
+	return "issue-create", nil
+}
 func (f *fakeSourcePublicOSSService) SourcePublicForkCreatePreview(owner, repo string) (string, error) {
 	f.calls = append(f.calls, "fork-preview:"+owner+":"+repo)
 	return "fork-preview", nil
@@ -67,6 +75,8 @@ func TestRegisterSourcePublicOSSDefinesStableContractsAndRoutesHandlers(t *testi
 	}
 	want := []string{
 		"source_public_issue_status",
+		"source_public_issue_create_preview",
+		"source_public_issue_create",
 		"source_public_fork_create_preview",
 		"source_public_fork_create",
 		"source_public_issue_comment_preview",
@@ -87,6 +97,8 @@ func TestRegisterSourcePublicOSSDefinesStableContractsAndRoutesHandlers(t *testi
 		want string
 	}{
 		{"source_public_issue_status", `{"upstream_owner":"up","repo":"demo","number":9}`, "issue-status"},
+		{"source_public_issue_create_preview", `{"upstream_owner":"up","repo":"demo","title":"Bug","description":"### Description\nBroken"}`, "issue-create-preview"},
+		{"source_public_issue_create", `{"plan_id":"i1","approve":true}`, "issue-create"},
 		{"source_public_fork_create_preview", `{"upstream_owner":"up","repo":"demo"}`, "fork-preview"},
 		{"source_public_fork_create", `{"plan_id":"f1","approve":true}`, "fork-create"},
 		{"source_public_issue_comment_preview", `{"upstream_owner":"up","repo":"demo","number":9,"comment":"claim"}`, "comment-preview"},

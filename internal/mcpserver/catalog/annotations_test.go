@@ -40,6 +40,9 @@ func TestRegisterAnnotationsDefinesStableSecurityPostures(t *testing.T) {
 		{Hints: localIdempotentWrite, Names: []string{"brain_index"}},
 	}
 
+	want[1].Names = append(want[1].Names[:6], append([]string{"source_public_issue_create_preview"}, want[1].Names[6:]...)...)
+	want[3].Names = append(want[3].Names[:7], append([]string{"source_public_issue_create"}, want[3].Names[7:]...)...)
+
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("annotations = %#v, want %#v", got, want)
 	}
