@@ -237,7 +237,7 @@ func podmanCreateSpec(spec RunSpec, uid, gid int) podmanCreateRequest {
 		ReadOnlyFilesystem: true, NoNewPrivileges: true, CapDrop: []string{"ALL"},
 		Mounts: []podmanMount{
 			{Source: spec.WorkspaceRoot, Destination: "/workspace", Type: "bind", Options: []string{"rw", "rbind", "rprivate"}},
-			{Source: "tmpfs", Destination: "/tmp", Type: "tmpfs", Options: []string{"rw", "nosuid", "nodev", "size=268435456"}},
+			{Source: "tmpfs", Destination: "/tmp", Type: "tmpfs", Options: []string{"rw", "exec", "nosuid", "nodev", "size=268435456"}},
 		},
 		ResourceLimits: podmanResourceLimits{
 			Memory: &podmanMemoryLimit{Limit: int64(spec.MemoryMiB) << 20},

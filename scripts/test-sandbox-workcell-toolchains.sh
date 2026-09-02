@@ -107,7 +107,7 @@ docker run --rm \
   --memory 512m \
   --cpus 1 \
   --user "$(id -u):$(id -g)" \
-  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --tmpfs /tmp:rw,exec,nosuid,nodev,size=256m \
   --volume "$fixture:/workspace:rw" \
   --workdir /workspace \
   "$image" \

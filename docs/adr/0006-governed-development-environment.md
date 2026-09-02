@@ -76,6 +76,7 @@ The runner advertises profile `l3-v2` only after an actual ephemeral container p
 - the pinned image and rootless engine identity;
 - network profile `none`;
 - writable `/workspace` and executable argv;
+- a private executable `/tmp` for compiler and test outputs;
 - Git and the fixed core toolchains.
 
 The probe uses a private disposable directory, not a repository root. Readiness may be
