@@ -14,6 +14,14 @@ func (f *fakeSourcePublicOSSService) SourcePublicIssueStatus(owner, repo string,
 	f.calls = append(f.calls, "issue-status:"+owner+":"+repo)
 	return "issue-status", nil
 }
+func (f *fakeSourcePublicOSSService) SourcePublicIssueCreatePreview(owner, repo, title, description string) (string, error) {
+	f.calls = append(f.calls, "issue-create-preview:"+owner+":"+repo+":"+title)
+	return "issue-create-preview", nil
+}
+func (f *fakeSourcePublicOSSService) SourcePublicIssueCreate(planID string, approve bool) (string, error) {
+	f.calls = append(f.calls, "issue-create:"+planID)
+	return "issue-create", nil
+}
 func (f *fakeSourcePublicOSSService) SourcePublicForkCreatePreview(owner, repo string) (string, error) {
 	f.calls = append(f.calls, "fork-preview:"+owner+":"+repo)
 	return "fork-preview", nil
@@ -67,6 +75,8 @@ func TestRegisterSourcePublicOSSDefinesStableContractsAndRoutesHandlers(t *testi
 	}
 	want := []string{
 		"source_public_issue_status",
+		"source_public_issue_create_preview",
+		"source_public_issue_create",
 		"source_public_fork_create_preview",
 		"source_public_fork_create",
 		"source_public_issue_comment_preview",
@@ -87,6 +97,8 @@ func TestRegisterSourcePublicOSSDefinesStableContractsAndRoutesHandlers(t *testi
 		want string
 	}{
 		{"source_public_issue_status", `{"upstream_owner":"up","repo":"demo","number":9}`, "issue-status"},
+		{"source_public_issue_create_preview", `{"upstream_owner":"up","repo":"demo","title":"Bug","description":"### Description\nBroken"}`, "issue-create-preview"},
+		{"source_public_issue_create", `{"plan_id":"i1","approve":true}`, "issue-create"},
 		{"source_public_fork_create_preview", `{"upstream_owner":"up","repo":"demo"}`, "fork-preview"},
 		{"source_public_fork_create", `{"plan_id":"f1","approve":true}`, "fork-create"},
 		{"source_public_issue_comment_preview", `{"upstream_owner":"up","repo":"demo","number":9,"comment":"claim"}`, "comment-preview"},
@@ -102,5 +114,46 @@ func TestRegisterSourcePublicOSSDefinesStableContractsAndRoutesHandlers(t *testi
 		if err != nil || got != tc.want {
 			t.Fatalf("%s got=%q err=%v", tc.name, got, err)
 		}
+	}
+	strictCalls := []struct {
+		name string
+		args string
+	}{
+		{"source_public_issue_create_preview", `{"upstream_owner":"up","repo":"demo","title":"Bug","description":"Body","unexpected":true}`},
+		{"source_public_issue_create", `{"plan_id":"i1","approve":true,"unexpected":true}`},
+	}
+	for _, tc := range strictCalls {
+		before := len(service.calls)
+		if _, err := byName[tc.name].Handler(json.RawMessage(tc.args)); err == nil {
+			t.Fatalf("%s accepted an unknown property", tc.name)
+		}
+		if len(service.calls) != before {
+			t.Fatalf("%s reached the service after strict decoding failed", tc.name)
+		}
+	}
+
+	previewSchema := byName["source_public_issue_create_preview"].InputSchema
+	if previewSchema["additionalProperties"] != false {
+		t.Fatal("issue preview schema must reject unknown properties")
+	}
+	required, ok := previewSchema["required"].([]string)
+	if !ok || !reflect.DeepEqual(required, []string{"upstream_owner", "repo", "title", "description"}) {
+		t.Fatalf("preview required=%#v", previewSchema["required"])
+	}
+	previewProps := previewSchema["properties"].(map[string]any)
+	for name, maximum := range map[string]int{"upstream_owner": 39, "repo": 100, "title": 256, "description": 8192} {
+		property := previewProps[name].(map[string]any)
+		if property["minLength"] != 1 || property["maxLength"] != maximum {
+			t.Fatalf("preview property %s=%#v", name, property)
+		}
+	}
+	executeSchema := byName["source_public_issue_create"].InputSchema
+	if executeSchema["additionalProperties"] != false {
+		t.Fatal("issue execute schema must reject unknown properties")
+	}
+	executeProps := executeSchema["properties"].(map[string]any)
+	planProperty := executeProps["plan_id"].(map[string]any)
+	if planProperty["minLength"] != 1 || planProperty["maxLength"] != 128 {
+		t.Fatalf("execute plan_id=%#v", planProperty)
 	}
 }

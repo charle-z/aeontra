@@ -24,6 +24,8 @@ func TestAgentCatalogIntentIndexContract(t *testing.T) {
 		"`source_pull_request_create_preview`",
 		"`source_pull_request_create`",
 		"`source_public_issue_status`",
+		"`source_public_issue_create_preview`",
+		"`source_public_issue_create`",
 		"`source_public_fork_create_preview`",
 		"`source_public_fork_create`",
 		"`source_public_issue_comment_preview`",
