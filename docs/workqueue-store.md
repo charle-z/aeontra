@@ -52,11 +52,11 @@ Legal states are `blocked`, `queued`, `leased`, `succeeded`, `failed` and `cance
 
 The idempotency key is globally unique. Concurrent identical enqueue calls return the same job; changing workspace, pool, profile, payload hash or dependency set conflicts. Dependency order does not change identity.
 
-Defaults are 1024 jobs globally and 64 per workspace, configurable only downward/upward within reviewed hard caps. A transaction enforces both bounds under concurrent enqueue. Lists are capped at 100 and dependencies at 16.
+Defaults are 1024 pending jobs globally and 64 pending jobs per workspace, configurable only downward/upward within reviewed hard caps. A transaction enforces both bounds under concurrent enqueue; terminal evidence does not consume pending capacity. Lists are capped at 100 and dependencies at 16.
 
 ## Leases and fencing
 
-One queued job may receive one lease for its immutable pool. A lease increments both attempt and fencing counter. Heartbeat and completion require exact job ID, lease ID and fence. Expired leases return to queue unless cancellation was requested. A completion from an older fence is rejected even if it carries an otherwise valid result.
+One queued job may receive one lease for its immutable pool. A lease increments both attempt and fencing counter. Heartbeat and completion require exact job ID, lease ID and fence. Expired leases return to the back of the pending queue unless cancellation was requested. After four abandoned leases, the job terminates as `failed` with `recovery_exhausted` instead of cycling forever. A completion from an older fence is rejected even if it carries an otherwise valid result.
 
 Running cancellation sets `cancel_requested`; heartbeat exposes it and only a cancelled terminal result is accepted afterwards. Queued or blocked cancellation becomes terminal immediately.
 

@@ -39,7 +39,7 @@ do not replace server-side enforcement.
 | `workspace_runtime_continue` | 0/0/1/0 | Continue one registered dev or HTB workspace through the active ChatGPT session using its local trusted contract; accepts the opaque workspace id, timeout and a fresh caller-generated idempotency key, creates one runtime, and does not retry automatically. |
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
 | `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |
-| `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning only safe repository, profile, mode, readiness or blocker metadata. |
+| `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning safe repository readiness plus bounded manifest detection and its L3, persistent-toolbox or pin-resolution route. |
 | `project_snapshot` | 1/0/1/0 | Queue or reuse one durable Edge operation by caller idempotency key, resolve the selected development workspace locally, run only fixed read-only Git identity/cleanliness commands, and return bounded repository, branch, commit and operation metadata without starting another model. |
 | `project_exec` | 0/1/1/1 | Execute one durable bounded foreground argv inside the selected trusted development workcell through Bubblewrap, with workspace-only writable state, relative cwd, optional stdin and non-secret environment, process-group cancellation, a 120-second maximum timeout, separate bounded redacted stdout/stderr, and safe preflight/execution/result durations. No implicit shell is added. |
 | `project_network_route` | 1/0/1/1 | Resolve the selected Edge workcell route to one private IPv4 destination and return only the validated `tun*`/`tap*` interface and source IPv4. No executable, URL, path or credential is accepted. |
@@ -255,7 +255,7 @@ manual source content is redacted before cache insertion and again before return
 | `notes_write_preview` | 1/0/1/0 | Plan size-limited create/append without overwrite. |
 | `notes_write` | 0/0/0/0 | Revalidate hash/state and create or append the note. |
 | `sandbox_status` | 1/0/1/0 | Attest and report the private rootless L3 executor; unavailable on endpoint/image/profile drift. |
-| `sandbox_exec` | 0/1/0/0 | Run arbitrary explicit argv in the private rootless sandbox; L1 allowlists do not apply. Read-only and ask deny; allow mode is administrator-selected. |
+| `sandbox_exec` | 0/1/0/0 | Run arbitrary explicit argv, optionally from a selected configured repository/workspace cwd, in the private rootless sandbox; only that workspace is mounted. L1 allowlists do not apply. Read-only and ask deny; allow mode is administrator-selected. |
 | `privileged_task_preview` | 1/0/1/0 | Preview one fixed administrator-enabled profile. |
 | `privileged_task_execute` | 0/1/0/1 | Execute one exact short-lived profile plan with timeout. |
 

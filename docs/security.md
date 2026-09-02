@@ -257,9 +257,10 @@ rootless Podman endpoint, pinned workcell image, fixed `network=none` profile an
 protocol version. The public MCP process receives only an authenticated HTTP client;
 it never receives Docker, Podman or BuildKit sockets and has no host-execution fallback.
 
-The public request is converted to an opaque workspace identifier and relative working
-directory before it crosses the private boundary. The runner resolves its own
-administrator-owned workspace mapping, rejects secret-named workspace entries, and
+The public request is converted to an opaque workspace identifier, optional opaque
+workspace scope and relative working directory before it crosses the private boundary.
+The runner resolves its own administrator-owned workspace mapping, rejects secret-named
+workspace entries, and
 launches an ephemeral non-root container with a read-only rootfs, private PID and IPC
 namespaces, bounded temporary storage, dropped capabilities, no new privileges, and
 CPU, memory, process, timeout and combined-output limits. The image, mounts, engine

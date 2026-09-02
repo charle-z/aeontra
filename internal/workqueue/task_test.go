@@ -95,6 +95,10 @@ func TestTaskGroupBindsWorkersToFencedWorktreesAndRuntimes(t *testing.T) {
 	if err != nil || bound.RuntimeID == "" {
 		t.Fatalf("runtime bound=%+v err=%v", bound, err)
 	}
+	idempotent, err := store.LeaseTaskWorker(task.ID, 0, "worker-holder-0001", time.Minute)
+	if err != nil || idempotent.WorktreeID != bound.WorktreeID || idempotent.WorkspaceID != bound.WorkspaceID || idempotent.RuntimeID != bound.RuntimeID {
+		t.Fatalf("idempotent lease lost durable binding: worker=%+v err=%v", idempotent, err)
+	}
 	stale := TaskWorkerBinding{
 		TaskID: task.ID, Ordinal: 0, JobID: worker.JobID, LeaseID: "wl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Fence: worker.Fence,
 		WorktreeID: bound.WorktreeID, WorkspaceID: bound.WorkspaceID, RuntimeID: bound.RuntimeID,
@@ -172,7 +176,7 @@ func TestTaskWorkerLeaseExpiryPreservesBindingsAndAdvancesFence(t *testing.T) {
 		t.Fatalf("recovered=%+v err=%v", queued, err)
 	}
 	second, err := store.LeaseTaskWorker(task.ID, 0, "worker-holder-0002", time.Minute)
-	if err != nil || second.Fence != first.Fence+1 || second.LeaseID == first.LeaseID {
+	if err != nil || second.Fence != first.Fence+1 || second.LeaseID == first.LeaseID || second.WorktreeID != "wt_0123456789abcdef0123456789abcdef" || second.WorkspaceID != "ws_0123456789abcdef0123456789abcdef" || second.RuntimeID != "mr_0123456789abcdef0123456789abcdef" {
 		t.Fatalf("first=%+v second=%+v err=%v", first, second, err)
 	}
 	recovered, _, err := store.Task(task.ID)
@@ -209,6 +213,34 @@ func TestGenericCleanupPreservesDurableTaskEvidence(t *testing.T) {
 	retained, found, err := store.Task(task.ID)
 	if err != nil || !found || retained.State != TaskCompleted {
 		t.Fatalf("retained=%+v found=%v err=%v", retained, found, err)
+	}
+}
+
+func TestTerminalTaskWorkersDoNotConsumeQueueBounds(t *testing.T) {
+	store := openTestStore(t, Config{ControllerID: "controller-a", MaxJobs: 1, MaxJobsPerWorkspace: 1})
+	makeSpec := func(key, hash, ref string) TaskSpec {
+		return TaskSpec{
+			IdempotencyKey: key, Project: "project", Target: "parrot", BaseCommit: strings.Repeat("a", 40),
+			GoalHash: "sha256:" + strings.Repeat("b", 64), WorkerGoalHashes: []string{hash}, WorkerGoalRefs: []string{ref},
+			Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+		}
+	}
+	first, _, err := store.CreateTask(makeSpec("terminal-task-bound-1", "sha256:"+strings.Repeat("1", 64), "mb_11111111111111111111111111111111"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := store.LeaseTaskWorker(first.ID, 0, "worker-holder-0001", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CompleteTaskWorker(first.ID, 0, worker.LeaseID, worker.Fence, Result{Outcome: StateSucceeded, Summary: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.CreateTask(makeSpec("terminal-task-bound-2", "sha256:"+strings.Repeat("2", 64), "mb_22222222222222222222222222222222")); err != nil {
+		t.Fatalf("terminal task worker consumed queue bound: %v", err)
+	}
+	if err := store.Integrity(); err != nil {
+		t.Fatalf("terminal task evidence exceeded integrity bound: %v", err)
 	}
 }
 

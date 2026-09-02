@@ -14,11 +14,11 @@ An operation moves through a closed state machine:
 - `failed`: completed with a stable safe code and no result body.
 - `cancelled`: cancellation won before a terminal success or failure.
 
-Terminal states are immutable. An expired normal lease returns to `queued`. An expired lease with cancellation requested becomes `cancelled` instead of being executed again. Status reads, active-operation listings, cancellation requests and idempotent retries normalize expired leases immediately; they do not wait for the Edge to poll again. Requeued attempts clear prior progress so the new lease can restart progress at revision `1`.
+Terminal states are immutable. An expired normal lease returns to `queued` behind work that was already waiting. An expired lease with cancellation requested becomes `cancelled` instead of being executed again. Status reads, active-operation listings, cancellation requests and idempotent retries normalize expired leases immediately; they do not wait for the Edge to poll again. Requeued attempts clear prior progress so the new lease can restart progress at revision `1`.
 
 An authenticated completion whose result does not satisfy the bounded schema fails terminally as `operation_result_invalid`. The invalid payload is discarded instead of being persisted, and the lease is not requeued indefinitely. Invalid device, operation or lease identities remain rejected without changing state.
 
-Root-owned bundle update, rollback and repair operations have an additional fail-closed recovery budget. They may recover through at most four leases and for at most twenty minutes from their first pickup. If either boundary is exhausted, the operation becomes `failed` with `operation_recovery_exhausted` instead of relaunching a privileged systemd effect indefinitely. Ordinary diagnostics, project operations and other interruptible work keep the normal requeue behavior.
+Every Edge operation has a fail-closed recovery budget of at most four expired leases. Root-owned bundle update, rollback and repair operations also have a twenty-minute first-pickup boundary. If a budget is exhausted, the operation becomes `failed` with `operation_recovery_exhausted` instead of relaunching an effect indefinitely. Cancellation remains terminal and preserves the stable `operation_cancelled` code.
 
 Legacy rows are migrated transactionally. A bundle operation that was already `leased` receives one recorded attempt and its original creation time as the conservative first-pickup boundary, so an old restart loop cannot survive a server upgrade.
 
@@ -261,7 +261,18 @@ OpenCode or a model runtime:
 
 The toolbox deliberately uses a server-owned Debian base and one container per
 workspace. Foreground execution, installation, repair and background service lifecycle
-all reuse that identity and storage rather than creating a second toolbox family.
+all reuse that identity and storage rather than creating a second toolbox family. The
+current implementation references `debian:bookworm-slim` by tag and records the
+resolved local image ID; because the tag can move, an independently verified official
+digest is still required for full fresh-create reproducibility. Until that debt is
+closed, the image ID in private state is evidence of the local create, not a global
+source pin.
+
+The bounded local toolchain preflight reads only well-known markers (`go.mod`,
+`package.json` plus a lockfile, `pyproject.toml`, `Cargo.toml`, Rust/mise/asdf pins,
+Java build markers and `CMakeLists.txt`). It never installs anything. It reports
+`supported` for the fixed L3 baseline, `edge-required` for Java, pnpm, CMake or
+alternate manager versions, and `pin-conflict` when exact declarations disagree.
 
 ## Cancellation
 

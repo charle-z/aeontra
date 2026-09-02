@@ -123,6 +123,9 @@ jobs:
       - name: Build pinned sandbox workcell image
         run: docker build --file Dockerfile.sandbox-workcell --tag mcp-sandbox-workcell:ci .
 
+      - name: Verify sandbox workcell toolchains without network or root
+        run: sh scripts/test-sandbox-workcell-toolchains.sh mcp-sandbox-workcell:ci
+
       - name: Verify private coordinator named-volume startup
         run: sh scripts/test-front-door-coordinator-volume.sh
 

@@ -135,10 +135,10 @@ func (s *Store) CreateTask(spec TaskSpec) (TaskGroup, bool, error) {
 		return existing, false, nil
 	}
 	var total, workspaceCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&total); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE state IN (?,?,?)`, StateBlocked, StateQueued, StateLeased).Scan(&total); err != nil {
 		return TaskGroup{}, false, errors.New("workqueue: task job count unavailable")
 	}
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE workspace=?`, spec.Project).Scan(&workspaceCount); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE workspace=? AND state IN (?,?,?)`, spec.Project, StateBlocked, StateQueued, StateLeased).Scan(&workspaceCount); err != nil {
 		return TaskGroup{}, false, errors.New("workqueue: task project count unavailable")
 	}
 	if total+spec.WorkerCount > s.config.MaxJobs || workspaceCount+spec.WorkerCount > s.config.MaxJobsPerWorkspace {
@@ -195,8 +195,8 @@ func (s *Store) LeaseTaskWorker(taskID string, ordinal int, holder string, ttl t
 	if err := recoverExpired(tx, now); err != nil {
 		return TaskWorker{}, err
 	}
-	var jobID string
-	if err := tx.QueryRow(`SELECT job_id FROM task_workers WHERE task_id=? AND ordinal=?`, taskID, ordinal).Scan(&jobID); err != nil {
+	var jobID, worktreeID, workspaceID, runtimeID string
+	if err := tx.QueryRow(`SELECT job_id,worktree_id,workspace_id,runtime_id FROM task_workers WHERE task_id=? AND ordinal=?`, taskID, ordinal).Scan(&jobID, &worktreeID, &workspaceID, &runtimeID); err != nil {
 		return TaskWorker{}, errors.New("workqueue: task worker not found")
 	}
 	job, found, err := jobByID(tx, jobID)
@@ -207,7 +207,7 @@ func (s *Store) LeaseTaskWorker(taskID string, ordinal int, holder string, ttl t
 		if err := tx.Commit(); err != nil {
 			return TaskWorker{}, errors.New("workqueue: task worker lease read failed")
 		}
-		return taskWorkerFromJob(ordinal, job, "", "", ""), nil
+		return taskWorkerFromJob(ordinal, job, worktreeID, workspaceID, runtimeID), nil
 	}
 	if job.State != StateQueued || job.CancelRequested {
 		return TaskWorker{}, errors.New("workqueue: task worker is not leasable")
@@ -233,7 +233,7 @@ func (s *Store) LeaseTaskWorker(taskID string, ordinal int, holder string, ttl t
 	if err := tx.Commit(); err != nil {
 		return TaskWorker{}, errors.New("workqueue: task worker lease commit failed")
 	}
-	return taskWorkerFromJob(ordinal, job, "", "", ""), nil
+	return taskWorkerFromJob(ordinal, job, worktreeID, workspaceID, runtimeID), nil
 }
 
 func (s *Store) BindTaskWorkerOperation(binding TaskWorkerOperationBinding) (TaskWorker, error) {

@@ -10,7 +10,7 @@ import (
 type ExecutionService interface {
 	RunCommandIn(prog string, args []string, cwd string) (string, error)
 	SandboxStatus() string
-	SandboxExec(command []string) (string, error)
+	SandboxExecIn(command []string, cwd string) (string, error)
 }
 
 // RegisterExecution registers the contiguous execution and sandbox tools in the
@@ -59,14 +59,16 @@ func RegisterExecution(register Register, service ExecutionService) {
 
 	register(Tool{
 		Name:        "sandbox_exec",
-		Description: "Run explicit arbitrary argv inside the attested private L3 rootless sandbox. Network is denied, rootfs is read-only, only the registered workspace is writable, and resources/output are bounded. Only administrator-selected allow mode enables execution; read-only and ask modes deny.",
+		Description: "Run explicit arbitrary argv inside one selected workspace in the attested private L3 rootless sandbox. Network is denied, rootfs is read-only, only that workspace is writable, and resources/output are bounded. Set cwd to a direct repository when the configured root contains multiple repositories. Only administrator-selected allow mode enables execution; read-only and ask modes deny.",
 		InputSchema: object(map[string]any{
 			"command": stringArray("program and arguments; command[0] is the program"),
+			"cwd":     strProp("optional working directory, absolute or relative to the workspace root"),
 		}, "command"),
-		Version: "3",
+		Version: "4",
 		Handler: func(arguments json.RawMessage) (string, error) {
 			var params struct {
 				Command []string `json:"command"`
+				CWD     string   `json:"cwd"`
 			}
 			if err := json.Unmarshal(arguments, &params); err != nil {
 				return "", err
@@ -74,7 +76,7 @@ func RegisterExecution(register Register, service ExecutionService) {
 			if len(params.Command) == 0 {
 				return "", fmt.Errorf("command must have at least the program name")
 			}
-			return service.SandboxExec(params.Command)
+			return service.SandboxExecIn(params.Command, params.CWD)
 		},
 	})
 }

@@ -212,7 +212,15 @@ The inventory checks a bounded, validated PATH without a shell. Each entry conta
 }
 ```
 
-Versions are time-bounded, output-bounded, and reduced to a safe version token. Executable paths are never returned. The catalog covers common development and Parrot tooling, including Python, Go, Node/npm/pnpm, Rust/Cargo, gcc, nmap, curl, wget, OpenSSL, content discovery tools, SMB/LDAP clients, Impacket, NetExec, password-auditing tools, and Docker/Podman when present. Missing tools are reported as `absent`; the runtime does not assume every Parrot package exists.
+Versions are time-bounded, output-bounded, and reduced to a safe version token. Executable paths are never returned. The catalog covers common development and Parrot tooling, including Python, Go, Node/npm/pnpm, Rust/Cargo, gcc/g++, make, CMake, Java/Javac, a shell, nmap, curl, wget, OpenSSL, content discovery tools, SMB/LDAP clients, Impacket, NetExec, password-auditing tools, and Docker/Podman when present. Missing tools are reported as `absent`; the runtime does not assume every Parrot package exists.
+
+The inventory is a local observation, not an installation plan. The networkless L3
+workcell has a separate fixed image matrix: Go, Rust/Cargo, Python, Node/npm and the
+C/C++ compiler baseline are included; Java/JDK, CMake, pnpm and alternate versions are
+Edge-toolbox capabilities. The persistent Edge path keeps manager binaries and caches
+under `.mcp-devbox/tools` and `.mcp-devbox/cache`, so it does not write host-global
+toolchains. A project manifest may therefore be `edge-required` even when the local
+inventory reports a related compiler or runtime.
 
 ## Rootless Docker or Podman
 

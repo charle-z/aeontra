@@ -32,7 +32,7 @@ func TestCollectLinuxToolInventoryReturnsOnlySanitizedMetadata(t *testing.T) {
 			t.Fatalf("missing tool reported non-absent version: %+v", entry)
 		}
 	}
-	for _, required := range []string{"nmap", "ssh", "python", "go", "node", "docker", "podman"} {
+	for _, required := range []string{"nmap", "ssh", "python", "gcc", "g++", "make", "cmake", "shell", "go", "node", "docker", "podman", "java", "javac"} {
 		if !seen[required] {
 			t.Fatalf("inventory missing %q", required)
 		}

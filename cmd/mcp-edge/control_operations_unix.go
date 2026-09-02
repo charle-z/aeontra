@@ -220,7 +220,7 @@ func executeProjectPrepare(ctx context.Context, stateRoot string, request edge.O
 	if _, err := edgeclient.ApplyProjectPreparation(ctx, config, plan); err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
 	}
-	return projectControlResult(ctx, projects, request.Alias, request.TargetAlias)
+	return projectControlResult(ctx, projects, request.Alias, request.TargetAlias, false)
 }
 
 func executeProjectStatus(ctx context.Context, stateRoot string, request edge.OperationRequest) (edge.OperationResult, string) {
@@ -230,7 +230,7 @@ func executeProjectStatus(ctx context.Context, stateRoot string, request edge.Op
 	}
 	defer workspaces.Close()
 	defer projects.Close()
-	return projectControlResult(ctx, projects, request.Alias, request.TargetAlias)
+	return projectControlResult(ctx, projects, request.Alias, request.TargetAlias, true)
 }
 
 func executeProjectSnapshot(ctx context.Context, stateRoot string, request edge.OperationRequest) (edge.OperationResult, string) {
@@ -312,12 +312,12 @@ func openProjectControlState(stateRoot string) (edgeclient.GitHubCredential, *ed
 	return credential, workspaces, projects, roots, ""
 }
 
-func projectControlResult(ctx context.Context, projects *edgeclient.ProjectRegistry, alias, target string) (edge.OperationResult, string) {
+func projectControlResult(ctx context.Context, projects *edgeclient.ProjectRegistry, alias, target string, includeToolchain bool) (edge.OperationResult, string) {
 	resolved, err := projects.Resolve(ctx, alias, target)
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
 	}
-	return edge.OperationResult{
+	result := edge.OperationResult{
 		WorkspaceID:       resolved.Workspace.ID,
 		ProjectAlias:      resolved.Project.Alias,
 		ProjectOwner:      resolved.Project.Owner,
@@ -326,7 +326,21 @@ func projectControlResult(ctx context.Context, projects *edgeclient.ProjectRegis
 		ProjectState:      resolved.SafeState(),
 		ProjectProfile:    string(resolved.Workspace.Profile),
 		ProjectMode:       string(resolved.Workspace.Mode),
-	}, ""
+	}
+	if includeToolchain {
+		toolchain, err := edgeclient.DetectToolchainReadiness(resolved.Workspace.Path)
+		if err != nil {
+			return edge.OperationResult{}, "project_toolchain_manifest_invalid"
+		}
+		result.ProjectToolchainState = string(toolchain.Status)
+		result.ProjectToolchainRoute = map[edgeclient.ToolchainReadinessStatus]string{
+			edgeclient.ToolchainSupported:    "l3",
+			edgeclient.ToolchainEdgeRequired: "edge-toolbox",
+			edgeclient.ToolchainPinConflict:  "resolve-pins",
+		}[toolchain.Status]
+		result.ProjectToolchainManifests = append([]string(nil), toolchain.Manifests...)
+	}
+	return result, ""
 }
 
 func safeProjectControlFailure(err error) string {

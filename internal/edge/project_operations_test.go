@@ -44,6 +44,20 @@ func TestProjectOperationsUseHumanAliasesAndSafeResults(t *testing.T) {
 	if validOperationCompletion(windowsResult, "") {
 		t.Fatal("Windows HTB project result accepted")
 	}
+	toolchainResult := result
+	toolchainResult.ProjectToolchainState = "edge-required"
+	toolchainResult.ProjectToolchainRoute = "edge-toolbox"
+	toolchainResult.ProjectToolchainManifests = []string{"package.json", "pom.xml"}
+	if !validOperationCompletionForKind(OperationProjectStatus, toolchainResult, "") {
+		t.Fatal("valid toolchain summary rejected")
+	}
+	if validOperationCompletionForKind(OperationProjectPrepare, toolchainResult, "") {
+		t.Fatal("toolchain summary accepted for project preparation")
+	}
+	toolchainResult.ProjectToolchainRoute = "l3"
+	if validOperationCompletionForKind(OperationProjectStatus, toolchainResult, "") {
+		t.Fatal("inconsistent toolchain route accepted")
+	}
 	if _, _, err := store.CreateOperation(device.ID, OperationProjectStatus, OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell"}); err != nil {
 		t.Fatal(err)
 	}

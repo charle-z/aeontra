@@ -105,6 +105,38 @@ func TestExpiredOperationLeaseRecoversQueuedOrFinishesCancellation(t *testing.T)
 	}
 }
 
+func TestExpiredOperationLeaseReturnsBehindQueuedOperation(t *testing.T) {
+	now := time.Date(2026, 7, 30, 0, 20, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "parrot-edge", publicKey)
+	front, _, err := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LeaseOperation(device.ID, MinLeaseTTL); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	behind, _, err := store.CreateOperation(device.ID, OperationOnboardingStatus, OperationRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(MinLeaseTTL + time.Second)
+	next, err := store.LeaseOperation(device.ID, MinLeaseTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Operation.ID != behind.ID {
+		t.Fatalf("expired operation %s was selected before queued operation %s", front.ID, behind.ID)
+	}
+}
+
 func TestExpiredOperationLeaseRecoversOnReadAndIdempotentReuse(t *testing.T) {
 	now := time.Date(2026, 7, 30, 0, 10, 0, 0, time.UTC)
 	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})

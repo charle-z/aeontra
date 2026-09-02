@@ -35,8 +35,8 @@ func TestP16WorkqueueStoreContractIsDocumented(t *testing.T) {
 	for _, literal := range []string{
 		"Redis",
 		"dependency_failed",
-		"1024 jobs",
-		"64 per workspace",
+		"1024 pending jobs",
+		"64 pending jobs per workspace",
 		"64 MiB",
 		"Backup",
 		"RestoreBackup",

@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -32,6 +33,7 @@ type privateSandboxResponse = sandboxprotocol.Response
 
 var (
 	privateSandboxWorkspacePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+	privateSandboxScopePattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 	privateSandboxDigestPattern    = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
@@ -46,11 +48,11 @@ type PrivateSandboxConfig struct {
 	MemoryMiB     int
 	ProcessLimit  int
 	OutputBytes   int
-	Client        *http.Client
 }
 
 type privateSandboxRunner struct {
 	config PrivateSandboxConfig
+	client *http.Client
 	err    error
 }
 
@@ -91,14 +93,7 @@ func NewPrivateSandboxRunner(config PrivateSandboxConfig) SandboxRunner {
 	case !privateSandboxDigestPattern.MatchString(config.ImageDigest):
 		runner.err = errors.New("private sandbox image digest must be sha256-pinned")
 	}
-	if config.Client == nil {
-		config.Client = newPrivateSandboxHTTPClient(config.Timeout + 10*time.Second)
-	} else {
-		client := *config.Client
-		client.CheckRedirect = rejectPrivateSandboxRedirect
-		config.Client = &client
-	}
-	runner.config.Client = config.Client
+	runner.client = newPrivateSandboxHTTPClient(config.Timeout + 10*time.Second)
 	return runner
 }
 
@@ -153,18 +148,18 @@ func rejectPrivateSandboxRedirect(*http.Request, []*http.Request) error {
 }
 
 func (r privateSandboxRunner) Status(ctx context.Context) SandboxStatusInfo {
-	status := SandboxStatusInfo{Backend: "private-rootless", DefaultEgress: "deny", FreeTerminal: false}
+	status := SandboxStatusInfo{Backend: "private-rootless", DefaultEgress: "deny", FreeTerminal: false, NetworkPolicy: "unavailable", ToolchainState: "unavailable"}
 	if r.err != nil {
 		status.Notes = []string{r.err.Error(), "no host execution fallback"}
 		return status
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, r.config.URL+"/v1/status", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, r.config.URL+"/v1/status?profile_version="+url.QueryEscape(sandboxprotocol.ProfileVersion), nil)
 	if err != nil {
 		status.Notes = []string{"private executor status request is invalid", "no host execution fallback"}
 		return status
 	}
 	request.Header.Set("Authorization", "Bearer "+r.config.Token)
-	response, err := r.config.Client.Do(request)
+	response, err := r.client.Do(request)
 	if err != nil {
 		status.Notes = []string{"private executor is unreachable", "no host execution fallback"}
 		return status
@@ -183,6 +178,12 @@ func (r privateSandboxRunner) Status(ctx context.Context) SandboxStatusInfo {
 	status.Available = true
 	status.FreeTerminal = true
 	status.Backend = remote.Backend
+	status.ContainerReady = true
+	status.ExecReady = true
+	status.FilesystemReady = true
+	status.GitReady = true
+	status.NetworkPolicy = "loaded:deny"
+	status.ToolchainState = "core-ready"
 	status.Notes = []string{
 		"private rootless executor attested with a pinned image and network deny",
 		"public MCP has no container-engine socket or host execution fallback",
@@ -197,8 +198,11 @@ func (r privateSandboxRunner) Run(ctx context.Context, input SandboxRunRequest) 
 	if len(input.Argv) == 0 {
 		return SandboxRunResult{}, errors.New("sandbox: empty argv")
 	}
-	relative, err := filepath.Rel(r.config.WorkspaceRoot, filepath.Clean(input.Dir))
+	workspaceScope, relative, err := selectPrivateSandboxWorkspace(r.config.WorkspaceRoot, input.Dir)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		if err != nil {
+			return SandboxRunResult{}, err
+		}
 		return SandboxRunResult{}, errors.New("sandbox: working directory escapes configured workspace")
 	}
 	if relative == "." {
@@ -213,8 +217,9 @@ func (r privateSandboxRunner) Run(ctx context.Context, input SandboxRunRequest) 
 		timeout = r.config.Timeout
 	}
 	requestBody := sandboxprotocol.Request{
-		SchemaVersion: 1, IdempotencyKey: "sx_" + hex.EncodeToString(keyBytes),
-		WorkspaceID: r.config.WorkspaceID, RelativeDir: filepath.ToSlash(relative),
+		SchemaVersion: 1, ProfileVersion: sandboxprotocol.ProfileVersion,
+		IdempotencyKey: "sx_" + hex.EncodeToString(keyBytes),
+		WorkspaceID:    r.config.WorkspaceID, WorkspaceScope: workspaceScope, RelativeDir: filepath.ToSlash(relative),
 		Argv: append([]string(nil), input.Argv...), Environment: cloneSandboxEnvironment(input.EnvAllowlist),
 		NetworkProfile: "none", TimeoutMS: timeout.Milliseconds(), CPUMillis: r.config.CPUMillis,
 		MemoryMiB: r.config.MemoryMiB, ProcessLimit: r.config.ProcessLimit, OutputBytes: r.config.OutputBytes,
@@ -233,13 +238,13 @@ func (r privateSandboxRunner) Run(ctx context.Context, input SandboxRunRequest) 
 	}
 	request.Header.Set("Authorization", "Bearer "+r.config.Token)
 	request.Header.Set("Content-Type", "application/json")
-	response, err := r.config.Client.Do(request)
+	response, err := r.client.Do(request)
 	if err != nil {
 		return SandboxRunResult{}, fmt.Errorf("calling private sandbox executor: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return SandboxRunResult{}, fmt.Errorf("private sandbox executor returned %s", response.Status)
+		return SandboxRunResult{}, decodePrivateSandboxError(response)
 	}
 	var result sandboxprotocol.Response
 	decoder := json.NewDecoder(io.LimitReader(response.Body, privateSandboxMaxResponse))
@@ -256,6 +261,50 @@ func (r privateSandboxRunner) Run(ctx context.Context, input SandboxRunRequest) 
 		Duration:       time.Duration(result.DurationMS) * time.Millisecond,
 		SandboxBackend: sandboxprotocol.Backend, EgressProfile: "none",
 	}, nil
+}
+
+func selectPrivateSandboxWorkspace(root, dir string) (string, string, error) {
+	root = filepath.Clean(root)
+	dir = filepath.Clean(dir)
+	relative, err := filepath.Rel(root, dir)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return "", "", errors.New("sandbox: working directory escapes configured workspace")
+	}
+	if directSandboxRepository(root) {
+		if relative == "." {
+			relative = ""
+		}
+		return "", filepath.ToSlash(relative), nil
+	}
+	if relative == "." {
+		return "", "", errors.New("sandbox: cwd must select a direct repository under the configured multi-repository root")
+	}
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	if len(parts) == 0 || !privateSandboxScopePattern.MatchString(parts[0]) {
+		return "", "", errors.New("sandbox: selected workspace name is invalid")
+	}
+	selected, err := os.Lstat(filepath.Join(root, filepath.FromSlash(parts[0])))
+	if err != nil || !selected.IsDir() || selected.Mode()&os.ModeSymlink != 0 {
+		return "", "", errors.New("sandbox: selected workspace is unavailable")
+	}
+	return parts[0], strings.Join(parts[1:], "/"), nil
+}
+
+func directSandboxRepository(root string) bool {
+	gitMarker, err := os.Lstat(filepath.Join(root, ".git"))
+	return err == nil && gitMarker.Mode()&os.ModeSymlink == 0 && (gitMarker.IsDir() || gitMarker.Mode().IsRegular())
+}
+
+func decodePrivateSandboxError(response *http.Response) error {
+	limited := &io.LimitedReader{R: response.Body, N: 16<<10 + 1}
+	decoder := json.NewDecoder(limited)
+	decoder.DisallowUnknownFields()
+	var remote sandboxprotocol.Error
+	if err := decoder.Decode(&remote); err != nil || limited.N == 0 || decoder.Decode(&struct{}{}) != io.EOF ||
+		!sandboxprotocol.ValidError(remote) {
+		return fmt.Errorf("private sandbox executor returned HTTP %d with an invalid error response", response.StatusCode)
+	}
+	return fmt.Errorf("private sandbox executor rejected the request (%s): %s", remote.Code, remote.Message)
 }
 
 func cloneSandboxEnvironment(input map[string]string) map[string]string {

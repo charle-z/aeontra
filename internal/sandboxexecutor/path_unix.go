@@ -43,5 +43,18 @@ func validatePrivateStateRoot(root string) error {
 	if err != nil || !receipts.IsDir() || receipts.Mode()&os.ModeSymlink != 0 || receipts.Mode().Perm() != 0o700 {
 		return errors.New("receipt root must be an owner-only directory")
 	}
+	readiness, err := os.Lstat(filepath.Join(root, "readiness"))
+	if err != nil || !readiness.IsDir() || readiness.Mode()&os.ModeSymlink != 0 || readiness.Mode().Perm() != 0o700 {
+		return errors.New("readiness root must be an owner-only directory")
+	}
 	return nil
+}
+
+func syncDirectory(path string) error {
+	handle, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	return handle.Sync()
 }

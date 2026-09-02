@@ -16,13 +16,16 @@ type projectOperationParams struct {
 }
 
 type projectOperationPublicView struct {
-	Alias      string `json:"alias"`
-	Repository string `json:"repository,omitempty"`
-	Target     string `json:"target"`
-	State      string `json:"state"`
-	Profile    string `json:"profile,omitempty"`
-	Mode       string `json:"mode,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	Alias              string   `json:"alias"`
+	Repository         string   `json:"repository,omitempty"`
+	Target             string   `json:"target"`
+	State              string   `json:"state"`
+	Profile            string   `json:"profile,omitempty"`
+	Mode               string   `json:"mode,omitempty"`
+	Reason             string   `json:"reason,omitempty"`
+	ToolchainState     string   `json:"toolchain_state,omitempty"`
+	ToolchainRoute     string   `json:"toolchain_route,omitempty"`
+	ToolchainManifests []string `json:"toolchain_manifests,omitempty"`
 }
 
 type edgeDeviceAliasRegistry interface {
@@ -93,7 +96,7 @@ func (s *Server) addEdgeControlTools() {
 		return s.handleProjectOperation(arguments, edge.OperationProjectPrepare)
 	})
 	s.addDirectTool(toolDef{
-		Name: "project_status", Description: "Resolve one registered Edge project by human alias and target alias, returning only safe repository and readiness metadata.",
+		Name: "project_status", Description: "Resolve one registered Edge project by human alias and target alias, returning safe repository readiness plus bounded toolchain manifest detection and the required L3 or persistent-toolbox route.",
 		InputSchema: closedObject(map[string]any{"alias": projectSchema["alias"], "target": projectSchema["target"]}, []string{"alias", "target"}), Version: "1",
 		Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
 	}, func(arguments json.RawMessage) (string, error) {
@@ -206,6 +209,9 @@ func (s *Server) handleProjectOperation(arguments json.RawMessage, kind edge.Ope
 		view.State = op.Result.ProjectState
 		view.Profile = op.Result.ProjectProfile
 		view.Mode = op.Result.ProjectMode
+		view.ToolchainState = op.Result.ProjectToolchainState
+		view.ToolchainRoute = op.Result.ProjectToolchainRoute
+		view.ToolchainManifests = append([]string(nil), op.Result.ProjectToolchainManifests...)
 	} else if op.State == edge.OperationFailed {
 		view.Reason = op.SafeCode
 	}

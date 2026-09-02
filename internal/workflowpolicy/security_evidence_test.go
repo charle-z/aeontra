@@ -37,6 +37,7 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"docker build --file Dockerfile.validation-runner --tag mcp-validation-runner:ci .",
 		"docker build --file Dockerfile.sandbox-runner --tag mcp-sandbox-runner:ci .",
 		"docker build --file Dockerfile.sandbox-workcell --tag mcp-sandbox-workcell:ci .",
+		"sh scripts/test-sandbox-workcell-toolchains.sh mcp-sandbox-workcell:ci",
 		"Verify private coordinator named-volume startup",
 		"sh scripts/test-front-door-coordinator-volume.sh",
 		"output-file: front-door-sbom.spdx.json",
@@ -121,7 +122,7 @@ func TestSandboxRunnerDockerfileCopiesBuildDependencies(t *testing.T) {
 		"COPY internal/sandboxexecutor ./internal/sandboxexecutor",
 		"COPY internal/sandboxprotocol ./internal/sandboxprotocol",
 		"USER 10001:10001",
-		"HEALTHCHECK --interval=15s --timeout=6s --start-period=15s --retries=4",
+		"HEALTHCHECK --interval=15s --timeout=15s --start-period=15s --retries=4",
 		"[\"/usr/local/bin/mcp-sandbox-runner\", \"healthcheck\"]",
 	} {
 		if !strings.Contains(text, required) {
