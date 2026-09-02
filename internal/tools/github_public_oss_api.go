@@ -19,6 +19,12 @@ const (
 
 var safeGitHubOwnerPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
 
+type githubPublicRepoPolicyError struct {
+	message string
+}
+
+func (e *githubPublicRepoPolicyError) Error() string { return e.message }
+
 func safeGitHubOwner(value string) bool {
 	value = strings.TrimSpace(value)
 	return safeGitHubOwnerPattern.MatchString(value)
@@ -138,6 +144,9 @@ func (c *GitHubClient) publicRepo(ctx context.Context, owner, repo string) (gith
 		return githubPublicRepoResponse{}, err
 	}
 	if status < 200 || status >= 300 {
+		if status == http.StatusNotFound {
+			return githubPublicRepoResponse{}, &githubPublicRepoPolicyError{message: fmt.Sprintf("GitHub public repository %s/%s was not found", owner, repo)}
+		}
 		return githubPublicRepoResponse{}, fmt.Errorf("GitHub public repository lookup -> HTTP %d", status)
 	}
 	var result githubPublicRepoResponse
@@ -145,10 +154,10 @@ func (c *GitHubClient) publicRepo(ctx context.Context, owner, repo string) (gith
 		return githubPublicRepoResponse{}, fmt.Errorf("decoding GitHub public repository: %w", err)
 	}
 	if result.Private || strings.ToLower(strings.TrimSpace(result.Visibility)) == "private" {
-		return githubPublicRepoResponse{}, fmt.Errorf("repository %s/%s is not public", owner, repo)
+		return githubPublicRepoResponse{}, &githubPublicRepoPolicyError{message: fmt.Sprintf("repository %s/%s is not public", owner, repo)}
 	}
 	if result.FullName != owner+"/"+repo {
-		return githubPublicRepoResponse{}, fmt.Errorf("GitHub repository identity mismatch")
+		return githubPublicRepoResponse{}, &githubPublicRepoPolicyError{message: "GitHub repository identity mismatch"}
 	}
 	return result, nil
 }
@@ -235,6 +244,26 @@ func (c *GitHubClient) publicIssue(ctx context.Context, owner, repo string, numb
 	var result githubPublicIssueResponse
 	if err := json.Unmarshal([]byte(body), &result); err != nil {
 		return githubPublicIssueResponse{}, fmt.Errorf("decoding GitHub public issue: %w", err)
+	}
+	return result, nil
+}
+
+func (c *GitHubClient) createPublicIssue(ctx context.Context, owner, repo, title, description string) (githubPublicIssueResponse, error) {
+	body, err := json.Marshal(map[string]string{"title": title, "body": description})
+	if err != nil {
+		return githubPublicIssueResponse{}, err
+	}
+	path := "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(repo) + "/issues"
+	status, responseBody, err := c.doJSONLimit(ctx, http.MethodPost, path, body, githubPublicOSSResponseLimit)
+	if err != nil {
+		return githubPublicIssueResponse{}, err
+	}
+	if status != http.StatusCreated {
+		return githubPublicIssueResponse{}, fmt.Errorf("GitHub create public issue -> HTTP %d", status)
+	}
+	var result githubPublicIssueResponse
+	if err := json.Unmarshal([]byte(responseBody), &result); err != nil {
+		return githubPublicIssueResponse{}, fmt.Errorf("decoding created GitHub public issue: %w", err)
 	}
 	return result, nil
 }

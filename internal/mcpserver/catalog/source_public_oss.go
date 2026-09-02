@@ -4,6 +4,8 @@ import "encoding/json"
 
 type SourcePublicOSSService interface {
 	SourcePublicIssueStatus(upstreamOwner, repo string, number int) (string, error)
+	SourcePublicIssueCreatePreview(upstreamOwner, repo, title, description string) (string, error)
+	SourcePublicIssueCreate(planID string, approve bool) (string, error)
 	SourcePublicForkCreatePreview(upstreamOwner, repo string) (string, error)
 	SourcePublicForkCreate(planID string, approve bool) (string, error)
 	SourcePublicIssueCommentPreview(upstreamOwner, repo string, number int, comment string) (string, error)
@@ -31,6 +33,48 @@ func RegisterSourcePublicOSS(register Register, service SourcePublicOSSService) 
 				return "", err
 			}
 			return service.SourcePublicIssueStatus(p.UpstreamOwner, p.Repo, p.Number)
+		},
+	})
+	register(Tool{
+		Name:        "source_public_issue_create_preview",
+		Description: "Verify one public external repository and plan creation of one bounded issue with an exact title and body. Nothing is created.",
+		InputSchema: closedObject(map[string]any{
+			"upstream_owner": boundedStringProp("public external GitHub owner", 1, 39),
+			"repo":           boundedStringProp("public repository name", 1, 100),
+			"title":          boundedStringProp("exact issue title", 1, 256),
+			"description":    boundedStringProp("exact issue body", 1, 8192),
+		}, "upstream_owner", "repo", "title", "description"),
+		Version: "1",
+		Handler: func(arguments json.RawMessage) (string, error) {
+			var p struct {
+				UpstreamOwner string `json:"upstream_owner"`
+				Repo          string `json:"repo"`
+				Title         string `json:"title"`
+				Description   string `json:"description"`
+			}
+			if err := decodeStrict(arguments, &p); err != nil {
+				return "", err
+			}
+			return service.SourcePublicIssueCreatePreview(p.UpstreamOwner, p.Repo, p.Title, p.Description)
+		},
+	})
+	register(Tool{
+		Name:        "source_public_issue_create",
+		Description: "Execute one reviewed source_public_issue_create_preview plan after revalidating the public upstream repository identity.",
+		InputSchema: closedObject(map[string]any{
+			"plan_id": boundedStringProp("issue creation plan returned by source_public_issue_create_preview", 1, 128),
+			"approve": boolProp("execute when approval is required"),
+		}, "plan_id"),
+		Version: "1",
+		Handler: func(arguments json.RawMessage) (string, error) {
+			var p struct {
+				PlanID  string `json:"plan_id"`
+				Approve bool   `json:"approve"`
+			}
+			if err := decodeStrict(arguments, &p); err != nil {
+				return "", err
+			}
+			return service.SourcePublicIssueCreate(p.PlanID, p.Approve)
 		},
 	})
 	register(Tool{
