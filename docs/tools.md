@@ -135,6 +135,8 @@ do not replace server-side enforcement.
 | `github_create_repo` | 0/0/0/1 | Compatibility name for planned `source_repo_create`. |
 | `source_repo_create` | 0/0/0/1 | Revalidate and create the planned owner-bound repository. |
 | `source_public_issue_status` | 1/0/1/1 | Read one public upstream issue, assignees, bounded conversation and linked PRs. |
+| `source_public_issue_create_preview` | 1/0/1/1 | Verify one public external repository and plan one bounded issue with an exact title and body. |
+| `source_public_issue_create` | 0/0/0/1 | Revalidate the public upstream identity and create the reviewed issue. |
 | `source_public_fork_create_preview` | 1/0/1/1 | Verify one public external repository and plan a fork under the configured owner. |
 | `source_public_fork_create` | 0/0/0/1 | Revalidate and create the planned public fork, then verify its parent and write permission. |
 | `source_public_issue_comment_preview` | 1/0/1/1 | Freeze one open public issue/PR conversation and plan an exact comment. |
@@ -165,8 +167,8 @@ do not replace server-side enforcement.
 | `repo_publish` | 0/0/0/1 | Revalidate and push one branch; no force/tags/mirror/refspecs. |
 
 The public catalog GitHub tools use the VPS/Coolify `GITHUB_TOKEN` for API operations
-such as repository metadata, owner-bound publication, public fork creation, issue/PR
-comments, cross-repository pull requests, exact-head checks, Actions diagnostics and
+such as repository metadata, owner-bound publication, public issue and fork creation,
+issue/PR comments, cross-repository pull requests, exact-head checks, Actions diagnostics and
 owner-bound merge. Public OSS operations accept only a public external upstream, create
 forks under the configured owner, keep upstream read-only, use expiring single-use
 plans for every write, and do not expose an external merge operation.
