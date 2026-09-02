@@ -2,11 +2,14 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 )
@@ -104,6 +107,159 @@ func (s *SourceCapability) SourcePublicIssueStatus(upstreamOwner, repo string, n
 	}
 	sp.Finish(audit.Allow, upstreamOwner+"/"+repo+" #"+strconv.Itoa(number), nil, nil)
 	return s.redact(b.String()), nil
+}
+
+func (s *SourceCapability) normalizePublicIssueCreateInput(upstreamOwner, repo, title, description string) (string, string, string, string, error) {
+	upstreamOwner = strings.TrimSpace(upstreamOwner)
+	repo = strings.TrimSpace(repo)
+	if err := s.validatePublicUpstream(upstreamOwner, repo); err != nil {
+		return "", "", "", "", err
+	}
+	title = s.redact(title)
+	description = s.redact(description)
+	if !utf8.ValidString(title) || !utf8.ValidString(description) || strings.TrimSpace(title) == "" || strings.TrimSpace(description) == "" || utf8.RuneCountInString(title) > 256 || utf8.RuneCountInString(description) > 8192 {
+		return "", "", "", "", fmt.Errorf("issue title/body exceeds bounds, is empty, or is not valid UTF-8")
+	}
+	return upstreamOwner, repo, title, description, nil
+}
+
+func validatePublicIssueRepository(upstream githubPublicRepoResponse) error {
+	if upstream.Private || !strings.EqualFold(strings.TrimSpace(upstream.Visibility), "public") {
+		return fmt.Errorf("upstream repository is not public")
+	}
+	if strings.TrimSpace(upstream.FullName) == "" || strings.TrimSpace(upstream.DefaultBranch) == "" {
+		return fmt.Errorf("upstream repository metadata is incomplete")
+	}
+	return nil
+}
+
+func validateCreatedPublicIssue(upstream string, created githubPublicIssueResponse) error {
+	if created.Number < 1 || strings.TrimSpace(created.HTMLURL) == "" {
+		return fmt.Errorf("created issue response was incomplete; the issue may have been created")
+	}
+	rawURL := strings.TrimSpace(created.HTMLURL)
+	parsed, err := url.ParseRequestURI(rawURL)
+	expectedPath := "/" + upstream + "/issues/" + strconv.Itoa(created.Number)
+	if err != nil || len(rawURL) > 2048 || parsed.Scheme != "https" || parsed.Host != "github.com" || parsed.User != nil || parsed.Path != expectedPath || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("created issue response contained an invalid URL; the issue may have been created")
+	}
+	return nil
+}
+
+func (s *SourceCapability) SourcePublicIssueCreatePreview(upstreamOwner, repo, title, description string) (string, error) {
+	sp := s.log.Start("source_public_issue_create_preview")
+	upstreamOwner, repo, title, description, err := s.normalizePublicIssueCreateInput(upstreamOwner, repo, title, description)
+	if err != nil {
+		sp.Finish(audit.Deny, "preview", nil, err)
+		return "", err
+	}
+	ctx := context.Background()
+	upstream, err := s.github.publicRepo(ctx, upstreamOwner, repo)
+	if err != nil {
+		decision := audit.Error
+		var policyErr *githubPublicRepoPolicyError
+		if errors.As(err, &policyErr) {
+			decision = audit.Deny
+		}
+		sp.Finish(decision, "preview "+upstreamOwner+"/"+repo, nil, err)
+		return "", err
+	}
+	if err := validatePublicIssueRepository(upstream); err != nil {
+		sp.Finish(audit.Deny, "preview "+upstreamOwner+"/"+repo, nil, err)
+		return "", err
+	}
+	plan, err := s.plans.Create("source-public-issue-create", map[string]string{
+		"upstream_owner": upstreamOwner,
+		"repo":           repo,
+		"upstream":       upstream.FullName,
+		"default_branch": upstream.DefaultBranch,
+		"title":          title,
+		"description":    description,
+	})
+	if err != nil {
+		sp.Finish(audit.Error, "preview "+upstream.FullName, nil, err)
+		return "", err
+	}
+	sp.Finish(audit.Allow, "preview "+upstream.FullName+" "+plan.ID, nil, nil)
+	return fmt.Sprintf("repository: %s\neffect: create one public upstream issue\nplan_id: %s\nexpiry: %s\ntitle: %s\nbody:\n%s\n", upstream.FullName, plan.ID, plan.ExpiresAt.Format(time.RFC3339), title, description), nil
+}
+
+func (s *SourceCapability) SourcePublicIssueCreate(planID string, approve bool) (string, error) {
+	sp := s.log.Start("source_public_issue_create")
+	planID = strings.TrimSpace(planID)
+	if err := s.github.configError(); err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	needsApproval, err := s.pol.CheckAction()
+	if err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	if needsApproval && !approve {
+		sp.Finish(audit.Ask, planID, nil, nil)
+		return "APPROVAL REQUIRED: source_public_issue_create would execute the reviewed single-use plan. Re-invoke with approve=true.", nil
+	}
+	plan, err := s.plans.Peek(planID)
+	if err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	if plan.Operation != "source-public-issue-create" {
+		err := fmt.Errorf("action plan operation mismatch")
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	if plan.used {
+		err := fmt.Errorf("action plan already used")
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	if !s.plans.now().Before(plan.ExpiresAt) {
+		err := fmt.Errorf("action plan expired at %s", plan.ExpiresAt.Format(time.RFC3339))
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	if err := s.validatePublicUpstream(plan.Args["upstream_owner"], plan.Args["repo"]); err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	ctx := context.Background()
+	upstream, err := s.github.publicRepo(ctx, plan.Args["upstream_owner"], plan.Args["repo"])
+	if err != nil {
+		decision := audit.Error
+		var policyErr *githubPublicRepoPolicyError
+		if errors.As(err, &policyErr) {
+			decision = audit.Deny
+		}
+		sp.Finish(decision, planID, nil, err)
+		return "", err
+	}
+	if err := validatePublicIssueRepository(upstream); err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	if upstream.FullName != plan.Args["upstream"] || upstream.DefaultBranch != plan.Args["default_branch"] {
+		err := fmt.Errorf("upstream repository changed after preview")
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	plan, err = s.plans.Consume(planID, "source-public-issue-create")
+	if err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
+	}
+	created, err := s.github.createPublicIssue(ctx, plan.Args["upstream_owner"], plan.Args["repo"], plan.Args["title"], plan.Args["description"])
+	if err != nil {
+		sp.Finish(audit.Error, planID, nil, err)
+		return "", fmt.Errorf("GitHub issue creation failed or returned an invalid confirmation; verify the upstream before retrying: %w", err)
+	}
+	if err := validateCreatedPublicIssue(plan.Args["upstream"], created); err != nil {
+		sp.Finish(audit.Error, planID, nil, err)
+		return "", err
+	}
+	sp.Finish(audit.Allow, planID, nil, nil)
+	return s.redact(fmt.Sprintf("repository: %s\nissue: %d\nurl: %s\nstate: %s\ntitle: %s\n", plan.Args["upstream"], created.Number, created.HTMLURL, publicText(created.State, 64), publicText(plan.Args["title"], 512))), nil
 }
 
 func (s *SourceCapability) SourcePublicForkCreatePreview(upstreamOwner, repo string) (string, error) {

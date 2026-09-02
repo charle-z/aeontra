@@ -14,6 +14,7 @@ func TestGitHubPublicOSSWorkflowIsPlannedRevalidatedAndOwnerBound(t *testing.T) 
 	baseSHA := strings.Repeat("a", 40)
 	headSHA := strings.Repeat("b", 40)
 	forkCreated := false
+	issueCreated := false
 	commentCreated := false
 	pullCreated := false
 
@@ -30,6 +31,14 @@ func TestGitHubPublicOSSWorkflowIsPlannedRevalidatedAndOwnerBound(t *testing.T) 
 		case r.Method == http.MethodPost && r.URL.Path == "/repos/upstream/demo/forks":
 			forkCreated = true
 			_, _ = w.Write([]byte(`{"full_name":"acme/demo","private":false,"visibility":"public","default_branch":"main","fork":true,"parent":{"full_name":"upstream/demo"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/upstream/demo/issues":
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["title"] != "Native result bug" || body["body"] != "### Description\nBroken" {
+				t.Fatalf("unexpected issue body: %#v err=%v", body, err)
+			}
+			issueCreated = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"number":10,"state":"open","title":"Native result bug","html_url":"https://github.com/upstream/demo/issues/10","updated_at":"2026-08-05T20:00:00Z","comments":0,"assignees":[]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/issues/9":
 			_, _ = w.Write([]byte(`{"number":9,"state":"open","title":"Fix it","html_url":"https://github.com/upstream/demo/issues/9","updated_at":"2026-08-05T20:00:00Z","comments":0,"assignees":[]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/upstream/demo/issues/9/comments":
@@ -86,6 +95,14 @@ func TestGitHubPublicOSSWorkflowIsPlannedRevalidatedAndOwnerBound(t *testing.T) 
 	issue, err := svc.SourcePublicIssueStatus("upstream", "demo", 9)
 	if err != nil || !strings.Contains(issue, "linked_pull_requests: 0") || !strings.Contains(issue, "assignees: none") {
 		t.Fatalf("issue=%q err=%v", issue, err)
+	}
+	issuePreview, err := svc.SourcePublicIssueCreatePreview("upstream", "demo", "Native result bug", "### Description\nBroken")
+	if err != nil || issueCreated {
+		t.Fatalf("issue preview=%q err=%v created=%t", issuePreview, err, issueCreated)
+	}
+	createdIssue, err := svc.SourcePublicIssueCreate(field(issuePreview, "plan_id"), true)
+	if err != nil || !issueCreated || !strings.Contains(createdIssue, "issue: 10") {
+		t.Fatalf("issue create=%q err=%v created=%t", createdIssue, err, issueCreated)
 	}
 	forkPreview, err := svc.SourcePublicForkCreatePreview("upstream", "demo")
 	if err != nil || forkCreated {

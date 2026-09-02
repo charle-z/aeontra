@@ -94,6 +94,7 @@ Use this short map before scanning the complete catalog in `docs/tools.md`.
 | Publish a registered Edge checkout | `project_git_publish_preview`, then `project_git_publish` |
 | Create a pull request | `source_pull_request_create_preview`, then `source_pull_request_create` |
 | Inspect a public upstream issue | `source_public_issue_status` |
+| Create a public upstream issue | `source_public_issue_create_preview`, then `source_public_issue_create` |
 | Create the configured-owner fork | `source_public_fork_create_preview`, then `source_public_fork_create` |
 | Comment on a public issue or PR | `source_public_issue_comment_preview`, then `source_public_issue_comment` |
 | Reply to an inline public review | `source_public_review_reply_preview`, then `source_public_review_reply` |
