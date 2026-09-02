@@ -3,6 +3,7 @@ package edge
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -91,6 +92,55 @@ func TestExpiredLeaseRedeliversSameIdempotencyKeyWithoutConcurrentLease(t *testi
 	}
 	if _, err := store.Complete(device.ID, created.ID, first.LeaseID, TaskResult{Outcome: OutcomeSucceeded, Summary: "stale"}); err == nil {
 		t.Fatal("stale lease completed task")
+	}
+}
+
+func TestExpiredTaskLeaseReturnsBehindQueuedTask(t *testing.T) {
+	store, now, device := openTaskTestStore(t)
+	front, _, err := store.CreateTask(device.ID, validTaskSpec("expired-front-001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LeaseNext(device.ID, "development", "agent-session-0001", MinLeaseTTL); err != nil {
+		t.Fatal(err)
+	}
+	*now = (*now).Add(time.Second)
+	behind, _, err := store.CreateTask(device.ID, validTaskSpec("queued-behind-001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	*now = (*now).Add(MinLeaseTTL + time.Second)
+	next, err := store.LeaseNext(device.ID, "development", "agent-session-0002", MinLeaseTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Task.ID != behind.ID {
+		t.Fatalf("expired task %s was selected before queued task %s", front.ID, behind.ID)
+	}
+}
+
+func TestExpiredTaskLeaseRecoveryBudgetFailsClosed(t *testing.T) {
+	store, now, device := openTaskTestStore(t)
+	task, _, err := store.CreateTask(device.ID, validTaskSpec("recovery-budget-001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 1; attempt <= maxTaskLeaseAttempts; attempt++ {
+		lease, leaseErr := store.LeaseNext(device.ID, "development", "agent-session-0001", MinLeaseTTL)
+		if leaseErr != nil || lease.Task.ID != task.ID || lease.Attempt != attempt {
+			t.Fatalf("attempt=%d lease=%+v err=%v", attempt, lease, leaseErr)
+		}
+		*now = (*now).Add(MinLeaseTTL + time.Second)
+	}
+	if _, err := store.LeaseNext(device.ID, "development", "agent-session-0002", MinLeaseTTL); !errors.Is(err, ErrNoTaskAvailable) {
+		t.Fatalf("post-budget lease err=%v", err)
+	}
+	failed, err := store.TaskStatus(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != TaskFailed || failed.Outcome != OutcomeFailed || failed.ResultSummary != taskRecoveryExhaustedSummary {
+		t.Fatalf("failed task=%+v", failed)
 	}
 }
 

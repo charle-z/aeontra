@@ -256,6 +256,9 @@ type OperationResult struct {
 	ProjectState                     string                          `json:"project_state,omitempty"`
 	ProjectProfile                   string                          `json:"project_profile,omitempty"`
 	ProjectMode                      string                          `json:"project_mode,omitempty"`
+	ProjectToolchainState            string                          `json:"project_toolchain_state,omitempty"`
+	ProjectToolchainRoute            string                          `json:"project_toolchain_route,omitempty"`
+	ProjectToolchainManifests        []string                        `json:"project_toolchain_manifests,omitempty"`
 	SnapshotBranch                   string                          `json:"snapshot_branch,omitempty"`
 	SnapshotHead                     string                          `json:"snapshot_head,omitempty"`
 	SnapshotClean                    bool                            `json:"snapshot_clean,omitempty"`
@@ -550,8 +553,11 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
 	var id string
-	if err := tx.QueryRow(`SELECT operation_id FROM edge_operations WHERE device_id=? AND state=? ORDER BY created_at,operation_id LIMIT 1`, deviceID, OperationQueued).Scan(&id); err != nil {
+	if err := tx.QueryRow(`SELECT operation_id FROM edge_operations WHERE device_id=? AND state=? ORDER BY updated_at,operation_id LIMIT 1`, deviceID, OperationQueued).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if err := tx.Commit(); err != nil {
+				return OperationLease{}, errors.New("operation lease unavailable")
+			}
 			return OperationLease{}, ErrNoTaskAvailable
 		}
 		return OperationLease{}, errors.New("operation lease unavailable")
@@ -809,6 +815,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if code != "" {
 		return validOperationCompletion(result, code)
 	}
+	if hasProjectToolchainSummary(result) && kind != OperationProjectStatus {
+		return false
+	}
 	if hasProjectWorktreeResult(result) {
 		return validProjectWorktreeResultForKind(kind, result)
 	}
@@ -868,7 +877,8 @@ func validProjectOperationResult(result OperationResult) bool {
 		!projectOperationAliasPattern.MatchString(result.ProjectAlias) || !githubOwnerOperationPattern.MatchString(result.ProjectOwner) ||
 		!projectOperationRepositoryPattern.MatchString(result.ProjectRepository) || strings.ContainsAny(result.ProjectRepository, `/\\`) ||
 		!projectOperationTargetPattern.MatchString(result.ProjectTarget) || (result.ProjectState != "ready" && result.ProjectState != "dirty") ||
-		(result.ProjectProfile != "linux-workcell" && result.ProjectProfile != "windows-workcell") || result.ProjectMode != "dev" {
+		(result.ProjectProfile != "linux-workcell" && result.ProjectProfile != "windows-workcell") || result.ProjectMode != "dev" ||
+		!validProjectToolchainSummary(result) {
 		return false
 	}
 	metadata := result
@@ -880,7 +890,42 @@ func validProjectOperationResult(result OperationResult) bool {
 	metadata.ProjectState = ""
 	metadata.ProjectProfile = ""
 	metadata.ProjectMode = ""
+	metadata.ProjectToolchainState = ""
+	metadata.ProjectToolchainRoute = ""
+	metadata.ProjectToolchainManifests = nil
 	return emptyOperationResult(metadata)
+}
+
+func hasProjectToolchainSummary(result OperationResult) bool {
+	return result.ProjectToolchainState != "" || result.ProjectToolchainRoute != "" || len(result.ProjectToolchainManifests) > 0
+}
+
+func validProjectToolchainSummary(result OperationResult) bool {
+	if !hasProjectToolchainSummary(result) {
+		return true
+	}
+	wantRoute := map[string]string{
+		"supported":     "l3",
+		"edge-required": "edge-toolbox",
+		"pin-conflict":  "resolve-pins",
+	}[result.ProjectToolchainState]
+	if wantRoute == "" || result.ProjectToolchainRoute != wantRoute || len(result.ProjectToolchainManifests) > 16 {
+		return false
+	}
+	allowed := map[string]bool{
+		"rust-toolchain.toml": true, ".tool-versions": true, "mise.toml": true,
+		"package.json": true, "go.mod": true, "pyproject.toml": true, "Cargo.toml": true,
+		"pom.xml": true, "build.gradle": true, "build.gradle.kts": true,
+		"settings.gradle": true, "settings.gradle.kts": true, "CMakeLists.txt": true, "Makefile": true,
+	}
+	seen := make(map[string]bool, len(result.ProjectToolchainManifests))
+	for _, manifest := range result.ProjectToolchainManifests {
+		if !allowed[manifest] || seen[manifest] {
+			return false
+		}
+		seen[manifest] = true
+	}
+	return true
 }
 
 var projectSnapshotBranchPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
@@ -936,7 +981,7 @@ func emptyOperationResult(result OperationResult) bool {
 	if hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
-	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && !hasProjectGitHubResult(result)
+	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && !hasProjectToolchainSummary(result) && !hasProjectGitHubResult(result)
 }
 
 func (s *Store) AutopilotStatus(workspaceID string) (OperationResult, error) {

@@ -30,5 +30,13 @@ func validatePrivateStateRoot(root string) error {
 	if err != nil || !receipts.IsDir() || receipts.Mode()&os.ModeSymlink != 0 {
 		return errors.New("receipt root is unavailable")
 	}
+	readiness, err := os.Lstat(filepath.Join(root, "readiness"))
+	if err != nil || !readiness.IsDir() || readiness.Mode()&os.ModeSymlink != 0 {
+		return errors.New("readiness root is unavailable")
+	}
 	return nil
 }
+
+// The private executor is Linux-only. Native Windows builds keep the protocol
+// portable but do not claim POSIX directory-entry durability.
+func syncDirectory(string) error { return nil }

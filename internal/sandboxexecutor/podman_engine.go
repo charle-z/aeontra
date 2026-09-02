@@ -3,7 +3,9 @@ package sandboxexecutor
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -124,6 +126,24 @@ func (p *podmanEngine) Attest(ctx context.Context, image, digest string) error {
 	return nil
 }
 
+func (p *podmanEngine) Ready(ctx context.Context, workspaceRoot, image string) error {
+	keyBytes := make([]byte, 16)
+	if _, err := rand.Read(keyBytes); err != nil {
+		return errors.New("creating sandbox readiness identity")
+	}
+	response, err := p.Run(ctx, RunSpec{
+		WorkspaceRoot:  workspaceRoot,
+		Argv:           []string{"sh", "-c", "set -eu; test \"$(pwd)\" = /workspace; test -r /workspace; probe=$(mktemp /workspace/.aeontra-ready.XXXXXX); rm -f \"$probe\"; command -v git >/dev/null; command -v go >/dev/null; command -v cargo >/dev/null; command -v rustc >/dev/null; command -v node >/dev/null; command -v npm >/dev/null; command -v python3 >/dev/null; command -v cc >/dev/null; command -v c++ >/dev/null; printf ready"},
+		NetworkProfile: "none", Timeout: 10 * time.Second, CPUMillis: 250,
+		MemoryMiB: 128, ProcessLimit: 32, OutputBytes: 4096, Image: image,
+		IdempotencyKey: "sx_" + hex.EncodeToString(keyBytes),
+	})
+	if err != nil || response.ExitCode != 0 || response.Stdout != "ready" || response.Stderr != "" || response.Truncated {
+		return errors.New("sandbox readiness execution failed")
+	}
+	return nil
+}
+
 func (p *podmanEngine) Run(parent context.Context, spec RunSpec) (sandboxprotocol.Response, error) {
 	if p.client == nil {
 		return sandboxprotocol.Response{}, errors.New("podman API client is unavailable")
@@ -217,7 +237,7 @@ func podmanCreateSpec(spec RunSpec, uid, gid int) podmanCreateRequest {
 		ReadOnlyFilesystem: true, NoNewPrivileges: true, CapDrop: []string{"ALL"},
 		Mounts: []podmanMount{
 			{Source: spec.WorkspaceRoot, Destination: "/workspace", Type: "bind", Options: []string{"rw", "rbind", "rprivate"}},
-			{Source: "tmpfs", Destination: "/tmp", Type: "tmpfs", Options: []string{"rw", "nosuid", "nodev", "size=268435456"}},
+			{Source: "tmpfs", Destination: "/tmp", Type: "tmpfs", Options: []string{"rw", "exec", "nosuid", "nodev", "size=268435456"}},
 		},
 		ResourceLimits: podmanResourceLimits{
 			Memory: &podmanMemoryLimit{Limit: int64(spec.MemoryMiB) << 20},

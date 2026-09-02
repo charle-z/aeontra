@@ -24,6 +24,7 @@ type Store struct {
 	config   Config
 	db       *sql.DB
 	lockFile *os.File
+	fair     *FairScheduler
 	mu       sync.Mutex
 	now      func() time.Time
 }
@@ -75,7 +76,12 @@ func Open(config Config) (*Store, error) {
 			return nil, errors.New("workqueue: schema is unsupported")
 		}
 	}
-	store := &Store{root: root, path: path, config: validated, db: db, lockFile: lockFile, now: time.Now}
+	fair, err := NewFairScheduler(FairConfig{Quantum: 1, AgingLimit: time.Minute})
+	if err != nil {
+		_ = db.Close()
+		return nil, errors.New("workqueue: fair scheduler unavailable")
+	}
+	store := &Store{root: root, path: path, config: validated, db: db, lockFile: lockFile, fair: fair, now: time.Now}
 	if err := store.initialize(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -238,10 +244,10 @@ func (s *Store) Enqueue(spec Spec) (Job, bool, error) {
 		return existing, false, nil
 	}
 	var total, workspaceCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&total); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE state IN (?,?,?)`, StateBlocked, StateQueued, StateLeased).Scan(&total); err != nil {
 		return Job{}, false, errors.New("workqueue: job count unavailable")
 	}
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE workspace=?`, spec.Workspace).Scan(&workspaceCount); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE workspace=? AND state IN (?,?,?)`, spec.Workspace, StateBlocked, StateQueued, StateLeased).Scan(&workspaceCount); err != nil {
 		return Job{}, false, errors.New("workqueue: workspace count unavailable")
 	}
 	if total >= s.config.MaxJobs {
@@ -323,16 +329,40 @@ func (s *Store) LeaseNext(pool, holder string, ttl time.Duration) (Lease, error)
 	if err := recoverExpired(tx, now); err != nil {
 		return Lease{}, err
 	}
-	var jobID string
-	if err := tx.QueryRow(`SELECT job_id FROM jobs WHERE pool=? AND state=? AND cancel_requested=0 ORDER BY created_at,job_id LIMIT 1`, pool, StateQueued).Scan(&jobID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			if err := tx.Commit(); err != nil {
-				return Lease{}, errors.New("workqueue: lease recovery commit failed")
-			}
-			return Lease{}, ErrNoJobAvailable
-		}
+	rows, err := tx.Query(`SELECT job_id,workspace,updated_at FROM jobs WHERE pool=? AND state=? AND cancel_requested=0 ORDER BY updated_at,job_id LIMIT ?`, pool, StateQueued, s.config.MaxJobs)
+	if err != nil {
 		return Lease{}, errors.New("workqueue: lease selection failed")
 	}
+	candidates := make([]FairCandidate, 0)
+	for rows.Next() {
+		var candidate FairCandidate
+		var readyAt int64
+		if err := rows.Scan(&candidate.JobID, &candidate.Workspace, &readyAt); err != nil {
+			_ = rows.Close()
+			return Lease{}, errors.New("workqueue: lease selection failed")
+		}
+		candidate.Cost = 1
+		candidate.CreatedAt = time.Unix(0, readyAt).UTC()
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return Lease{}, errors.New("workqueue: lease selection failed")
+	}
+	if err := rows.Close(); err != nil {
+		return Lease{}, errors.New("workqueue: lease selection failed")
+	}
+	if len(candidates) == 0 {
+		if err := tx.Commit(); err != nil {
+			return Lease{}, errors.New("workqueue: lease recovery commit failed")
+		}
+		return Lease{}, ErrNoJobAvailable
+	}
+	selected, err := s.fair.Select(now, candidates)
+	if err != nil {
+		return Lease{}, errors.New("workqueue: lease selection failed")
+	}
+	jobID := selected.JobID
 	leaseID, err := randomID("wl_")
 	if err != nil {
 		return Lease{}, errors.New("workqueue: lease identity unavailable")
@@ -343,8 +373,8 @@ func (s *Store) LeaseNext(pool, holder string, ttl time.Duration) (Lease, error)
 	if err != nil {
 		return Lease{}, errors.New("workqueue: lease update failed")
 	}
-	rows, _ := result.RowsAffected()
-	if rows != 1 {
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected != 1 {
 		return Lease{}, errors.New("workqueue: lease lost race")
 	}
 	job, found, err := jobByID(tx, jobID)
@@ -358,18 +388,19 @@ func (s *Store) LeaseNext(pool, holder string, ttl time.Duration) (Lease, error)
 }
 
 func recoverExpired(tx *sql.Tx, now time.Time) error {
-	rows, err := tx.Query(`SELECT job_id,cancel_requested FROM jobs WHERE state=? AND lease_until<=?`, StateLeased, now.UnixNano())
+	rows, err := tx.Query(`SELECT job_id,cancel_requested,attempt FROM jobs WHERE state=? AND lease_until<=?`, StateLeased, now.UnixNano())
 	if err != nil {
 		return errors.New("workqueue: expired lease scan failed")
 	}
 	type expired struct {
 		id        string
 		cancelled bool
+		attempt   int
 	}
 	items := make([]expired, 0)
 	for rows.Next() {
 		var item expired
-		if err := rows.Scan(&item.id, &item.cancelled); err != nil {
+		if err := rows.Scan(&item.id, &item.cancelled, &item.attempt); err != nil {
 			_ = rows.Close()
 			return errors.New("workqueue: expired lease result failed")
 		}
@@ -388,6 +419,11 @@ func recoverExpired(tx *sql.Tx, now time.Time) error {
 			reason = ReasonCancelled
 			outcome = StateCancelled
 			summary = "cancelled"
+		} else if item.attempt >= MaxLeaseAttempts {
+			state = StateFailed
+			reason = ReasonRecoveryExhausted
+			outcome = StateFailed
+			summary = string(ReasonRecoveryExhausted)
 		}
 		if _, err := tx.Exec(`UPDATE jobs SET state=?,reason=?,lease_id=NULL,lease_holder=NULL,lease_until=NULL,outcome=?,summary=?,updated_at=? WHERE job_id=? AND state=?`, state, reason, outcome, summary, now.UnixNano(), item.id, StateLeased); err != nil {
 			return errors.New("workqueue: expired lease recovery failed")
@@ -655,23 +691,21 @@ func (s *Store) Integrity() error {
 	if err != nil {
 		return errors.New("workqueue: semantic scan failed")
 	}
-	count := 0
 	for rows.Next() {
 		if _, err := scanJob(rows); err != nil {
 			_ = rows.Close()
 			return errors.New("workqueue: semantic integrity failed")
 		}
-		count++
-		if count > s.config.MaxJobs {
-			_ = rows.Close()
-			return errors.New("workqueue: row bound exceeded")
-		}
 	}
 	if err := rows.Close(); err != nil {
 		return errors.New("workqueue: semantic scan failed")
 	}
+	var activeCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE state IN (?,?,?)`, StateBlocked, StateQueued, StateLeased).Scan(&activeCount); err != nil || activeCount > s.config.MaxJobs {
+		return errors.New("workqueue: row bound exceeded")
+	}
 	var oversizedWorkspaces int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM (SELECT workspace FROM jobs GROUP BY workspace HAVING COUNT(*)>?)`, s.config.MaxJobsPerWorkspace).Scan(&oversizedWorkspaces); err != nil || oversizedWorkspaces != 0 {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM (SELECT workspace FROM jobs WHERE state IN (?,?,?) GROUP BY workspace HAVING COUNT(*)>?)`, StateBlocked, StateQueued, StateLeased, s.config.MaxJobsPerWorkspace).Scan(&oversizedWorkspaces); err != nil || oversizedWorkspaces != 0 {
 		return errors.New("workqueue: workspace row bound exceeded")
 	}
 	var dependencyCount int
@@ -690,13 +724,13 @@ func (s *Store) Integrity() error {
 			return errors.New("workqueue: task semantic scan failed")
 		}
 		taskIDs = append(taskIDs, taskID)
-		if len(taskIDs) > s.config.MaxJobs {
-			_ = taskRows.Close()
-			return errors.New("workqueue: task row bound exceeded")
-		}
 	}
 	if err := taskRows.Close(); err != nil {
 		return errors.New("workqueue: task semantic scan failed")
+	}
+	var activeTaskCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM task_groups tg WHERE EXISTS(SELECT 1 FROM task_workers tw JOIN jobs j ON j.job_id=tw.job_id WHERE tw.task_id=tg.task_id AND j.state IN (?,?,?))`, StateBlocked, StateQueued, StateLeased).Scan(&activeTaskCount); err != nil || activeTaskCount > s.config.MaxJobs {
+		return errors.New("workqueue: task row bound exceeded")
 	}
 	for _, taskID := range taskIDs {
 		if _, found, err := taskByID(s.db, taskID); err != nil || !found {
@@ -827,7 +861,7 @@ func validateStoredJob(job Job) error {
 				return errors.New("workqueue: stored success reason is invalid")
 			}
 		case StateFailed:
-			if job.Reason != ReasonNone && job.Reason != ReasonDependencyFailed {
+			if job.Reason != ReasonNone && job.Reason != ReasonDependencyFailed && job.Reason != ReasonRecoveryExhausted {
 				return errors.New("workqueue: stored failure reason is invalid")
 			}
 		case StateCancelled:

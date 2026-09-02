@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/policy"
@@ -22,9 +23,10 @@ import (
 const maxWorkspaceEntries = 200000
 
 var (
-	idempotencyPattern = regexp.MustCompile(`^sx_[0-9a-f]{32}$`)
-	digestPattern      = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	environmentPattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
+	idempotencyPattern    = regexp.MustCompile(`^sx_[0-9a-f]{32}$`)
+	digestPattern         = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	environmentPattern    = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
+	workspaceScopePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 )
 
 type Config struct {
@@ -60,12 +62,17 @@ type RunSpec struct {
 
 type Engine interface {
 	Attest(ctx context.Context, image, digest string) error
+	Ready(ctx context.Context, workspaceRoot, image string) error
 	Run(ctx context.Context, spec RunSpec) (sandboxprotocol.Response, error)
 }
 
 type Executor struct {
 	config Config
 	slots  chan struct{}
+	ready  struct {
+		sync.Mutex
+		until time.Time
+	}
 }
 
 type receipt struct {
@@ -104,6 +111,9 @@ func New(config Config) (*Executor, error) {
 	if err := os.MkdirAll(filepath.Join(config.StateRoot, "receipts"), 0o700); err != nil {
 		return nil, fmt.Errorf("creating sandbox receipt root: %w", err)
 	}
+	if err := os.MkdirAll(filepath.Join(config.StateRoot, "readiness"), 0o700); err != nil {
+		return nil, fmt.Errorf("creating sandbox readiness root: %w", err)
+	}
 	stateRoot, err := canonicalDirectory(config.StateRoot)
 	if err != nil {
 		return nil, fmt.Errorf("sandbox executor state root: %w", err)
@@ -132,6 +142,10 @@ func (e *Executor) Status(ctx context.Context) sandboxprotocol.Status {
 		ImageDigest: e.config.ImageDigest, ProfileVersion: sandboxprotocol.ProfileVersion,
 	}
 	if err := e.config.Engine.Attest(ctx, e.config.Image, e.config.ImageDigest); err != nil {
+		e.invalidateReadiness()
+		return status
+	}
+	if err := e.ensureReady(ctx); err != nil {
 		return status
 	}
 	status.Available = true
@@ -139,12 +153,38 @@ func (e *Executor) Status(ctx context.Context) sandboxprotocol.Status {
 	return status
 }
 
+func (e *Executor) ensureReady(ctx context.Context) error {
+	e.ready.Lock()
+	defer e.ready.Unlock()
+	if time.Now().Before(e.ready.until) {
+		return nil
+	}
+	if err := e.config.Engine.Ready(ctx, filepath.Join(e.config.StateRoot, "readiness"), e.config.Image); err != nil {
+		e.ready.until = time.Time{}
+		return err
+	}
+	e.ready.until = time.Now().Add(30 * time.Second)
+	return nil
+}
+
+func (e *Executor) invalidateReadiness() {
+	e.ready.Lock()
+	e.ready.until = time.Time{}
+	e.ready.Unlock()
+}
+
+func (e *Executor) markReady() {
+	e.ready.Lock()
+	e.ready.until = time.Now().Add(30 * time.Second)
+	e.ready.Unlock()
+}
+
 func (e *Executor) Execute(ctx context.Context, request sandboxprotocol.Request) (sandboxprotocol.Response, error) {
 	if err := e.validateRequest(request); err != nil {
 		return sandboxprotocol.Response{}, err
 	}
 	if completed, found, err := e.completedReceipt(request); err != nil {
-		return sandboxprotocol.Response{}, err
+		return sandboxprotocol.Response{}, wrapExecutorError(executorErrInternal, err)
 	} else if found {
 		return completed, nil
 	}
@@ -157,47 +197,52 @@ func (e *Executor) Execute(ctx context.Context, request sandboxprotocol.Request)
 	// A request with the same identity may have completed while this request
 	// waited for capacity. Re-check the durable result after admission.
 	if completed, found, err := e.completedReceipt(request); err != nil {
-		return sandboxprotocol.Response{}, err
+		return sandboxprotocol.Response{}, wrapExecutorError(executorErrInternal, err)
 	} else if found {
 		return completed, nil
 	}
-	rootBefore, err := os.Stat(e.config.WorkspaceRoot)
-	if err != nil {
-		return sandboxprotocol.Response{}, errors.New("sandbox workspace is unavailable")
-	}
-	relativeDir, err := validateRelativeDirectory(e.config.WorkspaceRoot, request.RelativeDir)
+	workspaceRoot, relativeDir, err := resolveWorkspaceSelection(e.config.WorkspaceRoot, request.ProfileVersion, request.WorkspaceScope, request.RelativeDir)
 	if err != nil {
 		return sandboxprotocol.Response{}, err
 	}
-	if err := scanWorkspace(e.config.WorkspaceRoot); err != nil {
+	rootBefore, err := os.Stat(workspaceRoot)
+	if err != nil {
+		return sandboxprotocol.Response{}, newExecutorError(executorErrWorkspaceUnavailable, "sandbox workspace is unavailable")
+	}
+	if err := scanWorkspace(ctx, workspaceRoot); err != nil {
 		return sandboxprotocol.Response{}, err
 	}
-	rootAfter, err := os.Stat(e.config.WorkspaceRoot)
+	rootAfter, err := os.Stat(workspaceRoot)
 	if err != nil || !os.SameFile(rootBefore, rootAfter) {
-		return sandboxprotocol.Response{}, errors.New("sandbox workspace identity changed during preflight")
+		return sandboxprotocol.Response{}, newExecutorError(executorErrWorkspaceUnavailable, "sandbox workspace identity changed during preflight")
 	}
 	if err := e.config.Engine.Attest(ctx, e.config.Image, e.config.ImageDigest); err != nil {
-		return sandboxprotocol.Response{}, errors.New("sandbox executor attestation failed before execution")
+		e.invalidateReadiness()
+		return sandboxprotocol.Response{}, newExecutorError(executorErrUnavailable, "sandbox executor attestation failed before execution")
+	}
+	if err := e.ensureReady(ctx); err != nil {
+		e.invalidateReadiness()
+		return sandboxprotocol.Response{}, wrapExecutorError(executorErrUnavailable, err)
 	}
 	runningPath, err := e.receiptPath(request.IdempotencyKey, ".running")
 	if err != nil {
-		return sandboxprotocol.Response{}, err
+		return sandboxprotocol.Response{}, wrapExecutorError(executorErrInternal, err)
 	}
 	running := receipt{SchemaVersion: 1, Digest: request.RequestDigest, State: "running"}
 	created, err := createExclusiveJSON(runningPath, running)
 	if err != nil {
-		return sandboxprotocol.Response{}, fmt.Errorf("creating sandbox receipt: %w", err)
+		return sandboxprotocol.Response{}, wrapExecutorError(executorErrInternal, fmt.Errorf("creating sandbox receipt: %w", err))
 	}
 	if !created {
 		existing, readErr := readReceipt(runningPath)
 		if readErr != nil || existing.Digest != request.RequestDigest {
-			return sandboxprotocol.Response{}, errors.New("sandbox idempotency identity conflicts with existing receipt")
+			return sandboxprotocol.Response{}, newExecutorError(executorErrConflict, "sandbox idempotency identity conflicts with existing receipt")
 		}
-		return sandboxprotocol.Response{}, errors.New("sandbox execution outcome is indeterminate; refusing to repeat effect")
+		return sandboxprotocol.Response{}, newExecutorError(executorErrConflict, "sandbox execution outcome is indeterminate; refusing to repeat effect")
 	}
 
 	response, err := e.config.Engine.Run(ctx, RunSpec{
-		WorkspaceRoot: e.config.WorkspaceRoot, RelativeDir: relativeDir,
+		WorkspaceRoot: workspaceRoot, RelativeDir: relativeDir,
 		Argv: append([]string(nil), request.Argv...), Environment: cloneEnvironment(request.Environment),
 		NetworkProfile: "none", Timeout: time.Duration(request.TimeoutMS) * time.Millisecond,
 		CPUMillis: request.CPUMillis, MemoryMiB: request.MemoryMiB,
@@ -205,19 +250,24 @@ func (e *Executor) Execute(ctx context.Context, request sandboxprotocol.Request)
 		Image: e.config.Image, IdempotencyKey: request.IdempotencyKey,
 	})
 	if err != nil {
+		e.invalidateReadiness()
 		// The running receipt deliberately remains. A transport or engine error can be
 		// ambiguous, so the same effect is never repeated under the same identity.
-		return sandboxprotocol.Response{}, err
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return sandboxprotocol.Response{}, wrapExecutorError(executorErrTimeout, err)
+		}
+		return sandboxprotocol.Response{}, wrapExecutorError(executorErrFailed, err)
 	}
+	e.markReady()
 	response.IdempotencyKey = request.IdempotencyKey
 	response.RequestDigest = request.RequestDigest
 	completed := receipt{SchemaVersion: 1, Digest: request.RequestDigest, State: "completed", Response: &response}
 	completedPath, err := e.receiptPath(request.IdempotencyKey, ".done")
 	if err != nil {
-		return sandboxprotocol.Response{}, err
+		return sandboxprotocol.Response{}, wrapExecutorError(executorErrInternal, err)
 	}
 	if err := writeAtomicJSON(completedPath, completed); err != nil {
-		return sandboxprotocol.Response{}, fmt.Errorf("persisting sandbox completion receipt: %w", err)
+		return sandboxprotocol.Response{}, wrapExecutorError(executorErrInternal, fmt.Errorf("persisting sandbox completion receipt: %w", err))
 	}
 	// Keep the exclusive running marker. The completed receipt is authoritative,
 	// while the marker prevents an already-completed identity from ever being
@@ -228,20 +278,29 @@ func (e *Executor) Execute(ctx context.Context, request sandboxprotocol.Request)
 func (e *Executor) validateRequest(request sandboxprotocol.Request) error {
 	if request.SchemaVersion != 1 || !idempotencyPattern.MatchString(request.IdempotencyKey) ||
 		request.WorkspaceID != e.config.WorkspaceID || request.NetworkProfile != "none" {
-		return errors.New("sandbox request authority is invalid")
+		return newExecutorError(executorErrRequestPolicy, "sandbox request authority is invalid")
+	}
+	if request.ProfileVersion != "" && request.ProfileVersion != sandboxprotocol.LegacyProfileVersion && request.ProfileVersion != sandboxprotocol.ProfileVersion {
+		return newExecutorError(executorErrRequestPolicy, "sandbox request profile version is unsupported")
+	}
+	if request.ProfileVersion != sandboxprotocol.ProfileVersion && request.WorkspaceScope != "" {
+		return newExecutorError(executorErrWorkspaceSelection, "legacy sandbox requests cannot select a workspace scope")
+	}
+	if request.WorkspaceScope != "" && !workspaceScopePattern.MatchString(request.WorkspaceScope) {
+		return newExecutorError(executorErrWorkspaceSelection, "sandbox workspace selection is invalid")
 	}
 	digest, err := sandboxprotocol.Digest(request)
 	if err != nil || subtle.ConstantTimeCompare([]byte(digest), []byte(request.RequestDigest)) != 1 {
-		return errors.New("sandbox request digest is invalid")
+		return newExecutorError(executorErrRequestPolicy, "sandbox request digest is invalid")
 	}
 	if len(request.Argv) == 0 || len(request.Argv) > 128 {
-		return errors.New("sandbox argv is invalid")
+		return newExecutorError(executorErrRequestPolicy, "sandbox argv is invalid")
 	}
 	total := 0
 	for _, argument := range request.Argv {
 		total += len(argument)
 		if argument == "" || strings.ContainsRune(argument, '\x00') || len(argument) > 32768 || total > 262144 {
-			return errors.New("sandbox argv is invalid")
+			return newExecutorError(executorErrRequestPolicy, "sandbox argv is invalid")
 		}
 	}
 	if request.TimeoutMS <= 0 || request.TimeoutMS > e.config.MaxTimeoutMS ||
@@ -249,18 +308,64 @@ func (e *Executor) validateRequest(request sandboxprotocol.Request) error {
 		request.MemoryMiB <= 0 || request.MemoryMiB > e.config.MaxMemoryMiB ||
 		request.ProcessLimit <= 0 || request.ProcessLimit > e.config.MaxProcessLimit ||
 		request.OutputBytes <= 0 || request.OutputBytes > e.config.MaxOutputBytes {
-		return errors.New("sandbox request exceeds administrator resource limits")
+		return newExecutorError(executorErrRequestPolicy, "sandbox request exceeds administrator resource limits")
 	}
 	if len(request.Environment) > 64 {
-		return errors.New("sandbox environment is too large")
+		return newExecutorError(executorErrRequestPolicy, "sandbox environment is too large")
 	}
 	for key, value := range request.Environment {
 		upper := strings.ToUpper(key)
 		if !environmentPattern.MatchString(key) || len(value) > 4096 || strings.ContainsRune(value, '\x00') || sensitiveEnvironmentName(upper) {
-			return errors.New("sandbox environment contains a forbidden entry")
+			return newExecutorError(executorErrRequestPolicy, "sandbox environment contains a forbidden entry")
 		}
 	}
 	return nil
+}
+
+func resolveWorkspaceSelection(root, profileVersion, scope, relativeDir string) (string, string, error) {
+	if profileVersion != sandboxprotocol.ProfileVersion && scope != "" {
+		return "", "", newExecutorError(executorErrWorkspaceSelection, "legacy sandbox requests cannot select a workspace scope")
+	}
+	if directExecutorRepository(root) {
+		if scope != "" {
+			return "", "", newExecutorError(executorErrWorkspaceSelection, "sandbox workspace selection is invalid for a direct repository root")
+		}
+		resolvedDir, err := validateRelativeDirectory(root, relativeDir)
+		return root, resolvedDir, err
+	}
+	if profileVersion != sandboxprotocol.ProfileVersion && scope == "" && relativeDir != "" {
+		parts := strings.SplitN(relativeDir, "/", 2)
+		scope = parts[0]
+		relativeDir = ""
+		if len(parts) == 2 {
+			relativeDir = parts[1]
+		}
+	}
+	if scope == "" {
+		return "", "", newExecutorError(executorErrWorkspaceSelection, "sandbox workspace selection is required for a multi-repository root")
+	}
+	if strings.ContainsAny(scope, `/\\`) || !workspaceScopePattern.MatchString(scope) {
+		return "", "", newExecutorError(executorErrWorkspaceSelection, "sandbox workspace selection is invalid")
+	}
+	candidate := filepath.Join(root, filepath.FromSlash(scope))
+	entry, err := os.Lstat(candidate)
+	if err != nil || !entry.IsDir() || entry.Mode()&os.ModeSymlink != 0 {
+		return "", "", newExecutorError(executorErrWorkspaceSelection, "sandbox selected workspace is unavailable")
+	}
+	selected, err := canonicalDirectory(candidate)
+	if err != nil || filepath.Dir(selected) != root {
+		return "", "", newExecutorError(executorErrWorkspaceSelection, "sandbox workspace selection escapes configured root")
+	}
+	resolvedDir, err := validateRelativeDirectory(selected, relativeDir)
+	if err != nil {
+		return "", "", err
+	}
+	return selected, resolvedDir, nil
+}
+
+func directExecutorRepository(root string) bool {
+	marker, err := os.Lstat(filepath.Join(root, ".git"))
+	return err == nil && marker.Mode()&os.ModeSymlink == 0 && (marker.IsDir() || marker.Mode().IsRegular())
 }
 
 func sensitiveEnvironmentName(name string) bool {
@@ -274,43 +379,46 @@ func sensitiveEnvironmentName(name string) bool {
 
 func validateRelativeDirectory(root, raw string) (string, error) {
 	if strings.Contains(raw, "\\") || strings.ContainsRune(raw, '\x00') || strings.Contains(raw, ":") || strings.HasPrefix(raw, "/") {
-		return "", errors.New("sandbox relative working directory is invalid")
+		return "", newExecutorError(executorErrWorkingDirectory, "sandbox relative working directory is invalid")
 	}
 	cleaned := path.Clean(raw)
 	if cleaned == "." {
 		cleaned = ""
 	}
 	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return "", errors.New("sandbox relative working directory escapes workspace")
+		return "", newExecutorError(executorErrWorkingDirectory, "sandbox relative working directory escapes workspace")
 	}
 	candidate := filepath.Join(root, filepath.FromSlash(cleaned))
 	resolved, err := canonicalDirectory(candidate)
 	if err != nil {
-		return "", errors.New("sandbox working directory is unavailable")
+		return "", newExecutorError(executorErrWorkingDirectory, "sandbox working directory is unavailable")
 	}
 	relative, err := filepath.Rel(root, resolved)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
-		return "", errors.New("sandbox working directory escapes workspace")
+		return "", newExecutorError(executorErrWorkingDirectory, "sandbox working directory escapes workspace")
 	}
 	return filepath.ToSlash(relative), nil
 }
 
-func scanWorkspace(root string) error {
+func scanWorkspace(ctx context.Context, root string) error {
 	entries := 0
 	return filepath.WalkDir(root, func(current string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
-			return errors.New("sandbox workspace preflight failed")
+			return newExecutorError(executorErrWorkspaceUnavailable, "sandbox workspace preflight failed")
 		}
 		entries++
 		if entries > maxWorkspaceEntries {
-			return errors.New("sandbox workspace preflight exceeded entry limit")
+			return newExecutorError(executorErrWorkspaceUnavailable, "sandbox workspace preflight exceeded entry limit")
 		}
 		relative, err := filepath.Rel(root, current)
 		if err != nil {
-			return errors.New("sandbox workspace preflight failed")
+			return newExecutorError(executorErrWorkspaceUnavailable, "sandbox workspace preflight failed")
 		}
 		if relative != "." && policy.IsSecretPath(relative) {
-			return errors.New("sandbox workspace contains a policy-denied secret path")
+			return newExecutorError(executorErrWorkspaceSecret, "sandbox workspace contains a policy-denied secret path")
 		}
 		return nil
 	})
@@ -368,7 +476,13 @@ func createExclusiveJSON(file string, value any) (bool, error) {
 	if syncErr != nil {
 		return false, syncErr
 	}
-	return true, closeErr
+	if closeErr != nil {
+		return false, closeErr
+	}
+	if err := syncDirectory(filepath.Dir(file)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func writeAtomicJSON(file string, value any) error {
@@ -393,7 +507,10 @@ func writeAtomicJSON(file string, value any) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(name, file)
+	if err := os.Rename(name, file); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(file))
 }
 
 func readReceipt(file string) (receipt, error) {

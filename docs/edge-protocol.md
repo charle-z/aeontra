@@ -101,9 +101,11 @@ POST /edge/v1/tasks/<task_id>/complete
 
 A lease lasts 15 seconds to 10 minutes. Repeating a lease request with the same
 device and holder returns the same unexpired lease. Another holder cannot receive
-that task concurrently. Once expired, the same task and idempotency key may be
-redelivered with a new lease id and incremented attempt. The WSL agent journals
-that idempotency key locally before execution and replays a previously completed
+that task concurrently. Once expired, a task is requeued behind work that was
+already waiting; the same task and idempotency key may be redelivered with a new
+lease id and incremented attempt. After four expired leases it fails closed with
+the stable `task_recovery_exhausted` summary. The WSL agent journals that
+idempotency key locally before execution and replays a previously completed
 result instead of executing twice. If it finds a `started` entry after a crash, it
 fails closed for manual reconciliation rather than rerun.
 

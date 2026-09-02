@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -71,9 +72,14 @@ func runHealthcheck() error {
 			return errors.New("sandbox runner healthcheck redirect rejected")
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
-	return checkRunnerHealth(ctx, baseURL, strings.TrimSpace(os.Getenv(tokenEnv)), client)
+	image := strings.ToLower(strings.TrimSpace(os.Getenv(imageEnv)))
+	separator := strings.LastIndex(image, "@")
+	if separator < 0 {
+		return errors.New("sandbox runner healthcheck image identity is invalid")
+	}
+	return checkRunnerHealth(ctx, baseURL, strings.TrimSpace(os.Getenv(tokenEnv)), image[separator+1:], client)
 }
 
 func runnerHealthcheckURL(address string) (string, error) {
@@ -91,11 +97,11 @@ func runnerHealthcheckURL(address string) (string, error) {
 	return "http://" + net.JoinHostPort(host, port), nil
 }
 
-func checkRunnerHealth(ctx context.Context, baseURL, token string, client *http.Client) error {
-	if client == nil || strings.TrimSpace(baseURL) == "" || strings.TrimSpace(token) == "" {
+func checkRunnerHealth(ctx context.Context, baseURL, token, imageDigest string, client *http.Client) error {
+	if client == nil || strings.TrimSpace(baseURL) == "" || strings.TrimSpace(token) == "" || strings.TrimSpace(imageDigest) == "" {
 		return errors.New("sandbox runner healthcheck authority is incomplete")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/status", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/status?profile_version="+url.QueryEscape(sandboxprotocol.ProfileVersion), nil)
 	if err != nil {
 		return errors.New("sandbox runner healthcheck request is invalid")
 	}
@@ -117,8 +123,9 @@ func checkRunnerHealth(ctx context.Context, baseURL, token string, client *http.
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return errors.New("sandbox runner healthcheck response has trailing data")
 	}
-	if !status.Available || !status.Rootless {
-		return errors.New("sandbox runner is not available on a rootless engine")
+	if !status.Available || !status.Rootless || status.Backend != sandboxprotocol.Backend ||
+		status.NetworkProfile != "none" || status.ImageDigest != imageDigest || status.ProfileVersion != sandboxprotocol.ProfileVersion {
+		return errors.New("sandbox runner readiness identity is unavailable or inconsistent")
 	}
 	return nil
 }

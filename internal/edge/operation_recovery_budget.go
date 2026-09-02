@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	maxPrivilegedOperationLeaseAttempts      = 4
+	maxOperationLeaseAttempts                = 4
 	maxPrivilegedOperationRecoveryWindow     = 20 * time.Minute
 	privilegedOperationRecoveryExhaustedCode = "operation_recovery_exhausted"
 )
@@ -25,14 +25,14 @@ func recoverExpiredOperationLeases(executor operationLeaseRecoveryExecutor, now 
 	_, err := executor.Exec(`UPDATE edge_operations SET
 		state=CASE
 			WHEN cancel_requested=1 THEN 'cancelled'
-			WHEN kind IN ('bundle_update','bundle_rollback','edge_repair') AND
-				(lease_attempts>=? OR (first_leased_at IS NOT NULL AND first_leased_at<=?)) THEN 'failed'
+			WHEN lease_attempts>=? OR (kind IN ('bundle_update','bundle_rollback','edge_repair') AND
+				first_leased_at IS NOT NULL AND first_leased_at<=?) THEN 'failed'
 			ELSE 'queued'
 		END,
 		safe_code=CASE
 			WHEN cancel_requested=1 THEN 'operation_cancelled'
-			WHEN kind IN ('bundle_update','bundle_rollback','edge_repair') AND
-				(lease_attempts>=? OR (first_leased_at IS NOT NULL AND first_leased_at<=?)) THEN 'operation_recovery_exhausted'
+			WHEN lease_attempts>=? OR (kind IN ('bundle_update','bundle_rollback','edge_repair') AND
+				first_leased_at IS NOT NULL AND first_leased_at<=?) THEN 'operation_recovery_exhausted'
 			ELSE ''
 		END,
 		progress_json=CASE WHEN cancel_requested=1 THEN progress_json ELSE NULL END,
@@ -41,8 +41,8 @@ func recoverExpiredOperationLeases(executor operationLeaseRecoveryExecutor, now 
 		finalizing_at=CASE WHEN cancel_requested=1 THEN finalizing_at ELSE NULL END,
 		lease_id=NULL,lease_until=NULL,updated_at=?
 		WHERE `+scopeColumn+`=? AND state='leased' AND lease_until<=?`,
-		maxPrivilegedOperationLeaseAttempts, cutoff,
-		maxPrivilegedOperationLeaseAttempts, cutoff,
+		maxOperationLeaseAttempts, cutoff,
+		maxOperationLeaseAttempts, cutoff,
 		now.UnixNano(), scopeValue, now.UnixNano())
 	return err
 }

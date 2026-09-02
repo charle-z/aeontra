@@ -36,11 +36,17 @@ type SandboxRunResult struct {
 }
 
 type SandboxStatusInfo struct {
-	Available     bool
-	Backend       string
-	DefaultEgress string
-	FreeTerminal  bool
-	Notes         []string
+	Available       bool
+	Backend         string
+	DefaultEgress   string
+	FreeTerminal    bool
+	ContainerReady  bool
+	ExecReady       bool
+	FilesystemReady bool
+	GitReady        bool
+	NetworkPolicy   string
+	ToolchainState  string
+	Notes           []string
 }
 
 // NewSandboxRunner returns the sandbox runner for a configured backend name
@@ -107,6 +113,13 @@ func (p pendingSandboxRunner) Run(context.Context, SandboxRunRequest) (SandboxRu
 // output is redacted before return. This is "broad execution, contained": it never
 // grants the model a general-purpose control plane over the host.
 func (s *ExecutionCapability) SandboxExec(argv []string) (string, error) {
+	return s.SandboxExecIn(argv, "")
+}
+
+// SandboxExecIn is SandboxExec with an explicit, jailed working directory. A
+// multi-repository root requires this selection so the private executor mounts
+// only one direct workspace rather than the complete repository jail.
+func (s *ExecutionCapability) SandboxExecIn(argv []string, cwd string) (string, error) {
 	sp := s.log.Start("sandbox_exec")
 	if len(argv) == 0 {
 		err := fmt.Errorf("command is required")
@@ -124,14 +137,19 @@ func (s *ExecutionCapability) SandboxExec(argv []string) (string, error) {
 		return "", err
 	}
 
-	res, runErr := s.sandbox.Run(context.Background(), SandboxRunRequest{Dir: s.root, Argv: argv})
+	dir, err := s.workdir(cwd)
+	if err != nil {
+		sp.Finish(audit.Deny, summarize(argv...), nil, err)
+		return "", err
+	}
+	res, runErr := s.sandbox.Run(context.Background(), SandboxRunRequest{Dir: dir, Argv: argv})
 	combined := strings.TrimRight(res.Stdout+"\n"+res.Stderr, "\n")
 	out := s.redact(combined)
 	if runErr != nil {
-		sp.Finish(audit.Error, summarize(argv...), nil, runErr)
+		sp.Finish(audit.Error, summarize(argv...), []string{dir}, runErr)
 		return out, fmt.Errorf("sandbox exec failed: %w", runErr)
 	}
-	sp.Finish(audit.Allow, summarize(argv...), nil, nil)
+	sp.Finish(audit.Allow, summarize(argv...), []string{dir}, nil)
 	return fmt.Sprintf("[exit %d, backend %s, egress %s]\n%s", res.ExitCode, res.SandboxBackend, res.EgressProfile, out), nil
 }
 
@@ -150,6 +168,12 @@ func formatSandboxStatus(status SandboxStatusInfo) string {
 	fmt.Fprintf(&b, "backend: %s\n", status.Backend)
 	fmt.Fprintf(&b, "default_egress: %s\n", status.DefaultEgress)
 	fmt.Fprintf(&b, "free_terminal: %t\n", status.FreeTerminal)
+	fmt.Fprintf(&b, "container_ready: %t\n", status.ContainerReady)
+	fmt.Fprintf(&b, "exec_ready: %t\n", status.ExecReady)
+	fmt.Fprintf(&b, "filesystem_ready: %t\n", status.FilesystemReady)
+	fmt.Fprintf(&b, "git_ready: %t\n", status.GitReady)
+	fmt.Fprintf(&b, "network_policy: %s\n", status.NetworkPolicy)
+	fmt.Fprintf(&b, "toolchain: %s\n", status.ToolchainState)
 	if len(status.Notes) > 0 {
 		b.WriteString("notes:\n")
 		for _, note := range status.Notes {

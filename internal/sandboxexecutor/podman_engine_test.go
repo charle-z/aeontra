@@ -68,7 +68,7 @@ func TestPodmanCreateSpecContainsOnlyReviewedAuthority(t *testing.T) {
 		`"no_new_privileges":true`,
 		`"user":"1001:1001"`,
 		`"source":"/srv/work/repo","destination":"/workspace","type":"bind","options":["rw","rbind","rprivate"]`,
-		`"source":"tmpfs","destination":"/tmp","type":"tmpfs","options":["rw","nosuid","nodev","size=268435456"]`,
+		`"source":"tmpfs","destination":"/tmp","type":"tmpfs","options":["rw","exec","nosuid","nodev","size=268435456"]`,
 		`"work_dir":"/workspace/sub"`,
 		`"CI":"1"`,
 		`"limit":805306368`,

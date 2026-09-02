@@ -65,6 +65,11 @@ func (store *projectToolEdgeStore) WaitOperation(_ context.Context, operationID 
 		operation.Result.SnapshotHead = "0123456789abcdef0123456789abcdef01234567"
 		operation.Result.SnapshotClean = true
 	}
+	if store.createdKind == edge.OperationProjectStatus {
+		operation.Result.ProjectToolchainState = "edge-required"
+		operation.Result.ProjectToolchainRoute = "edge-toolbox"
+		operation.Result.ProjectToolchainManifests = []string{"rust-toolchain.toml", "package.json"}
+	}
 	return operation, nil
 }
 
@@ -118,7 +123,10 @@ func TestProjectToolsUseHumanAliasesAndHideOpaqueIDs(t *testing.T) {
 	if store.createdKind != edge.OperationProjectStatus || store.createdRequest.Repository != "" {
 		t.Fatalf("status kind=%q request=%+v", store.createdKind, store.createdRequest)
 	}
-	if strings.Contains(output, "ws_333") || !strings.Contains(output, `"state":"ready"`) {
+	if strings.Contains(output, "ws_333") || !strings.Contains(output, `"state":"ready"`) ||
+		!strings.Contains(output, `"toolchain_state":"edge-required"`) ||
+		!strings.Contains(output, `"toolchain_route":"edge-toolbox"`) ||
+		!strings.Contains(output, `"toolchain_manifests":["rust-toolchain.toml","package.json"]`) {
 		t.Fatalf("status output=%s", output)
 	}
 }

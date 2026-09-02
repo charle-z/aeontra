@@ -26,6 +26,7 @@ const (
 	ReasonDependencyPending Reason = "dependency_pending"
 	ReasonDependencyFailed  Reason = "dependency_failed"
 	ReasonLeaseExpired      Reason = "lease_expired"
+	ReasonRecoveryExhausted Reason = "recovery_exhausted"
 	ReasonCancelled         Reason = "cancelled"
 	ReasonCancelRequested   Reason = "cancel_requested"
 )
@@ -37,6 +38,7 @@ const (
 	DefaultMaxJobsPerWorkspace       = 64
 	MaxDependencies                  = 16
 	MaxListResults                   = 100
+	MaxLeaseAttempts                 = 4
 	MinLeaseTTL                      = 15 * time.Second
 	MaxLeaseTTL                      = 10 * time.Minute
 	TargetMaxBytes             int64 = 64 << 20

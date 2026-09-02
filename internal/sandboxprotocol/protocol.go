@@ -4,11 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"regexp"
 )
 
 const (
-	Backend        = "rootless-podman"
-	ProfileVersion = "l3-v1"
+	Backend              = "rootless-podman"
+	LegacyProfileVersion = "l3-v1"
+	ProfileVersion       = "l3-v2"
 )
 
 type Status struct {
@@ -22,9 +24,11 @@ type Status struct {
 
 type Request struct {
 	SchemaVersion  int               `json:"schema_version"`
+	ProfileVersion string            `json:"profile_version,omitempty"`
 	IdempotencyKey string            `json:"idempotency_key"`
 	RequestDigest  string            `json:"request_digest"`
 	WorkspaceID    string            `json:"workspace_id"`
+	WorkspaceScope string            `json:"workspace_scope,omitempty"`
 	RelativeDir    string            `json:"relative_dir"`
 	Argv           []string          `json:"argv"`
 	Environment    map[string]string `json:"environment,omitempty"`
@@ -34,6 +38,21 @@ type Request struct {
 	MemoryMiB      int               `json:"memory_mib"`
 	ProcessLimit   int               `json:"process_limit"`
 	OutputBytes    int               `json:"output_bytes"`
+}
+
+// Error is the bounded public failure contract returned by the private executor.
+// Code and Message are selected by the executor; raw engine, path and host details
+// never cross the private boundary.
+type Error struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Retryable bool   `json:"retryable"`
+}
+
+var errorCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
+
+func ValidError(value Error) bool {
+	return errorCodePattern.MatchString(value.Code) && value.Message != "" && len(value.Message) <= 512
 }
 
 type Response struct {
