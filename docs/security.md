@@ -38,6 +38,12 @@ Additional boundaries:
   domains with independently scoped credentials.
 - Source release, VPS deployment, and installed Edge state require separate evidence.
 
+GitHub authority is intentionally split. `project_github_status` describes the private
+Edge broker for a registered development project; source-hosting issue, fork, pull
+request and Actions operations use the server-side source broker. A workcell's
+`gh auth status` therefore does not determine either broker's configuration. Neither
+broker exposes its token to a workcell, repository, model, tool schema or public result.
+
 ## Threat model
 
 MCP Devbox assumes an AI client may emit malicious, mistaken, or prompt-injected tool
@@ -142,6 +148,67 @@ creation, deployment, notes, fixed privileged tasks, and managed validation-runn
 creation. There is no force push, mirror, tags, caller refspec, caller credential, free
 host command, arbitrary Coolify payload, or arbitrary Edge operation.
 
+## Development environment state and recovery
+
+The development Edge treats a registered workspace as mutable by design. Its project
+state is not inferred from `git status --porcelain` alone:
+
+```text
+registered  -> ready | dirty
+                     \-> unavailable | timeout | identity_mismatch | corrupt
+                     \-> unsafe_boundary
+```
+
+`dirty` means that the registered repository is still the same authorized workspace but
+contains normal source, generated or untracked changes. It is not a security violation.
+`identity_mismatch` means the durable workspace attestation no longer matches; `corrupt`
+means required repository metadata cannot be interpreted; `unsafe_boundary` means a
+containment, ownership, symlink or mount invariant failed. Environmental inspection
+failures are reported as `unavailable` or `timeout`. These states have separate stable
+error codes and bounded diagnostic reasons rather than sharing `project_checkout_unsafe`.
+Public diagnostics omit paths, raw Git output, credentials and internal identifiers.
+
+The registry is the first source for normal project resolution. Git inspection is used
+when current branch, commit or cleanliness is requested. Process observation and
+termination use the durable process binding captured at start and do not re-discover a
+project or require a clean tree. This prevents a slow Git status or ordinary build
+output from stranding an already-authorized process.
+
+The Edge keeps four roots per workspace:
+
+```text
+source     registered checkout
+runtime    private toolchain homes and mutable runtime state
+cache      private package/compiler caches
+artifacts  private generated evidence and managed files
+```
+
+Runtime, cache and artifact roots are under the administrator-controlled Edge state
+root, outside the source checkout. Only the exact roots are mounted into the selected
+workcell or rootless toolbox. Existing legacy `.mcp-devbox` data is not removed or
+silently adopted as authority.
+
+Project claims and toolbox records carry an owner-bound identity and generation. Stale
+claims can be identified and reconciled without scanning unrelated repositories. A
+toolbox can be restarted or reconciled only when its workspace, mount policy, rootless
+engine identity and ownership still validate; otherwise it fails closed and can be
+controlled-recreated without deleting the source workspace. Schema migrations are
+additive and reject unknown newer schemas.
+
+The Edge scheduler uses bounded shared capacity for independent project, Git inspection,
+process and toolbox operations. Signed bundle update, rollback and repair acquire an
+Edge-wide exclusive gate. A long build in one project therefore does not hold the
+execution gate for status in another project, while global maintenance cannot overlap
+ordinary work. Leases, fences and terminal journal writes remain durable; completion
+validation and the terminal write share one store lock to prevent cancellation or
+recovery races.
+
+Durable process rows persist project owner/repository, claim generation, profile, mode,
+workspace binding and the OS process identity captured at start. Status, signal, stop,
+stdin and cleanup validate that binding plus PID/start-time identity, preventing PID
+reuse and cross-project control without consulting mutable Git state. Legacy rows are
+migrated with conservative defaults and do not gain broader authority.
+
 ## Secret handling and grants
 
 Defense is layered:
@@ -237,6 +304,11 @@ component. The signing private key is not installed on the Edge.
 The package/updater stages and verifies the complete release, activates it atomically,
 checks the fixed service, and restores the previous signed release on failure. Public
 update tools select only the official stable channel or previous known signed release.
+
+Ordinary operation leases are also gated by the installed bundle protocol and catalog
+hash. A mismatched Edge can lease only the bounded status/update/rollback/repair paths
+needed to recover. This keeps backend and Edge version skew from surfacing as an opaque
+executor failure while preserving the rollback path to older backends.
 They cannot supply a URL, archive, executable, service, hash, or script. Repair restores
 only official packaged components and fixed links/units.
 
@@ -503,6 +575,13 @@ acknowledges kill without exiting. The creation time is revalidated on that same
 before termination, and `interrupt` has no forced fallback. The worker-owned Job Object
 kills its contained descendants when the wrapper exits.
 
+The process journal also records the owner-bound repository, claim generation, selected
+profile and mode, and workspace binding captured at start. These fields are used for
+authorization after a project alias is released or reassociated; a later Git change
+does not invalidate status or stop for that already-authorized process. Records from
+older schema versions are migrated with empty legacy fields and remain subject to the
+older, stricter checks until a new binding is captured.
+
 Redaction is not a substitute for keeping secrets out of inputs and storage.
 
 ## Secure deployment checklist
@@ -548,6 +627,9 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
 - A compromised administrator, host kernel, reverse proxy, signing key, or external
   integration can defeat the corresponding boundary.
 - Resource limits reduce denial-of-service risk but cannot guarantee availability.
+- Edge operation capacity is deliberately bounded. Normal work can run concurrently,
+  but signed update, rollback and repair are exclusive; a full pool can still make a
+  request wait until its own deadline.
 - The model can damage data inside its selected writable workspace.
 - No formal verification or universal cross-platform OS sandbox is claimed.
 

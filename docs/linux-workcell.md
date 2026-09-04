@@ -147,17 +147,18 @@ All metadata remains in the local SQLite registry. A legacy workspace row is mig
 
 ## Runtime filesystem
 
-Every Linux Workcell creates these private paths idempotently:
+Current Edge releases keep mutable development state outside the Git checkout:
 
 ```text
-<workspace>/.mcp-devbox/
-├── instructions.md       # rendered per runtime, mode 0400
-├── current-state.md      # durable checkpoint, mode 0600, bounded to 1 MiB
-├── tool-inventory.json   # sanitized local inventory, mode 0400
-├── tools/                # user-scoped package/tool prefixes
-├── cache/                # package caches
-└── runtime/              # temporary runtime-owned files
+<edge-state>/project-runtime/<workspace-id>/
+<edge-state>/project-cache/<workspace-id>/
+<edge-state>/project-artifacts/<workspace-id>/
 ```
+
+The runtime root contains the isolated HOME, toolchain homes and user-installed
+binaries. Package-manager and compiler caches use the cache root. Managed outputs use
+the artifact root. Exact host paths stay private; Linux mounts them as `/runtime`,
+`/cache` and `/artifacts`.
 
 HTB mode additionally creates:
 
@@ -172,28 +173,32 @@ tickets/
 
 Directories are private (`0700`). Atomic replacement rejects symlinked or unsafe parents and targets.
 
-Project cleanliness checks treat only untracked files inside this exact
-`.mcp-devbox/` namespace as Edge-owned runtime state. They still fail closed for all
-tracked or staged changes there and for every change outside the namespace. This keeps
-tool caches and the isolated runtime HOME from blocking the registered project while
-preserving dirty-checkout protection for repository work.
+New runtime or toolchain state is never created in the source-side `.mcp-devbox/`
+namespace. Explicit legacy runtime paths remain recognizable when Git reports them
+individually; an ambiguous collapsed `.mcp-devbox/` directory is treated as an ordinary
+dirty checkout. Dirty source never invalidates filesystem or repository identity and
+does not block status or process control.
 
 ## User-scoped dependencies
 
-The workcell environment points package managers to the workspace:
+The workcell environment points package managers to the private runtime and cache
+mounts:
 
 ```text
-PATH=<workspace>/.mcp-devbox/tools/bin:...
-XDG_CACHE_HOME=<workspace>/.mcp-devbox/cache
-PIP_CACHE_DIR=<workspace>/.mcp-devbox/cache/pip
-npm_config_cache=<workspace>/.mcp-devbox/cache/npm
-PNPM_HOME=<workspace>/.mcp-devbox/tools/bin
-PIPX_HOME=<workspace>/.mcp-devbox/tools/pipx
-PIPX_BIN_DIR=<workspace>/.mcp-devbox/tools/bin
-GOPATH=<workspace>/.mcp-devbox/tools/go
-GOBIN=<workspace>/.mcp-devbox/tools/bin
-CARGO_HOME=<workspace>/.mcp-devbox/tools/cargo
-RUSTUP_HOME=<workspace>/.mcp-devbox/tools/rustup
+PATH=/runtime/tools/bin:/runtime/cargo/bin:/runtime/go/bin:/runtime/pnpm:...
+HOME=/runtime/home
+XDG_CACHE_HOME=/cache
+PIP_CACHE_DIR=/cache/pip
+npm_config_cache=/cache/npm
+PNPM_HOME=/runtime/pnpm
+PIPX_HOME=/runtime/pipx
+PIPX_BIN_DIR=/runtime/tools/bin
+GOPATH=/runtime/go
+GOBIN=/runtime/tools/bin
+GOMODCACHE=/cache/go-mod
+GOCACHE=/cache/go-build
+CARGO_HOME=/runtime/cargo
+RUSTUP_HOME=/runtime/rustup
 TMPDIR=/tmp (private Bubblewrap tmpfs for each direct command)
 ```
 
@@ -218,9 +223,9 @@ The inventory is a local observation, not an installation plan. The networkless 
 workcell has a separate fixed image matrix: Go, Rust/Cargo, Python, Node/npm and the
 C/C++ compiler baseline are included; Java/JDK, CMake, pnpm and alternate versions are
 Edge-toolbox capabilities. The persistent Edge path keeps manager binaries and caches
-under `.mcp-devbox/tools` and `.mcp-devbox/cache`, so it does not write host-global
-toolchains. A project manifest may therefore be `edge-required` even when the local
-inventory reports a related compiler or runtime.
+in the workspace-bound runtime and cache roots, so it writes neither the source
+checkout nor host-global toolchains. A project manifest may therefore be
+`edge-required` even when the local inventory reports a related compiler or runtime.
 
 ## Rootless Docker or Podman
 
@@ -266,7 +271,7 @@ The socket is powerful within the rootless user's namespace. Rootless does not m
 `dev` is the default and adds no hacking instructions. The goal may ask OpenCode to:
 
 - inspect and modify the selected repository;
-- install dependencies into workspace-local prefixes;
+- install dependencies into the workspace-bound runtime and cache roots;
 - run checks, tests, builds, browsers, and temporary services;
 - build and run rootless containers;
 - start PostgreSQL or a Chromium smoke environment;

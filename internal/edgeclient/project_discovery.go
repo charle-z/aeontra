@@ -82,7 +82,7 @@ func DiscoverProjectCheckout(ctx context.Context, config ProjectDiscoveryConfig,
 	}
 	inspector := config.Inspector
 	if inspector == nil {
-		inspector = newProjectCheckoutInspector()
+		inspector = newProjectCheckoutInspectorWithRoots(roots)
 	}
 	maxEntries := config.MaxEntries
 	if maxEntries == 0 {

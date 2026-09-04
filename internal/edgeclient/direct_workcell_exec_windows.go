@@ -40,9 +40,16 @@ var (
 type DirectWorkcellCommandRequest struct {
 	OperationID string
 	Workspace   Workspace
+	// StateRoot is the configured private Edge state root. Runtime roots are
+	// derived from it and Workspace.ID, never from Workspace.Path.
+	StateRoot string
 	// WindowsDevRoot must be copied from the registry-resolved Workspace;
 	// callers may not derive it from the requested workspace path.
 	WindowsDevRoot string
+	// WorkspaceRoots are administrator-owned roots used to constrain Git
+	// metadata attestation. They are supplied by the project registry, not the
+	// MCP request surface.
+	WorkspaceRoots WorkspaceRoots
 	Argv           []string
 	CWD            string
 	Stdin          string
@@ -78,10 +85,19 @@ type DirectWorkcellProcessSpec struct {
 	PersistentMaxLogBytes int64
 	PersistentStdin       string
 
-	workspaceHandle *WindowsWorkspace
-	cwdHandle       *WindowsWorkspace
-	tempHandle      *WindowsWorkspace
-	codeHomeHandle  *WindowsWorkspace
+	workspaceHandle      *WindowsWorkspace
+	cwdHandle            *WindowsWorkspace
+	tempHandle           *WindowsWorkspace
+	runtimeHandle        *WindowsWorkspace
+	cacheHandle          *WindowsWorkspace
+	artifactsHandle      *WindowsWorkspace
+	runtimeRoots         ProjectRuntimeRoots
+	workspaceRoot        string
+	workspacePath        string
+	cwdPath              string
+	workspaceAttestation string
+	workspaceRoots       WorkspaceRoots
+	runtimeAttestation   string
 }
 
 type DirectWorkcellCommandRunner interface {
@@ -180,31 +196,45 @@ func prepareDirectWorkcellProcessSpec(request DirectWorkcellCommandRequest, stdo
 		}
 		workDir = cwd.FinalPath()
 	}
-	tempDir, tempHandle, err := createWindowsDirectWorkcellTemp(workspace.FinalPath())
-	if err != nil {
+	stateRoot := filepath.Clean(strings.TrimSpace(request.StateRoot))
+	if stateRoot == "" {
+		stateRoot = filepath.Join(os.TempDir(), "mcp-devbox-runtime-state")
+	}
+	if WindowsPathContained(workspace.FinalPath(), stateRoot) || strings.EqualFold(filepath.Clean(workspace.FinalPath()), stateRoot) {
 		return DirectWorkcellProcessSpec{}, ErrDirectWorkcellContract
 	}
-	codeHomeHandle, err := prepareWindowsCodexHome(request.Environment, workspace.FinalPath())
+	runtimeRoots, runtimeHandles, tempDir, tempHandle, err := createWindowsDirectWorkcellRuntime(stateRoot, request.Workspace.ID)
 	if err != nil {
-		_ = tempHandle.Close()
 		return DirectWorkcellProcessSpec{}, ErrDirectWorkcellContract
 	}
 
 	systemRoot := windowsDirectSystemRoot()
-	environment, pathValue, err := windowsDirectWorkcellEnvironment(request.Environment, tempDir, systemRoot)
+	environment, pathValue, err := windowsDirectWorkcellEnvironment(request.Environment, tempDir, systemRoot, runtimeRoots)
 	if err != nil {
 		_ = tempHandle.Close()
-		if codeHomeHandle != nil {
-			_ = codeHomeHandle.Close()
-		}
+		closeWindowsRuntimeHandles(runtimeHandles)
 		return DirectWorkcellProcessSpec{}, err
 	}
 	executable, err := resolveWindowsDirectExecutable(request.Argv[0], pathValue)
 	if err != nil {
 		_ = tempHandle.Close()
-		if codeHomeHandle != nil {
-			_ = codeHomeHandle.Close()
-		}
+		closeWindowsRuntimeHandles(runtimeHandles)
+		return DirectWorkcellProcessSpec{}, ErrDirectWorkcellContract
+	}
+	attestation, err := captureProjectProcessWorkspaceAttestationWithRoots(request.WindowsDevRoot, workspace.FinalPath(), cwd.FinalPath(), workspaceRootsPointer(request.WorkspaceRoots))
+	if err != nil {
+		_ = tempHandle.Close()
+		closeWindowsRuntimeHandles(runtimeHandles)
+		_ = cwd.Close()
+		_ = workspace.Close()
+		return DirectWorkcellProcessSpec{}, ErrDirectWorkcellContract
+	}
+	runtimeAttestation, err := captureProjectProcessRuntimeAttestation(stateRoot, runtimeRoots)
+	if err != nil {
+		_ = tempHandle.Close()
+		closeWindowsRuntimeHandles(runtimeHandles)
+		_ = cwd.Close()
+		_ = workspace.Close()
 		return DirectWorkcellProcessSpec{}, ErrDirectWorkcellContract
 	}
 
@@ -218,7 +248,10 @@ func prepareDirectWorkcellProcessSpec(request DirectWorkcellCommandRequest, stdo
 		Stdin:      strings.NewReader(request.Stdin),
 		Stdout:     stdout,
 		Stderr:     stderr,
-		tempHandle: tempHandle, codeHomeHandle: codeHomeHandle, workspaceHandle: workspace, cwdHandle: cwd,
+		tempHandle: tempHandle, workspaceHandle: workspace, cwdHandle: cwd,
+		runtimeHandle: runtimeHandles.runtime, cacheHandle: runtimeHandles.cache, artifactsHandle: runtimeHandles.artifacts,
+		runtimeRoots: runtimeRoots, runtimeAttestation: runtimeAttestation, workspaceRoot: request.WindowsDevRoot,
+		workspacePath: workspace.FinalPath(), cwdPath: cwd.FinalPath(), workspaceAttestation: attestation, workspaceRoots: request.WorkspaceRoots,
 	}, nil
 }
 
@@ -292,17 +325,36 @@ func windowsDirectSystemRoot() string {
 	return filepath.Clean(root)
 }
 
-func windowsDirectWorkcellEnvironment(requested map[string]string, tempDir, systemRoot string) ([]string, string, error) {
+func windowsDirectWorkcellEnvironment(requested map[string]string, tempDir, systemRoot string, runtimeRoots ProjectRuntimeRoots) ([]string, string, error) {
 	if !IsWindowsLocalPath(systemRoot) {
 		return nil, "", ErrDirectWorkcellContract
 	}
 	system32 := filepath.Join(systemRoot, "System32")
-	pathValue := strings.Join([]string{system32, systemRoot, filepath.Join(system32, "Wbem"), filepath.Join(system32, "WindowsPowerShell", "v1.0")}, ";")
+	pathValue := strings.Join([]string{filepath.Join(runtimeRoots.Runtime, "tools", "bin"), filepath.Join(runtimeRoots.Runtime, "cargo", "bin"), filepath.Join(runtimeRoots.Runtime, "go", "bin"), filepath.Join(runtimeRoots.Runtime, "pnpm"), filepath.Join(runtimeRoots.Runtime, "tools", "go", "bin"), filepath.Join(runtimeRoots.Runtime, "tools", "cargo", "bin"), system32, systemRoot, filepath.Join(system32, "Wbem"), filepath.Join(system32, "WindowsPowerShell", "v1.0")}, ";")
+	home := filepath.Join(runtimeRoots.Runtime, "home")
 	baseline := map[string]string{
 		"ComSpec":                    filepath.Join(system32, "cmd.exe"),
+		"CODEX_HOME":                 filepath.Join(runtimeRoots.Runtime, "codex"),
+		"CARGO_HOME":                 filepath.Join(runtimeRoots.Runtime, "cargo"),
+		"RUSTUP_HOME":                filepath.Join(runtimeRoots.Runtime, "rustup"),
+		"GRADLE_USER_HOME":           filepath.Join(runtimeRoots.Cache, "gradle"),
+		"GOPATH":                     filepath.Join(runtimeRoots.Runtime, "go"),
+		"GOBIN":                      filepath.Join(runtimeRoots.Runtime, "tools", "bin"),
+		"GOMODCACHE":                 filepath.Join(runtimeRoots.Cache, "go-mod"),
+		"GOCACHE":                    filepath.Join(runtimeRoots.Cache, "go-build"),
+		"HOME":                       home,
+		"USERPROFILE":                home,
+		"NPM_CONFIG_CACHE":           filepath.Join(runtimeRoots.Cache, "npm"),
+		"PNPM_HOME":                  filepath.Join(runtimeRoots.Runtime, "pnpm"),
+		"PIP_CACHE_DIR":              filepath.Join(runtimeRoots.Cache, "pip"),
+		"UV_CACHE_DIR":               filepath.Join(runtimeRoots.Cache, "uv"),
+		"MAVEN_HOME":                 filepath.Join(runtimeRoots.Runtime, "maven"),
 		"MCP_DEVBOX_MODE":            string(WorkspaceModeDev),
 		"MCP_DEVBOX_NETWORK_POSTURE": WindowsWorkcellNetworkPosture,
 		"MCP_DEVBOX_PROFILE":         string(WorkspaceProfileWindowsWorkcell),
+		"MCP_DEVBOX_RUNTIME_ROOT":    runtimeRoots.Runtime,
+		"MCP_DEVBOX_CACHE_ROOT":      runtimeRoots.Cache,
+		"MCP_DEVBOX_ARTIFACT_ROOT":   runtimeRoots.Artifacts,
 		"PATHEXT":                    ".COM;.EXE;.BAT;.CMD",
 		"PATH":                       pathValue,
 		"SystemRoot":                 systemRoot,
@@ -336,6 +388,8 @@ func windowsDirectWorkcellReservedEnvironmentKey(key string) bool {
 	case "PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP",
 		"HOME", "USER", "USERNAME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA",
 		"PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)",
+		"CODEX_HOME", "CARGO_HOME", "RUSTUP_HOME", "NPM_CONFIG_CACHE", "PNPM_HOME", "PIP_CACHE_DIR", "UV_CACHE_DIR",
+		"MAVEN_HOME", "GRADLE_USER_HOME", "GOPATH", "GOBIN", "GOMODCACHE", "GOCACHE",
 		"CONTAINER_HOST", "DOCKER_HOST", "DOCKER_CONFIG", "KUBECONFIG", "SSH_AUTH_SOCK":
 		return true
 	}
@@ -382,55 +436,94 @@ func validateWindowsDirectExecutablePath(path string) (string, error) {
 	return filepath.Clean(path), nil
 }
 
-func createWindowsDirectWorkcellTemp(workspace string) (string, *WindowsWorkspace, error) {
-	root := filepath.Join(workspace, ".mcp-devbox", "runtime", "tmp")
-	if err := createWindowsDirectoryTree(workspace, root); err != nil {
-		return "", nil, err
-	}
-	rootHandle, _, err := openAndInspectWindowsDirectoryNoDelete(root)
-	if err != nil {
-		return "", nil, err
-	}
-	defer windows.CloseHandle(rootHandle)
-	tempDir, err := os.MkdirTemp(root, "exec-")
-	if err != nil {
-		return "", nil, err
-	}
-	handle, err := OpenWindowsWorkcell(workspace, tempDir)
-	if err != nil {
-		return "", nil, err
-	}
-	return handle.FinalPath(), handle, nil
+type windowsDirectRuntimeHandles struct {
+	runtime, cache, artifacts *WindowsWorkspace
 }
 
-func prepareWindowsCodexHome(environment map[string]string, workspace string) (*WindowsWorkspace, error) {
-	value := ""
-	for key, candidate := range environment {
-		if strings.EqualFold(key, "CODEX_HOME") {
-			value = filepath.Clean(strings.TrimSpace(candidate))
-			break
+func createWindowsDirectWorkcellRuntime(stateRoot, workspaceID string) (ProjectRuntimeRoots, windowsDirectRuntimeHandles, string, *WindowsWorkspace, error) {
+	stateRoot = filepath.Clean(strings.TrimSpace(stateRoot))
+	if !IsWindowsLocalPath(stateRoot) || !workspaceIDPattern.MatchString(workspaceID) {
+		return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, ErrDirectWorkcellContract
+	}
+	if err := os.MkdirAll(stateRoot, 0o700); err != nil {
+		return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
+	}
+	roots := ProjectRuntimeRoots{
+		Runtime:   filepath.Join(stateRoot, "project-runtime", workspaceID),
+		Cache:     filepath.Join(stateRoot, "project-cache", workspaceID),
+		Artifacts: filepath.Join(stateRoot, "project-artifacts", workspaceID),
+	}
+	for _, root := range []string{roots.Runtime, roots.Cache, roots.Artifacts} {
+		if err := createWindowsDirectoryTree(stateRoot, root); err != nil {
+			return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
+		}
+		handle, err := openWindowsSecurityHandle(root, true, windows.READ_CONTROL|windows.WRITE_DAC)
+		if err != nil {
+			return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
+		}
+		aclErr := applyCurrentIdentityPrivateACL(handle, true)
+		_ = windows.CloseHandle(handle)
+		if aclErr != nil {
+			return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, aclErr
 		}
 	}
-	if value == "" {
-		return nil, nil
+	for _, child := range []string{
+		filepath.Join(roots.Runtime, "home"), filepath.Join(roots.Runtime, "codex"), filepath.Join(roots.Runtime, "tools", "bin"),
+		filepath.Join(roots.Runtime, "tools", "go"), filepath.Join(roots.Runtime, "tools", "cargo", "bin"), filepath.Join(roots.Runtime, "cargo"),
+		filepath.Join(roots.Runtime, "rustup"), filepath.Join(roots.Runtime, "pnpm"), filepath.Join(roots.Runtime, "maven"), filepath.Join(roots.Runtime, "go", "bin"),
+		filepath.Join(roots.Cache, "exec"), filepath.Join(roots.Cache, "npm"), filepath.Join(roots.Cache, "pip"), filepath.Join(roots.Cache, "gradle"), filepath.Join(roots.Cache, "go-mod"), filepath.Join(roots.Cache, "go-build"),
+		filepath.Join(roots.Artifacts, "output"),
+	} {
+		if err := createWindowsDirectoryTree(stateRoot, child); err != nil {
+			return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
+		}
 	}
-	if !IsWindowsLocalPath(value) || !WindowsPathContained(workspace, value) || strings.EqualFold(filepath.Clean(workspace), value) {
-		return nil, ErrDirectWorkcellContract
-	}
-	if err := createWindowsDirectoryTree(workspace, value); err != nil {
-		return nil, err
-	}
-	handle, err := OpenWindowsWorkcell(workspace, value)
+	openRoot := func(path string) (*WindowsWorkspace, error) { return OpenWindowsWorkspace(stateRoot, path) }
+	runtimeHandle, err := openRoot(roots.Runtime)
 	if err != nil {
-		return nil, err
+		return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
 	}
-	return handle, nil
+	cacheHandle, err := openRoot(roots.Cache)
+	if err != nil {
+		_ = runtimeHandle.Close()
+		return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
+	}
+	artifactsHandle, err := openRoot(roots.Artifacts)
+	if err != nil {
+		_ = runtimeHandle.Close()
+		_ = cacheHandle.Close()
+		return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
+	}
+	tempDir, err := os.MkdirTemp(filepath.Join(roots.Cache, "exec"), "run-")
+	if err != nil {
+		_ = runtimeHandle.Close()
+		_ = cacheHandle.Close()
+		_ = artifactsHandle.Close()
+		return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
+	}
+	tempHandle, err := OpenWindowsWorkspace(stateRoot, tempDir)
+	if err != nil {
+		_ = runtimeHandle.Close()
+		_ = cacheHandle.Close()
+		_ = artifactsHandle.Close()
+		return ProjectRuntimeRoots{}, windowsDirectRuntimeHandles{}, "", nil, err
+	}
+	return roots, windowsDirectRuntimeHandles{runtime: runtimeHandle, cache: cacheHandle, artifacts: artifactsHandle}, tempHandle.FinalPath(), tempHandle, nil
+}
+
+func closeWindowsRuntimeHandles(handles windowsDirectRuntimeHandles) {
+	if handles.runtime != nil {
+		_ = handles.runtime.Close()
+	}
+	if handles.cache != nil {
+		_ = handles.cache.Close()
+	}
+	if handles.artifacts != nil {
+		_ = handles.artifacts.Close()
+	}
 }
 
 func closeWindowsDirectWorkcellSpec(spec DirectWorkcellProcessSpec) {
-	if spec.codeHomeHandle != nil {
-		_ = spec.codeHomeHandle.Close()
-	}
 	if spec.tempHandle != nil {
 		_ = spec.tempHandle.Close()
 	}
@@ -440,10 +533,31 @@ func closeWindowsDirectWorkcellSpec(spec DirectWorkcellProcessSpec) {
 	if spec.workspaceHandle != nil {
 		_ = spec.workspaceHandle.Close()
 	}
+	closeWindowsRuntimeHandles(windowsDirectRuntimeHandles{runtime: spec.runtimeHandle, cache: spec.cacheHandle, artifacts: spec.artifactsHandle})
+}
+
+// revalidateWindowsDirectWorkcellSpec is shared by one-shot execution and the
+// durable process manager.  The latter does not execute in this process, so it
+// must validate the retained handles before serialising the worker request;
+// the worker performs the same check again immediately before spawn.
+func revalidateWindowsDirectWorkcellSpec(spec DirectWorkcellProcessSpec) error {
+	if spec.workspaceHandle == nil || spec.cwdHandle == nil || spec.tempHandle == nil ||
+		spec.runtimeHandle == nil || spec.cacheHandle == nil || spec.artifactsHandle == nil {
+		return ErrDirectWorkcellContract
+	}
+	for _, handle := range []*WindowsWorkspace{spec.workspaceHandle, spec.cwdHandle, spec.tempHandle, spec.runtimeHandle, spec.cacheHandle, spec.artifactsHandle} {
+		if err := handle.Revalidate(); err != nil {
+			return err
+		}
+	}
+	if err := revalidateProjectProcessRuntimeAttestation(projectRuntimeStateRoot(spec.runtimeRoots), spec.runtimeRoots, spec.runtimeAttestation); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (windowsDirectWorkcellExecRunner) Run(ctx context.Context, spec DirectWorkcellProcessSpec) (int, error) {
-	if spec.workspaceHandle == nil || spec.cwdHandle == nil || spec.tempHandle == nil || spec.Executable == "" || spec.Dir == "" {
+	if spec.Executable == "" || spec.Dir == "" {
 		return -1, ErrDirectWorkcellContract
 	}
 	command := exec.Command(spec.Executable, spec.Args...)
@@ -462,23 +576,13 @@ func (windowsDirectWorkcellExecRunner) Run(ctx context.Context, spec DirectWorkc
 	if err != nil {
 		return -1, err
 	}
-	if err := spec.workspaceHandle.Revalidate(); err != nil {
+	if err := revalidateWindowsDirectWorkcellSpec(spec); err != nil {
 		_ = tree.Close()
 		return -1, err
 	}
-	if err := spec.cwdHandle.Revalidate(); err != nil {
+	if err := revalidateProjectProcessWorkspaceAttestationWithRoots(spec.workspaceRoot, spec.workspacePath, spec.cwdPath, spec.workspaceAttestation, workspaceRootsPointer(spec.workspaceRoots)); err != nil {
 		_ = tree.Close()
 		return -1, err
-	}
-	if err := spec.tempHandle.Revalidate(); err != nil {
-		_ = tree.Close()
-		return -1, err
-	}
-	if spec.codeHomeHandle != nil {
-		if err := spec.codeHomeHandle.Revalidate(); err != nil {
-			_ = tree.Close()
-			return -1, err
-		}
 	}
 	if err := tree.Start(ctx, command); err != nil {
 		return -1, err

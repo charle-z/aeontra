@@ -40,6 +40,9 @@ do not replace server-side enforcement.
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
 | `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |
 | `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning safe repository readiness plus bounded manifest detection and its L3, persistent-toolbox or pin-resolution route. |
+| `project_registry_list` | 1/0/1/0 | List bounded durable project claims for one target on a paired Edge without running Git status or discovery, or changing workspaces; it performs a bounded repository-identity check and returns repository identity, target, generation and lifecycle state without paths or internal workspace IDs. |
+| `project_reconcile` | 0/0/1/0 | Reconcile one registered project claim after a recoverable registry or workspace interruption. It revalidates the owner-bound workspace and never deletes source files or associates a new repository. |
+| `project_release` | 0/1/0/0 | Release one stale project claim only when alias, owner-bound repository, target and exact claim generation match; it removes registry metadata and never deletes or resets the workspace. |
 | `project_snapshot` | 1/0/1/0 | Queue or reuse one durable Edge operation by caller idempotency key, resolve the selected development workspace locally, run only fixed read-only Git identity/cleanliness commands, and return bounded repository, branch, commit and operation metadata without starting another model. |
 | `project_exec` | 0/1/1/1 | Execute one durable bounded foreground argv inside the selected trusted development workcell through Bubblewrap, with workspace-only writable state, relative cwd, optional stdin and non-secret environment, process-group cancellation, a 120-second maximum timeout, separate bounded redacted stdout/stderr, and safe preflight/execution/result durations. No implicit shell is added. |
 | `project_network_route` | 1/0/1/1 | Resolve the selected Edge workcell route to one private IPv4 destination and return only the validated `tun*`/`tap*` interface and source IPv4. No executable, URL, path or credential is accepted. |
@@ -74,7 +77,7 @@ do not replace server-side enforcement.
 | `project_git_publish` | 0/0/1/1 | Consume and revalidate one exact publication plan, then push only the bound branch to its same-name branch on the fixed owner-bound `origin` with no force, tags, caller URL or caller refspec. |
 | `project_toolbox_create` | 0/1/1/1 | Create or recover one persistent Debian rootfs through the registered workspace's user-owned rootless engine. Optional CPU, memory and process limits are range-checked; omitted values receive broad server-owned defaults. Packages and caches persist until explicit cleanup; no host engine socket is mounted. |
 | `project_toolbox_status` | 1/0/1/1 | Return only opaque lifecycle/base identity, applied resource limits, writable/rootfs byte usage and timestamps; host paths, socket paths and container identity remain private. |
-| `project_toolbox_repair` | 0/1/1/1 | Restart only a stopped server-owned toolbox after revalidating its recorded image, labels and single workspace mount. Missing, unknown or unsafe state is never recreated. |
+| `project_toolbox_repair` | 0/1/1/1 | Restart or reconcile only a stopped server-owned toolbox after revalidating its workspace, recorded image, labels, generation and exact mounts. A stale compatible record may be recreated in place without deleting the project workspace; missing, unknown, foreign-owned or unsafe state fails closed. |
 | `project_toolbox_exec` | 0/1/1/1 | Execute explicit arbitrary argv inside the persistent toolbox with the project at `/workspace`, relative cwd, non-secret environment overlay, bounded redacted output and no implicit shell or command allowlist. Host container-engine sockets are absent. |
 | `project_toolbox_install` | 0/1/1/1 | Run explicit package, toolchain or rootless container-client installation argv as container root inside the rootless user namespace; the host WSL package database and global toolchains are not modified. |
 | `project_toolbox_service_start` | 0/1/1/1 | Start or reuse one named background argv inside the persistent toolbox. Only an opaque service id, name, state and timestamps are returned; caller argv is positional and never interpolated into the fixed supervisor script. |
@@ -124,6 +127,51 @@ do not replace server-side enforcement.
 | `repo_fast_forward_preview` | 1/0/1/0 | Plan an exact clean-tree fast-forward to the tracked upstream. |
 | `repo_fast_forward` | 0/0/0/0 | Revalidate and run exactly `git merge --ff-only <upstream>` in the attested private L3 executor; allow mode only. |
 | `git_commit` | 0/0/0/0 | Stage and commit locally in the attested private L3 executor; allow mode only. It does not push. |
+
+### Development-environment v2 semantics
+
+Project and process tools distinguish ordinary development state from a boundary
+failure. `project_status` may report `ready` or `dirty` when the registered workspace
+identity is valid. `unavailable`, `timeout`, `identity_mismatch`, `corrupt` and
+`unsafe_boundary` identify different recovery classes; `unsafe` is retained only as a
+legacy wire value. When diagnostics are returned, they contain a stable reason,
+repairability and a bounded recommended action. Paths, Git output, credentials and
+internal IDs remain private.
+
+Resolution is registry-first for operations that do not need current Git state. In
+particular, a process-specific status/stdin/stop/signal or cleanup request that carries
+the process ID uses the durable binding captured at start; it does not require a clean
+checkout or a live project alias. A list request, or cleanup without a process ID,
+resolves the current registered alias and target without running Git so a reassociated
+alias cannot reach records from its former workspace. A source tree may be dirty while
+a process is running. Exact clean-tree operations such as registration, fast-forward
+and publication keep their explicit precondition.
+
+Each Edge workspace separates its registered source tree from private runtime, cache and
+artifact roots. Toolchain homes and package-manager caches are mounted from those roots,
+so normal provisioning does not create `.cargo`, `.rustup`, package caches or other
+infrastructure in the source tree. Existing legacy runtime directories are not deleted
+implicitly.
+
+Toolbox records bind workspace, mount policy, rootless engine identity and generation.
+`project_toolbox_repair` can restart only a stopped server-owned toolbox whose identity
+and mounts still validate; stale but safely reconcilable records use the controlled
+reconciliation path, while ownership or boundary drift fails closed. Cleanup is explicit
+and does not delete the project workspace.
+
+The Edge executes a bounded set of independent operations concurrently. Normal project,
+Git inspection and process operations share capacity; signed bundle update, rollback
+and repair are Edge-wide exclusive effects. Leases and fences remain durable, and
+terminal completion is written under the same store lock as its validation.
+
+### GitHub authority views
+
+`project_github_status` describes the private Edge GitHub broker for an already bound
+development project. Source-hosting tools may instead use the server-side source broker.
+These are separate authority surfaces: a workcell's `gh auth status` is not evidence
+that the Edge broker is unconfigured, and an Edge Git transport credential is not exposed
+to a workcell or public tool result. Publication remains an owner-bound, exact
+preview/execute operation.
 
 ## GitHub source hosting and publication
 

@@ -368,7 +368,7 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	}
 	var preparation *LinuxWorkcellPreparation
 	if workspaceRecord.Profile == WorkspaceProfileLinuxWorkcell {
-		prepared, prepareErr := PrepareLinuxWorkcellWithToolPath(ctx, workspaceRecord, lease, l.config.ToolPath, l.linuxNetworkProbe)
+		prepared, prepareErr := PrepareLinuxWorkcellWithToolPathAndStateRoot(ctx, workspaceRecord, lease, l.config.StateRoot, l.config.ToolPath, l.linuxNetworkProbe)
 		if prepareErr != nil {
 			failLocal(OpenCodeLocalFailed, -1, false)
 			_, _ = remote.Failed(context.Background(), "")

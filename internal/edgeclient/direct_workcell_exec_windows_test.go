@@ -61,6 +61,7 @@ func windowsDirectWorkcellRequest(workspace Workspace) DirectWorkcellCommandRequ
 	return DirectWorkcellCommandRequest{
 		OperationID:    "eo_0123456789abcdef0123456789abcdef",
 		Workspace:      workspace,
+		StateRoot:      filepath.Join(filepath.Dir(workspace.WindowsDevRoot), "edge-state"),
 		WindowsDevRoot: workspace.WindowsDevRoot,
 		Argv:           []string{"cmd.exe", "/c", "echo", "ok"},
 		Environment:    map[string]string{"CI": "true"},
@@ -88,20 +89,16 @@ func TestWindowsDirectWorkcellRequiresWindowsDevProfile(t *testing.T) {
 	}
 }
 
-func TestWindowsDirectWorkcellKeepsCodexHomeInsideWorkspace(t *testing.T) {
+func TestWindowsDirectWorkcellControlsCodexHomeOutsideWorkspace(t *testing.T) {
 	workspace := windowsDirectWorkcellFixture(t)
 	request := windowsDirectWorkcellRequest(workspace)
 	request.Environment["CODEX_HOME"] = filepath.Join(t.TempDir(), "codex-home")
 	if _, err := RunDirectWorkcellCommand(context.Background(), request, &windowsDirectWorkcellFakeRunner{}); !errors.Is(err, ErrDirectWorkcellContract) {
-		t.Fatalf("outside CODEX_HOME err=%v, want contract rejection", err)
+		t.Fatalf("caller CODEX_HOME err=%v, want controlled-environment rejection", err)
 	}
 	request.Environment["CODEX_HOME"] = filepath.Join(workspace.Path, ".codex-test")
-	runner := &windowsDirectWorkcellFakeRunner{}
-	if _, err := RunDirectWorkcellCommand(context.Background(), request, runner); err != nil {
-		t.Fatal(err)
-	}
-	if runner.spec.codeHomeHandle == nil {
-		t.Fatal("workspace-scoped CODEX_HOME did not retain a validated handle")
+	if _, err := RunDirectWorkcellCommand(context.Background(), request, &windowsDirectWorkcellFakeRunner{}); !errors.Is(err, ErrDirectWorkcellContract) {
+		t.Fatalf("source CODEX_HOME err=%v, want controlled-environment rejection", err)
 	}
 }
 
@@ -118,16 +115,16 @@ func TestWindowsDirectWorkcellBuildsExplicitArgvPrivateTempAndSanitizedEnvironme
 	if runner.spec.Dir == "" || !strings.HasPrefix(strings.ToLower(filepath.Clean(runner.spec.Dir)), strings.ToLower(filepath.Clean(workspace.Path))) {
 		t.Fatalf("spec dir=%q, want workspace descendant", runner.spec.Dir)
 	}
-	if runner.spec.workspaceHandle == nil || runner.spec.cwdHandle == nil || runner.spec.tempHandle == nil {
-		t.Fatal("spec did not retain workspace, cwd, and temp handles")
+	if runner.spec.workspaceHandle == nil || runner.spec.cwdHandle == nil || runner.spec.tempHandle == nil || runner.spec.runtimeHandle == nil || runner.spec.cacheHandle == nil || runner.spec.artifactsHandle == nil {
+		t.Fatal("spec did not retain source, temp, and private runtime handles")
 	}
 	environment := strings.Join(runner.spec.Env, "\x00")
-	for _, forbidden := range []string{"HOME=", "USERPROFILE=", "CONTAINER_HOST=", "TOKEN=", "SECRET="} {
+	for _, forbidden := range []string{"CONTAINER_HOST=", "TOKEN=", "SECRET="} {
 		if strings.Contains(strings.ToUpper(environment), forbidden) {
 			t.Fatalf("environment contains forbidden material %q: %q", forbidden, environment)
 		}
 	}
-	for _, required := range []string{"SystemRoot=", "ComSpec=", "PATHEXT=", "PATH=", "TEMP=", "TMP=", "MCP_DEVBOX_PROFILE=windows-workcell", "MCP_DEVBOX_MODE=dev"} {
+	for _, required := range []string{"SystemRoot=", "ComSpec=", "PATHEXT=", "PATH=", "TEMP=", "TMP=", "HOME=", "USERPROFILE=", "CODEX_HOME=", "CARGO_HOME=", "RUSTUP_HOME=", "MCP_DEVBOX_PROFILE=windows-workcell", "MCP_DEVBOX_MODE=dev"} {
 		if !strings.Contains(environment, required) {
 			t.Fatalf("environment missing %q: %q", required, environment)
 		}
@@ -136,11 +133,31 @@ func TestWindowsDirectWorkcellBuildsExplicitArgvPrivateTempAndSanitizedEnvironme
 	if end := strings.IndexByte(temp, 0); end >= 0 {
 		temp = temp[:end]
 	}
-	if !strings.HasPrefix(strings.ToLower(filepath.Clean(temp)), strings.ToLower(filepath.Clean(workspace.Path))) {
-		t.Fatalf("temp=%q is outside workspace=%q", temp, workspace.Path)
+	if strings.HasPrefix(strings.ToLower(filepath.Clean(temp)), strings.ToLower(filepath.Clean(workspace.Path))) {
+		t.Fatalf("temp=%q unexpectedly lies inside source workspace=%q", temp, workspace.Path)
 	}
 	if len(runner.spec.Args) != 3 || runner.spec.Args[0] != "/c" || runner.spec.Args[1] != "echo" || runner.spec.Args[2] != "ok" {
 		t.Fatalf("args=%q, want no implicit shell wrapping", runner.spec.Args)
+	}
+}
+
+func TestWindowsDirectWorkcellClosesPreparedHandlesAfterRun(t *testing.T) {
+	workspace := windowsDirectWorkcellFixture(t)
+	runner := &windowsDirectWorkcellFakeRunner{exit: 0}
+	if _, err := RunDirectWorkcellCommand(context.Background(), windowsDirectWorkcellRequest(workspace), runner); err != nil {
+		t.Fatal(err)
+	}
+	for name, handle := range map[string]*WindowsWorkspace{
+		"workspace": runner.spec.workspaceHandle,
+		"cwd":       runner.spec.cwdHandle,
+		"temp":      runner.spec.tempHandle,
+		"runtime":   runner.spec.runtimeHandle,
+		"cache":     runner.spec.cacheHandle,
+		"artifacts": runner.spec.artifactsHandle,
+	} {
+		if handle == nil || handle.File() != nil {
+			t.Fatalf("%s handle remains open after run", name)
+		}
 	}
 }
 
@@ -184,7 +201,7 @@ func TestWindowsDirectWorkcellTimeoutUsesJobRunnerContext(t *testing.T) {
 func TestWindowsDirectWorkcellExecutesNativeCmdWithoutProfileInheritance(t *testing.T) {
 	workspace := windowsDirectWorkcellFixture(t)
 	request := windowsDirectWorkcellRequest(workspace)
-	request.Argv = []string{"cmd.exe", "/D", "/C", "if defined USERPROFILE (exit /b 9) else (ver)"}
+	request.Argv = []string{"cmd.exe", "/D", "/C", "if not defined USERPROFILE (exit /b 9) else (ver)"}
 	result, err := RunDirectWorkcellCommand(context.Background(), request, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -197,6 +214,7 @@ func TestWindowsDirectWorkcellExecutesNativeCmdWithoutProfileInheritance(t *test
 func TestWindowsDirectWorkcellExecutesNativePowerShell(t *testing.T) {
 	workspace := windowsDirectWorkcellFixture(t)
 	request := windowsDirectWorkcellRequest(workspace)
+	request.TimeoutSeconds = 15
 	request.Argv = []string{"powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"}
 	result, err := RunDirectWorkcellCommand(context.Background(), request, nil)
 	if err != nil {

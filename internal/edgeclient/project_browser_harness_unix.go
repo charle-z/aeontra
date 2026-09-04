@@ -122,6 +122,11 @@ type projectBrowserHarnessRecord struct {
 }
 
 func (manager *ProjectToolboxManager) BrowserHarnessStart(ctx context.Context, request ProjectBrowserHarnessStartRequest) (ProjectBrowserHarnessSnapshot, bool, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectBrowserHarnessSnapshot{}, false, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if err := validateProjectBrowserHarnessStart(request); err != nil {
@@ -199,6 +204,11 @@ func (manager *ProjectToolboxManager) BrowserHarnessStart(ctx context.Context, r
 }
 
 func (manager *ProjectToolboxManager) BrowserHarnessStatus(ctx context.Context, request ProjectBrowserHarnessStatusRequest) (ProjectBrowserHarnessSnapshot, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectBrowserHarnessSnapshot{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if request.Limit < 1 || request.Limit > projectBrowserHarnessOutputLimit || request.StdoutOffset < 0 || request.StderrOffset < 0 {
@@ -212,6 +222,11 @@ func (manager *ProjectToolboxManager) BrowserHarnessStatus(ctx context.Context, 
 }
 
 func (manager *ProjectToolboxManager) BrowserHarnessList(ctx context.Context, request ProjectBrowserHarnessListRequest) ([]ProjectBrowserHarnessSummary, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
@@ -239,6 +254,11 @@ func (manager *ProjectToolboxManager) BrowserHarnessList(ctx context.Context, re
 }
 
 func (manager *ProjectToolboxManager) BrowserHarnessStop(ctx context.Context, request ProjectBrowserHarnessStopRequest) (ProjectBrowserHarnessSnapshot, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectBrowserHarnessSnapshot{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if request.GraceSeconds < 1 || request.GraceSeconds > 30 {
@@ -276,6 +296,11 @@ func (manager *ProjectToolboxManager) BrowserHarnessStop(ctx context.Context, re
 }
 
 func (manager *ProjectToolboxManager) BrowserHarnessCleanup(request ProjectBrowserHarnessCleanupRequest) (ProjectBrowserHarnessCleanupResult, error) {
+	release, err := manager.acquireWorkspaceLock(context.Background(), request.Workspace.ID)
+	if err != nil {
+		return ProjectBrowserHarnessCleanupResult{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {

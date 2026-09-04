@@ -144,3 +144,20 @@ func TestEdgeOperationListDefaultsAndRejectsUnsafeInput(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicEdgeOperationExposesCurrentPhaseAndBundleIdentity(t *testing.T) {
+	operation := edge.Operation{
+		ID: "eo_33333333333333333333333333333333", Kind: edge.OperationEdgeRepair, State: edge.OperationLeased,
+		Progress: edge.OperationProgress{Revision: 4, Phase: "repairing", CompletedUnits: 2, TotalUnits: 5},
+		Result:   edge.OperationResult{EdgeProtocolVersion: "mcp-devbox.edge-bundle.v1", EdgeCatalogHash: "sha256:" + strings.Repeat("b", 64)},
+	}
+	body, err := json.Marshal(publicEdgeOperation(operation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{`"progress_phase":"repairing"`, `"progress_completed_units":2`, `"progress_total_units":5`, `"edge_protocol_version":"mcp-devbox.edge-bundle.v1"`, `"edge_catalog_hash":"sha256:`} {
+		if !strings.Contains(string(body), expected) {
+			t.Fatalf("public view omitted %q: %s", expected, body)
+		}
+	}
+}

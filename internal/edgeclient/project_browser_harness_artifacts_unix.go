@@ -3,6 +3,7 @@
 package edgeclient
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -107,6 +108,11 @@ func ensureProjectBrowserHarnessDirectory(path string) error {
 }
 
 func (manager *ProjectToolboxManager) BrowserHarnessArtifactList(request ProjectBrowserHarnessArtifactListRequest) ([]ProjectBrowserHarnessArtifactSummary, error) {
+	release, err := manager.acquireWorkspaceLock(context.Background(), request.Workspace.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	manager.mu.Lock()
 	if request.Limit < 1 || request.Limit > projectBrowserHarnessMaxArtifacts {
 		manager.mu.Unlock()
@@ -122,6 +128,11 @@ func (manager *ProjectToolboxManager) BrowserHarnessArtifactList(request Project
 }
 
 func (manager *ProjectToolboxManager) BrowserHarnessArtifactRead(request ProjectBrowserHarnessArtifactReadRequest) (ProjectBrowserHarnessArtifactChunk, error) {
+	release, err := manager.acquireWorkspaceLock(context.Background(), request.Workspace.ID)
+	if err != nil {
+		return ProjectBrowserHarnessArtifactChunk{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	if request.Offset < 0 || request.Limit < 1 || request.Limit > projectBrowserHarnessOutputLimit {
 		manager.mu.Unlock()

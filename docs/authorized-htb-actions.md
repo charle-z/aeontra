@@ -82,7 +82,8 @@ sessions and removes the private socket. Saved evidence remains local.
 1. Connect the authorized VPN.
 2. Register the machine once with `mcp-edge lab init`.
 3. Start or continue the opaque workspace runtime.
-4. Read `.mcp-devbox/instructions.md` and `.mcp-devbox/current-state.md`.
+4. Read the private workcell control mount at `/workspace/.mcp-devbox/instructions.md`
+   and `/workspace/.mcp-devbox/current-state.md`.
 5. Call `workspace_htb_status`.
 6. Validate a local credential handle and receive a session.
 7. Use structured command tools to enumerate and test hypotheses.

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/edge"
 )
 
@@ -55,6 +56,42 @@ func TestSignedTransportLeasesHeartbeatsAndCompletesTask(t *testing.T) {
 	lease, err = transport.Lease(context.Background(), "agent-session-0001", time.Minute)
 	if err != nil || lease != nil {
 		t.Fatalf("empty lease=%+v err=%v", lease, err)
+	}
+}
+
+func TestOperationLeaseNegotiatesCompatibilityWithoutBreakingLegacyServers(t *testing.T) {
+	catalog := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	originalCatalog := buildinfo.EdgeBundleCatalogHash
+	buildinfo.EdgeBundleCatalogHash = catalog
+	t.Cleanup(func() { buildinfo.EdgeBundleCatalogHash = originalCatalog })
+
+	store, err := edge.Open(edge.Config{Root: filepath.Join(t.TempDir(), "server-edge")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.SetExpectedOperationCompatibility(buildinfo.EdgeBundleProtocolVersion, catalog); err != nil {
+		t.Fatal(err)
+	}
+	code, _ := store.CreatePairing(time.Minute)
+	server := httptest.NewTLSServer(edge.NewHTTPHandler(store))
+	defer server.Close()
+	stateRoot := filepath.Join(t.TempDir(), "client")
+	identity, err := Pair(context.Background(), PairOptions{ServerURL: server.URL, Code: code, Name: "wsl-development", StateRoot: stateRoot, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, _, err := store.CreateOperation(identity.DeviceID, edge.OperationProjectStatus, edge.OperationRequest{Alias: "codex", TargetAlias: "parrot-trusted-linux", Profile: "linux-workcell"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, err := NewTransport(stateRoot, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := transport.LeaseOperation(context.Background(), time.Minute)
+	if err != nil || lease == nil || lease.Operation.ID != operation.ID {
+		t.Fatalf("lease=%+v err=%v", lease, err)
 	}
 }
 

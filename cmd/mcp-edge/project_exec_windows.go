@@ -13,7 +13,7 @@ import (
 
 func executeProjectExec(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
 	started := time.Now()
-	_, workspaces, projects, _, code := openWindowsProjectControlState(stateRoot)
+	_, workspaces, projects, roots, code := openWindowsProjectControlState(stateRoot)
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -23,17 +23,23 @@ func executeProjectExec(ctx context.Context, stateRoot string, operation edge.Op
 	if err != nil {
 		return edge.OperationResult{}, safeWindowsProjectFailure(err)
 	}
-	return collectProjectExecWithResolution(ctx, operation, resolved, nil, time.Since(started).Microseconds())
+	return collectProjectExecWithStateRootAndRoots(ctx, stateRoot, operation, resolved, roots, nil, time.Since(started).Microseconds())
 }
 
 func collectProjectExec(ctx context.Context, operation edge.Operation, resolved edgeclient.ProjectResolution, runner edgeclient.DirectWorkcellCommandRunner) (edge.OperationResult, string) {
-	return collectProjectExecWithResolution(ctx, operation, resolved, runner, 0)
+	return collectProjectExecWithStateRoot(ctx, "", operation, resolved, runner, 0)
 }
 
-func collectProjectExecWithResolution(ctx context.Context, operation edge.Operation, resolved edgeclient.ProjectResolution, runner edgeclient.DirectWorkcellCommandRunner, resolutionUS int64) (edge.OperationResult, string) {
+func collectProjectExecWithStateRoot(ctx context.Context, stateRoot string, operation edge.Operation, resolved edgeclient.ProjectResolution, runner edgeclient.DirectWorkcellCommandRunner, resolutionUS int64) (edge.OperationResult, string) {
+	return collectProjectExecWithStateRootAndRoots(ctx, stateRoot, operation, resolved, edgeclient.WorkspaceRoots{}, runner, resolutionUS)
+}
+
+func collectProjectExecWithStateRootAndRoots(ctx context.Context, stateRoot string, operation edge.Operation, resolved edgeclient.ProjectResolution, roots edgeclient.WorkspaceRoots, runner edgeclient.DirectWorkcellCommandRunner, resolutionUS int64) (edge.OperationResult, string) {
 	execution, err := edgeclient.RunDirectWorkcellCommand(ctx, edgeclient.DirectWorkcellCommandRequest{
 		OperationID:    operation.ID,
 		Workspace:      resolved.Workspace,
+		StateRoot:      stateRoot,
+		WorkspaceRoots: roots,
 		WindowsDevRoot: resolved.Workspace.WindowsDevRoot,
 		Argv:           operation.Request.Argv,
 		CWD:            operation.Request.CWD,

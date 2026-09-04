@@ -17,6 +17,9 @@ func TestProjectAssociationPreviewAndApplyPreserveLegacyCheckoutInPlace(t *testi
 	if err := os.Mkdir(legacy, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(legacy, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	marker := filepath.Join(legacy, "preserve.txt")
 	if err := os.WriteFile(marker, []byte("preserved\n"), 0o600); err != nil {
 		t.Fatal(err)

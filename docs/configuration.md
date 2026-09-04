@@ -155,6 +155,19 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   `~/.local/state/mcp-edge/project-processes.db` and separate redacted logs below
   `~/.local/state/mcp-edge/project-process-logs`. The directory is owner-only and log
   and database files are `0600`; none is mounted into a workcell or returned as a path.
+- **Development workspace state:** each registered workspace also gets private,
+  owner-only roots under the Edge state root:
+  `project-runtime/<workspace-id>`, `project-cache/<workspace-id>`, and
+  `project-artifacts/<workspace-id>`. Toolchain homes and package caches point there;
+  new Edge executions do not populate the source tree or its historical `.mcp-devbox`
+  directory. The exact roots are mounted only into the selected workcell or toolbox.
+- **Concurrency:** normal project, Git inspection, process observation and toolbox
+  operations use bounded shared capacity. Signed bundle update, rollback and repair
+  acquire an Edge-wide exclusive gate. The worker count is a server/Edge setting and
+  is not caller-controlled; waiting operations remain bounded by their own deadline.
+- **Recovery metadata:** project claims, checkout attestations, toolbox generations and
+  process bindings are durable. Schema migrations are additive and fail closed on a
+  newer schema. Reconciliation is explicit and never resets or deletes a source tree.
 - **Emergency limits:** `mcp-edge codex --project-process-limit` defaults to `256`
   concurrent durable processes (maximum `4096`).
   `--project-process-log-limit` defaults to `67108864` bytes per stdout/stderr stream
@@ -403,6 +416,9 @@ because they appear in source.
 | `/state/telemetry` | content-free aggregate SQLite metrics | persistent but reconstructability is limited | retain per operational policy; never treat it as request-content evidence |
 | `/state/model-turns` | durable model-turn coordination | persistent | private control-plane state; never expose to repository tools |
 | `/state/edge` | paired Edge/control operations | persistent; oldest terminal operations are reclaimed within the fixed page budget | private authority state; queued and leased operations are never reclaimed; back up and protect separately |
+| `<edge-state>/project-runtime/<workspace-id>` | per-workspace toolchain homes and mutable runtime state | persistent until an administrator-controlled exact workspace cleanup; owner-only | outside the source tree; `project_toolbox_cleanup` removes the toolbox record/container but does not remove these roots; never expose the path to an MCP client; validate ownership and symlink ancestry |
+| `<edge-state>/project-cache/<workspace-id>` | package-manager and compiler caches | disposable but persistent between runs when retained | outside the source tree; reclaim only through an administrator-controlled exact workspace cleanup; no general cache purge is implicit |
+| `<edge-state>/project-artifacts/<workspace-id>` | generated reports, captures and managed artifacts | persistent until an administrator-controlled exact artifact/workspace cleanup; owner-only | mount only the exact workspace artifact root; arbitrary files are not artifacts |
 | `/state/console` | console sessions | persistent when login continuity matters | private; never agent-writable |
 | `/state/brain` | Brain console node identity | persistent | private runtime identity, distinct from Brain truth |
 | `/brain` | Brain Markdown truth, local Git, and disposable `.cache` | dedicated persistent volume; dirs `0700`, files `0600`, UID/GID `10001:10001` in image | outside the repository jail; back up `.git`, `.gitignore`, `curated`, `working`; `.cache` is disposable |
@@ -490,8 +506,11 @@ inside the toolbox:
   `SELENIUM_MANAGER_CACHE`: persistent rootfs locations for installed browser tooling.
 
 All paths are under the project workspace or toolbox rootfs; public MCP responses never
-return the corresponding host paths. `.mcp-devbox/` is repository-ignored. Managed run
-and profile directories use owner-only parents and have no automatic chat TTL.
+return the corresponding host paths. The legacy `.mcp-devbox/` harness tree is reserved
+for this feature and is handled as an Edge-managed untracked namespace for compatibility;
+it remains on disk until its explicit harness cleanup. New toolchain/runtime state uses
+the separate Edge-state roots described above. Managed run and profile directories use
+owner-only parents and have no automatic chat TTL.
 
 Resource limits are configured at two layers:
 

@@ -104,6 +104,69 @@ func TestRunDirectWorkcellCommandUsesTrustedWorkspaceSandbox(t *testing.T) {
 	}
 }
 
+func TestDirectWorkcellRuntimeIsOutsideSourceAndMountedSeparately(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), "edge-state")
+	workspacePath := filepath.Join(t.TempDir(), "project")
+	if err := os.Mkdir(workspacePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace := Workspace{ID: "ws_abcdefabcdefabcdefabcdefabcdefab", Path: workspacePath, Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	runner := &fakeDirectWorkcellRunner{}
+	_, err := RunDirectWorkcellCommand(context.Background(), DirectWorkcellCommandRequest{
+		OperationID: "eo_abcdefabcdefabcdefabcdefabcdefab", Workspace: workspace, StateRoot: stateRoot,
+		Argv: []string{"true"}, TimeoutSeconds: 10,
+	}, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := runner.spec.RuntimeRoots
+	for _, root := range []string{roots.Runtime, roots.Cache, roots.Artifacts} {
+		info, statErr := os.Lstat(root)
+		if statErr != nil || !info.IsDir() || info.Mode().Perm() != 0o700 || info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("runtime root=%q info=%+v err=%v", root, info, statErr)
+		}
+		if !pathInside(stateRoot, root) || pathInside(workspacePath, root) {
+			t.Fatalf("runtime root escaped its boundary: state=%q workspace=%q root=%q", stateRoot, workspacePath, root)
+		}
+	}
+	joined := strings.Join(runner.spec.Args, "\n")
+	for _, mount := range []string{"--bind\n" + roots.Runtime + "\n/runtime", "--bind\n" + roots.Cache + "\n/cache", "--bind\n" + roots.Artifacts + "\n/artifacts"} {
+		if !strings.Contains(joined, mount) {
+			t.Fatalf("missing isolated runtime mount %q: %s", mount, joined)
+		}
+	}
+	if _, statErr := os.Lstat(filepath.Join(workspacePath, ".mcp-devbox")); !os.IsNotExist(statErr) {
+		t.Fatalf("legacy source runtime was modified: %v", statErr)
+	}
+	if !strings.Contains(joined, "--setenv\nCARGO_HOME\n/runtime/cargo") || !strings.Contains(joined, "--setenv\nRUSTUP_HOME\n/runtime/rustup") {
+		t.Fatalf("toolchain roots are not controlled by Devbox: %s", joined)
+	}
+}
+
+func TestDirectWorkcellRuntimeRejectsSymlinkedStateRoot(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "real")
+	link := filepath.Join(parent, "state-link")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	workspacePath := filepath.Join(parent, "project")
+	if err := os.Mkdir(workspacePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace := Workspace{ID: "ws_abcdefabcdefabcdefabcdefabcdefab", Path: workspacePath, Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	_, err := RunDirectWorkcellCommand(context.Background(), DirectWorkcellCommandRequest{
+		OperationID: "eo_abcdefabcdefabcdefabcdefabcdefab", Workspace: workspace, StateRoot: link,
+		Argv: []string{"true"}, TimeoutSeconds: 10,
+	}, &fakeDirectWorkcellRunner{})
+	if !errors.Is(err, ErrDirectWorkcellContract) {
+		t.Fatalf("symlinked runtime root err=%v", err)
+	}
+}
+
 func TestRunDirectWorkcellCommandReturnsBoundedTimeoutResult(t *testing.T) {
 	workspacePath := filepath.Join(t.TempDir(), "project")
 	if err := os.Mkdir(workspacePath, 0o700); err != nil {

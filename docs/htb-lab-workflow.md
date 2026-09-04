@@ -90,7 +90,7 @@ machine.
 
 ## Checkpoint rules
 
-`.mcp-devbox/current-state.md` may contain:
+The private workcell control file `/workspace/.mcp-devbox/current-state.md` may contain:
 
 ```text
 - Credential handle: source=loot/capture-0-strings.txt prefix=PASS user=nathan

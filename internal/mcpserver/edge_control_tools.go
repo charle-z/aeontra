@@ -23,6 +23,9 @@ type projectOperationPublicView struct {
 	Profile            string   `json:"profile,omitempty"`
 	Mode               string   `json:"mode,omitempty"`
 	Reason             string   `json:"reason,omitempty"`
+	DiagnosticReason   string   `json:"diagnostic_reason,omitempty"`
+	Repairable         bool     `json:"repairable,omitempty"`
+	RecommendedAction  string   `json:"recommended_action,omitempty"`
 	ToolchainState     string   `json:"toolchain_state,omitempty"`
 	ToolchainRoute     string   `json:"toolchain_route,omitempty"`
 	ToolchainManifests []string `json:"toolchain_manifests,omitempty"`
@@ -56,10 +59,15 @@ type edgeOperationPublicView struct {
 	JobID                 string              `json:"job_id,omitempty"`
 	JobState              string              `json:"job_state,omitempty"`
 	ProgressRevision      uint64              `json:"progress_revision,omitempty"`
+	ProgressPhase         string              `json:"progress_phase,omitempty"`
+	ProgressCompleted     uint64              `json:"progress_completed_units,omitempty"`
+	ProgressTotal         uint64              `json:"progress_total_units,omitempty"`
 	CycleCount            uint64              `json:"cycle_count,omitempty"`
 	JobSafeCode           string              `json:"job_safe_code,omitempty"`
 	Release               string              `json:"release,omitempty"`
 	Commit                string              `json:"commit,omitempty"`
+	EdgeProtocolVersion   string              `json:"edge_protocol_version,omitempty"`
+	EdgeCatalogHash       string              `json:"edge_catalog_hash,omitempty"`
 	ManifestStatus        string              `json:"manifest_status,omitempty"`
 	ComponentsCompatible  bool                `json:"components_compatible,omitempty"`
 	ServiceActive         bool                `json:"service_active,omitempty"`
@@ -102,6 +110,7 @@ func (s *Server) addEdgeControlTools() {
 	}, func(arguments json.RawMessage) (string, error) {
 		return s.handleProjectOperation(arguments, edge.OperationProjectStatus)
 	})
+	s.addProjectRegistryRecoveryTools(projectSchema)
 	s.addDirectTool(toolDef{
 		Name: "project_snapshot", Description: "Run one fixed read-only Git snapshot in the selected Edge development workspace through a durable idempotent operation. It returns only bounded repository identity, branch, commit and clean-state metadata; it does not start a model.",
 		InputSchema: closedObject(map[string]any{
@@ -204,7 +213,9 @@ func (s *Server) handleProjectOperation(arguments json.RawMessage, kind edge.Ope
 	view := projectOperationPublicView{Alias: params.Alias, Target: params.Target, State: string(op.State)}
 	if op.State == edge.OperationSucceeded {
 		view.Alias = op.Result.ProjectAlias
-		view.Repository = op.Result.ProjectOwner + "/" + op.Result.ProjectRepository
+		if op.Result.ProjectOwner != "" && op.Result.ProjectRepository != "" {
+			view.Repository = op.Result.ProjectOwner + "/" + op.Result.ProjectRepository
+		}
 		view.Target = op.Result.ProjectTarget
 		view.State = op.Result.ProjectState
 		view.Profile = op.Result.ProjectProfile
@@ -212,6 +223,10 @@ func (s *Server) handleProjectOperation(arguments json.RawMessage, kind edge.Ope
 		view.ToolchainState = op.Result.ProjectToolchainState
 		view.ToolchainRoute = op.Result.ProjectToolchainRoute
 		view.ToolchainManifests = append([]string(nil), op.Result.ProjectToolchainManifests...)
+		view.Reason = op.Result.ProjectReason
+		view.DiagnosticReason = op.Result.ProjectDiagnosticReason
+		view.Repairable = op.Result.ProjectRepairable
+		view.RecommendedAction = op.Result.ProjectRecommendedAction
 	} else if op.State == edge.OperationFailed {
 		view.Reason = op.SafeCode
 	}
@@ -371,7 +386,7 @@ func (s *Server) handleLabRetarget(arguments json.RawMessage) (string, error) {
 }
 
 func publicEdgeOperation(op edge.Operation) edgeOperationPublicView {
-	view := edgeOperationPublicView{OperationID: op.ID, DeviceID: op.DeviceID, State: op.State, WorkspaceID: op.Result.WorkspaceID, AuthorizationRevision: op.Result.AuthorizationRevision, SafeCode: op.SafeCode, JobID: op.Result.JobID, JobState: op.Result.JobState, ProgressRevision: op.Result.ProgressRevision, CycleCount: op.Result.CycleCount, JobSafeCode: op.Result.JobSafeCode, Release: op.Result.Release, Commit: op.Result.Commit, ManifestStatus: op.Result.ManifestStatus, ComponentsCompatible: op.Result.ComponentsCompatible, ServiceActive: op.Result.ServiceActive, UpdateAvailable: op.Result.UpdateAvailable, Paired: op.Result.Paired, BubblewrapValid: op.Result.BubblewrapValid, RootlessValid: op.Result.RootlessValid, WorkspaceCount: op.Result.WorkspaceCount, ProviderValid: op.Result.ProviderValid, DriverValid: op.Result.DriverValid, Blockers: op.Result.Blockers}
+	view := edgeOperationPublicView{OperationID: op.ID, DeviceID: op.DeviceID, State: op.State, WorkspaceID: op.Result.WorkspaceID, AuthorizationRevision: op.Result.AuthorizationRevision, SafeCode: op.SafeCode, JobID: op.Result.JobID, JobState: op.Result.JobState, ProgressRevision: op.Result.ProgressRevision, ProgressPhase: op.Progress.Phase, ProgressCompleted: op.Progress.CompletedUnits, ProgressTotal: op.Progress.TotalUnits, CycleCount: op.Result.CycleCount, JobSafeCode: op.Result.JobSafeCode, Release: op.Result.Release, Commit: op.Result.Commit, EdgeProtocolVersion: op.Result.EdgeProtocolVersion, EdgeCatalogHash: op.Result.EdgeCatalogHash, ManifestStatus: op.Result.ManifestStatus, ComponentsCompatible: op.Result.ComponentsCompatible, ServiceActive: op.Result.ServiceActive, UpdateAvailable: op.Result.UpdateAvailable, Paired: op.Result.Paired, BubblewrapValid: op.Result.BubblewrapValid, RootlessValid: op.Result.RootlessValid, WorkspaceCount: op.Result.WorkspaceCount, ProviderValid: op.Result.ProviderValid, DriverValid: op.Result.DriverValid, Blockers: op.Result.Blockers}
 	view.ServiceState = op.Result.ServiceState
 	view.ServiceRestarts = op.Result.ServiceRestarts
 	view.ServiceRestartsKnown = op.Result.ServiceRestartsKnown

@@ -1,5 +1,9 @@
 # Quality and security gates
 
+> Historical note: the P5-P9 paragraphs below preserve dated gate evidence and
+> old catalog baselines. References to 67 tools and the P9 catalog hash are not
+> current production requirements.
+
 This document defines the intended delivery gates. A gate is added only when its
 failure is actionable and its runtime cost matches where it runs. Current commands,
 prerequisites, and honest execution status are recorded in `docs/testing.md`.
@@ -17,12 +21,13 @@ The gate is package-specific, rejects a missing package, and never substitutes o
 global coverage percentage for critical-package evidence. P6 makes it blocking. P7
 adds `internal/observability` at a 70% minimum against a measured 74.4% baseline.
 P8 adds `internal/console` at an 80% minimum against a measured 84.3% baseline.
-P9 Step 7 keeps `internal/brain` at 81.2%, `internal/tools` at 73.9%,
+Historical P9 Step 7 measured `internal/brain` at 81.2%, `internal/tools` at 73.9%,
 `internal/app` at 71.3%, `internal/mcpserver` at 82.6%, and
 `internal/mcpserver/catalog` at 85.6%, all above their minimums. Runtime tests make
 configured Brain startup fail closed, packaging reserves the dedicated volume, and the
 remote smoke exposes no note content or credential. The prior 62-tool contract
-hash/order remain locked inside the 67-tool candidate. Deployment remains pending.
+hash/order were locked inside the historical 67-tool candidate. Deployment status
+for that candidate is historical, not current.
 
 P8.1 adds `internal/taskjournal` at an 80% minimum and keeps all existing thresholds. The release candidate measures mcpserver 83.7%, OAuth 86.1%, console 83.9%, Brain 80.9%, taskjournal 82.4%, observability 78.8%, tools 74.2% and app 69.8%. React TypeScript, Vitest and Vite build are blocking before Go tests; CodeQL covers JavaScript/TypeScript. Exact allowlist tests reject extra console keys.
 
@@ -153,7 +158,9 @@ justification, owner, and expiry date; global or permanent ignores are not accep
 - Task journal schemas and files are bounded, private, symlink-safe and content-free; stale active state renders disconnected rather than fake autonomy.
 - SSE is authenticated and best-effort with durable polling fallback.
 - System, payload, observability, Brain graph, security and Edge data use exact nested key allowlists; Brain identifiers are opaque and Edge remains Not paired.
-- Production closure requires exact commit, 67 tools, P9 catalog hash, existing catalog/Brain smokes, console OAuth/status/data/tasks/SSE smoke and no new application or pending deployment.
+- Historical P9 production closure required an exact commit, 67 tools and the P9
+  catalog hash, in addition to catalog/Brain smokes and console checks. That
+  baseline is retained for evidence only.
 
 
 ## Console durable live state closure gates

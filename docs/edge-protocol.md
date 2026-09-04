@@ -1,7 +1,9 @@
 # Edge protocol
 
-Status: identity, pairing, and leased task transport implemented; the WSL
-`development` workcell is not implemented yet.
+Status: identity, pairing, leased task transport, and the registered
+`development` workcell are implemented for configured Linux/Parrot/WSL targets.
+Native Windows workcells use the separate Windows Edge implementation and
+acceptance path.
 
 ## Boundary
 
@@ -172,7 +174,25 @@ procedure.
 
 ## Deliberately deferred
 
-The initial workcell validates existing source; it is not a general coding-agent
-or remote shell. Registry-only egress, local OpenCode/provider adapters, mutation
-authority, Parrot, Burp, HTB, and security-engagement profiles require separate
-reviewed policy layers. They are not implied by pairing this device.
+Pairing alone grants no development authority. Registered development workcells can
+run scoped commands, persistent processes, rootless toolboxes, browser automation,
+Git operations and isolated workers under administrator-owned project policy. Parrot,
+HTB and other specialized profiles retain separate registration and network rules.
+
+The Edge does not expose a raw host shell, host Docker socket, arbitrary filesystem
+root, or client-supplied credentials. Native multi-user isolation against another
+process running as the Edge service account is outside the current single-user trust
+model.
+
+## Operation compatibility
+
+Compatibility-aware servers require ordinary operation leases to match the signed
+Edge bundle protocol and deterministic MCP catalog hash. A mismatched or legacy Edge
+receives `409 Conflict` with `edge version skew` instead of a generic bad request.
+Bundle status, update, rollback, repair and onboarding status remain leaseable so the
+device can converge safely.
+
+New Edge clients first send the legacy lease body. They include their stamped bundle
+identity only after a compatibility conflict, so a new client can still poll an older
+backend during a controlled rollback. The managed rollout order remains backend first,
+then signed Edge release, followed by real-device acceptance.

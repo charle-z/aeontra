@@ -157,8 +157,10 @@ type Metadata struct {
 }
 
 type Verified struct {
-	Release string `json:"release"`
-	Commit  string `json:"commit"`
+	Release         string `json:"release"`
+	Commit          string `json:"commit"`
+	ProtocolVersion string `json:"protocol_version"`
+	CatalogHash     string `json:"catalog_hash"`
 }
 
 type VerificationError struct {
@@ -364,7 +366,7 @@ func LoadTrusted(root string, publicKey ed25519.PublicKey) (Verified, error) {
 	if err != nil {
 		return Verified{}, err
 	}
-	return Verified{Release: manifest.Release, Commit: manifest.Commit}, nil
+	return Verified{Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion, CatalogHash: manifest.CatalogHash}, nil
 }
 
 // LoadTrustedManifest verifies the complete signed release and returns the
@@ -450,7 +452,7 @@ func Verify(root string, manifest Manifest, signature []byte, publicKey ed25519.
 			return Verified{}, componentError(component)
 		}
 	}
-	return Verified{Release: manifest.Release, Commit: manifest.Commit}, nil
+	return Verified{Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion, CatalogHash: manifest.CatalogHash}, nil
 }
 
 func canonicalManifest(manifest Manifest) ([]byte, error) {

@@ -15,13 +15,48 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 	if processes == nil {
 		return edge.OperationResult{}, "project_process_unavailable"
 	}
-	_, workspaces, projects, _, code := openProjectControlState(stateRoot)
-	if code != "" {
-		return edge.OperationResult{}, code
+	// Starting a process still attests the repository before authorizing a new
+	// effect. Existing process reads/effects use only the durable project
+	// binding; a normal build or a dirty/slow Git checkout must not make an
+	// already-authorized process unobservable or unstoppable.
+	var resolved edgeclient.ProjectResolution
+	var workspaceRoots edgeclient.WorkspaceRoots
+	var err error
+	if operation.Kind == edge.OperationProjectProcessStart {
+		_, workspaces, projects, roots, code := openProjectControlState(stateRoot)
+		if code != "" {
+			return edge.OperationResult{}, code
+		}
+		defer workspaces.Close()
+		defer projects.Close()
+		workspaceRoots = roots
+		resolved, err = projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
+	} else {
+		// A durable process is already authorized. Do not consult project
+		// discovery or Git to observe/stop it: registry release/reassociation
+		// must not strand a live process. Bind the request to the journal record
+		// and verify the caller's alias/target before issuing the effect.
+		if operation.Request.BackgroundProcessID != "" {
+			binding, bindingErr := processes.Binding(operation.Request.BackgroundProcessID)
+			if bindingErr != nil || binding.ProjectAlias != operation.Request.Alias || binding.TargetAlias != operation.Request.TargetAlias {
+				return edge.OperationResult{}, "project_process_not_found"
+			}
+			resolved = durableProjectProcessResolution(binding)
+		} else {
+			// Listing or cleaning all terminal records still needs the current
+			// registry binding so a reassociated alias cannot reach processes
+			// from its former workspace. ResolveRegistered performs only the
+			// durable boundary/attestation check; a dirty source tree remains
+			// valid and does not block process observation or cleanup.
+			_, workspaces, projects, _, code := openProjectControlState(stateRoot)
+			if code != "" {
+				return edge.OperationResult{}, code
+			}
+			defer workspaces.Close()
+			defer projects.Close()
+			resolved, err = projects.ResolveRegistered(operation.Request.Alias, operation.Request.TargetAlias)
+		}
 	}
-	defer workspaces.Close()
-	defer projects.Close()
-	resolved, err := projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
 	}
@@ -30,18 +65,18 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 	case edge.OperationProjectProcessStart:
 		snapshot, _, err = processes.Start(ctx, edgeclient.ProjectProcessStartRequest{
 			OperationID: operation.ID, IdempotencyKey: operation.Request.IdempotencyKey,
-			ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace,
-			Argv: operation.Request.Argv, CWD: operation.Request.CWD, Stdin: operation.Request.Stdin, Environment: operation.Request.Environment,
+			ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository, ProjectClaimGeneration: resolved.Project.ClaimGeneration, ProjectState: resolved.SafeState(), Workspace: resolved.Workspace,
+			WorkspaceRoots: workspaceRoots, Argv: operation.Request.Argv, CWD: operation.Request.CWD, Stdin: operation.Request.Stdin, Environment: operation.Request.Environment,
 		})
 	case edge.OperationProjectProcessStatus:
 		snapshot, err = processes.Status(edgeclient.ProjectProcessReadRequest{
-			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
+			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, WorkspaceID: resolved.Workspace.ID,
 			StdoutOffset: operation.Request.StdoutOffset, StderrOffset: operation.Request.StderrOffset, LimitBytes: operation.Request.OutputLimit,
 		})
 	case edge.OperationProjectProcessStdin:
 		var receipt edgeclient.ProjectProcessStdinReceipt
 		snapshot, receipt, err = processes.WriteStdin(edgeclient.ProjectProcessStdinRequest{
-			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
+			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, WorkspaceID: resolved.Workspace.ID,
 			FrameID:        operation.Request.IdempotencyKey,
 			ExpectedOffset: operation.Request.ProcessStdinOffset, Data: operation.Request.Stdin, Close: operation.Request.ProcessStdinClose,
 		})
@@ -55,28 +90,31 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 		}
 	case edge.OperationProjectProcessStop:
 		snapshot, err = processes.Stop(ctx, edgeclient.ProjectProcessStopRequest{
-			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
+			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, WorkspaceID: resolved.Workspace.ID,
 			GracePeriod: time.Duration(operation.Request.GraceSeconds) * time.Second,
 		})
 	case edge.OperationProjectProcessSignal:
 		snapshot, err = processes.Signal(edgeclient.ProjectProcessSignalRequest{
-			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
+			ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, WorkspaceID: resolved.Workspace.ID,
 			Signal: edgeclient.ProjectProcessSignal(operation.Request.BackgroundSignal),
 		})
 	case edge.OperationProjectProcessList:
-		items, listErr := processes.List(edgeclient.ProjectProcessListRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Limit: operation.Request.ProcessLimit})
+		items, listErr := processes.List(edgeclient.ProjectProcessListRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, WorkspaceID: resolved.Workspace.ID, Limit: operation.Request.ProcessLimit})
 		if listErr != nil {
 			err = listErr
 			break
 		}
 		result := projectProcessBaseResult(resolved)
+		if len(items) > 0 {
+			result = projectProcessBaseResult(durableProjectProcessResolutionFromSnapshot(items[0]))
+		}
 		result.BackgroundProcesses = make([]edge.BackgroundProcessSummary, 0, len(items))
 		for _, item := range items {
 			result.BackgroundProcesses = append(result.BackgroundProcesses, projectProcessSummary(item))
 		}
 		return result, ""
 	case edge.OperationProjectProcessCleanup:
-		cleanup, cleanupErr := processes.Cleanup(edgeclient.ProjectProcessCleanupRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias})
+		cleanup, cleanupErr := processes.Cleanup(edgeclient.ProjectProcessCleanupRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, WorkspaceID: resolved.Workspace.ID})
 		if cleanupErr != nil {
 			err = cleanupErr
 			break
@@ -108,6 +146,9 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 }
 
 func projectProcessOperationResult(resolved edgeclient.ProjectResolution, snapshot edgeclient.ProjectProcessSnapshot) edge.OperationResult {
+	if resolved.RegisteredOnly && snapshot.ProjectAlias != "" {
+		resolved = durableProjectProcessResolutionFromSnapshot(snapshot)
+	}
 	result := projectProcessBaseResult(resolved)
 	result.BackgroundProcessID = snapshot.ProcessID
 	result.BackgroundProcessState = string(snapshot.State)
@@ -128,6 +169,22 @@ func projectProcessOperationResult(resolved edgeclient.ProjectResolution, snapsh
 		result.BackgroundFinishedAt = snapshot.FinishedAt.UTC().Format(time.RFC3339Nano)
 	}
 	return result
+}
+
+func durableProjectProcessResolution(binding edgeclient.ProjectProcessBinding) edgeclient.ProjectResolution {
+	return edgeclient.ProjectResolution{
+		Project:     edgeclient.Project{Alias: binding.ProjectAlias, Owner: binding.ProjectOwner, Repository: binding.ProjectRepository, ClaimGeneration: binding.ProjectClaimGeneration},
+		TargetAlias: binding.TargetAlias, Workspace: edgeclient.Workspace{ID: binding.WorkspaceID, Profile: edgeclient.WorkspaceProfile(binding.ProjectProfile), Mode: edgeclient.WorkspaceMode(binding.ProjectMode)},
+		CheckoutState: edgeclient.ProjectCheckoutState(binding.ProjectState),
+	}
+}
+
+func durableProjectProcessResolutionFromSnapshot(snapshot edgeclient.ProjectProcessSnapshot) edgeclient.ProjectResolution {
+	return edgeclient.ProjectResolution{
+		Project:     edgeclient.Project{Alias: snapshot.ProjectAlias, Owner: snapshot.ProjectOwner, Repository: snapshot.ProjectRepository, ClaimGeneration: snapshot.ProjectClaimGeneration},
+		TargetAlias: snapshot.TargetAlias, Workspace: edgeclient.Workspace{ID: snapshot.WorkspaceID, Profile: edgeclient.WorkspaceProfile(snapshot.ProjectProfile), Mode: edgeclient.WorkspaceMode(snapshot.ProjectMode)},
+		CheckoutState: edgeclient.ProjectCheckoutState(snapshot.ProjectState),
+	}
 }
 
 func projectProcessBaseResult(resolved edgeclient.ProjectResolution) edge.OperationResult {

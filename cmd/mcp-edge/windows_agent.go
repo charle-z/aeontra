@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
@@ -201,6 +202,31 @@ func runWindowsAgentLoop(ctx context.Context, config windowsAgentConfig) error {
 		return errWindowsAgentProcessState
 	}
 	defer processes.Close()
+	workerCount := 4
+	if config.once {
+		workerCount = 1
+	}
+	controlGate := &controlOperationGate{}
+	var workers sync.WaitGroup
+	workerErrors := make(chan error, workerCount)
+	for index := 0; index < workerCount; index++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			workerErrors <- runWindowsControlOperationWorker(ctx, config, transport, registry, processes, controlGate)
+		}()
+	}
+	workers.Wait()
+	close(workerErrors)
+	for workerErr := range workerErrors {
+		if workerErr != nil {
+			return workerErr
+		}
+	}
+	return nil
+}
+
+func runWindowsControlOperationWorker(ctx context.Context, config windowsAgentConfig, transport *edgeclient.Transport, registry *edgeclient.WorkspaceRegistry, processes *edgeclient.ProjectProcessManager, controlGate *controlOperationGate) error {
 	for {
 		workspaces, listErr := registry.List()
 		if listErr == nil {
@@ -236,8 +262,11 @@ func runWindowsAgentLoop(ctx context.Context, config windowsAgentConfig) error {
 			}
 			continue
 		}
-		result, safeCode, cancelRequested, lifecycleErr := executeWindowsControlOperationWithProgress(ctx, config.stateRoot, transport, processes, len(workspaces), *lease)
+		result, safeCode, cancelRequested, lifecycleErr, gateHeld, exclusive := executeWindowsControlOperationWithProgressAndGate(ctx, config.stateRoot, transport, processes, len(workspaces), controlGate, *lease)
 		if lifecycleErr != nil {
+			if gateHeld {
+				controlGate.release(exclusive)
+			}
 			fmt.Fprintln(config.stderr, "mcp-edge: Windows control operation stopped safely")
 			if config.once {
 				return lifecycleErr
@@ -251,12 +280,18 @@ func runWindowsAgentLoop(ctx context.Context, config windowsAgentConfig) error {
 			if cancelErr != nil {
 				fmt.Fprintln(config.stderr, "mcp-edge: Windows cancellation acknowledgement failed safely")
 			}
+			if gateHeld {
+				controlGate.release(exclusive)
+			}
 		} else {
 			completionCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 			_, completeErr := transport.CompleteOperation(completionCtx, lease.Operation.ID, lease.LeaseID, result, safeCode)
 			cancel()
 			if completeErr != nil {
 				fmt.Fprintln(config.stderr, "mcp-edge: Windows control operation completion failed safely")
+			}
+			if gateHeld {
+				controlGate.release(exclusive)
 			}
 		}
 		if config.once {

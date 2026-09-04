@@ -75,3 +75,114 @@ func TestCancelledControlOperationWaitsForExecutorBeforeReturning(t *testing.T) 
 		t.Fatalf("progress phases=%v", phases)
 	}
 }
+
+func TestControlOperationPhaseClassifiesAdministrativeOperations(t *testing.T) {
+	for kind, want := range map[edge.OperationKind]string{
+		edge.OperationBundleUpdate:   "updating",
+		edge.OperationBundleRollback: "rolling_back",
+		edge.OperationEdgeRepair:     "repairing",
+		edge.OperationProjectStatus:  "running",
+	} {
+		if got := controlOperationPhase(kind); got != want {
+			t.Fatalf("kind=%s phase=%q want=%q", kind, got, want)
+		}
+	}
+}
+
+func TestControlOperationGateSharesNormalWorkersAndFencesGlobalMutation(t *testing.T) {
+	gate := &controlOperationGate{}
+	ctx := context.Background()
+	readersRelease := make(chan struct{})
+	readersEntered := make(chan struct{}, 4)
+	var readers sync.WaitGroup
+	for index := 0; index < 4; index++ {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			if !gate.acquire(ctx, false) {
+				t.Error("normal operation failed to acquire read side")
+				return
+			}
+			readersEntered <- struct{}{}
+			<-readersRelease
+			gate.release(false)
+		}()
+	}
+	for index := 0; index < 4; index++ {
+		select {
+		case <-readersEntered:
+		case <-time.After(time.Second):
+			t.Fatal("normal workers did not overlap on the read side")
+		}
+	}
+
+	globalAcquired := make(chan struct{})
+	globalRelease := make(chan struct{})
+	globalDone := make(chan struct{})
+	go func() {
+		if !gate.acquire(ctx, true) {
+			t.Error("global mutation failed to acquire exclusive side")
+			close(globalDone)
+			return
+		}
+		close(globalAcquired)
+		<-globalRelease
+		gate.release(true)
+		close(globalDone)
+	}()
+	select {
+	case <-globalAcquired:
+		t.Fatal("global mutation overlapped normal operations")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(readersRelease)
+	readers.Wait()
+	select {
+	case <-globalAcquired:
+	case <-time.After(time.Second):
+		t.Fatal("global mutation was not admitted after readers completed")
+	}
+
+	secondGlobalAcquired := make(chan struct{})
+	secondGlobalDone := make(chan struct{})
+	go func() {
+		if !gate.acquire(ctx, true) {
+			t.Error("second global mutation failed to acquire exclusive side")
+			close(secondGlobalDone)
+			return
+		}
+		close(secondGlobalAcquired)
+		gate.release(true)
+		close(secondGlobalDone)
+	}()
+	select {
+	case <-secondGlobalAcquired:
+		t.Fatal("two global mutations overlapped")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(globalRelease)
+	select {
+	case <-globalDone:
+	case <-time.After(time.Second):
+		t.Fatal("first global mutation did not release")
+	}
+	select {
+	case <-secondGlobalAcquired:
+	case <-time.After(time.Second):
+		t.Fatal("second global mutation was not admitted")
+	}
+	<-secondGlobalDone
+}
+
+func TestControlOperationGateAcquisitionHonorsContext(t *testing.T) {
+	gate := &controlOperationGate{}
+	if !gate.acquire(context.Background(), true) {
+		t.Fatal("failed to acquire gate")
+	}
+	defer gate.release(true)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if gate.acquire(ctx, false) {
+		t.Fatal("read acquisition ignored context cancellation")
+	}
+}

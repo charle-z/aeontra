@@ -53,15 +53,16 @@ func TestPrepareLinuxWorkcellDevCreatesPrivateDurableFiles(t *testing.T) {
 		t.Fatalf("prepared=%+v", prepared)
 	}
 	for _, path := range []string{
-		filepath.Join(workspace.Path, ".mcp-devbox"),
 		filepath.Join(workspace.Path, ".mcp-devbox", "tools"),
 		filepath.Join(workspace.Path, ".mcp-devbox", "cache"),
 		filepath.Join(workspace.Path, ".mcp-devbox", "runtime"),
 	} {
-		info, err := os.Stat(path)
-		if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
-			t.Fatalf("private dir %s mode=%v err=%v", path, infoMode(info), err)
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatalf("source checkout contains legacy runtime path %s: %v", path, err)
 		}
+	}
+	if pathInside(workspace.Path, prepared.InstructionsPath) || pathInside(workspace.Path, prepared.CurrentStatePath) || pathInside(workspace.Path, prepared.ToolInventoryPath) {
+		t.Fatalf("workcell control files leaked into source: %+v", prepared)
 	}
 	instructions, err := os.ReadFile(prepared.InstructionsPath)
 	if err != nil {
@@ -213,11 +214,20 @@ func TestPrepareLinuxWorkcellRejectsSymlinkedControlDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	stateRoot := t.TempDir()
+	roots, err := prepareProjectRuntimeRoots(stateRoot, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controlRoot := projectRuntimeControlRoot(roots)
+	if err := os.Remove(controlRoot); err != nil {
+		t.Fatal(err)
+	}
 	target := t.TempDir()
-	if err := os.Symlink(target, filepath.Join(path, ".mcp-devbox")); err != nil {
+	if err := os.Symlink(target, controlRoot); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if _, err := PrepareLinuxWorkcell(context.Background(), workspace, runtimeLeaseFor(workspace, "unsafe"), nil); err == nil {
+	if _, err := PrepareLinuxWorkcellWithToolPathAndStateRoot(context.Background(), workspace, runtimeLeaseFor(workspace, "unsafe"), stateRoot, openCodeDefaultToolPath, nil); err == nil {
 		t.Fatal("symlinked control directory accepted")
 	}
 }

@@ -6,13 +6,29 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"strings"
 
+	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
 type localProjectStores struct {
 	projects   *edgeclient.ProjectRegistry
 	workspaces *edgeclient.WorkspaceRegistry
+}
+
+func projectStatusOperationResult(status edgeclient.ProjectStatus) edge.OperationResult {
+	owner, repository, _ := strings.Cut(status.Repository, "/")
+	result := edge.OperationResult{
+		ProjectAlias: status.Alias, ProjectOwner: owner, ProjectRepository: repository,
+		ProjectTarget: status.Target, ProjectState: status.State, ProjectReason: string(status.Reason),
+	}
+	if status.Diagnostic != nil {
+		result.ProjectDiagnosticReason = status.Diagnostic.Reason
+		result.ProjectRepairable = status.Diagnostic.Repairable
+		result.ProjectRecommendedAction = status.Diagnostic.RecommendedAction
+	}
+	return result
 }
 
 type localProjectDiscovery struct {

@@ -93,7 +93,7 @@ func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Release != manifest.Release || got.Commit != manifest.Commit {
+	if got.Release != manifest.Release || got.Commit != manifest.Commit || got.ProtocolVersion != manifest.ProtocolVersion || got.CatalogHash != manifest.CatalogHash {
 		t.Fatalf("unexpected verified bundle: %+v", got)
 	}
 }

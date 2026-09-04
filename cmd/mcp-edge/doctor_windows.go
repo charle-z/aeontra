@@ -43,10 +43,12 @@ type windowsDoctorActiveMarker struct {
 }
 
 type windowsDoctorSnapshot struct {
-	BundleRelease string
-	BundleCommit  string
-	Identity      edgeclient.Identity
-	ServiceStatus svc.Status
+	BundleRelease   string
+	BundleCommit    string
+	ProtocolVersion string
+	CatalogHash     string
+	Identity        edgeclient.Identity
+	ServiceStatus   svc.Status
 }
 
 var windowsDoctorLoadConfig = loadWindowsDoctorServiceConfig
@@ -118,7 +120,7 @@ func inspectWindowsDoctor() (windowsDoctorSnapshot, error) {
 	if err != nil {
 		return windowsDoctorSnapshot{}, err
 	}
-	return windowsDoctorSnapshot{BundleRelease: marker.Release, BundleCommit: marker.Commit, Identity: identity, ServiceStatus: status}, nil
+	return windowsDoctorSnapshot{BundleRelease: marker.Release, BundleCommit: marker.Commit, ProtocolVersion: verified.ProtocolVersion, CatalogHash: verified.CatalogHash, Identity: identity, ServiceStatus: status}, nil
 }
 
 func windowsDoctorInstallRoot() (string, error) {

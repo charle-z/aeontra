@@ -52,7 +52,7 @@ func linuxWorkcellLauncherFixture(t *testing.T, mode WorkspaceMode) (*openCodeLa
 	if mode == WorkspaceModeHTBLinux {
 		probe = fakeLinuxNetworkProbe{ipv4: "10.10.14.9", routeInterface: "tun0"}
 	}
-	prepared, err := PrepareLinuxWorkcell(context.Background(), workspace, lease, probe)
+	prepared, err := PrepareLinuxWorkcellWithToolPathAndStateRoot(context.Background(), workspace, lease, fixture.state, openCodeDefaultToolPath, probe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,15 +86,28 @@ func TestLinuxWorkcellProcessSpecSharesOnlyHostNetworkAndUsesPersistentPrefixes(
 			t.Fatalf("%s=%q want %q", key, environment[key], expected)
 		}
 	}
-	if !strings.HasPrefix(environment["PATH"], "/workspace/.mcp-devbox/tools/bin:") || environment["XDG_CACHE_HOME"] != "/workspace/.mcp-devbox/cache" {
+	if !strings.HasPrefix(environment["PATH"], "/toolchain/bin:") || environment["XDG_CACHE_HOME"] != "/cache" || environment["CARGO_HOME"] != "/toolchain/cargo" {
 		t.Fatalf("persistent environment=%+v", environment)
 	}
+	if _, err := os.Stat(filepath.Join(workspace.Path, ".mcp-devbox", "tools")); !os.IsNotExist(err) {
+		t.Fatalf("Linux workcell created toolchain state in source: %v", err)
+	}
+	controlMountFound := false
 	for _, mount := range spec.Sandbox.Mounts {
+		if mount.Target == openCodeSandboxWorkspace+"/.mcp-devbox" {
+			controlMountFound = true
+			if !mount.Writable || mount.Source == "" || pathInside(workspace.Path, mount.Source) {
+				t.Fatalf("private control mount is unsafe: %+v", mount)
+			}
+		}
 		if mount.Source == "/var/run/docker.sock" || mount.Source == "/run/docker.sock" ||
 			mount.Source == "/mnt/c" || pathInside("/mnt/c", mount.Source) ||
 			mount.Source == "/mnt/d" || pathInside("/mnt/d", mount.Source) {
 			t.Fatalf("forbidden mount=%+v", mount)
 		}
+	}
+	if !controlMountFound {
+		t.Fatal("private workcell control mount missing")
 	}
 }
 

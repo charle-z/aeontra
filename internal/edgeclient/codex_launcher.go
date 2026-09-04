@@ -163,6 +163,10 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 	if err != nil || !filepath.IsAbs(resolvedCodex) {
 		return openCodeProcessSpec{}, errors.New("pinned Codex executable could not be resolved")
 	}
+	runtimeRoots, err := prepareProjectRuntimeRoots(l.config.StateRoot, workspace)
+	if err != nil {
+		return openCodeProcessSpec{}, errors.New("codex private toolchain runtime is unavailable")
+	}
 	home := filepath.Join(runtimeDir, "home")
 	for _, dir := range []string{home, filepath.Join(home, ".config"), filepath.Join(home, ".local", "share"), filepath.Join(home, ".local", "state"), filepath.Join(home, ".cache")} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -170,21 +174,24 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		}
 	}
 	persistentPath := strings.Join([]string{
-		openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin",
-		openCodeSandboxWorkspace + "/.mcp-devbox/tools/go/bin",
-		openCodeSandboxWorkspace + "/.mcp-devbox/tools/cargo/bin",
+		"/toolchain/bin",
+		"/toolchain/go/bin",
+		"/toolchain/cargo/bin",
 		l.config.ToolPath,
 	}, ":")
 	environment := map[string]string{
 		"PATH": persistentPath, "HOME": openCodeSandboxHome, "USER": "mcpedge", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TERM": "dumb", "SHELL": "/bin/sh",
 		"CODEX_HOME": openCodeSandboxHome, "XDG_CONFIG_HOME": openCodeSandboxHome + "/.config", "XDG_DATA_HOME": openCodeSandboxHome + "/.local/share",
-		"XDG_STATE_HOME": openCodeSandboxHome + "/.local/state", "XDG_CACHE_HOME": openCodeSandboxWorkspace + "/.mcp-devbox/cache",
-		"npm_config_cache": openCodeSandboxWorkspace + "/.mcp-devbox/cache/npm", "PIP_CACHE_DIR": openCodeSandboxWorkspace + "/.mcp-devbox/cache/pip",
-		"PNPM_HOME": openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin", "PIPX_HOME": openCodeSandboxWorkspace + "/.mcp-devbox/tools/pipx",
-		"PIPX_BIN_DIR": openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin", "GOPATH": openCodeSandboxWorkspace + "/.mcp-devbox/tools/go",
-		"GOBIN": openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin", "CARGO_HOME": openCodeSandboxWorkspace + "/.mcp-devbox/tools/cargo",
-		"RUSTUP_HOME": openCodeSandboxWorkspace + "/.mcp-devbox/tools/rustup", "TMPDIR": openCodeSandboxWorkspace + "/.mcp-devbox/runtime/tmp",
-		"DOCKER_CONFIG": openCodeSandboxWorkspace + "/.mcp-devbox/tools/docker", "MCP_DEVBOX_RUNTIME_ID": lease.RuntimeID,
+		"XDG_STATE_HOME": openCodeSandboxHome + "/.local/state", "XDG_CACHE_HOME": "/cache",
+		"npm_config_cache": "/cache/npm", "NPM_CONFIG_CACHE": "/cache/npm", "PIP_CACHE_DIR": "/cache/pip",
+		"PNPM_HOME": "/toolchain/bin", "PIPX_HOME": "/toolchain/pipx",
+		"PIPX_BIN_DIR": "/toolchain/bin", "GOPATH": "/toolchain/go",
+		"GOBIN": "/toolchain/bin", "CARGO_HOME": "/toolchain/cargo",
+		"RUSTUP_HOME": "/toolchain/rustup", "TMPDIR": "/tmp",
+		"UV_CACHE_DIR": "/cache/uv", "MAVEN_HOME": "/toolchain/maven", "GRADLE_USER_HOME": "/cache/gradle",
+		"GOMODCACHE": "/cache/go-mod", "GOCACHE": "/cache/go-build",
+		"DOCKER_CONFIG": "/toolchain/docker", "MCP_DEVBOX_RUNTIME_ROOT": "/toolchain",
+		"MCP_DEVBOX_CACHE_ROOT": "/cache", "MCP_DEVBOX_ARTIFACT_ROOT": "/artifacts", "MCP_DEVBOX_RUNTIME_ID": lease.RuntimeID,
 		"MCP_DEVBOX_PROFILE": string(workspace.Profile), "MCP_DEVBOX_MODE": string(workspace.Mode), "MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 		"COMPOSE_PROJECT_NAME": strings.ReplaceAll(lease.RuntimeID, "-", "_"),
 		"GIT_AUTHOR_NAME":      "MCP Devbox Codex", "GIT_AUTHOR_EMAIL": "codex@mcp-devbox.invalid",
@@ -229,7 +236,11 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		"--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
 		"--ro-bind", resolvedCodex, codexSandboxExecutable,
 		"--bind", runtimeDir, openCodeSandboxRuntime,
+		"--bind", runtimeRoots.Runtime, "/toolchain",
+		"--bind", runtimeRoots.Cache, "/cache",
+		"--bind", runtimeRoots.Artifacts, "/artifacts",
 		"--bind", workspace.Path, openCodeSandboxWorkspace,
+		"--bind", projectRuntimeControlRoot(runtimeRoots), openCodeSandboxWorkspace+"/.mcp-devbox",
 		"--chdir", openCodeSandboxWorkspace,
 	)
 	keys := make([]string, 0, len(environment))
@@ -297,6 +308,10 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots Workspace
 		}
 	}
 	mounts := make(map[string]openCodeSandboxMount)
+	runtimeRoots, rootsErr := prepareProjectRuntimeRoots(stateRoot, workspace)
+	if rootsErr != nil {
+		return errors.New("codex workcell private runtime is unavailable")
+	}
 	for _, mount := range spec.Mounts {
 		if _, duplicate := mounts[mount.Target]; duplicate {
 			return errors.New("codex workcell mount target is duplicated")
@@ -307,7 +322,8 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots Workspace
 				return errors.New("codex workcell exposes a forbidden host path")
 			}
 		}
-		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && mount.Source != runtimeDir) {
+		allowedPrivate := mount.Source == runtimeDir || mount.Source == runtimeRoots.Runtime || mount.Source == projectRuntimeControlRoot(runtimeRoots) || mount.Source == runtimeRoots.Cache || mount.Source == runtimeRoots.Artifacts
+		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && !allowedPrivate) {
 			return errors.New("codex workcell exposes private Edge state")
 		}
 	}
@@ -318,7 +334,11 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots Workspace
 	for target, expected := range map[string]openCodeSandboxMount{
 		codexSandboxExecutable:   {Source: codexPath, Target: codexSandboxExecutable, Kind: "bind"},
 		openCodeSandboxRuntime:   {Source: runtimeDir, Target: openCodeSandboxRuntime, Writable: true, Kind: "bind"},
+		"/toolchain":             {Source: runtimeRoots.Runtime, Target: "/toolchain", Writable: true, Kind: "bind"},
+		"/cache":                 {Source: runtimeRoots.Cache, Target: "/cache", Writable: true, Kind: "bind"},
+		"/artifacts":             {Source: runtimeRoots.Artifacts, Target: "/artifacts", Writable: true, Kind: "bind"},
 		openCodeSandboxWorkspace: {Source: workspace.Path, Target: openCodeSandboxWorkspace, Writable: true, Kind: "bind"},
+		openCodeSandboxWorkspace + "/.mcp-devbox": {Source: projectRuntimeControlRoot(runtimeRoots), Target: openCodeSandboxWorkspace + "/.mcp-devbox", Writable: true, Kind: "bind"},
 	} {
 		if mounts[target] != expected {
 			return errors.New("codex workcell required mount is missing or unsafe")

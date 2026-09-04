@@ -43,7 +43,7 @@ func isP15Control(name string) bool {
 }
 
 func isP16Project(name string) bool {
-	return name == "project_prepare" || name == "project_status" || name == "project_snapshot" || name == "project_exec" || strings.HasPrefix(name, "project_network_") || strings.HasPrefix(name, "project_process_") || strings.HasPrefix(name, "project_git_") || strings.HasPrefix(name, "project_github_") || strings.HasPrefix(name, "project_toolbox_") || strings.HasPrefix(name, "project_browser_") || strings.HasPrefix(name, "project_task_") || strings.HasPrefix(name, "edge_operation_")
+	return name == "project_prepare" || name == "project_status" || name == "project_snapshot" || name == "project_exec" || name == "project_reconcile" || name == "project_release" || strings.HasPrefix(name, "project_registry_") || strings.HasPrefix(name, "project_network_") || strings.HasPrefix(name, "project_process_") || strings.HasPrefix(name, "project_git_") || strings.HasPrefix(name, "project_github_") || strings.HasPrefix(name, "project_toolbox_") || strings.HasPrefix(name, "project_browser_") || strings.HasPrefix(name, "project_task_") || strings.HasPrefix(name, "edge_operation_")
 }
 
 func isFrontDoorPlatform(name string) bool {
@@ -64,14 +64,14 @@ func isEdgeReleaseSource(name string) bool {
 
 func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 178 {
-		t.Fatalf("tool order length=%d want=178", len(server.order))
+	if len(server.order) != 181 {
+		t.Fatalf("tool order length=%d want=181", len(server.order))
 	}
-	if server.order[73] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:73])
+	if server.order[76] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:76])
 	}
-	if !reflect.DeepEqual(server.order[78:81], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[78:81])
+	if !reflect.DeepEqual(server.order[81:84], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[81:84])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
@@ -174,7 +174,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 178 || snapshot.Hash != "sha256:9fc41eb979b464437cfdedcf50f3443956faada68b3f6d8b56de789849397634" {
+	if snapshot.ToolCount != 181 || snapshot.Hash != "sha256:15a0838e5f38060248e5e5a15ae43a6d176d909a5c1ac266e71ce1de6c7b7500" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

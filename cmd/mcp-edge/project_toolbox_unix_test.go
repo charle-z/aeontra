@@ -48,6 +48,13 @@ func (manager *fakeProjectToolboxManager) Repair(context.Context, edgeclient.Pro
 	}
 	return toolboxFixtureSnapshot(), nil
 }
+func (manager *fakeProjectToolboxManager) Reconcile(context.Context, edgeclient.ProjectToolboxReconcileRequest) (edgeclient.ProjectToolboxSnapshot, error) {
+	manager.repairCalls++
+	if manager.repairErr != nil {
+		return edgeclient.ProjectToolboxSnapshot{}, manager.repairErr
+	}
+	return toolboxFixtureSnapshot(), nil
+}
 func (manager *fakeProjectToolboxManager) ServiceStart(_ context.Context, request edgeclient.ProjectToolboxServiceStartRequest) (edgeclient.ProjectToolboxServiceSnapshot, bool, error) {
 	manager.serviceRequest = request
 	return toolboxFixtureService(), false, nil

@@ -5,6 +5,7 @@ package edgeclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -26,8 +27,15 @@ var directWorkcellOperationIDPattern = regexp.MustCompile(`^eo_[a-f0-9]{32}$`)
 var directWorkcellEnvironmentKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
 
 type DirectWorkcellCommandRequest struct {
-	OperationID    string
-	Workspace      Workspace
+	OperationID string
+	Workspace   Workspace
+	// StateRoot is the configured private Edge state root. Runtime roots are
+	// derived from it and Workspace.ID, never from Workspace.Path.
+	StateRoot string
+	// WorkspaceRoots are administrator-owned roots used to constrain Git
+	// metadata attestation. They are supplied by the project registry, not the
+	// MCP request surface.
+	WorkspaceRoots WorkspaceRoots
 	Argv           []string
 	CWD            string
 	Stdin          string
@@ -62,6 +70,15 @@ type DirectWorkcellProcessSpec struct {
 	PersistentStateRoot   string
 	PersistentMaxLogBytes int64
 	PersistentStdin       string
+	RuntimeRoots          ProjectRuntimeRoots
+	// The process manager carries an object-identity attestation into the
+	// worker.  It is intentionally independent of Git status: a dirty source
+	// tree is normal development state, while a replaced workspace is not.
+	workspacePath        string
+	workspaceCWDPath     string
+	workspaceAttestation string
+	workspaceRoots       WorkspaceRoots
+	runtimeAttestation   string
 }
 
 type DirectWorkcellCommandRunner interface {
@@ -123,16 +140,35 @@ func prepareDirectWorkcellProcessSpec(request DirectWorkcellCommandRequest, stdo
 			return DirectWorkcellProcessSpec{}, err
 		}
 	}
-	if err := prepareDirectWorkcellRuntime(workspace); err != nil {
-		return DirectWorkcellProcessSpec{}, err
+	stateRoot := request.StateRoot
+	if strings.TrimSpace(stateRoot) == "" {
+		stateRoot = defaultProjectRuntimeStateRoot()
 	}
-	args, environment, err := directWorkcellBubblewrapArgs(workspace, sandboxCWD, request)
+	runtimeRoots, err := prepareProjectRuntimeRoots(stateRoot, request.Workspace)
+	if err != nil {
+		return DirectWorkcellProcessSpec{}, fmt.Errorf("%w: private runtime is unavailable", ErrDirectWorkcellContract)
+	}
+	args, environment, err := directWorkcellBubblewrapArgs(workspace, sandboxCWD, request, runtimeRoots)
 	if err != nil {
 		return DirectWorkcellProcessSpec{}, err
+	}
+	cwdPath := workspace
+	if request.CWD != "" {
+		cwdPath = filepath.Join(workspace, filepath.FromSlash(request.CWD))
+	}
+	attestation, err := captureProjectProcessWorkspaceAttestationWithRoots(workspace, cwdPath, workspaceRootsPointer(request.WorkspaceRoots))
+	if err != nil {
+		return DirectWorkcellProcessSpec{}, ErrDirectWorkcellContract
+	}
+	runtimeAttestation, err := captureProjectProcessRuntimeAttestation(stateRoot, runtimeRoots)
+	if err != nil {
+		return DirectWorkcellProcessSpec{}, ErrDirectWorkcellContract
 	}
 	return DirectWorkcellProcessSpec{
 		Executable: bubblewrap, Args: args, Dir: workspace, Env: environment,
 		Stdin: strings.NewReader(request.Stdin), Stdout: stdout, Stderr: stderr,
+		RuntimeRoots: runtimeRoots, workspacePath: workspace, workspaceCWDPath: cwdPath,
+		workspaceAttestation: attestation, workspaceRoots: request.WorkspaceRoots, runtimeAttestation: runtimeAttestation,
 		PersistentStdin: request.Stdin,
 	}, nil
 }
@@ -213,19 +249,6 @@ func directWorkcellReservedEnvironmentKey(key string) bool {
 	return false
 }
 
-func prepareDirectWorkcellRuntime(workspace string) error {
-	for _, relative := range []string{
-		".mcp-devbox", ".mcp-devbox/tools", ".mcp-devbox/tools/bin", ".mcp-devbox/tools/go",
-		".mcp-devbox/tools/cargo", ".mcp-devbox/cache", ".mcp-devbox/runtime",
-		".mcp-devbox/runtime/home",
-	} {
-		if err := ensurePrivateWorkspaceDir(workspace, filepath.Join(workspace, filepath.FromSlash(relative))); err != nil {
-			return errors.New("direct workcell runtime is unavailable")
-		}
-	}
-	return nil
-}
-
 func resolveDirectWorkcellBubblewrap() (string, error) {
 	candidate, err := exec.LookPath("bwrap")
 	if err != nil {
@@ -242,15 +265,18 @@ func resolveDirectWorkcellBubblewrap() (string, error) {
 	return resolved, nil
 }
 
-func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWorkcellCommandRequest) ([]string, []string, error) {
+func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWorkcellCommandRequest, runtimeRoots ProjectRuntimeRoots) ([]string, []string, error) {
 	toolPath := openCodeDefaultToolPath
 	if err := validateOpenCodeToolPath(toolPath); err != nil {
 		return nil, nil, err
 	}
 	persistentPath := strings.Join([]string{
-		"/workspace/.mcp-devbox/tools/bin",
-		"/workspace/.mcp-devbox/tools/go/bin",
-		"/workspace/.mcp-devbox/tools/cargo/bin",
+		"/runtime/tools/bin",
+		"/runtime/cargo/bin",
+		"/runtime/go/bin",
+		"/runtime/pnpm",
+		"/runtime/tools/go/bin",
+		"/runtime/tools/cargo/bin",
 		toolPath,
 	}, ":")
 	// A durable command is parented by its minimal worker rather than by the Edge
@@ -275,12 +301,22 @@ func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWo
 	args = append(args,
 		"--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
 		"--bind", workspace, "/workspace", "--chdir", sandboxCWD,
+		"--bind", runtimeRoots.Runtime, "/runtime",
+		"--bind", runtimeRoots.Cache, "/cache",
+		"--bind", runtimeRoots.Artifacts, "/artifacts",
 	)
 	baseline := map[string]string{
-		"PATH": persistentPath, "HOME": "/workspace/.mcp-devbox/runtime/home", "USER": "mcpedge",
+		"PATH": persistentPath, "HOME": "/runtime/home", "USER": "mcpedge",
 		"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TERM": "dumb", "SHELL": "/bin/sh",
-		"XDG_CACHE_HOME": "/workspace/.mcp-devbox/cache", "TMPDIR": "/tmp",
-		"MCP_DEVBOX_PROFILE": string(request.Workspace.Profile), "MCP_DEVBOX_MODE": string(request.Workspace.Mode),
+		"XDG_CACHE_HOME": "/cache", "TMPDIR": "/tmp",
+		"CARGO_HOME": "/runtime/cargo", "RUSTUP_HOME": "/runtime/rustup",
+		"NPM_CONFIG_CACHE": "/cache/npm", "PNPM_HOME": "/runtime/pnpm",
+		"PIP_CACHE_DIR": "/cache/pip", "UV_CACHE_DIR": "/cache/uv",
+		"MAVEN_HOME": "/runtime/maven", "GRADLE_USER_HOME": "/cache/gradle",
+		"GOPATH": "/runtime/go", "GOBIN": "/runtime/tools/bin", "GOMODCACHE": "/cache/go-mod", "GOCACHE": "/cache/go-build",
+		"MCP_DEVBOX_RUNTIME_ROOT": "/runtime", "MCP_DEVBOX_CACHE_ROOT": "/cache",
+		"MCP_DEVBOX_ARTIFACT_ROOT": "/artifacts",
+		"MCP_DEVBOX_PROFILE":       string(request.Workspace.Profile), "MCP_DEVBOX_MODE": string(request.Workspace.Mode),
 		"MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 	}
 	keys := make([]string, 0, len(baseline)+len(request.Environment))
@@ -300,7 +336,7 @@ func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWo
 	}
 	args = append(args, "--")
 	args = append(args, request.Argv...)
-	hostEnvironment := []string{"PATH=" + toolPath, "HOME=" + workspace, "USER=mcpedge", "LANG=C.UTF-8", "LC_ALL=C.UTF-8"}
+	hostEnvironment := []string{"PATH=" + toolPath, "HOME=" + runtimeRoots.Runtime, "USER=mcpedge", "LANG=C.UTF-8", "LC_ALL=C.UTF-8"}
 	return args, hostEnvironment, nil
 }
 
@@ -318,6 +354,12 @@ func boundedRedactedWorkcellOutput(value string, limit int64) string {
 }
 
 func (directWorkcellExecRunner) Run(ctx context.Context, spec DirectWorkcellProcessSpec) (int, error) {
+	if err := revalidateProjectProcessWorkspaceAttestationWithRoots(spec.workspacePath, spec.workspaceCWDPath, spec.workspaceAttestation, workspaceRootsPointer(spec.workspaceRoots)); err != nil {
+		return -1, err
+	}
+	if err := revalidateProjectProcessRuntimeAttestation(projectRuntimeStateRoot(spec.RuntimeRoots), spec.RuntimeRoots, spec.runtimeAttestation); err != nil {
+		return -1, err
+	}
 	command := exec.CommandContext(ctx, spec.Executable, spec.Args...)
 	command.Dir = spec.Dir
 	command.Env = append([]string(nil), spec.Env...)

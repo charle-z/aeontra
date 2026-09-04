@@ -93,24 +93,28 @@ type ProjectProcessPlatform interface {
 
 type ProjectProcessStartRequest struct {
 	OperationID, IdempotencyKey, ProjectAlias, TargetAlias string
+	ProjectOwner, ProjectRepository                        string
+	ProjectClaimGeneration                                 uint64
+	ProjectState                                           string
 	Workspace                                              Workspace
+	WorkspaceRoots                                         WorkspaceRoots
 	Argv                                                   []string
 	CWD, Stdin                                             string
 	Environment                                            map[string]string
 }
 
 type ProjectProcessReadRequest struct {
-	ProcessID, ProjectAlias, TargetAlias string
-	StdoutOffset, StderrOffset           int64
-	LimitBytes                           int
+	ProcessID, ProjectAlias, TargetAlias, WorkspaceID string
+	StdoutOffset, StderrOffset                        int64
+	LimitBytes                                        int
 }
 
 type ProjectProcessStdinRequest struct {
-	ProcessID, ProjectAlias, TargetAlias string
-	FrameID                              string
-	ExpectedOffset                       int64
-	Data                                 string
-	Close                                bool
+	ProcessID, ProjectAlias, TargetAlias, WorkspaceID string
+	FrameID                                           string
+	ExpectedOffset                                    int64
+	Data                                              string
+	Close                                             bool
 }
 
 type ProjectProcessStdinWrite struct {
@@ -128,22 +132,22 @@ type ProjectProcessStdinReceipt struct {
 }
 
 type ProjectProcessStopRequest struct {
-	ProcessID, ProjectAlias, TargetAlias string
-	GracePeriod                          time.Duration
+	ProcessID, ProjectAlias, TargetAlias, WorkspaceID string
+	GracePeriod                                       time.Duration
 }
 
 type ProjectProcessSignalRequest struct {
-	ProcessID, ProjectAlias, TargetAlias string
-	Signal                               ProjectProcessSignal
+	ProcessID, ProjectAlias, TargetAlias, WorkspaceID string
+	Signal                                            ProjectProcessSignal
 }
 
 type ProjectProcessListRequest struct {
-	ProjectAlias, TargetAlias string
-	Limit                     int
+	ProjectAlias, TargetAlias, WorkspaceID string
+	Limit                                  int
 }
 
 type ProjectProcessCleanupRequest struct {
-	ProcessID, ProjectAlias, TargetAlias string
+	ProcessID, ProjectAlias, TargetAlias, WorkspaceID string
 }
 
 type ProjectProcessCleanupResult struct {
@@ -152,17 +156,22 @@ type ProjectProcessCleanupResult struct {
 }
 
 type ProjectProcessSnapshot struct {
-	ProcessID                        string
-	State                            ProjectProcessState
-	StartedAt, FinishedAt            time.Time
-	ExitKnown                        bool
-	ExitCode                         int
-	TerminalSignal                   ProjectProcessSignal
-	Reason                           string
-	Stdout, Stderr                   string
-	StdoutNext, StderrNext           int64
-	StdoutEOF, StderrEOF             bool
-	StdoutTruncated, StderrTruncated bool
+	ProcessID                              string
+	WorkspaceID, ProjectAlias, TargetAlias string
+	ProjectOwner, ProjectRepository        string
+	ProjectClaimGeneration                 uint64
+	ProjectProfile, ProjectMode            string
+	ProjectState                           string
+	State                                  ProjectProcessState
+	StartedAt, FinishedAt                  time.Time
+	ExitKnown                              bool
+	ExitCode                               int
+	TerminalSignal                         ProjectProcessSignal
+	Reason                                 string
+	Stdout, Stderr                         string
+	StdoutNext, StderrNext                 int64
+	StdoutEOF, StderrEOF                   bool
+	StdoutTruncated, StderrTruncated       bool
 }
 
 type ProjectProcessManagerConfig struct {
@@ -193,6 +202,10 @@ type ProjectProcessManager struct {
 type projectProcessRecord struct {
 	ProcessID, IdempotencyKey, RequestDigest, OperationID string
 	WorkspaceID, ProjectAlias, TargetAlias                string
+	ProjectOwner, ProjectRepository                       string
+	ProjectClaimGeneration                                uint64
+	ProjectProfile, ProjectMode                           string
+	ProjectState                                          string
 	Identity                                              ProjectProcessIdentity
 	State                                                 ProjectProcessState
 	StartedAt, FinishedAt                                 time.Time
@@ -240,6 +253,9 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 		`CREATE TABLE IF NOT EXISTS project_processes (
 			process_id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, request_digest TEXT NOT NULL, operation_id TEXT NOT NULL,
 			workspace_id TEXT NOT NULL, project_alias TEXT NOT NULL, target_alias TEXT NOT NULL,
+			project_owner TEXT NOT NULL DEFAULT '', project_repository TEXT NOT NULL DEFAULT '', project_claim_generation INTEGER NOT NULL DEFAULT 0,
+			project_profile TEXT NOT NULL DEFAULT '', project_mode TEXT NOT NULL DEFAULT '',
+			project_state TEXT NOT NULL DEFAULT '',
 			pid INTEGER NOT NULL DEFAULT 0, process_group_id INTEGER NOT NULL DEFAULT 0, start_ticks INTEGER NOT NULL DEFAULT 0,
 			state TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER, exit_known INTEGER NOT NULL DEFAULT 0,
 			exit_code INTEGER NOT NULL DEFAULT 0, terminal_signal TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT ''
@@ -250,6 +266,10 @@ func OpenProjectProcessManager(config ProjectProcessManagerConfig) (*ProjectProc
 			_ = db.Close()
 			return nil, errors.New("project process journal initialization failed")
 		}
+	}
+	if err := ensureProjectProcessBindingColumns(db); err != nil {
+		_ = db.Close()
+		return nil, errors.New("project process journal migration failed")
 	}
 	if err := securePrivateRegularPath(databasePath); err != nil {
 		_ = db.Close()
@@ -346,7 +366,7 @@ func (manager *ProjectProcessManager) Start(ctx context.Context, request Project
 		stdoutCloser, stderrCloser = stdoutWriter, stderrWriter
 	}
 	started := manager.now().UTC()
-	record := projectProcessRecord{ProcessID: processID, IdempotencyKey: request.IdempotencyKey, RequestDigest: digest, OperationID: request.OperationID, WorkspaceID: request.Workspace.ID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, State: ProjectProcessStarting, StartedAt: started}
+	record := projectProcessRecord{ProcessID: processID, IdempotencyKey: request.IdempotencyKey, RequestDigest: digest, OperationID: request.OperationID, WorkspaceID: request.Workspace.ID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, ProjectOwner: request.ProjectOwner, ProjectRepository: request.ProjectRepository, ProjectClaimGeneration: request.ProjectClaimGeneration, ProjectProfile: string(request.Workspace.Profile), ProjectMode: string(request.Workspace.Mode), ProjectState: request.ProjectState, State: ProjectProcessStarting, StartedAt: started}
 	if err := manager.insertRecord(record); err != nil {
 		_ = stdoutCloser.Close()
 		_ = stderrCloser.Close()
@@ -356,19 +376,26 @@ func (manager *ProjectProcessManager) Start(ctx context.Context, request Project
 	// durable manager adds the private worker fields below after the ordinary
 	// Windows workcell request has been validated; the platform Start method
 	// then requires those fields before it can launch the worker.
-	spec, err := prepareDirectWorkcellProcessSpec(DirectWorkcellCommandRequest{OperationID: request.OperationID, Workspace: request.Workspace, WindowsDevRoot: request.Workspace.WindowsDevRoot, Argv: request.Argv, CWD: request.CWD, Stdin: request.Stdin, Environment: request.Environment, TimeoutSeconds: 1}, stdoutTarget, stderrTarget, manager.resolveExecutable)
+	spec, err := prepareDirectWorkcellProcessSpec(DirectWorkcellCommandRequest{OperationID: request.OperationID, Workspace: request.Workspace, StateRoot: manager.stateRoot, WindowsDevRoot: request.Workspace.WindowsDevRoot, WorkspaceRoots: request.WorkspaceRoots, Argv: request.Argv, CWD: request.CWD, Stdin: request.Stdin, Environment: request.Environment, TimeoutSeconds: 1}, stdoutTarget, stderrTarget, manager.resolveExecutable)
 	if err != nil {
 		_ = stdoutCloser.Close()
 		_ = stderrCloser.Close()
 		_ = manager.finishFailed(processID, "process_contract_invalid")
 		return ProjectProcessSnapshot{}, false, err
 	}
+	// The durable worker does not inherit these handles. Keep them alive while
+	// the request is prepared and handed off, then release every handle on all
+	// return paths; the worker reopens and revalidates its own handles before
+	// spawning the child.
+	defer closeWindowsDirectWorkcellSpec(spec)
 	spec.PersistentProcessID = processID
 	spec.PersistentStdin = request.Stdin
-	if manager.resolveExecutable {
-		spec.PersistentStateRoot = manager.stateRoot
-		spec.PersistentMaxLogBytes = manager.maxLogBytes
-	}
+	// Durable workers always need the manager's private roots. This is not
+	// conditional on executable resolution: the production platform is
+	// constructed by OpenProjectProcessManager and still validates these
+	// fields before handing off to its worker.
+	spec.PersistentStateRoot = manager.stateRoot
+	spec.PersistentMaxLogBytes = manager.maxLogBytes
 	if err := ctx.Err(); err != nil {
 		_ = stdoutCloser.Close()
 		_ = stderrCloser.Close()
@@ -415,7 +442,7 @@ func (manager *ProjectProcessManager) Status(request ProjectProcessReadRequest) 
 	if !projectProcessIDPattern.MatchString(request.ProcessID) || request.LimitBytes < 1 || request.LimitBytes > edge.MaxProjectProcessReadBytes || request.StdoutOffset < 0 || request.StderrOffset < 0 {
 		return ProjectProcessSnapshot{}, errors.New("project process status request is invalid")
 	}
-	record, err := manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+	record, err := manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 	if err != nil {
 		return ProjectProcessSnapshot{}, err
 	}
@@ -426,8 +453,10 @@ func (manager *ProjectProcessManager) Status(request ProjectProcessReadRequest) 
 		alive, aliveErr := manager.platform.Alive(record.Identity)
 		if errors.Is(aliveErr, ErrProjectProcessIdentityChanged) {
 			_ = manager.reconcileRecord(record)
-			record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
-		} else if aliveErr != nil || !alive {
+			record, _ = manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
+		} else if aliveErr != nil {
+			return ProjectProcessSnapshot{}, errors.New("project process status liveness unavailable")
+		} else if !alive {
 			if watched {
 				if terminal, ok := manager.waitTerminal(context.Background(), record.ProcessID, 50*time.Millisecond); ok {
 					record = terminal
@@ -435,13 +464,13 @@ func (manager *ProjectProcessManager) Status(request ProjectProcessReadRequest) 
 					alive = true
 				}
 			}
-			if aliveErr != nil || !alive {
+			if !alive {
 				if watched {
 					_ = manager.finishFailed(record.ProcessID, "process_lost")
 				} else {
 					_ = manager.reconcileRecord(record)
 				}
-				record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+				record, _ = manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 			}
 		}
 	}
@@ -469,7 +498,7 @@ func (manager *ProjectProcessManager) WriteStdin(request ProjectProcessStdinRequ
 	effectLock := manager.projectProcessEffectLock(request.ProcessID)
 	effectLock.Lock()
 	defer effectLock.Unlock()
-	record, err := manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+	record, err := manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 	if err != nil {
 		return ProjectProcessSnapshot{}, ProjectProcessStdinReceipt{}, err
 	}
@@ -510,7 +539,7 @@ func (manager *ProjectProcessManager) Stop(ctx context.Context, request ProjectP
 	effectLock := manager.projectProcessEffectLock(request.ProcessID)
 	effectLock.Lock()
 	defer effectLock.Unlock()
-	record, err := manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+	record, err := manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 	if err != nil {
 		return ProjectProcessSnapshot{}, err
 	}
@@ -520,25 +549,29 @@ func (manager *ProjectProcessManager) Stop(ctx context.Context, request ProjectP
 	alive, err := manager.platform.Alive(record.Identity)
 	if errors.Is(err, ErrProjectProcessIdentityChanged) {
 		_ = manager.reconcileRecord(record)
-		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+		record, _ = manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 		return manager.snapshot(record), nil
 	}
-	if err != nil || !alive {
+	if err != nil {
+		return ProjectProcessSnapshot{}, errors.New("project process stop liveness unavailable")
+	}
+	if !alive {
 		_ = manager.reconcileRecord(record)
-		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+		record, _ = manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 		return manager.snapshot(record), nil
 	}
 	_, _ = manager.db.Exec(`UPDATE project_processes SET state=? WHERE process_id=? AND state IN (?,?)`, ProjectProcessStopping, record.ProcessID, ProjectProcessStarting, ProjectProcessRunning)
 	if err := manager.platform.Signal(record.Identity, ProjectProcessTerminate); err != nil {
 		return ProjectProcessSnapshot{}, errors.New("project process stop failed")
 	}
-	if terminal, ok := manager.waitTerminal(ctx, record.ProcessID, request.GracePeriod); ok {
+	terminationCtx := context.WithoutCancel(ctx)
+	if terminal, ok := manager.waitTerminal(terminationCtx, record.ProcessID, request.GracePeriod); ok {
 		return manager.snapshot(terminal), nil
 	}
 	if err := manager.platform.Signal(record.Identity, ProjectProcessKill); err != nil && !errors.Is(err, ErrProjectProcessIdentityChanged) {
 		return ProjectProcessSnapshot{}, errors.New("project process kill failed")
 	}
-	if terminal, ok := manager.waitTerminal(ctx, record.ProcessID, 5*time.Second); ok {
+	if terminal, ok := manager.waitTerminal(terminationCtx, record.ProcessID, 5*time.Second); ok {
 		return manager.snapshot(terminal), nil
 	}
 	return ProjectProcessSnapshot{}, errors.New("project process did not stop")
@@ -552,7 +585,7 @@ func (manager *ProjectProcessManager) Signal(request ProjectProcessSignalRequest
 	effectLock := manager.projectProcessEffectLock(request.ProcessID)
 	effectLock.Lock()
 	defer effectLock.Unlock()
-	record, err := manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+	record, err := manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 	if err != nil {
 		return ProjectProcessSnapshot{}, err
 	}
@@ -562,12 +595,15 @@ func (manager *ProjectProcessManager) Signal(request ProjectProcessSignalRequest
 	alive, err := manager.platform.Alive(record.Identity)
 	if errors.Is(err, ErrProjectProcessIdentityChanged) {
 		_ = manager.reconcileRecord(record)
-		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+		record, _ = manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 		return manager.snapshot(record), nil
 	}
-	if err != nil || !alive {
+	if err != nil {
+		return ProjectProcessSnapshot{}, errors.New("project process signal liveness unavailable")
+	}
+	if !alive {
 		_ = manager.reconcileRecord(record)
-		record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+		record, _ = manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 		return manager.snapshot(record), nil
 	}
 	if request.Signal != ProjectProcessInterrupt {
@@ -577,7 +613,7 @@ func (manager *ProjectProcessManager) Signal(request ProjectProcessSignalRequest
 	if err := manager.platform.Signal(record.Identity, request.Signal); err != nil {
 		if errors.Is(err, ErrProjectProcessIdentityChanged) {
 			_ = manager.reconcileRecord(record)
-			record, _ = manager.boundRecord(request.ProcessID, request.ProjectAlias, request.TargetAlias)
+			record, _ = manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 			return manager.snapshot(record), nil
 		}
 		return ProjectProcessSnapshot{}, errors.New("project process signal failed")
@@ -586,13 +622,21 @@ func (manager *ProjectProcessManager) Signal(request ProjectProcessSignalRequest
 }
 
 func (manager *ProjectProcessManager) List(request ProjectProcessListRequest) ([]ProjectProcessSnapshot, error) {
-	if !projectAliasPattern.MatchString(request.ProjectAlias) || !projectTargetPattern.MatchString(request.TargetAlias) || request.Limit < 1 || request.Limit > 100 {
+	if !projectAliasPattern.MatchString(request.ProjectAlias) || !projectTargetPattern.MatchString(request.TargetAlias) || request.WorkspaceID != "" && !workspaceIDPattern.MatchString(request.WorkspaceID) || request.Limit < 1 || request.Limit > 100 {
 		return nil, errors.New("project process list request is invalid")
 	}
-	if err := manager.Reconcile(); err != nil {
+	if err := manager.reconcileScope(request.ProjectAlias, request.TargetAlias, request.WorkspaceID); err != nil {
 		return nil, err
 	}
-	rows, err := manager.db.Query(projectProcessSelect+` WHERE project_alias=? AND target_alias=? ORDER BY started_at DESC LIMIT ?`, request.ProjectAlias, request.TargetAlias, request.Limit)
+	query := projectProcessSelect + ` WHERE project_alias=? AND target_alias=?`
+	args := []any{request.ProjectAlias, request.TargetAlias}
+	if request.WorkspaceID != "" {
+		query += ` AND workspace_id=?`
+		args = append(args, request.WorkspaceID)
+	}
+	query += ` ORDER BY started_at DESC LIMIT ?`
+	args = append(args, request.Limit)
+	rows, err := manager.db.Query(query, args...)
 	if err != nil {
 		return nil, errors.New("project process journal unavailable")
 	}
@@ -612,15 +656,19 @@ func (manager *ProjectProcessManager) List(request ProjectProcessListRequest) ([
 }
 
 func (manager *ProjectProcessManager) Cleanup(request ProjectProcessCleanupRequest) (ProjectProcessCleanupResult, error) {
-	if !projectAliasPattern.MatchString(request.ProjectAlias) || !projectTargetPattern.MatchString(request.TargetAlias) ||
+	if !projectAliasPattern.MatchString(request.ProjectAlias) || !projectTargetPattern.MatchString(request.TargetAlias) || request.WorkspaceID != "" && !workspaceIDPattern.MatchString(request.WorkspaceID) ||
 		(request.ProcessID != "" && !projectProcessIDPattern.MatchString(request.ProcessID)) {
 		return ProjectProcessCleanupResult{}, errors.New("project process cleanup request is invalid")
 	}
-	if err := manager.Reconcile(); err != nil {
+	if err := manager.reconcileScope(request.ProjectAlias, request.TargetAlias, request.WorkspaceID); err != nil {
 		return ProjectProcessCleanupResult{}, err
 	}
 	query := projectProcessSelect + ` WHERE project_alias=? AND target_alias=?`
 	arguments := []any{request.ProjectAlias, request.TargetAlias}
+	if request.WorkspaceID != "" {
+		query += ` AND workspace_id=?`
+		arguments = append(arguments, request.WorkspaceID)
+	}
 	if request.ProcessID != "" {
 		query += ` AND process_id=?`
 		arguments = append(arguments, request.ProcessID)
@@ -697,6 +745,48 @@ func (manager *ProjectProcessManager) Reconcile() error {
 		if err := manager.reconcileRecord(record); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// reconcileScope refreshes only records visible to the requested project. A
+// stale or malformed process from another project must not make an otherwise
+// read-only list or cleanup operation fail (or create head-of-line blocking).
+func (manager *ProjectProcessManager) reconcileScope(projectAlias, targetAlias, workspaceID string) error {
+	query := projectProcessSelect + ` WHERE state IN (?,?,?) AND project_alias=? AND target_alias=?`
+	args := []any{ProjectProcessStarting, ProjectProcessRunning, ProjectProcessStopping, projectAlias, targetAlias}
+	if workspaceID != "" {
+		query += ` AND workspace_id=?`
+		args = append(args, workspaceID)
+	}
+	rows, err := manager.db.Query(query, args...)
+	if err != nil {
+		return errors.New("project process journal unavailable")
+	}
+	records := make([]projectProcessRecord, 0)
+	for rows.Next() {
+		record, scanErr := scanProjectProcessRecord(rows)
+		if scanErr != nil {
+			_ = rows.Close()
+			return errors.New("project process journal unavailable")
+		}
+		records = append(records, record)
+	}
+	if err := rows.Close(); err != nil {
+		return errors.New("project process journal unavailable")
+	}
+	for _, record := range records {
+		manager.watchMu.Lock()
+		watched := manager.watching[record.ProcessID]
+		manager.watchMu.Unlock()
+		if !watched {
+			if err := manager.reconcileRecord(record); err != nil {
+				return err
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return errors.New("project process journal unavailable")
 	}
 	return nil
 }
@@ -979,7 +1069,7 @@ func (manager *ProjectProcessManager) waitTerminal(ctx context.Context, processI
 }
 
 func (manager *ProjectProcessManager) insertRecord(record projectProcessRecord) error {
-	_, err := manager.db.Exec(`INSERT INTO project_processes(process_id,idempotency_key,request_digest,operation_id,workspace_id,project_alias,target_alias,state,started_at) VALUES(?,?,?,?,?,?,?,?,?)`, record.ProcessID, record.IdempotencyKey, record.RequestDigest, record.OperationID, record.WorkspaceID, record.ProjectAlias, record.TargetAlias, record.State, record.StartedAt.UnixNano())
+	_, err := manager.db.Exec(`INSERT INTO project_processes(process_id,idempotency_key,request_digest,operation_id,workspace_id,project_alias,target_alias,project_owner,project_repository,project_claim_generation,project_profile,project_mode,project_state,state,started_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, record.ProcessID, record.IdempotencyKey, record.RequestDigest, record.OperationID, record.WorkspaceID, record.ProjectAlias, record.TargetAlias, record.ProjectOwner, record.ProjectRepository, record.ProjectClaimGeneration, record.ProjectProfile, record.ProjectMode, record.ProjectState, record.State, record.StartedAt.UnixNano())
 	if err != nil {
 		return errors.New("project process journal unavailable")
 	}
@@ -992,32 +1082,85 @@ func (manager *ProjectProcessManager) recordByIdempotency(key string) (projectPr
 func (manager *ProjectProcessManager) recordByID(id string) (projectProcessRecord, error) {
 	return scanProjectProcessRecord(manager.db.QueryRow(projectProcessSelect+` WHERE process_id=?`, id))
 }
+
+// ProjectProcessBinding is the immutable project authority captured when a
+// durable process starts. Reads/effects use this journal binding so releasing
+// or repairing the project registry cannot strand an already-authorized stop.
+type ProjectProcessBinding struct {
+	ProcessID, WorkspaceID, ProjectAlias, TargetAlias string
+	ProjectOwner, ProjectRepository                   string
+	ProjectClaimGeneration                            uint64
+	ProjectProfile, ProjectMode, ProjectState         string
+}
+
+func (manager *ProjectProcessManager) Binding(processID string) (ProjectProcessBinding, error) {
+	if !projectProcessIDPattern.MatchString(processID) {
+		return ProjectProcessBinding{}, ErrProjectProcessNotFound
+	}
+	record, err := manager.recordByID(processID)
+	if err != nil {
+		return ProjectProcessBinding{}, ErrProjectProcessNotFound
+	}
+	return ProjectProcessBinding{
+		ProcessID: processID, WorkspaceID: record.WorkspaceID, ProjectAlias: record.ProjectAlias, TargetAlias: record.TargetAlias,
+		ProjectOwner: record.ProjectOwner, ProjectRepository: record.ProjectRepository, ProjectClaimGeneration: record.ProjectClaimGeneration, ProjectProfile: record.ProjectProfile, ProjectMode: record.ProjectMode, ProjectState: record.ProjectState,
+	}, nil
+}
+
 func (manager *ProjectProcessManager) boundRecord(id, alias, target string) (projectProcessRecord, error) {
+	return manager.boundRecordScoped(id, alias, target, "")
+}
+func (manager *ProjectProcessManager) boundRecordScoped(id, alias, target, workspaceID string) (projectProcessRecord, error) {
 	if !projectAliasPattern.MatchString(alias) || !projectTargetPattern.MatchString(target) {
 		return projectProcessRecord{}, ErrProjectProcessNotFound
 	}
-	record, err := scanProjectProcessRecord(manager.db.QueryRow(projectProcessSelect+` WHERE process_id=? AND project_alias=? AND target_alias=?`, id, alias, target))
+	if workspaceID != "" && !workspaceIDPattern.MatchString(workspaceID) {
+		return projectProcessRecord{}, ErrProjectProcessNotFound
+	}
+	query := projectProcessSelect + ` WHERE process_id=? AND project_alias=? AND target_alias=?`
+	args := []any{id, alias, target}
+	if workspaceID != "" {
+		query += ` AND workspace_id=?`
+		args = append(args, workspaceID)
+	}
+	record, err := scanProjectProcessRecord(manager.db.QueryRow(query, args...))
 	if err != nil {
 		return projectProcessRecord{}, ErrProjectProcessNotFound
 	}
 	return record, nil
 }
 
-const projectProcessSelect = `SELECT process_id,idempotency_key,request_digest,operation_id,workspace_id,project_alias,target_alias,pid,process_group_id,start_ticks,state,started_at,finished_at,exit_known,exit_code,terminal_signal,reason FROM project_processes`
+const projectProcessSelect = `SELECT process_id,idempotency_key,request_digest,operation_id,workspace_id,project_alias,target_alias,project_owner,project_repository,project_claim_generation,project_profile,project_mode,project_state,pid,process_group_id,start_ticks,state,started_at,finished_at,exit_known,exit_code,terminal_signal,reason FROM project_processes`
 
 type projectProcessRow interface{ Scan(...any) error }
 
 func scanProjectProcessRecord(row projectProcessRow) (projectProcessRecord, error) {
 	var record projectProcessRecord
 	var started int64
+	var claimGeneration int64
 	var finished sql.NullInt64
 	var exitKnown bool
-	err := row.Scan(&record.ProcessID, &record.IdempotencyKey, &record.RequestDigest, &record.OperationID, &record.WorkspaceID, &record.ProjectAlias, &record.TargetAlias, &record.Identity.PID, &record.Identity.ProcessGroupID, &record.Identity.StartTicks, &record.State, &started, &finished, &exitKnown, &record.ExitCode, &record.TerminalSignal, &record.Reason)
+	var profile, mode, projectState string
+	err := row.Scan(&record.ProcessID, &record.IdempotencyKey, &record.RequestDigest, &record.OperationID, &record.WorkspaceID, &record.ProjectAlias, &record.TargetAlias, &record.ProjectOwner, &record.ProjectRepository, &claimGeneration, &profile, &mode, &projectState, &record.Identity.PID, &record.Identity.ProcessGroupID, &record.Identity.StartTicks, &record.State, &started, &finished, &exitKnown, &record.ExitCode, &record.TerminalSignal, &record.Reason)
 	if err != nil {
 		return projectProcessRecord{}, err
 	}
 	record.StartedAt = time.Unix(0, started).UTC()
 	record.Identity.ProcessID = record.ProcessID
+	if claimGeneration > 0 {
+		record.ProjectClaimGeneration = uint64(claimGeneration)
+	}
+	record.ProjectProfile, record.ProjectMode = profile, mode
+	record.ProjectState = projectState
+	if record.ProjectProfile == "" {
+		record.ProjectProfile = string(WorkspaceProfileWindowsWorkcell)
+	}
+	if record.ProjectMode == "" {
+		record.ProjectMode = string(WorkspaceModeDev)
+	}
+	if record.ProjectState != string(ProjectCheckoutReady) && record.ProjectState != string(ProjectCheckoutDirty) {
+		record.ProjectState = string(ProjectCheckoutReady)
+	}
 	record.ExitKnown = exitKnown
 	if finished.Valid {
 		record.FinishedAt = time.Unix(0, finished.Int64).UTC()
@@ -1031,7 +1174,7 @@ func (manager *ProjectProcessManager) finishFailed(processID, reason string) err
 }
 
 func (manager *ProjectProcessManager) snapshot(record projectProcessRecord) ProjectProcessSnapshot {
-	return ProjectProcessSnapshot{ProcessID: record.ProcessID, State: record.State, StartedAt: record.StartedAt, FinishedAt: record.FinishedAt, ExitKnown: record.ExitKnown, ExitCode: record.ExitCode, TerminalSignal: record.TerminalSignal, Reason: record.Reason}
+	return ProjectProcessSnapshot{ProcessID: record.ProcessID, WorkspaceID: record.WorkspaceID, ProjectAlias: record.ProjectAlias, TargetAlias: record.TargetAlias, ProjectOwner: record.ProjectOwner, ProjectRepository: record.ProjectRepository, ProjectClaimGeneration: record.ProjectClaimGeneration, ProjectProfile: record.ProjectProfile, ProjectMode: record.ProjectMode, ProjectState: record.ProjectState, State: record.State, StartedAt: record.StartedAt, FinishedAt: record.FinishedAt, ExitKnown: record.ExitKnown, ExitCode: record.ExitCode, TerminalSignal: record.TerminalSignal, Reason: record.Reason}
 }
 
 func projectProcessTerminal(state ProjectProcessState) bool {
@@ -1040,11 +1183,12 @@ func projectProcessTerminal(state ProjectProcessState) bool {
 
 func projectProcessRequestDigest(request ProjectProcessStartRequest) (string, error) {
 	body, err := json.Marshal(struct {
-		WorkspaceID, ProjectAlias, TargetAlias string
-		Argv                                   []string
-		CWD, Stdin                             string
-		Environment                            map[string]string
-	}{request.Workspace.ID, request.ProjectAlias, request.TargetAlias, request.Argv, request.CWD, request.Stdin, request.Environment})
+		WorkspaceID, ProjectAlias, TargetAlias, ProjectOwner, ProjectRepository, ProjectState string
+		ProjectClaimGeneration                                                                uint64
+		Argv                                                                                  []string
+		CWD, Stdin                                                                            string
+		Environment                                                                           map[string]string
+	}{request.Workspace.ID, request.ProjectAlias, request.TargetAlias, request.ProjectOwner, request.ProjectRepository, request.ProjectState, request.ProjectClaimGeneration, request.Argv, request.CWD, request.Stdin, request.Environment})
 	if err != nil {
 		return "", errors.New("project process request is invalid")
 	}
@@ -1235,12 +1379,19 @@ func openPrivateProjectProcessLog(path string) (*os.File, os.FileInfo, error) {
 }
 
 type projectProcessWorkerRequest struct {
-	Executable  string
-	Args        []string
-	Dir         string
-	Env         []string
-	Stdin       string
-	MaxLogBytes int64
+	Executable           string
+	Args                 []string
+	Dir                  string
+	Env                  []string
+	Stdin                string
+	MaxLogBytes          int64
+	WorkspaceRoot        string
+	WorkspacePath        string
+	CWDPath              string
+	WorkspaceAttestation string
+	WorkspaceRoots       WorkspaceRoots
+	RuntimeRoots         ProjectRuntimeRoots
+	RuntimeAttestation   string
 }
 type projectProcessStdinWireRequest struct {
 	Identity       ProjectProcessIdentity
@@ -1276,7 +1427,16 @@ func (platform *windowsProjectProcessPlatform) Start(spec DirectWorkcellProcessS
 		spec.PersistentMaxLogBytes < 1 || spec.PersistentMaxLogBytes > 1<<30 {
 		return ProjectProcessIdentity{}, nil, errors.New("project process worker contract is invalid")
 	}
-	request := projectProcessWorkerRequest{Executable: spec.Executable, Args: append([]string(nil), spec.Args...), Dir: spec.Dir, Env: append([]string(nil), spec.Env...), Stdin: spec.PersistentStdin, MaxLogBytes: spec.PersistentMaxLogBytes}
+	if err := revalidateWindowsDirectWorkcellSpec(spec); err != nil {
+		return ProjectProcessIdentity{}, nil, err
+	}
+	if err := revalidateProjectProcessWorkspaceAttestationWithRoots(spec.workspaceRoot, spec.workspacePath, spec.cwdPath, spec.workspaceAttestation, workspaceRootsPointer(spec.workspaceRoots)); err != nil {
+		return ProjectProcessIdentity{}, nil, err
+	}
+	if err := revalidateProjectProcessRuntimeAttestation(projectRuntimeStateRoot(spec.runtimeRoots), spec.runtimeRoots, spec.runtimeAttestation); err != nil {
+		return ProjectProcessIdentity{}, nil, err
+	}
+	request := projectProcessWorkerRequest{Executable: spec.Executable, Args: append([]string(nil), spec.Args...), Dir: spec.Dir, Env: append([]string(nil), spec.Env...), Stdin: spec.PersistentStdin, MaxLogBytes: spec.PersistentMaxLogBytes, WorkspaceRoot: spec.workspaceRoot, WorkspacePath: spec.workspacePath, CWDPath: spec.cwdPath, WorkspaceAttestation: spec.workspaceAttestation, WorkspaceRoots: spec.workspaceRoots, RuntimeRoots: spec.runtimeRoots, RuntimeAttestation: spec.runtimeAttestation}
 	body, err := json.Marshal(request)
 	if err != nil || len(body) > 128<<10 {
 		return ProjectProcessIdentity{}, nil, errors.New("project process worker request is invalid")
@@ -1643,20 +1803,68 @@ type windowsPersistedStdinReceipt struct {
 }
 
 func RunProjectProcessWorker(stateRoot, processID string) error {
-	if !projectProcessIDPattern.MatchString(processID) || !filepath.IsAbs(stateRoot) {
+	stateRoot = filepath.Clean(strings.TrimSpace(stateRoot))
+	if !projectProcessIDPattern.MatchString(processID) || !IsWindowsLocalPath(stateRoot) || stateRoot == filepath.Clean(filepath.Dir(stateRoot)) {
 		return errors.New("durable Windows process worker arguments are invalid")
 	}
+	if err := validatePrivateRoot(stateRoot); err != nil {
+		return errors.New("project process worker state is unsafe")
+	}
 	workerRoot, logRoot := filepath.Join(stateRoot, projectProcessWorkerDirectory), filepath.Join(stateRoot, projectProcessLogDirectory)
-	body, err := readPrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "request"), 128<<10)
+	stdinRoot := filepath.Join(stateRoot, projectProcessStdinDirectory)
+	for _, directory := range []string{workerRoot, logRoot, stdinRoot} {
+		if err := validatePrivateRoot(directory); err != nil {
+			return errors.New("project process worker state is unsafe")
+		}
+	}
+	requestPath := projectProcessWorkerPath(workerRoot, processID, "request")
+	body, err := readPrivateProjectProcessWorkerFile(requestPath, 128<<10)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = os.Remove(requestPath) }()
 	var req projectProcessWorkerRequest
 	d := json.NewDecoder(strings.NewReader(string(body)))
 	d.DisallowUnknownFields()
-	if d.Decode(&req) != nil || req.Executable == "" || req.Dir == "" || req.MaxLogBytes < 1 || len(req.Stdin) > edge.MaxProjectProcessStdinTotalBytes {
+	if d.Decode(&req) != nil || d.Decode(&struct{}{}) != io.EOF || req.Executable == "" || req.Dir == "" || req.MaxLogBytes < 1 || len(req.Args) > 512 || len(req.Env) > 128 || len(req.Stdin) > edge.MaxProjectProcessStdinTotalBytes || req.RuntimeAttestation == "" {
 		return errors.New("project process worker request is invalid")
 	}
+	resolvedExecutable, err := validateWindowsDirectExecutablePath(req.Executable)
+	if err != nil {
+		return errors.New("project process worker executable is unsafe")
+	}
+	req.Executable = resolvedExecutable
+	if req.WorkspaceRoot == "" || req.WorkspacePath == "" || req.CWDPath == "" ||
+		!IsWindowsLocalPath(req.WorkspaceRoot) || !IsWindowsLocalPath(req.WorkspacePath) || !IsWindowsLocalPath(req.CWDPath) {
+		return errors.New("project process worker workspace attestation is invalid")
+	}
+	workspaceHandle, err := OpenWindowsWorkcell(req.WorkspaceRoot, req.WorkspacePath)
+	if err != nil {
+		return errors.New("project process worker workspace is unavailable")
+	}
+	defer workspaceHandle.Close()
+	cwdHandle, err := OpenWindowsWorkcell(req.WorkspaceRoot, req.CWDPath)
+	if err != nil {
+		return errors.New("project process worker working directory is unavailable")
+	}
+	defer cwdHandle.Close()
+	if !WindowsPathContained(workspaceHandle.FinalPath(), cwdHandle.FinalPath()) ||
+		!strings.EqualFold(filepath.Clean(req.Dir), filepath.Clean(cwdHandle.FinalPath())) {
+		return errors.New("project process worker workspace identity changed")
+	}
+	if err := workspaceHandle.Revalidate(); err != nil {
+		return errors.New("project process worker workspace identity changed")
+	}
+	if err := cwdHandle.Revalidate(); err != nil {
+		return errors.New("project process worker workspace identity changed")
+	}
+	if err := revalidateProjectProcessWorkspaceAttestationWithRoots(req.WorkspaceRoot, req.WorkspacePath, req.CWDPath, req.WorkspaceAttestation, workspaceRootsPointer(req.WorkspaceRoots)); err != nil {
+		return errors.New("project process worker workspace identity changed")
+	}
+	if err := revalidateProjectProcessRuntimeAttestation(stateRoot, req.RuntimeRoots, req.RuntimeAttestation); err != nil {
+		return errors.New("project process worker runtime identity changed")
+	}
+	req.Dir = cwdHandle.FinalPath()
 	stdout, err := openProjectProcessLogWriter(logRoot, processID, "stdout", req.MaxLogBytes)
 	if err != nil {
 		return err
@@ -1698,6 +1906,40 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 			state.nextOffset = persisted.Receipt.NextOffset
 			state.closed = persisted.Receipt.Closed
 		}
+	}
+	// Revalidate immediately before spawn. The worker keeps the prepared
+	// handles open, but a replacement after the admission check must still fail
+	// closed rather than allowing a command to run in a different tree.
+	if err := workspaceHandle.Revalidate(); err != nil || cwdHandle.Revalidate() != nil ||
+		!WindowsPathContained(workspaceHandle.FinalPath(), cwdHandle.FinalPath()) ||
+		!strings.EqualFold(filepath.Clean(req.Dir), filepath.Clean(cwdHandle.FinalPath())) {
+		_ = tree.Close()
+		_ = iw.Close()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		return errors.New("project process worker workspace identity changed")
+	}
+	if err := revalidateProjectProcessWorkspaceAttestationWithRoots(req.WorkspaceRoot, req.WorkspacePath, req.CWDPath, req.WorkspaceAttestation, workspaceRootsPointer(req.WorkspaceRoots)); err != nil {
+		_ = tree.Close()
+		_ = iw.Close()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		return errors.New("project process worker workspace identity changed")
+	}
+	if err := revalidateProjectProcessRuntimeAttestation(stateRoot, req.RuntimeRoots, req.RuntimeAttestation); err != nil {
+		_ = tree.Close()
+		_ = iw.Close()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		return errors.New("project process worker runtime identity changed")
+	}
+	latestExecutable, execErr := validateWindowsDirectExecutablePath(req.Executable)
+	if execErr != nil || !strings.EqualFold(filepath.Clean(latestExecutable), filepath.Clean(cmd.Path)) {
+		_ = tree.Close()
+		_ = iw.Close()
+		_ = stdout.Close()
+		_ = stderr.Close()
+		return errors.New("project process worker executable is unsafe")
 	}
 	if req.Stdin != "" {
 		go func() { _, _ = iw.Write([]byte(req.Stdin)) }()

@@ -58,6 +58,17 @@ func TestProjectOperationsUseHumanAliasesAndSafeResults(t *testing.T) {
 	if validOperationCompletionForKind(OperationProjectStatus, toolchainResult, "") {
 		t.Fatal("inconsistent toolchain route accepted")
 	}
+	diagnosticResult := OperationResult{
+		ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "Repo", ProjectTarget: "parrot",
+		ProjectState: "timeout", ProjectReason: "checkout_timeout", ProjectDiagnosticReason: "git_status_timeout",
+		ProjectRepairable: true, ProjectRecommendedAction: "project_reconcile",
+	}
+	if !validOperationCompletionForKind(OperationProjectStatus, diagnosticResult, "") {
+		t.Fatal("actionable project status diagnostic rejected")
+	}
+	if validOperationCompletionForKind(OperationProjectPrepare, diagnosticResult, "") {
+		t.Fatal("project status diagnostic accepted for preparation")
+	}
 	if _, _, err := store.CreateOperation(device.ID, OperationProjectStatus, OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell"}); err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +88,56 @@ func TestProjectOperationsUseHumanAliasesAndSafeResults(t *testing.T) {
 	mixed.Commit = "0123456789abcdef0123456789abcdef01234567"
 	if validOperationCompletion(mixed, "") {
 		t.Fatal("project result accepted unrelated operation metadata")
+	}
+}
+
+func TestProjectRegistryRecoveryOperationContracts(t *testing.T) {
+	list, err := validateOperationRequest(OperationProjectRegistryList, OperationRequest{TargetAlias: "Parrot", Profile: "linux-workcell"})
+	if err != nil || list.TargetAlias != "parrot" {
+		t.Fatalf("list=%+v err=%v", list, err)
+	}
+	reconcile, err := validateOperationRequest(OperationProjectReconcile, OperationRequest{Alias: "Project", TargetAlias: "Parrot", Profile: "linux-workcell"})
+	if err != nil || reconcile.Alias != "project" || reconcile.TargetAlias != "parrot" {
+		t.Fatalf("reconcile=%+v err=%v", reconcile, err)
+	}
+	release, err := validateOperationRequest(OperationProjectRelease, OperationRequest{Alias: "Project", Repository: "Repo", TargetAlias: "Parrot", Profile: "linux-workcell", ProjectClaimGeneration: 3})
+	if err != nil || release.Alias != "project" || release.Repository != "repo" || release.TargetAlias != "parrot" || release.ProjectClaimGeneration != 3 {
+		t.Fatalf("release=%+v err=%v", release, err)
+	}
+	if _, err := validateOperationRequest(OperationProjectRelease, OperationRequest{Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: "linux-workcell", ProjectClaimGeneration: uint64(1 << 63)}); err == nil {
+		t.Fatal("release generation above signed SQLite range accepted")
+	}
+	for kind, invalids := range map[OperationKind][]OperationRequest{
+		OperationProjectRegistryList: {
+			{TargetAlias: "parrot", Profile: "linux-workcell", Alias: "project"},
+			{TargetAlias: "parrot", Profile: "linux-workcell", ProjectClaimGeneration: 1},
+		},
+		OperationProjectReconcile: {
+			{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", Repository: "repo"},
+			{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", ProjectClaimGeneration: 1},
+		},
+		OperationProjectRelease: {
+			{Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: "linux-workcell"},
+			{Alias: "project", Repository: "owner/repo", TargetAlias: "parrot", Profile: "linux-workcell", ProjectClaimGeneration: 1},
+		},
+	} {
+		for _, invalid := range invalids {
+			if _, err := validateOperationRequest(kind, invalid); err == nil {
+				t.Fatalf("invalid registry request accepted kind=%s request=%+v", kind, invalid)
+			}
+		}
+	}
+	claims := OperationResult{ProjectRegistryAction: "listed", ProjectClaims: []ProjectClaimSummary{{Alias: "project", Owner: "charle-z", Repository: "repo", Target: "parrot", Generation: 1, State: "stale", Reason: "workspace_unavailable", Repairable: true}}}
+	if !validOperationCompletionForKind(OperationProjectRegistryList, claims, "") || validOperationCompletionForKind(OperationProjectReconcile, OperationResult{ProjectRegistryAction: "listed", ProjectClaims: claims.ProjectClaims}, "") {
+		t.Fatal("registry list/reconcile result contract is not kind-bound")
+	}
+	released := OperationResult{ProjectRegistryAction: "released", ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot", ProjectState: "released", ProjectClaimGeneration: 1}
+	if !validOperationCompletionForKind(OperationProjectRelease, released, "") || validOperationCompletionForKind(OperationProjectRelease, released, "unsafe") {
+		t.Fatal("release result contract is invalid")
+	}
+	released.ProjectClaimGeneration = uint64(1 << 63)
+	if validOperationCompletionForKind(OperationProjectRelease, released, "") {
+		t.Fatal("release result generation above signed SQLite range accepted")
 	}
 }
 

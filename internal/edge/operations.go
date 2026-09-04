@@ -14,11 +14,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
 
 type OperationKind string
 type OperationState string
+
+// OperationCompatibilityError reports that queued work requires a newer or
+// otherwise different Edge bundle. Control-plane recovery operations remain
+// leaseable so the device can inspect, update, roll back, or repair itself.
+type OperationCompatibilityError struct {
+	ExpectedProtocol string `json:"expected_protocol"`
+	ExpectedCatalog  string `json:"expected_catalog"`
+	ObservedProtocol string `json:"observed_protocol,omitempty"`
+	ObservedCatalog  string `json:"observed_catalog,omitempty"`
+}
+
+func (e *OperationCompatibilityError) Error() string { return "edge version skew" }
 
 const (
 	MaxOperationProgressUnits = 1_000_000_000
@@ -39,6 +52,9 @@ const (
 	OperationOnboardingStatus                  OperationKind = "onboarding_status"
 	OperationProjectPrepare                    OperationKind = "project_prepare"
 	OperationProjectStatus                     OperationKind = "project_status"
+	OperationProjectRegistryList               OperationKind = "project_registry_list"
+	OperationProjectReconcile                  OperationKind = "project_reconcile"
+	OperationProjectRelease                    OperationKind = "project_release"
 	OperationProjectSnapshot                   OperationKind = "project_snapshot"
 	OperationProjectExec                       OperationKind = "project_exec"
 	OperationProjectNetworkRoute               OperationKind = "project_network_route"
@@ -94,6 +110,7 @@ const (
 )
 
 var operationIDPattern = regexp.MustCompile(`^eo_[a-f0-9]{32}$`)
+var operationCatalogPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 var projectOperationAliasPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 var projectOperationTargetPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$`)
 var projectOperationRepositoryPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
@@ -112,6 +129,7 @@ type OperationRequest struct {
 	Alias                        string            `json:"alias,omitempty"`
 	Repository                   string            `json:"repository,omitempty"`
 	TargetAlias                  string            `json:"target_alias,omitempty"`
+	ProjectClaimGeneration       uint64            `json:"project_claim_generation,omitempty"`
 	Profile                      string            `json:"profile,omitempty"`
 	IdempotencyKey               string            `json:"idempotency_key,omitempty"`
 	Argv                         []string          `json:"argv,omitempty"`
@@ -220,16 +238,35 @@ type ProjectWorktreeSummary struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+// ProjectClaimSummary is the safe, path-free representation of one durable
+// project registry claim returned by recovery operations.
+type ProjectClaimSummary struct {
+	Alias       string `json:"alias"`
+	Owner       string `json:"owner"`
+	Repository  string `json:"repository"`
+	Target      string `json:"target"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Generation  uint64 `json:"generation"`
+	State       string `json:"state"`
+	Reason      string `json:"reason,omitempty"`
+	Repairable  bool   `json:"repairable"`
+}
+
 type OperationResult struct {
-	WorkspaceID                      string                          `json:"workspace_id,omitempty"`
-	AuthorizationRevision            uint64                          `json:"authorization_revision,omitempty"`
-	JobID                            string                          `json:"job_id,omitempty"`
-	JobState                         string                          `json:"job_state,omitempty"`
-	ProgressRevision                 uint64                          `json:"progress_revision,omitempty"`
-	CycleCount                       uint64                          `json:"cycle_count,omitempty"`
-	JobSafeCode                      string                          `json:"job_safe_code,omitempty"`
-	Release                          string                          `json:"release,omitempty"`
-	Commit                           string                          `json:"commit,omitempty"`
+	WorkspaceID           string `json:"workspace_id,omitempty"`
+	AuthorizationRevision uint64 `json:"authorization_revision,omitempty"`
+	JobID                 string `json:"job_id,omitempty"`
+	JobState              string `json:"job_state,omitempty"`
+	ProgressRevision      uint64 `json:"progress_revision,omitempty"`
+	CycleCount            uint64 `json:"cycle_count,omitempty"`
+	JobSafeCode           string `json:"job_safe_code,omitempty"`
+	Release               string `json:"release,omitempty"`
+	Commit                string `json:"commit,omitempty"`
+	// These fields identify the authenticated Edge bundle independently from
+	// the MCP backend identity, so protocol/catalog skew is observable without
+	// exposing paths or other private state.
+	EdgeProtocolVersion              string                          `json:"edge_protocol_version,omitempty"`
+	EdgeCatalogHash                  string                          `json:"edge_catalog_hash,omitempty"`
 	ManifestStatus                   string                          `json:"manifest_status,omitempty"`
 	ComponentsCompatible             bool                            `json:"components_compatible,omitempty"`
 	ServiceActive                    bool                            `json:"service_active,omitempty"`
@@ -256,6 +293,13 @@ type OperationResult struct {
 	ProjectState                     string                          `json:"project_state,omitempty"`
 	ProjectProfile                   string                          `json:"project_profile,omitempty"`
 	ProjectMode                      string                          `json:"project_mode,omitempty"`
+	ProjectReason                    string                          `json:"project_reason,omitempty"`
+	ProjectDiagnosticReason          string                          `json:"project_diagnostic_reason,omitempty"`
+	ProjectRepairable                bool                            `json:"project_repairable,omitempty"`
+	ProjectRecommendedAction         string                          `json:"project_recommended_action,omitempty"`
+	ProjectRegistryAction            string                          `json:"project_registry_action,omitempty"`
+	ProjectClaimGeneration           uint64                          `json:"project_claim_generation,omitempty"`
+	ProjectClaims                    []ProjectClaimSummary           `json:"project_claims,omitempty"`
 	ProjectToolchainState            string                          `json:"project_toolchain_state,omitempty"`
 	ProjectToolchainRoute            string                          `json:"project_toolchain_route,omitempty"`
 	ProjectToolchainManifests        []string                        `json:"project_toolchain_manifests,omitempty"`
@@ -538,6 +582,29 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 }
 
 func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLease, error) {
+	return s.LeaseOperationCompatible(deviceID, ttl, "", "")
+}
+
+// SetExpectedOperationCompatibility configures the bundle identity required
+// for ordinary operations. It is set once by the server after constructing its
+// deterministic MCP catalog.
+func (s *Store) SetExpectedOperationCompatibility(protocol, catalog string) error {
+	protocol = strings.TrimSpace(protocol)
+	catalog = strings.TrimSpace(catalog)
+	if protocol == "" || !operationCatalogPattern.MatchString(catalog) {
+		return errors.New("edge operation compatibility is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.expectedOperationProtocol = protocol
+	s.expectedOperationCatalog = catalog
+	return nil
+}
+
+// LeaseOperationCompatible leases only work supported by the authenticated
+// Edge bundle. A mismatched device may still lease recovery operations needed
+// to converge to the server catalog.
+func (s *Store) LeaseOperationCompatible(deviceID string, ttl time.Duration, observedProtocol, observedCatalog string) (OperationLease, error) {
 	if !idPattern.MatchString(deviceID) || ttl < MinLeaseTTL || ttl > MaxLeaseTTL {
 		return OperationLease{}, errors.New("operation lease is invalid")
 	}
@@ -552,9 +619,27 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 	if err := recoverExpiredOperationLeases(tx, now, "device_id", deviceID); err != nil {
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
+	expectedProtocol := s.expectedOperationProtocol
+	expectedCatalog := s.expectedOperationCatalog
+	compatible := expectedProtocol == "" || (strings.TrimSpace(observedProtocol) == expectedProtocol && strings.TrimSpace(observedCatalog) == expectedCatalog)
 	var id string
-	if err := tx.QueryRow(`SELECT operation_id FROM edge_operations WHERE device_id=? AND state=? ORDER BY updated_at,operation_id LIMIT 1`, deviceID, OperationQueued).Scan(&id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	var selectErr error
+	if compatible {
+		selectErr = tx.QueryRow(`SELECT operation_id FROM edge_operations WHERE device_id=? AND state=? ORDER BY updated_at,operation_id LIMIT 1`, deviceID, OperationQueued).Scan(&id)
+	} else {
+		selectErr = tx.QueryRow(`SELECT operation_id FROM edge_operations WHERE device_id=? AND state=? AND kind IN (?,?,?,?,?) ORDER BY updated_at,operation_id LIMIT 1`, deviceID, OperationQueued, OperationBundleStatus, OperationBundleUpdate, OperationBundleRollback, OperationEdgeRepair, OperationOnboardingStatus).Scan(&id)
+	}
+	if selectErr != nil {
+		if errors.Is(selectErr, sql.ErrNoRows) {
+			if !compatible {
+				var queued int
+				if err := tx.QueryRow(`SELECT COUNT(1) FROM edge_operations WHERE device_id=? AND state=?`, deviceID, OperationQueued).Scan(&queued); err != nil {
+					return OperationLease{}, errors.New("operation lease unavailable")
+				}
+				if queued > 0 {
+					return OperationLease{}, &OperationCompatibilityError{ExpectedProtocol: expectedProtocol, ExpectedCatalog: expectedCatalog, ObservedProtocol: strings.TrimSpace(observedProtocol), ObservedCatalog: strings.TrimSpace(observedCatalog)}
+				}
+			}
 			if err := tx.Commit(); err != nil {
 				return OperationLease{}, errors.New("operation lease unavailable")
 			}
@@ -581,6 +666,12 @@ func (s *Store) CompleteOperation(deviceID, operationID, leaseID string, result 
 	if !idPattern.MatchString(deviceID) || !operationIDPattern.MatchString(operationID) || !leaseIDPattern.MatchString(leaseID) {
 		return Operation{}, errors.New("operation completion is invalid")
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Read the operation kind under the same store lock used by cancellation,
+	// lease recovery, and the terminal update.  Keeping validation and commit in
+	// one critical section prevents a cancelled or recovered lease from changing
+	// underneath completion validation.
 	var kind OperationKind
 	if err := s.db.QueryRow(`SELECT kind FROM edge_operations WHERE operation_id=? AND device_id=? AND lease_id=? AND state=?`, operationID, deviceID, leaseID, OperationLeased).Scan(&kind); err != nil {
 		return Operation{}, errors.New("active operation lease not found")
@@ -595,8 +686,6 @@ func (s *Store) CompleteOperation(deviceID, operationID, leaseID string, result 
 	}
 	body, _ := json.Marshal(result)
 	now := s.now().UTC()
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	updated, err := s.db.Exec(`UPDATE edge_operations SET state=?,result_json=?,safe_code=?,lease_id=NULL,lease_until=NULL,updated_at=? WHERE operation_id=? AND device_id=? AND lease_id=? AND state=? AND cancel_requested=0 AND lease_until>?`, state, body, safeCode, now.UnixNano(), operationID, deviceID, leaseID, OperationLeased, now.UnixNano())
 	if err != nil {
 		return Operation{}, errors.New("operation completion unavailable")
@@ -726,6 +815,31 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 		if !validProjectOperationRequestCommon(request) || request.Repository != "" {
 			return OperationRequest{}, errors.New("project status request is invalid")
 		}
+	case OperationProjectRegistryList:
+		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
+		request.Profile = strings.TrimSpace(request.Profile)
+		if !projectOperationTargetPattern.MatchString(request.TargetAlias) || request.Profile != "linux-workcell" ||
+			request.Alias != "" || request.Repository != "" || request.Platform != "" || request.Machine != "" || request.Target != "" ||
+			request.Difficulty != "" || request.OperatingSystem != "" || request.WorkspaceID != "" || request.RunUntil != "" || request.Release != "" ||
+			request.ProjectClaimGeneration != 0 {
+			return OperationRequest{}, errors.New("project registry list request is invalid")
+		}
+	case OperationProjectReconcile:
+		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
+		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
+		request.Profile = strings.TrimSpace(request.Profile)
+		if !validProjectOperationRequestCommon(request) || request.Repository != "" || request.ProjectClaimGeneration != 0 {
+			return OperationRequest{}, errors.New("project reconcile request is invalid")
+		}
+	case OperationProjectRelease:
+		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
+		request.Repository = strings.ToLower(strings.TrimSpace(request.Repository))
+		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
+		request.Profile = strings.TrimSpace(request.Profile)
+		if !validProjectOperationRequestCommon(request) || !projectOperationRepositoryPattern.MatchString(request.Repository) ||
+			strings.ContainsAny(request.Repository, `/\\`) || strings.HasPrefix(request.Repository, ".") || request.ProjectClaimGeneration == 0 || request.ProjectClaimGeneration > uint64(1<<63-1) {
+			return OperationRequest{}, errors.New("project release request is invalid")
+		}
 	case OperationProjectSnapshot:
 		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
 		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
@@ -758,6 +872,9 @@ func validProjectOperationRequestCommon(request OperationRequest) bool {
 func validOperationCompletion(result OperationResult, code string) bool {
 	body, err := json.Marshal(result)
 	if err != nil || len(body) > MaxOperationResultBytes {
+		return false
+	}
+	if !validEdgeBundleIdentity(result) {
 		return false
 	}
 	if hasProjectWorktreeResult(result) {
@@ -811,12 +928,30 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	return result.AuthorizationRevision > 0
 }
 
+// validEdgeBundleIdentity accepts legacy diagnostics that predate the explicit
+// bundle identity fields, but never accepts a partial or fabricated identity.
+// A successful diagnostic is only authoritative when it names the bundle
+// protocol this binary understands and carries a canonical catalog digest.
+func validEdgeBundleIdentity(result OperationResult) bool {
+	if result.EdgeProtocolVersion == "" && result.EdgeCatalogHash == "" {
+		return true
+	}
+	return result.EdgeProtocolVersion == buildinfo.EdgeBundleProtocolVersion &&
+		regexp.MustCompile(`^sha256:[a-f0-9]{64}$`).MatchString(result.EdgeCatalogHash)
+}
+
 func validOperationCompletionForKind(kind OperationKind, result OperationResult, code string) bool {
 	if code != "" {
 		return validOperationCompletion(result, code)
 	}
 	if hasProjectToolchainSummary(result) && kind != OperationProjectStatus {
 		return false
+	}
+	if hasProjectRegistryResult(result) {
+		return validProjectRegistryResultForKind(kind, result)
+	}
+	if hasProjectDiagnosticResult(result) {
+		return kind == OperationProjectStatus && validProjectDiagnosticResult(result)
 	}
 	if hasProjectWorktreeResult(result) {
 		return validProjectWorktreeResultForKind(kind, result)
@@ -866,13 +1001,79 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
 		return false
 	}
-	if kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStdin || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
+	if kind == OperationProjectRegistryList || kind == OperationProjectReconcile || kind == OperationProjectRelease || kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStdin || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")
 }
 
+func hasProjectDiagnosticResult(result OperationResult) bool {
+	return result.ProjectReason != "" || result.ProjectDiagnosticReason != "" || result.ProjectRepairable || result.ProjectRecommendedAction != "" ||
+		(result.ProjectState != "" && result.ProjectState != "ready" && result.ProjectState != "dirty")
+}
+
+func hasProjectRegistryResult(result OperationResult) bool {
+	return result.ProjectRegistryAction != "" || len(result.ProjectClaims) > 0 || result.ProjectClaimGeneration > 0
+}
+
+func validProjectRegistryResultForKind(kind OperationKind, result OperationResult) bool {
+	switch kind {
+	case OperationProjectRegistryList, OperationProjectReconcile:
+		if result.ProjectRegistryAction != map[OperationKind]string{
+			OperationProjectRegistryList: "listed",
+			OperationProjectReconcile:    "reconciled",
+		}[kind] || len(result.ProjectClaims) > 32 || result.ProjectClaimGeneration != 0 {
+			return false
+		}
+		for _, claim := range result.ProjectClaims {
+			if !validProjectClaimSummary(claim) {
+				return false
+			}
+		}
+		metadata := result
+		metadata.ProjectRegistryAction = ""
+		metadata.ProjectClaims = nil
+		return emptyOperationResult(metadata)
+	case OperationProjectRelease:
+		if result.ProjectRegistryAction != "released" || result.ProjectClaimGeneration == 0 || result.ProjectClaimGeneration > uint64(1<<63-1) ||
+			!projectOperationAliasPattern.MatchString(result.ProjectAlias) || !githubOwnerOperationPattern.MatchString(result.ProjectOwner) ||
+			!projectOperationRepositoryPattern.MatchString(result.ProjectRepository) || strings.ContainsAny(result.ProjectRepository, `/\\`) ||
+			!projectOperationTargetPattern.MatchString(result.ProjectTarget) || result.ProjectState != "released" ||
+			result.WorkspaceID != "" || result.ProjectProfile != "" || result.ProjectMode != "" || len(result.ProjectClaims) != 0 {
+			return false
+		}
+		metadata := result
+		metadata.ProjectAlias, metadata.ProjectOwner, metadata.ProjectRepository, metadata.ProjectTarget, metadata.ProjectState = "", "", "", "", ""
+		metadata.ProjectRegistryAction = ""
+		metadata.ProjectClaimGeneration = 0
+		return emptyOperationResult(metadata)
+	default:
+		return false
+	}
+}
+
+func validProjectClaimSummary(claim ProjectClaimSummary) bool {
+	if !projectOperationAliasPattern.MatchString(claim.Alias) || !githubOwnerOperationPattern.MatchString(claim.Owner) ||
+		!projectOperationRepositoryPattern.MatchString(claim.Repository) || strings.ContainsAny(claim.Repository, `/\\`) ||
+		!projectOperationTargetPattern.MatchString(claim.Target) || claim.Generation == 0 || claim.Generation > uint64(1<<63-1) ||
+		(claim.WorkspaceID != "" && !workspaceIDPattern.MatchString(claim.WorkspaceID)) ||
+		(claim.State != "healthy" && claim.State != "stale" && claim.State != "repairable") ||
+		(claim.Reason != "" && !regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(claim.Reason)) {
+		return false
+	}
+	if claim.State == "healthy" && (claim.Reason != "" || claim.Repairable) {
+		return false
+	}
+	if claim.State != "healthy" && !claim.Repairable {
+		return false
+	}
+	return true
+}
+
 func validProjectOperationResult(result OperationResult) bool {
+	if result.ProjectState != "ready" && result.ProjectState != "dirty" {
+		return validProjectDiagnosticResult(result)
+	}
 	if !workspaceIDPattern.MatchString(result.WorkspaceID) ||
 		!projectOperationAliasPattern.MatchString(result.ProjectAlias) || !githubOwnerOperationPattern.MatchString(result.ProjectOwner) ||
 		!projectOperationRepositoryPattern.MatchString(result.ProjectRepository) || strings.ContainsAny(result.ProjectRepository, `/\\`) ||
@@ -890,9 +1091,37 @@ func validProjectOperationResult(result OperationResult) bool {
 	metadata.ProjectState = ""
 	metadata.ProjectProfile = ""
 	metadata.ProjectMode = ""
+	metadata.ProjectReason = ""
+	metadata.ProjectDiagnosticReason = ""
+	metadata.ProjectRepairable = false
+	metadata.ProjectRecommendedAction = ""
 	metadata.ProjectToolchainState = ""
 	metadata.ProjectToolchainRoute = ""
 	metadata.ProjectToolchainManifests = nil
+	return emptyOperationResult(metadata)
+}
+
+func validProjectDiagnosticResult(result OperationResult) bool {
+	if !projectOperationAliasPattern.MatchString(result.ProjectAlias) || !projectOperationTargetPattern.MatchString(result.ProjectTarget) ||
+		!regexp.MustCompile(`^(absent|blocked|unavailable|timeout|identity_mismatch|corrupt|unsafe_boundary)$`).MatchString(result.ProjectState) ||
+		!regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(result.ProjectReason) ||
+		(result.ProjectDiagnosticReason != "" && !regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(result.ProjectDiagnosticReason)) ||
+		(result.ProjectRecommendedAction != "" && !regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`).MatchString(result.ProjectRecommendedAction)) {
+		return false
+	}
+	if result.WorkspaceID != "" || result.ProjectProfile != "" || result.ProjectMode != "" || hasProjectToolchainSummary(result) {
+		return false
+	}
+	if result.ProjectOwner != "" && !githubOwnerOperationPattern.MatchString(result.ProjectOwner) {
+		return false
+	}
+	if result.ProjectRepository != "" && (!projectOperationRepositoryPattern.MatchString(result.ProjectRepository) || strings.ContainsAny(result.ProjectRepository, `/\\`)) {
+		return false
+	}
+	metadata := result
+	metadata.ProjectAlias, metadata.ProjectOwner, metadata.ProjectRepository, metadata.ProjectTarget, metadata.ProjectState = "", "", "", "", ""
+	metadata.ProjectReason, metadata.ProjectDiagnosticReason, metadata.ProjectRecommendedAction = "", "", ""
+	metadata.ProjectRepairable = false
 	return emptyOperationResult(metadata)
 }
 
@@ -981,7 +1210,7 @@ func emptyOperationResult(result OperationResult) bool {
 	if hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
-	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && !hasProjectToolchainSummary(result) && !hasProjectGitHubResult(result)
+	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.EdgeProtocolVersion == "" && result.EdgeCatalogHash == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && result.ProjectReason == "" && result.ProjectDiagnosticReason == "" && !result.ProjectRepairable && result.ProjectRecommendedAction == "" && result.ProjectRegistryAction == "" && result.ProjectClaimGeneration == 0 && len(result.ProjectClaims) == 0 && !hasProjectToolchainSummary(result) && !hasProjectGitHubResult(result)
 }
 
 func (s *Store) AutopilotStatus(workspaceID string) (OperationResult, error) {

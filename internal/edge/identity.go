@@ -58,11 +58,13 @@ func (r SignedRequest) Canonical() []byte {
 }
 
 type Store struct {
-	mu                sync.Mutex
-	db                *sql.DB
-	now               func() time.Time
-	controlPrivateKey ed25519.PrivateKey
-	controlPublicKey  ed25519.PublicKey
+	mu                        sync.Mutex
+	db                        *sql.DB
+	now                       func() time.Time
+	controlPrivateKey         ed25519.PrivateKey
+	controlPublicKey          ed25519.PublicKey
+	expectedOperationProtocol string
+	expectedOperationCatalog  string
 }
 
 var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
