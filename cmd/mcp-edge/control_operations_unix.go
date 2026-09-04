@@ -75,7 +75,7 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 			}
 			continue
 		}
-		result, code, cancelRequested, lifecycleErr, gateHeld, exclusive := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, browsers, controlGate, *lease)
+		result, code, cancelRequested, gateHeld, exclusive, lifecycleErr := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, browsers, controlGate, *lease)
 		if lifecycleErr != nil {
 			if gateHeld {
 				controlGate.release(exclusive)
@@ -474,10 +474,7 @@ func waitBundleUnitInactive(ctx context.Context, unit string, timeout time.Durat
 		err := command.Run()
 		cancel()
 		if err != nil {
-			if ctx.Err() != nil {
-				return false
-			}
-			return true
+			return ctx.Err() == nil
 		}
 		timer := time.NewTimer(time.Second)
 		select {

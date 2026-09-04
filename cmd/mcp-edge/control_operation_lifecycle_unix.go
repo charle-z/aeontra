@@ -22,12 +22,7 @@ type controlOperationProgressReporter interface {
 
 type controlOperationExecutor func(context.Context) (edge.OperationResult, string)
 
-func executeControlOperationWithProgress(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, lease edge.OperationLease) (edge.OperationResult, string, bool, error) {
-	result, code, cancelRequested, err, _, _ := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, browsers, nil, lease)
-	return result, code, cancelRequested, err
-}
-
-func executeControlOperationWithProgressAndGate(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, controlGate *controlOperationGate, lease edge.OperationLease) (edge.OperationResult, string, bool, error, bool, bool) {
+func executeControlOperationWithProgressAndGate(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, controlGate *controlOperationGate, lease edge.OperationLease) (edge.OperationResult, string, bool, bool, bool, error) {
 	exclusive := isBundleOperation(lease.Operation.Kind)
 	gateHeld := false
 	result, code, cancelRequested, err := executeControlOperationLifecycle(ctx, transport, lease, 15*time.Second, func(executionCtx context.Context) (edge.OperationResult, string) {
@@ -42,7 +37,7 @@ func executeControlOperationWithProgressAndGate(ctx context.Context, stateRoot s
 		// bundle operation to race the first operation's receipt cleanup.
 		return executeControlOperation(executionCtx, stateRoot, processes, browsers, lease.Operation)
 	})
-	return result, code, cancelRequested, err, gateHeld, exclusive
+	return result, code, cancelRequested, gateHeld, exclusive, err
 }
 
 func executeControlOperationLifecycle(ctx context.Context, transport controlOperationProgressReporter, lease edge.OperationLease, progressInterval time.Duration, execute controlOperationExecutor) (edge.OperationResult, string, bool, error) {

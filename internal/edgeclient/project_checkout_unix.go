@@ -22,10 +22,6 @@ type localProjectCheckoutInspector struct {
 	roots *WorkspaceRoots
 }
 
-func newProjectCheckoutInspector() ProjectCheckoutInspector {
-	return localProjectCheckoutInspector{}
-}
-
 func newProjectCheckoutInspectorWithRoots(roots WorkspaceRoots) ProjectCheckoutInspector {
 	return localProjectCheckoutInspector{roots: &roots}
 }
@@ -195,7 +191,7 @@ func (inspector localProjectCheckoutInspector) InspectDetailed(ctx context.Conte
 
 func validateLinuxProjectGitPointer(checkout, gitPath string, info os.FileInfo, roots *WorkspaceRoots) error {
 	if info == nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 || !ownedByCurrentUIDPortable(info) {
-		return errors.New("Git worktree metadata is unsafe")
+		return errors.New("git worktree metadata is unsafe")
 	}
 	if _, err := projectGitAttestationIdentity(checkout, gitPath, info, roots); err != nil {
 		return err

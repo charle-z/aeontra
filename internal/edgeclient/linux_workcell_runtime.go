@@ -333,13 +333,6 @@ func renderHTBTemplate(workspace Workspace, lhost string) string {
 	return replacer.Replace(workcellprofiles.HTBLinuxV1)
 }
 
-func evidenceLocation(workspace Workspace) string {
-	if workspace.Mode == WorkspaceModeHTBLinux {
-		return filepath.Join(workspace.Path, "scans") + ", " + filepath.Join(workspace.Path, "loot") + ", " + filepath.Join(workspace.Path, "reports")
-	}
-	return workspace.Path
-}
-
 func initialCurrentState(workspace Workspace) string {
 	if workspace.Mode == WorkspaceModeHTBLinux {
 		return `# Current State — HTB Linux

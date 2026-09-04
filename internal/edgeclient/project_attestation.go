@@ -53,18 +53,18 @@ func resolveGitCommonDirectory(gitDir string) (string, bool, error) {
 		return gitDir, false, nil
 	}
 	if err != nil {
-		return "", false, errors.New("Git common directory attestation is unavailable")
+		return "", false, errors.New("git common directory attestation is unavailable")
 	}
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return "", false, errors.New("Git common directory attestation is invalid")
+		return "", false, errors.New("git common directory attestation is invalid")
 	}
 	content, err := os.ReadFile(marker)
 	if err != nil || len(content) == 0 || len(content) > 4<<10 {
-		return "", false, errors.New("Git common directory attestation is unavailable")
+		return "", false, errors.New("git common directory attestation is unavailable")
 	}
 	commonName := strings.TrimSpace(string(content))
 	if commonName == "" {
-		return "", false, errors.New("Git common directory attestation is invalid")
+		return "", false, errors.New("git common directory attestation is invalid")
 	}
 	if !filepath.IsAbs(commonName) {
 		commonName = filepath.Join(gitDir, commonName)

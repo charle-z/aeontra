@@ -26,18 +26,6 @@ type windowsProjectCheckoutInspector struct {
 	gitPath string
 }
 
-func newProjectCheckoutInspector() ProjectCheckoutInspector {
-	roots, err := DefaultWorkspaceRoots()
-	if err != nil || roots.WindowsDev == "" {
-		return windowsProjectCheckoutInspector{}
-	}
-	gitPath, err := resolveWindowsGitPath("")
-	if err != nil {
-		return windowsProjectCheckoutInspector{root: roots.WindowsDev}
-	}
-	return windowsProjectCheckoutInspector{root: roots.WindowsDev, gitPath: gitPath}
-}
-
 func newProjectCheckoutInspectorWithRoots(roots WorkspaceRoots) ProjectCheckoutInspector {
 	gitPath, err := resolveWindowsGitPath("")
 	if err != nil || roots.WindowsDev == "" {

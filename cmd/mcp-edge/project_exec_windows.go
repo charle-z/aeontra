@@ -30,10 +30,6 @@ func collectProjectExec(ctx context.Context, operation edge.Operation, resolved 
 	return collectProjectExecWithStateRoot(ctx, "", operation, resolved, runner, 0)
 }
 
-func collectProjectExecWithResolution(ctx context.Context, operation edge.Operation, resolved edgeclient.ProjectResolution, runner edgeclient.DirectWorkcellCommandRunner, resolutionUS int64) (edge.OperationResult, string) {
-	return collectProjectExecWithStateRoot(ctx, "", operation, resolved, runner, resolutionUS)
-}
-
 func collectProjectExecWithStateRoot(ctx context.Context, stateRoot string, operation edge.Operation, resolved edgeclient.ProjectResolution, runner edgeclient.DirectWorkcellCommandRunner, resolutionUS int64) (edge.OperationResult, string) {
 	return collectProjectExecWithStateRootAndRoots(ctx, stateRoot, operation, resolved, edgeclient.WorkspaceRoots{}, runner, resolutionUS)
 }

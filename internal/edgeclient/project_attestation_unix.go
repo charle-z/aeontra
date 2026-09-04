@@ -23,7 +23,7 @@ func projectAttestationFingerprintPlatform(path string, roots *WorkspaceRoots) (
 	gitPath := filepath.Join(validated, ".git")
 	gitInfo, err := os.Lstat(gitPath)
 	if err != nil || gitInfo.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("Git attestation is unavailable")
+		return "", errors.New("git attestation is unavailable")
 	}
 	gitIdentity, err := projectGitAttestationIdentity(validated, gitPath, gitInfo, roots)
 	if err != nil {
@@ -41,11 +41,11 @@ func projectGitAttestationIdentity(workspacePath, gitPath string, gitInfo os.Fil
 	if gitInfo.Mode().IsRegular() {
 		content, readErr := os.ReadFile(gitPath)
 		if readErr != nil || len(content) == 0 || len(content) > 4<<10 {
-			return "", errors.New("Git worktree attestation is unavailable")
+			return "", errors.New("git worktree attestation is unavailable")
 		}
 		line := strings.TrimSpace(string(content))
 		if !strings.HasPrefix(strings.ToLower(line), "gitdir:") {
-			return "", errors.New("Git worktree attestation is invalid")
+			return "", errors.New("git worktree attestation is invalid")
 		}
 		commonPath = strings.TrimSpace(line[len("gitdir:"):])
 		if !filepath.IsAbs(commonPath) {
@@ -54,7 +54,7 @@ func projectGitAttestationIdentity(workspacePath, gitPath string, gitInfo os.Fil
 		commonPath = filepath.Clean(commonPath)
 		commonInfo, commonErr := os.Lstat(commonPath)
 		if commonErr != nil || !commonInfo.IsDir() || commonInfo.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("Git worktree attestation is unavailable")
+			return "", errors.New("git worktree attestation is unavailable")
 		}
 		if err := validateManagedGitMetadataPath(commonPath, roots); err != nil {
 			return "", err
@@ -73,7 +73,7 @@ func projectGitAttestationIdentity(workspacePath, gitPath string, gitInfo os.Fil
 	}
 	commonInfo, commonErr := os.Lstat(commonPath)
 	if commonErr != nil || !commonInfo.IsDir() || commonInfo.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("Git common directory attestation is unavailable")
+		return "", errors.New("git common directory attestation is unavailable")
 	}
 	if err := validateManagedGitMetadataPath(commonPath, roots); err != nil {
 		return "", err
@@ -87,18 +87,18 @@ func validateManagedGitMetadataPath(path string, roots *WorkspaceRoots) error {
 	}
 	normalized, err := normalizeWorkspaceRoots(*roots)
 	if err != nil {
-		return errors.New("Git metadata roots are unavailable")
+		return errors.New("git metadata roots are unavailable")
 	}
 	path = filepath.Clean(path)
 	for _, root := range []string{normalized.Dev, normalized.HTBLinux} {
 		if path != root && pathInside(root, path) {
 			if err := rejectSymlinkPath(path); err != nil {
-				return errors.New("Git metadata path contains a symlink")
+				return errors.New("git metadata path contains a symlink")
 			}
 			return nil
 		}
 	}
-	return errors.New("Git metadata is outside authorized roots")
+	return errors.New("git metadata is outside authorized roots")
 }
 
 func fileAttestationIdentity(info os.FileInfo) string {
