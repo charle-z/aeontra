@@ -147,7 +147,7 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"go-1.26=1.26.7-r0",
 		"nodejs-24=24.19.0-r0",
 		"npm=12.0.2-r0",
-		"python-3.14=3.14.7-r1",
+		"python-3.14=3.14.7-r6",
 		"rust-1.96=1.96.1-r0",
 		"brace-expansion-5.0.9.tgz",
 		"ip-address-10.3.1.tgz",
