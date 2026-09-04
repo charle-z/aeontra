@@ -70,7 +70,9 @@ func (s *Store) handleAutopilotReport(w http.ResponseWriter, r *http.Request) {
 }
 
 type operationLeaseRequest struct {
-	LeaseSeconds int `json:"lease_seconds"`
+	LeaseSeconds int    `json:"lease_seconds"`
+	EdgeProtocol string `json:"edge_protocol,omitempty"`
+	EdgeCatalog  string `json:"edge_catalog,omitempty"`
 }
 type operationCompletionRequest struct {
 	LeaseID  string          `json:"lease_id"`
@@ -93,9 +95,14 @@ func (s *Store) handleOperationLease(w http.ResponseWriter, r *http.Request) {
 	if !decodeStrictJSON(w, r, &request) {
 		return
 	}
-	lease, err := s.LeaseOperation(DeviceFromContext(r.Context()).ID, time.Duration(request.LeaseSeconds)*time.Second)
+	lease, err := s.LeaseOperationCompatible(DeviceFromContext(r.Context()).ID, time.Duration(request.LeaseSeconds)*time.Second, request.EdgeProtocol, request.EdgeCatalog)
 	if errors.Is(err, ErrNoTaskAvailable) {
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var compatibilityErr *OperationCompatibilityError
+	if errors.As(err, &compatibilityErr) {
+		writeJSON(w, http.StatusConflict, compatibilityErr)
 		return
 	}
 	if err != nil {

@@ -13,8 +13,10 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/edge"
 )
 
@@ -33,11 +35,12 @@ func (e *edgeEndpointUnavailableError) Unwrap() error {
 }
 
 type Transport struct {
-	identity  Identity
-	stateRoot string
-	key       ed25519.PrivateKey
-	client    *http.Client
-	now       func() time.Time
+	identityMu sync.RWMutex
+	identity   Identity
+	stateRoot  string
+	key        ed25519.PrivateKey
+	client     *http.Client
+	now        func() time.Time
 }
 
 func NewTransport(stateRoot string, client *http.Client) (*Transport, error) {
@@ -105,17 +108,35 @@ func (t *Transport) LeaseOperation(ctx context.Context, ttl time.Duration) (*edg
 		return nil, err
 	}
 	var lease edge.OperationLease
-	status, err := t.do(ctx, http.MethodPost, "/edge/v1/operations/lease", map[string]any{"lease_seconds": int(ttl.Seconds())}, &lease)
+	request := map[string]any{"lease_seconds": int(ttl.Seconds())}
+	status, err := t.do(ctx, http.MethodPost, "/edge/v1/operations/lease", request, &lease)
 	if err != nil {
 		return nil, err
+	}
+	// A conflict is the capability probe used by compatibility-aware servers.
+	// Retrying with the stamped bundle identity keeps new Edge binaries able to
+	// poll older servers, whose strict JSON decoders would reject new fields.
+	if status == http.StatusConflict {
+		request["edge_protocol"] = buildinfo.EdgeBundleProtocolVersion
+		request["edge_catalog"] = buildinfo.EdgeBundleCatalogHash
+		status, err = t.do(ctx, http.MethodPost, "/edge/v1/operations/lease", request, &lease)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if status == http.StatusNoContent {
 		return nil, nil
 	}
 	if status != http.StatusOK {
+		if status == http.StatusConflict {
+			return nil, errors.New("edge version skew")
+		}
 		return nil, fmt.Errorf("edge operation lease rejected with HTTP %d", status)
 	}
-	publicKey, err := edge.DecodePublicKey(t.identity.ControlPublicKey)
+	t.identityMu.RLock()
+	controlPublicKey := t.identity.ControlPublicKey
+	t.identityMu.RUnlock()
+	publicKey, err := edge.DecodePublicKey(controlPublicKey)
 	if err != nil {
 		return nil, errors.New("edge control trust is invalid")
 	}
@@ -127,14 +148,17 @@ func (t *Transport) LeaseOperation(ctx context.Context, ttl time.Duration) (*edg
 }
 
 func (t *Transport) ensureControlPublicKey(ctx context.Context) error {
-	if t.identity.SchemaVersion == 2 {
-		_, err := edge.DecodePublicKey(t.identity.ControlPublicKey)
+	t.identityMu.RLock()
+	identity := t.identity
+	t.identityMu.RUnlock()
+	if identity.SchemaVersion == 2 {
+		_, err := edge.DecodePublicKey(identity.ControlPublicKey)
 		if err != nil {
 			return errors.New("edge control trust is invalid")
 		}
 		return nil
 	}
-	if t.identity.SchemaVersion != 1 || t.identity.ControlPublicKey != "" {
+	if identity.SchemaVersion != 1 || identity.ControlPublicKey != "" {
 		return errors.New("edge control trust is invalid")
 	}
 	var response struct {
@@ -147,7 +171,12 @@ func (t *Transport) ensureControlPublicKey(ctx context.Context) error {
 	if _, err := edge.DecodePublicKey(response.PublicKey); err != nil {
 		return errors.New("edge control trust bootstrap failed")
 	}
+	t.identityMu.Lock()
+	defer t.identityMu.Unlock()
 	upgraded := t.identity
+	if upgraded.SchemaVersion == 2 {
+		return nil
+	}
 	upgraded.SchemaVersion = 2
 	upgraded.ControlPublicKey = response.PublicKey
 	if err := persistIdentityOnly(t.stateRoot, upgraded); err != nil {
@@ -208,16 +237,20 @@ func (t *Transport) doLimitedWithClient(ctx context.Context, client *http.Client
 		return 0, errors.New("edge request nonce failed")
 	}
 	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
+	t.identityMu.RLock()
+	identity := t.identity
+	key := append(ed25519.PrivateKey(nil), t.key...)
+	t.identityMu.RUnlock()
 	signed := edge.SignedRequest{
-		DeviceID:  t.identity.DeviceID,
+		DeviceID:  identity.DeviceID,
 		Timestamp: t.now().UTC().Unix(),
 		Nonce:     nonce,
 		Method:    method,
 		Path:      path,
 		Body:      body,
 	}
-	signed.Signature = ed25519.Sign(t.key, signed.Canonical())
-	request, err := http.NewRequestWithContext(ctx, method, t.identity.ServerURL+path, bytes.NewReader(body))
+	signed.Signature = ed25519.Sign(key, signed.Canonical())
+	request, err := http.NewRequestWithContext(ctx, method, identity.ServerURL+path, bytes.NewReader(body))
 	if err != nil {
 		return 0, errors.New("edge request failed")
 	}

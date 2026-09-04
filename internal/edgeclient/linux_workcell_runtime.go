@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	linuxWorkcellDirName          = ".mcp-devbox"
+	linuxWorkcellDirName          = ".mcp-devbox" // legacy source-side authorization directory
+	linuxWorkcellControlDirName   = "control"
 	linuxWorkcellInstructionsFile = "instructions.md"
 	linuxWorkcellStateFile        = "current-state.md"
 	linuxWorkcellInventoryFile    = "tool-inventory.json"
@@ -41,6 +42,13 @@ func PrepareLinuxWorkcell(ctx context.Context, workspace Workspace, lease ModelR
 }
 
 func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, lease ModelRuntimeLease, toolPath string, probe LinuxNetworkProbe) (LinuxWorkcellPreparation, error) {
+	return PrepareLinuxWorkcellWithToolPathAndStateRoot(ctx, workspace, lease, defaultProjectRuntimeStateRoot(), toolPath, probe)
+}
+
+// PrepareLinuxWorkcellWithToolPathAndStateRoot keeps durable workcell control
+// files in the Edge-owned per-workspace runtime root. The source checkout is
+// intentionally reserved for project files and (for HTB) evidence.
+func PrepareLinuxWorkcellWithToolPathAndStateRoot(ctx context.Context, workspace Workspace, lease ModelRuntimeLease, stateRoot, toolPath string, probe LinuxNetworkProbe) (LinuxWorkcellPreparation, error) {
 	result := LinuxWorkcellPreparation{Workspace: workspace}
 	if workspace.Profile != WorkspaceProfileLinuxWorkcell {
 		return result, errors.New("workspace is not a trusted Linux workcell")
@@ -54,7 +62,6 @@ func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, 
 	if workspace.Mode != WorkspaceModeDev && workspace.Mode != WorkspaceModeHTBLinux {
 		return result, errors.New("linux workcell mode is invalid")
 	}
-
 	if workspace.Mode == WorkspaceModeHTBLinux {
 		if probe == nil {
 			probe = systemLinuxNetworkProbe{}
@@ -65,18 +72,11 @@ func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, 
 		}
 		result.LHOST = lhost
 	}
-
-	controlDir := filepath.Join(workspace.Path, linuxWorkcellDirName)
-	for _, path := range []string{
-		controlDir,
-		filepath.Join(controlDir, "tools"),
-		filepath.Join(controlDir, "cache"),
-		filepath.Join(controlDir, "runtime"),
-	} {
-		if err := ensurePrivateWorkspaceDir(workspace.Path, path); err != nil {
-			return result, err
-		}
+	runtimeRoots, err := prepareProjectRuntimeRoots(stateRoot, workspace)
+	if err != nil {
+		return result, errors.New("linux workcell private runtime is unavailable")
 	}
+
 	if workspace.Mode == WorkspaceModeHTBLinux {
 		for _, name := range []string{"scans", "loot", "scripts", "reports", "tmp", "tickets"} {
 			if err := ensurePrivateWorkspaceDir(workspace.Path, filepath.Join(workspace.Path, name)); err != nil {
@@ -97,6 +97,7 @@ func PrepareLinuxWorkcellWithToolPath(ctx context.Context, workspace Workspace, 
 		return result, errors.New("linux workcell tool inventory could not be encoded")
 	}
 	inventoryBody = append(inventoryBody, '\n')
+	controlDir := projectRuntimeControlRoot(runtimeRoots)
 	inventoryPath := filepath.Join(controlDir, linuxWorkcellInventoryFile)
 	if err := atomicWorkspaceFile(inventoryPath, inventoryBody, 0o400); err != nil {
 		return result, err
@@ -223,7 +224,7 @@ func WriteLinuxWorkcellState(path, content string) error {
 	if len(content) == 0 || int64(len(content)) > linuxWorkcellStateLimit {
 		return errors.New("linux workcell current state is invalid")
 	}
-	if filepath.Base(path) != linuxWorkcellStateFile || filepath.Base(filepath.Dir(path)) != linuxWorkcellDirName {
+	if filepath.Base(path) != linuxWorkcellStateFile || filepath.Base(filepath.Dir(path)) != linuxWorkcellControlDirName {
 		return errors.New("linux workcell current state path is invalid")
 	}
 	return atomicWorkspaceFile(path, []byte(content), 0o600)
@@ -309,7 +310,14 @@ Read and validate the real state before continuing. Do not blindly trust this ch
 ## Operational contract
 
 %s
-`, workspace.Mode, LinuxWorkcellNetworkPosture, lease.RuntimeID, workspace.Path, evidenceLocation(workspace), filepath.Join(workspace.Path, linuxWorkcellDirName, linuxWorkcellStateFile), filepath.Join(workspace.Path, linuxWorkcellDirName, "tools"), filepath.Join(workspace.Path, linuxWorkcellDirName, "cache"), filepath.Join(workspace.Path, linuxWorkcellDirName, "runtime"), lease.Goal, resume, contract), nil
+`, workspace.Mode, LinuxWorkcellNetworkPosture, lease.RuntimeID, "/workspace", sandboxEvidenceLocation(workspace), filepath.Join("/workspace", linuxWorkcellDirName, linuxWorkcellStateFile), "/toolchain", "/cache", "/toolchain", lease.Goal, resume, contract), nil
+}
+
+func sandboxEvidenceLocation(workspace Workspace) string {
+	if workspace.Mode == WorkspaceModeHTBLinux {
+		return "/workspace/scans, /workspace/loot, /workspace/reports"
+	}
+	return "/workspace"
 }
 
 func renderHTBTemplate(workspace Workspace, lhost string) string {

@@ -28,7 +28,9 @@ CubePath-hosted MCP Devbox control plane
 
 The successful smoke used workspace `ws_7c4686f5d9244bbad30ae705d4b660c5`,
 completed six model-turn sequences, created the exact requested file, and passed
-`git diff --check`. The workcell-owned `.mcp-devbox/` directory is expected. The
+`git diff --check`. Older workcells may have a workcell-owned `.mcp-devbox/` directory;
+new workcells keep control state in the Edge runtime root and expose it only through
+the sandbox mount. The
 service maintains bounded five-second heartbeat updates while a runtime is active.
 
 ## 1. Prerequisites
@@ -265,8 +267,9 @@ workspace_runtime_continue(
 
 The server resolves the paired Edge from its signed opaque workspace registration,
 uses the fixed `resume-local-contract-v1` objective, and creates at most one active
-runtime for that workspace. The Edge reads `.mcp-devbox/instructions.md` and
-`.mcp-devbox/current-state.md` locally. The call carries no target, IP, machine,
+runtime for that workspace. Inside the sandbox, the Edge reads the private
+`/workspace/.mcp-devbox/instructions.md` and `/workspace/.mcp-devbox/current-state.md`
+mount. The call carries no target, IP, machine,
 credential, flag, command, checkpoint, path, or free-form instruction and is never
 retried automatically. See `docs/workspace-runtime-continuation.md`.
 

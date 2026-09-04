@@ -16,6 +16,9 @@ func TestProjectAssociationRollsBackNewWorkspaceWhenProjectBindingFails(t *testi
 		if err := os.Mkdir(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.Mkdir(filepath.Join(path, ".git"), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	states := map[string]ProjectCheckoutState{
 		existingPath:  ProjectCheckoutReady,

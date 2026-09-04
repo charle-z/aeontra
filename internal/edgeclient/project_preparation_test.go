@@ -104,6 +104,9 @@ func TestProjectPreparationAssociatesExistingCheckoutWithoutGit(t *testing.T) {
 	if err := os.Mkdir(legacy, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(legacy, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	inspector := pathProjectInspector{states: map[string]ProjectCheckoutState{legacy: ProjectCheckoutReady}}
 	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
 	runner := &projectPreparationRunner{}
@@ -123,6 +126,42 @@ func TestProjectPreparationAssociatesExistingCheckoutWithoutGit(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(roots.Dev, "repo")); !os.IsNotExist(err) {
 		t.Fatalf("association created canonical clone: %v", err)
+	}
+}
+
+func TestProjectPreparationUsesRegistryBeforeDiscoveryForClaimedRepository(t *testing.T) {
+	state := t.TempDir()
+	roots := newProjectDiscoveryRoots(t)
+	claimedPath := filepath.Join(roots.Dev, "legacy-name")
+	if err := os.Mkdir(claimedPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(claimedPath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inspector := pathProjectInspector{states: map[string]ProjectCheckoutState{claimedPath: ProjectCheckoutReady}}
+	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
+	workspace, _, err := workspaces.AddProfile(claimedPath, WorkspaceProfileLinuxWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := projects.Register(ProjectRegistration{
+		Alias: "owner", Owner: "charle-z", Repository: "repo", PreferredTarget: "parrot", TargetAlias: "parrot",
+		WorkspaceID: workspace.ID, AllowedProfiles: []WorkspaceProfile{WorkspaceProfileLinuxWorkcell},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	config := ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)},
+		Runner:     &projectPreparationRunner{},
+	}
+	_, err = PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+		Alias: "ghost", Repository: "repo", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+	})
+	var projectFailure *ProjectError
+	if !errors.As(err, &projectFailure) || projectFailure.Code != ProjectErrorRepositoryConflict || projectFailure.Claim == nil || projectFailure.Claim.Alias != "owner" {
+		t.Fatalf("phantom repository conflict err=%v", err)
 	}
 }
 
@@ -203,7 +242,9 @@ func TestProjectPreparationReportsRegistrationStageAndCleansClone(t *testing.T) 
 			close: func(_ *WorkspaceRegistry, projects *ProjectRegistry) error {
 				return projects.Close()
 			},
-			wantError: ProjectErrorProjectRegistration,
+			// Registry-first preparation fails before cloning when the durable
+			// registry is unavailable; no later registration stage is reachable.
+			wantError: ProjectErrorRegistryUnavailable,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

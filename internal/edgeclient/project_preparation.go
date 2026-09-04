@@ -83,6 +83,18 @@ func PlanProjectPreparation(ctx context.Context, config ProjectPreparationConfig
 	if err != nil {
 		return ProjectPreparationPlan{}, err
 	}
+	registered, found, err := projectPreparationRegistered(config.Projects, alias, owner, repository, target, profiles[0])
+	if err != nil {
+		return ProjectPreparationPlan{}, err
+	}
+	if found {
+		now := config.Now().UTC()
+		return ProjectPreparationPlan{
+			Version: projectPreparationPlanVersion, Alias: alias, Owner: owner, Repository: repository,
+			TargetAlias: target, Profile: profiles[0], Action: ProjectPreparationReuseExisting,
+			CandidatePath: registered.Workspace.Path, CreatedAt: now, ExpiresAt: now.Add(projectPreparationPlanTTL),
+		}, nil
+	}
 	decision, err := DiscoverProjectCheckout(ctx, ProjectDiscoveryConfig{Roots: config.Roots, Inspector: config.Projects.inspector}, ProjectDiscoveryRequest{
 		Alias: alias, Owner: owner, Repository: repository,
 	})
@@ -108,6 +120,23 @@ func ApplyProjectPreparation(ctx context.Context, config ProjectPreparationConfi
 	}
 	if err := validateProjectPreparationPlan(config, plan); err != nil {
 		return ProjectStatus{}, err
+	}
+	registered, found, err := projectPreparationRegistered(config.Projects, plan.Alias, plan.Owner, plan.Repository, plan.TargetAlias, plan.Profile)
+	if err != nil {
+		return ProjectStatus{}, err
+	}
+	if found {
+		if plan.Action != ProjectPreparationReuseExisting || filepath.Clean(plan.CandidatePath) != filepath.Clean(registered.Workspace.Path) {
+			return ProjectStatus{}, projectErr(ProjectErrorPlanChanged, errors.New("registered project preparation decision changed"))
+		}
+		resolution, err := config.Projects.Resolve(ctx, plan.Alias, plan.TargetAlias)
+		if err != nil {
+			return ProjectStatus{}, err
+		}
+		return resolution.SafeStatus(), nil
+	}
+	if plan.Action == ProjectPreparationReuseExisting {
+		return ProjectStatus{}, projectErr(ProjectErrorPlanChanged, errors.New("registered project preparation binding disappeared"))
 	}
 	decision, err := DiscoverProjectCheckout(ctx, ProjectDiscoveryConfig{Roots: config.Roots, Inspector: config.Projects.inspector}, ProjectDiscoveryRequest{
 		Alias: plan.Alias, Owner: plan.Owner, Repository: plan.Repository,
@@ -140,6 +169,56 @@ func ApplyProjectPreparation(ctx context.Context, config ProjectPreparationConfi
 	default:
 		return ProjectStatus{}, projectErr(ProjectErrorPlanChanged, errors.New("project preparation action is invalid"))
 	}
+}
+
+// projectPreparationRegistered is the registry-first gate for preparation.
+// A durable alias is authoritative: it is resolved and boundary-attested
+// before any filesystem discovery. For an unregistered alias, a repository
+// claim is still checked in the registry so a stale alias cannot be hidden by
+// a later scan. Only an entirely unclaimed repository is eligible for bounded
+// discovery.
+func projectPreparationRegistered(registry *ProjectRegistry, alias, owner, repository, target string, profile WorkspaceProfile) (ProjectResolution, bool, error) {
+	resolution, err := registry.ResolveRegistered(alias, target)
+	if err == nil {
+		if resolution.Project.Owner != owner || resolution.Project.Repository != repository {
+			diagnostic := ProjectCheckoutDiagnostic{
+				Reason: "registered_alias_identity_mismatch", Expected: owner + "/" + repository,
+				Observed:   resolution.Project.Owner + "/" + resolution.Project.Repository,
+				Repairable: true, RecommendedAction: "project_reconcile",
+			}
+			return ProjectResolution{}, false, &ProjectError{Code: ProjectErrorAliasConflict, Err: errors.New(diagnostic.Reason), Diagnostic: &diagnostic}
+		}
+		if resolution.Workspace.Profile != profile {
+			return ProjectResolution{}, false, projectErr(ProjectErrorProfileDenied, errors.New("registered workspace profile does not match the requested profile"))
+		}
+		return resolution, true, nil
+	}
+	var projectFailure *ProjectError
+	if !errors.As(err, &projectFailure) || projectFailure.Code != ProjectErrorProjectNotFound {
+		return ProjectResolution{}, false, err
+	}
+	claims, err := registry.ListClaims()
+	if err != nil {
+		return ProjectResolution{}, false, err
+	}
+	for index := range claims {
+		claim := claims[index]
+		if claim.Owner != owner || claim.Repository != repository {
+			continue
+		}
+		diagnostic := ProjectCheckoutDiagnostic{
+			Reason: "repository_claimed", Expected: owner + "/" + repository,
+			Repairable: claim.Repairable, RecommendedAction: "project_reconcile",
+		}
+		if claim.Repairable {
+			diagnostic.RecommendedAction = "project_reconcile_or_release"
+		}
+		return ProjectResolution{}, false, &ProjectError{
+			Code: ProjectErrorRepositoryConflict, Err: errors.New(diagnostic.Reason),
+			Diagnostic: &diagnostic, Claim: &claim,
+		}
+	}
+	return ProjectResolution{}, false, nil
 }
 
 func (plan ProjectPreparationPlan) SafePreview() ProjectPreparationPreview {

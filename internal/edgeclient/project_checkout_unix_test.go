@@ -45,8 +45,11 @@ func TestLocalProjectCheckoutInspectorClassifiesReadyDirtyAndRemoteDrift(t *test
 		t.Fatal(err)
 	}
 	state, err = inspector.Inspect(context.Background(), repository, "charle-z", "ekoparty-trip-agent")
-	if err != nil || state != ProjectCheckoutReady {
-		t.Fatalf("managed runtime must not dirty checkout: state=%s err=%v", state, err)
+	if err != nil || state != ProjectCheckoutDirty {
+		t.Fatalf("collapsed legacy runtime must remain an ordinary dirty checkout: state=%s err=%v", state, err)
+	}
+	if err := os.RemoveAll(filepath.Join(repository, ".mcp-devbox")); err != nil {
+		t.Fatal(err)
 	}
 	untrackedDir := filepath.Join(repository, "generated", "nested")
 	if err := os.MkdirAll(untrackedDir, 0o700); err != nil {
@@ -86,6 +89,77 @@ func TestLocalProjectCheckoutInspectorRejectsUnsafeMetadataAndPushRemote(t *test
 	state, err = inspector.Inspect(context.Background(), repository, "charle-z", "repo")
 	if err == nil || state != ProjectCheckoutUnsafe {
 		t.Fatalf("unsafe metadata state=%s err=%v", state, err)
+	}
+}
+
+func TestLocalProjectCheckoutInspectorAllowsManagedLinkedWorktree(t *testing.T) {
+	home := t.TempDir()
+	roots := WorkspaceRoots{Dev: filepath.Join(home, "workspaces"), HTBLinux: filepath.Join(home, "htb-machines")}
+	if err := os.MkdirAll(roots.Dev, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(roots.HTBLinux, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	repository := filepath.Join(roots.Dev, "repo")
+	if err := os.Mkdir(repository, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runProjectGit(t, repository, "init")
+	runProjectGit(t, repository, "config", "user.name", "MCP Devbox Test")
+	runProjectGit(t, repository, "config", "user.email", "test@localhost")
+	if err := os.WriteFile(filepath.Join(repository, "README.md"), []byte("fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runProjectGit(t, repository, "add", "README.md")
+	runProjectGit(t, repository, "commit", "-m", "fixture")
+	runProjectGit(t, repository, "remote", "add", "origin", "https://github.com/charle-z/repo.git")
+	linked := filepath.Join(roots.Dev, "linked")
+	runProjectGit(t, repository, "worktree", "add", linked)
+	inspector := localProjectCheckoutInspector{roots: &roots}
+	state, err := inspector.Inspect(context.Background(), linked, "charle-z", "repo")
+	if err != nil || state != ProjectCheckoutReady {
+		t.Fatalf("managed linked worktree state=%s err=%v", state, err)
+	}
+}
+
+func TestLocalProjectCheckoutInspectorRejectsExternalOrSymlinkedGitMetadata(t *testing.T) {
+	home := t.TempDir()
+	roots := WorkspaceRoots{Dev: filepath.Join(home, "workspaces"), HTBLinux: filepath.Join(home, "htb-machines")}
+	if err := os.MkdirAll(roots.Dev, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(roots.HTBLinux, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	external := createProjectCheckoutFixture(t, "https://github.com/charle-z/repo.git")
+	for _, test := range []struct {
+		name   string
+		gitdir string
+	}{
+		{name: "external", gitdir: filepath.Join(external, ".git")},
+		{name: "symlinked_parent", gitdir: filepath.Join(filepath.Join(roots.Dev, "link"), ".git")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			checkout := filepath.Join(roots.Dev, test.name)
+			if err := os.Mkdir(checkout, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			gitdir := test.gitdir
+			if test.name == "symlinked_parent" {
+				if err := os.Symlink(external, filepath.Join(roots.Dev, "link")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(checkout, ".git"), []byte("gitdir: "+gitdir+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			inspector := localProjectCheckoutInspector{roots: &roots}
+			state, err := inspector.Inspect(context.Background(), checkout, "charle-z", "repo")
+			if err == nil || state != ProjectCheckoutUnsafe {
+				t.Fatalf("unsafe metadata state=%s err=%v", state, err)
+			}
+		})
 	}
 }
 

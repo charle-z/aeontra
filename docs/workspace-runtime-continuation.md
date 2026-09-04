@@ -87,12 +87,17 @@ machine metadata, VPN interface, credential handles, evidence, instructions, or
 checkpoint. The control plane accepts a continuation only when the workspace resolves
 to an active paired device and the profile/mode combination is recognized.
 
-The Edge remains the source of truth. At runtime it reads:
+The Edge remains the source of truth. Inside the sandbox, the runtime reads the private
+control mount:
 
 ```text
-.mcp-devbox/instructions.md
-.mcp-devbox/current-state.md
+/workspace/.mcp-devbox/instructions.md
+/workspace/.mcp-devbox/current-state.md
 ```
+
+These files are stored under the Edge's per-workspace runtime root rather than in the
+source checkout. A legacy source-side `.mcp-devbox` directory is retained only for
+backward compatibility and is not used for new workcell control state.
 
 For `htb-linux`, the local workspace registry and contract continue to enforce the
 immutable target, VPN preflight, target-locked broker, checkpoint redaction,

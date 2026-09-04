@@ -3,7 +3,9 @@ package edge
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -105,10 +107,65 @@ func TestBundleOperationsAcceptOnlyOfficialClosedRequests(t *testing.T) {
 	}
 }
 
+func TestOperationLeaseRejectsVersionSkewWithoutBlockingRecovery(t *testing.T) {
+	const protocol = "mcp-devbox.edge-bundle.v1"
+	catalog := "sha256:" + strings.Repeat("a", 64)
+	otherCatalog := "sha256:" + strings.Repeat("b", 64)
+
+	newFixture := func(t *testing.T, kind OperationKind, request OperationRequest) (*Store, Device) {
+		t.Helper()
+		store := openHTTPTestStore(t)
+		code, _ := store.CreatePairing(time.Minute)
+		publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+		device, err := store.Pair(code, "parrot-edge", publicKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.SetExpectedOperationCompatibility(protocol, catalog); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := store.CreateOperation(device.ID, kind, request); err != nil {
+			t.Fatal(err)
+		}
+		return store, device
+	}
+
+	t.Run("ordinary work fails with an actionable compatibility error", func(t *testing.T) {
+		store, device := newFixture(t, OperationProjectStatus, OperationRequest{Alias: "codex", TargetAlias: "parrot-trusted-linux", Profile: "linux-workcell"})
+		_, err := store.LeaseOperationCompatible(device.ID, time.Minute, protocol, otherCatalog)
+		var compatibilityErr *OperationCompatibilityError
+		if !errors.As(err, &compatibilityErr) || compatibilityErr.ExpectedCatalog != catalog || compatibilityErr.ObservedCatalog != otherCatalog {
+			t.Fatalf("compatibility error=%#v", err)
+		}
+	})
+
+	t.Run("recovery work remains leaseable", func(t *testing.T) {
+		store, device := newFixture(t, OperationBundleStatus, OperationRequest{})
+		lease, err := store.LeaseOperationCompatible(device.ID, time.Minute, protocol, otherCatalog)
+		if err != nil || lease.Operation.Kind != OperationBundleStatus {
+			t.Fatalf("lease=%+v err=%v", lease, err)
+		}
+	})
+
+	t.Run("matching bundle leases ordinary work", func(t *testing.T) {
+		store, device := newFixture(t, OperationProjectStatus, OperationRequest{Alias: "codex", TargetAlias: "parrot-trusted-linux", Profile: "linux-workcell"})
+		lease, err := store.LeaseOperationCompatible(device.ID, time.Minute, protocol, catalog)
+		if err != nil || lease.Operation.Kind != OperationProjectStatus {
+			t.Fatalf("lease=%+v err=%v", lease, err)
+		}
+	})
+}
+
 func TestBundleDiagnosticCompletionAcceptsOnlySafePreciseStates(t *testing.T) {
 	valid := OperationResult{Release: "p15.1.0", Commit: "0123456789abcdef0123456789abcdef01234567", ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true}
 	if !validOperationCompletion(valid, "") {
 		t.Fatal("valid signed bundle diagnostic rejected")
+	}
+	withIdentity := valid
+	withIdentity.EdgeProtocolVersion = "mcp-devbox.edge-bundle.v1"
+	withIdentity.EdgeCatalogHash = "sha256:" + strings.Repeat("a", 64)
+	if !validOperationCompletion(withIdentity, "") {
+		t.Fatal("authenticated bundle identity rejected")
 	}
 	authoritative := valid
 	authoritative.ServiceActive = true
@@ -133,6 +190,9 @@ func TestBundleDiagnosticCompletionAcceptsOnlySafePreciseStates(t *testing.T) {
 		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, ServiceState: "inactive", ProcessState: "duplicate", LockState: "held", Coherence: "duplicate", ProcessRelease: "arbitrary", ProcessCommit: valid.Commit},
 		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, ServiceState: "inactive", ProcessState: "single", LockState: "held", Coherence: "manual"},
 		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, ServiceState: "inactive", ProcessState: "inactive", LockState: "held", Coherence: "stopped"},
+		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, EdgeProtocolVersion: "other-bundle.v1", EdgeCatalogHash: "sha256:" + strings.Repeat("a", 64)},
+		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, EdgeProtocolVersion: "mcp-devbox.edge-bundle.v1", EdgeCatalogHash: "sha256:invalid"},
+		{Release: valid.Release, Commit: valid.Commit, ManifestStatus: "valid", ComponentsCompatible: true, ProviderValid: true, DriverValid: true, EdgeProtocolVersion: "mcp-devbox.edge-bundle.v1"},
 	} {
 		if validOperationCompletion(unsafe, "") {
 			t.Fatalf("unsafe diagnostic accepted: %+v", unsafe)

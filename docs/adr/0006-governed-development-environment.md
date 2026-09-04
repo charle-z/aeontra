@@ -2,6 +2,11 @@
 
 Status: **Accepted for implementation**
 
+Operational state, runtime-root separation, durable process identity and Edge-wide
+concurrency are refined by
+[`ADR 0007`](0007-development-environment-state-and-concurrency.md). This decision
+remains the authority model for selected-repository execution and L3 profile readiness.
+
 Date: 2026-09-02
 
 ## Context

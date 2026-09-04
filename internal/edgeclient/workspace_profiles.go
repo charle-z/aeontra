@@ -255,6 +255,21 @@ func (r *WorkspaceRegistry) Get(id string) (Workspace, error) {
 	return workspace, nil
 }
 
+// LookupRegistered reads the durable binding without touching the workspace
+// filesystem. It is reserved for registry-only consumers (for example,
+// observing or stopping an already-authorized process); execution callers
+// must use Get so the workspace boundary is revalidated before opening it.
+func (r *WorkspaceRegistry) LookupRegistered(id string) (Workspace, error) {
+	if r == nil || r.db == nil || !workspaceIDPattern.MatchString(id) {
+		return Workspace{}, errors.New("workspace id is invalid")
+	}
+	workspace, err := scanWorkspace(r.db.QueryRow(workspaceSelect+` WHERE w.workspace_id=?`, id))
+	if err != nil {
+		return Workspace{}, errors.New("workspace not found")
+	}
+	return r.decorateWorkspace(workspace), nil
+}
+
 func (r *WorkspaceRegistry) Configure(id string, config WorkspaceConfiguration) (Workspace, error) {
 	if r == nil || r.db == nil || !workspaceIDPattern.MatchString(id) {
 		return Workspace{}, errors.New("workspace id is invalid")

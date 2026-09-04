@@ -27,16 +27,52 @@ type fakeWindowsProcessPlatform struct {
 	signals         []ProjectProcessSignal
 	signalErr       error
 	terminateSticks bool
+	aliveErr        error
+	startedSpec     DirectWorkcellProcessSpec
 }
 
-func (p *fakeWindowsProcessPlatform) Start(DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
+func (p *fakeWindowsProcessPlatform) Start(spec DirectWorkcellProcessSpec) (ProjectProcessIdentity, <-chan ProjectProcessExit, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.startedSpec = spec
 	p.identity = ProjectProcessIdentity{ProcessID: "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PID: 4321, ProcessGroupID: 4321, StartTicks: 77}
 	p.alive = true
 	p.exits = make(chan ProjectProcessExit, 1)
 	p.frames = map[string]ProjectProcessStdinReceipt{}
 	return p.identity, p.exits, nil
+}
+
+func TestWindowsProjectProcessManagerClosesPreparedHandles(t *testing.T) {
+	platform := &fakeWindowsProcessPlatform{}
+	manager := openWindowsTestProcessManager(t, platform)
+	request := ProjectProcessStartRequest{
+		OperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", IdempotencyKey: "windows-handle-cleanup",
+		ProjectAlias: "project", TargetAlias: "windows", Workspace: windowsDirectWorkcellFixture(t),
+		Argv: []string{"cmd.exe", "/c", "echo", "ok"},
+	}
+	if _, created, err := manager.Start(context.Background(), request); err != nil || !created {
+		t.Fatalf("created=%v err=%v", created, err)
+	}
+	platform.mu.Lock()
+	spec := platform.startedSpec
+	platform.mu.Unlock()
+	for name, handle := range map[string]*WindowsWorkspace{
+		"workspace": spec.workspaceHandle,
+		"cwd":       spec.cwdHandle,
+		"temp":      spec.tempHandle,
+		"runtime":   spec.runtimeHandle,
+		"cache":     spec.cacheHandle,
+		"artifacts": spec.artifactsHandle,
+	} {
+		if handle == nil || handle.File() != nil {
+			t.Fatalf("%s handle remains open after durable start", name)
+		}
+	}
+	if _, err := manager.Stop(t.Context(), ProjectProcessStopRequest{
+		ProcessID: "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ProjectAlias: "project", TargetAlias: "windows", GracePeriod: time.Second,
+	}); err != nil {
+		t.Fatalf("stop handle-cleanup fixture: %v", err)
+	}
 }
 func (p *fakeWindowsProcessPlatform) Alive(identity ProjectProcessIdentity) (bool, error) {
 	p.mu.Lock()
@@ -44,7 +80,68 @@ func (p *fakeWindowsProcessPlatform) Alive(identity ProjectProcessIdentity) (boo
 	if identity != p.identity {
 		return false, ErrProjectProcessIdentityChanged
 	}
+	if p.aliveErr != nil {
+		return false, p.aliveErr
+	}
 	return p.alive, nil
+}
+
+func TestWindowsProjectProcessStatusPreservesRecordOnTransientLivenessError(t *testing.T) {
+	platform := &fakeWindowsProcessPlatform{}
+	manager := openWindowsTestProcessManager(t, platform)
+	workspace := windowsDirectWorkcellFixture(t)
+	request := ProjectProcessStartRequest{OperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", IdempotencyKey: "windows-transient-liveness", ProjectAlias: "project", TargetAlias: "windows", Workspace: workspace, Argv: []string{"cmd.exe", "/c", "echo", "ok"}}
+	started, created, err := manager.Start(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("start created=%t err=%v", created, err)
+	}
+	platform.mu.Lock()
+	platform.aliveErr = errors.New("temporary process query failure")
+	platform.mu.Unlock()
+	read := ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: workspace.ID, LimitBytes: 1024}
+	if _, err := manager.Status(read); err == nil || !strings.Contains(err.Error(), "liveness unavailable") {
+		t.Fatalf("status error=%v", err)
+	}
+	platform.mu.Lock()
+	platform.aliveErr = nil
+	platform.mu.Unlock()
+	after, err := manager.Status(read)
+	if err != nil || after.State != ProjectProcessRunning {
+		t.Fatalf("record was terminalized after transient liveness error: %+v err=%v", after, err)
+	}
+	platform.mu.Lock()
+	platform.aliveErr = errors.New("temporary process query failure")
+	platform.mu.Unlock()
+	if _, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: workspace.ID, GracePeriod: time.Second}); err == nil || !strings.Contains(err.Error(), "liveness unavailable") {
+		t.Fatalf("stop error=%v", err)
+	}
+	platform.mu.Lock()
+	platform.aliveErr = nil
+	platform.mu.Unlock()
+	if _, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: workspace.ID, GracePeriod: time.Second}); err != nil {
+		t.Fatalf("stop transient-liveness fixture: %v", err)
+	}
+}
+
+func TestWindowsProjectProcessStopHonorsGraceAfterCallerCancellation(t *testing.T) {
+	platform := &fakeWindowsProcessPlatform{terminateSticks: true}
+	manager := openWindowsTestProcessManager(t, platform)
+	workspace := windowsDirectWorkcellFixture(t)
+	request := ProjectProcessStartRequest{OperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", IdempotencyKey: "windows-cancelled-stop-grace", ProjectAlias: "project", TargetAlias: "windows", Workspace: workspace, Argv: []string{"cmd.exe", "/c", "echo", "ok"}}
+	started, created, err := manager.Start(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("start created=%t err=%v", created, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	begin := time.Now()
+	stopped, err := manager.Stop(ctx, ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: workspace.ID, GracePeriod: 40 * time.Millisecond})
+	if err != nil || stopped.State != ProjectProcessStopped || stopped.TerminalSignal != ProjectProcessKill {
+		t.Fatalf("stop=%+v err=%v", stopped, err)
+	}
+	if elapsed := time.Since(begin); elapsed < 30*time.Millisecond {
+		t.Fatalf("caller cancellation skipped grace period: %s", elapsed)
+	}
 }
 func (p *fakeWindowsProcessPlatform) Signal(identity ProjectProcessIdentity, signal ProjectProcessSignal) error {
 	p.mu.Lock()
@@ -61,7 +158,7 @@ func (p *fakeWindowsProcessPlatform) Signal(identity ProjectProcessIdentity, sig
 	}
 	p.alive = false
 	if p.exits != nil {
-		p.exits <- ProjectProcessExit{ExitKnown: true, ExitCode: 0}
+		p.exits <- ProjectProcessExit{ExitKnown: true, ExitCode: 0, TerminalSignal: signal}
 	}
 	return nil
 }

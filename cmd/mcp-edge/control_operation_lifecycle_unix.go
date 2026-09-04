@@ -23,14 +23,31 @@ type controlOperationProgressReporter interface {
 type controlOperationExecutor func(context.Context) (edge.OperationResult, string)
 
 func executeControlOperationWithProgress(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, lease edge.OperationLease) (edge.OperationResult, string, bool, error) {
-	return executeControlOperationLifecycle(ctx, transport, lease, 15*time.Second, func(executionCtx context.Context) (edge.OperationResult, string) {
+	result, code, cancelRequested, err, _, _ := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, browsers, nil, lease)
+	return result, code, cancelRequested, err
+}
+
+func executeControlOperationWithProgressAndGate(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, controlGate *controlOperationGate, lease edge.OperationLease) (edge.OperationResult, string, bool, error, bool, bool) {
+	exclusive := isBundleOperation(lease.Operation.Kind)
+	gateHeld := false
+	result, code, cancelRequested, err := executeControlOperationLifecycle(ctx, transport, lease, 15*time.Second, func(executionCtx context.Context) (edge.OperationResult, string) {
+		if controlGate != nil {
+			if !controlGate.acquire(executionCtx, exclusive) {
+				return edge.OperationResult{}, "cancelled"
+			}
+			gateHeld = true
+		}
+		// The worker releases the gate after the durable completion/cancel
+		// acknowledgement. Holding it only around this closure permits a second
+		// bundle operation to race the first operation's receipt cleanup.
 		return executeControlOperation(executionCtx, stateRoot, processes, browsers, lease.Operation)
 	})
+	return result, code, cancelRequested, err, gateHeld, exclusive
 }
 
 func executeControlOperationLifecycle(ctx context.Context, transport controlOperationProgressReporter, lease edge.OperationLease, progressInterval time.Duration, execute controlOperationExecutor) (edge.OperationResult, string, bool, error) {
 	revision := uint64(1)
-	control, err := reportControlOperationProgress(ctx, transport, lease, revision, "running")
+	control, err := reportControlOperationProgress(ctx, transport, lease, revision, controlOperationPhase(lease.Operation.Kind))
 	if err != nil {
 		return edge.OperationResult{}, "", false, err
 	}
@@ -64,13 +81,17 @@ func executeControlOperationLifecycle(ctx context.Context, transport controlOper
 			return execution.result, execution.code, cancelRequested, nil
 		case <-ticker.C:
 			revision++
-			phase := "running"
+			phase := controlOperationPhase(lease.Operation.Kind)
 			if cancelRequested {
 				phase = "stopping"
 			}
 			control, err := reportControlOperationProgress(ctx, transport, lease, revision, phase)
 			if err != nil {
 				cancelExecution()
+				// Do not let the worker release the operation gate while the
+				// executor can still mutate shared state. A progress transport
+				// failure is not evidence that execution stopped.
+				<-completed
 				return edge.OperationResult{}, "", cancelRequested, err
 			}
 			if control.CancelRequested && !cancelRequested {
@@ -86,6 +107,22 @@ func executeControlOperationLifecycle(ctx context.Context, transport controlOper
 			execution := <-completed
 			return execution.result, execution.code, cancelRequested, ctx.Err()
 		}
+	}
+}
+
+// controlOperationPhase gives long-running administrative operations a stable,
+// bounded phase visible to callers. Ordinary development work retains the
+// historical running value; finalizing is emitted by the lifecycle itself.
+func controlOperationPhase(kind edge.OperationKind) string {
+	switch kind {
+	case edge.OperationBundleUpdate:
+		return "updating"
+	case edge.OperationBundleRollback:
+		return "rolling_back"
+	case edge.OperationEdgeRepair:
+		return "repairing"
+	default:
+		return "running"
 	}
 }
 

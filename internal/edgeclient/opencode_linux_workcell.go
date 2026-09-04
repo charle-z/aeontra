@@ -21,6 +21,14 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 	if err != nil {
 		return openCodeProcessSpec{}, err
 	}
+	runtimeRoots, err := prepareProjectRuntimeRoots(l.config.StateRoot, workspace)
+	if err != nil {
+		return openCodeProcessSpec{}, errors.New("linux workcell private runtime is unavailable")
+	}
+	controlRoot := projectRuntimeControlRoot(runtimeRoots)
+	if filepath.Clean(filepath.Dir(preparation.CurrentStatePath)) != controlRoot {
+		return openCodeProcessSpec{}, errors.New("linux workcell preparation uses the wrong private control root")
+	}
 	args := append([]string(nil), base.Args...)
 	unshareIndex := slices.Index(args, "--unshare-all")
 	if unshareIndex < 0 {
@@ -32,6 +40,21 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 	if mountIndex < 0 {
 		return openCodeProcessSpec{}, errors.New("linux workcell mount baseline is missing")
 	}
+	args = insertOpenCodeArgs(args, mountIndex, "--bind", runtimeRoots.Runtime, "/toolchain", "--bind", runtimeRoots.Cache, "/cache", "--bind", runtimeRoots.Artifacts, "/artifacts")
+	mountIndex += 9
+	workspaceMountIndex := slices.Index(args, "--bind")
+	for index := 0; index+2 < len(args); index++ {
+		if args[index] == "--bind" && args[index+2] == openCodeSandboxWorkspace {
+			workspaceMountIndex = index
+			break
+		}
+	}
+	if workspaceMountIndex < 0 {
+		return openCodeProcessSpec{}, errors.New("linux workcell workspace mount is missing")
+	}
+	// The workspace parent must be mounted before this nested control mount;
+	// otherwise the later workspace bind would hide the private files.
+	args = insertOpenCodeArgs(args, workspaceMountIndex+3, "--bind", controlRoot, openCodeSandboxWorkspace+"/.mcp-devbox")
 	for _, target := range []string{"/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/etc/passwd", "/etc/group", "/etc/services", "/etc/protocols"} {
 		source, ok := safeLinuxWorkcellSystemFile(target)
 		if !ok {
@@ -54,25 +77,34 @@ func (l *OpenCodeLauncher) linuxWorkcellProcessSpec(runtimeDir string, workspace
 		mountIndex += 3
 	}
 	persistentPath := strings.Join([]string{
-		openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin",
-		openCodeSandboxWorkspace + "/.mcp-devbox/tools/go/bin",
-		openCodeSandboxWorkspace + "/.mcp-devbox/tools/cargo/bin",
+		"/toolchain/bin",
+		"/toolchain/go/bin",
+		"/toolchain/cargo/bin",
 		l.config.ToolPath,
 	}, ":")
 	replacements := map[string]string{
 		"PATH":                       persistentPath,
-		"XDG_CACHE_HOME":             openCodeSandboxWorkspace + "/.mcp-devbox/cache",
-		"npm_config_cache":           openCodeSandboxWorkspace + "/.mcp-devbox/cache/npm",
-		"PIP_CACHE_DIR":              openCodeSandboxWorkspace + "/.mcp-devbox/cache/pip",
-		"PNPM_HOME":                  openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin",
-		"PIPX_HOME":                  openCodeSandboxWorkspace + "/.mcp-devbox/tools/pipx",
-		"PIPX_BIN_DIR":               openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin",
-		"GOPATH":                     openCodeSandboxWorkspace + "/.mcp-devbox/tools/go",
-		"GOBIN":                      openCodeSandboxWorkspace + "/.mcp-devbox/tools/bin",
-		"CARGO_HOME":                 openCodeSandboxWorkspace + "/.mcp-devbox/tools/cargo",
-		"RUSTUP_HOME":                openCodeSandboxWorkspace + "/.mcp-devbox/tools/rustup",
-		"TMPDIR":                     openCodeSandboxWorkspace + "/.mcp-devbox/runtime/tmp",
-		"DOCKER_CONFIG":              openCodeSandboxWorkspace + "/.mcp-devbox/tools/docker",
+		"XDG_CACHE_HOME":             "/cache",
+		"npm_config_cache":           "/cache/npm",
+		"NPM_CONFIG_CACHE":           "/cache/npm",
+		"PIP_CACHE_DIR":              "/cache/pip",
+		"PNPM_HOME":                  "/toolchain/bin",
+		"PIPX_HOME":                  "/toolchain/pipx",
+		"PIPX_BIN_DIR":               "/toolchain/bin",
+		"GOPATH":                     "/toolchain/go",
+		"GOBIN":                      "/toolchain/bin",
+		"CARGO_HOME":                 "/toolchain/cargo",
+		"RUSTUP_HOME":                "/toolchain/rustup",
+		"UV_CACHE_DIR":               "/cache/uv",
+		"MAVEN_HOME":                 "/toolchain/maven",
+		"GRADLE_USER_HOME":           "/cache/gradle",
+		"GOMODCACHE":                 "/cache/go-mod",
+		"GOCACHE":                    "/cache/go-build",
+		"TMPDIR":                     "/tmp",
+		"DOCKER_CONFIG":              "/toolchain/docker",
+		"MCP_DEVBOX_RUNTIME_ROOT":    "/toolchain",
+		"MCP_DEVBOX_CACHE_ROOT":      "/cache",
+		"MCP_DEVBOX_ARTIFACT_ROOT":   "/artifacts",
 		"MCP_DEVBOX_RUNTIME_ID":      lease.RuntimeID,
 		"MCP_DEVBOX_PROFILE":         string(workspace.Profile),
 		"MCP_DEVBOX_MODE":            string(workspace.Mode),
@@ -241,6 +273,14 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 		"/dev":                    {Target: "/dev", Writable: true, Kind: "dev"},
 		"/tmp":                    {Target: "/tmp", Writable: true, Kind: "tmpfs"},
 	}
+	runtimeRoots, rootsErr := prepareProjectRuntimeRoots(stateRoot, workspace)
+	if rootsErr != nil {
+		return errors.New("linux workcell private runtime is unavailable")
+	}
+	required["/toolchain"] = openCodeSandboxMount{Source: runtimeRoots.Runtime, Target: "/toolchain", Writable: true, Kind: "bind"}
+	required["/cache"] = openCodeSandboxMount{Source: runtimeRoots.Cache, Target: "/cache", Writable: true, Kind: "bind"}
+	required["/artifacts"] = openCodeSandboxMount{Source: runtimeRoots.Artifacts, Target: "/artifacts", Writable: true, Kind: "bind"}
+	required[openCodeSandboxWorkspace+"/.mcp-devbox"] = openCodeSandboxMount{Source: projectRuntimeControlRoot(runtimeRoots), Target: openCodeSandboxWorkspace + "/.mcp-devbox", Writable: true, Kind: "bind"}
 	for _, systemPath := range []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/ca-certificates"} {
 		if info, err := os.Stat(systemPath); err == nil && info.IsDir() {
 			required[systemPath] = openCodeSandboxMount{Source: systemPath, Target: systemPath, Kind: "bind"}
@@ -280,13 +320,14 @@ func validateLinuxWorkcellSandboxSpec(spec openCodeSandboxSpec, stateRoot, runti
 		}
 	}
 	for _, mount := range spec.Mounts {
-		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && mount.Source != runtimeDir) {
+		allowedPrivate := mount.Source == runtimeDir || mount.Source == runtimeRoots.Runtime || mount.Source == projectRuntimeControlRoot(runtimeRoots) || mount.Source == runtimeRoots.Cache || mount.Source == runtimeRoots.Artifacts
+		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && !allowedPrivate) {
 			return errors.New("linux workcell exposes private Edge state")
 		}
 		if mount.Target == rootlessContainerSocketTarget {
 			continue
 		}
-		if mount.Target != openCodeSandboxWorkspace && mount.Target != openCodeSandboxRuntime && mount.Writable && mount.Kind == "bind" {
+		if mount.Target != openCodeSandboxWorkspace && mount.Target != openCodeSandboxWorkspace+"/.mcp-devbox" && mount.Target != openCodeSandboxRuntime && mount.Target != "/toolchain" && mount.Target != "/cache" && mount.Target != "/artifacts" && mount.Writable && mount.Kind == "bind" {
 			return errors.New("linux workcell exposes an unexpected writable bind mount")
 		}
 	}

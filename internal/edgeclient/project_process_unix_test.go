@@ -4,6 +4,7 @@ package edgeclient
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -169,9 +170,136 @@ func testProjectProcessRequest(t *testing.T, key string) ProjectProcessStartRequ
 	return ProjectProcessStartRequest{
 		OperationID: "eo_0123456789abcdef0123456789abcdef", IdempotencyKey: key,
 		ProjectAlias: "project", TargetAlias: "parrot",
+		ProjectOwner: "charle-z", ProjectRepository: "codex", ProjectClaimGeneration: 7,
 		Workspace: Workspace{ID: "ws_0123456789abcdef0123456789abcdef", Path: workspacePath, Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev},
 		Argv:      []string{"go", "run", "."}, Environment: map[string]string{"PORT": "8080"},
 	}
+}
+
+func TestProjectProcessManagerStatusAndStopAllowDirtyWorkspace(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	request := testProjectProcessRequest(t, "dirty-status-stop")
+	started, created, err := manager.Start(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("start=%+v created=%v err=%v", started, created, err)
+	}
+	if err := os.WriteFile(filepath.Join(request.Workspace.Path, "build-output.tmp"), []byte("dirty is allowed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if status, err := manager.Status(ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: request.Workspace.ID, LimitBytes: 1024}); err != nil || status.State != ProjectProcessRunning {
+		t.Fatalf("status=%+v err=%v, dirty workspace must remain observable", status, err)
+	}
+	if stopped, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: request.Workspace.ID, GracePeriod: time.Second}); err != nil || stopped.State != ProjectProcessStopped {
+		t.Fatalf("stop=%+v err=%v, dirty workspace must remain stoppable", stopped, err)
+	}
+}
+
+func TestProjectProcessStatusKeepsRunningRecordOnTransientLivenessError(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	request := testProjectProcessRequest(t, "transient-liveness")
+	started, created, err := manager.Start(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("start created=%t err=%v", created, err)
+	}
+	platform.mu.Lock()
+	pid := platform.nextPID
+	platform.processes[pid].aliveErr = errors.New("temporary proc lookup failure")
+	platform.mu.Unlock()
+	read := ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: request.Workspace.ID, LimitBytes: 1024}
+	if _, err := manager.Status(read); err == nil || !strings.Contains(err.Error(), "liveness unavailable") {
+		t.Fatalf("status error=%v", err)
+	}
+	platform.mu.Lock()
+	platform.processes[pid].aliveErr = nil
+	platform.mu.Unlock()
+	after, err := manager.Status(read)
+	if err != nil || after.State != ProjectProcessRunning {
+		t.Fatalf("record was terminalized after transient liveness error: %+v err=%v", after, err)
+	}
+	platform.mu.Lock()
+	platform.processes[pid].aliveErr = errors.New("temporary proc lookup failure")
+	platform.mu.Unlock()
+	if _, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: request.Workspace.ID, GracePeriod: time.Second}); err == nil || !strings.Contains(err.Error(), "liveness unavailable") {
+		t.Fatalf("stop error=%v", err)
+	}
+	platform.mu.Lock()
+	platform.processes[pid].aliveErr = nil
+	platform.mu.Unlock()
+	if _, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: request.Workspace.ID, GracePeriod: time.Second}); err != nil {
+		t.Fatalf("stop transient-liveness fixture: %v", err)
+	}
+}
+
+func TestProjectProcessStopHonorsGraceAfterCallerCancellation(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	request := testProjectProcessRequest(t, "cancelled-stop-grace")
+	started, created, err := manager.Start(context.Background(), request)
+	if err != nil || !created {
+		t.Fatalf("start created=%t err=%v", created, err)
+	}
+	platform.mu.Lock()
+	pid := platform.nextPID
+	platform.processes[pid].termExit = false
+	platform.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	begin := time.Now()
+	stopped, err := manager.Stop(ctx, ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, WorkspaceID: request.Workspace.ID, GracePeriod: 40 * time.Millisecond})
+	if err != nil || stopped.State != ProjectProcessStopped || stopped.TerminalSignal != ProjectProcessKill {
+		t.Fatalf("stop=%+v err=%v", stopped, err)
+	}
+	if elapsed := time.Since(begin); elapsed < 30*time.Millisecond {
+		t.Fatalf("caller cancellation skipped grace period: %s", elapsed)
+	}
+	platform.mu.Lock()
+	signals := append([]ProjectProcessSignal(nil), platform.signals...)
+	platform.mu.Unlock()
+	if !slices.Equal(signals, []ProjectProcessSignal{ProjectProcessTerminate, ProjectProcessKill}) {
+		t.Fatalf("signals=%v", signals)
+	}
+}
+
+func TestProjectProcessScopedListReconcilesWithoutJournalDeadlock(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	request := testProjectProcessRequest(t, "scoped-list-reconcile")
+	started, _, err := manager.Start(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform.mu.Lock()
+	var startedProcess *fakeProjectProcess
+	for _, process := range platform.processes {
+		if process.identity.ProcessID == started.ProcessID {
+			process.alive = false
+			startedProcess = process
+		}
+	}
+	platform.mu.Unlock()
+	if startedProcess == nil {
+		t.Fatal("started process was not registered")
+	}
+	manager.watchMu.Lock()
+	delete(manager.watching, started.ProcessID)
+	manager.watchMu.Unlock()
+
+	done := make(chan error, 1)
+	go func() {
+		_, listErr := manager.List(ProjectProcessListRequest{ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias, Limit: 10})
+		done <- listErr
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("scoped list err=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("scoped reconciliation blocked on its own journal query")
+	}
+	startedProcess.exit <- ProjectProcessExit{ExitKnown: true, ExitCode: 0}
 }
 
 func openTestProjectProcessManager(t *testing.T, platform ProjectProcessPlatform, maxLog int64) *ProjectProcessManager {
@@ -227,6 +355,114 @@ func TestProjectProcessManagerStartsOnceAndReadsRedactedSeparatedOutput(t *testi
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("sandbox spec exposed %q: %s", forbidden, joined)
 		}
+	}
+}
+
+func TestProjectProcessReadsRequireTheCapturedWorkspaceWhenSupplied(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	request := testProjectProcessRequest(t, "process-workspace-binding")
+	started, _, err := manager.Start(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Status(ProjectProcessReadRequest{
+		ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot",
+		WorkspaceID: "ws_abcdefabcdefabcdefabcdefabcdefab", LimitBytes: 4096,
+	}); !errors.Is(err, ErrProjectProcessNotFound) {
+		t.Fatalf("status with a different workspace was accepted: %v", err)
+	}
+	if _, err := manager.Status(ProjectProcessReadRequest{
+		ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot",
+		WorkspaceID: request.Workspace.ID, LimitBytes: 4096,
+	}); err != nil {
+		t.Fatalf("status with the captured workspace failed: %v", err)
+	}
+}
+
+func TestProjectProcessBindingSurvivesProjectRegistryRelease(t *testing.T) {
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	request := testProjectProcessRequest(t, "process-registry-release")
+	started, _, err := manager.Start(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := manager.Binding(started.ProcessID)
+	if err != nil || binding.ProjectAlias != request.ProjectAlias || binding.TargetAlias != request.TargetAlias || binding.WorkspaceID != request.Workspace.ID || binding.ProjectOwner != request.ProjectOwner || binding.ProjectRepository != request.ProjectRepository || binding.ProjectClaimGeneration != request.ProjectClaimGeneration {
+		t.Fatalf("binding=%+v err=%v", binding, err)
+	}
+	// Simulate the registry alias being released: process control is scoped to
+	// the durable process record and must not need a project/workspace lookup.
+	stopped, err := manager.Stop(context.Background(), ProjectProcessStopRequest{
+		ProcessID: started.ProcessID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias,
+		GracePeriod: time.Second,
+	})
+	if err != nil || stopped.State != ProjectProcessStopped {
+		t.Fatalf("stopped=%+v err=%v", stopped, err)
+	}
+}
+
+func TestProjectProcessJournalMigratesLegacyBindingColumns(t *testing.T) {
+	root := t.TempDir()
+	databasePath := filepath.Join(root, projectProcessDatabaseFile)
+	processID := "pr_0123456789abcdef0123456789abcdef"
+	workspaceID := "ws_0123456789abcdef0123456789abcdef"
+	identity := ProjectProcessIdentity{ProcessID: processID, PID: 4321, ProcessGroupID: 4321, StartTicks: 77}
+	platform := newFakeProjectProcessPlatform()
+	exit := make(chan ProjectProcessExit, 1)
+	platform.processes[identity.PID] = &fakeProjectProcess{identity: identity, exit: exit, alive: true, termExit: true}
+	logRoot := filepath.Join(root, projectProcessLogDirectory)
+	if err := os.MkdirAll(logRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, stream := range []string{"stdout", "stderr"} {
+		if err := os.WriteFile(filepath.Join(logRoot, processID+"."+stream+".log"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = legacy.Exec(`CREATE TABLE project_processes (
+		process_id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, request_digest TEXT NOT NULL, operation_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL, project_alias TEXT NOT NULL, target_alias TEXT NOT NULL,
+		pid INTEGER NOT NULL DEFAULT 0, process_group_id INTEGER NOT NULL DEFAULT 0, start_ticks INTEGER NOT NULL DEFAULT 0,
+		state TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER, exit_known INTEGER NOT NULL DEFAULT 0,
+		exit_code INTEGER NOT NULL DEFAULT 0, terminal_signal TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT ''
+	) WITHOUT ROWID`)
+	if err != nil {
+		_ = legacy.Close()
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`INSERT INTO project_processes(process_id,idempotency_key,request_digest,operation_id,workspace_id,project_alias,target_alias,pid,process_group_id,start_ticks,state,started_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, processID, "legacy-process", strings.Repeat("a", 64), "eo_0123456789abcdef0123456789abcdef", workspaceID, "project", "parrot", identity.PID, identity.ProcessGroupID, identity.StartTicks, ProjectProcessRunning, time.Now().UTC().UnixNano()); err != nil {
+		_ = legacy.Close()
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(databasePath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := OpenProjectProcessManager(ProjectProcessManagerConfig{StateRoot: root, Platform: platform})
+	if err != nil {
+		t.Fatalf("legacy journal was not migrated: %v", err)
+	}
+	defer manager.Close()
+	var owner, repository string
+	var generation int64
+	if err := manager.db.QueryRow(`SELECT project_owner,project_repository,project_claim_generation FROM project_processes LIMIT 1`).Scan(&owner, &repository, &generation); err != nil || owner != "" || repository != "" || generation != 0 {
+		t.Fatalf("migration defaults err=%v owner=%q repository=%q generation=%d", err, owner, repository, generation)
+	}
+	go manager.watch(processID, exit, projectProcessNopCloser{}, projectProcessNopCloser{})
+	if _, err := manager.Status(ProjectProcessReadRequest{ProcessID: processID, ProjectAlias: "project", TargetAlias: "parrot", WorkspaceID: workspaceID, LimitBytes: 1024}); err != nil {
+		t.Fatalf("legacy status was not observable: %v", err)
+	}
+	stopped, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: processID, ProjectAlias: "project", TargetAlias: "parrot", WorkspaceID: workspaceID, GracePeriod: time.Second})
+	if err != nil || stopped.State != ProjectProcessStopped {
+		t.Fatalf("legacy stop=%+v err=%v", stopped, err)
 	}
 }
 
@@ -1090,11 +1326,17 @@ func TestProjectProcessWorkerPersistsRedactedLogsAndExactExitReceipt(t *testing.
 	if err := os.WriteFile(helper, []byte(helperBody), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	attestation, err := captureProjectProcessWorkspaceAttestation(stateRoot, stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
 	processID := "pr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	request := projectProcessWorkerRequest{
 		Executable: helper, Args: []string{"ignored"}, Dir: stateRoot,
 		Env: []string{"PATH=/usr/bin:/bin", "LANG=C"}, MaxLogBytes: 1 << 20,
+		WorkspacePath: stateRoot, WorkspaceCWDPath: stateRoot, WorkspaceAttestation: attestation,
 	}
+	attachTestProjectProcessRuntimeAttestation(t, stateRoot, &request)
 	body, err := json.Marshal(request)
 	if err != nil {
 		t.Fatal(err)
@@ -1157,11 +1399,17 @@ wait "$child"
 	if err := os.WriteFile(helper, []byte(helperBody), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	attestation, err := captureProjectProcessWorkspaceAttestation(stateRoot, stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
 	processID := "pr_dddddddddddddddddddddddddddddddd"
 	request := projectProcessWorkerRequest{
 		Executable: helper, Args: []string{"--new-session", "--", "/bin/sleep", "30"}, Dir: stateRoot,
 		Env: []string{"PATH=/usr/bin:/bin", "EXPECTED_PID_FILE=" + expectedPIDPath}, MaxLogBytes: 1 << 20,
+		WorkspacePath: stateRoot, WorkspaceCWDPath: stateRoot, WorkspaceAttestation: attestation,
 	}
+	attachTestProjectProcessRuntimeAttestation(t, stateRoot, &request)
 	body, err := json.Marshal(request)
 	if err != nil {
 		t.Fatal(err)
@@ -1192,6 +1440,7 @@ wait "$child"
 	}
 	defer func() { _ = syscall.Kill(-expectedPID, syscall.SIGKILL) }()
 	var identity ProjectProcessIdentity
+	deadline = time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		identity, err = readProjectProcessWorkerChildIdentity(workerRoot, processID)
 		if err == nil {
@@ -1238,10 +1487,16 @@ func TestProjectProcessWorkerDeliversInitialAndIncrementalStdin(t *testing.T) {
 	if err := os.WriteFile(helper, []byte(helperBody), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	attestation, err := captureProjectProcessWorkspaceAttestation(stateRoot, stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
 	processID := "pr_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	request := projectProcessWorkerRequest{
 		Executable: helper, Args: []string{"ignored"}, Dir: stateRoot, Env: []string{"PATH=/usr/bin:/bin", "LANG=C"}, Stdin: "initial\n", MaxLogBytes: 1 << 20,
+		WorkspacePath: stateRoot, WorkspaceCWDPath: stateRoot, WorkspaceAttestation: attestation,
 	}
+	attachTestProjectProcessRuntimeAttestation(t, stateRoot, &request)
 	body, err := json.Marshal(request)
 	if err != nil {
 		t.Fatal(err)
@@ -1299,6 +1554,23 @@ func TestProjectProcessWorkerDeliversInitialAndIncrementalStdin(t *testing.T) {
 	if err != nil || string(stdout) != "initial|incremental" {
 		t.Fatalf("stdout=%q err=%v", stdout, err)
 	}
+}
+
+func attachTestProjectProcessRuntimeAttestation(t *testing.T, stateRoot string, request *projectProcessWorkerRequest) {
+	t.Helper()
+	request.RuntimeRoots = ProjectRuntimeRoots{
+		Runtime: filepath.Join(stateRoot, "test-runtime"), Artifacts: filepath.Join(stateRoot, "test-artifacts"), Cache: filepath.Join(stateRoot, "test-cache"),
+	}
+	for _, root := range []string{request.RuntimeRoots.Runtime, request.RuntimeRoots.Cache, request.RuntimeRoots.Artifacts} {
+		if err := os.MkdirAll(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	attestation, err := captureProjectProcessRuntimeAttestation(stateRoot, request.RuntimeRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.RuntimeAttestation = attestation
 }
 
 func TestProjectProcessWorkerCommandArgsOwnsSandboxInfoFD(t *testing.T) {

@@ -170,6 +170,8 @@ func TestProjectResolutionRevalidatesProfileTargetAndCheckout(t *testing.T) {
 				}
 			} else if err != nil || resolution.CheckoutState != test.wantState || resolution.SafeStatus().State != string(test.wantState) {
 				t.Fatalf("resolution=%+v err=%v", resolution, err)
+			} else if resolution.CheckoutDiagnostic == nil || resolution.CheckoutDiagnostic.Reason != "normal_workspace_changes" {
+				t.Fatalf("dirty checkout diagnostic=%+v", resolution.CheckoutDiagnostic)
 			}
 			if _, err := registry.Resolve(context.Background(), "project", "other"); !projectErrorIs(err, ProjectErrorTargetNotFound) {
 				t.Fatalf("target err=%v", err)
@@ -229,6 +231,9 @@ func newProjectRegistryFixture(t *testing.T, profile WorkspaceProfile) (string, 
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := os.Mkdir(filepath.Join(workspacePath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
 	}
 	registry, err := OpenWorkspaceRegistryWithRoots(state, WorkspaceRoots{Dev: devRoot, HTBLinux: htbRoot})
 	if err != nil {

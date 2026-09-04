@@ -4,6 +4,7 @@ package edgeclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -22,6 +23,11 @@ type recordingToolboxRunner struct {
 	state          string
 	inspectImageID string
 	harnessState   string
+	mounts         []struct {
+		Type, Source, Destination string
+		RW                        bool
+	}
+	containerEnv []string
 }
 
 func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, args, environment []string) ([]byte, error) {
@@ -42,11 +48,13 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 		}
 		return []byte("tb_11111111111111111111111111111111|" + imageID + "\n"), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "json .Mounts"):
-		return []byte(`[{"Type":"bind","Source":"` + runner.workspace + `","Destination":"/workspace","RW":true}]`), nil
+		encoded, _ := json.Marshal(runner.mounts)
+		return encoded, nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "HostConfig.Memory"):
 		return []byte("8589934592|4000000000|2048\n"), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "json .Config.Env"):
-		return []byte(`["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS=disabled"]`), nil
+		encoded, _ := json.Marshal(runner.containerEnv)
+		return encoded, nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "SizeRw"):
 		return []byte("4096|83886080\n"), nil
 	case strings.Contains(joined, " inspect "):
@@ -55,6 +63,22 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 		}
 		return []byte(runner.state + "\n"), nil
 	case strings.Contains(joined, " create "):
+		runner.mounts = nil
+		runner.containerEnv = nil
+		for index := 0; index+1 < len(args); index++ {
+			switch args[index] {
+			case "--volume":
+				parts := strings.Split(args[index+1], ":")
+				if len(parts) == 3 {
+					runner.mounts = append(runner.mounts, struct {
+						Type, Source, Destination string
+						RW                        bool
+					}{Type: "bind", Source: parts[0], Destination: parts[1], RW: parts[2] == "rw"})
+				}
+			case "--env":
+				runner.containerEnv = append(runner.containerEnv, args[index+1])
+			}
+		}
 		return []byte(strings.Repeat("b", 64) + "\n"), nil
 	case strings.Contains(joined, "mcp-browser-harness-start"):
 		return nil, nil

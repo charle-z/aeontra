@@ -59,7 +59,7 @@ func TestProjectStatusAndResolveReportDirtyCheckoutWithoutExposingPaths(t *testi
 			if err := projectCommand([]string{operation, "--alias", "ekoparty"}, &stdout, &bytes.Buffer{}); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(stdout.String(), `"state":"dirty"`) || strings.Contains(stdout.String(), `"reason"`) {
+			if !strings.Contains(stdout.String(), `"state":"dirty"`) || !strings.Contains(stdout.String(), `"reason":"normal_workspace_changes"`) {
 				t.Fatalf("dirty %s=%q", operation, stdout.String())
 			}
 			for _, forbidden := range []string{workspace.ID, workspace.Path} {
@@ -106,6 +106,9 @@ func newProjectCommandFixture(t *testing.T) (*localProjectStores, edgeclient.Wor
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := os.Mkdir(filepath.Join(workspacePath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
 	}
 	workspaces, err := edgeclient.OpenWorkspaceRegistryWithRoots(state, edgeclient.WorkspaceRoots{Dev: devRoot, HTBLinux: htbRoot})
 	if err != nil {

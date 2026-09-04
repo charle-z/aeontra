@@ -13,6 +13,7 @@ import (
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
@@ -214,12 +215,27 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		return nil, fmt.Errorf("opening MCP session store: %w", err)
 	}
 
+	server := mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithWorkQueue(workQueue).WithConsoleStorageRoots(stateRoot, auditPath).WithHTTPSessionStore(sessions)
+	catalog, err := server.CatalogInfo()
+	if err != nil || edgeStore.SetExpectedOperationCompatibility(buildinfo.EdgeBundleProtocolVersion, catalog.Hash) != nil {
+		_ = sessions.Close()
+		_ = workQueue.Close()
+		_ = edgeStore.Close()
+		_ = modelTurns.Close()
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, errors.New("configuring edge operation compatibility")
+	}
+
 	return &appRuntime{
 		Policy:      pol,
 		Logger:      logger,
 		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithWorkQueue(workQueue).WithConsoleStorageRoots(stateRoot, auditPath).WithHTTPSessionStore(sessions),
+		Server:      server,
 		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,

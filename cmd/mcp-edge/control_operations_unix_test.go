@@ -9,10 +9,23 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
+
+func TestBundleUnitWaitHonorsCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	if waitBundleUnitInactive(ctx, "mcp-devbox-edge-repair.service", time.Minute) {
+		t.Fatal("cancelled bundle wait reported inactive")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("cancelled bundle wait took %s", elapsed)
+	}
+}
 
 func TestBundleOperationReceiptIsDurableExclusiveAndValidated(t *testing.T) {
 	stateRoot := t.TempDir()
@@ -103,7 +116,7 @@ func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
 	runner := &projectSnapshotRunner{outputs: map[string]string{
 		"rev-parse --verify HEAD":                        "0123456789abcdef0123456789abcdef01234567\n",
 		"branch --show-current":                          "main\n",
-		"status --porcelain=v1 --untracked-files=normal": "?? .mcp-devbox/\n",
+		"status --porcelain=v1 --untracked-files=normal": "?? .mcp-devbox/runtime/\n",
 	}}
 	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
 	if code != "" || result.SnapshotHead != "0123456789abcdef0123456789abcdef01234567" ||

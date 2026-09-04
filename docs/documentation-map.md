@@ -161,6 +161,9 @@ above:
   `docs/adr/0004-p16-global-scheduler-separated-execution-pools.md`.
 - L3 and native Windows execution boundary decision:
   `docs/adr/0005-separated-l3-and-native-windows-execution.md`.
+- Development workspace state, runtime-root separation, durable process identity,
+  toolbox recovery and bounded Edge concurrency:
+  `docs/adr/0007-development-environment-state-and-concurrency.md`.
 - Private rootless L3 deployment and acceptance:
   `docs/runbooks/private-sandbox-runner.md`.
 - P16 measured capacity evidence: `docs/baselines/2026-07-22-p16-capacity.md`.

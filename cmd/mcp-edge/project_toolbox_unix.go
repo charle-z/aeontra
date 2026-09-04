@@ -17,6 +17,7 @@ type projectToolboxOperations interface {
 	Status(context.Context, edgeclient.ProjectToolboxStatusRequest) (edgeclient.ProjectToolboxSnapshot, error)
 	Exec(context.Context, edgeclient.ProjectToolboxExecRequest) (edgeclient.ProjectToolboxSnapshot, error)
 	Repair(context.Context, edgeclient.ProjectToolboxRepairRequest) (edgeclient.ProjectToolboxSnapshot, error)
+	Reconcile(context.Context, edgeclient.ProjectToolboxReconcileRequest) (edgeclient.ProjectToolboxSnapshot, error)
 	ServiceStart(context.Context, edgeclient.ProjectToolboxServiceStartRequest) (edgeclient.ProjectToolboxServiceSnapshot, bool, error)
 	ServiceStatus(context.Context, edgeclient.ProjectToolboxServiceRequest) (edgeclient.ProjectToolboxServiceSnapshot, error)
 	ServiceStop(context.Context, edgeclient.ProjectToolboxServiceRequest) (edgeclient.ProjectToolboxServiceSnapshot, error)
@@ -99,8 +100,8 @@ func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxO
 			return manager, nil
 		case errors.Is(err, edgeclient.ErrProjectToolboxNotFound):
 			return manager, nil
-		case operation.Kind == edge.OperationProjectToolboxRepair && errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
-			_, repairErr := manager.Repair(ctx, edgeclient.ProjectToolboxRepairRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
+		case operation.Kind == edge.OperationProjectToolboxRepair && (errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable) || errors.Is(err, edgeclient.ErrProjectToolboxMountMismatch) || errors.Is(err, edgeclient.ErrProjectToolboxIdentityMismatch)):
+			_, repairErr := manager.Reconcile(ctx, edgeclient.ProjectToolboxReconcileRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 			switch {
 			case repairErr == nil:
 				return manager, nil
@@ -145,7 +146,7 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	case edge.OperationProjectToolboxStatus:
 		snapshot, err = manager.Status(ctx, edgeclient.ProjectToolboxStatusRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 	case edge.OperationProjectToolboxRepair:
-		snapshot, err = manager.Repair(ctx, edgeclient.ProjectToolboxRepairRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
+		snapshot, err = manager.Reconcile(ctx, edgeclient.ProjectToolboxReconcileRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 	case edge.OperationProjectToolboxExec, edge.OperationProjectToolboxInstall:
 		execCtx, cancel := context.WithTimeout(ctx, time.Duration(request.TimeoutSeconds)*time.Second)
 		snapshot, err = manager.Exec(execCtx, edgeclient.ProjectToolboxExecRequest{

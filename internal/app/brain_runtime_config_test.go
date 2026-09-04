@@ -71,8 +71,8 @@ func TestBuildRuntimeLeavesBrainDisabledWhenRootIsUnset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.ToolCount != 178 {
-		t.Fatalf("tool count=%d want=178", catalog.ToolCount)
+	if catalog.ToolCount != 181 {
+		t.Fatalf("tool count=%d want=181", catalog.ToolCount)
 	}
 	if _, err := runtime.Service.BrainContext(context.Background(), 1); !errors.Is(err, tools.ErrBrainNotConfigured) {
 		t.Fatalf("disabled error=%v", err)

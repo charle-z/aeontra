@@ -147,6 +147,10 @@ not grant mutable-code execution.
   local Git history, and a disposable search index.
 - **Control plane and Edge:** durable opaque coordination with signed releases and local
   private workspace contracts on Linux/Parrot/WSL.
+- **Development environments:** each registered workspace separates its source checkout
+  from private toolchain runtime, package caches and managed artifacts. Normal dirty
+  development state remains inspectable; only a real identity, ownership, containment
+  or mount-boundary violation blocks the workspace.
 - **Durable parallel tasks:** one to four bounded GPT Web/Codex workers can run on
   distinct exact-base Edge worktrees with server-owned leases, monotonically increasing
   fences, independent runtimes, restart reconciliation and clean-only explicit cleanup.

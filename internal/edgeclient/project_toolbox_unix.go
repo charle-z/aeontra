@@ -31,6 +31,9 @@ const (
 	ProjectToolboxStopped ProjectToolboxState = "stopped"
 	ProjectToolboxUnknown ProjectToolboxState = "unknown"
 
+	projectToolboxSchemaVersion  = 2
+	projectToolboxRuntimeV1      = "v1"
+	projectToolboxRuntimeV2      = "v2"
 	projectToolboxStateDirectory = "project-toolboxes"
 	projectToolboxBaseImage      = "docker.io/library/debian:bookworm-slim"
 	projectToolboxLabelKey       = "mcp.devbox.toolbox"
@@ -52,6 +55,7 @@ var (
 	ErrProjectToolboxMountMismatch        = fmt.Errorf("%w: mount mismatch", ErrProjectToolboxNotOwned)
 	ErrProjectToolboxResourceMismatch     = fmt.Errorf("%w: resource mismatch", ErrProjectToolboxNotOwned)
 	ErrProjectToolboxEnvironmentMismatch  = fmt.Errorf("%w: environment mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxEndpointStale        = fmt.Errorf("%w: endpoint stale", ErrProjectToolboxNotOwned)
 	ErrProjectToolboxUnsafeState          = errors.New("project toolbox state is unsafe")
 	ErrProjectToolboxUnavailable          = errors.New("project toolbox rootless engine is unavailable")
 )
@@ -113,6 +117,14 @@ type ProjectToolboxRepairRequest struct {
 	Workspace                 Workspace
 }
 
+// ProjectToolboxReconcileRequest is an explicit, non-destructive recovery
+// path for stale endpoint metadata and a container whose mounts no longer
+// match the v2 contract. It never removes or resets the workspace.
+type ProjectToolboxReconcileRequest struct {
+	ProjectAlias, TargetAlias string
+	Workspace                 Workspace
+}
+
 type ProjectToolboxServiceStartRequest struct {
 	ProjectAlias, TargetAlias string
 	Workspace                 Workspace
@@ -154,6 +166,13 @@ type ProjectToolboxSnapshot struct {
 }
 
 type projectToolboxRecord struct {
+	SchemaVersion                                     int    `json:"schema_version"`
+	RuntimeVersion                                    string `json:"runtime_version"`
+	Generation                                        uint64 `json:"generation"`
+	WorkspacePath                                     string `json:"workspace_path,omitempty"`
+	WorkspaceFingerprint                              string `json:"workspace_fingerprint,omitempty"`
+	MountFingerprint                                  string `json:"mount_fingerprint,omitempty"`
+	EndpointFingerprint                               string `json:"endpoint_fingerprint,omitempty"`
 	ToolboxID, WorkspaceID, ProjectAlias, TargetAlias string
 	ContainerName, BaseImage, BaseImageID             string
 	CreatedAt, UpdatedAt                              time.Time
@@ -222,6 +241,11 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 }
 
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	request.CPUMillis, request.MemoryMiB, request.ProcessLimit = normalizeProjectToolboxResourceLimits(request.CPUMillis, request.MemoryMiB, request.ProcessLimit)
@@ -231,7 +255,7 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	if !validProjectToolboxResourceLimits(request.CPUMillis, request.MemoryMiB, request.ProcessLimit) {
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
 	}
-	if record, err := manager.load(request.Workspace.ID); err == nil {
+	if record, err := manager.loadForWorkspace(request.Workspace); err == nil {
 		if record.CPUMillis != request.CPUMillis || record.MemoryMiB != request.MemoryMiB || record.ProcessLimit != request.ProcessLimit {
 			return ProjectToolboxSnapshot{}, true, ErrProjectToolboxUnsafeState
 		}
@@ -259,14 +283,15 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	if err != nil || normalizeErr != nil {
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
 	}
-	createArgs := []string{"create", "--name", containerName, "--label", projectToolboxLabelKey + "=" + toolboxID,
-		"--cpus", fmt.Sprintf("%.3f", float64(request.CPUMillis)/1000), "--memory", fmt.Sprintf("%dm", request.MemoryMiB), "--pids-limit", fmt.Sprintf("%d", request.ProcessLimit)}
-	if manager.cgroupParent != "" {
-		createArgs = append(createArgs, "--cgroup-parent", manager.cgroupParent)
+	runtimeRoots, err := prepareProjectRuntimeRoots(filepath.Dir(manager.stateRoot), request.Workspace)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
 	}
-	createArgs = append(createArgs,
-		"--env", "MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS=disabled",
-		"--volume", request.Workspace.Path+":/workspace:rw", "--workdir", "/workspace", imageID, "sleep", "infinity")
+	workspaceFingerprint, err := projectRuntimeWorkspaceFingerprint(request.Workspace.Path)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
+	}
+	createArgs := manager.projectToolboxCreateArgs(toolboxID, containerName, imageID, request.Workspace.Path, runtimeRoots, request.CPUMillis, request.MemoryMiB, request.ProcessLimit)
 	createOutput, err := manager.run(ctx, createArgs...)
 	containerID := strings.TrimSpace(string(createOutput))
 	if err != nil || !containerResourceIDPattern.MatchString(containerID) {
@@ -274,7 +299,11 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	}
 	created := manager.now().UTC()
 	record := projectToolboxRecord{
-		ToolboxID: toolboxID, WorkspaceID: request.Workspace.ID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias,
+		SchemaVersion: projectToolboxSchemaVersion, RuntimeVersion: projectToolboxRuntimeV2, Generation: 1,
+		WorkspacePath: request.Workspace.Path, WorkspaceFingerprint: workspaceFingerprint,
+		MountFingerprint:    projectRuntimeMountFingerprint(request.Workspace.Path, workspaceFingerprint, runtimeRoots, projectToolboxRuntimeV2),
+		EndpointFingerprint: projectRuntimeEndpointFingerprint(manager.endpoint),
+		ToolboxID:           toolboxID, WorkspaceID: request.Workspace.ID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias,
 		ContainerName: containerName, BaseImage: projectToolboxBaseImage, BaseImageID: imageID, CreatedAt: created, UpdatedAt: created,
 		CPUMillis: request.CPUMillis, MemoryMiB: request.MemoryMiB, ProcessLimit: request.ProcessLimit,
 	}
@@ -289,6 +318,25 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	return snapshot, false, err
 }
 
+func (manager *ProjectToolboxManager) projectToolboxCreateArgs(toolboxID, containerName, imageID, workspacePath string, runtimeRoots ProjectRuntimeRoots, cpuMillis, memoryMiB, processLimit int) []string {
+	args := []string{"create", "--name", containerName, "--label", projectToolboxLabelKey + "=" + toolboxID,
+		"--cpus", fmt.Sprintf("%.3f", float64(cpuMillis)/1000), "--memory", fmt.Sprintf("%dm", memoryMiB), "--pids-limit", fmt.Sprintf("%d", processLimit)}
+	if manager.cgroupParent != "" {
+		args = append(args, "--cgroup-parent", manager.cgroupParent)
+	}
+	return append(args,
+		"--env", "MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS=disabled",
+		"--env", "PATH=/runtime/tools/bin:/runtime/cargo/bin:/runtime/go/bin:/runtime/pnpm:/runtime/tools/go/bin:/runtime/tools/cargo/bin:/usr/local/bin:/usr/bin:/bin",
+		"--env", "HOME=/runtime/home", "--env", "CARGO_HOME=/runtime/cargo", "--env", "RUSTUP_HOME=/runtime/rustup",
+		"--env", "NPM_CONFIG_CACHE=/cache/npm", "--env", "PNPM_HOME=/runtime/pnpm", "--env", "PIP_CACHE_DIR=/cache/pip",
+		"--env", "UV_CACHE_DIR=/cache/uv", "--env", "MAVEN_HOME=/runtime/maven", "--env", "GRADLE_USER_HOME=/cache/gradle",
+		"--env", "GOPATH=/runtime/go", "--env", "GOBIN=/runtime/tools/bin", "--env", "GOMODCACHE=/cache/go-mod", "--env", "GOCACHE=/cache/go-build",
+		"--env", "MCP_DEVBOX_RUNTIME_ROOT=/runtime", "--env", "MCP_DEVBOX_CACHE_ROOT=/cache", "--env", "MCP_DEVBOX_ARTIFACT_ROOT=/artifacts",
+		"--volume", workspacePath+":/workspace:rw",
+		"--volume", runtimeRoots.Runtime+":/runtime:rw", "--volume", runtimeRoots.Cache+":/cache:rw", "--volume", runtimeRoots.Artifacts+":/artifacts:rw",
+		"--workdir", "/workspace", imageID, "sleep", "infinity")
+}
+
 func normalizeProjectToolboxImageID(raw string) (string, error) {
 	value := strings.TrimSpace(raw)
 	if len(value) == 64 {
@@ -301,12 +349,17 @@ func normalizeProjectToolboxImageID(raw string) (string, error) {
 }
 
 func (manager *ProjectToolboxManager) Status(ctx context.Context, request ProjectToolboxStatusRequest) (ProjectToolboxSnapshot, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
-	record, err := manager.load(request.Workspace.ID)
+	record, err := manager.loadForWorkspace(request.Workspace)
 	if err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
@@ -314,13 +367,21 @@ func (manager *ProjectToolboxManager) Status(ctx context.Context, request Projec
 }
 
 func (manager *ProjectToolboxManager) Exec(ctx context.Context, request ProjectToolboxExecRequest) (ProjectToolboxSnapshot, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil || len(request.Argv) == 0 || len(request.Argv) > 128 {
 		return ProjectToolboxSnapshot{}, ErrProjectToolboxUnsafeState
 	}
-	record, err := manager.load(request.Workspace.ID)
+	record, err := manager.loadForWorkspace(request.Workspace)
 	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	if err := manager.cleanupRetiringContainers(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
 	snapshot, err := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
@@ -380,13 +441,21 @@ func (manager *ProjectToolboxManager) Exec(ctx context.Context, request ProjectT
 }
 
 func (manager *ProjectToolboxManager) Repair(ctx context.Context, request ProjectToolboxRepairRequest) (ProjectToolboxSnapshot, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
-	record, err := manager.load(request.Workspace.ID)
+	record, err := manager.loadForWorkspace(request.Workspace)
 	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	if err := manager.cleanupRetiringContainers(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
 	snapshot, err := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
@@ -411,14 +480,242 @@ func (manager *ProjectToolboxManager) Repair(ctx context.Context, request Projec
 	return snapshot, nil
 }
 
+// Reconcile proves the durable toolbox identity before replacing a stale
+// container. A mount mismatch is the one case where replacing the container
+// is safe and useful: label, image, resource limits and authority environment
+// must all still match first. Missing/unowned containers remain fail-closed.
+func (manager *ProjectToolboxManager) Reconcile(ctx context.Context, request ProjectToolboxReconcileRequest) (ProjectToolboxSnapshot, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	defer release()
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	record, err := manager.loadForWorkspace(request.Workspace)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	if err := manager.cleanupRetiringContainers(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	snapshot, statusErr := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+	if statusErr == nil {
+		return snapshot, nil
+	}
+	if errors.Is(statusErr, ErrProjectToolboxContainerUnavailable) {
+		if recoverErr := manager.recoverOwnedContainer(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace); recoverErr == nil {
+			return manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+		} else if errors.Is(recoverErr, ErrProjectToolboxMountMismatch) {
+			statusErr = recoverErr
+		}
+	}
+	relocated := false
+	if errors.Is(statusErr, ErrProjectToolboxIdentityMismatch) && record.WorkspacePath != request.Workspace.Path {
+		if currentFingerprint, fingerprintErr := projectRuntimeWorkspaceFingerprint(request.Workspace.Path); fingerprintErr == nil {
+			// A deliberate workspace relocation can retain the same directory
+			// identity. It is repairable only with an explicit Reconcile call;
+			// replacement at the same path (different inode) remains blocked.
+			relocated = currentFingerprint == record.WorkspaceFingerprint
+		}
+	}
+	if !errors.Is(statusErr, ErrProjectToolboxMountMismatch) && !relocated {
+		return ProjectToolboxSnapshot{}, statusErr
+	}
+	if err := manager.recreateAfterMountMismatch(ctx, &record, request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
+		return ProjectToolboxSnapshot{}, err
+	}
+	return manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+}
+
+// cleanupRetiringContainers removes only old containers that this exact
+// toolbox created during a mount reconciliation. The label narrows discovery
+// to the toolbox identity; metadata verification proves the image, resource
+// policy and runtime environment before removal. Containers with another name
+// or mismatched metadata are left untouched and fail closed when they use the
+// retiring name shape.
+func (manager *ProjectToolboxManager) cleanupRetiringContainers(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
+	if record.WorkspaceID != workspace.ID || record.ProjectAlias != alias || record.TargetAlias != target ||
+		record.SchemaVersion != projectToolboxSchemaVersion || !projectToolboxIDPattern.MatchString(record.ToolboxID) ||
+		record.ContainerName != "mcp-toolbox-"+strings.TrimPrefix(record.ToolboxID, "tb_") ||
+		filepath.Clean(record.WorkspacePath) != filepath.Clean(workspace.Path) {
+		return ErrProjectToolboxIdentityMismatch
+	}
+	workspaceFingerprint, err := projectRuntimeWorkspaceFingerprint(workspace.Path)
+	if err != nil || workspaceFingerprint != record.WorkspaceFingerprint {
+		return ErrProjectToolboxIdentityMismatch
+	}
+	output, err := manager.run(ctx, "ps", "-aq", "--filter", "label="+projectToolboxLabelKey+"="+record.ToolboxID)
+	if err != nil {
+		return ErrProjectToolboxUnavailable
+	}
+	seen := make(map[string]struct{})
+	for _, candidate := range strings.Fields(string(output)) {
+		if _, duplicate := seen[candidate]; duplicate {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		if !containerResourceIDPattern.MatchString(candidate) {
+			return ErrProjectToolboxUnsafeState
+		}
+		nameOutput, inspectErr := manager.run(ctx, "inspect", "--format", "{{.Name}}", candidate)
+		if inspectErr != nil {
+			return ErrProjectToolboxContainerUnavailable
+		}
+		name := strings.TrimPrefix(strings.TrimSpace(string(nameOutput)), "/")
+		if name == record.ContainerName || !projectToolboxRetiringContainerName(name, record.ContainerName) {
+			continue
+		}
+		retiring := record
+		retiring.ContainerName = name
+		if metadataErr := manager.verifyContainerMetadata(ctx, retiring); metadataErr != nil {
+			return metadataErr
+		}
+		if _, removeErr := manager.run(ctx, "rm", "-f", candidate); removeErr != nil {
+			return ErrProjectToolboxUnavailable
+		}
+	}
+	return nil
+}
+
+func projectToolboxRetiringContainerName(name, canonical string) bool {
+	prefix := canonical + "-retiring-"
+	if !strings.HasPrefix(name, prefix) {
+		return false
+	}
+	generation := strings.TrimPrefix(name, prefix)
+	if generation == "" {
+		return false
+	}
+	_, err := strconv.ParseUint(generation, 10, 64)
+	return err == nil
+}
+
+func (manager *ProjectToolboxManager) recreateAfterMountMismatch(ctx context.Context, record *projectToolboxRecord, alias, target string, workspace Workspace) error {
+	if record == nil || record.RuntimeVersion == "" {
+		return ErrProjectToolboxUnsafeState
+	}
+	// This metadata-only proof intentionally excludes mounts, which are the
+	// reason for reconciliation. It still proves that the rootless container
+	// is this toolbox and carries the expected resource/security policy.
+	if err := manager.verifyContainerMetadata(ctx, *record); err != nil {
+		return err
+	}
+	runtimeRoots, err := prepareProjectRuntimeRoots(filepath.Dir(manager.stateRoot), workspace)
+	if err != nil {
+		return ErrProjectToolboxUnsafeState
+	}
+	workspaceFingerprint, err := projectRuntimeWorkspaceFingerprint(workspace.Path)
+	if err != nil {
+		return ErrProjectToolboxUnsafeState
+	}
+	oldName := record.ContainerName
+	wasRunning := false
+	stateOutput, stateErr := manager.run(ctx, "inspect", "--format", "{{.State.Running}}", oldName)
+	if stateErr != nil {
+		return ErrProjectToolboxContainerUnavailable
+	}
+	wasRunning = strings.EqualFold(strings.TrimSpace(string(stateOutput)), "true") || strings.HasSuffix(strings.TrimSpace(string(stateOutput)), "|true")
+	if wasRunning {
+		if _, err := manager.run(ctx, "stop", oldName); err != nil {
+			return ErrProjectToolboxUnavailable
+		}
+	}
+	// Keep the old container as a rollback candidate until the replacement has
+	// been created, attested, started, and durably recorded. The canonical name
+	// is retained for the replacement so the record's identity invariant does
+	// not need a second naming scheme.
+	retiringName := fmt.Sprintf("%s-retiring-%d", oldName, record.Generation)
+	if _, err := manager.run(ctx, "rename", oldName, retiringName); err != nil {
+		return ErrProjectToolboxUnavailable
+	}
+	restoreOld := func() {
+		_, _ = manager.run(context.Background(), "rm", "-f", oldName)
+		if _, renameErr := manager.run(context.Background(), "rename", retiringName, oldName); renameErr == nil && wasRunning {
+			_, _ = manager.run(context.Background(), "start", oldName)
+		}
+	}
+	createOutput, err := manager.run(ctx, manager.projectToolboxCreateArgs(record.ToolboxID, record.ContainerName, record.BaseImageID, workspace.Path, runtimeRoots, record.CPUMillis, record.MemoryMiB, record.ProcessLimit)...)
+	if err != nil || !containerResourceIDPattern.MatchString(strings.TrimSpace(string(createOutput))) {
+		restoreOld()
+		return ErrProjectToolboxUnavailable
+	}
+	now := manager.now().UTC()
+	replacement := *record
+	replacement.SchemaVersion = projectToolboxSchemaVersion
+	replacement.RuntimeVersion = projectToolboxRuntimeV2
+	if replacement.Generation == ^uint64(0) {
+		restoreOld()
+		return ErrProjectToolboxUnsafeState
+	}
+	replacement.Generation++
+	replacement.WorkspacePath = filepath.Clean(workspace.Path)
+	replacement.WorkspaceFingerprint = workspaceFingerprint
+	replacement.MountFingerprint = projectRuntimeMountFingerprint(workspace.Path, workspaceFingerprint, runtimeRoots, projectToolboxRuntimeV2)
+	replacement.EndpointFingerprint = projectRuntimeEndpointFingerprint(manager.endpoint)
+	replacement.Services = nil
+	replacement.BrowserHarnessRuns = nil
+	replacement.UpdatedAt = now
+	if err := manager.verifyOwnership(ctx, replacement, alias, target, workspace); err != nil {
+		restoreOld()
+		return err
+	}
+	if _, err := manager.run(ctx, "start", replacement.ContainerName); err != nil {
+		restoreOld()
+		return ErrProjectToolboxUnavailable
+	}
+	if err := manager.save(replacement); err != nil {
+		restoreOld()
+		return err
+	}
+	*record = replacement
+	if _, err := manager.run(ctx, "rm", "-f", retiringName); err != nil {
+		// The new record is authoritative and the old container is stopped; a
+		// failed retirement is recoverable by the next scoped cleanup.
+		return ErrProjectToolboxUnavailable
+	}
+	return nil
+}
+
+func (manager *ProjectToolboxManager) verifyContainerMetadata(ctx context.Context, record projectToolboxRecord) error {
+	output, err := manager.run(ctx, "inspect", "--format", `{{index .Config.Labels "`+projectToolboxLabelKey+`"}}|{{.Image}}`, record.ContainerName)
+	if err != nil {
+		return ErrProjectToolboxContainerUnavailable
+	}
+	label, rawImageID, found := strings.Cut(strings.TrimSpace(string(output)), "|")
+	imageID, normalizeErr := normalizeProjectToolboxImageID(rawImageID)
+	if !found || label != record.ToolboxID || normalizeErr != nil || imageID != record.BaseImageID {
+		return ErrProjectToolboxIdentityMismatch
+	}
+	resourceOutput, err := manager.run(ctx, "inspect", "--format", "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}", record.ContainerName)
+	wantResources := fmt.Sprintf("%d|%d|%d", int64(record.MemoryMiB)*1024*1024, int64(record.CPUMillis)*1000000, record.ProcessLimit)
+	if err != nil || strings.TrimSpace(string(resourceOutput)) != wantResources {
+		return ErrProjectToolboxResourceMismatch
+	}
+	environmentOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Config.Env}}", record.ContainerName)
+	var environment []string
+	if err != nil || json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment, record.RuntimeVersion) {
+		return ErrProjectToolboxEnvironmentMismatch
+	}
+	return nil
+}
+
 func (manager *ProjectToolboxManager) ServiceStart(ctx context.Context, request ProjectToolboxServiceStartRequest) (ProjectToolboxServiceSnapshot, bool, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, false, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil ||
 		!projectToolboxServiceNamePattern.MatchString(request.Name) || len(request.Argv) == 0 || len(request.Argv) > 128 {
 		return ProjectToolboxServiceSnapshot{}, false, ErrProjectToolboxUnsafeState
 	}
-	record, err := manager.load(request.Workspace.ID)
+	record, err := manager.loadForWorkspace(request.Workspace)
 	if err != nil {
 		return ProjectToolboxServiceSnapshot{}, false, err
 	}
@@ -483,6 +780,11 @@ func (manager *ProjectToolboxManager) ServiceStart(ctx context.Context, request 
 }
 
 func (manager *ProjectToolboxManager) ServiceStatus(ctx context.Context, request ProjectToolboxServiceRequest) (ProjectToolboxServiceSnapshot, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	record, index, err := manager.serviceRecord(request)
@@ -503,6 +805,11 @@ func (manager *ProjectToolboxManager) ServiceStatus(ctx context.Context, request
 }
 
 func (manager *ProjectToolboxManager) ServiceStop(ctx context.Context, request ProjectToolboxServiceRequest) (ProjectToolboxServiceSnapshot, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxServiceSnapshot{}, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	record, index, err := manager.serviceRecord(request)
@@ -548,16 +855,24 @@ func (manager *ProjectToolboxManager) markServiceStopped(record *projectToolboxR
 }
 
 func (manager *ProjectToolboxManager) Cleanup(ctx context.Context, request ProjectToolboxCleanupRequest) (bool, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return false, err
+	}
+	defer release()
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return false, err
 	}
-	record, err := manager.load(request.Workspace.ID)
+	record, err := manager.loadForWorkspace(request.Workspace)
 	if errors.Is(err, ErrProjectToolboxNotFound) {
 		return false, nil
 	}
 	if err != nil {
+		return false, err
+	}
+	if err := manager.cleanupRetiringContainers(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return false, err
 	}
 	if err := manager.verifyOwnership(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
@@ -576,7 +891,7 @@ func (manager *ProjectToolboxManager) serviceRecord(request ProjectToolboxServic
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil || !projectToolboxServiceIDPattern.MatchString(request.ServiceID) {
 		return projectToolboxRecord{}, -1, ErrProjectToolboxUnsafeState
 	}
-	record, err := manager.load(request.Workspace.ID)
+	record, err := manager.loadForWorkspace(request.Workspace)
 	if err != nil {
 		return projectToolboxRecord{}, -1, err
 	}
@@ -636,6 +951,17 @@ func (manager *ProjectToolboxManager) status(ctx context.Context, record project
 	if err := manager.verifyOwnership(ctx, record, alias, target, workspace); err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
+	if record.EndpointFingerprint != projectRuntimeEndpointFingerprint(manager.endpoint) {
+		// A rootless engine can be recreated or move from Podman to Docker while
+		// retaining the owned container. Once the container's identity, mounts,
+		// resources and environment are attested, refresh only endpoint metadata.
+		record.EndpointFingerprint = projectRuntimeEndpointFingerprint(manager.endpoint)
+		record.Generation++
+		record.UpdatedAt = manager.now().UTC()
+		if err := manager.save(record); err != nil {
+			return ProjectToolboxSnapshot{}, err
+		}
+	}
 	output, err := manager.run(ctx, "inspect", "--format", "{{.State.Status}}|{{.State.Running}}", record.ContainerName)
 	if err != nil {
 		return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
@@ -693,8 +1019,18 @@ func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, recor
 }
 
 func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace, reference string) error {
-	if record.WorkspaceID != workspace.ID || record.ProjectAlias != alias || record.TargetAlias != target || !projectToolboxIDPattern.MatchString(record.ToolboxID) || record.ContainerName != "mcp-toolbox-"+strings.TrimPrefix(record.ToolboxID, "tb_") {
-		return ErrProjectToolboxIdentityMismatch
+	if record.WorkspaceID != workspace.ID || record.ProjectAlias != alias || record.TargetAlias != target || record.SchemaVersion != projectToolboxSchemaVersion || !projectToolboxIDPattern.MatchString(record.ToolboxID) || record.ContainerName != "mcp-toolbox-"+strings.TrimPrefix(record.ToolboxID, "tb_") {
+		return fmt.Errorf("%w: record identity or schema mismatch", ErrProjectToolboxIdentityMismatch)
+	}
+	if filepath.Clean(record.WorkspacePath) != filepath.Clean(workspace.Path) {
+		return fmt.Errorf("%w: workspace_path expected=%s observed=%s", ErrProjectToolboxIdentityMismatch, record.WorkspacePath, workspace.Path)
+	}
+	workspaceFingerprint, fingerprintErr := projectRuntimeWorkspaceFingerprint(workspace.Path)
+	if fingerprintErr != nil {
+		return fmt.Errorf("%w: workspace fingerprint unavailable", ErrProjectToolboxIdentityMismatch)
+	}
+	if record.WorkspaceFingerprint != workspaceFingerprint {
+		return fmt.Errorf("%w: workspace_fingerprint expected=%s observed=%s", ErrProjectToolboxIdentityMismatch, record.WorkspaceFingerprint, workspaceFingerprint)
 	}
 	if reference != record.ContainerName && !containerResourceIDPattern.MatchString(reference) {
 		return ErrProjectToolboxUnsafeState
@@ -713,8 +1049,18 @@ func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Conte
 		Type, Source, Destination string
 		RW                        bool
 	}
-	if err != nil || json.Unmarshal(mountOutput, &mounts) != nil || !validProjectToolboxMounts(mounts, workspace.Path) {
-		return ErrProjectToolboxMountMismatch
+	if err != nil || json.Unmarshal(mountOutput, &mounts) != nil {
+		return fmt.Errorf("%w: mount metadata unreadable", ErrProjectToolboxMountMismatch)
+	}
+	if record.RuntimeVersion == projectToolboxRuntimeV2 {
+		runtimeRoots, rootsErr := prepareProjectRuntimeRoots(filepath.Dir(manager.stateRoot), workspace)
+		workspaceFingerprint, fingerprintErr := projectRuntimeWorkspaceFingerprint(workspace.Path)
+		mountFingerprint := projectRuntimeMountFingerprint(workspace.Path, workspaceFingerprint, runtimeRoots, projectToolboxRuntimeV2)
+		if rootsErr != nil || fingerprintErr != nil || record.MountFingerprint != mountFingerprint || !validProjectToolboxMountsV2(mounts, workspace.Path, runtimeRoots) {
+			return fmt.Errorf("%w: runtime mount fingerprint=%s", ErrProjectToolboxMountMismatch, record.MountFingerprint)
+		}
+	} else if !validProjectToolboxMountsLegacy(mounts, workspace.Path) {
+		return fmt.Errorf("%w: legacy workspace mount mismatch", ErrProjectToolboxMountMismatch)
 	}
 	resourceOutput, err := manager.run(ctx, "inspect", "--format", "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}", reference)
 	wantResources := fmt.Sprintf("%d|%d|%d", int64(record.MemoryMiB)*1024*1024, int64(record.CPUMillis)*1000000, record.ProcessLimit)
@@ -723,13 +1069,13 @@ func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Conte
 	}
 	environmentOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Config.Env}}", reference)
 	var environment []string
-	if err != nil || json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment) {
-		return ErrProjectToolboxEnvironmentMismatch
+	if err != nil || json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment, record.RuntimeVersion) {
+		return fmt.Errorf("%w: runtime=%s", ErrProjectToolboxEnvironmentMismatch, record.RuntimeVersion)
 	}
 	return nil
 }
 
-func validProjectToolboxMounts(mounts []struct {
+func validProjectToolboxMountsLegacy(mounts []struct {
 	Type, Source, Destination string
 	RW                        bool
 }, workspacePath string) bool {
@@ -740,25 +1086,67 @@ func validProjectToolboxMounts(mounts []struct {
 	return mount.Type == "bind" && mount.RW && mount.Source == workspacePath && mount.Destination == "/workspace"
 }
 
-func validProjectToolboxContainerEnvironment(environment []string) bool {
+func validProjectToolboxMountsV2(mounts []struct {
+	Type, Source, Destination string
+	RW                        bool
+}, workspacePath string, roots ProjectRuntimeRoots) bool {
+	want := map[string]string{
+		"/workspace": workspacePath,
+		"/runtime":   roots.Runtime,
+		"/cache":     roots.Cache,
+		"/artifacts": roots.Artifacts,
+	}
+	if len(mounts) != len(want) {
+		return false
+	}
+	for _, mount := range mounts {
+		if mount.Type != "bind" || !mount.RW || want[mount.Destination] != mount.Source {
+			return false
+		}
+		delete(want, mount.Destination)
+	}
+	return len(want) == 0
+}
+
+func validProjectToolboxContainerEnvironment(environment []string, runtimeVersion string) bool {
 	want := map[string]string{
 		"MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS": "disabled",
+	}
+	if runtimeVersion == projectToolboxRuntimeV2 {
+		for key, value := range map[string]string{
+			"PATH": "/runtime/tools/bin:/runtime/cargo/bin:/runtime/go/bin:/runtime/pnpm:/runtime/tools/go/bin:/runtime/tools/cargo/bin:/usr/local/bin:/usr/bin:/bin",
+			"HOME": "/runtime/home", "CARGO_HOME": "/runtime/cargo", "RUSTUP_HOME": "/runtime/rustup",
+			"NPM_CONFIG_CACHE": "/cache/npm", "PNPM_HOME": "/runtime/pnpm", "PIP_CACHE_DIR": "/cache/pip",
+			"UV_CACHE_DIR": "/cache/uv", "MAVEN_HOME": "/runtime/maven", "GRADLE_USER_HOME": "/cache/gradle",
+			"GOPATH": "/runtime/go", "GOBIN": "/runtime/tools/bin", "GOMODCACHE": "/cache/go-mod", "GOCACHE": "/cache/go-build",
+			"MCP_DEVBOX_RUNTIME_ROOT": "/runtime", "MCP_DEVBOX_CACHE_ROOT": "/cache", "MCP_DEVBOX_ARTIFACT_ROOT": "/artifacts",
+		} {
+			want[key] = value
+		}
 	}
 	forbidden := map[string]bool{"DOCKER_HOST": true, "CONTAINER_HOST": true, "DOCKER_CONFIG": true, "MCP_DEVBOX_CONTAINER_ENGINE": true, "MCP_DEVBOX_CONTAINER_LABEL": true, "COMPOSE_PROJECT_NAME": true}
 	found := map[string]bool{}
 	for _, item := range environment {
 		key, value, ok := strings.Cut(item, "=")
+		if key == "" || found[key] {
+			return false
+		}
+		found[key] = true
 		if forbidden[key] {
 			return false
 		}
 		if expected, tracked := want[key]; tracked {
-			if !ok || found[key] || value != expected {
+			if !ok || value != expected {
 				return false
 			}
-			found[key] = true
 		}
 	}
-	return len(found) == len(want)
+	for key := range want {
+		if !found[key] {
+			return false
+		}
+	}
+	return true
 }
 
 func (manager *ProjectToolboxManager) storage(ctx context.Context, containerName string) (int64, int64, error) {
@@ -788,6 +1176,55 @@ func (manager *ProjectToolboxManager) recordPath(workspaceID string) string {
 	return filepath.Join(manager.stateRoot, workspaceID+".json")
 }
 
+// loadForWorkspace performs the only on-disk migration used by toolbox v2.
+// Schema v1 records are retained and upgraded in place; their existing
+// container is still treated as a legacy runtime until an explicit reconcile
+// recreates it. No workspace contents are touched or removed.
+func (manager *ProjectToolboxManager) loadForWorkspace(workspace Workspace) (projectToolboxRecord, error) {
+	record, err := manager.load(workspace.ID)
+	if err != nil {
+		return projectToolboxRecord{}, err
+	}
+	workspaceFingerprint, err := projectRuntimeWorkspaceFingerprint(workspace.Path)
+	if err != nil {
+		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
+	}
+	changed := false
+	if record.SchemaVersion < projectToolboxSchemaVersion {
+		record.SchemaVersion = projectToolboxSchemaVersion
+		if record.RuntimeVersion == "" {
+			record.RuntimeVersion = projectToolboxRuntimeV1
+		}
+		if record.Generation == 0 {
+			record.Generation = 1
+		}
+		changed = true
+	}
+	if record.WorkspacePath == "" {
+		record.WorkspacePath = filepath.Clean(workspace.Path)
+		changed = true
+	}
+	if record.WorkspaceFingerprint == "" {
+		record.WorkspaceFingerprint = workspaceFingerprint
+		changed = true
+	}
+	if record.MountFingerprint == "" {
+		record.MountFingerprint = projectRuntimeMountFingerprint(record.WorkspacePath, record.WorkspaceFingerprint, ProjectRuntimeRoots{}, record.RuntimeVersion)
+		changed = true
+	}
+	if record.EndpointFingerprint == "" {
+		record.EndpointFingerprint = projectRuntimeEndpointFingerprint(manager.endpoint)
+		changed = true
+	}
+	if changed {
+		record.UpdatedAt = manager.now().UTC()
+		if err := manager.save(record); err != nil {
+			return projectToolboxRecord{}, err
+		}
+	}
+	return record, nil
+}
+
 func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRecord, error) {
 	if !workspaceIDPattern.MatchString(workspaceID) {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
@@ -806,6 +1243,21 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 	}
 	var record projectToolboxRecord
 	if json.Unmarshal(data, &record) != nil || record.WorkspaceID != workspaceID || !projectToolboxIDPattern.MatchString(record.ToolboxID) || !projectToolboxImageIDPattern.MatchString(record.BaseImageID) || record.BaseImage != projectToolboxBaseImage || record.CreatedAt.IsZero() || record.UpdatedAt.IsZero() || !validProjectToolboxResourceLimits(record.CPUMillis, record.MemoryMiB, record.ProcessLimit) {
+		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
+	}
+	// Records written before schema_version existed are schema v1. Keep them
+	// readable so a controlled migration can attest the current workspace on
+	// the next operation. Future versions fail closed instead of being guessed.
+	if record.SchemaVersion == 0 {
+		record.SchemaVersion = 1
+	}
+	if record.SchemaVersion < 1 || record.SchemaVersion > projectToolboxSchemaVersion {
+		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
+	}
+	if record.SchemaVersion == 1 && record.RuntimeVersion == "" {
+		record.RuntimeVersion = projectToolboxRuntimeV1
+	}
+	if record.RuntimeVersion != projectToolboxRuntimeV1 && record.RuntimeVersion != projectToolboxRuntimeV2 {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	if len(record.Services) > 64 || len(record.BrowserHarnessRuns) > 128 {

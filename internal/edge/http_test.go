@@ -220,6 +220,30 @@ func TestHTTPLeaseReturnsNoContentWhenQueueIsEmpty(t *testing.T) {
 	}
 }
 
+func TestHTTPOperationLeaseReportsVersionSkewWithoutGenericBadRequest(t *testing.T) {
+	now := time.Date(2026, 7, 14, 20, 0, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	catalog := "sha256:" + strings.Repeat("a", 64)
+	if err := store.SetExpectedOperationCompatibility("mcp-devbox.edge-bundle.v1", catalog); err != nil {
+		t.Fatal(err)
+	}
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
+	device, _ := store.Pair(code, "wsl-development", publicKey)
+	if _, _, err := store.CreateOperation(device.ID, OperationProjectStatus, OperationRequest{Alias: "codex", TargetAlias: "parrot-trusted-linux", Profile: "linux-workcell"}); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"lease_seconds":60,"edge_protocol":"mcp-devbox.edge-bundle.v1","edge_catalog":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
+	response := performSignedRequest(t, NewHTTPHandler(store), device.ID, privateKey, now, "nonce-http-skew-0001", http.MethodPost, "/edge/v1/operations/lease", body)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), `"expected_catalog":"`+catalog+`"`) {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+}
+
 func openHTTPTestStore(t *testing.T) *Store {
 	t.Helper()
 	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge")})

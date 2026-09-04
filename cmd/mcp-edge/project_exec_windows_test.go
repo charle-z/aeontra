@@ -40,8 +40,9 @@ func windowsProjectExecResolution(t *testing.T) edgeclient.ProjectResolution {
 		t.Fatal(err)
 	}
 	return edgeclient.ProjectResolution{
-		Project:     edgeclient.Project{Alias: "mcp-devbox", Owner: "charle-z", Repository: "mcp-devbox"},
-		TargetAlias: "windows",
+		Project:       edgeclient.Project{Alias: "mcp-devbox", Owner: "charle-z", Repository: "mcp-devbox", ClaimGeneration: 1},
+		TargetAlias:   "windows",
+		CheckoutState: edgeclient.ProjectCheckoutReady,
 		Workspace: edgeclient.Workspace{
 			ID: "ws_0123456789abcdef0123456789abcdef", Path: path,
 			WindowsDevRoot: root,
@@ -84,13 +85,23 @@ func secureWindowsProjectExecFixtureRoot(t *testing.T, root string) {
 	}
 }
 
+func windowsProjectExecStateRoot(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	secureWindowsProjectExecFixtureRoot(t, root)
+	return root
+}
+
 func TestCollectWindowsProjectExecMapsResultAndTiming(t *testing.T) {
 	resolved := windowsProjectExecResolution(t)
 	operation := edge.Operation{
 		ID:      "eo_0123456789abcdef0123456789abcdef",
 		Request: edge.OperationRequest{Argv: []string{"cmd.exe", "/c", "echo", "ok"}, TimeoutSeconds: 10},
 	}
-	result, code := collectProjectExec(context.Background(), operation, resolved, windowsProjectExecRunner{exit: 7})
+	result, code := collectProjectExecWithStateRoot(context.Background(), windowsProjectExecStateRoot(t), operation, resolved, windowsProjectExecRunner{exit: 7}, 0)
 	if code != "" || !result.ExecCompleted || result.ExecExitCode != 7 || result.ExecStdout != "ok\n" || result.ExecStderr != "warning\n" {
 		t.Fatalf("result=%+v code=%q", result, code)
 	}
@@ -105,14 +116,15 @@ func TestCollectWindowsProjectExecMapsResultAndTiming(t *testing.T) {
 func TestCollectWindowsProjectExecMapsContractAndCancellationCodes(t *testing.T) {
 	resolved := windowsProjectExecResolution(t)
 	operation := edge.Operation{ID: "eo_0123456789abcdef0123456789abcdef", Request: edge.OperationRequest{Argv: []string{"cmd.exe"}, TimeoutSeconds: 10}}
+	stateRoot := windowsProjectExecStateRoot(t)
 	wrong := resolved
 	wrong.Workspace.Mode = edgeclient.WorkspaceModeHTBLinux
-	if result, code := collectProjectExec(context.Background(), operation, wrong, windowsProjectExecRunner{}); code != "project_exec_invalid" || !reflect.DeepEqual(result, edge.OperationResult{}) {
+	if result, code := collectProjectExecWithStateRoot(context.Background(), stateRoot, operation, wrong, windowsProjectExecRunner{}, 0); code != "project_exec_invalid" || !reflect.DeepEqual(result, edge.OperationResult{}) {
 		t.Fatalf("invalid result=%+v code=%q", result, code)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if result, code := collectProjectExec(ctx, operation, resolved, windowsProjectExecRunner{}); code != "cancelled" || !reflect.DeepEqual(result, edge.OperationResult{}) {
+	if result, code := collectProjectExecWithStateRoot(ctx, stateRoot, operation, resolved, windowsProjectExecRunner{}, 0); code != "cancelled" || !reflect.DeepEqual(result, edge.OperationResult{}) {
 		t.Fatalf("cancelled result=%+v code=%q", result, code)
 	}
 }

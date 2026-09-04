@@ -20,6 +20,8 @@ func executeWindowsControlOperation(ctx context.Context, stateRoot string, proce
 		return executeWindowsProjectPrepare(ctx, stateRoot, operation.Request)
 	case edge.OperationProjectStatus:
 		return executeWindowsProjectStatus(ctx, stateRoot, operation.Request)
+	case edge.OperationProjectRegistryList, edge.OperationProjectReconcile, edge.OperationProjectRelease:
+		return executeProjectRegistryRecovery(ctx, stateRoot, operation, openWindowsProjectControlState, safeWindowsProjectFailure)
 	case edge.OperationProjectSnapshot:
 		return executeWindowsProjectSnapshot(ctx, stateRoot, operation.Request)
 	case edge.OperationProjectExec:
@@ -71,6 +73,7 @@ func windowsDiagnosticResult(snapshot windowsDoctorSnapshot, responderPID uint32
 	}
 	return edge.OperationResult{
 		Release: snapshot.BundleRelease, Commit: snapshot.BundleCommit,
+		EdgeProtocolVersion: snapshot.ProtocolVersion, EdgeCatalogHash: snapshot.CatalogHash,
 		ManifestStatus: "valid", ComponentsCompatible: true,
 		ServiceActive: true, ServiceState: "active",
 		ProcessState: "single", LockState: "held", Coherence: "managed",
@@ -174,6 +177,15 @@ func executeWindowsProjectSnapshot(ctx context.Context, stateRoot string, reques
 }
 
 func windowsProjectControlResult(ctx context.Context, projects *edgeclient.ProjectRegistry, alias, target string, includeToolchain bool) (edge.OperationResult, string) {
+	if includeToolchain {
+		status, statusErr := projects.Status(ctx, alias, target)
+		if statusErr != nil {
+			return edge.OperationResult{}, safeWindowsProjectFailure(statusErr)
+		}
+		if status.State != string(edgeclient.ProjectCheckoutReady) && status.State != string(edgeclient.ProjectCheckoutDirty) {
+			return projectStatusOperationResult(status), ""
+		}
+	}
 	resolved, err := projects.Resolve(ctx, alias, target)
 	if err != nil {
 		return edge.OperationResult{}, safeWindowsProjectFailure(err)
@@ -218,71 +230,7 @@ func safeWindowsProjectFailure(err error) string {
 }
 
 func executeWindowsProjectProcess(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, operation edge.Operation) (edge.OperationResult, string) {
-	if processes == nil {
-		return edge.OperationResult{}, "project_process_unavailable"
-	}
-	_, workspaces, projects, _, code := openWindowsProjectControlState(stateRoot)
-	if code != "" {
-		return edge.OperationResult{}, code
-	}
-	defer workspaces.Close()
-	defer projects.Close()
-	resolved, err := projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
-	if err != nil {
-		return edge.OperationResult{}, safeWindowsProjectFailure(err)
-	}
-	var snapshot edgeclient.ProjectProcessSnapshot
-	switch operation.Kind {
-	case edge.OperationProjectProcessStart:
-		snapshot, _, err = processes.Start(ctx, edgeclient.ProjectProcessStartRequest{OperationID: operation.ID, IdempotencyKey: operation.Request.IdempotencyKey, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace, Argv: operation.Request.Argv, CWD: operation.Request.CWD, Stdin: operation.Request.Stdin, Environment: operation.Request.Environment})
-	case edge.OperationProjectProcessStatus:
-		snapshot, err = processes.Status(edgeclient.ProjectProcessReadRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, StdoutOffset: operation.Request.StdoutOffset, StderrOffset: operation.Request.StderrOffset, LimitBytes: operation.Request.OutputLimit})
-	case edge.OperationProjectProcessStdin:
-		var receipt edgeclient.ProjectProcessStdinReceipt
-		snapshot, receipt, err = processes.WriteStdin(edgeclient.ProjectProcessStdinRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, FrameID: operation.Request.IdempotencyKey, ExpectedOffset: operation.Request.ProcessStdinOffset, Data: operation.Request.Stdin, Close: operation.Request.ProcessStdinClose})
-		if err == nil {
-			result := windowsProjectProcessResult(resolved, snapshot)
-			result.BackgroundStdinNext, result.BackgroundStdinAccepted, result.BackgroundStdinClosed, result.BackgroundStdinReused = receipt.NextOffset, receipt.AcceptedBytes, receipt.Closed, receipt.Reused
-			return result, ""
-		}
-	case edge.OperationProjectProcessStop:
-		snapshot, err = processes.Stop(ctx, edgeclient.ProjectProcessStopRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, GracePeriod: time.Duration(operation.Request.GraceSeconds) * time.Second})
-	case edge.OperationProjectProcessSignal:
-		snapshot, err = processes.Signal(edgeclient.ProjectProcessSignalRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Signal: edgeclient.ProjectProcessSignal(operation.Request.BackgroundSignal)})
-	case edge.OperationProjectProcessList:
-		items, listErr := processes.List(edgeclient.ProjectProcessListRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Limit: operation.Request.ProcessLimit})
-		if listErr != nil {
-			err = listErr
-			break
-		}
-		return windowsProjectProcessListResult(resolved, items), ""
-	case edge.OperationProjectProcessCleanup:
-		cleanup, cleanupErr := processes.Cleanup(edgeclient.ProjectProcessCleanupRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias})
-		if cleanupErr != nil {
-			err = cleanupErr
-			break
-		}
-		result := windowsProjectProcessBase(resolved)
-		result.BackgroundCleanupRemoved, result.BackgroundCleanupActive = cleanup.Removed, cleanup.Active
-		return result, ""
-	default:
-		return edge.OperationResult{}, "operation_invalid"
-	}
-	if err != nil {
-		switch {
-		case errors.Is(err, edgeclient.ErrProjectProcessNotFound):
-			return edge.OperationResult{}, "project_process_not_found"
-		case errors.Is(err, edgeclient.ErrProjectProcessIdempotencyConflict):
-			return edge.OperationResult{}, "project_process_idempotency_conflict"
-		case errors.Is(err, edgeclient.ErrProjectProcessStdinConflict):
-			return edge.OperationResult{}, "project_process_stdin_conflict"
-		case errors.Is(err, context.Canceled):
-			return edge.OperationResult{}, "cancelled"
-		default:
-			return edge.OperationResult{}, "project_process_failed"
-		}
-	}
-	return windowsProjectProcessResult(resolved, snapshot), ""
+	return executeProjectProcess(ctx, stateRoot, processes, operation)
 }
 
 func windowsProjectProcessBase(resolved edgeclient.ProjectResolution) edge.OperationResult {

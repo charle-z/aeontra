@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/autopilot"
@@ -37,6 +38,25 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 		return
 	}
 	defer browsers.Close()
+	// A single poller made every operation on an Edge wait behind the previous
+	// operation (including read-only status calls). Keep the process/browser
+	// journals shared, but lease and execute independent operations concurrently.
+	// Bundle/update/repair effects are fenced by the exclusive side of the
+	// per-Edge gate below; ordinary operations share its read side.
+	const workerCount = 4
+	controlGate := &controlOperationGate{}
+	var workers sync.WaitGroup
+	for index := 0; index < workerCount; index++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runControlOperationWorker(ctx, stateRoot, transport, processes, browsers, controlGate, stderr)
+		}()
+	}
+	workers.Wait()
+}
+
+func runControlOperationWorker(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, controlGate *controlOperationGate, stderr io.Writer) {
 	for {
 		if ctx.Err() != nil {
 			return
@@ -55,14 +75,20 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 			}
 			continue
 		}
-		result, code, cancelRequested, lifecycleErr := executeControlOperationWithProgress(ctx, stateRoot, transport, processes, browsers, *lease)
+		result, code, cancelRequested, lifecycleErr, gateHeld, exclusive := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, browsers, controlGate, *lease)
 		if lifecycleErr != nil {
+			if gateHeld {
+				controlGate.release(exclusive)
+			}
 			fmt.Fprintln(stderr, "mcp-edge: control operation progress failed safely")
 			continue
 		}
 		if cancelRequested {
 			if err = acknowledgeControlOperationCancellation(ctx, stateRoot, transport, *lease); err != nil {
 				fmt.Fprintln(stderr, "mcp-edge: control operation cancellation failed safely")
+			}
+			if gateHeld {
+				controlGate.release(exclusive)
 			}
 			continue
 		}
@@ -92,6 +118,9 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 		if err != nil {
 			fmt.Fprintln(stderr, "mcp-edge: control operation completion failed safely")
 		}
+		if gateHeld {
+			controlGate.release(exclusive)
+		}
 	}
 }
 
@@ -117,6 +146,8 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectPrepare(ctx, stateRoot, operation.Request)
 	case edge.OperationProjectStatus:
 		return executeProjectStatus(ctx, stateRoot, operation.Request)
+	case edge.OperationProjectRegistryList, edge.OperationProjectReconcile, edge.OperationProjectRelease:
+		return executeProjectRegistryRecovery(ctx, stateRoot, operation, openProjectControlState, safeProjectControlFailure)
 	case edge.OperationProjectSnapshot:
 		return executeProjectSnapshot(ctx, stateRoot, operation.Request)
 	case edge.OperationProjectWorktreeCreate, edge.OperationProjectWorktreeClaim, edge.OperationProjectWorktreeStatus, edge.OperationProjectWorktreeList, edge.OperationProjectWorktreeCleanup:
@@ -140,7 +171,7 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectEdgeDiagnostic(stateRoot, true)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:
-		return executeBundleControl(stateRoot, operation)
+		return executeBundleControl(ctx, stateRoot, operation)
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}
@@ -313,6 +344,15 @@ func openProjectControlState(stateRoot string) (edgeclient.GitHubCredential, *ed
 }
 
 func projectControlResult(ctx context.Context, projects *edgeclient.ProjectRegistry, alias, target string, includeToolchain bool) (edge.OperationResult, string) {
+	if includeToolchain {
+		status, statusErr := projects.Status(ctx, alias, target)
+		if statusErr != nil {
+			return edge.OperationResult{}, safeProjectControlFailure(statusErr)
+		}
+		if status.State != string(edgeclient.ProjectCheckoutReady) && status.State != string(edgeclient.ProjectCheckoutDirty) {
+			return projectStatusOperationResult(status), ""
+		}
+	}
 	resolved, err := projects.Resolve(ctx, alias, target)
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
@@ -364,7 +404,10 @@ type bundleOperationReceipt struct {
 
 const bundleReceiptFile = "bundle-operation-receipt.json"
 
-func executeBundleControl(stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
+func executeBundleControl(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
+	if ctx == nil {
+		return edge.OperationResult{}, "operation_invalid"
+	}
 	unit := bundleOperationUnit(operation.Kind)
 	if unit == "" {
 		return edge.OperationResult{}, "operation_invalid"
@@ -375,7 +418,7 @@ func executeBundleControl(stateRoot string, operation edge.Operation) (edge.Oper
 		if receipt.OperationID != operation.ID || receipt.Kind != operation.Kind {
 			return edge.OperationResult{}, "updater_busy"
 		}
-		if !waitBundleUnitInactive(unit, 15*time.Minute) {
+		if !waitBundleUnitInactive(ctx, unit, 15*time.Minute) {
 			return edge.OperationResult{}, "updater_timeout"
 		}
 		return collectEdgeDiagnostic(stateRoot, false)
@@ -385,14 +428,20 @@ func executeBundleControl(stateRoot string, operation edge.Operation) (edge.Oper
 	if err := writeBundleReceipt(stateRoot, bundleOperationReceipt{OperationID: operation.ID, Kind: operation.Kind}); err != nil {
 		return edge.OperationResult{}, "updater_receipt_unavailable"
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 16*time.Minute)
+	startCtx, cancel := context.WithTimeout(ctx, 16*time.Minute)
 	defer cancel()
-	command := exec.CommandContext(ctx, "/usr/bin/systemctl", "start", unit)
+	command := exec.CommandContext(startCtx, "/usr/bin/systemctl", "start", unit)
 	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
-	if command.Run() != nil {
+	if err := command.Run(); err != nil {
 		clearBundleReceipt(stateRoot, operation.ID)
+		if errors.Is(startCtx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			return edge.OperationResult{}, "cancelled"
+		}
+		if errors.Is(startCtx.Err(), context.DeadlineExceeded) {
+			return edge.OperationResult{}, "updater_timeout"
+		}
 		return edge.OperationResult{}, "updater_failed"
 	}
 	return collectEdgeDiagnostic(stateRoot, false)
@@ -410,23 +459,36 @@ func bundleOperationUnit(kind edge.OperationKind) string {
 	return ""
 }
 
-func waitBundleUnitInactive(unit string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
+func waitBundleUnitInactive(ctx context.Context, unit string, timeout time.Duration) bool {
+	if ctx == nil || timeout <= 0 {
+		return false
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		command := exec.CommandContext(ctx, "/usr/bin/systemctl", "is-active", "--quiet", unit)
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		command := exec.CommandContext(probeCtx, "/usr/bin/systemctl", "is-active", "--quiet", unit)
 		command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
 		command.Stdout = io.Discard
 		command.Stderr = io.Discard
 		err := command.Run()
 		cancel()
 		if err != nil {
+			if ctx.Err() != nil {
+				return false
+			}
 			return true
 		}
-		if time.Now().After(deadline) {
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
 			return false
+		case <-deadline.C:
+			timer.Stop()
+			return false
+		case <-timer.C:
 		}
-		time.Sleep(time.Second)
 	}
 }
 
@@ -569,7 +631,7 @@ func collectEdgeDiagnostic(stateRoot string, allowInvalid bool) (edge.OperationR
 			blockers = append(blockers, "release_channel_unavailable")
 		}
 	}
-	result := edge.OperationResult{Release: verified.Release, Commit: verified.Commit, ManifestStatus: manifestStatus, ComponentsCompatible: componentsCompatible, ServiceActive: serviceActive, UpdateAvailable: available, Paired: paired, BubblewrapValid: bubble, RootlessValid: rootless, WorkspaceCount: count, ProviderValid: providerValid, DriverValid: driverValid, Blockers: blockers}
+	result := edge.OperationResult{Release: verified.Release, Commit: verified.Commit, EdgeProtocolVersion: verified.ProtocolVersion, EdgeCatalogHash: verified.CatalogHash, ManifestStatus: manifestStatus, ComponentsCompatible: componentsCompatible, ServiceActive: serviceActive, UpdateAvailable: available, Paired: paired, BubblewrapValid: bubble, RootlessValid: rootless, WorkspaceCount: count, ProviderValid: providerValid, DriverValid: driverValid, Blockers: blockers}
 	result.ServiceState = runtime.ServiceState
 	result.ServiceRestarts = runtime.ServiceRestarts
 	result.ServiceRestartsKnown = runtime.ServiceRestartsKnown
