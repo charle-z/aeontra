@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultProjectDiscoveryEntries = 128
+	defaultProjectDiscoveryEntries = 512
 	maxProjectDiscoveryEntries     = 512
 	defaultProjectDiscoveryTimeout = 30 * time.Second
 	maxProjectDiscoveryTimeout     = 2 * time.Minute
