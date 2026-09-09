@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -162,6 +163,54 @@ func TestProjectPreparationUsesRegistryBeforeDiscoveryForClaimedRepository(t *te
 	var projectFailure *ProjectError
 	if !errors.As(err, &projectFailure) || projectFailure.Code != ProjectErrorRepositoryConflict || projectFailure.Claim == nil || projectFailure.Claim.Alias != "owner" {
 		t.Fatalf("phantom repository conflict err=%v", err)
+	}
+}
+
+func TestProjectPreparationIgnoresUnrelatedClaimsBeyondRegistryListLimit(t *testing.T) {
+	state := t.TempDir()
+	roots := newProjectDiscoveryRoots(t)
+	states := make(map[string]ProjectCheckoutState)
+	inspector := pathProjectInspector{states: states}
+	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
+	for index := 0; index <= maxProjectClaims; index++ {
+		alias := fmt.Sprintf("existing-%02d", index)
+		path := filepath.Join(roots.Dev, alias)
+		if err := os.MkdirAll(filepath.Join(path, ".git"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		states[path] = ProjectCheckoutReady
+		workspace, _, err := workspaces.AddProfile(path, WorkspaceProfileLinuxWorkcell)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := projects.Register(ProjectRegistration{
+			Alias: alias, Owner: "charle-z", Repository: alias, PreferredTarget: "parrot", TargetAlias: "parrot",
+			WorkspaceID: workspace.ID, AllowedProfiles: []WorkspaceProfile{WorkspaceProfileLinuxWorkcell},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		states[path] = ProjectCheckoutRemoteMismatch
+	}
+	config := ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)},
+		Runner:     &projectPreparationRunner{},
+	}
+	if _, err := projects.ListClaims(); !projectErrorIs(err, ProjectErrorDiscoveryLimit) {
+		t.Fatalf("bounded registry listing err=%v", err)
+	}
+	plan, err := PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+		Alias: "new-project", Repository: "new-project", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+	})
+	if err != nil || plan.Action != ProjectPreparationClone {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+	_, err = PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+		Alias: "conflicting-alias", Repository: "existing-32", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+	})
+	var projectFailure *ProjectError
+	if !errors.As(err, &projectFailure) || projectFailure.Code != ProjectErrorRepositoryConflict || projectFailure.Claim == nil || projectFailure.Claim.Alias != "existing-32" {
+		t.Fatalf("repository claim bypassed beyond list limit: %v", err)
 	}
 }
 

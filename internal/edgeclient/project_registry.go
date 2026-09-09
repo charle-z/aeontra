@@ -223,6 +223,14 @@ type ProjectClaim struct {
 	Repairable  bool              `json:"repairable"`
 }
 
+type projectClaimRow struct {
+	claim           ProjectClaim
+	storedState     string
+	boundTarget     string
+	attestation     string
+	generationValid bool
+}
+
 func OpenProjectRegistry(config ProjectRegistryConfig) (*ProjectRegistry, error) {
 	stateRoot := filepath.Clean(strings.TrimSpace(config.StateRoot))
 	allowedOwner, _, err := NormalizeProjectRepository(config.AllowedOwner, "project")
@@ -806,19 +814,61 @@ func (r *ProjectRegistry) ListClaimsContext(ctx context.Context, target string) 
 	if err != nil {
 		return nil, projectErr(ProjectErrorRegistryUnavailable, err)
 	}
+	rowsData, err := scanProjectClaimRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	claims := r.evaluateProjectClaimRows(ctx, rowsData)
+	if len(claims) > maxProjectClaims {
+		return nil, projectErr(ProjectErrorDiscoveryLimit, errors.New("project registry claim limit exceeded"))
+	}
+	return claims, nil
+}
+
+func (r *ProjectRegistry) repositoryClaimContext(ctx context.Context, owner, repository string) (ProjectClaim, bool, error) {
+	if r == nil || r.db == nil || r.workspaces == nil {
+		return ProjectClaim{}, false, projectErr(ProjectErrorRegistryUnavailable, errors.New("project registry is unavailable"))
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	owner, repository, err := NormalizeProjectRepository(owner, repository)
+	if err != nil {
+		return ProjectClaim{}, false, err
+	}
+	if owner != r.allowedOwner {
+		return ProjectClaim{}, false, projectErr(ProjectErrorOwnerDenied, errors.New("project owner is not allowed"))
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT p.alias,p.owner,p.repository,p.preferred_target,
+		       COALESCE(p.registration_state,'healthy'),
+		       COALESCE(wb.target_alias,''),COALESCE(wb.workspace_id,''),
+		       COALESCE(p.claim_generation,1),COALESCE(p.attestation_fingerprint,'')
+		FROM projects p
+		LEFT JOIN project_workspaces wb ON wb.alias=p.alias
+		WHERE p.owner=? AND p.repository=?
+		ORDER BY p.alias,wb.target_alias LIMIT 1`, owner, repository)
+	if err != nil {
+		return ProjectClaim{}, false, projectErr(ProjectErrorRegistryUnavailable, err)
+	}
+	rowsData, err := scanProjectClaimRows(rows)
+	if err != nil {
+		return ProjectClaim{}, false, err
+	}
+	claims := r.evaluateProjectClaimRows(ctx, rowsData)
+	if len(claims) == 0 {
+		return ProjectClaim{}, false, nil
+	}
+	return claims[0], true, nil
+}
+
+func scanProjectClaimRows(rows *sql.Rows) ([]projectClaimRow, error) {
 	// Materialize and close the SQLite cursor before any filesystem or Git
 	// observation. The registry uses a single connection; inspecting while
 	// rows are open can otherwise block unrelated registry operations.
-	type claimRow struct {
-		claim           ProjectClaim
-		storedState     string
-		boundTarget     string
-		attestation     string
-		generationValid bool
-	}
-	rowsData := make([]claimRow, 0)
+	rowsData := make([]projectClaimRow, 0)
 	for rows.Next() {
-		var row claimRow
+		var row projectClaimRow
 		var generation int64
 		if err := rows.Scan(&row.claim.Alias, &row.claim.Owner, &row.claim.Repository, &row.claim.Target, &row.storedState, &row.boundTarget, &row.claim.WorkspaceID, &generation, &row.attestation); err != nil {
 			_ = rows.Close()
@@ -840,6 +890,10 @@ func (r *ProjectRegistry) ListClaimsContext(ctx context.Context, target string) 
 	if closeErr != nil {
 		return nil, projectErr(ProjectErrorRegistryUnavailable, closeErr)
 	}
+	return rowsData, nil
+}
+
+func (r *ProjectRegistry) evaluateProjectClaimRows(ctx context.Context, rowsData []projectClaimRow) []ProjectClaim {
 	claims := make([]ProjectClaim, 0, len(rowsData))
 	for _, row := range rowsData {
 		claim := row.claim
@@ -924,10 +978,7 @@ func (r *ProjectRegistry) ListClaimsContext(ctx context.Context, target string) 
 		}
 		claims = append(claims, claim)
 	}
-	if len(claims) > maxProjectClaims {
-		return nil, projectErr(ProjectErrorDiscoveryLimit, errors.New("project registry claim limit exceeded"))
-	}
-	return claims, nil
+	return claims
 }
 
 // ReconcileClaims persists only the derived lifecycle state of registry
