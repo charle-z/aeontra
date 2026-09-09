@@ -83,7 +83,7 @@ func PlanProjectPreparation(ctx context.Context, config ProjectPreparationConfig
 	if err != nil {
 		return ProjectPreparationPlan{}, err
 	}
-	registered, found, err := projectPreparationRegistered(config.Projects, alias, owner, repository, target, profiles[0])
+	registered, found, err := projectPreparationRegistered(ctx, config.Projects, alias, owner, repository, target, profiles[0])
 	if err != nil {
 		return ProjectPreparationPlan{}, err
 	}
@@ -121,7 +121,7 @@ func ApplyProjectPreparation(ctx context.Context, config ProjectPreparationConfi
 	if err := validateProjectPreparationPlan(config, plan); err != nil {
 		return ProjectStatus{}, err
 	}
-	registered, found, err := projectPreparationRegistered(config.Projects, plan.Alias, plan.Owner, plan.Repository, plan.TargetAlias, plan.Profile)
+	registered, found, err := projectPreparationRegistered(ctx, config.Projects, plan.Alias, plan.Owner, plan.Repository, plan.TargetAlias, plan.Profile)
 	if err != nil {
 		return ProjectStatus{}, err
 	}
@@ -177,7 +177,7 @@ func ApplyProjectPreparation(ctx context.Context, config ProjectPreparationConfi
 // claim is still checked in the registry so a stale alias cannot be hidden by
 // a later scan. Only an entirely unclaimed repository is eligible for bounded
 // discovery.
-func projectPreparationRegistered(registry *ProjectRegistry, alias, owner, repository, target string, profile WorkspaceProfile) (ProjectResolution, bool, error) {
+func projectPreparationRegistered(ctx context.Context, registry *ProjectRegistry, alias, owner, repository, target string, profile WorkspaceProfile) (ProjectResolution, bool, error) {
 	resolution, err := registry.ResolveRegistered(alias, target)
 	if err == nil {
 		if resolution.Project.Owner != owner || resolution.Project.Repository != repository {
@@ -197,15 +197,11 @@ func projectPreparationRegistered(registry *ProjectRegistry, alias, owner, repos
 	if !errors.As(err, &projectFailure) || projectFailure.Code != ProjectErrorProjectNotFound {
 		return ProjectResolution{}, false, err
 	}
-	claims, err := registry.ListClaims()
+	claim, found, err := registry.repositoryClaimContext(ctx, owner, repository)
 	if err != nil {
 		return ProjectResolution{}, false, err
 	}
-	for index := range claims {
-		claim := claims[index]
-		if claim.Owner != owner || claim.Repository != repository {
-			continue
-		}
+	if found {
 		diagnostic := ProjectCheckoutDiagnostic{
 			Reason: "repository_claimed", Expected: owner + "/" + repository,
 			Repairable: claim.Repairable, RecommendedAction: "project_reconcile",
