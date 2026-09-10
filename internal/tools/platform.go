@@ -435,20 +435,27 @@ type platformDeployResult struct {
 }
 
 func decodePlatformDeployResponse(body string) platformDeployResult {
-	var direct struct {
+	type responseItem struct {
 		DeploymentUUID string `json:"deployment_uuid"`
 		UUID           string `json:"uuid"`
 		Status         string `json:"status"`
 		Message        string `json:"message"`
-		Deployments    []struct {
-			DeploymentUUID string `json:"deployment_uuid"`
-			UUID           string `json:"uuid"`
-			Status         string `json:"status"`
-			Message        string `json:"message"`
-		} `json:"deployments"`
 	}
-	if json.Unmarshal([]byte(strings.TrimSpace(body)), &direct) != nil {
-		return platformDeployResult{}
+	var direct struct {
+		responseItem
+		Deployments []responseItem `json:"deployments"`
+	}
+	trimmed := []byte(strings.TrimSpace(body))
+	if json.Unmarshal(trimmed, &direct) != nil {
+		var deployments []responseItem
+		if json.Unmarshal(trimmed, &deployments) != nil || len(deployments) == 0 {
+			return platformDeployResult{}
+		}
+		item := deployments[0]
+		if item.DeploymentUUID == "" {
+			item.DeploymentUUID = item.UUID
+		}
+		return platformDeployResult{item.DeploymentUUID, item.Status, item.Message}
 	}
 	if direct.DeploymentUUID == "" {
 		direct.DeploymentUUID = direct.UUID

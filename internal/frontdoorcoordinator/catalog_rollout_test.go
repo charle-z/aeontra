@@ -145,7 +145,7 @@ func (f *rolloutFixture) coolifyHandler(w http.ResponseWriter, r *http.Request) 
 		} else {
 			panic("unexpected deployment app")
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"deployment_uuid": app + "deploy"})
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"deployment_uuid": app + "deploy"}})
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/deployments/"):
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "finished"})
 	default:

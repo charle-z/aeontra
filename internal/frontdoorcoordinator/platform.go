@@ -634,7 +634,15 @@ func decodeDeploymentResponse(raw []byte) deployment {
 		Deployments    []deployment `json:"deployments"`
 	}
 	if json.Unmarshal(raw, &direct) != nil {
-		return deployment{}
+		var deployments []deployment
+		if json.Unmarshal(raw, &deployments) != nil || len(deployments) == 0 {
+			return deployment{}
+		}
+		item := deployments[0]
+		if item.DeploymentUUID == "" {
+			item.DeploymentUUID = item.UUID
+		}
+		return item
 	}
 	if direct.DeploymentUUID == "" {
 		direct.DeploymentUUID = direct.UUID
