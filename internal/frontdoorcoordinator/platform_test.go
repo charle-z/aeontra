@@ -72,6 +72,35 @@ func TestDecodeDeploymentResponseSupportsDirectAndWrappedShapes(t *testing.T) {
 	}
 }
 
+func TestStopAndWaitUsesCoolifyPostEndpoint(t *testing.T) {
+	t.Parallel()
+	stopRequests := 0
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/backend1/stop":
+			stopRequests++
+			_, _ = w.Write([]byte(`{"message":"Application stopping request queued."}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/backend1":
+			_, _ = w.Write([]byte(`{"status":"exited:stopped"}`))
+		default:
+			http.Error(w, "unexpected method or path", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(validClientConfig(ts.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.http = ts.Client()
+	if err := client.stopAndWait(context.Background(), "backend1"); err != nil {
+		t.Fatal(err)
+	}
+	if stopRequests != 1 {
+		t.Fatalf("stop requests = %d, want 1", stopRequests)
+	}
+}
+
 func TestTopologyReadsRepositoryBranchesDomainsAndFrontBackend(t *testing.T) {
 	t.Parallel()
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
