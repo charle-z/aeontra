@@ -454,7 +454,7 @@ func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error
 }
 
 func (c *Client) stopAndWait(ctx context.Context, appID string) error {
-	if err := c.requestJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(appID)+"/stop", nil, nil); err != nil {
+	if err := c.requestJSON(ctx, http.MethodPost, "/api/v1/applications/"+url.PathEscape(appID)+"/stop", nil, nil); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(2 * time.Minute)

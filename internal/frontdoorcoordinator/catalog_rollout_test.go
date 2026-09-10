@@ -70,7 +70,7 @@ func (f *rolloutFixture) coolifyHandler(w http.ResponseWriter, r *http.Request) 
 			"git_commit_sha": f.pinnedCommit, "is_auto_deploy_enabled": f.autoDeploy, "instant_deploy": f.instantDeploy,
 			"status": map[bool]string{true: "running:healthy", false: "exited:stopped"}[f.backendRunning],
 		})
-	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/backend1/stop":
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/backend1/stop":
 		f.backendStops++
 		if f.backendStopFail {
 			http.Error(w, "stop failed", http.StatusInternalServerError)
