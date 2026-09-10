@@ -66,7 +66,7 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1/envs":
 			environmentUpdates++
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deployments++
 			_, _ = w.Write([]byte(`{"deployment_uuid":"dep1","status":"queued"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep1":
@@ -187,7 +187,7 @@ func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
 			_, _ = w.Write([]byte(`[{"uuid":"env1","key":"MCP_FRONT_DOOR_BACKEND_URL"},{"uuid":"env2","key":"MCP_FRONT_DOOR_EXPECTED_PROTOCOL"},{"uuid":"env3","key":"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH"}]`))
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1/envs":
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deployments++
 			_, _ = w.Write([]byte(`{"deployment_uuid":"dep2","status":"queued"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep2":
@@ -246,7 +246,7 @@ func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T)
 			frontDomain, _ = payload["domains"].(string)
 			updates = append(updates, frontDomain)
 			_, _ = w.Write([]byte("{\"uuid\":\"front1\"}"))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deployments++
 			_, _ = w.Write([]byte(`{"deployment_uuid":"dep-rename","status":"queued"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep-rename":

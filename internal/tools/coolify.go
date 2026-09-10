@@ -118,7 +118,7 @@ func (c *CoolifyClient) deploy(ctx context.Context, uuid string, force bool) (in
 		forceValue = "true"
 	}
 	u := c.baseURL + "/api/v1/deploy?" + url.Values{"uuid": {uuid}, "force": {forceValue}}.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return 0, "", err
 	}

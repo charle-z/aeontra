@@ -423,7 +423,7 @@ func (c *Client) setEnvironment(ctx context.Context, appID string, vars map[stri
 func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error) {
 	var raw json.RawMessage
 	path := "/api/v1/deploy?" + url.Values{"uuid": {appID}, "force": {"false"}}.Encode()
-	if err := c.requestJSON(ctx, http.MethodGet, path, nil, &raw); err != nil {
+	if err := c.requestJSON(ctx, http.MethodPost, path, nil, &raw); err != nil {
 		return "", err
 	}
 	response := decodeDeploymentResponse(raw)

@@ -83,8 +83,9 @@ func TestCoolifyDeploy_ReadOnlyDeniedAndAskApproval(t *testing.T) {
 func TestCoolifyDeploy_AllowSendsTokenInHeaderOnly(t *testing.T) {
 	svc, _ := newTestService(t, config.ModeAllow)
 	const token = "SUPER-SECRET-COOLIFY-TOKEN"
-	var gotURL, gotAuth string
+	var gotMethod, gotURL, gotAuth string
 	svc.WithCoolify(fakeCoolify(t, "https://coolify.example.com/", token, nil, func(r *http.Request) (*http.Response, error) {
+		gotMethod = r.Method
 		gotURL = r.URL.String()
 		gotAuth = r.Header.Get("Authorization")
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"message":"deploy queued"}`))}, nil
@@ -96,6 +97,9 @@ func TestCoolifyDeploy_AllowSendsTokenInHeaderOnly(t *testing.T) {
 	// URL targets the configured base + deploy endpoint with the uuid, NOT the token.
 	if !strings.Contains(gotURL, "/api/v1/deploy") || !strings.Contains(gotURL, "uuid=app123abc") {
 		t.Errorf("unexpected deploy URL: %s", gotURL)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("deploy method=%q, want POST", gotMethod)
 	}
 	if strings.Contains(gotURL, token) {
 		t.Errorf("token must NEVER appear in the URL: %s", gotURL)

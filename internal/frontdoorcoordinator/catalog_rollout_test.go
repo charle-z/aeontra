@@ -122,7 +122,7 @@ func (f *rolloutFixture) coolifyHandler(w http.ResponseWriter, r *http.Request) 
 		}
 		f.description, _ = payload["description"].(string)
 		w.WriteHeader(http.StatusOK)
-	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 		app := r.URL.Query().Get("uuid")
 		if app == "backend1" {
 			if f.backendRunning {
