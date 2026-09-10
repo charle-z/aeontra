@@ -189,6 +189,12 @@ func validProjectProcessListResult(result OperationResult) bool {
 	}
 	metadata := result
 	metadata.BackgroundProcesses = nil
+	if result.ProjectState == "registered" {
+		return len(result.BackgroundProcesses) == 0 && validRegisteredProjectOperationResult(metadata)
+	}
+	if hasProjectDiagnosticResult(result) {
+		return false
+	}
 	return validProjectOperationResult(metadata)
 }
 
@@ -200,7 +206,24 @@ func validProjectProcessCleanupResult(result OperationResult) bool {
 	metadata := result
 	metadata.BackgroundCleanupRemoved = 0
 	metadata.BackgroundCleanupActive = 0
+	if result.ProjectState == "registered" {
+		return validRegisteredProjectOperationResult(metadata)
+	}
+	if hasProjectDiagnosticResult(result) {
+		return false
+	}
 	return validProjectOperationResult(metadata)
+}
+
+// Process list and cleanup resolve only the durable project binding when no
+// concrete process record is selected. Preserve that distinction without
+// teaching unrelated project operations to accept an uninspected checkout.
+func validRegisteredProjectOperationResult(result OperationResult) bool {
+	if result.ProjectState != "registered" {
+		return false
+	}
+	result.ProjectState = "ready"
+	return validProjectOperationResult(result)
 }
 
 func validBackgroundProcessSummary(item BackgroundProcessSummary) bool {

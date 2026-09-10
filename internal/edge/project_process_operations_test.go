@@ -160,11 +160,29 @@ func TestProjectProcessRequestsAndResultsAreClosedAndBounded(t *testing.T) {
 	if !validOperationCompletionForKind(OperationProjectProcessList, listResult, "") || validOperationCompletionForKind(OperationProjectProcessCleanup, listResult, "") {
 		t.Fatal("bounded process list result kind validation failed")
 	}
+	registeredListResult := base
+	registeredListResult.ProjectState = "registered"
+	if !validOperationCompletionForKind(OperationProjectProcessList, registeredListResult, "") {
+		t.Fatal("empty process list from a durable registered project was rejected")
+	}
+	registeredListWithItem := registeredListResult
+	registeredListWithItem.BackgroundProcesses = append([]BackgroundProcessSummary(nil), listResult.BackgroundProcesses...)
+	if validOperationCompletionForKind(OperationProjectProcessList, registeredListWithItem, "") {
+		t.Fatal("registered-only process list accepted an item without its durable process state")
+	}
 	cleanupResult := base
 	cleanupResult.BackgroundCleanupRemoved = 1
 	cleanupResult.BackgroundCleanupActive = 2
 	if !validOperationCompletionForKind(OperationProjectProcessCleanup, cleanupResult, "") || validOperationCompletionForKind(OperationProjectProcessList, cleanupResult, "") {
 		t.Fatal("process cleanup result kind validation failed")
+	}
+	registeredCleanupResult := registeredListResult
+	registeredCleanupResult.BackgroundCleanupRemoved = 1
+	if !validOperationCompletionForKind(OperationProjectProcessCleanup, registeredCleanupResult, "") {
+		t.Fatal("process cleanup from a durable registered project was rejected")
+	}
+	if validOperationCompletionForKind(OperationProjectStatus, registeredListResult, "") || validOperationCompletionForKind(OperationProjectProcessStatus, registeredListResult, "") {
+		t.Fatal("registered-only project metadata escaped the list and cleanup result boundary")
 	}
 	result.BackgroundStdout = strings.Repeat("x", MaxProjectProcessReadBytes+1)
 	if validOperationCompletion(result, "") {
