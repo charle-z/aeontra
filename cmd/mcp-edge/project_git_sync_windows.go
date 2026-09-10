@@ -122,7 +122,7 @@ func inspectWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectRe
 	if result.GitDetached {
 		return result, nil
 	}
-	expected := "https://github.com/" + credential.Owner + "/" + resolved.Project.Repository + ".git"
+	expected := projectGitRemoteURL(resolved)
 	origin, err := local("remote", "get-url", "origin")
 	if err != nil || origin != expected {
 		return edge.OperationResult{}, errors.New("Windows Git remote is not owner-bound")
@@ -135,7 +135,7 @@ func inspectWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectRe
 	if err != nil || (upstream != "" && upstream != "origin/"+branch) {
 		return edge.OperationResult{}, errors.New("Windows Git upstream is invalid")
 	}
-	live, err := remote("ls-remote", "--heads", "origin", "refs/heads/"+branch)
+	live, err := remote("ls-remote", "--heads", expected, "refs/heads/"+branch)
 	if err != nil {
 		return edge.OperationResult{}, errors.New("Windows Git remote HEAD is unavailable")
 	}
@@ -172,7 +172,7 @@ func fetchWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectReso
 		return edge.OperationResult{}, errors.New("project Git fetch preflight failed")
 	}
 	refspec := "refs/heads/" + before.GitBranch + ":refs/remotes/origin/" + before.GitBranch
-	if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"fetch", "--no-tags", "origin", refspec}, credential); err != nil {
+	if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"fetch", "--no-tags", projectGitRemoteURL(resolved), refspec}, credential); err != nil {
 		return edge.OperationResult{}, errors.New("project Git fetch failed")
 	}
 	after, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
@@ -277,7 +277,7 @@ func executeWindowsProjectGitPublish(ctx context.Context, stateRoot string, reso
 		return edge.OperationResult{}, err
 	}
 	refspec := plan.Branch + ":refs/heads/" + plan.Branch
-	if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"push", "--porcelain", "--set-upstream", "origin", refspec}, credential); err != nil {
+	if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"push", "--porcelain", projectGitRemoteURL(resolved), refspec}, credential); err != nil {
 		return edge.OperationResult{}, errors.New("project Git publication failed")
 	}
 	after, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
