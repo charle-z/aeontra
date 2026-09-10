@@ -251,6 +251,31 @@ func TestPlatformDeployParsesWrappedCoolifyResponse(t *testing.T) {
 	}
 }
 
+func TestPlatformDeployParsesArrayCoolifyResponse(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/deploy" {
+			_, _ = w.Write([]byte("[{\"deployment_uuid\":\"dep-array\",\"status\":\"queued\",\"message\":\"deployment queued\"}]"))
+			return
+		}
+		_, _ = w.Write([]byte("{\"uuid\":\"app1\",\"name\":\"demo\",\"status\":\"running\",\"git_repository\":\"acme/demo\",\"git_branch\":\"main\",\"git_commit_sha\":\"abc123\"}"))
+	}))
+	defer ts.Close()
+	svc := configuredPlatformService(t, config.ModeAllow, ts.URL)
+	preview, err := svc.PlatformDeployPreview("app1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := svc.PlatformDeploy(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"deployment_id: dep-array", "status: queued", "message: deployment queued"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("array deploy response missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestPlatformDeploymentStatusReturnsSafeSummary(t *testing.T) {
 	var gotPath string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

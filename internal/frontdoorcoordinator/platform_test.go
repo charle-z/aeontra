@@ -59,6 +59,7 @@ func TestDecodeDeploymentResponseSupportsDirectAndWrappedShapes(t *testing.T) {
 		{raw: `{"deployment_uuid":"dep1","status":"queued"}`, want: "dep1"},
 		{raw: `{"uuid":"dep2","status":"queued"}`, want: "dep2"},
 		{raw: `{"deployments":[{"deployment_uuid":"dep3","status":"queued"}]}`, want: "dep3"},
+		{raw: `[{"deployment_uuid":"dep4","status":"queued"}]`, want: "dep4"},
 	}
 	for _, tc := range cases {
 		got := decodeDeploymentResponse([]byte(tc.raw))
