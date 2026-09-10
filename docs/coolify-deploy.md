@@ -30,6 +30,6 @@ with `approve=true`.
   returns "not configured".
 
 ## Notes
-- Uses Coolify's deploy-by-uuid endpoint (`GET /api/v1/deploy?uuid=...&force=false`).
+- Uses Coolify's deploy-by-UUID endpoint (`POST /api/v1/deploy?uuid=...&force=false`).
 - This is a deliberate network capability of the daemon (not a sandboxed command);
   scope it with the allowlist and keep it in `ask` mode.
