@@ -28,6 +28,7 @@ func (r *windowsProjectGitSyncTestRunner) Run(_ context.Context, _ string, args 
 	if branch == "" {
 		branch = "feature"
 	}
+	remoteURL := "https://github.com/charle-z/repo.git"
 	switch call {
 	case "rev-parse --verify HEAD":
 		return r.head, nil
@@ -39,7 +40,7 @@ func (r *windowsProjectGitSyncTestRunner) Run(_ context.Context, _ string, args 
 		return "https://github.com/charle-z/repo.git", nil
 	case "for-each-ref --format=%(upstream:short) refs/heads/" + branch:
 		return r.upstream, nil
-	case "ls-remote --heads origin refs/heads/" + branch:
+	case "ls-remote --heads " + remoteURL + " refs/heads/" + branch:
 		if r.remote == "" {
 			return "", nil
 		}
@@ -58,7 +59,7 @@ func (r *windowsProjectGitSyncTestRunner) Run(_ context.Context, _ string, args 
 		return "", nil
 	case "merge-base --is-ancestor " + r.head + " " + r.remote:
 		return "", nil
-	case "fetch --no-tags origin refs/heads/" + branch + ":refs/remotes/origin/" + branch:
+	case "fetch --no-tags " + remoteURL + " refs/heads/" + branch + ":refs/remotes/origin/" + branch:
 		r.upstream = "origin/" + branch
 		if r.remote == "" {
 			r.remote = r.head
@@ -67,8 +68,8 @@ func (r *windowsProjectGitSyncTestRunner) Run(_ context.Context, _ string, args 
 	case "merge --ff-only " + r.remote:
 		r.head = r.remote
 		return "", nil
-	case "push --porcelain --set-upstream origin " + branch + ":refs/heads/" + branch:
-		r.remote, r.upstream, r.published = r.head, "origin/"+branch, true
+	case "push --porcelain " + remoteURL + " " + branch + ":refs/heads/" + branch:
+		r.remote, r.published = r.head, true
 		return "", nil
 	default:
 		return "", errors.New("unexpected Git command: " + call)

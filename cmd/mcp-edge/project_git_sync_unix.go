@@ -71,7 +71,7 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 	if result.GitDetached {
 		return result, nil
 	}
-	expectedRemote := "https://github.com/" + credential.Owner + "/" + resolved.Project.Repository + ".git"
+	expectedRemote := projectGitRemoteURL(resolved)
 	remote, err := runProjectGitLocal(ctx, runner, resolved, "remote", "get-url", "origin")
 	if err != nil || remote != expectedRemote {
 		return edge.OperationResult{}, errors.New("project Git remote is not owner-bound")
@@ -84,7 +84,7 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 	if err != nil || (upstream != "" && upstream != "origin/"+branch) {
 		return edge.OperationResult{}, errors.New("project Git upstream is invalid")
 	}
-	live, err := runProjectGitRemote(ctx, runner, resolved, credential, "ls-remote", "--heads", "origin", "refs/heads/"+branch)
+	live, err := runProjectGitRemote(ctx, runner, resolved, credential, "ls-remote", "--heads", expectedRemote, "refs/heads/"+branch)
 	if err != nil {
 		return edge.OperationResult{}, errors.New("project Git remote HEAD is unavailable")
 	}
@@ -124,7 +124,7 @@ func fetchProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectRes
 		return edge.OperationResult{}, errors.New("project Git fetch preflight failed")
 	}
 	refspec := "refs/heads/" + before.GitBranch + ":refs/remotes/origin/" + before.GitBranch
-	if _, err := runProjectGitRemote(ctx, runner, resolved, credential, "fetch", "--no-tags", "origin", refspec); err != nil {
+	if _, err := runProjectGitRemote(ctx, runner, resolved, credential, "fetch", "--no-tags", projectGitRemoteURL(resolved), refspec); err != nil {
 		return edge.OperationResult{}, errors.New("project Git fetch failed")
 	}
 	after, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
@@ -226,7 +226,7 @@ func executeProjectGitPublish(ctx context.Context, stateRoot string, resolved ed
 		return edge.OperationResult{}, err
 	}
 	refspec := plan.Branch + ":refs/heads/" + plan.Branch
-	if _, err := runProjectGitRemote(ctx, runner, resolved, credential, "push", "--porcelain", "--set-upstream", "origin", refspec); err != nil {
+	if _, err := runProjectGitRemote(ctx, runner, resolved, credential, "push", "--porcelain", projectGitRemoteURL(resolved), refspec); err != nil {
 		return edge.OperationResult{}, errors.New("project Git publication failed")
 	}
 	after, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)

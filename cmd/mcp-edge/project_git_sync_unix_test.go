@@ -41,6 +41,7 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 	if upstream == "" && r.remote != "" {
 		upstream = "origin/" + branch
 	}
+	remoteURL := "https://github.com/charle-z/repo.git"
 	switch call {
 	case "rev-parse --verify HEAD":
 		return r.head, nil
@@ -55,7 +56,7 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 		return "https://github.com/charle-z/repo.git", nil
 	case "for-each-ref --format=%(upstream:short) refs/heads/" + branch:
 		return upstream, nil
-	case "ls-remote --heads origin refs/heads/" + branch:
+	case "ls-remote --heads " + remoteURL + " refs/heads/" + branch:
 		if r.remote == "" {
 			return "", nil
 		}
@@ -83,14 +84,13 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 			return "", errors.New("remote object is unavailable")
 		}
 		return "", nil
-	case "fetch --no-tags origin refs/heads/" + branch + ":refs/remotes/origin/" + branch:
+	case "fetch --no-tags " + remoteURL + " refs/heads/" + branch + ":refs/remotes/origin/" + branch:
 		return "", nil
 	case "merge --ff-only " + r.remote:
 		r.head = r.remote
 		return "", nil
-	case "push --porcelain --set-upstream origin " + branch + ":refs/heads/" + branch:
+	case "push --porcelain " + remoteURL + " " + branch + ":refs/heads/" + branch:
 		r.remote = r.head
-		r.upstream = "origin/" + branch
 		r.trackingMissing = false
 		r.published = true
 		return "To https://github.com/charle-z/repo.git\n* refs/heads/" + branch + ":refs/heads/" + branch + " [new branch]", nil
@@ -150,7 +150,7 @@ func TestInspectProjectGitCheckoutReportsOnlyBoundedRelation(t *testing.T) {
 			t.Fatalf("unsafe call: %s", call)
 		}
 	}
-	if strings.Join(runner.credentialCalls, "\n") != "ls-remote --heads origin refs/heads/main" {
+	if strings.Join(runner.credentialCalls, "\n") != "ls-remote --heads https://github.com/charle-z/repo.git refs/heads/main" {
 		t.Fatalf("credential calls=%v", runner.credentialCalls)
 	}
 }
@@ -163,7 +163,7 @@ func TestInspectProjectGitCheckoutAllowsCleanUnpublishedBranch(t *testing.T) {
 	if err != nil || result.GitBranch != runner.branch || result.GitHead != runner.head || result.GitRemoteHead != "" || !result.GitClean || result.GitFetched {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	if strings.Join(runner.credentialCalls, "\n") != "ls-remote --heads origin refs/heads/"+runner.branch {
+	if strings.Join(runner.credentialCalls, "\n") != "ls-remote --heads https://github.com/charle-z/repo.git refs/heads/"+runner.branch {
 		t.Fatalf("credential calls=%v", runner.credentialCalls)
 	}
 }
