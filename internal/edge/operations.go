@@ -950,6 +950,15 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectRegistryResult(result) {
 		return validProjectRegistryResultForKind(kind, result)
 	}
+	// Empty process lists and project-wide cleanup results are intentionally
+	// bound to the durable registry without inspecting mutable Git state. Their
+	// internal `registered` state has a stricter, kind-specific validator below.
+	if kind == OperationProjectProcessList {
+		return validProjectProcessListResult(result)
+	}
+	if kind == OperationProjectProcessCleanup {
+		return validProjectProcessCleanupResult(result)
+	}
 	if hasProjectDiagnosticResult(result) {
 		return kind == OperationProjectStatus && validProjectDiagnosticResult(result)
 	}
@@ -967,12 +976,6 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	}
 	if hasProjectBrowserResult(result) {
 		return validProjectBrowserResultForKind(kind, result)
-	}
-	if kind == OperationProjectProcessList {
-		return validProjectProcessListResult(result)
-	}
-	if kind == OperationProjectProcessCleanup {
-		return validProjectProcessCleanupResult(result)
 	}
 	if hasProjectProcessResult(result) {
 		if kind == OperationProjectProcessStdin {

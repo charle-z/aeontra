@@ -151,6 +151,8 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"rust-1.96=1.96.1-r0",
 		"brace-expansion-5.0.9.tgz",
 		"ip-address-10.3.1.tgz",
+		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.9",
+		"npm pack --ignore-scripts --pack-destination /tmp ip-address@10.3.1",
 		"busybox sha256sum -c -",
 	} {
 		if !strings.Contains(text, required) {
@@ -162,6 +164,8 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"bookworm",
 		"apt-get",
 		"apk upgrade",
+		"curl=",
+		"curl --",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("Dockerfile.sandbox-workcell contains unreviewed base or package mutation %q", forbidden)
