@@ -122,7 +122,7 @@ func TestPlatformFrontDoorTransitionDispatchesOnlyPrivateCoordinator(t *testing.
 			}
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			if r.URL.Query().Get("uuid") != coordinatorID || r.URL.Query().Get("force") != "false" {
 				t.Fatalf("unsafe deployment query: %s", r.URL.RawQuery)
 			}
