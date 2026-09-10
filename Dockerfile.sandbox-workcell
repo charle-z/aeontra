@@ -3,7 +3,6 @@ RUN apk add --no-cache \
       bash=5.3-r12 \
       build-base=1-r9 \
       ca-certificates=20260413-r1 \
-      curl=8.22.0-r2 \
       git=2.55.0-r4 \
       go-1.26=1.26.7-r0 \
       jq=1.8.2-r1 \
@@ -14,10 +13,8 @@ RUN apk add --no-cache \
       rust-1.96=1.96.1-r0
 RUN brace_archive=/tmp/brace-expansion-5.0.9.tgz \
  && ip_archive=/tmp/ip-address-10.3.1.tgz \
- && curl --fail --location --proto '=https' --proto-redir '=https' \
-      --output "$brace_archive" https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz \
- && curl --fail --location --proto '=https' --proto-redir '=https' \
-      --output "$ip_archive" https://registry.npmjs.org/ip-address/-/ip-address-10.3.1.tgz \
+ && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.9 \
+ && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp ip-address@10.3.1 \
  && printf '%s  %s\n' 5d06001fddd25cbee90c96db4dc5b7b57711b984c3141e28d10f143deb52dbaf "$brace_archive" \
       | busybox sha256sum -c - \
  && printf '%s  %s\n' ad1790063beea11a312c801df30d58e147de762f4f77787552376eb7424623e5 "$ip_archive" \
@@ -33,6 +30,6 @@ RUN brace_archive=/tmp/brace-expansion-5.0.9.tgz \
  && cp -a /tmp/ip-unpack/package/. /usr/lib/node_modules/npm/node_modules/ip-address/ \
  && test "$(node -p "require('/usr/lib/node_modules/npm/node_modules/brace-expansion/package.json').version")" = 5.0.9 \
  && test "$(node -p "require('/usr/lib/node_modules/npm/node_modules/ip-address/package.json').version")" = 10.3.1 \
- && rm -rf "$brace_archive" "$ip_archive" /tmp/brace-unpack /tmp/ip-unpack
+ && rm -rf "$brace_archive" "$ip_archive" /tmp/brace-unpack /tmp/ip-unpack /tmp/npm-cache
 WORKDIR /workspace
 CMD ["/bin/bash"]
