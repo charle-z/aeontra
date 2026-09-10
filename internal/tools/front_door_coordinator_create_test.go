@@ -72,7 +72,7 @@ func TestPlatformFrontDoorCoordinatorCreatesOnePrivateWorker(t *testing.T) {
 			seenValues[key] = value
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			if r.URL.Query().Get("uuid") != "coord1" || r.URL.Query().Get("force") != "false" {
 				t.Fatalf("unsafe coordinator deployment: %s", r.URL.RawQuery)
 			}

@@ -58,7 +58,7 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 			envs++
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deploys++
 			if r.URL.Query().Get("uuid") != "front1" || r.URL.Query().Get("force") != "false" {
 				t.Fatalf("unsafe deploy query: %s", r.URL.RawQuery)
@@ -157,7 +157,7 @@ func TestPlatformFrontDoorCreateReconcilesOneExistingAppAndSkipsDuplicateDeploy(
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/public":
 			created++
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deploys++
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
@@ -220,7 +220,7 @@ func TestPlatformFrontDoorCreateDeploysOneAuthenticatedCatalogTransition(t *test
 			writes[key] = value
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"uuid":"env"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deploys++
 			if r.URL.Query().Get("force") != "false" {
 				t.Fatalf("force deployment requested: %s", r.URL.RawQuery)
@@ -375,7 +375,7 @@ func TestPlatformFrontDoorCreateRecoversPartialApplicationWithoutDomain(t *testi
 			_, _ = w.Write([]byte("{\"uuid\":\"env1\"}"))
 		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/applications/public" || r.URL.Path == "/api/v1/applications/private-github-app"):
 			created++
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deploys++
 			_, _ = w.Write([]byte("{\"deployment_uuid\":\"dep-recovered\",\"status\":\"queued\"}"))
 		default:
