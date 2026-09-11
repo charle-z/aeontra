@@ -82,12 +82,15 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"apk add --no-cache ca-certificates git nodejs npm",
 		"npm install --global npm@12.0.1",
 		"apk del npm",
+		"unofficial-builds.nodejs.org",
+		"FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS node-runtime",
 	} {
 		if strings.Contains(dockerfile, forbidden) {
 			t.Errorf("Dockerfile must not introduce a vulnerable npm bootstrap via %q", forbidden)
 		}
 	}
 	for _, required := range []string{
+		"FROM node:22.23.2-alpine3.23@sha256:46825fbbd4e996a78b7a2cdc08d75e38a5a505bdab95dcda55605359bf124bc6 AS console-build",
 		"https://registry.npmjs.org/npm/-/npm-12.0.1.tgz",
 		"5e02bea4c784df1c3bbea9e55c7d2232329e1d1920c254789833ed9e8b0a5f16",
 		"https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz",
@@ -102,11 +105,8 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"test ! -e /usr/lib/node_modules/npm",
 		"busybox wget -qO- http://127.0.0.1:8765/readyz",
 		"COPY --from=build /usr/local/go /usr/local/go",
-		"https://unofficial-builds.nodejs.org/download/release/v22.23.2/",
-		"2d18b5731055f7efa6c899004909b00ee110e38d3775745f60ec9ccf1f9982e7",
-		"86e3f4d05d92c6a4e51b0ce8bab6c22d602d4b8a372743fed302403de5376d4c",
-		`test "$(/node/bin/node --version)" = v22.23.2`,
-		"COPY --from=node-runtime /node/bin/node /usr/local/bin/node",
+		`test "$(node --version)" = v22.23.2`,
+		"COPY --from=console-build /usr/local/bin/node /usr/local/bin/node",
 		"&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)",
 	} {
 		if !strings.Contains(dockerfile, required) {
