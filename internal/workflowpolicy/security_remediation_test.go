@@ -82,31 +82,37 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"apk add --no-cache ca-certificates git nodejs npm",
 		"npm install --global npm@12.0.1",
 		"apk del npm",
+		"unofficial-builds.nodejs.org",
+		"FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS node-runtime",
+		`busybox wget -qO "$npm_archive"`,
+		`busybox wget -qO "$brace_archive"`,
+		`busybox wget -qO "$ip_archive"`,
+		`busybox wget -qO "$tar_archive"`,
 	} {
 		if strings.Contains(dockerfile, forbidden) {
 			t.Errorf("Dockerfile must not introduce a vulnerable npm bootstrap via %q", forbidden)
 		}
 	}
 	for _, required := range []string{
-		"https://registry.npmjs.org/npm/-/npm-12.0.1.tgz",
+		"FROM node:22.23.2-alpine3.23@sha256:46825fbbd4e996a78b7a2cdc08d75e38a5a505bdab95dcda55605359bf124bc6 AS console-build",
+		"FROM node:22.23.2-alpine3.23@sha256:46825fbbd4e996a78b7a2cdc08d75e38a5a505bdab95dcda55605359bf124bc6 AS node-runtime",
+		"npm pack --ignore-scripts --pack-destination /tmp npm@12.0.1",
 		"5e02bea4c784df1c3bbea9e55c7d2232329e1d1920c254789833ed9e8b0a5f16",
-		"https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz",
+		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.9",
 		"5d06001fddd25cbee90c96db4dc5b7b57711b984c3141e28d10f143deb52dbaf",
 		"/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json",
-		"https://registry.npmjs.org/ip-address/-/ip-address-10.3.1.tgz",
+		"npm pack --ignore-scripts --pack-destination /tmp ip-address@10.3.1",
 		"ad1790063beea11a312c801df30d58e147de762f4f77787552376eb7424623e5",
 		"/usr/local/lib/node_modules/npm/node_modules/ip-address/package.json",
-		"https://registry.npmjs.org/tar/-/tar-7.5.21.tgz",
+		"npm pack --ignore-scripts --pack-destination /tmp tar@7.5.21",
 		"bcedf25a21daecd1a18fb5e19ab855b7d79ec8ef1da175e8ba85cfc0ed0069d1",
 		"/usr/local/lib/node_modules/npm/node_modules/tar/package.json",
 		"test ! -e /usr/lib/node_modules/npm",
 		"busybox wget -qO- http://127.0.0.1:8765/readyz",
 		"COPY --from=build /usr/local/go /usr/local/go",
-		"https://unofficial-builds.nodejs.org/download/release/v22.23.2/",
-		"2d18b5731055f7efa6c899004909b00ee110e38d3775745f60ec9ccf1f9982e7",
-		"86e3f4d05d92c6a4e51b0ce8bab6c22d602d4b8a372743fed302403de5376d4c",
-		`test "$(/node/bin/node --version)" = v22.23.2`,
-		"COPY --from=node-runtime /node/bin/node /usr/local/bin/node",
+		`test "$(node --version)" = v22.23.2`,
+		"COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node",
+		"COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm",
 		"&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)",
 	} {
 		if !strings.Contains(dockerfile, required) {
