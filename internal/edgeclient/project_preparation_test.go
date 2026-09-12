@@ -166,13 +166,14 @@ func TestProjectPreparationUsesRegistryBeforeDiscoveryForClaimedRepository(t *te
 	}
 }
 
-func TestProjectPreparationIgnoresUnrelatedClaimsBeyondRegistryListLimit(t *testing.T) {
+func TestProjectPreparationAndListingHandleClaimsBeyondLegacyLimit(t *testing.T) {
+	const legacyProjectClaimsLimit = 32
 	state := t.TempDir()
 	roots := newProjectDiscoveryRoots(t)
 	states := make(map[string]ProjectCheckoutState)
 	inspector := pathProjectInspector{states: states}
 	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
-	for index := 0; index <= maxProjectClaims; index++ {
+	for index := 0; index <= legacyProjectClaimsLimit; index++ {
 		alias := fmt.Sprintf("existing-%02d", index)
 		path := filepath.Join(roots.Dev, alias)
 		if err := os.MkdirAll(filepath.Join(path, ".git"), 0o700); err != nil {
@@ -196,8 +197,9 @@ func TestProjectPreparationIgnoresUnrelatedClaimsBeyondRegistryListLimit(t *test
 		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)},
 		Runner:     &projectPreparationRunner{},
 	}
-	if _, err := projects.ListClaims(); !projectErrorIs(err, ProjectErrorDiscoveryLimit) {
-		t.Fatalf("bounded registry listing err=%v", err)
+	claims, err := projects.ListClaims()
+	if err != nil || len(claims) != legacyProjectClaimsLimit+1 {
+		t.Fatalf("registry listing claims=%d err=%v", len(claims), err)
 	}
 	plan, err := PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
 		Alias: "new-project", Repository: "new-project", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,

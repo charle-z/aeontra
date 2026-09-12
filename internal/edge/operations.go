@@ -36,6 +36,7 @@ func (e *OperationCompatibilityError) Error() string { return "edge version skew
 const (
 	MaxOperationProgressUnits = 1_000_000_000
 	MaxOperationResultBytes   = 64 << 10
+	maxProjectRegistryClaims  = 512
 )
 
 const (
@@ -1025,7 +1026,7 @@ func validProjectRegistryResultForKind(kind OperationKind, result OperationResul
 		if result.ProjectRegistryAction != map[OperationKind]string{
 			OperationProjectRegistryList: "listed",
 			OperationProjectReconcile:    "reconciled",
-		}[kind] || len(result.ProjectClaims) > 32 || result.ProjectClaimGeneration != 0 {
+		}[kind] || len(result.ProjectClaims) > maxProjectRegistryClaims || result.ProjectClaimGeneration != 0 {
 			return false
 		}
 		for _, claim := range result.ProjectClaims {

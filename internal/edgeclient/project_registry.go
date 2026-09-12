@@ -17,7 +17,7 @@ const (
 	projectRegistryFile              = "projects.db"
 	projectSchemaVersion             = 2
 	maxProjectProfiles               = 4
-	maxProjectClaims                 = 32
+	maxProjectClaims                 = 512
 	maxProjectClaimGeneration uint64 = 1<<63 - 1
 )
 
@@ -810,7 +810,7 @@ func (r *ProjectRegistry) ListClaimsContext(ctx context.Context, target string) 
 		FROM projects p
 		LEFT JOIN project_workspaces wb ON wb.alias=p.alias
 		WHERE p.owner=? AND (?='' OR wb.target_alias=? OR (wb.target_alias IS NULL AND p.preferred_target=?))
-		ORDER BY p.alias,wb.target_alias LIMIT 33`, r.allowedOwner, target, target, target)
+		ORDER BY p.alias,wb.target_alias LIMIT ?`, r.allowedOwner, target, target, target, maxProjectClaims+1)
 	if err != nil {
 		return nil, projectErr(ProjectErrorRegistryUnavailable, err)
 	}
