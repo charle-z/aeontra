@@ -1,6 +1,6 @@
 # Private L3 sandbox runner
 
-Status: **implementation candidate; Linux real-host and production acceptance pending**
+Status: **implemented; each deployment still requires Linux real-host acceptance**
 
 The private runner is a separate service. The public MCP holds only its internal URL,
 shared bearer, opaque workspace identifier and expected image digest. Only the runner
@@ -61,7 +61,7 @@ The runner requires:
 MCP_DEVBOX_SANDBOX_RUNNER_IPV4=<reserved-private-ip>
 MCP_DEVBOX_SANDBOX_RUNNER_TOKEN=<shared random secret>
 MCP_DEVBOX_SANDBOX_WORKSPACE_ID=primary
-MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_VOLUME=<exact external volume mounted by the backend at its repository root>
+MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_SOURCE=<absolute host mountpoint of the backend repository storage>
 MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT=/srv/aeontra-l3/workspace
 MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT=<private persistent state outside workspace>
 MCP_DEVBOX_SANDBOX_IMAGE=<immutable image@sha256:digest>
@@ -75,12 +75,27 @@ Optional positive maxima are `MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS`,
 The state root must persist, remain private, and never overlap the writable workspace.
 Do not assign this service a public domain or published host port.
 
-The reference Compose mounts the backend repository volume directly as an external
-volume. Do not replace it with a bind to a host directory that is later rebound to the
-backend volume. Docker bind propagation is private by default, so a running container
-would retain the old directory even after the host path points somewhere else. Set the
-volume variable to the exact existing backend volume and recreate the runner container
-after any mount change; a restart does not replace container mount bindings.
+The reference Compose bind-mounts the exact host mountpoint of the persistent storage
+already mounted by the backend at its repository root. Resolve it from the live backend
+mount rather than guessing a platform-generated name. For a Docker volume, an
+administrator can compare `docker inspect <backend-container>` with
+`docker volume inspect --format '{{ .Mountpoint }}' <volume>` and then set the source
+variable to that exact absolute mountpoint. Do not use the Docker volumes parent,
+another service's similarly named volume, or an intermediate host directory that is
+later rebound to the backend volume.
+
+This bind is deliberate for service orchestrators such as Coolify: a service-level
+Compose deployment can namespace a named-volume declaration into runner-owned storage,
+even when its label resembles the backend volume. The source path is administrator-only
+deployment configuration and is never accepted from an MCP request. Bind propagation
+remains `rprivate`. Recreate the runner container after any source change; a restart
+does not replace container mount bindings.
+
+Deployments created from an earlier reference Compose may still define
+`MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_VOLUME`. Replace that variable with
+`MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_SOURCE`, resolve the exact mountpoint as above and
+recreate only the runner. There is no automatic fallback from a volume name because it
+would make service-specific volume rewriting ambiguous.
 
 Reserve one unused address from the external Coolify network in Compose. The reference
 Compose derives `MCP_DEVBOX_SANDBOX_RUNNER_ADDR=<reserved-private-ip>:8770` from that
@@ -142,12 +157,12 @@ writable authorities are explicit: the rootless Podman socket, the registered wo
 and the disjoint receipt state. The image healthcheck authenticates to `/v1/status` and becomes healthy
 only after the configured image and rootless endpoint attest successfully.
 
-The repository authority must be the same external Docker volume used by the backend,
+The repository authority must be the exact persistent storage mounted by the backend,
 not another host path with similar contents. Before accepting a recreation, compare the
-configured volume name, confirm one known repository is visible inside the new runner,
-and execute `pwd` through `sandbox_exec` with that exact repository selected. A green
-`/v1/status` alone verifies the engine and image, not the contents of a selected
-workspace.
+backend container's mount source with the configured runner source, confirm one known
+repository is visible inside the new runner, and execute `pwd` through `sandbox_exec`
+with that exact repository selected. A green `/v1/status` alone verifies the engine and
+image, not the contents of a selected workspace.
 
 ### Protocol rollout and workspace selection
 
