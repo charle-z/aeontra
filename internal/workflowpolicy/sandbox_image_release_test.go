@@ -75,8 +75,10 @@ func TestSandboxRunnerComposeKeepsEngineAuthorityPrivate(t *testing.T) {
 		"cap_drop:",
 		"- ALL",
 		"/run/user/10001/podman/podman.sock:/run/user/10001/podman/podman.sock",
-		"/srv/aeontra-l3/workspace:/srv/aeontra-l3/workspace",
+		"repositories:/srv/aeontra-l3/workspace",
 		"/srv/aeontra-l3/state:/srv/aeontra-l3/state",
+		"MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_VOLUME:?set the exact external repository volume shared with the backend",
+		"name: ${MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_VOLUME:?set the exact external repository volume shared with the backend}",
 		"external: true",
 	} {
 		if !strings.Contains(text, required) {
@@ -91,6 +93,7 @@ func TestSandboxRunnerComposeKeepsEngineAuthorityPrivate(t *testing.T) {
 		"pid: host",
 		"MCP_DEVBOX_SANDBOX_RUNNER_ADDR: mcp-sandbox-runner:8770",
 		"MCP_DEVBOX_SANDBOX_RUNNER_ADDR: 0.0.0.0:8770",
+		"/srv/aeontra-l3/workspace:/srv/aeontra-l3/workspace",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("sandbox runner compose contains %q", forbidden)

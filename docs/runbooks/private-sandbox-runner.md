@@ -61,7 +61,8 @@ The runner requires:
 MCP_DEVBOX_SANDBOX_RUNNER_IPV4=<reserved-private-ip>
 MCP_DEVBOX_SANDBOX_RUNNER_TOKEN=<shared random secret>
 MCP_DEVBOX_SANDBOX_WORKSPACE_ID=primary
-MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT=<host-visible registered workspace>
+MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_VOLUME=<exact external volume mounted by the backend at its repository root>
+MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT=/srv/aeontra-l3/workspace
 MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT=<private persistent state outside workspace>
 MCP_DEVBOX_SANDBOX_IMAGE=<immutable image@sha256:digest>
 MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET=/run/user/<runner-uid>/podman/podman.sock
@@ -73,6 +74,13 @@ Optional positive maxima are `MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS`,
 `MCP_DEVBOX_SANDBOX_MAX_CONCURRENT` caps admitted containers and defaults to two.
 The state root must persist, remain private, and never overlap the writable workspace.
 Do not assign this service a public domain or published host port.
+
+The reference Compose mounts the backend repository volume directly as an external
+volume. Do not replace it with a bind to a host directory that is later rebound to the
+backend volume. Docker bind propagation is private by default, so a running container
+would retain the old directory even after the host path points somewhere else. Set the
+volume variable to the exact existing backend volume and recreate the runner container
+after any mount change; a restart does not replace container mount bindings.
 
 Reserve one unused address from the external Coolify network in Compose. The reference
 Compose derives `MCP_DEVBOX_SANDBOX_RUNNER_ADDR=<reserved-private-ip>:8770` from that
@@ -123,9 +131,9 @@ The runner talks directly to the bounded Podman v5 API over the validated Unix s
 it does not package a container-engine CLI. The runner image defaults to UID/GID 10001.
 When it is containerized, provision the
 dedicated rootless Podman account with that identity or override the container user to
-the exact non-root UID/GID that owns the socket. Mount the socket, registered workspace
-and private state root at their exact host-visible paths. Do not mount a rootful Docker
-socket.
+the exact non-root UID/GID that owns the socket. Mount the socket and private state root
+at their exact host-visible paths, and mount the backend repository volume directly at
+the configured workspace root. Do not mount a rootful Docker socket.
 
 `deploy/sandbox-runner-compose.yml` is the reference private deployment. It publishes no
 host port, reserves one private address on the existing Coolify network, drops every
@@ -133,6 +141,13 @@ capability, uses a read-only root filesystem and runs as UID/GID 10001. The thre
 writable authorities are explicit: the rootless Podman socket, the registered workspace
 and the disjoint receipt state. The image healthcheck authenticates to `/v1/status` and becomes healthy
 only after the configured image and rootless endpoint attest successfully.
+
+The repository authority must be the same external Docker volume used by the backend,
+not another host path with similar contents. Before accepting a recreation, compare the
+configured volume name, confirm one known repository is visible inside the new runner,
+and execute `pwd` through `sandbox_exec` with that exact repository selected. A green
+`/v1/status` alone verifies the engine and image, not the contents of a selected
+workspace.
 
 ### Protocol rollout and workspace selection
 
@@ -176,7 +191,8 @@ Before enabling production, verify on the intended Linux host:
 
 1. `sandbox_status` reports `available:true`, `free_terminal:true`, backend
    `rootless-podman`, and default egress deny.
-2. direct argv and an explicitly requested `bash -lc` command both run.
+2. one repository reported by `repo_list` can be selected and `pwd` returns `/workspace`;
+   direct argv and an explicitly requested `bash -lc` command both run there.
 3. metadata, Internet, RFC1918 and loopback egress fail.
 4. host files, credential stores, engine sockets and paths outside the workspace are
    absent.
