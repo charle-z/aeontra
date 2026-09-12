@@ -344,6 +344,10 @@ uses a bounded HTTP client rather than packaging the container-engine CLI. That 
 is never mounted into the workcell container. An unavailable endpoint, a
 rootful engine, an image mismatch, an overlapping state/workspace root or containment
 drift leaves `sandbox_status.available=false` and `free_terminal=false`.
+The reference deployment mounts the backend repository volume directly into the
+runner. It does not depend on a host bind that may be rebound after the runner starts,
+because an existing container can otherwise retain a stale private mount namespace
+while its health probe remains green.
 The public server resolves the runner only to loopback/private addresses and rejects
 redirects; the runner listener likewise rejects wildcard, public and mixed-DNS binds.
 

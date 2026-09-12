@@ -28,7 +28,7 @@ services:
       MCP_DEVBOX_SANDBOX_MAX_CONCURRENT: "2"
     volumes:
       - /run/user/10001/podman/podman.sock:/run/user/10001/podman/podman.sock
-      - /srv/aeontra-l3/workspace:/srv/aeontra-l3/workspace
+      - repositories:/srv/aeontra-l3/workspace
       - /srv/aeontra-l3/state:/srv/aeontra-l3/state
     networks:
       coolify:
@@ -37,3 +37,8 @@ services:
 networks:
   coolify:
     external: true
+
+volumes:
+  repositories:
+    external: true
+    name: ${MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_VOLUME:?set the exact external repository volume shared with the backend}

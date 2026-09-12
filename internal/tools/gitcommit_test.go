@@ -33,6 +33,29 @@ func TestGitCommit_AllowCommits(t *testing.T) {
 	}
 }
 
+func TestGitCommitAndStatusWorkWithoutRemote(t *testing.T) {
+	svc, root := initRepo(t, config.ModeAllow)
+	svc.WithSandboxRunner(execTestSandbox{})
+	configIdentity(t, root)
+	write(t, root, "local.txt", "local only\n")
+
+	if remotes := strings.TrimSpace(gitCmd(t, root, "remote")); remotes != "" {
+		t.Fatalf("fixture unexpectedly has a remote: %q", remotes)
+	}
+	if _, err := svc.GitCommit("feat: start local project", false); err != nil {
+		t.Fatalf("commit without remote: %v", err)
+	}
+	status, err := svc.RepoStatus("")
+	if err != nil {
+		t.Fatalf("status without remote: %v", err)
+	}
+	for _, required := range []string{"upstream: \n", "ahead: 0\n", "behind: 0\n", "clean: true\n"} {
+		if !strings.Contains(status, required) {
+			t.Fatalf("local-only status missing %q:\n%s", required, status)
+		}
+	}
+}
+
 func TestGitCommit_ReadOnlyDenied(t *testing.T) {
 	svc, root := initRepo(t, config.ModeReadOnly)
 	configIdentity(t, root)
