@@ -131,6 +131,22 @@ func TestProjectRegistryRecoveryOperationContracts(t *testing.T) {
 	if !validOperationCompletionForKind(OperationProjectRegistryList, claims, "") || validOperationCompletionForKind(OperationProjectReconcile, OperationResult{ProjectRegistryAction: "listed", ProjectClaims: claims.ProjectClaims}, "") {
 		t.Fatal("registry list/reconcile result contract is not kind-bound")
 	}
+	legacySized := claims
+	legacySized.ProjectClaims = make([]ProjectClaimSummary, 33)
+	for index := range legacySized.ProjectClaims {
+		legacySized.ProjectClaims[index] = claims.ProjectClaims[0]
+	}
+	if !validOperationCompletionForKind(OperationProjectRegistryList, legacySized, "") {
+		t.Fatal("registry list retained the obsolete 32-claim limit")
+	}
+	tooMany := claims
+	tooMany.ProjectClaims = make([]ProjectClaimSummary, maxProjectRegistryClaims+1)
+	for index := range tooMany.ProjectClaims {
+		tooMany.ProjectClaims[index] = claims.ProjectClaims[0]
+	}
+	if validOperationCompletionForKind(OperationProjectRegistryList, tooMany, "") {
+		t.Fatal("registry list accepted an unbounded claim result")
+	}
 	released := OperationResult{ProjectRegistryAction: "released", ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot", ProjectState: "released", ProjectClaimGeneration: 1}
 	if !validOperationCompletionForKind(OperationProjectRelease, released, "") || validOperationCompletionForKind(OperationProjectRelease, released, "unsafe") {
 		t.Fatal("release result contract is invalid")
