@@ -17,7 +17,10 @@ import (
 	"time"
 )
 
-const statusDescriptionPrefix = "mcp-front-door-coordinator:v1 "
+const (
+	statusDescriptionPrefix      = "mcp-front-door-coordinator:v1 "
+	coolifyDeploymentWaitTimeout = 20 * time.Minute
+)
 
 var (
 	commitPattern   = regexp.MustCompile("^[a-f0-9]{40}$")
@@ -431,7 +434,7 @@ func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error
 	if deploymentID == "" {
 		return "", errors.New("coolify deployment returned no id")
 	}
-	deadline := time.Now().Add(5 * time.Minute)
+	deadline := time.Now().Add(coolifyDeploymentWaitTimeout)
 	for time.Now().Before(deadline) {
 		var current deployment
 		if err := c.requestJSON(ctx, http.MethodGet, "/api/v1/deployments/"+url.PathEscape(deploymentID), nil, &current); err != nil {
