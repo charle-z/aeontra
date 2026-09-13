@@ -95,6 +95,10 @@ rollout state is terminal. A successful rollout ends with:
 - OAuth discovery valid;
 - real MCP smoke valid.
 
+The coordinator allows up to 20 minutes for each normal Coolify deployment to reach a
+terminal state. This covers clean, single-core production builds while keeping the
+deployment phase finite; expiry enters the existing compensation path.
+
 Do not edit the Front Door allowlist manually, add a third catalog, enable wildcard
 matching, re-enable backend auto-deploy, or trigger a direct Coolify deployment while a
 rollout is active.

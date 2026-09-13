@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -98,6 +99,13 @@ func TestStopAndWaitUsesCoolifyPostEndpoint(t *testing.T) {
 	}
 	if stopRequests != 1 {
 		t.Fatalf("stop requests = %d, want 1", stopRequests)
+	}
+}
+
+func TestDeploymentWaitBudgetCoversCleanBuild(t *testing.T) {
+	t.Parallel()
+	if coolifyDeploymentWaitTimeout < 20*time.Minute {
+		t.Fatalf("deployment wait timeout = %s, want at least 20m", coolifyDeploymentWaitTimeout)
 	}
 }
 
