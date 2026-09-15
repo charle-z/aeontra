@@ -154,6 +154,7 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"npm=12.0.2-r0",
 		"python-3.14=3.14.7-r6",
 		"rust-1.96=1.96.1-r0",
+		"zlib=1.3.2-r7",
 		"brace-expansion-5.0.9.tgz",
 		"ip-address-10.3.1.tgz",
 		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.9",
