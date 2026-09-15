@@ -242,6 +242,25 @@ func TestAdapterRejectsUnofferedModelToolAndCancelsTurn(t *testing.T) {
 	}
 }
 
+func TestAdapterRejectsPrematureCompletionAndCancelsTurn(t *testing.T) {
+	transport := validAdapterTransport()
+	transport.response.Payload = json.RawMessage(`{"text":"The checkout is ready. Now I will run the tests.","finish_reason":"stop"}`)
+	adapter, err := New(Options{RuntimeID: transport.runtime.RuntimeID, ModelID: "mcp-devbox-codex", Transport: transport})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	adapter.Handler().ServeHTTP(recorder, newResponsesRequest(t, `{"model":"mcp-devbox-codex","input":[],"stream":true}`))
+	if recorder.Code != http.StatusBadGateway || !strings.Contains(recorder.Body.String(), `"code":"invalid_model_response"`) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	if transport.created != 1 || transport.cancelled != 1 {
+		t.Fatalf("created=%d cancelled=%d", transport.created, transport.cancelled)
+	}
+}
+
 func validAdapterTransport() *adapterTransport {
 	const runtimeID = "mr_00000000000000000000000000000000"
 	return &adapterTransport{
