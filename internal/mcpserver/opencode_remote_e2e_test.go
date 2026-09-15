@@ -380,7 +380,8 @@ func TestRemoteOpenCodeDistributedRelay(t *testing.T) {
 		}
 		mcpTool(t, server, meter, "model_turn_respond", map[string]any{
 			"runtime_id": runtime.RuntimeID, "turn_id": string(offer.TurnID),
-			"expected_sequence": offer.Sequence, "request_digest": offer.RequestDigest, "response": response,
+			"expected_sequence": offer.Sequence, "request_digest": offer.RequestDigest,
+			"task_state": scriptedTaskState(response), "response": response,
 		})
 		if sequence == 1 {
 			t.Log("slice_code=remote_stage_responded")

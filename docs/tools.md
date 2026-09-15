@@ -100,7 +100,7 @@ do not replace server-side enforcement.
 | `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, platform-known restart state, bundle, compatible components, workspace count and blocker metadata. Linux additionally reports Bubblewrap and rootless checks; Windows binds the responder to the current SCM process and derives provider/driver compatibility from the verified signed bundle. |
 | `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, optional result ref, and the bounded server-owned startup phase timeline. |
 | `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
-| `model_turn_respond` | 0/0/0/0 | Submit one bounded text/tool-call response after runtime, sequence, digest and offered-tool validation. |
+| `model_turn_respond` | 0/0/0/0 | Submit one bounded response with explicit `task_state`: `active` requires an offered tool call, `blocked` requires `error`/`cancelled`, and `complete` requires `stop` without pending-action language. |
 | `model_runtime_cancel` | 0/1/1/0 | Idempotently cancel a runtime and all active unconsumed turns. |
 | `build_context_pack` | 1/0/1/0 | Read a compact jailed repo context pack. |
 | `workspace_checkpoint` | 1/0/1/0 | Return a bounded schema-only Git/task checkpoint without fetch, file bodies, absolute paths, or external calls. |

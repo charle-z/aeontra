@@ -461,6 +461,19 @@ merges, `/brain` persistence is configured, and deployment smoke completes.
 
 ## P15 development Edge Git follow-up
 
+The managed model-turn completion gate has a deterministic multi-step regression:
+
+- active responses for tool A, B and C are accepted only with offered tool calls;
+- attempts to stop after progress text such as `Now I will run B` or
+  `Ahora voy a ejecutar C` are rejected without consuming the turn;
+- the corrected active response can reuse the same exact turn identity;
+- only the final `complete`/`stop` response is accepted as terminal;
+- mismatched task states and truncated responses fail closed;
+- the stock Codex loopback adapter independently rejects a persisted premature stop.
+
+This tests the managed relay boundary. A direct client response that does not invoke
+an MCP tool remains outside server control.
+
 The private development Git boundary is covered at four layers:
 
 - credential tests prove stdin-only atomic 0600 storage, owner validation, invalid
