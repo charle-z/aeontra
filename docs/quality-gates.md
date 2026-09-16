@@ -99,6 +99,8 @@ Security evidence added by P6:
 - container build and vulnerability scan;
 - SBOM generation;
 - integration tests for HTTP/OAuth/catalog/deployment contracts.
+- authenticated post-deployment routing smoke proving complete `tools/list`, matching
+  runtime identity, and successful invocation of canonical read-only status tools.
 
 ## Scheduled or ephemeral staging
 
