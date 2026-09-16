@@ -90,9 +90,9 @@ func (s *Server) addModelTurnTools() {
 
 	s.addDirectTool(toolDef{
 		Name:        "model_turn_respond",
-		Description: "Submit exactly one bounded response for an offered model turn after sequence, digest, and tool-id validation.",
+		Description: "Submit one bounded response after identity validation. task_state active must include an offered tool call, blocked must use error or cancelled, and complete must use stop without declaring pending work.",
 		InputSchema: modelTurnRespondSchema(),
-		Version:     "1",
+		Version:     "2",
 		Annotations: writeHints,
 	}, s.handleModelTurnRespond)
 
@@ -155,8 +155,9 @@ func modelTurnRespondSchema() map[string]any {
 		"turn_id":           stringSchema("opaque model turn id", `^mt_[a-f0-9]{32}$`, 35),
 		"expected_sequence": map[string]any{"type": "integer", "minimum": 1},
 		"request_digest":    stringSchema("canonical request SHA-256 digest", `^sha256:[a-f0-9]{64}$`, 71),
+		"task_state":        map[string]any{"type": "string", "enum": []string{modelturn.TaskStateActive, modelturn.TaskStateBlocked, modelturn.TaskStateComplete}},
 		"response":          response,
-	}, []string{"runtime_id", "turn_id", "expected_sequence", "request_digest", "response"})
+	}, []string{"runtime_id", "turn_id", "expected_sequence", "request_digest", "task_state", "response"})
 }
 
 type runtimeIDParams struct {
@@ -193,6 +194,7 @@ type modelTurnRespondParams struct {
 	TurnID           modelturn.TurnID     `json:"turn_id"`
 	ExpectedSequence uint64               `json:"expected_sequence"`
 	RequestDigest    string               `json:"request_digest"`
+	TaskState        string               `json:"task_state"`
 	Response         boundedModelResponse `json:"response"`
 }
 
@@ -319,6 +321,9 @@ func (s *Server) handleModelTurnRespond(arguments json.RawMessage) (string, erro
 	default:
 		return "", modelturn.ErrInvalidRequest
 	}
+	if err := modelturn.ValidateCompletionState(params.TaskState, params.Response.FinishReason, params.Response.Text, len(params.Response.ToolCalls)); err != nil {
+		return "", err
+	}
 	used := make([]string, 0, len(params.Response.ToolCalls))
 	seenCalls := make(map[string]struct{}, len(params.Response.ToolCalls))
 	for _, call := range params.Response.ToolCalls {
@@ -338,6 +343,9 @@ func (s *Server) handleModelTurnRespond(arguments json.RawMessage) (string, erro
 	if params.Response.FinishReason == "tool_calls" && len(params.Response.ToolCalls) == 0 {
 		return "", modelturn.ErrInvalidRequest
 	}
+	// task_state is admission metadata for the public MCP call. Keep the
+	// durable provider payload compatible with signed Edge releases that
+	// strictly decode the original bounded response shape.
 	payload, err := json.Marshal(params.Response)
 	if err != nil {
 		return "", err

@@ -61,6 +61,10 @@ func validateBoundedResponse(raw json.RawMessage, toolsByID map[string]normalize
 	if response.FinishReason == "tool_calls" && len(response.ToolCalls) == 0 {
 		return validatedResponse{}, errors.New("tool_calls requires one call")
 	}
+	taskState := modelturn.CompletionStateForFinishReason(response.FinishReason)
+	if err := modelturn.ValidateCompletionState(taskState, response.FinishReason, response.Text, len(response.ToolCalls)); err != nil {
+		return validatedResponse{}, err
+	}
 	seen := make(map[string]struct{}, len(response.ToolCalls))
 	calls := make([]validatedToolCall, 0, len(response.ToolCalls))
 	for _, call := range response.ToolCalls {

@@ -121,6 +121,30 @@ actions authorized by the local contract; raw credential material remains local.
 6. The Edge executes the local trusted contract and its structured tools.
 ```
 
+## Model-turn completion gate
+
+Every `model_turn_respond` call declares one closed `task_state`:
+
+- `active` is valid only with `finish_reason=tool_calls` and at least one tool id
+  offered by the current request. Progress text may accompany the call, but cannot
+  replace the next executable action.
+- `blocked` is valid only with `finish_reason=error` or `cancelled` and no tool calls.
+- `complete` is valid only with `finish_reason=stop`, no tool calls and no
+  sentence-leading declaration of pending work such as `Now I will...`,
+  `The next step is...`, `Ahora voy a...` or `Queda por comprobar...`.
+
+`finish_reason=length` is incomplete and is rejected. A rejected response does not
+consume the durable turn, so the active MCP client can submit a corrected response.
+The same validation runs again in the stock Codex loopback adapter before a durable
+response becomes a Responses API event. `task_state` is MCP admission metadata and is
+not added to the strict durable provider payload, preserving compatibility with signed
+Edge releases that implement the prior payload shape.
+
+This gate applies to managed Codex/model-turn runtimes. MCP Devbox cannot intercept a
+direct ChatGPT client response that closes without calling an MCP tool. Durable tasks,
+workspaces and checkpoints remain the recovery boundary for that client-controlled
+case.
+
 `lab init` prepares and registers the persistent local workspace. It is not repeated
 for every runtime. `workspace_runtime_continue` is for later ephemeral executions.
 

@@ -162,6 +162,20 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 		if tool.Name == "model_runtime_cancel" {
 			tool.Annotations = map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
 		}
+		if tool.Name == "model_turn_respond" {
+			tool.Version = "1"
+			tool.Description = "Submit exactly one bounded response for an offered model turn after sequence, digest, and tool-id validation."
+			properties := tool.InputSchema["properties"].(map[string]any)
+			delete(properties, "task_state")
+			required := tool.InputSchema["required"].([]any)
+			legacyRequired := make([]any, 0, len(required)-1)
+			for _, name := range required {
+				if name != "task_state" {
+					legacyRequired = append(legacyRequired, name)
+				}
+			}
+			tool.InputSchema["required"] = legacyRequired
+		}
 		step4 = append(step4, tool)
 	}
 	step4Encoded, err := json.Marshal(step4)
@@ -174,7 +188,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 181 || snapshot.Hash != "sha256:15a0838e5f38060248e5e5a15ae43a6d176d909a5c1ac266e71ce1de6c7b7500" {
+	if snapshot.ToolCount != 181 || snapshot.Hash != "sha256:11cbf91295c00419f70429ce82eeb5722b09d575faaa2010846b43de9237d6d6" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

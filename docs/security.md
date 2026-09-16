@@ -378,6 +378,11 @@ a writer checkout. Expired leases must reclaim the same worktree with a strictly
 fence before work resumes; stale claims, completion and cleanup fail closed. Terminal
 cleanup requires an exact fence and a clean tree, preserves each worker branch, and
 never guesses how commits should be integrated.
+Managed model responses also cross a completion gate before persistence and again at
+the loopback adapter. `active` requires a real offered tool call, `blocked` requires an
+explicit failure/cancellation, and `complete` requires a non-truncated stop response
+that does not declare pending work. Rejection leaves the durable turn unconsumed. This
+does not extend MCP authority into a direct client response that makes no tool call.
 Model-runtime completion is not semantic acceptance. Task status exposes these as
 separate states and revalidates only bounded Git facts from the exact managed worktree.
 No source path or diff is returned. Missing Edge connectivity, an unknown runtime,

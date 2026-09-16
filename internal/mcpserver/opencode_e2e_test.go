@@ -479,6 +479,7 @@ func controlOpenCode(ctx context.Context, t *testing.T, server *Server, meter *e
 			"turn_id":           string(offer.TurnID),
 			"expected_sequence": offer.Sequence,
 			"request_digest":    offer.RequestDigest,
+			"task_state":        scriptedTaskState(response),
 			"response":          response,
 		})
 		lastResponded = time.Now()
@@ -584,6 +585,13 @@ func scriptedResponse(sequence uint64, payload map[string]any, repo string) (map
 	default:
 		return nil, fmt.Errorf("unexpected sequence %d", sequence)
 	}
+}
+
+func scriptedTaskState(response map[string]any) string {
+	if response["finish_reason"] == "tool_calls" {
+		return modelturn.TaskStateActive
+	}
+	return modelturn.TaskStateComplete
 }
 
 func nextTurn(ctx context.Context, t *testing.T, server *Server, meter *e2eMeter, runtimeID string, afterSequence uint64, processDone <-chan struct{}, processErr *error) (modelturn.Offer, error) {

@@ -17,6 +17,15 @@ trap cleanup EXIT HUP INT TERM
 
 mkdir -p "$fixture/go" "$fixture/rust/src" "$fixture/node" "$fixture/python" "$fixture/git"
 
+cat >"$fixture/zlib-smoke.c" <<'EOF'
+#include <string.h>
+#include <zlib.h>
+
+int main(void) {
+    return strcmp(zlibVersion(), "1.3.2.1-motley") == 0 ? 0 : 1;
+}
+EOF
+
 cat >"$fixture/go/go.mod" <<'EOF'
 module example.test/sandbox-smoke
 
@@ -78,6 +87,9 @@ if false; then
   exit 1
 fi
 git --version
+test "$(cat /usr/share/aeontra/security/zlib-gzwrite-fix)" = 4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7
+cc /workspace/zlib-smoke.c -lz -o /tmp/zlib-smoke
+/tmp/zlib-smoke
 (cd /workspace/git &&
   git init --quiet &&
   git config user.name "Aeontra CI" &&

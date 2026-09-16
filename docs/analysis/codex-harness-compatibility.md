@@ -9,6 +9,12 @@ Official documentation posture refreshed: 2026-08-14
 MCP Devbox can evaluate stock Codex without forking Codex. It remains an optional local
 execution harness. Host acceptance uses a credential-free scripted provider;
 production model turns reach the harness only through an active authorized MCP client.
+
+`model_turn_respond` also carries a server-validated task state. An active response
+must contain an offered tool call, a blocked response must fail explicitly, and a
+complete response cannot declare an action it still intends to run. This is a relay
+completion gate; it does not claim control over a direct client response that never
+calls the relay.
 The supported integration seam is a private loopback OpenAI-compatible Responses
 provider, not browser automation and not reuse of a ChatGPT browser token.
 
