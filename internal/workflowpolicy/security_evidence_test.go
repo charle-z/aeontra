@@ -238,7 +238,7 @@ func TestSandboxWorkcellZlibVEXIsNarrowAndFixed(t *testing.T) {
 		t.Fatalf("statements = %d, want 2", len(document.Statements))
 	}
 	wantVulnerabilities := map[string]bool{
-		"CVE-2026-85091":       true,
+		"CVE-2026-85091":      true,
 		"GHSA-g5fp-32jq-cfw2": true,
 	}
 	wantProducts := map[string]bool{
