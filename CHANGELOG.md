@@ -6,6 +6,9 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Keep managed multi-step model turns active until a tool call, explicit terminal
+  failure, or completed response satisfies the runtime completion contract; reject
+  progress text that announces unexecuted follow-up work as a final response.
 - Retain only the current and previous trusted Linux Edge bundles after a successful
   update so obsolete local releases do not accumulate.
 - Preserve terminal timestamps in native Windows process listings so reconciled stopped
