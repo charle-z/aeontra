@@ -9,6 +9,8 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 - Keep managed multi-step model turns active until a tool call, explicit terminal
   failure, or completed response satisfies the runtime completion contract; reject
   progress text that announces unexecuted follow-up work as a final response.
+- Preserve that completion gate for clients with cached pre-`task_state` tool schemas
+  by inferring the state from `finish_reason` and applying the same validation.
 - Retain only the current and previous trusted Linux Edge bundles after a successful
   update so obsolete local releases do not accumulate.
 - Preserve terminal timestamps in native Windows process listings so reconciled stopped

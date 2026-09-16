@@ -469,6 +469,8 @@ The managed model-turn completion gate has a deterministic multi-step regression
 - the corrected active response can reuse the same exact turn identity;
 - only the final `complete`/`stop` response is accepted as terminal;
 - mismatched task states and truncated responses fail closed;
+- cached legacy clients that omit `task_state` receive the same inferred-state and
+  pending-action validation;
 - the stock Codex loopback adapter independently rejects a persisted premature stop.
 
 This tests the managed relay boundary. A direct client response that does not invoke

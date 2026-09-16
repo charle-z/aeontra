@@ -52,6 +52,23 @@ func TestModelTurnToolsFailClosedWithoutStore(t *testing.T) {
 	}
 }
 
+func TestModelTurnRespondSchemaKeepsTaskStateOptionalForCachedClients(t *testing.T) {
+	schema := modelTurnRespondSchema()
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok || properties["task_state"] == nil {
+		t.Fatalf("task_state property missing: %#v", schema)
+	}
+	required, ok := schema["required"].([]string)
+	if !ok {
+		t.Fatalf("required=%#v", schema["required"])
+	}
+	for _, name := range required {
+		if name == "task_state" {
+			t.Fatalf("task_state must remain optional for cached clients: %#v", required)
+		}
+	}
+}
+
 func TestModelTurnToolsRunBoundedPullWorkflow(t *testing.T) {
 	server, store := modelTurnServer(t)
 	start := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"model_runtime_start","arguments":{}}}`))
@@ -219,7 +236,6 @@ func TestModelTurnRespondRejectsTaskStateMismatchAndTruncation(t *testing.T) {
 		want      string
 	}{
 		{name: "active without tool", taskState: "active", response: boundedModelResponse{Text: "Still working.", FinishReason: "stop"}, want: "task_state active requires tool_calls"},
-		{name: "missing task state", response: boundedModelResponse{Text: "Done.", FinishReason: "stop"}, want: "task_state is required"},
 		{name: "complete with tool", taskState: "complete", response: boundedModelResponse{FinishReason: "tool_calls", ToolCalls: []modelToolCall{{CallID: "call-a", ToolID: "tool-a", Arguments: json.RawMessage(`{}`)}}}, want: "task_state complete requires stop"},
 		{name: "blocked without failure", taskState: "blocked", response: boundedModelResponse{Text: "Need operator input.", FinishReason: "stop"}, want: "task_state blocked requires error or cancelled"},
 		{name: "length is incomplete", taskState: "active", response: boundedModelResponse{Text: "truncated", FinishReason: "length"}, want: "truncated model response cannot complete the turn"},
@@ -249,18 +265,64 @@ func TestModelTurnRespondRejectsTaskStateMismatchAndTruncation(t *testing.T) {
 	}
 }
 
+func TestModelTurnRespondInfersLegacyCompletionState(t *testing.T) {
+	server, store := modelTurnServer(t)
+	runtime, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prematureTurn, err := store.CreateTurn(context.Background(), modelturn.ModelRequest{
+		RuntimeID: runtime.RuntimeID,
+		Sequence:  1,
+		Payload:   json.RawMessage(`{"messages":[]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	premature := modelTurnRespondResult(t, server, runtime.RuntimeID, prematureTurn, "", boundedModelResponse{
+		Text: "The setup is ready. Now I will read README.md.", FinishReason: "stop",
+	})
+	if !premature.IsError || len(premature.Content) != 1 || !strings.Contains(premature.Content[0].Text, "response declares pending work") {
+		t.Fatalf("premature legacy response=%+v", premature)
+	}
+	record, err := store.Get(context.Background(), prematureTurn.ID)
+	if err != nil || record.Status != modelturn.StatusAwaitingModel {
+		t.Fatalf("premature turn status=%s err=%v", record.Status, err)
+	}
+
+	completeTurn, err := store.CreateTurn(context.Background(), modelturn.ModelRequest{
+		RuntimeID: runtime.RuntimeID,
+		Sequence:  2,
+		Payload:   json.RawMessage(`{"messages":[]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := modelTurnRespondResult(t, server, runtime.RuntimeID, completeTurn, "", boundedModelResponse{
+		Text: "README.md was inspected and the requested heading was reported.", FinishReason: "stop",
+	})
+	if complete.IsError || len(complete.Content) != 1 || !strings.Contains(complete.Content[0].Text, `"status":"responded"`) {
+		t.Fatalf("complete legacy response=%+v", complete)
+	}
+}
+
 func modelTurnRespondResult(t *testing.T, server *Server, runtimeID string, turn modelturn.Turn, taskState string, response boundedModelResponse) toolResult {
 	t.Helper()
+	arguments := map[string]any{
+		"runtime_id": runtimeID, "turn_id": turn.ID, "expected_sequence": turn.Sequence,
+		"request_digest": turn.RequestDigest, "response": response,
+	}
+	if taskState != "" {
+		arguments["task_state"] = taskState
+	}
 	request, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      91,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name": "model_turn_respond",
-			"arguments": map[string]any{
-				"runtime_id": runtimeID, "turn_id": turn.ID, "expected_sequence": turn.Sequence,
-				"request_digest": turn.RequestDigest, "task_state": taskState, "response": response,
-			},
+			"name":      "model_turn_respond",
+			"arguments": arguments,
 		},
 	})
 	if err != nil {
