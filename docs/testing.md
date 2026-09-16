@@ -15,6 +15,34 @@ go build ./...
 These commands are the per-step baseline. They do not replace race, fuzz, coverage,
 or integration gates.
 
+## Authenticated MCP routing smoke
+
+After deployment, validate the actual authenticated transport from the exact expected
+source commit:
+
+```text
+MCP_DEVBOX_TOKEN="..." go run ./cmd/mcp-routing-smoke \
+  --url https://mcp.example.com \
+  --expected-commit "$(git rev-parse HEAD)"
+```
+
+This is distinct from `cmd/mcp-catalog-smoke`: it initializes an MCP session,
+materializes the complete tool catalog, and invokes `system_runtime_info` and
+`sandbox_status`. A transport-level HTTP `404` permits one fresh session; JSON-RPC and
+tool errors are not retried. The command does not print the bearer, session identifier,
+tool output, repository path, or command output.
+
+For an explicitly authorized repository, `--sandbox-cwd` adds read-only `pwd`,
+`git rev-parse HEAD`, and before/after `git status --porcelain=v1` probes. The smoke
+fails if the worktree state changes.
+
+Focused regressions:
+
+```text
+go test ./cmd/mcp-routing-smoke ./internal/mcpserver \
+  -run 'TestRoutingSmoke|TestConnectorSessionInterruption' -count=1
+```
+
 ## Direct background-process candidate
 
 The Hito 3A focused matrix runs on Linux because the launcher and PID/start-time

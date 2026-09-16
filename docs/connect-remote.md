@@ -102,11 +102,11 @@ Expected:
 - later `GET`, `POST`, or `DELETE /mcp` requests must send that session header;
 - query-string credentials return `401`, even when correct.
 
-HTTP sessions exist only in the current server process and expire after bounded idle
-use. A normal container replacement intentionally invalidates the old session. Keep the
-same URL and OAuth credential, call `initialize` again, and continue with the fresh
-session ID. Do not persist the session header as a credential or attempt authority
-fallback when the server returns `404` for an old session.
+HTTP sessions expire after bounded idle use. With the configured durable session store,
+a normal replacement preserves the logical session and its principal binding. A revoked,
+expired, unknown, or non-durable session returns `404`; keep the same URL and OAuth
+credential, call `initialize` once, and continue with the fresh session ID. Do not
+persist the session header as a credential or attempt authority fallback.
 
 ## Public HTTPS and OAuth
 
@@ -226,6 +226,7 @@ recovery header, then call a normal read-only tool and confirm redaction.
 | Connector cannot send a bearer header | Configure OAuth on the clean URL. |
 | `/healthz` works but connector is stale | Compare `/version` or `system_runtime_info` with the expected exact commit, then refresh the client catalog. |
 | No tools appear | Verify the URL, OAuth completion, reverse-proxy routing to internal port `8765`, and MCP initialization. |
+| Some tools appear or the app namespace is disabled while `/version` is current | Run `cmd/mcp-routing-smoke`. If it lists and calls the complete catalog, reselect/reconnect the app; do not redeploy a healthy backend. |
 | Tool reports outside the jail | The selected path is not under a configured root. |
 | Secret read returns `access-required` | Expected. Only the local human grant flow can approve it. |
 | Secret appears unredacted | Treat it as a security vulnerability and follow `../SECURITY.md`. |

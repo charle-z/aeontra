@@ -30,12 +30,18 @@ Never use a later healthy snapshot as proof that the server was healthy at the i
 2. Query that exact deployment with `platform_deployment_status`.
 3. Query `system_runtime_info` and the application status.
 4. Run `cmd/mcp-catalog-smoke` against production with the commit that should be live.
-5. Correlate the server-generated request id with content-free observability events. Use
+5. Run the authenticated `cmd/mcp-routing-smoke` from the exact expected source. This
+   verifies a fresh MCP session, complete `tools/list`, and real calls to
+   `system_runtime_info` and `sandbox_status`. Add `--sandbox-cwd` only for an authorized
+   disposable or read-only probe repository.
+6. Correlate the server-generated request id with content-free observability events. Use
    only normalized fields; do not copy request bodies, params, paths, targets, headers,
    tokens, identities, or raw errors into incident records.
-6. If a deployment is active, retry the same deployment status after a bounded interval. Do not create a deploy loop.
-7. Only consider another deployment after the prior deployment is terminal and the served commit, health, and Coolify state prove it is necessary.
-8. If the client shows fewer tools than `system_runtime_info`, treat it as a client catalog/cache discrepancy; do not redeploy solely for that symptom.
+7. If a deployment is active, retry the same deployment status after a bounded interval. Do not create a deploy loop.
+8. Only consider another deployment after the prior deployment is terminal and the served commit, health, and Coolify state prove it is necessary.
+9. If the authenticated routing smoke materializes and invokes the complete catalog but
+   the client shows fewer tools or a disabled namespace, treat it as a client
+   presentation/binding discrepancy; do not redeploy solely for that symptom.
 
 ## Classification matrix
 
@@ -122,9 +128,11 @@ Classify as client/transport only when server-side evidence stays stable across 
 - the UI loses, duplicates, reorders, or stops displaying messages/tools anyway.
 
 This category includes stale or incomplete client tool catalogs when `system_runtime_info`
-still reports the complete expected catalog. The server cannot prove the exact internal
-cause inside the ChatGPT client; record it as client/transport presentation evidence,
-not as an asserted OpenAI root cause.
+and the authenticated routing smoke both report the complete expected catalog. A
+successful `/version` check alone is insufficient because it does not exercise MCP
+discovery or invocation. The server cannot prove the exact internal cause inside the
+ChatGPT client; record it as client/transport presentation evidence, not as an asserted
+OpenAI root cause.
 
 When a Stable MCP Front Door is deployed, capture `/front-door/healthz`,
 `/front-door/readyz`, `/front-door/version` and the proxied backend `/version`. A healthy
@@ -148,7 +156,14 @@ client-presentation classification; it does not identify an internal OpenAI caus
 - **VPS saturation:** stop duplicate builds, free safe unused cache only with operator approval, resize/tune resources if evidence justifies it, and retry once after recovery.
 - **Tool timeout:** reduce the bounded workload or fix the tool/profile timeout deliberately; do not introduce a free shell or unbounded timeout.
 - **Coolify failure:** fix the causal build/configuration error, verify the old production commit, then create one reviewed deployment plan.
-- **Client/transport:** reconnect/refresh the client and compare its catalog with `system_runtime_info`; do not delete OAuth configuration or redeploy a healthy server as the first response.
+- **Client/transport:** reselect or reconnect the configured app/connector, then compare
+  its visible tools with the authenticated routing smoke. Do not delete OAuth
+  configuration or redeploy a healthy server as the first response.
+
+Do not retry a generic `Resource not found` or JSON-RPC application error as if it were
+a stale MCP session. Session recovery is justified only by the transport returning HTTP
+`404` for the bound `Mcp-Session-Id`; initialize one fresh session and retry the intended
+request once. Other errors keep their original classification.
 
 ## Current verified example — Step 90
 
