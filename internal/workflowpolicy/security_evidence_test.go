@@ -196,6 +196,7 @@ func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
 		"/usr/share/aeontra/security/zlib-gzwrite-fix",
 		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
 		"zlibVersion()",
+		"1.3.2.1-motley",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("sandbox workcell smoke does not contain %q", required)

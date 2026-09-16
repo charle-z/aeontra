@@ -22,7 +22,7 @@ cat >"$fixture/zlib-smoke.c" <<'EOF'
 #include <zlib.h>
 
 int main(void) {
-    return strcmp(zlibVersion(), "1.3.2") == 0 ? 0 : 1;
+    return strcmp(zlibVersion(), "1.3.2.1-motley") == 0 ? 0 : 1;
 }
 EOF
 
