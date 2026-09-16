@@ -123,7 +123,7 @@ actions authorized by the local contract; raw credential material remains local.
 
 ## Model-turn completion gate
 
-Every `model_turn_respond` call declares one closed `task_state`:
+Every current `model_turn_respond` caller should declare one closed `task_state`:
 
 - `active` is valid only with `finish_reason=tool_calls` and at least one tool id
   offered by the current request. Progress text may accompany the call, but cannot
@@ -135,6 +135,10 @@ Every `model_turn_respond` call declares one closed `task_state`:
 
 `finish_reason=length` is incomplete and is rejected. A rejected response does not
 consume the durable turn, so the active MCP client can submit a corrected response.
+For compatibility with clients that cached the earlier tool schema, an omitted
+`task_state` is inferred from `finish_reason`: `tool_calls` maps to `active`, `stop`
+maps to `complete`, and `error`/`cancelled` map to `blocked`. The inferred state crosses
+the same validation gate; omission does not bypass pending-action or tool-id checks.
 The same validation runs again in the stock Codex loopback adapter before a durable
 response becomes a Responses API event. `task_state` is MCP admission metadata and is
 not added to the strict durable provider payload, preserving compatibility with signed

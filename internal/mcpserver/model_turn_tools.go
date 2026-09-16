@@ -90,7 +90,7 @@ func (s *Server) addModelTurnTools() {
 
 	s.addDirectTool(toolDef{
 		Name:        "model_turn_respond",
-		Description: "Submit one bounded response after identity validation. task_state active must include an offered tool call, blocked must use error or cancelled, and complete must use stop without declaring pending work.",
+		Description: "Submit one bounded response after identity validation. Explicit task_state is preferred; legacy clients may omit it and the server infers it from finish_reason. Active must include an offered tool call, blocked must use error or cancelled, and complete must use stop without declaring pending work.",
 		InputSchema: modelTurnRespondSchema(),
 		Version:     "2",
 		Annotations: writeHints,
@@ -157,7 +157,7 @@ func modelTurnRespondSchema() map[string]any {
 		"request_digest":    stringSchema("canonical request SHA-256 digest", `^sha256:[a-f0-9]{64}$`, 71),
 		"task_state":        map[string]any{"type": "string", "enum": []string{modelturn.TaskStateActive, modelturn.TaskStateBlocked, modelturn.TaskStateComplete}},
 		"response":          response,
-	}, []string{"runtime_id", "turn_id", "expected_sequence", "request_digest", "task_state", "response"})
+	}, []string{"runtime_id", "turn_id", "expected_sequence", "request_digest", "response"})
 }
 
 type runtimeIDParams struct {
@@ -321,7 +321,11 @@ func (s *Server) handleModelTurnRespond(arguments json.RawMessage) (string, erro
 	default:
 		return "", modelturn.ErrInvalidRequest
 	}
-	if err := modelturn.ValidateCompletionState(params.TaskState, params.Response.FinishReason, params.Response.Text, len(params.Response.ToolCalls)); err != nil {
+	taskState := params.TaskState
+	if taskState == "" {
+		taskState = modelturn.CompletionStateForFinishReason(params.Response.FinishReason)
+	}
+	if err := modelturn.ValidateCompletionState(taskState, params.Response.FinishReason, params.Response.Text, len(params.Response.ToolCalls)); err != nil {
 		return "", err
 	}
 	used := make([]string, 0, len(params.Response.ToolCalls))
