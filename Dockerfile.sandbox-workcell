@@ -17,6 +17,23 @@ RUN apk add --no-cache \
       python-3.14=3.14.7-r6 \
       rust-1.96=1.96.1-r0 \
       zlib=1.3.2-r7
+RUN zlib_commit=4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7 \
+ && zlib_archive=/tmp/zlib-${zlib_commit}.tar.gz \
+ && python3 -c 'import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' \
+      "https://codeload.github.com/madler/zlib/tar.gz/${zlib_commit}" "$zlib_archive" \
+ && printf '%s  %s\n' b4d20a2c640eb3bc3fba2d41931076ff6523826defffcaf45292991520e2623a "$zlib_archive" \
+      | busybox sha256sum -c - \
+ && busybox tar -xzf "$zlib_archive" -C /tmp \
+ && cd "/tmp/zlib-${zlib_commit}" \
+ && ./configure --prefix=/usr \
+ && make -j1 \
+ && make test \
+ && make install \
+ && cc -I/usr/include test/gznonblock.c -L/usr/lib -Wl,-rpath,/usr/lib -lz -o /tmp/zlib-gznonblock \
+ && /tmp/zlib-gznonblock \
+ && mkdir -p /usr/share/aeontra/security \
+ && printf '%s\n' "$zlib_commit" > /usr/share/aeontra/security/zlib-gzwrite-fix \
+ && rm -rf "$zlib_archive" "/tmp/zlib-${zlib_commit}" /tmp/zlib-gznonblock
 RUN brace_archive=/tmp/brace-expansion-5.0.9.tgz \
  && ip_archive=/tmp/ip-address-10.3.1.tgz \
  && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.9 \

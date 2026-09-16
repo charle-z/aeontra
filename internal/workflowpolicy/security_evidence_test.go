@@ -1,6 +1,7 @@
 package workflowpolicy
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -65,6 +66,7 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"output-file: sandbox-workcell-sbom.spdx.json",
 		"image: mcp-sandbox-workcell:ci",
 		"output-file: sandbox-workcell-grype.json",
+		"vex: security/vex/sandbox-workcell-zlib.openvex.json",
 		"go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell",
 		"anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610",
 		"output-file: sbom.spdx.json",
@@ -155,6 +157,11 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"python-3.14=3.14.7-r6",
 		"rust-1.96=1.96.1-r0",
 		"zlib=1.3.2-r7",
+		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
+		"b4d20a2c640eb3bc3fba2d41931076ff6523826defffcaf45292991520e2623a",
+		"urllib.request.urlretrieve",
+		"test/gznonblock.c",
+		"/usr/share/aeontra/security/zlib-gzwrite-fix",
 		"brace-expansion-5.0.9.tgz",
 		"ip-address-10.3.1.tgz",
 		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.9",
@@ -176,6 +183,100 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("Dockerfile.sandbox-workcell contains unreviewed base or package mutation %q", forbidden)
 		}
+	}
+}
+
+func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
+	content, err := os.ReadFile("../../scripts/test-sandbox-workcell-toolchains.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		"/usr/share/aeontra/security/zlib-gzwrite-fix",
+		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
+		"zlibVersion()",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("sandbox workcell smoke does not contain %q", required)
+		}
+	}
+}
+
+func TestSandboxWorkcellZlibVEXIsNarrowAndFixed(t *testing.T) {
+	content, err := os.ReadFile("../../security/vex/sandbox-workcell-zlib.openvex.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Context    string `json:"@context"`
+		Author     string `json:"author"`
+		Statements []struct {
+			Vulnerability struct {
+				Name string `json:"name"`
+			} `json:"vulnerability"`
+			Products []struct {
+				ID            string `json:"@id"`
+				Subcomponents []struct {
+					ID string `json:"@id"`
+				} `json:"subcomponents"`
+			} `json:"products"`
+			Status      string `json:"status"`
+			StatusNotes string `json:"status_notes"`
+		} `json:"statements"`
+	}
+	if err := json.Unmarshal(content, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.Context != "https://openvex.dev/ns/v0.2.0" {
+		t.Fatalf("context = %q", document.Context)
+	}
+	if document.Author != "Aeontra maintainers" {
+		t.Fatalf("author = %q", document.Author)
+	}
+	if len(document.Statements) != 2 {
+		t.Fatalf("statements = %d, want 2", len(document.Statements))
+	}
+	wantVulnerabilities := map[string]bool{
+		"CVE-2026-85091":       true,
+		"GHSA-g5fp-32jq-cfw2": true,
+	}
+	wantProducts := map[string]bool{
+		"mcp-sandbox-workcell:ci":           true,
+		"localhost/mcp-sandbox-workcell:ci": true,
+	}
+	const wantComponent = "pkg:apk/wolfi/zlib@1.3.2-r7?arch=x86_64&distro=wolfi-20230201"
+	const wantPatch = "4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7"
+	for _, statement := range document.Statements {
+		if !wantVulnerabilities[statement.Vulnerability.Name] {
+			t.Errorf("unexpected vulnerability %q", statement.Vulnerability.Name)
+		}
+		delete(wantVulnerabilities, statement.Vulnerability.Name)
+		if statement.Status != "fixed" {
+			t.Errorf("%s status = %q", statement.Vulnerability.Name, statement.Status)
+		}
+		if !strings.Contains(statement.StatusNotes, wantPatch) {
+			t.Errorf("%s status notes do not identify patch", statement.Vulnerability.Name)
+		}
+		if len(statement.Products) != len(wantProducts) {
+			t.Errorf("%s products = %d, want %d", statement.Vulnerability.Name, len(statement.Products), len(wantProducts))
+		}
+		seenProducts := make(map[string]bool, len(statement.Products))
+		for _, product := range statement.Products {
+			if !wantProducts[product.ID] {
+				t.Errorf("%s has unexpected product %q", statement.Vulnerability.Name, product.ID)
+			}
+			seenProducts[product.ID] = true
+			if len(product.Subcomponents) != 1 || product.Subcomponents[0].ID != wantComponent {
+				t.Errorf("%s product %q is not limited to exact zlib purl", statement.Vulnerability.Name, product.ID)
+			}
+		}
+		if len(seenProducts) != len(wantProducts) {
+			t.Errorf("%s does not cover both normalized CI image tags", statement.Vulnerability.Name)
+		}
+	}
+	if len(wantVulnerabilities) != 0 {
+		t.Fatalf("missing vulnerabilities: %v", wantVulnerabilities)
 	}
 }
 
