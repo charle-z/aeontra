@@ -17,10 +17,18 @@ import (
 )
 
 const (
-	edgeStorageMinFreeBytesEnv = "MCP_DEVBOX_EDGE_STORAGE_MIN_FREE_BYTES"
-	maxStorageScanEntries      = 100000
-	maxStorageWorkspaceRecords = 4096
+	edgeStorageMinFreeBytesEnv    = "MCP_DEVBOX_EDGE_STORAGE_MIN_FREE_BYTES"
+	edgeStorageHighFreeBytesEnv   = "MCP_DEVBOX_EDGE_STORAGE_HIGH_FREE_BYTES"
+	edgeStorageVFSMinFreeBytesEnv = "MCP_DEVBOX_EDGE_STORAGE_VFS_MIN_FREE_BYTES"
+	maxStorageScanEntries         = 100000
+	maxStorageWorkspaceRecords    = 4096
 )
+
+type storageWatermarks struct {
+	Critical uint64
+	High     uint64
+	VFS      uint64
+}
 
 type storageTreeMeasurement struct {
 	Bytes    uint64
@@ -41,7 +49,7 @@ func collectEdgeStorageStatus(ctx context.Context, stateRoot string) (edge.Opera
 	if !ok || freeBytes > totalBytes {
 		return edge.OperationResult{}, "storage_status_unavailable"
 	}
-	reservedMinBytes, code := configuredStorageReserve()
+	watermarks, code := configuredStorageWatermarks()
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -121,8 +129,10 @@ func collectEdgeStorageStatus(ctx context.Context, stateRoot string) (edge.Opera
 	return edge.OperationResult{
 		StorageTotalBytes:           totalBytes,
 		StorageFreeBytes:            freeBytes,
-		StorageReservedMinBytes:     reservedMinBytes,
-		StoragePressureState:        storagePressureState(freeBytes, reservedMinBytes),
+		StorageReservedMinBytes:     watermarks.Critical,
+		StorageHighFreeBytes:        watermarks.High,
+		StorageVFSMinFreeBytes:      watermarks.VFS,
+		StoragePressureState:        storagePressureState(freeBytes, watermarks.Critical, watermarks.High),
 		StorageDriver:               driver,
 		StorageDriverPosture:        posture,
 		StorageManagedBytes:         managedBytes,
@@ -250,26 +260,134 @@ func storageAllocatedBytes(info os.FileInfo) uint64 {
 	return 0
 }
 
-func configuredStorageReserve() (uint64, string) {
-	raw := strings.TrimSpace(os.Getenv(edgeStorageMinFreeBytesEnv))
+func configuredStorageWatermarks() (storageWatermarks, string) {
+	critical, criticalSet, ok := parseOptionalPositiveBytes(edgeStorageMinFreeBytesEnv)
+	if !ok {
+		return storageWatermarks{}, "storage_status_config_invalid"
+	}
+	high, highSet, ok := parseOptionalPositiveBytes(edgeStorageHighFreeBytesEnv)
+	if !ok {
+		return storageWatermarks{}, "storage_status_config_invalid"
+	}
+	vfs, vfsSet, ok := parseOptionalPositiveBytes(edgeStorageVFSMinFreeBytesEnv)
+	if !ok {
+		return storageWatermarks{}, "storage_status_config_invalid"
+	}
+	if !criticalSet && (highSet || vfsSet) {
+		return storageWatermarks{}, "storage_status_config_invalid"
+	}
+	if highSet && high <= critical {
+		return storageWatermarks{}, "storage_status_config_invalid"
+	}
+	if vfsSet && vfs < critical {
+		return storageWatermarks{}, "storage_status_config_invalid"
+	}
+	return storageWatermarks{Critical: critical, High: high, VFS: vfs}, ""
+}
+
+func parseOptionalPositiveBytes(name string) (uint64, bool, bool) {
+	raw := strings.TrimSpace(os.Getenv(name))
 	if raw == "" {
-		return 0, ""
+		return 0, false, true
 	}
 	value, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil || value == 0 {
-		return 0, "storage_status_config_invalid"
+		return 0, true, false
 	}
-	return value, ""
+	return value, true, true
 }
 
-func storagePressureState(freeBytes, reservedMinBytes uint64) string {
-	if reservedMinBytes == 0 {
+func storagePressureState(freeBytes, criticalBytes, highBytes uint64) string {
+	if criticalBytes == 0 {
 		return "unconfigured"
 	}
-	if freeBytes < reservedMinBytes {
+	if freeBytes < criticalBytes {
 		return "critical"
 	}
+	if highBytes != 0 && freeBytes < highBytes {
+		return "high"
+	}
 	return "normal"
+}
+
+func storageAdmissionDecision(kind edge.OperationKind, freeBytes uint64, watermarks storageWatermarks, driver string) string {
+	if !storageAdmissionRequired(kind) {
+		return ""
+	}
+	if watermarks.Critical != 0 && freeBytes < watermarks.Critical {
+		return "storage_pressure_critical"
+	}
+	if watermarks.VFS != 0 && driver == "vfs" && storageAdmissionUsesVFSReserve(kind) && freeBytes < watermarks.VFS {
+		return "storage_vfs_pressure_critical"
+	}
+	return ""
+}
+
+func storageAdmissionRequired(kind edge.OperationKind) bool {
+	switch kind {
+	case edge.OperationProjectWorktreeCreate,
+		edge.OperationProjectToolboxCreate,
+		edge.OperationProjectToolboxInstall,
+		edge.OperationProjectToolboxServiceStart,
+		edge.OperationProjectBrowserCreate,
+		edge.OperationProjectBrowserRun,
+		edge.OperationProjectBrowserHarnessStart,
+		edge.OperationProjectProcessStart:
+		return true
+	default:
+		return false
+	}
+}
+
+func storageAdmissionUsesVFSReserve(kind edge.OperationKind) bool {
+	switch kind {
+	case edge.OperationProjectToolboxCreate,
+		edge.OperationProjectToolboxInstall,
+		edge.OperationProjectToolboxServiceStart,
+		edge.OperationProjectBrowserHarnessStart:
+		return true
+	default:
+		return false
+	}
+}
+
+func enforceStorageAdmission(ctx context.Context, stateRoot string, kind edge.OperationKind) string {
+	if !storageAdmissionRequired(kind) {
+		return ""
+	}
+	watermarks, code := configuredStorageWatermarks()
+	if code != "" {
+		return "storage_admission_config_invalid"
+	}
+	if watermarks.Critical == 0 {
+		return ""
+	}
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(stateRoot, &stat); err != nil || stat.Bsize <= 0 {
+		return "storage_admission_unavailable"
+	}
+	freeBytes, ok := storageBlockBytes(stat.Bavail, uint64(stat.Bsize))
+	if !ok {
+		return "storage_admission_unavailable"
+	}
+	driver := "unknown"
+	if watermarks.VFS != 0 && storageAdmissionUsesVFSReserve(kind) {
+		endpoint, discoverErr := edgeclient.DiscoverRootlessContainerEndpoint(os.Geteuid(), "")
+		if discoverErr != nil || endpoint == nil {
+			return "storage_driver_unknown"
+		}
+		driverCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		snapshot, inspectErr := edgeclient.InspectRootlessStorageDriver(driverCtx, endpoint)
+		cancel()
+		if inspectErr != nil {
+			return "storage_driver_unknown"
+		}
+		driver, _ = classifyStorageDriver(snapshot.Engine, snapshot.Driver, snapshot.Options)
+		if driver == "unknown" {
+			return "storage_driver_unknown"
+		}
+	}
+	return storageAdmissionDecision(kind, freeBytes, watermarks, driver)
 }
 
 func classifyStorageDriver(engine, driver, options string) (string, string) {

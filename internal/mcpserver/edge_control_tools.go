@@ -90,6 +90,8 @@ type edgeOperationPublicView struct {
 	TotalBytes            uint64                        `json:"total_bytes,omitempty"`
 	FreeBytes             uint64                        `json:"free_bytes,omitempty"`
 	ReservedMinBytes      uint64                        `json:"reserved_min_bytes,omitempty"`
+	HighFreeBytes         uint64                        `json:"high_free_bytes,omitempty"`
+	VFSMinFreeBytes       uint64                        `json:"vfs_min_free_bytes,omitempty"`
 	PressureState         string                        `json:"pressure_state,omitempty"`
 	Driver                string                        `json:"driver,omitempty"`
 	DriverPosture         string                        `json:"driver_posture,omitempty"`
@@ -410,6 +412,8 @@ func publicEdgeOperation(op edge.Operation) edgeOperationPublicView {
 	view.TotalBytes = op.Result.StorageTotalBytes
 	view.FreeBytes = op.Result.StorageFreeBytes
 	view.ReservedMinBytes = op.Result.StorageReservedMinBytes
+	view.HighFreeBytes = op.Result.StorageHighFreeBytes
+	view.VFSMinFreeBytes = op.Result.StorageVFSMinFreeBytes
 	view.PressureState = op.Result.StoragePressureState
 	view.Driver = op.Result.StorageDriver
 	view.DriverPosture = op.Result.StorageDriverPosture

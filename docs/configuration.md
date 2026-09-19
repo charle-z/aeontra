@@ -168,11 +168,19 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   identities or file contents. A class with incomplete ownership/measurement remains
   `complete=false`; its bytes are not guessed. The current accounting slice never
   marks storage reclaimable.
-- **Free-space reserve:** `MCP_DEVBOX_EDGE_STORAGE_MIN_FREE_BYTES` optionally sets the
-  Linux Edge minimum free-space reserve as a positive integer byte count. When unset,
-  `pressure_state` is `unconfigured`; when set, free space below the reserve is
-  `critical` and otherwise `normal`. Invalid or explicit zero values fail closed
-  with `storage_status_config_invalid`. No public default reserve is implied.
+- **Storage pressure/admission:** `MCP_DEVBOX_EDGE_STORAGE_MIN_FREE_BYTES` optionally
+  sets the Linux Edge critical free-space reserve as a positive integer byte count.
+  `MCP_DEVBOX_EDGE_STORAGE_HIGH_FREE_BYTES` optionally adds a strictly larger warning
+  watermark. When unset, `pressure_state` is `unconfigured`; configured states are
+  `normal`, `high`, or `critical`. High pressure remains observational. Critical
+  pressure rejects only new worktree, toolbox create/install/service, managed-browser
+  create/run, browser-harness start, and durable-process start operations before their
+  allocation handler runs. Status, stop, close and cleanup paths remain available.
+  `MCP_DEVBOX_EDGE_STORAGE_VFS_MIN_FREE_BYTES` may configure an equal-or-stricter
+  reserve for rootless persistent toolbox/harness operations when the validated driver
+  is VFS; an unavailable/unknown driver fails closed when that policy is enabled.
+  Invalid ordering, explicit zero values, or high/VFS thresholds without the critical
+  reserve fail closed. No public watermark default is implied.
 - **Concurrency:** normal project, Git inspection, process observation and toolbox
   operations use bounded shared capacity. Signed bundle update, rollback and repair
   acquire an Edge-wide exclusive gate. The worker count is a server/Edge setting and

@@ -299,6 +299,8 @@ type OperationResult struct {
 	StorageTotalBytes                uint64                          `json:"storage_total_bytes,omitempty"`
 	StorageFreeBytes                 uint64                          `json:"storage_free_bytes,omitempty"`
 	StorageReservedMinBytes          uint64                          `json:"storage_reserved_min_bytes,omitempty"`
+	StorageHighFreeBytes             uint64                          `json:"storage_high_free_bytes,omitempty"`
+	StorageVFSMinFreeBytes           uint64                          `json:"storage_vfs_min_free_bytes,omitempty"`
 	StoragePressureState             string                          `json:"storage_pressure_state,omitempty"`
 	StorageDriver                    string                          `json:"storage_driver,omitempty"`
 	StorageDriverPosture             string                          `json:"storage_driver_posture,omitempty"`
@@ -1036,7 +1038,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 }
 
 func hasStorageStatusResult(result OperationResult) bool {
-	return result.StorageTotalBytes != 0 || result.StorageFreeBytes != 0 || result.StorageReservedMinBytes != 0 ||
+	return result.StorageTotalBytes != 0 || result.StorageFreeBytes != 0 || result.StorageReservedMinBytes != 0 || result.StorageHighFreeBytes != 0 || result.StorageVFSMinFreeBytes != 0 ||
 		result.StoragePressureState != "" || result.StorageDriver != "" || result.StorageDriverPosture != "" ||
 		result.StorageManagedBytes != 0 || result.StorageManagedBytesComplete || len(result.StorageCategories) != 0
 }
@@ -1047,11 +1049,17 @@ func validStorageStatusResult(result OperationResult) bool {
 	}
 	switch result.StoragePressureState {
 	case "unconfigured":
-		if result.StorageReservedMinBytes != 0 {
+		if result.StorageReservedMinBytes != 0 || result.StorageHighFreeBytes != 0 {
 			return false
 		}
 	case "normal":
-		if result.StorageReservedMinBytes == 0 || result.StorageFreeBytes < result.StorageReservedMinBytes {
+		if result.StorageReservedMinBytes == 0 || result.StorageFreeBytes < result.StorageReservedMinBytes ||
+			(result.StorageHighFreeBytes != 0 && result.StorageFreeBytes < result.StorageHighFreeBytes) {
+			return false
+		}
+	case "high":
+		if result.StorageReservedMinBytes == 0 || result.StorageHighFreeBytes <= result.StorageReservedMinBytes ||
+			result.StorageFreeBytes < result.StorageReservedMinBytes || result.StorageFreeBytes >= result.StorageHighFreeBytes {
 			return false
 		}
 	case "critical":
@@ -1059,6 +1067,12 @@ func validStorageStatusResult(result OperationResult) bool {
 			return false
 		}
 	default:
+		return false
+	}
+	if result.StorageHighFreeBytes != 0 && (result.StorageReservedMinBytes == 0 || result.StorageHighFreeBytes <= result.StorageReservedMinBytes) {
+		return false
+	}
+	if result.StorageVFSMinFreeBytes != 0 && (result.StorageReservedMinBytes == 0 || result.StorageVFSMinFreeBytes < result.StorageReservedMinBytes) {
 		return false
 	}
 	switch result.StorageDriver {

@@ -15,6 +15,8 @@ func TestEdgeStorageStatusToolReturnsOnlyBoundedPublicAccounting(t *testing.T) {
 			StorageTotalBytes:           4096,
 			StorageFreeBytes:            2048,
 			StorageReservedMinBytes:     1024,
+			StorageHighFreeBytes:        1536,
+			StorageVFSMinFreeBytes:      3072,
 			StoragePressureState:        "normal",
 			StorageDriver:               "vfs",
 			StorageDriverPosture:        "degraded",
@@ -44,6 +46,8 @@ func TestEdgeStorageStatusToolReturnsOnlyBoundedPublicAccounting(t *testing.T) {
 	for _, want := range []string{
 		"\"total_bytes\":4096",
 		"\"free_bytes\":2048",
+		"\"high_free_bytes\":1536",
+		"\"vfs_min_free_bytes\":3072",
 		"\"pressure_state\":\"normal\"",
 		"\"driver\":\"vfs\"",
 		"\"driver_posture\":\"degraded\"",

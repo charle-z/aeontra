@@ -126,6 +126,9 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 
 func executeControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, operation edge.Operation) (edge.OperationResult, string) {
 	var output strings.Builder
+	if code := enforceStorageAdmission(ctx, stateRoot, operation.Kind); code != "" {
+		return edge.OperationResult{}, code
+	}
 	switch operation.Kind {
 	case edge.OperationLabPrepare:
 		request := operation.Request

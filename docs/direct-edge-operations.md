@@ -47,6 +47,13 @@ reports only the validated rootless engine's driver posture, while image/layer/b
 cache/volume and persistent-toolbox byte classes stay incomplete until their ownership
 can be accounted exactly. Slice 1 reports `reclaimable_bytes=0` for every class.
 
+When storage admission is configured, the Edge checks free space immediately before
+new allocation-heavy project operations. Critical pressure returns a closed storage
+safe code before dispatching the requested creation/start/install. Existing resources
+remain observable and stoppable/cleanable during pressure. An optional VFS-specific
+reserve applies only to rootless persistent toolbox and browser-harness operations; it
+does not turn VFS storage into a GC candidate or weaken ownership checks.
+
 ## Authoritative direct-operation timing
 
 The private journal records operation creation, current lease, signed `running`, signed

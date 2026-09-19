@@ -3,10 +3,12 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
@@ -40,14 +42,20 @@ func TestMeasureStorageTreeIsBoundedAndDoesNotFollowSymlinks(t *testing.T) {
 }
 
 func TestStoragePressureAndDriverPostureAreClosed(t *testing.T) {
-	if got := storagePressureState(200, 0); got != "unconfigured" {
+	if got := storagePressureState(200, 0, 0); got != "unconfigured" {
 		t.Fatalf("unconfigured=%q", got)
 	}
-	if got := storagePressureState(200, 100); got != "normal" {
+	if got := storagePressureState(200, 100, 0); got != "normal" {
 		t.Fatalf("normal=%q", got)
 	}
-	if got := storagePressureState(99, 100); got != "critical" {
+	if got := storagePressureState(99, 100, 0); got != "critical" {
 		t.Fatalf("critical=%q", got)
+	}
+	if got := storagePressureState(150, 100, 200); got != "high" {
+		t.Fatalf("high=%q", got)
+	}
+	if got := storagePressureState(250, 100, 200); got != "normal" {
+		t.Fatalf("high-normal=%q", got)
 	}
 	tests := []struct {
 		engine, driver, options string
@@ -120,17 +128,95 @@ func TestStorageWorkspacePathAllowedRejectsOutsideOrRoot(t *testing.T) {
 
 func TestConfiguredStorageReserveFailsClosed(t *testing.T) {
 	t.Setenv(edgeStorageMinFreeBytesEnv, "")
-	if reserve, code := configuredStorageReserve(); reserve != 0 || code != "" {
-		t.Fatalf("unset reserve=%d code=%q", reserve, code)
+	t.Setenv(edgeStorageHighFreeBytesEnv, "")
+	t.Setenv(edgeStorageVFSMinFreeBytesEnv, "")
+	if watermarks, code := configuredStorageWatermarks(); watermarks != (storageWatermarks{}) || code != "" {
+		t.Fatalf("unset watermarks=%+v code=%q", watermarks, code)
 	}
 	t.Setenv(edgeStorageMinFreeBytesEnv, "1073741824")
-	if reserve, code := configuredStorageReserve(); reserve != 1073741824 || code != "" {
-		t.Fatalf("configured reserve=%d code=%q", reserve, code)
+	t.Setenv(edgeStorageHighFreeBytesEnv, "2147483648")
+	t.Setenv(edgeStorageVFSMinFreeBytesEnv, "3221225472")
+	if watermarks, code := configuredStorageWatermarks(); watermarks.Critical != 1073741824 || watermarks.High != 2147483648 || watermarks.VFS != 3221225472 || code != "" {
+		t.Fatalf("configured watermarks=%+v code=%q", watermarks, code)
 	}
 	for _, value := range []string{"0", "-1", "not-a-number"} {
 		t.Setenv(edgeStorageMinFreeBytesEnv, value)
-		if reserve, code := configuredStorageReserve(); reserve != 0 || code != "storage_status_config_invalid" {
-			t.Fatalf("invalid %q reserve=%d code=%q", value, reserve, code)
+		t.Setenv(edgeStorageHighFreeBytesEnv, "")
+		t.Setenv(edgeStorageVFSMinFreeBytesEnv, "")
+		if watermarks, code := configuredStorageWatermarks(); watermarks != (storageWatermarks{}) || code != "storage_status_config_invalid" {
+			t.Fatalf("invalid %q watermarks=%+v code=%q", value, watermarks, code)
 		}
+	}
+	t.Setenv(edgeStorageMinFreeBytesEnv, "100")
+	t.Setenv(edgeStorageHighFreeBytesEnv, "100")
+	if _, code := configuredStorageWatermarks(); code != "storage_status_config_invalid" {
+		t.Fatalf("high<=critical code=%q", code)
+	}
+	t.Setenv(edgeStorageHighFreeBytesEnv, "200")
+	t.Setenv(edgeStorageVFSMinFreeBytesEnv, "99")
+	if _, code := configuredStorageWatermarks(); code != "storage_status_config_invalid" {
+		t.Fatalf("vfs<critical code=%q", code)
+	}
+}
+
+func TestStorageAdmissionBlocksOnlyNewHeavyAllocation(t *testing.T) {
+	watermarks := storageWatermarks{Critical: 100, High: 200, VFS: 300}
+	for _, kind := range []edge.OperationKind{
+		edge.OperationProjectWorktreeCreate,
+		edge.OperationProjectToolboxCreate,
+		edge.OperationProjectToolboxInstall,
+		edge.OperationProjectToolboxServiceStart,
+		edge.OperationProjectBrowserCreate,
+		edge.OperationProjectBrowserRun,
+		edge.OperationProjectBrowserHarnessStart,
+		edge.OperationProjectProcessStart,
+	} {
+		if code := storageAdmissionDecision(kind, 99, watermarks, "overlay"); code != "storage_pressure_critical" {
+			t.Fatalf("%s critical code=%q", kind, code)
+		}
+		if code := storageAdmissionDecision(kind, 150, watermarks, "overlay"); code != "" {
+			t.Fatalf("%s high must remain admitted, code=%q", kind, code)
+		}
+	}
+	for _, kind := range []edge.OperationKind{
+		edge.OperationStorageStatus,
+		edge.OperationProjectWorktreeCleanup,
+		edge.OperationProjectToolboxCleanup,
+		edge.OperationProjectBrowserCleanup,
+		edge.OperationProjectBrowserClose,
+		edge.OperationProjectBrowserHarnessCleanup,
+		edge.OperationProjectBrowserHarnessStop,
+		edge.OperationProjectProcessCleanup,
+		edge.OperationProjectProcessStop,
+	} {
+		if code := storageAdmissionDecision(kind, 1, watermarks, "vfs"); code != "" {
+			t.Fatalf("%s recovery operation blocked: %q", kind, code)
+		}
+	}
+}
+
+func TestStorageAdmissionUsesStricterConfiguredVFSReserve(t *testing.T) {
+	watermarks := storageWatermarks{Critical: 100, High: 200, VFS: 300}
+	if code := storageAdmissionDecision(edge.OperationProjectToolboxCreate, 250, watermarks, "vfs"); code != "storage_vfs_pressure_critical" {
+		t.Fatalf("vfs toolbox code=%q", code)
+	}
+	if code := storageAdmissionDecision(edge.OperationProjectBrowserHarnessStart, 250, watermarks, "vfs"); code != "storage_vfs_pressure_critical" {
+		t.Fatalf("vfs harness code=%q", code)
+	}
+	if code := storageAdmissionDecision(edge.OperationProjectWorktreeCreate, 250, watermarks, "vfs"); code != "" {
+		t.Fatalf("worktree incorrectly used vfs reserve: %q", code)
+	}
+}
+
+func TestEnforceStorageAdmissionBlocksNewHeavyAllocationButNotCleanup(t *testing.T) {
+	t.Setenv(edgeStorageMinFreeBytesEnv, "18446744073709551615")
+	t.Setenv(edgeStorageHighFreeBytesEnv, "")
+	t.Setenv(edgeStorageVFSMinFreeBytesEnv, "")
+	root := t.TempDir()
+	if code := enforceStorageAdmission(context.Background(), root, edge.OperationProjectWorktreeCreate); code != "storage_pressure_critical" {
+		t.Fatalf("heavy allocation code=%q", code)
+	}
+	if code := enforceStorageAdmission(context.Background(), root, edge.OperationProjectWorktreeCleanup); code != "" {
+		t.Fatalf("cleanup blocked code=%q", code)
 	}
 }

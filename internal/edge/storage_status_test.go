@@ -43,16 +43,37 @@ func TestStorageStatusResultValidation(t *testing.T) {
 	if !validOperationCompletionForKind(OperationStorageStatus, unconfigured, "") {
 		t.Fatal("unconfigured reserve posture rejected")
 	}
+
+	high := result
+	high.StorageFreeBytes = 350
+	high.StorageReservedMinBytes = 300
+	high.StorageHighFreeBytes = 500
+	high.StoragePressureState = "high"
+	if !validOperationCompletionForKind(OperationStorageStatus, high, "") {
+		t.Fatal("valid high pressure posture rejected")
+	}
+
+	badHigh := high
+	badHigh.StorageHighFreeBytes = 250
+	if validOperationCompletionForKind(OperationStorageStatus, badHigh, "") {
+		t.Fatal("high watermark at or below critical accepted")
+	}
+
+	badVFS := result
+	badVFS.StorageVFSMinFreeBytes = 250
+	if validOperationCompletionForKind(OperationStorageStatus, badVFS, "") {
+		t.Fatal("VFS reserve below critical accepted")
+	}
 }
 
 func TestStorageStatusRejectsDuplicateOrUnknownCategories(t *testing.T) {
 	base := OperationResult{
-		StorageTotalBytes:        1000,
-		StorageFreeBytes:         900,
-		StoragePressureState:     "unconfigured",
-		StorageDriver:            "unknown",
-		StorageDriverPosture:     "unknown",
-		StorageManagedBytes:      10,
+		StorageTotalBytes:    1000,
+		StorageFreeBytes:     900,
+		StoragePressureState: "unconfigured",
+		StorageDriver:        "unknown",
+		StorageDriverPosture: "unknown",
+		StorageManagedBytes:  10,
 		StorageCategories: []StorageCategorySummary{{
 			Class:       "project_workspaces",
 			Bytes:       10,
