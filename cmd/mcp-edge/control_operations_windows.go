@@ -44,6 +44,8 @@ func executeWindowsControlOperation(ctx context.Context, stateRoot string, proce
 		return edge.OperationResult{}, "bundle_mutation_unavailable_windows"
 	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
 		return collectWindowsEdgeDiagnostic(workspaceCount)
+	case edge.OperationStorageStatus:
+		return edge.OperationResult{}, "storage_status_unavailable_windows"
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}

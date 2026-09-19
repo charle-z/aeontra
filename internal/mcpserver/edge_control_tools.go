@@ -50,43 +50,52 @@ type labRetargetParams struct {
 }
 
 type edgeOperationPublicView struct {
-	OperationID           string              `json:"operation_id"`
-	DeviceID              string              `json:"device_id,omitempty"`
-	State                 edge.OperationState `json:"state"`
-	WorkspaceID           string              `json:"workspace_id,omitempty"`
-	AuthorizationRevision uint64              `json:"authorization_revision,omitempty"`
-	SafeCode              string              `json:"safe_code,omitempty"`
-	JobID                 string              `json:"job_id,omitempty"`
-	JobState              string              `json:"job_state,omitempty"`
-	ProgressRevision      uint64              `json:"progress_revision,omitempty"`
-	ProgressPhase         string              `json:"progress_phase,omitempty"`
-	ProgressCompleted     uint64              `json:"progress_completed_units,omitempty"`
-	ProgressTotal         uint64              `json:"progress_total_units,omitempty"`
-	CycleCount            uint64              `json:"cycle_count,omitempty"`
-	JobSafeCode           string              `json:"job_safe_code,omitempty"`
-	Release               string              `json:"release,omitempty"`
-	Commit                string              `json:"commit,omitempty"`
-	EdgeProtocolVersion   string              `json:"edge_protocol_version,omitempty"`
-	EdgeCatalogHash       string              `json:"edge_catalog_hash,omitempty"`
-	ManifestStatus        string              `json:"manifest_status,omitempty"`
-	ComponentsCompatible  bool                `json:"components_compatible,omitempty"`
-	ServiceActive         bool                `json:"service_active,omitempty"`
-	ServiceState          string              `json:"service_state,omitempty"`
-	ServiceRestarts       uint64              `json:"service_restarts,omitempty"`
-	ServiceRestartsKnown  bool                `json:"service_restarts_known,omitempty"`
-	ProcessState          string              `json:"process_state,omitempty"`
-	LockState             string              `json:"lock_state,omitempty"`
-	Coherence             string              `json:"coherence,omitempty"`
-	ProcessRelease        string              `json:"process_release,omitempty"`
-	ProcessCommit         string              `json:"process_commit,omitempty"`
-	UpdateAvailable       bool                `json:"update_available"`
-	Paired                bool                `json:"paired,omitempty"`
-	BubblewrapValid       bool                `json:"bubblewrap_valid,omitempty"`
-	RootlessValid         bool                `json:"rootless_valid,omitempty"`
-	WorkspaceCount        int                 `json:"workspace_count,omitempty"`
-	ProviderValid         bool                `json:"provider_valid,omitempty"`
-	DriverValid           bool                `json:"driver_valid,omitempty"`
-	Blockers              []string            `json:"blockers,omitempty"`
+	OperationID           string                        `json:"operation_id"`
+	DeviceID              string                        `json:"device_id,omitempty"`
+	State                 edge.OperationState           `json:"state"`
+	WorkspaceID           string                        `json:"workspace_id,omitempty"`
+	AuthorizationRevision uint64                        `json:"authorization_revision,omitempty"`
+	SafeCode              string                        `json:"safe_code,omitempty"`
+	JobID                 string                        `json:"job_id,omitempty"`
+	JobState              string                        `json:"job_state,omitempty"`
+	ProgressRevision      uint64                        `json:"progress_revision,omitempty"`
+	ProgressPhase         string                        `json:"progress_phase,omitempty"`
+	ProgressCompleted     uint64                        `json:"progress_completed_units,omitempty"`
+	ProgressTotal         uint64                        `json:"progress_total_units,omitempty"`
+	CycleCount            uint64                        `json:"cycle_count,omitempty"`
+	JobSafeCode           string                        `json:"job_safe_code,omitempty"`
+	Release               string                        `json:"release,omitempty"`
+	Commit                string                        `json:"commit,omitempty"`
+	EdgeProtocolVersion   string                        `json:"edge_protocol_version,omitempty"`
+	EdgeCatalogHash       string                        `json:"edge_catalog_hash,omitempty"`
+	ManifestStatus        string                        `json:"manifest_status,omitempty"`
+	ComponentsCompatible  bool                          `json:"components_compatible,omitempty"`
+	ServiceActive         bool                          `json:"service_active,omitempty"`
+	ServiceState          string                        `json:"service_state,omitempty"`
+	ServiceRestarts       uint64                        `json:"service_restarts,omitempty"`
+	ServiceRestartsKnown  bool                          `json:"service_restarts_known,omitempty"`
+	ProcessState          string                        `json:"process_state,omitempty"`
+	LockState             string                        `json:"lock_state,omitempty"`
+	Coherence             string                        `json:"coherence,omitempty"`
+	ProcessRelease        string                        `json:"process_release,omitempty"`
+	ProcessCommit         string                        `json:"process_commit,omitempty"`
+	UpdateAvailable       bool                          `json:"update_available"`
+	Paired                bool                          `json:"paired,omitempty"`
+	BubblewrapValid       bool                          `json:"bubblewrap_valid,omitempty"`
+	RootlessValid         bool                          `json:"rootless_valid,omitempty"`
+	WorkspaceCount        int                           `json:"workspace_count,omitempty"`
+	ProviderValid         bool                          `json:"provider_valid,omitempty"`
+	DriverValid           bool                          `json:"driver_valid,omitempty"`
+	Blockers              []string                      `json:"blockers,omitempty"`
+	TotalBytes            uint64                        `json:"total_bytes,omitempty"`
+	FreeBytes             uint64                        `json:"free_bytes,omitempty"`
+	ReservedMinBytes      uint64                        `json:"reserved_min_bytes,omitempty"`
+	PressureState         string                        `json:"pressure_state,omitempty"`
+	Driver                string                        `json:"driver,omitempty"`
+	DriverPosture         string                        `json:"driver_posture,omitempty"`
+	ManagedBytes          uint64                        `json:"managed_bytes,omitempty"`
+	ManagedBytesComplete  bool                          `json:"managed_bytes_complete"`
+	Categories            []edge.StorageCategorySummary `json:"categories,omitempty"`
 }
 
 func (s *Server) addEdgeControlTools() {
@@ -183,6 +192,9 @@ func (s *Server) addEdgeControlTools() {
 	})
 	s.addDirectTool(toolDef{Name: "edge_onboarding_status", Description: "Return safe paired, service, bundle, provider, driver, Bubblewrap, rootless, workspace-count and blocker metadata.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
 		return s.handleDeviceOperation(arguments, edge.OperationOnboardingStatus, false)
+	})
+	s.addDirectTool(toolDef{Name: "edge_storage_status", Description: "Return bounded path-free Edge storage accounting, free-space pressure, driver posture and ownership-proven category totals. It never performs cleanup.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
+		return s.handleDeviceOperation(arguments, edge.OperationStorageStatus, false)
 	})
 }
 
@@ -395,6 +407,15 @@ func publicEdgeOperation(op edge.Operation) edgeOperationPublicView {
 	view.Coherence = op.Result.Coherence
 	view.ProcessRelease = op.Result.ProcessRelease
 	view.ProcessCommit = op.Result.ProcessCommit
+	view.TotalBytes = op.Result.StorageTotalBytes
+	view.FreeBytes = op.Result.StorageFreeBytes
+	view.ReservedMinBytes = op.Result.StorageReservedMinBytes
+	view.PressureState = op.Result.StoragePressureState
+	view.Driver = op.Result.StorageDriver
+	view.DriverPosture = op.Result.StorageDriverPosture
+	view.ManagedBytes = op.Result.StorageManagedBytes
+	view.ManagedBytesComplete = op.Result.StorageManagedBytesComplete
+	view.Categories = append([]edge.StorageCategorySummary(nil), op.Result.StorageCategories...)
 	return view
 }
 

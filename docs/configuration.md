@@ -161,6 +161,18 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   `project-artifacts/<workspace-id>`. Toolchain homes and package caches point there;
   new Edge executions do not populate the source tree or its historical `.mcp-devbox`
   directory. The exact roots are mounted only into the selected workcell or toolbox.
+- **Storage accounting:** `edge_storage_status` is a Linux-only read operation over
+  the Edge's existing workspace registry and fixed private state roots. It reports
+  filesystem `total_bytes`/`free_bytes`, a rootless container-driver posture and a
+  bounded list of storage classes without returning host paths, sockets, container
+  identities or file contents. A class with incomplete ownership/measurement remains
+  `complete=false`; its bytes are not guessed. The current accounting slice never
+  marks storage reclaimable.
+- **Free-space reserve:** `MCP_DEVBOX_EDGE_STORAGE_MIN_FREE_BYTES` optionally sets the
+  Linux Edge minimum free-space reserve as a positive integer byte count. When unset,
+  `pressure_state` is `unconfigured`; when set, free space below the reserve is
+  `critical` and otherwise `normal`. Invalid or explicit zero values fail closed
+  with `storage_status_config_invalid`. No public default reserve is implied.
 - **Concurrency:** normal project, Git inspection, process observation and toolbox
   operations use bounded shared capacity. Signed bundle update, rollback and repair
   acquire an Edge-wide exclusive gate. The worker count is a server/Edge setting and

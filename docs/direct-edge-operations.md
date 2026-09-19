@@ -37,6 +37,16 @@ persistence. Foreground output is bounded in the operation result. Background ou
 redacted before it reaches private Edge log files and is returned incrementally through
 bounded status calls, so the control-plane journal never becomes an unbounded log store.
 
+`edge_storage_status` reuses that same signed operation path. On Linux it performs a
+bounded read-only scan of registered workspace roots plus exact Edge-owned runtime,
+cache, artifact, browser, resultstore and process-log roots. The scan never follows
+symlinks, caps both workspace records and filesystem entries, and reports
+`complete=false` instead of expanding the scan or guessing when ownership is
+ambiguous. Container storage is not inferred from directory names: the operation
+reports only the validated rootless engine's driver posture, while image/layer/build
+cache/volume and persistent-toolbox byte classes stay incomplete until their ownership
+can be accounted exactly. Slice 1 reports `reclaimable_bytes=0` for every class.
+
 ## Authoritative direct-operation timing
 
 The private journal records operation creation, current lease, signed `running`, signed

@@ -51,6 +51,7 @@ const (
 	OperationBundleRollback                    OperationKind = "bundle_rollback"
 	OperationEdgeRepair                        OperationKind = "edge_repair"
 	OperationOnboardingStatus                  OperationKind = "onboarding_status"
+	OperationStorageStatus                     OperationKind = "storage_status"
 	OperationProjectPrepare                    OperationKind = "project_prepare"
 	OperationProjectStatus                     OperationKind = "project_status"
 	OperationProjectRegistryList               OperationKind = "project_registry_list"
@@ -253,6 +254,14 @@ type ProjectClaimSummary struct {
 	Repairable  bool   `json:"repairable"`
 }
 
+type StorageCategorySummary struct {
+	Class            string `json:"class"`
+	Bytes            uint64 `json:"bytes"`
+	ObjectCount      uint64 `json:"object_count"`
+	ReclaimableBytes uint64 `json:"reclaimable_bytes"`
+	Complete         bool   `json:"complete"`
+}
+
 type OperationResult struct {
 	WorkspaceID           string `json:"workspace_id,omitempty"`
 	AuthorizationRevision uint64 `json:"authorization_revision,omitempty"`
@@ -287,6 +296,15 @@ type OperationResult struct {
 	ProviderValid                    bool                            `json:"provider_valid,omitempty"`
 	DriverValid                      bool                            `json:"driver_valid,omitempty"`
 	Blockers                         []string                        `json:"blockers,omitempty"`
+	StorageTotalBytes                uint64                          `json:"storage_total_bytes,omitempty"`
+	StorageFreeBytes                 uint64                          `json:"storage_free_bytes,omitempty"`
+	StorageReservedMinBytes          uint64                          `json:"storage_reserved_min_bytes,omitempty"`
+	StoragePressureState             string                          `json:"storage_pressure_state,omitempty"`
+	StorageDriver                    string                          `json:"storage_driver,omitempty"`
+	StorageDriverPosture             string                          `json:"storage_driver_posture,omitempty"`
+	StorageManagedBytes              uint64                          `json:"storage_managed_bytes,omitempty"`
+	StorageManagedBytesComplete      bool                            `json:"storage_managed_bytes_complete,omitempty"`
+	StorageCategories                []StorageCategorySummary        `json:"storage_categories,omitempty"`
 	ProjectAlias                     string                          `json:"project_alias,omitempty"`
 	ProjectOwner                     string                          `json:"project_owner,omitempty"`
 	ProjectRepository                string                          `json:"project_repository,omitempty"`
@@ -850,7 +868,7 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 			!projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) {
 			return OperationRequest{}, errors.New("project snapshot request is invalid")
 		}
-	case OperationBundleStatus, OperationBundleRollback, OperationEdgeRepair, OperationOnboardingStatus:
+	case OperationBundleStatus, OperationBundleRollback, OperationEdgeRepair, OperationOnboardingStatus, OperationStorageStatus:
 		if !operationRequestEmpty(request) {
 			return OperationRequest{}, errors.New("edge diagnostic request is invalid")
 		}
@@ -945,6 +963,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if code != "" {
 		return validOperationCompletion(result, code)
 	}
+	if hasStorageStatusResult(result) {
+		return kind == OperationStorageStatus && validStorageStatusResult(result)
+	}
 	if hasProjectToolchainSummary(result) && kind != OperationProjectStatus {
 		return false
 	}
@@ -1005,10 +1026,96 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
 		return false
 	}
+	if kind == OperationStorageStatus {
+		return false
+	}
 	if kind == OperationProjectRegistryList || kind == OperationProjectReconcile || kind == OperationProjectRelease || kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStdin || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")
+}
+
+func hasStorageStatusResult(result OperationResult) bool {
+	return result.StorageTotalBytes != 0 || result.StorageFreeBytes != 0 || result.StorageReservedMinBytes != 0 ||
+		result.StoragePressureState != "" || result.StorageDriver != "" || result.StorageDriverPosture != "" ||
+		result.StorageManagedBytes != 0 || result.StorageManagedBytesComplete || len(result.StorageCategories) != 0
+}
+
+func validStorageStatusResult(result OperationResult) bool {
+	if result.StorageTotalBytes == 0 || result.StorageFreeBytes > result.StorageTotalBytes || len(result.StorageCategories) > 16 {
+		return false
+	}
+	switch result.StoragePressureState {
+	case "unconfigured":
+		if result.StorageReservedMinBytes != 0 {
+			return false
+		}
+	case "normal":
+		if result.StorageReservedMinBytes == 0 || result.StorageFreeBytes < result.StorageReservedMinBytes {
+			return false
+		}
+	case "critical":
+		if result.StorageReservedMinBytes == 0 || result.StorageFreeBytes >= result.StorageReservedMinBytes {
+			return false
+		}
+	default:
+		return false
+	}
+	switch result.StorageDriver {
+	case "overlay", "overlay2", "fuse-overlayfs":
+		if result.StorageDriverPosture != "normal" {
+			return false
+		}
+	case "vfs":
+		if result.StorageDriverPosture != "degraded" {
+			return false
+		}
+	case "unknown":
+		if result.StorageDriverPosture != "unknown" {
+			return false
+		}
+	case "none":
+		if result.StorageDriverPosture != "unavailable" {
+			return false
+		}
+	default:
+		return false
+	}
+	seen := make(map[string]struct{}, len(result.StorageCategories))
+	var measured uint64
+	allComplete := true
+	for _, category := range result.StorageCategories {
+		if !validStorageCategory(category.Class) || category.ReclaimableBytes > category.Bytes {
+			return false
+		}
+		if _, duplicate := seen[category.Class]; duplicate {
+			return false
+		}
+		seen[category.Class] = struct{}{}
+		if ^uint64(0)-measured < category.Bytes {
+			return false
+		}
+		measured += category.Bytes
+		if !category.Complete {
+			allComplete = false
+		}
+	}
+	if measured != result.StorageManagedBytes || (result.StorageManagedBytesComplete && !allComplete) {
+		return false
+	}
+	return true
+}
+
+func validStorageCategory(class string) bool {
+	switch class {
+	case "project_workspaces", "worker_worktrees", "persistent_toolboxes", "project_runtime_state",
+		"shared_toolchains", "package_caches", "container_images_layers", "container_build_cache",
+		"container_volumes", "browser_profiles_artifacts", "resultstore", "process_logs",
+		"model_runtime_state", "temporary_downloads", "unique_evidence":
+		return true
+	default:
+		return false
+	}
 }
 
 func hasProjectDiagnosticResult(result OperationResult) bool {
@@ -1212,6 +1319,9 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 
 func emptyOperationResult(result OperationResult) bool {
 	if hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
+		return false
+	}
+	if hasStorageStatusResult(result) {
 		return false
 	}
 	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.EdgeProtocolVersion == "" && result.EdgeCatalogHash == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && result.ProjectReason == "" && result.ProjectDiagnosticReason == "" && !result.ProjectRepairable && result.ProjectRecommendedAction == "" && result.ProjectRegistryAction == "" && result.ProjectClaimGeneration == 0 && len(result.ProjectClaims) == 0 && !hasProjectToolchainSummary(result) && !hasProjectGitHubResult(result)
