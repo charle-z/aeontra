@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,5 +157,47 @@ func TestStorageGCApplyRejectsUsedPlanBeforeEffects(t *testing.T) {
 	}
 	if _, code := applyStorageGC(context.Background(), stateRoot, nil, nil, plan.ID); code != "storage_gc_plan_used" {
 		t.Fatalf("used plan code=%q", code)
+	}
+}
+
+func TestStorageGCPlanConvergenceRemovesOnlyExpiredSafePlans(t *testing.T) {
+	stateRoot := t.TempDir()
+	expired := testStorageGCPlan(t)
+	expired.CreatedAt = time.Now().UTC().Add(-20 * time.Minute)
+	expired.ExpiresAt = expired.CreatedAt.Add(5 * time.Minute)
+	expired.Candidates[0].ObservedAt = expired.CreatedAt.Add(-2 * time.Hour)
+	if err := writeStorageGCPlan(stateRoot, expired); err != nil {
+		t.Fatal(err)
+	}
+	if err := consumeStorageGCPlan(stateRoot, expired.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	current := testStorageGCPlan(t)
+	current.ID = "sgp_" + strings.Repeat("d", 32)
+	current.Candidates[0].ResourceID = "br_" + strings.Repeat("e", 32)
+	if err := writeStorageGCPlan(stateRoot, current); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := convergeStorageGCPlans(stateRoot, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	expiredPath, err := storageGCPlanPath(stateRoot, expired.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(expiredPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expired plan remains: %v", err)
+	}
+	if _, err := os.Lstat(expiredPath + ".consumed"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expired consumed marker remains: %v", err)
+	}
+	currentPath, err := storageGCPlanPath(stateRoot, current.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(currentPath); err != nil {
+		t.Fatalf("current plan removed: %v", err)
 	}
 }

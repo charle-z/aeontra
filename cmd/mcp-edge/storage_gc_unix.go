@@ -21,6 +21,7 @@ import (
 const (
 	storageGCPlanTTL                = 10 * time.Minute
 	storageGCMaxCandidates          = 256
+	storageGCMaxPlanFiles           = 512
 	storageGCMaxPlanBytes     int64 = 256 << 10
 	storageGCCandidateBrowser       = "browser"
 	storageGCCandidateProcess       = "process"
@@ -79,6 +80,73 @@ func storageGCPlanPath(stateRoot, id string) (string, error) {
 		return "", errors.New("storage gc plan root is unsafe")
 	}
 	return filepath.Join(root, id+".json"), nil
+}
+
+func convergeStorageGCPlans(stateRoot string, now time.Time) error {
+	root := filepath.Join(stateRoot, "storage-gc-plans")
+	info, err := os.Lstat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 || !projectGitOwned(info) {
+		return errors.New("storage gc plan root is unsafe")
+	}
+	directory, err := os.Open(root)
+	if err != nil {
+		return err
+	}
+	entries, readErr := directory.ReadDir(storageGCMaxPlanFiles + 1)
+	closeErr := directory.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return readErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".json")
+		if !validStorageGCPrivateID(id, "sgp_") {
+			continue
+		}
+		plan, planErr := readStorageGCPlan(stateRoot, id)
+		if planErr != nil || now.Before(plan.ExpiresAt) {
+			continue
+		}
+		path, pathErr := storageGCPlanPath(stateRoot, id)
+		if pathErr != nil {
+			continue
+		}
+		consumed, consumedErr := storageGCPlanConsumed(stateRoot, id)
+		if consumedErr != nil {
+			continue
+		}
+		if consumed {
+			if removeErr := os.Remove(path + ".consumed"); removeErr != nil {
+				continue
+			}
+		}
+		_ = os.Remove(path)
+	}
+	directory, err = os.Open(root)
+	if err != nil {
+		return err
+	}
+	remaining, readErr := directory.ReadDir(storageGCMaxPlanFiles + 1)
+	closeErr = directory.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return readErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if len(remaining) > storageGCMaxPlanFiles {
+		return errors.New("storage gc plan store is full")
+	}
+	return nil
 }
 
 func writeStorageGCPlan(stateRoot string, plan storageGCPlan) error {
@@ -290,6 +358,9 @@ func storageGCResultForPlan(plan storageGCPlan, removedCount, removedBytes uint6
 }
 
 func previewStorageGC(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, minAgeSeconds int) (edge.OperationResult, string) {
+	if err := convergeStorageGCPlans(stateRoot, time.Now().UTC()); err != nil {
+		return edge.OperationResult{}, "storage_gc_plan_store_unavailable"
+	}
 	_, workspaces, projects, _, code := openProjectControlState(stateRoot)
 	if code != "" {
 		return edge.OperationResult{}, code
