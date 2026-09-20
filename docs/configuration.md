@@ -168,6 +168,12 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Recovery metadata:** project claims, checkout attestations, toolbox generations and
   process bindings are durable. Schema migrations are additive and fail closed on a
   newer schema. Reconciliation is explicit and never resets or deletes a source tree.
+- **Toolbox lifecycle:** toolbox metadata schema v3 records `persistent|disposable`
+  plus a durable generation. Missing/historical lifecycle migrates to `persistent`;
+  lifecycle cannot be changed by reusing create. A disposable toolbox is only reported
+  reclaimable when stopped with no nonterminal recorded services/browser runs. This
+  classification covers the toolbox rootfs/record only: it does not make project
+  runtime, cache, artifact or source roots automatically deletable.
 - **Storage visibility:** Linux `edge_onboarding_status` reports total and available
   bytes for the filesystem containing the validated private Edge state root, plus the
   storage driver reported by the outer user-owned rootless container engine. Driver
@@ -526,7 +532,7 @@ owner-only parents and have no automatic chat TTL.
 
 Resource limits are configured at two layers:
 
-- `project_toolbox_create`: CPU milliseconds, memory MiB and process count;
+- `project_toolbox_create`: optional `persistent|disposable` lifecycle plus CPU milliseconds, memory MiB and process count;
 - `project_browser_harness_start`: wall-clock timeout and combined managed run/profile
   storage MiB.
 

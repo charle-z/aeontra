@@ -19,6 +19,7 @@ type projectToolboxParams struct {
 	TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
 	ServiceID      string            `json:"service_id,omitempty"`
 	ServiceName    string            `json:"service_name,omitempty"`
+	Lifecycle      string            `json:"lifecycle,omitempty"`
 	CPUMillis      int               `json:"cpu_millis,omitempty"`
 	MemoryMiB      int               `json:"memory_mib,omitempty"`
 	ProcessLimit   int               `json:"process_limit,omitempty"`
@@ -32,6 +33,10 @@ type projectToolboxPublicView struct {
 	Target           string              `json:"target"`
 	ToolboxID        string              `json:"toolbox_id,omitempty"`
 	ToolboxState     string              `json:"toolbox_state,omitempty"`
+	Lifecycle        string              `json:"lifecycle,omitempty"`
+	Generation       uint64              `json:"generation,omitempty"`
+	Reclaimable      bool                `json:"reclaimable"`
+	ReclaimReason    string              `json:"reclaim_reason,omitempty"`
 	Base             string              `json:"base,omitempty"`
 	BaseImageID      string              `json:"base_image_id,omitempty"`
 	CreatedAt        string              `json:"created_at,omitempty"`
@@ -63,13 +68,14 @@ func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
 	serviceName := stringSchema("stable toolbox service name", `^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`, 63)
 	execProperties := map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key, "argv": argv, "cwd": map[string]any{"type": "string", "maxLength": 1024}, "environment": environment, "timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": 3600}}
 	createProperties := map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key,
+		"lifecycle":     map[string]any{"type": "string", "enum": []string{edge.ProjectToolboxLifecyclePersistent, edge.ProjectToolboxLifecycleDisposable}},
 		"cpu_millis":    map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxCPUMillis, "maximum": edge.MaxProjectToolboxCPUMillis},
 		"memory_mib":    map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxMemoryMiB, "maximum": edge.MaxProjectToolboxMemoryMiB},
 		"process_limit": map[string]any{"type": "integer", "minimum": edge.MinProjectToolboxProcessLimit, "maximum": edge.MaxProjectToolboxProcessLimit}}
-	s.addDirectTool(toolDef{Name: "project_toolbox_create", Description: "Create or recover the project's persistent rootless Debian toolbox with optional bounded CPU, memory and process limits. The server owns the base image and container identity; packages, caches and writable rootfs remain until explicit cleanup. No host container-engine socket is mounted.", InputSchema: closedObject(createProperties, []string{"alias", "target", "idempotency_key"}), Version: "2", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
+	s.addDirectTool(toolDef{Name: "project_toolbox_create", Description: "Create or recover the project's rootless Debian toolbox. Lifecycle defaults to persistent; disposable must be explicit. Optional CPU, memory and process limits remain bounded. No host container-engine socket is mounted.", InputSchema: closedObject(createProperties, []string{"alias", "target", "idempotency_key"}), Version: "3", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
 		return s.handleProjectToolbox(raw, edge.OperationProjectToolboxCreate)
 	})
-	s.addDirectTool(toolDef{Name: "project_toolbox_status", Description: "Inspect the registered project's persistent rootless toolbox without exposing host paths, engine names or container identifiers.", InputSchema: closedObject(common, []string{"alias", "target"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
+	s.addDirectTool(toolDef{Name: "project_toolbox_status", Description: "Inspect the registered project's rootless toolbox lifecycle, generation, reclaimability and bounded storage metadata without exposing host paths, engine names or container identifiers.", InputSchema: closedObject(common, []string{"alias", "target"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
 		return s.handleProjectToolbox(raw, edge.OperationProjectToolboxStatus)
 	})
 	s.addDirectTool(toolDef{Name: "project_toolbox_repair", Description: "Reconcile a stopped, server-owned toolbox with its recorded identity. A stale but compatible mount record may be recreated in place after identity and boundary checks; missing, foreign-owned or unsafe state is never recreated.", InputSchema: closedObject(map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key}, []string{"alias", "target", "idempotency_key"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
@@ -79,7 +85,7 @@ func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
 		name, description string
 		kind              edge.OperationKind
 	}{
-		{name: "project_toolbox_exec", description: "Execute arbitrary argv inside the persistent rootless toolbox with the project at /workspace. No host container-engine socket, implicit shell or command allowlist is added.", kind: edge.OperationProjectToolboxExec},
+		{name: "project_toolbox_exec", description: "Execute arbitrary argv inside the project's rootless toolbox with the project at /workspace. No host container-engine socket, implicit shell or command allowlist is added.", kind: edge.OperationProjectToolboxExec},
 		{name: "project_toolbox_install", description: "Install toolchains, system packages, rootless container clients or project dependencies by explicit argv as container root; the host package database is not modified.", kind: edge.OperationProjectToolboxInstall},
 	} {
 		definition := definition
@@ -97,7 +103,7 @@ func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
 	s.addDirectTool(toolDef{Name: "project_toolbox_service_stop", Description: "Stop one server-owned toolbox service after revalidating its opaque identity; repeated requests are idempotent.", InputSchema: closedObject(map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key, "service_id": serviceID}, []string{"alias", "target", "idempotency_key", "service_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
 		return s.handleProjectToolbox(raw, edge.OperationProjectToolboxServiceStop)
 	})
-	s.addDirectTool(toolDef{Name: "project_toolbox_cleanup", Description: "Explicitly remove the registered project's persistent toolbox rootfs. It never runs automatically and does not delete the project workspace.", InputSchema: closedObject(map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key}, []string{"alias", "target", "idempotency_key"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
+	s.addDirectTool(toolDef{Name: "project_toolbox_cleanup", Description: "Explicitly remove the registered project's toolbox rootfs. It never runs automatically and does not delete the project workspace or classify other storage for GC.", InputSchema: closedObject(map[string]any{"alias": common["alias"], "target": common["target"], "idempotency_key": key}, []string{"alias", "target", "idempotency_key"}), Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": true}}, func(raw json.RawMessage) (string, error) {
 		return s.handleProjectToolbox(raw, edge.OperationProjectToolboxCleanup)
 	})
 }
@@ -118,7 +124,7 @@ func (s *Server) handleProjectToolbox(arguments json.RawMessage, kind edge.Opera
 	if err != nil {
 		return "", err
 	}
-	request := edge.OperationRequest{Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", IdempotencyKey: params.IdempotencyKey, Argv: params.Argv, CWD: params.CWD, Environment: params.Environment, TimeoutSeconds: params.TimeoutSeconds, ToolboxServiceID: params.ServiceID, ToolboxServiceName: params.ServiceName, ToolboxCPUMillis: params.CPUMillis, ToolboxMemoryMiB: params.MemoryMiB, ToolboxProcessLimit: params.ProcessLimit}
+	request := edge.OperationRequest{Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", IdempotencyKey: params.IdempotencyKey, Argv: params.Argv, CWD: params.CWD, Environment: params.Environment, TimeoutSeconds: params.TimeoutSeconds, ToolboxServiceID: params.ServiceID, ToolboxServiceName: params.ServiceName, ToolboxLifecycle: params.Lifecycle, ToolboxCPUMillis: params.CPUMillis, ToolboxMemoryMiB: params.MemoryMiB, ToolboxProcessLimit: params.ProcessLimit}
 	operation, created, err := s.edgeOperations.CreateOperation(device.ID, kind, request)
 	if err == nil {
 		operation, err = s.edgeOperations.WaitOperation(context.Background(), operation.ID, 180*time.Second)
@@ -128,6 +134,8 @@ func (s *Server) handleProjectToolbox(arguments json.RawMessage, kind edge.Opera
 		result := operation.Result
 		view.Alias, view.Repository, view.Target = result.ProjectAlias, result.ProjectOwner+"/"+result.ProjectRepository, result.ProjectTarget
 		view.ToolboxID, view.ToolboxState, view.Base, view.BaseImageID = result.ToolboxID, result.ToolboxState, result.ToolboxBase, result.ToolboxBaseImageID
+		view.Lifecycle, view.ReclaimReason = result.ToolboxLifecycle, result.ToolboxReclaimReason
+		view.Generation, view.Reclaimable = result.ToolboxGeneration, result.ToolboxReclaimable
 		view.CreatedAt, view.UpdatedAt, view.Output = result.ToolboxCreatedAt, result.ToolboxUpdatedAt, result.ToolboxOutput
 		view.OutputTruncated, view.Removed = result.ToolboxOutputTruncated, result.ToolboxRemoved
 		view.CPUMillis, view.MemoryMiB, view.ProcessLimit = result.ToolboxCPUMillis, result.ToolboxMemoryMiB, result.ToolboxProcessLimit

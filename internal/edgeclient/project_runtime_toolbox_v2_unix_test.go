@@ -70,7 +70,7 @@ func TestProjectToolboxMigratesLegacyRecordWithoutDeletingWorkspace(t *testing.T
 	record := projectToolboxRecord{
 		ToolboxID: "tb_11111111111111111111111111111111", WorkspaceID: workspace.ID, ProjectAlias: "project", TargetAlias: "parrot",
 		ContainerName: "mcp-toolbox-11111111111111111111111111111111", BaseImage: projectToolboxBaseImage, BaseImageID: "sha256:" + strings.Repeat("a", 64),
-		CreatedAt: now, UpdatedAt: now, CPUMillis: 4000, MemoryMiB: 8192, ProcessLimit: 2048,
+		CreatedAt: now, UpdatedAt: now, Lifecycle: projectToolboxDisposable, CPUMillis: 4000, MemoryMiB: 8192, ProcessLimit: 2048,
 	}
 	if err := manager.save(record); err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestProjectToolboxMigratesLegacyRecordWithoutDeletingWorkspace(t *testing.T
 	if err := json.Unmarshal(data, &migrated); err != nil {
 		t.Fatal(err)
 	}
-	if migrated.SchemaVersion != projectToolboxSchemaVersion || migrated.RuntimeVersion != projectToolboxRuntimeV1 || migrated.Generation != 1 || migrated.WorkspaceFingerprint == "" || migrated.WorkspacePath != workspacePath {
+	if migrated.SchemaVersion != projectToolboxSchemaVersion || migrated.RuntimeVersion != projectToolboxRuntimeV1 || migrated.Generation != 1 || migrated.Lifecycle != projectToolboxPersistent || migrated.WorkspaceFingerprint == "" || migrated.WorkspacePath != workspacePath {
 		t.Fatalf("legacy migration=%+v", migrated)
 	}
 	if _, err := os.Stat(workspacePath); err != nil {

@@ -207,19 +207,27 @@ pagination, raw CLI result or arbitrary `gh` command. Consequential PR, workflow
 release operations remain separate Hito 5 contracts and are not implied by this
 read-only preflight.
 
-## Persistent rootless toolbox
+## Rootless toolbox lifecycle
 
-The registered development workspace can own one persistent toolbox independently of
-OpenCode or a model runtime:
+The registered development workspace can own one rootless toolbox independently of
+OpenCode or a model runtime. Historical and omitted lifecycle values remain
+`persistent`; `disposable` must be requested explicitly at first creation:
 
 - `project_toolbox_create` pulls the server-owned Debian base through the Edge user's
   validated rootless Podman/Docker endpoint, records its exact image ID, creates a
   labelled container with only the selected workspace at `/workspace`, and starts it
   with an idle process. The host container-engine socket is not mounted into the toolbox;
-- creation accepts optional CPU millicores, memory MiB and process-count caps. Missing
+- creation accepts an optional closed lifecycle `persistent|disposable` plus optional
+  CPU millicores, memory MiB and process-count caps. Lifecycle defaults to `persistent`;
+  existing toolboxes cannot be reclassified by calling create again. Missing resource
   values receive server-owned defaults of 4 CPUs, 8 GiB and 2048 processes; accepted
   ranges remain broad enough for builds while rejecting zero, negative or excessive
   caller values;
+- status exposes the lifecycle and durable generation. Reclaimability is conservative:
+  persistent toolboxes are never candidates; disposable toolboxes are eligible only
+  when the container is stopped and every recorded service/browser run is terminal.
+  Running, created, unknown or child-active state fails closed. Generation is identity
+  evidence, not permission to delete; any future GC apply must revalidate live state;
 - private metadata is one owner-only `0600` record under Edge state. The opaque
   `tb_...` identity, base image identity and timestamps survive chat, backend, Edge and
   WSL restarts as long as the user-owned container storage survives;
@@ -255,9 +263,9 @@ OpenCode or a model runtime:
   Edge-daemon restarts while its rootless container keeps running; after the container
   or WSL itself stops, its durable identity reports `stopped` and a fresh explicit
   start creates a new opaque service identity rather than silently replaying old argv;
-- `project_toolbox_cleanup` is the only automatic product path that removes the
-  toolbox, and it runs only when explicitly called. It removes neither the project
-  workspace nor unrelated rootless resources.
+- `project_toolbox_cleanup` is the only current product path that removes the toolbox,
+  and it runs only when explicitly called. `disposable` alone never triggers deletion.
+  Cleanup removes neither the project workspace nor unrelated rootless resources.
 
 The toolbox deliberately uses a server-owned Debian base and one container per
 workspace. Foreground execution, installation, repair and background service lifecycle

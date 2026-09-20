@@ -153,6 +153,7 @@ type OperationRequest struct {
 	GitPlanID                    string            `json:"git_plan_id,omitempty"`
 	ToolboxServiceID             string            `json:"toolbox_service_id,omitempty"`
 	ToolboxServiceName           string            `json:"toolbox_service_name,omitempty"`
+	ToolboxLifecycle             string            `json:"toolbox_lifecycle,omitempty"`
 	ToolboxCPUMillis             int               `json:"toolbox_cpu_millis,omitempty"`
 	ToolboxMemoryMiB             int               `json:"toolbox_memory_mib,omitempty"`
 	ToolboxProcessLimit          int               `json:"toolbox_process_limit,omitempty"`
@@ -378,6 +379,10 @@ type OperationResult struct {
 	GitHubPermissionIssues           []string                        `json:"github_permission_issues,omitempty"`
 	ToolboxID                        string                          `json:"toolbox_id,omitempty"`
 	ToolboxState                     string                          `json:"toolbox_state,omitempty"`
+	ToolboxLifecycle                 string                          `json:"toolbox_lifecycle,omitempty"`
+	ToolboxGeneration                uint64                          `json:"toolbox_generation,omitempty"`
+	ToolboxReclaimable               bool                            `json:"toolbox_reclaimable,omitempty"`
+	ToolboxReclaimReason             string                          `json:"toolbox_reclaim_reason,omitempty"`
 	ToolboxBase                      string                          `json:"toolbox_base,omitempty"`
 	ToolboxBaseImageID               string                          `json:"toolbox_base_image_id,omitempty"`
 	ToolboxCreatedAt                 string                          `json:"toolbox_created_at,omitempty"`
