@@ -160,6 +160,7 @@ type OperationRequest struct {
 	StorageGCMinAgeSeconds       int               `json:"storage_gc_min_age_seconds,omitempty"`
 	ToolboxServiceID             string            `json:"toolbox_service_id,omitempty"`
 	ToolboxServiceName           string            `json:"toolbox_service_name,omitempty"`
+	ToolboxLifecycle             string            `json:"toolbox_lifecycle,omitempty"`
 	ToolboxCPUMillis             int               `json:"toolbox_cpu_millis,omitempty"`
 	ToolboxMemoryMiB             int               `json:"toolbox_memory_mib,omitempty"`
 	ToolboxProcessLimit          int               `json:"toolbox_process_limit,omitempty"`
@@ -418,6 +419,7 @@ type OperationResult struct {
 	ToolboxServiceState              string                          `json:"toolbox_service_state,omitempty"`
 	ToolboxServiceCreatedAt          string                          `json:"toolbox_service_created_at,omitempty"`
 	ToolboxServiceUpdatedAt          string                          `json:"toolbox_service_updated_at,omitempty"`
+	ToolboxLifecycle                 string                          `json:"toolbox_lifecycle,omitempty"`
 	ToolboxCPUMillis                 int                             `json:"toolbox_cpu_millis,omitempty"`
 	ToolboxMemoryMiB                 int                             `json:"toolbox_memory_mib,omitempty"`
 	ToolboxProcessLimit              int                             `json:"toolbox_process_limit,omitempty"`
@@ -1081,7 +1083,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 func validStorageGCPartialResult(result OperationResult) bool {
 	if !storageGCPlanIDPattern.MatchString(result.StorageGCPlanID) ||
 		result.StorageGCMinAgeSeconds < 60 || result.StorageGCMinAgeSeconds > 31_536_000 ||
-		len(result.StorageGCCategories) > 2 || result.StorageGCRemovedCount >= result.StorageGCCandidateCount ||
+		len(result.StorageGCCategories) > 3 || result.StorageGCRemovedCount >= result.StorageGCCandidateCount ||
 		result.StorageGCRemovedBytes > result.StorageGCCandidateBytes {
 		return false
 	}
@@ -1091,7 +1093,7 @@ func validStorageGCPartialResult(result OperationResult) bool {
 	seen := make(map[string]struct{}, len(result.StorageGCCategories))
 	var count, bytes uint64
 	for _, category := range result.StorageGCCategories {
-		if category.Class != "browser_profiles_artifacts" && category.Class != "process_logs" {
+		if category.Class != "browser_profiles_artifacts" && category.Class != "process_logs" && category.Class != "disposable_toolboxes" {
 			return false
 		}
 		if _, duplicate := seen[category.Class]; duplicate {
@@ -1121,7 +1123,7 @@ func validStorageGCResult(kind OperationKind, result OperationResult) bool {
 	}
 	if !storageGCPlanIDPattern.MatchString(result.StorageGCPlanID) ||
 		result.StorageGCMinAgeSeconds < 60 || result.StorageGCMinAgeSeconds > 31_536_000 ||
-		len(result.StorageGCCategories) > 2 {
+		len(result.StorageGCCategories) > 3 {
 		return false
 	}
 	if _, err := time.Parse(time.RFC3339, result.StorageGCPlanExpiresAt); err != nil {
@@ -1130,7 +1132,7 @@ func validStorageGCResult(kind OperationKind, result OperationResult) bool {
 	seen := make(map[string]struct{}, len(result.StorageGCCategories))
 	var count, bytes uint64
 	for _, category := range result.StorageGCCategories {
-		if category.Class != "browser_profiles_artifacts" && category.Class != "process_logs" {
+		if category.Class != "browser_profiles_artifacts" && category.Class != "process_logs" && category.Class != "disposable_toolboxes" {
 			return false
 		}
 		if _, duplicate := seen[category.Class]; duplicate {

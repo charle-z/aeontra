@@ -89,6 +89,7 @@ type ProjectToolboxManager struct {
 type ProjectToolboxCreateRequest struct {
 	ProjectAlias, TargetAlias string
 	Workspace                 Workspace
+	Lifecycle                 string
 	CPUMillis                 int
 	MemoryMiB                 int
 	ProcessLimit              int
@@ -110,6 +111,20 @@ type ProjectToolboxExecRequest struct {
 type ProjectToolboxCleanupRequest struct {
 	ProjectAlias, TargetAlias string
 	Workspace                 Workspace
+}
+
+type ProjectToolboxStorageGCStatusRequest struct {
+	ProjectAlias, TargetAlias string
+	Workspace                 Workspace
+	Cutoff                    time.Time
+}
+
+type ProjectToolboxStorageGCCleanupRequest struct {
+	ProjectAlias, TargetAlias string
+	Workspace                 Workspace
+	ToolboxID                 string
+	ObservedAt                time.Time
+	Cutoff                    time.Time
 }
 
 type ProjectToolboxRepairRequest struct {
@@ -151,6 +166,7 @@ type ProjectToolboxServiceSnapshot struct {
 type ProjectToolboxSnapshot struct {
 	ToolboxID       string
 	State           ProjectToolboxState
+	Lifecycle       string
 	BaseImage       string
 	BaseImageID     string
 	CreatedAt       time.Time
@@ -175,6 +191,7 @@ type projectToolboxRecord struct {
 	EndpointFingerprint                               string `json:"endpoint_fingerprint,omitempty"`
 	ToolboxID, WorkspaceID, ProjectAlias, TargetAlias string
 	ContainerName, BaseImage, BaseImageID             string
+	Lifecycle                                         string `json:"lifecycle,omitempty"`
 	CreatedAt, UpdatedAt                              time.Time
 	CPUMillis, MemoryMiB, ProcessLimit                int
 	Services                                          []projectToolboxServiceRecord `json:"services,omitempty"`
@@ -249,6 +266,10 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	request.CPUMillis, request.MemoryMiB, request.ProcessLimit = normalizeProjectToolboxResourceLimits(request.CPUMillis, request.MemoryMiB, request.ProcessLimit)
+	request.Lifecycle = strings.ToLower(strings.TrimSpace(request.Lifecycle))
+	if request.Lifecycle != "" && request.Lifecycle != "persistent" && request.Lifecycle != "disposable" {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
+	}
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return ProjectToolboxSnapshot{}, false, err
 	}
@@ -257,6 +278,9 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	}
 	if record, err := manager.loadForWorkspace(request.Workspace); err == nil {
 		if record.CPUMillis != request.CPUMillis || record.MemoryMiB != request.MemoryMiB || record.ProcessLimit != request.ProcessLimit {
+			return ProjectToolboxSnapshot{}, true, ErrProjectToolboxUnsafeState
+		}
+		if request.Lifecycle != "" && record.Lifecycle != request.Lifecycle {
 			return ProjectToolboxSnapshot{}, true, ErrProjectToolboxUnsafeState
 		}
 		snapshot, statusErr := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
@@ -298,6 +322,10 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
 	}
 	created := manager.now().UTC()
+	lifecycle := request.Lifecycle
+	if lifecycle == "" {
+		lifecycle = "persistent"
+	}
 	record := projectToolboxRecord{
 		SchemaVersion: projectToolboxSchemaVersion, RuntimeVersion: projectToolboxRuntimeV2, Generation: 1,
 		WorkspacePath: request.Workspace.Path, WorkspaceFingerprint: workspaceFingerprint,
@@ -305,6 +333,7 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 		EndpointFingerprint: projectRuntimeEndpointFingerprint(manager.endpoint),
 		ToolboxID:           toolboxID, WorkspaceID: request.Workspace.ID, ProjectAlias: request.ProjectAlias, TargetAlias: request.TargetAlias,
 		ContainerName: containerName, BaseImage: projectToolboxBaseImage, BaseImageID: imageID, CreatedAt: created, UpdatedAt: created,
+		Lifecycle: lifecycle,
 		CPUMillis: request.CPUMillis, MemoryMiB: request.MemoryMiB, ProcessLimit: request.ProcessLimit,
 	}
 	if err := manager.save(record); err != nil {
@@ -887,6 +916,105 @@ func (manager *ProjectToolboxManager) Cleanup(ctx context.Context, request Proje
 	return true, nil
 }
 
+func (manager *ProjectToolboxManager) StorageGCCandidate(ctx context.Context, request ProjectToolboxStorageGCStatusRequest) (ProjectToolboxSnapshot, bool, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	defer release()
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.storageGCCandidateLocked(ctx, request.ProjectAlias, request.TargetAlias, request.Workspace, request.Cutoff)
+}
+
+func (manager *ProjectToolboxManager) StorageGCCleanup(ctx context.Context, request ProjectToolboxStorageGCCleanupRequest) (bool, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if !projectToolboxIDPattern.MatchString(request.ToolboxID) || request.ObservedAt.IsZero() || request.Cutoff.IsZero() {
+		return false, ErrProjectToolboxUnsafeState
+	}
+	snapshot, eligible, err := manager.storageGCCandidateLocked(ctx, request.ProjectAlias, request.TargetAlias, request.Workspace, request.Cutoff)
+	if err != nil {
+		return false, err
+	}
+	if !eligible || snapshot.ToolboxID != request.ToolboxID || !snapshot.UpdatedAt.Equal(request.ObservedAt) {
+		return false, ErrProjectToolboxUnsafeState
+	}
+	record, err := manager.load(request.Workspace.ID)
+	if err != nil {
+		return false, err
+	}
+	if record.ToolboxID != request.ToolboxID || record.Lifecycle != "disposable" || !record.UpdatedAt.Equal(request.ObservedAt) {
+		return false, ErrProjectToolboxUnsafeState
+	}
+	if _, err := manager.run(ctx, "rm", record.ContainerName); err != nil {
+		return false, ErrProjectToolboxUnsafeState
+	}
+	if err := os.Remove(manager.recordPath(request.Workspace.ID)); err != nil {
+		return false, ErrProjectToolboxUnsafeState
+	}
+	return true, nil
+}
+
+func (manager *ProjectToolboxManager) storageGCCandidateLocked(ctx context.Context, alias, target string, workspace Workspace, cutoff time.Time) (ProjectToolboxSnapshot, bool, error) {
+	if cutoff.IsZero() {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
+	}
+	if err := validateProjectToolboxBinding(alias, target, workspace); err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	record, err := manager.load(workspace.ID)
+	if errors.Is(err, ErrProjectToolboxNotFound) {
+		return ProjectToolboxSnapshot{}, false, nil
+	}
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	if record.Lifecycle != "disposable" || record.UpdatedAt.IsZero() || record.UpdatedAt.After(cutoff) {
+		return ProjectToolboxSnapshot{}, false, nil
+	}
+	if record.EndpointFingerprint != projectRuntimeEndpointFingerprint(manager.endpoint) {
+		return ProjectToolboxSnapshot{}, false, nil
+	}
+	for _, service := range record.Services {
+		if service.State != "stopped" {
+			return ProjectToolboxSnapshot{}, false, nil
+		}
+	}
+	for _, run := range record.BrowserHarnessRuns {
+		if !browserHarnessTerminal(run.State) {
+			return ProjectToolboxSnapshot{}, false, nil
+		}
+	}
+	if err := manager.verifyOwnership(ctx, record, alias, target, workspace); err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	output, err := manager.run(ctx, "inspect", "--format", "{{.State.Status}}|{{.State.Running}}", record.ContainerName)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxContainerUnavailable
+	}
+	state := ProjectToolboxUnknown
+	switch strings.TrimSpace(string(output)) {
+	case "created|false":
+		state = ProjectToolboxCreated
+	case "exited|false", "stopped|false":
+		state = ProjectToolboxStopped
+	default:
+		return ProjectToolboxSnapshot{}, false, nil
+	}
+	return ProjectToolboxSnapshot{
+		ToolboxID: record.ToolboxID, State: state, Lifecycle: record.Lifecycle,
+		BaseImage: record.BaseImage, BaseImageID: record.BaseImageID,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+		CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit,
+	}, true, nil
+}
+
 func (manager *ProjectToolboxManager) serviceRecord(request ProjectToolboxServiceRequest) (projectToolboxRecord, int, error) {
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil || !projectToolboxServiceIDPattern.MatchString(request.ServiceID) {
 		return projectToolboxRecord{}, -1, ErrProjectToolboxUnsafeState
@@ -979,7 +1107,7 @@ func (manager *ProjectToolboxManager) status(ctx context.Context, record project
 	if err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
-	return ProjectToolboxSnapshot{ToolboxID: record.ToolboxID, State: state, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit, ContainerAccess: false, WritableBytes: writableBytes, RootFSBytes: rootFSBytes}, nil
+	return ProjectToolboxSnapshot{ToolboxID: record.ToolboxID, State: state, Lifecycle: record.Lifecycle, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit, ContainerAccess: false, WritableBytes: writableBytes, RootFSBytes: rootFSBytes}, nil
 }
 
 func (manager *ProjectToolboxManager) recoverOwnedContainer(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
@@ -1216,6 +1344,10 @@ func (manager *ProjectToolboxManager) loadForWorkspace(workspace Workspace) (pro
 		record.EndpointFingerprint = projectRuntimeEndpointFingerprint(manager.endpoint)
 		changed = true
 	}
+	if record.Lifecycle == "" {
+		record.Lifecycle = "persistent"
+		changed = true
+	}
 	if changed {
 		record.UpdatedAt = manager.now().UTC()
 		if err := manager.save(record); err != nil {
@@ -1258,6 +1390,9 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 		record.RuntimeVersion = projectToolboxRuntimeV1
 	}
 	if record.RuntimeVersion != projectToolboxRuntimeV1 && record.RuntimeVersion != projectToolboxRuntimeV2 {
+		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
+	}
+	if record.Lifecycle != "" && record.Lifecycle != "persistent" && record.Lifecycle != "disposable" {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	if len(record.Services) > 64 || len(record.BrowserHarnessRuns) > 128 {

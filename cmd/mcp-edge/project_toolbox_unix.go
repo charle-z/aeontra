@@ -142,7 +142,7 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	var err error
 	switch operation.Kind {
 	case edge.OperationProjectToolboxCreate:
-		snapshot, _, err = manager.Create(ctx, edgeclient.ProjectToolboxCreateRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace, CPUMillis: request.ToolboxCPUMillis, MemoryMiB: request.ToolboxMemoryMiB, ProcessLimit: request.ToolboxProcessLimit})
+		snapshot, _, err = manager.Create(ctx, edgeclient.ProjectToolboxCreateRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace, Lifecycle: request.ToolboxLifecycle, CPUMillis: request.ToolboxCPUMillis, MemoryMiB: request.ToolboxMemoryMiB, ProcessLimit: request.ToolboxProcessLimit})
 	case edge.OperationProjectToolboxStatus:
 		snapshot, err = manager.Status(ctx, edgeclient.ProjectToolboxStatusRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 	case edge.OperationProjectToolboxRepair:
@@ -203,6 +203,7 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	result.ToolboxBaseImageID = snapshot.BaseImageID
 	result.ToolboxCreatedAt = snapshot.CreatedAt.UTC().Format(time.RFC3339Nano)
 	result.ToolboxUpdatedAt = snapshot.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	result.ToolboxLifecycle = snapshot.Lifecycle
 	result.ToolboxOutput = snapshot.Output
 	result.ToolboxOutputTruncated = snapshot.Truncated
 	result.ToolboxRemoved = snapshot.State == "removed"

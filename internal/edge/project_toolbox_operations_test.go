@@ -145,3 +145,41 @@ func TestProjectToolboxCompletionIsBoundToItsOperationKind(t *testing.T) {
 		t.Fatal("toolbox service stop result validation failed")
 	}
 }
+
+func TestProjectToolboxLifecycleValidation(t *testing.T) {
+	create := OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", IdempotencyKey: "toolbox-life-1", ToolboxLifecycle: "disposable"}
+	normalized, err := validateOperationRequestWithProjectExec(OperationProjectToolboxCreate, create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalized.ToolboxLifecycle != "disposable" {
+		t.Fatalf("lifecycle=%q", normalized.ToolboxLifecycle)
+	}
+	invalid := create
+	invalid.ToolboxLifecycle = "ephemeral"
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectToolboxCreate, invalid); err == nil {
+		t.Fatal("accepted unsupported toolbox lifecycle")
+	}
+	status := OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", ToolboxLifecycle: "disposable"}
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectToolboxStatus, status); err == nil {
+		t.Fatal("status accepted create-only toolbox lifecycle")
+	}
+}
+
+func TestProjectToolboxLifecycleCompletionValidation(t *testing.T) {
+	result := OperationResult{
+		WorkspaceID: "ws_11111111111111111111111111111111", ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
+		ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
+		ToolboxID: "tb_22222222222222222222222222222222", ToolboxState: "running", ToolboxBase: "debian-bookworm-slim",
+		ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z",
+		ToolboxLifecycle: "disposable", ToolboxCPUMillis: DefaultProjectToolboxCPUMillis, ToolboxMemoryMiB: DefaultProjectToolboxMemoryMiB,
+		ToolboxProcessLimit: DefaultProjectToolboxProcessLimit, ToolboxRootFSBytes: 80 << 20,
+	}
+	if !validOperationCompletionForKind(OperationProjectToolboxStatus, result, "") {
+		t.Fatal("valid disposable toolbox result rejected")
+	}
+	result.ToolboxLifecycle = "unsafe"
+	if validOperationCompletionForKind(OperationProjectToolboxStatus, result, "") {
+		t.Fatal("invalid toolbox lifecycle result accepted")
+	}
+}

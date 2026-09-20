@@ -184,13 +184,16 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Conservative storage GC:** `edge_storage_gc_preview` requires an explicit
   `min_age_seconds` from 60 seconds through 365 days; Aeontra does not invent a
   retention period. Preview creates a private 10-minute single-use plan from healthy
-  registered project claims only. The current GC scope is deliberately limited to
-  closed browser sessions and terminal inactive processes. Apply revalidates the full
-  candidate set, including claim generation, workspace identity, lifecycle state and
-  observed timestamp, before consuming the plan and starting cleanup. Any change fails
-  closed before effects. Stopped toolboxes, worktrees, resultstore, model-runtime
-  state, shared toolchains, package/container caches and volumes, and unique evidence
-  are not generic-GC candidates.
+  registered project claims only. The GC scope is limited to closed browser sessions,
+  terminal inactive processes and toolboxes created explicitly with
+  `lifecycle=disposable`. Omitted lifecycle and legacy toolbox records normalize to
+  `persistent` and are never generic-GC candidates. A disposable toolbox must still be
+  old enough, stopped/created, on the same owned endpoint, and have only stopped
+  services and terminal browser-harness runs. Apply revalidates the full candidate set,
+  including claim generation, workspace identity, lifecycle state and observed
+  timestamp, before consuming the plan. Toolbox removal is non-force so reactivation
+  fails closed. Worktrees, resultstore, model-runtime state, shared toolchains,
+  package/container caches and volumes, and unique evidence remain excluded.
 - **Concurrency:** normal project, Git inspection, process observation and toolbox
   operations use bounded shared capacity. Signed bundle update, rollback and repair
   acquire an Edge-wide exclusive gate. The worker count is a server/Edge setting and

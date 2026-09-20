@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -131,4 +132,36 @@ func TestProjectToolboxHandlerQueuesExplicitOperationAndFiltersInternalState(t *
 			t.Fatalf("output exposed %q: %s", forbidden, output)
 		}
 	}
+}
+
+func TestProjectToolboxCreateMapsLifecycle(t *testing.T) {
+	store := &toolboxLifecycleToolStore{recordingEdgeControlStore: &recordingEdgeControlStore{active: true, status: edge.OperationResult{
+		WorkspaceID: "ws_11111111111111111111111111111111", ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
+		ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev", ToolboxID: "tb_22222222222222222222222222222222", ToolboxState: "running",
+		ToolboxBase: "debian-bookworm-slim", ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z",
+		ToolboxLifecycle: "disposable", ToolboxCPUMillis: edge.DefaultProjectToolboxCPUMillis, ToolboxMemoryMiB: edge.DefaultProjectToolboxMemoryMiB,
+		ToolboxProcessLimit: edge.DefaultProjectToolboxProcessLimit, ToolboxRootFSBytes: 80 << 20,
+	}}}
+	server := stampServer(t).WithEdgeStore(store)
+	output, err := server.handleProjectToolbox(json.RawMessage(`{"alias":"project","target":"parrot","idempotency_key":"toolbox-life-1","lifecycle":"disposable"}`), edge.OperationProjectToolboxCreate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.request.ToolboxLifecycle != "disposable" {
+		t.Fatalf("request lifecycle=%q", store.request.ToolboxLifecycle)
+	}
+	if !strings.Contains(output, `"lifecycle":"disposable"`) {
+		t.Fatalf("public lifecycle missing: %s", output)
+	}
+}
+
+type toolboxLifecycleToolStore struct {
+	*recordingEdgeControlStore
+}
+
+func (*toolboxLifecycleToolStore) ResolveActiveDeviceName(name string) (edge.Device, error) {
+	if name != "parrot" {
+		return edge.Device{}, errors.New("active edge target alias not found")
+	}
+	return edge.Device{ID: testEdgeDeviceID}, nil
 }

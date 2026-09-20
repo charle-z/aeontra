@@ -61,10 +61,15 @@ results expose only the opaque plan id and aggregate categories/counts/bytes. Ap
 first revalidates every planned claim generation, workspace binding, resource identity,
 lifecycle state and age. Any mismatch aborts the whole plan before effects. After a
 successful preflight the plan is consumed and only its exact closed browser sessions
-and terminal inactive processes are cleaned. A failure after consumption returns a
-bounded partial aggregate and never broadens cleanup. Generic GC does not delete
-toolboxes, worktrees, resultstore/model-runtime data, toolchains, container/package
-caches or volumes, or unique evidence, and it never invokes host-global prune.
+and terminal inactive processes are cleaned, plus toolboxes whose durable lifecycle was
+explicitly created as `disposable`. Legacy or omitted lifecycle is `persistent` and is
+never converted automatically. Disposable toolbox preflight requires the exact owned
+endpoint, old stopped/created state, stopped services and terminal browser-harness
+runs; apply revalidates the same toolbox and removes it without force, so reactivation
+fails closed. A failure after consumption returns a bounded partial aggregate and never
+broadens cleanup. Generic GC does not delete persistent toolboxes, worktrees,
+resultstore/model-runtime data, toolchains, container/package caches or volumes, or
+unique evidence, and it never invokes host-global prune.
 
 ## Authoritative direct-operation timing
 

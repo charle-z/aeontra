@@ -44,6 +44,13 @@ func TestStorageGCCompletionValidation(t *testing.T) {
 	if !validOperationCompletionForKind(OperationStorageGCPreview, preview, "") {
 		t.Fatal("valid gc preview rejected")
 	}
+	withToolbox := preview
+	withToolbox.StorageGCCandidateCount = 3
+	withToolbox.StorageGCCategories = append([]StorageCategorySummary(nil), preview.StorageGCCategories...)
+	withToolbox.StorageGCCategories = append(withToolbox.StorageGCCategories, StorageCategorySummary{Class: "disposable_toolboxes", ObjectCount: 1, Complete: false})
+	if !validOperationCompletionForKind(OperationStorageGCPreview, withToolbox, "") {
+		t.Fatal("valid disposable toolbox gc category rejected")
+	}
 	apply := preview
 	apply.StorageGCRemovedCount = 2
 	apply.StorageGCRemovedBytes = 4096

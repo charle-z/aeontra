@@ -201,3 +201,25 @@ func TestStorageGCPlanConvergenceRemovesOnlyExpiredSafePlans(t *testing.T) {
 		t.Fatalf("current plan removed: %v", err)
 	}
 }
+
+func TestStorageGCPlanAcceptsDisposableToolboxCandidate(t *testing.T) {
+	plan := testStorageGCPlan(t)
+	plan.Candidates = append(plan.Candidates, storageGCCandidate{
+		Kind: storageGCCandidateToolbox, Alias: "project", Target: "parrot",
+		WorkspaceID: "ws_" + strings.Repeat("b", 32), Generation: 1,
+		ResourceID: "tb_" + strings.Repeat("f", 32), ObservedAt: plan.CreatedAt.Add(-2 * time.Hour),
+	})
+	if !validStorageGCPlan(plan, plan.ID) {
+		t.Fatal("valid disposable toolbox candidate rejected")
+	}
+	result := storageGCResultForPlan(plan, 0, 0)
+	found := false
+	for _, category := range result.StorageGCCategories {
+		if category.Class == "disposable_toolboxes" {
+			found = category.ObjectCount == 1 && !category.Complete
+		}
+	}
+	if !found {
+		t.Fatalf("disposable toolbox category missing: %+v", result.StorageGCCategories)
+	}
+}

@@ -207,7 +207,7 @@ func (s *Server) addEdgeControlTools() {
 		return s.handleDeviceOperation(arguments, edge.OperationStorageStatus, false)
 	})
 	s.addDirectTool(toolDef{
-		Name: "edge_storage_gc_preview", Description: "Create one short-lived single-use Edge storage GC plan for ownership-proven closed browser sessions and terminal inactive processes older than an explicit caller-supplied age. It never performs cleanup.",
+		Name: "edge_storage_gc_preview", Description: "Create one short-lived single-use Edge storage GC plan for ownership-proven closed browser sessions, terminal inactive processes and explicitly disposable inactive toolboxes older than an explicit caller-supplied age. It never performs cleanup.",
 		InputSchema: closedObject(map[string]any{
 			"device_id":       deviceSchema["device_id"],
 			"idempotency_key": stringSchema("caller-generated durable operation key", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`, 128),
@@ -218,7 +218,7 @@ func (s *Server) addEdgeControlTools() {
 		return s.handleStorageGC(arguments, edge.OperationStorageGCPreview)
 	})
 	s.addDirectTool(toolDef{
-		Name: "edge_storage_gc_apply", Description: "Apply one previously previewed short-lived single-use Edge storage GC plan after complete state revalidation. It removes only the exact closed browser sessions and terminal inactive processes in that plan.",
+		Name: "edge_storage_gc_apply", Description: "Apply one previously previewed short-lived single-use Edge storage GC plan after complete state revalidation. It removes only the exact closed browser sessions, terminal inactive processes and explicitly disposable inactive toolboxes in that plan.",
 		InputSchema: closedObject(map[string]any{
 			"device_id":       deviceSchema["device_id"],
 			"idempotency_key": stringSchema("caller-generated durable operation key", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`, 128),

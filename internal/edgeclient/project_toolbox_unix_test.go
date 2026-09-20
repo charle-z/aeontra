@@ -501,3 +501,203 @@ func TestProjectToolboxUsesOnlyValidatedLocalCgroupParent(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectToolboxLifecycleDefaultsPersistsAndCannotChangeOnReuse(t *testing.T) {
+	newManager := func(t *testing.T) (*ProjectToolboxManager, *recordingToolboxRunner, Workspace) {
+		t.Helper()
+		stateRoot := t.TempDir()
+		workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+		runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
+		manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+			StateRoot:   stateRoot,
+			Endpoint:    &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+			Runner:      runner,
+			environment: testRootlessContainerEnvironment,
+			NewID:       func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return manager, runner, workspace
+	}
+
+	t.Run("legacy default is persistent", func(t *testing.T) {
+		manager, _, workspace := newManager(t)
+		snapshot, reused, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+		if err != nil || reused {
+			t.Fatalf("reused=%v err=%v", reused, err)
+		}
+		if snapshot.Lifecycle != "persistent" {
+			t.Fatalf("lifecycle=%q", snapshot.Lifecycle)
+		}
+		record, err := manager.load(workspace.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if record.Lifecycle != "persistent" {
+			t.Fatalf("record lifecycle=%q", record.Lifecycle)
+		}
+
+		record.Lifecycle = ""
+		if err := manager.save(record); err != nil {
+			t.Fatal(err)
+		}
+		migrated, err := manager.loadForWorkspace(workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if migrated.Lifecycle != "persistent" {
+			t.Fatalf("migrated lifecycle=%q", migrated.Lifecycle)
+		}
+	})
+
+	t.Run("disposable is explicit and immutable", func(t *testing.T) {
+		manager, _, workspace := newManager(t)
+		snapshot, reused, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Lifecycle: "disposable"})
+		if err != nil || reused {
+			t.Fatalf("reused=%v err=%v", reused, err)
+		}
+		if snapshot.Lifecycle != "disposable" {
+			t.Fatalf("lifecycle=%q", snapshot.Lifecycle)
+		}
+		reusedSnapshot, reused, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+		if err != nil || !reused {
+			t.Fatalf("reused=%v err=%v", reused, err)
+		}
+		if reusedSnapshot.Lifecycle != "disposable" {
+			t.Fatalf("reused lifecycle=%q", reusedSnapshot.Lifecycle)
+		}
+		if _, reused, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Lifecycle: "persistent"}); !errors.Is(err, ErrProjectToolboxUnsafeState) || !reused {
+			t.Fatalf("lifecycle change reused=%v err=%v", reused, err)
+		}
+	})
+}
+
+func TestProjectToolboxStorageGCFailsClosedAndUsesNonForceRemoval(t *testing.T) {
+	current := time.Date(2026, 9, 20, 15, 0, 0, 0, time.UTC)
+	newFixture := func(t *testing.T, lifecycle string, createdAt time.Time) (*ProjectToolboxManager, *recordingToolboxRunner, Workspace) {
+		t.Helper()
+		now := createdAt
+		stateRoot := t.TempDir()
+		workspace := Workspace{ID: "ws_22222222222222222222222222222222", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+		runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
+		manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+			StateRoot:   stateRoot,
+			Endpoint:    &RootlessContainerEndpoint{Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman"},
+			Runner:      runner,
+			environment: testRootlessContainerEnvironment,
+			NewID:       func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+			Now:         func() time.Time { return now },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Lifecycle: lifecycle}); err != nil {
+			t.Fatal(err)
+		}
+		runner.state = "stopped|false"
+		return manager, runner, workspace
+	}
+
+	cutoff := current.Add(-time.Hour)
+
+	t.Run("persistent is never a candidate", func(t *testing.T) {
+		manager, _, workspace := newFixture(t, "persistent", current.Add(-2*time.Hour))
+		if _, eligible, err := manager.StorageGCCandidate(t.Context(), ProjectToolboxStorageGCStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Cutoff: cutoff}); err != nil || eligible {
+			t.Fatalf("eligible=%v err=%v", eligible, err)
+		}
+	})
+
+	t.Run("running and young disposable are excluded", func(t *testing.T) {
+		manager, runner, workspace := newFixture(t, "disposable", current.Add(-2*time.Hour))
+		runner.state = "running|true"
+		if _, eligible, err := manager.StorageGCCandidate(t.Context(), ProjectToolboxStorageGCStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Cutoff: cutoff}); err != nil || eligible {
+			t.Fatalf("running eligible=%v err=%v", eligible, err)
+		}
+		young, _, youngWorkspace := newFixture(t, "disposable", current.Add(-30*time.Minute))
+		if _, eligible, err := young.StorageGCCandidate(t.Context(), ProjectToolboxStorageGCStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: youngWorkspace, Cutoff: cutoff}); err != nil || eligible {
+			t.Fatalf("young eligible=%v err=%v", eligible, err)
+		}
+	})
+
+	t.Run("active service excludes disposable", func(t *testing.T) {
+		manager, _, workspace := newFixture(t, "disposable", current.Add(-2*time.Hour))
+		record, err := manager.load(workspace.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record.Services = []projectToolboxServiceRecord{{
+			ServiceID: "ts_" + strings.Repeat("1", 32),
+			Name:      "worker",
+			State:     "running",
+			CreatedAt: current.Add(-2 * time.Hour),
+			UpdatedAt: current.Add(-2 * time.Hour),
+		}}
+		if err := manager.save(record); err != nil {
+			t.Fatal(err)
+		}
+		if _, eligible, err := manager.StorageGCCandidate(t.Context(), ProjectToolboxStorageGCStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Cutoff: cutoff}); err != nil || eligible {
+			t.Fatalf("service eligible=%v err=%v", eligible, err)
+		}
+	})
+
+	t.Run("active browser harness excludes disposable", func(t *testing.T) {
+		manager, _, workspace := newFixture(t, "disposable", current.Add(-2*time.Hour))
+		record, err := manager.load(workspace.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record.BrowserHarnessRuns = []projectBrowserHarnessRecord{{
+			RunID:          "bh_" + strings.Repeat("2", 32),
+			IdempotencyKey: "browser-harness-1",
+			RequestDigest:  strings.Repeat("a", 64),
+			Profile:        "default",
+			State:          "running",
+			CreatedAt:      current.Add(-2 * time.Hour),
+			UpdatedAt:      current.Add(-2 * time.Hour),
+			TimeoutSeconds: 3600,
+			StorageMiB:     512,
+		}}
+		if err := manager.save(record); err != nil {
+			t.Fatal(err)
+		}
+		if _, eligible, err := manager.StorageGCCandidate(t.Context(), ProjectToolboxStorageGCStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Cutoff: cutoff}); err != nil || eligible {
+			t.Fatalf("harness eligible=%v err=%v", eligible, err)
+		}
+	})
+
+	t.Run("reactivation prevents cleanup and stopped removal is non-force", func(t *testing.T) {
+		manager, runner, workspace := newFixture(t, "disposable", current.Add(-2*time.Hour))
+		candidate, eligible, err := manager.StorageGCCandidate(t.Context(), ProjectToolboxStorageGCStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Cutoff: cutoff})
+		if err != nil || !eligible {
+			t.Fatalf("eligible=%v err=%v candidate=%+v", eligible, err, candidate)
+		}
+		runner.state = "running|true"
+		removed, err := manager.StorageGCCleanup(t.Context(), ProjectToolboxStorageGCCleanupRequest{
+			ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace,
+			ToolboxID: candidate.ToolboxID, ObservedAt: candidate.UpdatedAt, Cutoff: cutoff,
+		})
+		if !errors.Is(err, ErrProjectToolboxUnsafeState) || removed {
+			t.Fatalf("reactivated removed=%v err=%v", removed, err)
+		}
+		if _, err := manager.load(workspace.ID); err != nil {
+			t.Fatalf("reactivated metadata removed: %v", err)
+		}
+
+		runner.state = "stopped|false"
+		removed, err = manager.StorageGCCleanup(t.Context(), ProjectToolboxStorageGCCleanupRequest{
+			ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace,
+			ToolboxID: candidate.ToolboxID, ObservedAt: candidate.UpdatedAt, Cutoff: cutoff,
+		})
+		if err != nil || !removed {
+			t.Fatalf("stopped removed=%v err=%v", removed, err)
+		}
+		if _, err := manager.load(workspace.ID); !errors.Is(err, ErrProjectToolboxNotFound) {
+			t.Fatalf("metadata remains: %v", err)
+		}
+		last := strings.Join(runner.calls[len(runner.calls)-1], " ")
+		if !strings.Contains(last, " rm mcp-toolbox-11111111111111111111111111111111") || strings.Contains(last, " rm -f ") {
+			t.Fatalf("unsafe gc removal call=%q", last)
+		}
+	})
+}

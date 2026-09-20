@@ -25,6 +25,7 @@ const (
 	storageGCMaxPlanBytes     int64 = 256 << 10
 	storageGCCandidateBrowser       = "browser"
 	storageGCCandidateProcess       = "process"
+	storageGCCandidateToolbox       = "toolbox"
 )
 
 type storageGCCandidate struct {
@@ -240,6 +241,10 @@ func validStorageGCPlan(plan storageGCPlan, id string) bool {
 			if !validStorageGCPrivateID(candidate.ResourceID, "pr_") {
 				return false
 			}
+		case storageGCCandidateToolbox:
+			if !validStorageGCPrivateID(candidate.ResourceID, "tb_") {
+				return false
+			}
 		default:
 			return false
 		}
@@ -272,7 +277,7 @@ func storageGCProcessObservedAt(snapshot edgeclient.ProjectProcessSnapshot, cuto
 	return finishedAt, !finishedAt.After(cutoff)
 }
 
-func collectStorageGCCandidates(ctx context.Context, projects *edgeclient.ProjectRegistry, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, createdAt time.Time, minAgeSeconds int) ([]storageGCCandidate, string) {
+func collectStorageGCCandidates(ctx context.Context, projects *edgeclient.ProjectRegistry, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, toolboxes []*edgeclient.ProjectToolboxManager, createdAt time.Time, minAgeSeconds int) ([]storageGCCandidate, string) {
 	claims, err := projects.ListClaimsContext(ctx, "")
 	if err != nil {
 		return nil, "storage_gc_registry_unavailable"
@@ -325,14 +330,60 @@ func collectStorageGCCandidates(ctx context.Context, projects *edgeclient.Projec
 				return nil, "storage_gc_candidate_limit"
 			}
 		}
+		if snapshot, _, eligible := storageGCToolboxCandidate(ctx, toolboxes, resolution, cutoff); eligible {
+			candidates = append(candidates, storageGCCandidate{
+				Kind: storageGCCandidateToolbox, Alias: claim.Alias, Target: claim.Target,
+				WorkspaceID: claim.WorkspaceID, Generation: claim.Generation,
+				ResourceID: snapshot.ToolboxID, ObservedAt: snapshot.UpdatedAt,
+			})
+			if len(candidates) > storageGCMaxCandidates {
+				return nil, "storage_gc_candidate_limit"
+			}
+		}
 	}
 	return candidates, ""
+}
+
+func openStorageGCToolboxManagers(stateRoot string) []*edgeclient.ProjectToolboxManager {
+	endpoints, err := edgeclient.DiscoverRootlessContainerEndpoints(os.Geteuid(), "")
+	if err != nil || len(endpoints) == 0 {
+		return nil
+	}
+	managers := make([]*edgeclient.ProjectToolboxManager, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		manager, err := edgeclient.OpenProjectToolboxManager(edgeclient.ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint})
+		if err != nil {
+			return nil
+		}
+		managers = append(managers, manager)
+	}
+	return managers
+}
+
+func storageGCToolboxCandidate(ctx context.Context, managers []*edgeclient.ProjectToolboxManager, resolution edgeclient.ProjectResolution, cutoff time.Time) (edgeclient.ProjectToolboxSnapshot, *edgeclient.ProjectToolboxManager, bool) {
+	var selected edgeclient.ProjectToolboxSnapshot
+	var selectedManager *edgeclient.ProjectToolboxManager
+	for _, manager := range managers {
+		snapshot, eligible, err := manager.StorageGCCandidate(ctx, edgeclient.ProjectToolboxStorageGCStatusRequest{
+			ProjectAlias: resolution.Project.Alias, TargetAlias: resolution.TargetAlias,
+			Workspace: resolution.Workspace, Cutoff: cutoff,
+		})
+		if err != nil || !eligible {
+			continue
+		}
+		if selectedManager != nil {
+			return edgeclient.ProjectToolboxSnapshot{}, nil, false
+		}
+		selected, selectedManager = snapshot, manager
+	}
+	return selected, selectedManager, selectedManager != nil
 }
 
 func storageGCResultForPlan(plan storageGCPlan, removedCount, removedBytes uint64) edge.OperationResult {
 	var candidateBytes uint64
 	browserCount := uint64(0)
 	processCount := uint64(0)
+	toolboxCount := uint64(0)
 	for _, candidate := range plan.Candidates {
 		candidateBytes += candidate.Bytes
 		switch candidate.Kind {
@@ -340,14 +391,19 @@ func storageGCResultForPlan(plan storageGCPlan, removedCount, removedBytes uint6
 			browserCount++
 		case storageGCCandidateProcess:
 			processCount++
+		case storageGCCandidateToolbox:
+			toolboxCount++
 		}
 	}
-	categories := make([]edge.StorageCategorySummary, 0, 2)
+	categories := make([]edge.StorageCategorySummary, 0, 3)
 	if browserCount > 0 {
 		categories = append(categories, edge.StorageCategorySummary{Class: "browser_profiles_artifacts", ObjectCount: browserCount, Complete: false})
 	}
 	if processCount > 0 {
 		categories = append(categories, edge.StorageCategorySummary{Class: "process_logs", ObjectCount: processCount, Complete: false})
+	}
+	if toolboxCount > 0 {
+		categories = append(categories, edge.StorageCategorySummary{Class: "disposable_toolboxes", ObjectCount: toolboxCount, Complete: false})
 	}
 	return edge.OperationResult{
 		StorageGCPlanID: plan.ID, StorageGCPlanExpiresAt: plan.ExpiresAt.UTC().Format(time.RFC3339),
@@ -368,7 +424,8 @@ func previewStorageGC(ctx context.Context, stateRoot string, processes *edgeclie
 	defer workspaces.Close()
 	defer projects.Close()
 	createdAt := time.Now().UTC()
-	candidates, code := collectStorageGCCandidates(ctx, projects, processes, browsers, createdAt, minAgeSeconds)
+	toolboxes := openStorageGCToolboxManagers(stateRoot)
+	candidates, code := collectStorageGCCandidates(ctx, projects, processes, browsers, toolboxes, createdAt, minAgeSeconds)
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -402,10 +459,19 @@ func storageGCPlanConsumed(stateRoot, id string) (bool, error) {
 	return true, nil
 }
 
-func preflightStorageGC(ctx context.Context, projects *edgeclient.ProjectRegistry, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, plan storageGCPlan) (map[string]edgeclient.ProjectResolution, string) {
+type storageGCPreflight struct {
+	resolutions     map[string]edgeclient.ProjectResolution
+	toolboxManagers map[string]*edgeclient.ProjectToolboxManager
+}
+
+func storageGCToolboxManagerKey(alias, target, toolboxID string) string {
+	return alias + "|" + target + "|" + toolboxID
+}
+
+func preflightStorageGC(ctx context.Context, projects *edgeclient.ProjectRegistry, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, toolboxes []*edgeclient.ProjectToolboxManager, plan storageGCPlan) (storageGCPreflight, string) {
 	claims, err := projects.ListClaimsContext(ctx, "")
 	if err != nil {
-		return nil, "storage_gc_registry_unavailable"
+		return storageGCPreflight{}, "storage_gc_registry_unavailable"
 	}
 	healthy := make(map[string]edgeclient.ProjectClaim, len(claims))
 	for _, claim := range claims {
@@ -415,17 +481,18 @@ func preflightStorageGC(ctx context.Context, projects *edgeclient.ProjectRegistr
 	}
 	cutoff := plan.CreatedAt.Add(-time.Duration(plan.MinAgeSeconds) * time.Second)
 	resolutions := make(map[string]edgeclient.ProjectResolution)
+	toolboxManagers := make(map[string]*edgeclient.ProjectToolboxManager)
 	for _, candidate := range plan.Candidates {
 		key := candidate.Alias + "\x00" + candidate.Target
 		claim, ok := healthy[key]
 		if !ok || claim.WorkspaceID != candidate.WorkspaceID || claim.Generation != candidate.Generation {
-			return nil, "storage_gc_plan_changed"
+			return storageGCPreflight{}, "storage_gc_plan_changed"
 		}
 		resolution, ok := resolutions[key]
 		if !ok {
 			resolution, err = projects.ResolveRegistered(candidate.Alias, candidate.Target)
 			if err != nil || resolution.Workspace.ID != candidate.WorkspaceID {
-				return nil, "storage_gc_plan_changed"
+				return storageGCPreflight{}, "storage_gc_plan_changed"
 			}
 			resolutions[key] = resolution
 		}
@@ -433,7 +500,7 @@ func preflightStorageGC(ctx context.Context, projects *edgeclient.ProjectRegistr
 		case storageGCCandidateBrowser:
 			items, listErr := browsers.List(edgeclient.ProjectBrowserListRequest{Resolution: resolution, Limit: edge.MaxBrowserSessions})
 			if listErr != nil {
-				return nil, "storage_gc_browser_unavailable"
+				return storageGCPreflight{}, "storage_gc_browser_unavailable"
 			}
 			matched := false
 			for _, item := range items {
@@ -442,13 +509,13 @@ func preflightStorageGC(ctx context.Context, projects *edgeclient.ProjectRegistr
 				}
 				observedAt, eligible := storageGCBrowserObservedAt(item, cutoff)
 				if !eligible || !observedAt.Equal(candidate.ObservedAt) {
-					return nil, "storage_gc_plan_changed"
+					return storageGCPreflight{}, "storage_gc_plan_changed"
 				}
 				matched = true
 				break
 			}
 			if !matched {
-				return nil, "storage_gc_plan_changed"
+				return storageGCPreflight{}, "storage_gc_plan_changed"
 			}
 		case storageGCCandidateProcess:
 			items, listErr := processes.List(edgeclient.ProjectProcessListRequest{
@@ -456,7 +523,7 @@ func preflightStorageGC(ctx context.Context, projects *edgeclient.ProjectRegistr
 				WorkspaceID: candidate.WorkspaceID, Limit: 100,
 			})
 			if listErr != nil {
-				return nil, "storage_gc_process_unavailable"
+				return storageGCPreflight{}, "storage_gc_process_unavailable"
 			}
 			matched := false
 			for _, item := range items {
@@ -465,19 +532,28 @@ func preflightStorageGC(ctx context.Context, projects *edgeclient.ProjectRegistr
 				}
 				observedAt, eligible := storageGCProcessObservedAt(item, cutoff)
 				if !eligible || !observedAt.Equal(candidate.ObservedAt) {
-					return nil, "storage_gc_plan_changed"
+					return storageGCPreflight{}, "storage_gc_plan_changed"
 				}
 				matched = true
 				break
 			}
 			if !matched {
-				return nil, "storage_gc_plan_changed"
+				return storageGCPreflight{}, "storage_gc_plan_changed"
 			}
+		case storageGCCandidateToolbox:
+			if len(toolboxes) == 0 {
+				return storageGCPreflight{}, "storage_gc_toolbox_unavailable"
+			}
+			snapshot, manager, eligible := storageGCToolboxCandidate(ctx, toolboxes, resolution, cutoff)
+			if !eligible || snapshot.ToolboxID != candidate.ResourceID || !snapshot.UpdatedAt.Equal(candidate.ObservedAt) {
+				return storageGCPreflight{}, "storage_gc_plan_changed"
+			}
+			toolboxManagers[storageGCToolboxManagerKey(candidate.Alias, candidate.Target, candidate.ResourceID)] = manager
 		default:
-			return nil, "storage_gc_plan_invalid"
+			return storageGCPreflight{}, "storage_gc_plan_invalid"
 		}
 	}
-	return resolutions, ""
+	return storageGCPreflight{resolutions: resolutions, toolboxManagers: toolboxManagers}, ""
 }
 
 func applyStorageGC(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, planID string) (edge.OperationResult, string) {
@@ -502,7 +578,8 @@ func applyStorageGC(ctx context.Context, stateRoot string, processes *edgeclient
 	}
 	defer workspaces.Close()
 	defer projects.Close()
-	resolutions, code := preflightStorageGC(ctx, projects, processes, browsers, plan)
+	toolboxes := openStorageGCToolboxManagers(stateRoot)
+	preflight, code := preflightStorageGC(ctx, projects, processes, browsers, toolboxes, plan)
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -516,7 +593,7 @@ func applyStorageGC(ctx context.Context, stateRoot string, processes *edgeclient
 		switch candidate.Kind {
 		case storageGCCandidateBrowser:
 			result, cleanupErr := browsers.Cleanup(edgeclient.ProjectBrowserCleanupRequest{
-				Resolution: resolutions[key],
+				Resolution: preflight.resolutions[key],
 				SessionID:  candidate.ResourceID,
 			})
 			if cleanupErr != nil || result.Removed != 1 {
@@ -531,6 +608,21 @@ func applyStorageGC(ctx context.Context, stateRoot string, processes *edgeclient
 				WorkspaceID:  candidate.WorkspaceID,
 			})
 			if cleanupErr != nil || result.Active != 0 || result.Removed != 1 {
+				return storageGCResultForPlan(plan, removed, 0), "storage_gc_apply_partial"
+			}
+			removed++
+		case storageGCCandidateToolbox:
+			manager := preflight.toolboxManagers[storageGCToolboxManagerKey(candidate.Alias, candidate.Target, candidate.ResourceID)]
+			if manager == nil {
+				return storageGCResultForPlan(plan, removed, 0), "storage_gc_apply_partial"
+			}
+			removedToolbox, cleanupErr := manager.StorageGCCleanup(ctx, edgeclient.ProjectToolboxStorageGCCleanupRequest{
+				ProjectAlias: candidate.Alias, TargetAlias: candidate.Target,
+				Workspace: preflight.resolutions[key].Workspace,
+				ToolboxID: candidate.ResourceID, ObservedAt: candidate.ObservedAt,
+				Cutoff: plan.CreatedAt.Add(-time.Duration(plan.MinAgeSeconds) * time.Second),
+			})
+			if cleanupErr != nil || !removedToolbox {
 				return storageGCResultForPlan(plan, removed, 0), "storage_gc_apply_partial"
 			}
 			removed++

@@ -73,11 +73,12 @@ func TestEdgeStorageGCToolsUseClosedRequestsAndBoundedPublicOutput(t *testing.T)
 			StorageGCPlanID:         "sgp_" + strings.Repeat("a", 32),
 			StorageGCPlanExpiresAt:  "2099-01-01T00:00:00Z",
 			StorageGCMinAgeSeconds:  3600,
-			StorageGCCandidateCount: 2,
+			StorageGCCandidateCount: 3,
 			StorageGCCandidateBytes: 0,
 			StorageGCCategories: []edge.StorageCategorySummary{
 				{Class: "browser_profiles_artifacts", ObjectCount: 1, Complete: true},
 				{Class: "process_logs", ObjectCount: 1, Complete: true},
+				{Class: "disposable_toolboxes", ObjectCount: 1, Complete: false},
 			},
 		},
 	}
@@ -94,9 +95,10 @@ func TestEdgeStorageGCToolsUseClosedRequestsAndBoundedPublicOutput(t *testing.T)
 	for _, want := range []string{
 		"\"gc_plan_id\":\"sgp_" + strings.Repeat("a", 32) + "\"",
 		"\"gc_min_age_seconds\":3600",
-		"\"gc_candidate_count\":2",
+		"\"gc_candidate_count\":3",
 		"\"class\":\"browser_profiles_artifacts\"",
 		"\"class\":\"process_logs\"",
+		"\"class\":\"disposable_toolboxes\"",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("preview missing %s in %s", want, body)
@@ -105,6 +107,8 @@ func TestEdgeStorageGCToolsUseClosedRequestsAndBoundedPublicOutput(t *testing.T)
 	for _, forbidden := range []string{
 		"br_" + strings.Repeat("b", 32),
 		"pr_" + strings.Repeat("c", 32),
+		"tb_" + strings.Repeat("d", 32),
+		"mcp-toolbox-",
 		"/home/", "/state/", "container_name", "socket_path", "workspace_id",
 	} {
 		if strings.Contains(body, forbidden) {
