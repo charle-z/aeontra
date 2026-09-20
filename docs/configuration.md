@@ -181,6 +181,16 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   is VFS; an unavailable/unknown driver fails closed when that policy is enabled.
   Invalid ordering, explicit zero values, or high/VFS thresholds without the critical
   reserve fail closed. No public watermark default is implied.
+- **Conservative storage GC:** `edge_storage_gc_preview` requires an explicit
+  `min_age_seconds` from 60 seconds through 365 days; Aeontra does not invent a
+  retention period. Preview creates a private 10-minute single-use plan from healthy
+  registered project claims only. The current GC scope is deliberately limited to
+  closed browser sessions and terminal inactive processes. Apply revalidates the full
+  candidate set, including claim generation, workspace identity, lifecycle state and
+  observed timestamp, before consuming the plan and starting cleanup. Any change fails
+  closed before effects. Stopped toolboxes, worktrees, resultstore, model-runtime
+  state, shared toolchains, package/container caches and volumes, and unique evidence
+  are not generic-GC candidates.
 - **Concurrency:** normal project, Git inspection, process observation and toolbox
   operations use bounded shared capacity. Signed bundle update, rollback and repair
   acquire an Edge-wide exclusive gate. The worker count is a server/Edge setting and

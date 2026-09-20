@@ -98,6 +98,14 @@ type edgeOperationPublicView struct {
 	ManagedBytes          uint64                        `json:"managed_bytes,omitempty"`
 	ManagedBytesComplete  bool                          `json:"managed_bytes_complete"`
 	Categories            []edge.StorageCategorySummary `json:"categories,omitempty"`
+	GCPlanID              string                        `json:"gc_plan_id,omitempty"`
+	GCPlanExpiresAt       string                        `json:"gc_plan_expires_at,omitempty"`
+	GCMinAgeSeconds       int                           `json:"gc_min_age_seconds,omitempty"`
+	GCCandidateCount      uint64                        `json:"gc_candidate_count,omitempty"`
+	GCCandidateBytes      uint64                        `json:"gc_candidate_bytes,omitempty"`
+	GCRemovedCount        uint64                        `json:"gc_removed_count,omitempty"`
+	GCRemovedBytes        uint64                        `json:"gc_removed_bytes,omitempty"`
+	GCCategories          []edge.StorageCategorySummary `json:"gc_categories,omitempty"`
 }
 
 func (s *Server) addEdgeControlTools() {
@@ -198,6 +206,28 @@ func (s *Server) addEdgeControlTools() {
 	s.addDirectTool(toolDef{Name: "edge_storage_status", Description: "Return bounded path-free Edge storage accounting, free-space pressure, driver posture and ownership-proven category totals. It never performs cleanup.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
 		return s.handleDeviceOperation(arguments, edge.OperationStorageStatus, false)
 	})
+	s.addDirectTool(toolDef{
+		Name: "edge_storage_gc_preview", Description: "Create one short-lived single-use Edge storage GC plan for ownership-proven closed browser sessions and terminal inactive processes older than an explicit caller-supplied age. It never performs cleanup.",
+		InputSchema: closedObject(map[string]any{
+			"device_id":       deviceSchema["device_id"],
+			"idempotency_key": stringSchema("caller-generated durable operation key", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`, 128),
+			"min_age_seconds": map[string]any{"type": "integer", "minimum": 60, "maximum": 31536000},
+		}, []string{"device_id", "idempotency_key", "min_age_seconds"}), Version: "1",
+		Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+	}, func(arguments json.RawMessage) (string, error) {
+		return s.handleStorageGC(arguments, edge.OperationStorageGCPreview)
+	})
+	s.addDirectTool(toolDef{
+		Name: "edge_storage_gc_apply", Description: "Apply one previously previewed short-lived single-use Edge storage GC plan after complete state revalidation. It removes only the exact closed browser sessions and terminal inactive processes in that plan.",
+		InputSchema: closedObject(map[string]any{
+			"device_id":       deviceSchema["device_id"],
+			"idempotency_key": stringSchema("caller-generated durable operation key", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`, 128),
+			"plan_id":         stringSchema("opaque storage GC plan id returned by preview", `^sgp_[a-f0-9]{32}$`, 36),
+		}, []string{"device_id", "idempotency_key", "plan_id"}), Version: "1",
+		Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false},
+	}, func(arguments json.RawMessage) (string, error) {
+		return s.handleStorageGC(arguments, edge.OperationStorageGCApply)
+	})
 }
 
 func (s *Server) handleProjectOperation(arguments json.RawMessage, kind edge.OperationKind) (string, error) {
@@ -294,6 +324,52 @@ func (s *Server) handleProjectSnapshot(arguments json.RawMessage) (string, error
 type deviceOperationParams struct {
 	DeviceID string `json:"device_id"`
 	Release  string `json:"release,omitempty"`
+}
+
+type storageGCPreviewParams struct {
+	DeviceID       string `json:"device_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	MinAgeSeconds  int    `json:"min_age_seconds"`
+}
+
+type storageGCApplyParams struct {
+	DeviceID       string `json:"device_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	PlanID         string `json:"plan_id"`
+}
+
+func (s *Server) handleStorageGC(arguments json.RawMessage, kind edge.OperationKind) (string, error) {
+	if s.edgeOperations == nil || s.edgeDevices == nil {
+		return "", errEdgeStoreUnavailable
+	}
+	var deviceID string
+	var request edge.OperationRequest
+	switch kind {
+	case edge.OperationStorageGCPreview:
+		var params storageGCPreviewParams
+		if err := decodeClosed(arguments, &params); err != nil {
+			return "", err
+		}
+		deviceID = params.DeviceID
+		request = edge.OperationRequest{IdempotencyKey: params.IdempotencyKey, StorageGCMinAgeSeconds: params.MinAgeSeconds}
+	case edge.OperationStorageGCApply:
+		var params storageGCApplyParams
+		if err := decodeClosed(arguments, &params); err != nil {
+			return "", err
+		}
+		deviceID = params.DeviceID
+		request = edge.OperationRequest{IdempotencyKey: params.IdempotencyKey, StorageGCPlanID: params.PlanID}
+	default:
+		return "", errors.New("storage gc operation is invalid")
+	}
+	if !s.edgeDevices.DeviceActive(deviceID) {
+		return "", errors.New("active edge device not found")
+	}
+	operation, _, err := s.edgeOperations.CreateOperation(deviceID, kind, request)
+	if err == nil {
+		operation, err = s.edgeOperations.WaitOperation(context.Background(), operation.ID, 180*time.Second)
+	}
+	return marshalToolValue(publicEdgeOperation(operation), err)
 }
 
 func (s *Server) handleDeviceOperation(arguments json.RawMessage, kind edge.OperationKind, requiresStable bool) (string, error) {
@@ -420,6 +496,14 @@ func publicEdgeOperation(op edge.Operation) edgeOperationPublicView {
 	view.ManagedBytes = op.Result.StorageManagedBytes
 	view.ManagedBytesComplete = op.Result.StorageManagedBytesComplete
 	view.Categories = append([]edge.StorageCategorySummary(nil), op.Result.StorageCategories...)
+	view.GCPlanID = op.Result.StorageGCPlanID
+	view.GCPlanExpiresAt = op.Result.StorageGCPlanExpiresAt
+	view.GCMinAgeSeconds = op.Result.StorageGCMinAgeSeconds
+	view.GCCandidateCount = op.Result.StorageGCCandidateCount
+	view.GCCandidateBytes = op.Result.StorageGCCandidateBytes
+	view.GCRemovedCount = op.Result.StorageGCRemovedCount
+	view.GCRemovedBytes = op.Result.StorageGCRemovedBytes
+	view.GCCategories = append([]edge.StorageCategorySummary(nil), op.Result.StorageGCCategories...)
 	return view
 }
 

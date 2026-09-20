@@ -46,6 +46,8 @@ func executeWindowsControlOperation(ctx context.Context, stateRoot string, proce
 		return collectWindowsEdgeDiagnostic(workspaceCount)
 	case edge.OperationStorageStatus:
 		return edge.OperationResult{}, "storage_status_unavailable_windows"
+	case edge.OperationStorageGCPreview, edge.OperationStorageGCApply:
+		return edge.OperationResult{}, "storage_gc_unavailable_windows"
 	default:
 		return edge.OperationResult{}, "operation_invalid"
 	}

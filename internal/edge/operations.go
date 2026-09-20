@@ -39,6 +39,8 @@ const (
 	maxProjectRegistryClaims  = 512
 )
 
+var storageGCPlanIDPattern = regexp.MustCompile("^sgp_[a-f0-9]{32}$")
+
 const (
 	OperationLabPrepare                        OperationKind = "lab_prepare"
 	OperationLabRetarget                       OperationKind = "lab_retarget"
@@ -52,6 +54,8 @@ const (
 	OperationEdgeRepair                        OperationKind = "edge_repair"
 	OperationOnboardingStatus                  OperationKind = "onboarding_status"
 	OperationStorageStatus                     OperationKind = "storage_status"
+	OperationStorageGCPreview                  OperationKind = "storage_gc_preview"
+	OperationStorageGCApply                    OperationKind = "storage_gc_apply"
 	OperationProjectPrepare                    OperationKind = "project_prepare"
 	OperationProjectStatus                     OperationKind = "project_status"
 	OperationProjectRegistryList               OperationKind = "project_registry_list"
@@ -152,6 +156,8 @@ type OperationRequest struct {
 	BackgroundSignal             string            `json:"background_signal,omitempty"`
 	ProcessLimit                 int               `json:"process_limit,omitempty"`
 	GitPlanID                    string            `json:"git_plan_id,omitempty"`
+	StorageGCPlanID              string            `json:"storage_gc_plan_id,omitempty"`
+	StorageGCMinAgeSeconds       int               `json:"storage_gc_min_age_seconds,omitempty"`
 	ToolboxServiceID             string            `json:"toolbox_service_id,omitempty"`
 	ToolboxServiceName           string            `json:"toolbox_service_name,omitempty"`
 	ToolboxCPUMillis             int               `json:"toolbox_cpu_millis,omitempty"`
@@ -307,6 +313,14 @@ type OperationResult struct {
 	StorageManagedBytes              uint64                          `json:"storage_managed_bytes,omitempty"`
 	StorageManagedBytesComplete      bool                            `json:"storage_managed_bytes_complete,omitempty"`
 	StorageCategories                []StorageCategorySummary        `json:"storage_categories,omitempty"`
+	StorageGCPlanID                  string                          `json:"storage_gc_plan_id,omitempty"`
+	StorageGCPlanExpiresAt           string                          `json:"storage_gc_plan_expires_at,omitempty"`
+	StorageGCMinAgeSeconds           int                             `json:"storage_gc_min_age_seconds,omitempty"`
+	StorageGCCandidateCount          uint64                          `json:"storage_gc_candidate_count,omitempty"`
+	StorageGCCandidateBytes          uint64                          `json:"storage_gc_candidate_bytes,omitempty"`
+	StorageGCRemovedCount            uint64                          `json:"storage_gc_removed_count,omitempty"`
+	StorageGCRemovedBytes            uint64                          `json:"storage_gc_removed_bytes,omitempty"`
+	StorageGCCategories              []StorageCategorySummary        `json:"storage_gc_categories,omitempty"`
 	ProjectAlias                     string                          `json:"project_alias,omitempty"`
 	ProjectOwner                     string                          `json:"project_owner,omitempty"`
 	ProjectRepository                string                          `json:"project_repository,omitempty"`
@@ -820,6 +834,27 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 		if !workspaceIDPattern.MatchString(request.WorkspaceID) || request.RunUntil != "" || request.Target != "" || request.Platform != "" || request.Machine != "" || request.Difficulty != "" || request.OperatingSystem != "" {
 			return OperationRequest{}, errors.New("autopilot control request is invalid")
 		}
+	case OperationStorageGCPreview:
+		if request.StorageGCMinAgeSeconds < 60 || request.StorageGCMinAgeSeconds > 31_536_000 || request.StorageGCPlanID != "" {
+			return OperationRequest{}, errors.New("storage gc preview request is invalid")
+		}
+		check := request
+		check.IdempotencyKey = ""
+		check.StorageGCMinAgeSeconds = 0
+		if !operationRequestEmpty(check) {
+			return OperationRequest{}, errors.New("storage gc preview request is invalid")
+		}
+	case OperationStorageGCApply:
+		request.StorageGCPlanID = strings.TrimSpace(request.StorageGCPlanID)
+		if !storageGCPlanIDPattern.MatchString(request.StorageGCPlanID) || request.StorageGCMinAgeSeconds != 0 {
+			return OperationRequest{}, errors.New("storage gc apply request is invalid")
+		}
+		check := request
+		check.IdempotencyKey = ""
+		check.StorageGCPlanID = ""
+		if !operationRequestEmpty(check) {
+			return OperationRequest{}, errors.New("storage gc apply request is invalid")
+		}
 	case OperationProjectPrepare:
 		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
 		request.Repository = strings.TrimSpace(request.Repository)
@@ -963,7 +998,13 @@ func validEdgeBundleIdentity(result OperationResult) bool {
 
 func validOperationCompletionForKind(kind OperationKind, result OperationResult, code string) bool {
 	if code != "" {
+		if kind == OperationStorageGCApply && code == "storage_gc_apply_partial" && hasStorageGCResult(result) {
+			return validStorageGCPartialResult(result)
+		}
 		return validOperationCompletion(result, code)
+	}
+	if hasStorageGCResult(result) {
+		return validStorageGCResult(kind, result)
 	}
 	if hasStorageStatusResult(result) {
 		return kind == OperationStorageStatus && validStorageStatusResult(result)
@@ -1028,13 +1069,90 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
 		return false
 	}
-	if kind == OperationStorageStatus {
+	if kind == OperationStorageStatus || kind == OperationStorageGCPreview || kind == OperationStorageGCApply {
 		return false
 	}
 	if kind == OperationProjectRegistryList || kind == OperationProjectReconcile || kind == OperationProjectRelease || kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStdin || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")
+}
+
+func validStorageGCPartialResult(result OperationResult) bool {
+	if !storageGCPlanIDPattern.MatchString(result.StorageGCPlanID) ||
+		result.StorageGCMinAgeSeconds < 60 || result.StorageGCMinAgeSeconds > 31_536_000 ||
+		len(result.StorageGCCategories) > 2 || result.StorageGCRemovedCount >= result.StorageGCCandidateCount ||
+		result.StorageGCRemovedBytes > result.StorageGCCandidateBytes {
+		return false
+	}
+	if _, err := time.Parse(time.RFC3339, result.StorageGCPlanExpiresAt); err != nil {
+		return false
+	}
+	seen := make(map[string]struct{}, len(result.StorageGCCategories))
+	var count, bytes uint64
+	for _, category := range result.StorageGCCategories {
+		if category.Class != "browser_profiles_artifacts" && category.Class != "process_logs" {
+			return false
+		}
+		if _, duplicate := seen[category.Class]; duplicate {
+			return false
+		}
+		seen[category.Class] = struct{}{}
+		if category.ReclaimableBytes != 0 ||
+			^uint64(0)-count < category.ObjectCount ||
+			^uint64(0)-bytes < category.Bytes {
+			return false
+		}
+		count += category.ObjectCount
+		bytes += category.Bytes
+	}
+	return count == result.StorageGCCandidateCount && bytes == result.StorageGCCandidateBytes
+}
+
+func hasStorageGCResult(result OperationResult) bool {
+	return result.StorageGCPlanID != "" || result.StorageGCPlanExpiresAt != "" || result.StorageGCMinAgeSeconds != 0 ||
+		result.StorageGCCandidateCount != 0 || result.StorageGCCandidateBytes != 0 ||
+		result.StorageGCRemovedCount != 0 || result.StorageGCRemovedBytes != 0 || len(result.StorageGCCategories) != 0
+}
+
+func validStorageGCResult(kind OperationKind, result OperationResult) bool {
+	if kind != OperationStorageGCPreview && kind != OperationStorageGCApply {
+		return false
+	}
+	if !storageGCPlanIDPattern.MatchString(result.StorageGCPlanID) ||
+		result.StorageGCMinAgeSeconds < 60 || result.StorageGCMinAgeSeconds > 31_536_000 ||
+		len(result.StorageGCCategories) > 2 {
+		return false
+	}
+	if _, err := time.Parse(time.RFC3339, result.StorageGCPlanExpiresAt); err != nil {
+		return false
+	}
+	seen := make(map[string]struct{}, len(result.StorageGCCategories))
+	var count, bytes uint64
+	for _, category := range result.StorageGCCategories {
+		if category.Class != "browser_profiles_artifacts" && category.Class != "process_logs" {
+			return false
+		}
+		if _, duplicate := seen[category.Class]; duplicate {
+			return false
+		}
+		seen[category.Class] = struct{}{}
+		if category.ReclaimableBytes != 0 ||
+			^uint64(0)-count < category.ObjectCount ||
+			^uint64(0)-bytes < category.Bytes {
+			return false
+		}
+		count += category.ObjectCount
+		bytes += category.Bytes
+	}
+	if count != result.StorageGCCandidateCount || bytes != result.StorageGCCandidateBytes {
+		return false
+	}
+	if kind == OperationStorageGCPreview {
+		return result.StorageGCRemovedCount == 0 && result.StorageGCRemovedBytes == 0
+	}
+	return result.StorageGCRemovedCount == result.StorageGCCandidateCount &&
+		result.StorageGCRemovedBytes <= result.StorageGCCandidateBytes
 }
 
 func hasStorageStatusResult(result OperationResult) bool {
@@ -1333,6 +1451,9 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 
 func emptyOperationResult(result OperationResult) bool {
 	if hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
+		return false
+	}
+	if hasStorageGCResult(result) {
 		return false
 	}
 	if hasStorageStatusResult(result) {

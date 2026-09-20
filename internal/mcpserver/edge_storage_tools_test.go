@@ -65,3 +65,59 @@ func TestEdgeStorageStatusToolReturnsOnlyBoundedPublicAccounting(t *testing.T) {
 		}
 	}
 }
+
+func TestEdgeStorageGCToolsUseClosedRequestsAndBoundedPublicOutput(t *testing.T) {
+	store := &recordingEdgeControlStore{
+		active: true,
+		status: edge.OperationResult{
+			StorageGCPlanID:         "sgp_" + strings.Repeat("a", 32),
+			StorageGCPlanExpiresAt:  "2099-01-01T00:00:00Z",
+			StorageGCMinAgeSeconds:  3600,
+			StorageGCCandidateCount: 2,
+			StorageGCCandidateBytes: 0,
+			StorageGCCategories: []edge.StorageCategorySummary{
+				{Class: "browser_profiles_artifacts", ObjectCount: 1, Complete: true},
+				{Class: "process_logs", ObjectCount: 1, Complete: true},
+			},
+		},
+	}
+	server := stampServer(t).WithEdgeStore(store)
+
+	preview := server.table["edge_storage_gc_preview"]
+	body, err := preview.handler(json.RawMessage("{\"device_id\":\"" + testEdgeDeviceID + "\",\"idempotency_key\":\"gc-preview-1\",\"min_age_seconds\":3600}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.createdKind != edge.OperationStorageGCPreview || store.request.IdempotencyKey != "gc-preview-1" || store.request.StorageGCMinAgeSeconds != 3600 {
+		t.Fatalf("preview kind=%s request=%+v", store.createdKind, store.request)
+	}
+	for _, want := range []string{
+		"\"gc_plan_id\":\"sgp_" + strings.Repeat("a", 32) + "\"",
+		"\"gc_min_age_seconds\":3600",
+		"\"gc_candidate_count\":2",
+		"\"class\":\"browser_profiles_artifacts\"",
+		"\"class\":\"process_logs\"",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("preview missing %s in %s", want, body)
+		}
+	}
+	for _, forbidden := range []string{
+		"br_" + strings.Repeat("b", 32),
+		"pr_" + strings.Repeat("c", 32),
+		"/home/", "/state/", "container_name", "socket_path", "workspace_id",
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("private gc detail leaked: %s", body)
+		}
+	}
+
+	apply := server.table["edge_storage_gc_apply"]
+	_, err = apply.handler(json.RawMessage("{\"device_id\":\"" + testEdgeDeviceID + "\",\"idempotency_key\":\"gc-apply-1\",\"plan_id\":\"sgp_" + strings.Repeat("a", 32) + "\"}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.createdKind != edge.OperationStorageGCApply || store.request.IdempotencyKey != "gc-apply-1" || store.request.StorageGCPlanID != "sgp_"+strings.Repeat("a", 32) {
+		t.Fatalf("apply kind=%s request=%+v", store.createdKind, store.request)
+	}
+}

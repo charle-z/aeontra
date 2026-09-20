@@ -175,6 +175,8 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return collectEdgeDiagnostic(stateRoot, true)
 	case edge.OperationStorageStatus:
 		return collectEdgeStorageStatus(ctx, stateRoot)
+	case edge.OperationStorageGCPreview, edge.OperationStorageGCApply:
+		return executeStorageGC(ctx, stateRoot, processes, browsers, operation)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:
 		return executeBundleControl(ctx, stateRoot, operation)
 	default:

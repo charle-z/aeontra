@@ -54,6 +54,18 @@ remain observable and stoppable/cleanable during pressure. An optional VFS-speci
 reserve applies only to rootless persistent toolbox and browser-harness operations; it
 does not turn VFS storage into a GC candidate or weaken ownership checks.
 
+`edge_storage_gc_preview` and `edge_storage_gc_apply` use a separate explicit
+preview/apply boundary. Preview accepts a caller-supplied age and writes a private
+Edge-side plan with a 10-minute lifetime and single-use consumption marker; public
+results expose only the opaque plan id and aggregate categories/counts/bytes. Apply
+first revalidates every planned claim generation, workspace binding, resource identity,
+lifecycle state and age. Any mismatch aborts the whole plan before effects. After a
+successful preflight the plan is consumed and only its exact closed browser sessions
+and terminal inactive processes are cleaned. A failure after consumption returns a
+bounded partial aggregate and never broadens cleanup. Generic GC does not delete
+toolboxes, worktrees, resultstore/model-runtime data, toolchains, container/package
+caches or volumes, or unique evidence, and it never invokes host-global prune.
+
 ## Authoritative direct-operation timing
 
 The private journal records operation creation, current lease, signed `running`, signed
