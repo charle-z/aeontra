@@ -286,6 +286,12 @@ type OperationResult struct {
 	WorkspaceCount                   int                             `json:"workspace_count,omitempty"`
 	ProviderValid                    bool                            `json:"provider_valid,omitempty"`
 	DriverValid                      bool                            `json:"driver_valid,omitempty"`
+	StorageTotalBytes                uint64                          `json:"storage_total_bytes,omitempty"`
+	StorageAvailableBytes            uint64                          `json:"storage_available_bytes,omitempty"`
+	StorageReservedMinBytes          uint64                          `json:"storage_reserved_min_bytes,omitempty"`
+	StoragePressure                  string                          `json:"storage_pressure,omitempty"`
+	StorageDriver                    string                          `json:"storage_driver,omitempty"`
+	StorageDriverPosture             string                          `json:"storage_driver_posture,omitempty"`
 	Blockers                         []string                        `json:"blockers,omitempty"`
 	ProjectAlias                     string                          `json:"project_alias,omitempty"`
 	ProjectOwner                     string                          `json:"project_owner,omitempty"`
@@ -945,6 +951,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if code != "" {
 		return validOperationCompletion(result, code)
 	}
+	if hasEdgeStorageResult(result) {
+		return kind == OperationOnboardingStatus && validEdgeStorageResult(result)
+	}
 	if hasProjectToolchainSummary(result) && kind != OperationProjectStatus {
 		return false
 	}
@@ -1211,7 +1220,7 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 }
 
 func emptyOperationResult(result OperationResult) bool {
-	if hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
+	if hasEdgeStorageResult(result) || hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
 	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.EdgeProtocolVersion == "" && result.EdgeCatalogHash == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && result.ProjectReason == "" && result.ProjectDiagnosticReason == "" && !result.ProjectRepairable && result.ProjectRecommendedAction == "" && result.ProjectRegistryAction == "" && result.ProjectClaimGeneration == 0 && len(result.ProjectClaims) == 0 && !hasProjectToolchainSummary(result) && !hasProjectGitHubResult(result)

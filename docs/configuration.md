@@ -168,6 +168,17 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Recovery metadata:** project claims, checkout attestations, toolbox generations and
   process bindings are durable. Schema migrations are additive and fail closed on a
   newer schema. Reconciliation is explicit and never resets or deletes a source tree.
+- **Storage visibility:** Linux `edge_onboarding_status` reports total and available
+  bytes for the filesystem containing the validated private Edge state root, plus the
+  storage driver reported by the outer user-owned rootless container engine. Driver
+  posture is conservative: VFS is `degraded`, known copy-on-write drivers are
+  `copy_on_write`, and unrecognized/unavailable drivers remain `unknown`. This does
+  not claim visibility into a nested container engine running inside a toolbox.
+- **Optional storage reserve:** set `MCP_DEVBOX_STORAGE_RESERVED_MIN_BYTES` only in
+  the local Edge service environment to one positive integer byte count. When unset,
+  onboarding reports storage pressure as `unconfigured`; when set, available bytes
+  below the reserve are `critical`, otherwise `normal`. This status is read-only and
+  does not trigger cleanup, pruning or admission changes by itself.
 - **Emergency limits:** `mcp-edge codex --project-process-limit` defaults to `256`
   concurrent durable processes (maximum `4096`).
   `--project-process-log-limit` defaults to `67108864` bytes per stdout/stderr stream
