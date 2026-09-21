@@ -4,7 +4,7 @@
 > security invariants. If a spec, plan, task, roadmap item, or agent instruction
 > conflicts with this constitution, the constitution wins.
 
-Last amended: 2026-07-13.
+Last amended: 2026-09-21.
 
 ## Article I — Security is the product (NON-NEGOTIABLE)
 
@@ -88,7 +88,11 @@ confusion, and unsafe failure recovery. Every bypass must fail safely.
 
 - Common types are `feat`, `fix`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`,
   and `perf`.
-- No `Co-Authored-By` or AI signature.
+- Commits in Aeontra itself use no `Co-Authored-By` or AI signature. For an external
+  open-source contribution, one genuine human `Co-authored-by` trailer may be used when
+  a distinct automation identity is the Git author, the upstream policy permits it, and
+  that human is not already the resolved commit author. Never invent an Aeontra GitHub
+  identity for attribution.
 - No force push, destructive history rewrite, secret commit, or unreviewed generated
   artifact.
 - Production releases advance `main` by reviewed fast-forward when possible and must

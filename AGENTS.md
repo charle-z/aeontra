@@ -151,7 +151,8 @@ branding.
 - Do not force-push, mirror, publish arbitrary refspecs, or rewrite shared history.
 - `git_commit` commits locally and does not push.
 - Use preview/execute pairs for publication, pull requests, merges, and deployment.
-- Do not add AI signatures or `Co-Authored-By` trailers.
+- For commits in Aeontra itself, do not add AI signatures or `Co-Authored-By`
+  trailers. External open-source contributions follow the attribution rule below.
 - Use Conventional Commits. Planning or milestone identifiers belong in issues,
   specifications, Brain, and dated evidence—not in public commit subjects.
 - Keep the subject imperative, concise, and about the software change. Use a scope when
@@ -189,8 +190,25 @@ possible rejection.
 - If another contributor already opened a substantially equivalent pull request, do not
   create a noisy duplicate. Contribute useful review, testing, or evidence instead.
 - Keep the pull request small, human, and proportional: concise description, relevant
-  tests, no AI signatures, no unnecessary narrative, and no claims beyond verified
-  evidence.
+  tests, no unnecessary narrative, and no claims beyond verified evidence.
+- Preserve genuine human attribution. Prefer the configured GitHub operator as the Git
+  author when the contribution is submitted from that operator's fork or account. If a
+  distinct automation or service identity must be the Git author, add exactly one
+  `Co-authored-by` trailer for the configured human operator using an email address
+  GitHub associates with that account, unless the upstream contribution policy forbids
+  such trailers.
+- Never add the operator as a co-author when GitHub already resolves the commit author to
+  that same operator. Do not duplicate an author identity merely to influence profile or
+  contribution rendering.
+- Aeontra is the public name for the development assistance. When an upstream project
+  requires AI-assistance disclosure, describe Aeontra's role plainly and include the
+  underlying provider or model when the upstream policy requires that detail. Do not
+  invent an `Aeontra` GitHub co-author identity or email address.
+- Before declaring an upstream contribution complete, verify that the pull request is
+  actually owned by the intended configured GitHub operator, points from the expected
+  fork branch, and has a stable PR URL. If upstream squash/rebase policy rewrites commit
+  metadata, treat the pull request authorship and upstream history as the authoritative
+  contribution record instead of manufacturing duplicate trailers.
 
 The default is therefore: **if a legitimate contribution opportunity exists and the
 upstream workflow permits it, take it.** Ambiguity alone is not a reason to abandon the
