@@ -20,7 +20,7 @@ func TestProjectToolboxDisposableLifecyclePersistsAndBecomesEligibleOnlyWhenStop
 			Engine: "podman", SocketPath: filepath.Join(stateRoot, "podman.sock"), Executable: "/usr/bin/podman",
 		},
 		Runner: runner, environment: testRootlessContainerEnvironment,
-		NewID: func() (string, error) { return "tb_99999999999999999999999999999999", nil },
+		NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil },
 	})
 	if err != nil {
 		t.Fatal(err)
