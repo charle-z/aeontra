@@ -100,15 +100,7 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 			err = listErr
 			break
 		}
-		result := projectProcessBaseResult(resolved)
-		if len(items) > 0 {
-			result = projectProcessBaseResult(durableProjectProcessResolutionFromSnapshot(items[0]))
-		}
-		result.BackgroundProcesses = make([]edge.BackgroundProcessSummary, 0, len(items))
-		for _, item := range items {
-			result.BackgroundProcesses = append(result.BackgroundProcesses, projectProcessSummary(item))
-		}
-		return result, ""
+		return projectProcessListResult(resolved, items), ""
 	case edge.OperationProjectProcessCleanup:
 		cleanup, cleanupErr := processes.Cleanup(edgeclient.ProjectProcessCleanupRequest{ProcessID: operation.Request.BackgroundProcessID, ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, WorkspaceID: resolved.Workspace.ID})
 		if cleanupErr != nil {
