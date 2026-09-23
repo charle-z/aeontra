@@ -42,16 +42,32 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 	}
 	for dockerfile, runtimeBase := range map[string]string{
 		"Dockerfile":                        "FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
-		"Dockerfile.site":                   "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
-		"Dockerfile.validation-runner":      "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
-		"Dockerfile.front-door":             "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
-		"Dockerfile.front-door-coordinator": "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+		"Dockerfile.site":                   "FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
+		"Dockerfile.validation-runner":      "FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
+		"Dockerfile.front-door":             "FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
+		"Dockerfile.front-door-coordinator": "FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
 	} {
 		if !strings.Contains(contents[dockerfile], runtimeBase) {
 			t.Errorf("%s must use its reviewed digest-pinned runtime", dockerfile)
 		}
 		if !strings.Contains(contents[dockerfile], "apk upgrade --no-cache") {
 			t.Errorf("%s must upgrade its pinned runtime before installing packages", dockerfile)
+		}
+		if !strings.Contains(contents[dockerfile], "HEALTHCHECK --interval=10s --timeout=10s") {
+			t.Errorf("%s must allow the bounded healthcheck to start under host load", dockerfile)
+		}
+	}
+	for dockerfile, healthURL := range map[string]string{
+		"Dockerfile.site":                   "http://127.0.0.1:8080/healthz",
+		"Dockerfile.front-door":             "http://127.0.0.1:8765/front-door/healthz",
+		"Dockerfile.front-door-coordinator": "http://127.0.0.1:8766/readyz",
+		"Dockerfile.validation-runner":      "http://127.0.0.1:8787/healthz",
+	} {
+		if !strings.Contains(contents[dockerfile], "apk add --no-cache ca-certificates curl") {
+			t.Errorf("%s must install curl for its healthcheck", dockerfile)
+		}
+		if !strings.Contains(contents[dockerfile], "curl -fsS --max-time 2 "+healthURL) {
+			t.Errorf("%s must check its own health endpoint", dockerfile)
 		}
 	}
 	if !strings.Contains(contents["Dockerfile.validation-runner"], "COPY go.mod go.sum ./") {

@@ -144,7 +144,7 @@ WORKDIR /repos
 VOLUME ["/repos", "/brain", "/state"]
 EXPOSE 8765
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=12 \
+HEALTHCHECK --interval=10s --timeout=10s --start-period=20s --retries=12 \
 	CMD curl -fsS --max-time 2 http://127.0.0.1:8765/readyz >/dev/null || exit 1
 
 # Coolify/Docker use SIGTERM for rolling replacement. The Go server catches it,
