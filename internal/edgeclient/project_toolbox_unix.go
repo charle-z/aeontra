@@ -520,6 +520,8 @@ func (manager *ProjectToolboxManager) Reconcile(ctx context.Context, request Pro
 			return manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
 		} else if errors.Is(recoverErr, ErrProjectToolboxMountMismatch) {
 			statusErr = recoverErr
+		} else {
+			return ProjectToolboxSnapshot{}, recoverErr
 		}
 	}
 	relocated := false
@@ -894,6 +896,60 @@ func (manager *ProjectToolboxManager) Cleanup(ctx context.Context, request Proje
 		return false, ErrProjectToolboxUnsafeState
 	}
 	return true, nil
+}
+
+// CleanupMissing is an explicit record-only recovery. It never removes a
+// container or workspace data, and only trusts a v3 record pinned to this
+// rootless endpoint. Legacy records need a live container for migration.
+func (manager *ProjectToolboxManager) CleanupMissing(ctx context.Context, request ProjectToolboxCleanupRequest) (ProjectToolboxSnapshot, bool, error) {
+	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	defer release()
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	return manager.cleanupMissingRecord(ctx, request)
+}
+
+func (manager *ProjectToolboxManager) cleanupMissingRecord(ctx context.Context, request ProjectToolboxCleanupRequest) (ProjectToolboxSnapshot, bool, error) {
+	record, err := manager.load(request.Workspace.ID)
+	if errors.Is(err, ErrProjectToolboxNotFound) {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxNotFound
+	}
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	workspaceFingerprint, err := projectRuntimeWorkspaceFingerprint(request.Workspace.Path)
+	if err != nil || record.SchemaVersion != projectToolboxSchemaVersion || record.Generation == 0 ||
+		(record.Lifecycle != projectToolboxPersistent && record.Lifecycle != projectToolboxDisposable) || record.UpdatedAt.Before(record.CreatedAt) ||
+		record.WorkspaceID != request.Workspace.ID || record.ProjectAlias != request.ProjectAlias || record.TargetAlias != request.TargetAlias ||
+		filepath.Clean(record.WorkspacePath) != filepath.Clean(request.Workspace.Path) || record.WorkspaceFingerprint != workspaceFingerprint ||
+		record.EndpointFingerprint != projectRuntimeEndpointFingerprint(manager.endpoint) ||
+		record.ContainerName != "mcp-toolbox-"+strings.TrimPrefix(record.ToolboxID, "tb_") {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxIdentityMismatch
+	}
+	for _, filter := range []string{"label=" + projectToolboxLabelKey + "=" + record.ToolboxID, "name=" + record.ContainerName} {
+		output, err := manager.run(ctx, "ps", "-aq", "--filter", filter)
+		if err != nil {
+			return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
+		}
+		if strings.TrimSpace(string(output)) != "" {
+			return ProjectToolboxSnapshot{}, false, ErrProjectToolboxContainerUnavailable
+		}
+	}
+	if err := os.Remove(manager.recordPath(request.Workspace.ID)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
+	}
+	return ProjectToolboxSnapshot{
+		ToolboxID: record.ToolboxID, State: "removed", Lifecycle: record.Lifecycle, Generation: record.Generation,
+		ReclaimReason: "removed", BaseImage: record.BaseImage, BaseImageID: record.BaseImageID,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis,
+		MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit,
+	}, true, nil
 }
 
 func (manager *ProjectToolboxManager) serviceRecord(request ProjectToolboxServiceRequest) (projectToolboxRecord, int, error) {

@@ -77,13 +77,13 @@ do not replace server-side enforcement.
 | `project_git_publish` | 0/0/1/1 | Consume and revalidate one exact publication plan, then push only the bound branch to its same-name branch on the fixed owner-bound `origin` with no force, tags, caller URL or caller refspec. |
 | `project_toolbox_create` | 0/1/1/1 | Create or recover one Debian rootfs through the registered workspace's user-owned rootless engine. Lifecycle defaults to `persistent`; `disposable` must be explicit. Existing lifecycle is immutable on reuse. Optional CPU, memory and process limits remain bounded; no host engine socket is mounted. |
 | `project_toolbox_status` | 1/0/1/1 | Return opaque state/base identity, lifecycle, generation, conservative reclaimability, applied resource limits, writable/rootfs byte usage and timestamps; host paths, socket paths and container identity remain private. |
-| `project_toolbox_repair` | 0/1/1/1 | Restart or reconcile only a stopped server-owned toolbox after revalidating its workspace, recorded image, labels, generation and exact mounts. A stale compatible record may be recreated in place without deleting the project workspace; missing, unknown, foreign-owned or unsafe state fails closed. |
+| `project_toolbox_repair` | 0/1/1/1 | Restart or reconcile only a stopped server-owned toolbox after revalidating its workspace, recorded image, labels, generation and exact mounts. A stale compatible record may be recreated in place without deleting the project workspace; a missing container is reported as `project_toolbox_container_missing` and is not rebuilt automatically. Unknown, foreign-owned or unsafe state fails closed. |
 | `project_toolbox_exec` | 0/1/1/1 | Execute explicit arbitrary argv inside the project's toolbox with the project at `/workspace`, relative cwd, non-secret environment overlay, bounded redacted output and no implicit shell or command allowlist. Host container-engine sockets are absent. |
 | `project_toolbox_install` | 0/1/1/1 | Run explicit package, toolchain or rootless container-client installation argv as container root inside the rootless user namespace; the host WSL package database and global toolchains are not modified. |
 | `project_toolbox_service_start` | 0/1/1/1 | Start or reuse one named background argv inside the project's toolbox. Only an opaque service id, name, state and timestamps are returned; caller argv is positional and never interpolated into the fixed supervisor script. |
 | `project_toolbox_service_status` | 1/0/1/1 | Revalidate one opaque service identity and report `running` or `stopped` without starting a stopped toolbox or exposing PID, argv, paths, logs or container internals. |
 | `project_toolbox_service_stop` | 0/1/1/1 | Stop one owned service after PID/start-tick revalidation using TERM, a bounded grace period and KILL only when necessary; repeated requests are idempotent. |
-| `project_toolbox_cleanup` | 0/1/1/1 | Explicitly remove only the project's toolbox rootfs and private toolbox metadata. Cleanup is idempotent, never automatic, and does not delete the project workspace or other workspace storage. |
+| `project_toolbox_cleanup` | 0/1/1/1 | Explicitly remove only the project's toolbox rootfs and private toolbox metadata. With one rootless endpoint, a missing container permits record-only cleanup after the pinned endpoint, workspace identity, name and label have been checked. Cleanup is idempotent, never automatic, and does not delete the project workspace or other workspace storage. |
 | `edge_operation_list` | 1/0/1/0 | List bounded queued/running operation identity, kind, progress and cancellation state for one human Edge target without exposing device/workspace ids, paths, request bodies or raw output. |
 | `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle, progress and derived queue/pickup/work/completion/total durations by operation id; internal absolute phase timestamps remain private. |
 | `edge_operation_cancel` | 0/1/1/0 | Idempotently cancel one queued operation or one interruptible running operation; updater, rollback and repair effects become non-cancellable after pickup. |
@@ -150,14 +150,19 @@ and publication keep their explicit precondition.
 Each Edge workspace separates its registered source tree from private runtime, cache and
 artifact roots. Toolchain homes and package-manager caches are mounted from those roots,
 so normal provisioning does not create `.cargo`, `.rustup`, package caches or other
-infrastructure in the source tree. Existing legacy runtime directories are not deleted
+infrastructure in the source tree. The private runtime `home` directory is created with
+owner-only permissions before the workcell starts. Existing legacy runtime directories are not deleted
 implicitly.
 
 Toolbox records bind workspace, mount policy, rootless engine identity and generation.
 `project_toolbox_repair` can restart only a stopped server-owned toolbox whose identity
 and mounts still validate; stale but safely reconcilable records use the controlled
 reconciliation path, while ownership or boundary drift fails closed. Cleanup is explicit
-and does not delete the project workspace.
+and does not delete the project workspace. If repair reports a missing container, explicit
+cleanup followed by create can recover its record on a single rootless endpoint; an
+unavailable endpoint or a container found by either selector prevents record removal.
+For a missing container, the cleanup result reports zero rootfs and writable bytes
+because no live container remains to measure.
 
 The Edge executes a bounded set of independent operations concurrently. Normal project,
 Git inspection and process operations share capacity; signed bundle update, rollback

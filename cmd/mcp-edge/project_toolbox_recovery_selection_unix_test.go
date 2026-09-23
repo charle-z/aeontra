@@ -39,3 +39,26 @@ func TestSafeProjectToolboxSelectionFailureReportsMissingWithoutInternalIdentity
 		t.Fatalf("code=%q", got)
 	}
 }
+
+func TestSingleEndpointCleanupCanRecoverMissingContainerRecord(t *testing.T) {
+	manager := &fakeProjectToolboxManager{statusErr: edgeclient.ErrProjectToolboxContainerUnavailable}
+	resolved := toolboxSelectionFixture()
+	operation := edge.Operation{Kind: edge.OperationProjectToolboxCleanup}
+	selected, err := selectProjectToolboxManager(t.Context(), []projectToolboxOperations{manager}, resolved, operation)
+	if err != nil || selected != manager {
+		t.Fatalf("selected=%T err=%v", selected, err)
+	}
+	result, code := collectProjectToolbox(t.Context(), selected, resolved, operation)
+	if code != "" || !result.ToolboxRemoved || result.ToolboxID == "" || result.ToolboxRootFSBytes != 0 || !manager.removed {
+		t.Fatalf("code=%q result=%+v request=%+v", code, result, manager.cleanupRequest)
+	}
+}
+
+func TestMissingContainerCleanupDoesNotGuessAcrossEndpoints(t *testing.T) {
+	first := &fakeProjectToolboxManager{statusErr: edgeclient.ErrProjectToolboxContainerUnavailable}
+	second := &fakeProjectToolboxManager{statusErr: edgeclient.ErrProjectToolboxContainerUnavailable}
+	selected, err := selectProjectToolboxManager(t.Context(), []projectToolboxOperations{first, second}, toolboxSelectionFixture(), edge.Operation{Kind: edge.OperationProjectToolboxCleanup})
+	if selected != nil || !errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable) || first.removed || second.removed {
+		t.Fatalf("selected=%T err=%v removed=%t/%t", selected, err, first.removed, second.removed)
+	}
+}

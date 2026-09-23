@@ -29,6 +29,7 @@ type projectToolboxOperations interface {
 	BrowserHarnessArtifactList(edgeclient.ProjectBrowserHarnessArtifactListRequest) ([]edgeclient.ProjectBrowserHarnessArtifactSummary, error)
 	BrowserHarnessArtifactRead(edgeclient.ProjectBrowserHarnessArtifactReadRequest) (edgeclient.ProjectBrowserHarnessArtifactChunk, error)
 	Cleanup(context.Context, edgeclient.ProjectToolboxCleanupRequest) (bool, error)
+	CleanupMissing(context.Context, edgeclient.ProjectToolboxCleanupRequest) (edgeclient.ProjectToolboxSnapshot, bool, error)
 }
 
 func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
@@ -113,6 +114,10 @@ func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxO
 			default:
 				return nil, repairErr
 			}
+		case operation.Kind == edge.OperationProjectToolboxCleanup && len(managers) == 1 && errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
+			// Only one rootless endpoint exists. Cleanup will still prove that
+			// the pinned record and both container selectors are absent.
+			return manager, nil
 		case errors.Is(err, edgeclient.ErrProjectToolboxNotOwned), errors.Is(err, edgeclient.ErrProjectToolboxUnavailable):
 			lastErr = err
 			continue
@@ -156,14 +161,17 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 		cancel()
 	case edge.OperationProjectToolboxCleanup:
 		snapshot, err = manager.Status(ctx, edgeclient.ProjectToolboxStatusRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
+		cleanupRequest := edgeclient.ProjectToolboxCleanupRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace}
 		if err == nil {
 			var removed bool
-			removed, err = manager.Cleanup(ctx, edgeclient.ProjectToolboxCleanupRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
+			removed, err = manager.Cleanup(ctx, cleanupRequest)
 			if removed {
 				snapshot.State = edgeclient.ProjectToolboxState("removed")
 				snapshot.Reclaimable = false
 				snapshot.ReclaimReason = "removed"
 			}
+		} else if errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable) {
+			snapshot, _, err = manager.CleanupMissing(ctx, cleanupRequest)
 		}
 	case edge.OperationProjectBrowserHarnessStart, edge.OperationProjectBrowserHarnessStatus, edge.OperationProjectBrowserHarnessList, edge.OperationProjectBrowserHarnessStop, edge.OperationProjectBrowserHarnessCleanup, edge.OperationProjectBrowserHarnessArtifactList, edge.OperationProjectBrowserHarnessArtifactRead:
 		return collectProjectBrowserHarness(ctx, manager, resolved, operation)
@@ -187,6 +195,12 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	}
 	if err != nil {
 		switch {
+		case errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
+			return edge.OperationResult{}, "project_toolbox_container_unavailable"
+		case errors.Is(err, edgeclient.ErrProjectToolboxIdentityMismatch):
+			return edge.OperationResult{}, "project_toolbox_identity_mismatch"
+		case errors.Is(err, edgeclient.ErrProjectToolboxUnavailable):
+			return edge.OperationResult{}, "project_toolbox_unavailable"
 		case errors.Is(err, edgeclient.ErrProjectToolboxNotFound):
 			if operation.Kind == edge.OperationProjectToolboxServiceStatus || operation.Kind == edge.OperationProjectToolboxServiceStop {
 				return edge.OperationResult{}, "project_toolbox_service_not_found"
