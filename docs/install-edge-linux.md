@@ -72,6 +72,14 @@ is active, one daemon owns the lock, and the reported release matches the intend
 installation. Platform-specific capabilities must report their own status; do not
 infer toolbox or browser acceptance from service health.
 
+After registering a disposable development project, execute one harmless command through
+`project_exec` as a separate workcell check. `mcp-edge doctor` verifies the installed
+service and bundle, but does not prove that a child Bubblewrap process can create its
+filesystem namespace. If the command reports
+`bwrap: Can't open source /usr: Function not implemented`, check the installed unit's
+`RestrictSUIDSGID` setting and update to a signed release that permits Bubblewrap's
+`openat2` call. Do not hand-edit the packaged unit or bypass Bubblewrap.
+
 ## Update, rollback, and removal
 
 Request updates and rollback only through the paired control plane's closed operations:

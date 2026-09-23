@@ -6,6 +6,9 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Keep Bubblewrap 0.12 workcells executable under the packaged Linux Edge units by
+  permitting `openat2` while retaining non-root, no-new-privileges and empty-capability
+  boundaries.
 - Report an attached Git branch with no first commit as `unborn` in read-only project
   snapshot and Git status; keep publication and fast-forward blocked until a valid
   commit exists. Include validated installed Git in the controlled Windows workcell PATH.
