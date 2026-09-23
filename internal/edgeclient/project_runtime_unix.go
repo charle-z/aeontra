@@ -43,6 +43,7 @@ func prepareProjectRuntimeRoots(stateRoot string, workspace Workspace) (ProjectR
 	for _, root := range []string{
 		filepath.Dir(roots.Runtime), filepath.Dir(roots.Cache), filepath.Dir(roots.Artifacts),
 		roots.Runtime, roots.Cache, roots.Artifacts, projectRuntimeControlRoot(roots),
+		filepath.Join(roots.Runtime, "home"),
 	} {
 		if !pathInside(stateRoot, root) || root == stateRoot {
 			return ProjectRuntimeRoots{}, errors.New("project runtime root escaped state")

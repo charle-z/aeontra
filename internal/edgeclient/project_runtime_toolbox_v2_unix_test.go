@@ -39,6 +39,11 @@ func TestProjectRuntimeRootsArePrivatePerWorkspace(t *testing.T) {
 			t.Fatalf("root crossed boundary: state=%q source=%q root=%q", stateRoot, workspace.Path, root)
 		}
 	}
+	home := filepath.Join(roots.Runtime, "home")
+	homeInfo, homeErr := os.Lstat(home)
+	if homeErr != nil || !homeInfo.IsDir() || homeInfo.Mode().Perm() != 0o700 || homeInfo.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("runtime HOME=%q info=%+v err=%v", home, homeInfo, homeErr)
+	}
 	link := filepath.Join(stateRoot, projectRuntimeStateDirectory, other.ID)
 	_ = os.RemoveAll(link)
 	if err := os.Symlink(roots.Runtime, link); err != nil {
