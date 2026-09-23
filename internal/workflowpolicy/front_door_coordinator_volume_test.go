@@ -56,6 +56,9 @@ func TestFrontDoorCoordinatorVolumeBootstrapDropsPrivileges(t *testing.T) {
 		`docker volume create "$volume"`,
 		`--env COOLIFY_URL=http+host-gateway://control.example:1`,
 		`--volume "$volume:/coordinator-state"`,
+		`docker exec "$container" curl -fsS --max-time 2 http://127.0.0.1:8766/healthz`,
+		`docker exec "$container" curl -sS --max-time 2 -D - -o /dev/null http://127.0.0.1:8766/readyz`,
+		`docker exec "$container" curl -fsS --max-time 2 http://127.0.0.1:8766/status`,
 		`awk '/^Uid:/ {print $2; exit}' /proc/1/status`,
 		`su-exec 10003:10003 sh -c`,
 		`.write-probe`,
@@ -69,6 +72,9 @@ func TestFrontDoorCoordinatorVolumeBootstrapDropsPrivileges(t *testing.T) {
 	}
 	if strings.Contains(string(smoke), "--add-host") {
 		t.Error("coordinator smoke still depends on a Docker host alias")
+	}
+	if strings.Contains(string(smoke), "wget") {
+		t.Error("coordinator smoke requires wget, which is absent from the fixed runtime")
 	}
 	for _, forbidden := range []string{"chown -R", "chmod -R", "eval ", "exec sh", "exec /bin/sh"} {
 		if strings.Contains(string(entrypoint), forbidden) {
