@@ -86,7 +86,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 # Runtime keeps the full Go 1.26 toolchain plus Node/npm so the global builder can
 # run common Go and web project checks in the VPS container. (Bigger image, but this
 # is a dev-agent box.)
-FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d
 
 # OCI metadata (good practice; helps registries/scanners identify the image).
 # Tags remain readable while the digest fixes the exact multi-platform image index.
@@ -95,11 +95,11 @@ LABEL org.opencontainers.image.title="Aeontra" \
 	org.opencontainers.image.source="https://github.com/charle-z/aeontra"
 
 COPY --from=build /usr/local/go /usr/local/go
-COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
 
 RUN apk upgrade --no-cache \
-	&& apk add --no-cache ca-certificates git libstdc++ \
+	&& apk add --no-cache ca-certificates curl git libstdc++ nodejs-22 \
+	&& mkdir -p /usr/local/bin \
 	&& ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 	&& ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
 	&& test "$(node --version)" = v22.23.2 \
@@ -145,7 +145,7 @@ VOLUME ["/repos", "/brain", "/state"]
 EXPOSE 8765
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=12 \
-	CMD busybox wget -qO- http://127.0.0.1:8765/readyz >/dev/null || exit 1
+	CMD curl -fsS --max-time 2 http://127.0.0.1:8765/readyz >/dev/null || exit 1
 
 # Coolify/Docker use SIGTERM for rolling replacement. The Go server catches it,
 # stops accepting new traffic, and drains in-flight requests before exit.

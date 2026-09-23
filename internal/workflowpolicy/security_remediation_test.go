@@ -41,17 +41,17 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		}
 	}
 	for dockerfile, runtimeBase := range map[string]string{
-		"Dockerfile":                        "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
+		"Dockerfile":                        "FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
 		"Dockerfile.site":                   "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
 		"Dockerfile.validation-runner":      "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
 		"Dockerfile.front-door":             "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
 		"Dockerfile.front-door-coordinator": "FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d",
 	} {
 		if !strings.Contains(contents[dockerfile], runtimeBase) {
-			t.Errorf("%s must use the supported Alpine 3.21 runtime with OpenSSL 3.3", dockerfile)
+			t.Errorf("%s must use its reviewed digest-pinned runtime", dockerfile)
 		}
 		if !strings.Contains(contents[dockerfile], "apk upgrade --no-cache") {
-			t.Errorf("%s must upgrade its pinned Alpine runtime before installing packages", dockerfile)
+			t.Errorf("%s must upgrade its pinned runtime before installing packages", dockerfile)
 		}
 	}
 	if !strings.Contains(contents["Dockerfile.validation-runner"], "COPY go.mod go.sum ./") {
@@ -106,16 +106,19 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"bcedf25a21daecd1a18fb5e19ab855b7d79ec8ef1da175e8ba85cfc0ed0069d1",
 		"/usr/local/lib/node_modules/npm/node_modules/tar/package.json",
 		"test ! -e /usr/lib/node_modules/npm",
-		"busybox wget -qO- http://127.0.0.1:8765/readyz",
+		"curl -fsS --max-time 2 http://127.0.0.1:8765/readyz",
 		"COPY --from=build /usr/local/go /usr/local/go",
 		`test "$(node --version)" = v22.23.2`,
-		"COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node",
+		"apk add --no-cache ca-certificates curl git libstdc++ nodejs-22",
 		"COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm",
 		"&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)",
 	} {
 		if !strings.Contains(dockerfile, required) {
 			t.Errorf("Dockerfile does not contain %q", required)
 		}
+	}
+	if strings.Contains(dockerfile, "COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node") {
+		t.Error("Dockerfile must not copy a musl-linked Node executable into the Wolfi runtime")
 	}
 	if strings.Contains(dockerfile, "&& find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true") {
 		t.Error("the setuid cleanup fallback must not mask earlier installation failures")
