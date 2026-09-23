@@ -6,6 +6,8 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Use digest-pinned Wolfi runtimes with patched zlib and PCRE2 packages for the
+  service images; retain the High-severity Grype gate without a VEX exemption.
 - Keep managed multi-step model turns active until a tool call, explicit terminal
   failure, or completed response satisfies the runtime completion contract; reject
   progress text that announces unexecuted follow-up work as a final response.
