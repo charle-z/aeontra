@@ -112,3 +112,32 @@ func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T
 		t.Fatal("bridge Edge unit must derive state from the package-selected HOME")
 	}
 }
+
+func TestEdgeServiceUnitsAllowBubblewrapOpenat2(t *testing.T) {
+	for _, name := range []string{
+		"mcp-devbox-edge.service",
+		"mcp-devbox-edge@.service",
+		"mcp-devbox-opencode-edge@.service",
+		"mcp-devbox-opencode-edge-bridge@.service",
+	} {
+		t.Run(name, func(t *testing.T) {
+			unit := "\n" + strings.ReplaceAll(readRepositoryFile(t, filepath.Join("packaging", "systemd", name)), "\r\n", "\n")
+			for _, directive := range []string{
+				"RestrictSUIDSGID=no",
+				"CapabilityBoundingSet=",
+				"AmbientCapabilities=",
+				"ProtectSystem=strict",
+			} {
+				if strings.Count(unit, "\n"+directive+"\n") != 1 {
+					t.Fatalf("Edge unit must contain exactly one %q", directive)
+				}
+			}
+			if strings.Contains(unit, "\nRestrictSUIDSGID=yes\n") || strings.Contains(unit, "\nRestrictSUIDSGID=true\n") {
+				t.Fatal("Edge unit must not block Bubblewrap openat2")
+			}
+			if !strings.Contains(unit, "\nNoNewPrivileges=yes\n") && !strings.Contains(unit, "\nNoNewPrivileges=true\n") {
+				t.Fatal("Edge unit must continue to deny new privileges")
+			}
+		})
+	}
+}

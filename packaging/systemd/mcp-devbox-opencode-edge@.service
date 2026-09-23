@@ -43,7 +43,9 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
-RestrictSUIDSGID=yes
+# Bubblewrap needs openat2 for safe bind-source resolution. RestrictSUIDSGID
+# blocks that syscall; NoNewPrivileges and empty capabilities remain enforced.
+RestrictSUIDSGID=no
 RestrictNamespaces=false
 RestrictRealtime=yes
 RemoveIPC=yes

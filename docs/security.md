@@ -358,6 +358,11 @@ Bubblewrap. Only the selected workspace and a private runtime area are writable.
 identity, home, unrelated repositories, and private control sockets are excluded. There
 is no direct-execution fallback.
 
+The packaged Linux Edge service leaves `openat2` available for Bubblewrap's safe bind-source
+resolution. systemd's `RestrictSUIDSGID` filter blocks that syscall, so the Edge units set
+`RestrictSUIDSGID=no`. They still run as non-root users with `NoNewPrivileges=yes`, an empty
+capability bounding set, and their existing filesystem and namespace restrictions.
+
 The signed-source candidate for the optional Codex harness uses a private loopback Responses
 adapter backed by the same durable model-turn transport. It rejects non-loopback peers
 and hosts, rejects Authorization input, bounds and strictly decodes requests, strips
