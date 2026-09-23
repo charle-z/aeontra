@@ -54,16 +54,20 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"https://registry.npmjs.org/npm/-/npm-12.0.1.tgz",
+		"FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
+		"npm pack --ignore-scripts --pack-destination /tmp npm@12.0.1",
 		"5e02bea4c784df1c3bbea9e55c7d2232329e1d1920c254789833ed9e8b0a5f16",
-		"https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz",
+		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.9",
 		"5d06001fddd25cbee90c96db4dc5b7b57711b984c3141e28d10f143deb52dbaf",
 		"/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json",
-		"https://registry.npmjs.org/ip-address/-/ip-address-10.3.1.tgz",
+		"npm pack --ignore-scripts --pack-destination /tmp ip-address@10.3.1",
 		"ad1790063beea11a312c801df30d58e147de762f4f77787552376eb7424623e5",
 		"/usr/local/lib/node_modules/npm/node_modules/ip-address/package.json",
+		"npm pack --ignore-scripts --pack-destination /tmp tar@7.5.21",
+		"bcedf25a21daecd1a18fb5e19ab855b7d79ec8ef1da175e8ba85cfc0ed0069d1",
+		"/usr/local/lib/node_modules/npm/node_modules/tar/package.json",
 		"test ! -e /usr/lib/node_modules/npm",
-		"busybox wget -qO- http://127.0.0.1:8765/readyz",
+		"curl -fsS --max-time 2 http://127.0.0.1:8765/readyz",
 	} {
 		if !strings.Contains(dockerfile, required) {
 			t.Errorf("Dockerfile does not contain %q", required)
