@@ -460,6 +460,10 @@ func TestProjectProcessJournalMigratesLegacyBindingColumns(t *testing.T) {
 	if _, err := manager.Status(ProjectProcessReadRequest{ProcessID: processID, ProjectAlias: "project", TargetAlias: "parrot", WorkspaceID: workspaceID, LimitBytes: 1024}); err != nil {
 		t.Fatalf("legacy status was not observable: %v", err)
 	}
+	listed, err := manager.List(ProjectProcessListRequest{ProjectAlias: "project", TargetAlias: "parrot", WorkspaceID: workspaceID, Limit: 10})
+	if err != nil || len(listed) != 1 || listed[0].ProcessID != processID || listed[0].ProjectOwner != "" || listed[0].ProjectRepository != "" {
+		t.Fatalf("legacy process was not listed with its original binding: count=%d err=%v", len(listed), err)
+	}
 	stopped, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: processID, ProjectAlias: "project", TargetAlias: "parrot", WorkspaceID: workspaceID, GracePeriod: time.Second})
 	if err != nil || stopped.State != ProjectProcessStopped {
 		t.Fatalf("legacy stop=%+v err=%v", stopped, err)
