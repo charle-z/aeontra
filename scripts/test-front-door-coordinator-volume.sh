@@ -31,7 +31,7 @@ while [ "$attempt" -lt 30 ]; do
         docker logs "$container"
         exit 1
     fi
-    if docker exec "$container" wget -qO- http://127.0.0.1:8766/healthz | grep -qx 'ok mcp-front-door-coordinator'; then
+    if docker exec "$container" curl -fsS --max-time 2 http://127.0.0.1:8766/healthz | grep -qx 'ok mcp-front-door-coordinator'; then
         break
     fi
     attempt=$((attempt + 1))
@@ -44,8 +44,8 @@ docker exec "$container" su-exec 10003:10003 sh -c 'test -w /coordinator-state &
 
 ready_attempt=0
 while [ "$ready_attempt" -lt 45 ]; do
-    ready_headers="$(docker exec "$container" sh -c 'wget -S -O /dev/null http://127.0.0.1:8766/readyz 2>&1 || true')"
-    status_body="$(docker exec "$container" wget -qO- http://127.0.0.1:8766/status || true)"
+    ready_headers="$(docker exec "$container" curl -sS --max-time 2 -D - -o /dev/null http://127.0.0.1:8766/readyz || true)"
+    status_body="$(docker exec "$container" curl -fsS --max-time 2 http://127.0.0.1:8766/status || true)"
     if printf '%s\n' "$ready_headers" | grep -q '503 Service Unavailable' \
         && printf '%s\n' "$status_body" | grep -q '"code":"topology_front_application_transport_connection_refused"'; then
         break
