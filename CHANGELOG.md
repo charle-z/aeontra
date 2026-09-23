@@ -6,6 +6,11 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Report Edge storage pressure and rootless storage-driver posture. Toolboxes can be
+  marked disposable and inspected for reclaimability; cleanup remains explicit.
+- Show advisory continuation and per-worker attention in `project_task_status` so a
+  later client can resume a pending model turn or review without treating runtime
+  completion as proof that the task objective was met.
 - Use digest-pinned Wolfi runtimes with patched zlib and PCRE2 packages for the
   service images; retain the High-severity Grype gate without a VEX exemption.
 - Keep managed multi-step model turns active until a tool call, explicit terminal

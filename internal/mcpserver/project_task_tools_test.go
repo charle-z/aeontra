@@ -316,6 +316,14 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 	if _, err := server.table["project_task_cleanup"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `","idempotency_key":"parallel-cleanup-early-0001"}`)); err == nil {
 		t.Fatal("nonterminal task cleanup was accepted")
 	}
+	if err := turns.SetRuntimeState(context.Background(), started.Workers[0].RuntimeID, modelturn.RuntimeStateAwaitingModel, modelturn.RuntimeStateAwaitingEdge); err != nil {
+		t.Fatal(err)
+	}
+	active, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(active, `"continuation":{"state":"needs_model","next_tool":"model_turn_next"}`) ||
+		!strings.Contains(active, `"attention":"needs_model"`) {
+		t.Fatalf("active continuation=%s err=%v", active, err)
+	}
 	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +333,8 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 		!strings.Contains(status, `"base_commit":"0123456789abcdef0123456789abcdef01234567"`) ||
 		!strings.Contains(status, `"head_commit":"1123456789abcdef0123456789abcdef01234567"`) ||
 		!strings.Contains(status, `"clean":true`) || !strings.Contains(status, `"commits_ahead_base":1`) ||
-		!strings.Contains(status, `"changed_path_count":1`) || strings.Contains(status, `"state":"succeeded"`) {
+		!strings.Contains(status, `"changed_path_count":1`) || !strings.Contains(status, `"continuation":{"state":"review_required"}`) ||
+		!strings.Contains(status, `"attention":"review_required"`) || strings.Contains(status, `"state":"succeeded"`) {
 		t.Fatalf("status=%s err=%v", status, err)
 	}
 	cleaned, err := server.table["project_task_cleanup"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `","idempotency_key":"parallel-cleanup-finish-0001"}`))
@@ -348,6 +357,34 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 	cleaned, err = server.table["project_task_cleanup"].handler(json.RawMessage(`{"task_id":"` + queued.ID + `","idempotency_key":"parallel-cleanup-empty-0001"}`))
 	if err != nil || !strings.Contains(cleaned, `"cleaned":true`) {
 		t.Fatalf("empty cleanup=%s err=%v", cleaned, err)
+	}
+}
+
+func TestProjectTaskContinuationKeepsModelChoiceAndFailuresVisible(t *testing.T) {
+	tests := []struct {
+		name       string
+		view       projectTaskView
+		state      string
+		nextTool   string
+		attention0 string
+	}{
+		{name: "empty", view: projectTaskView{}, state: "wait"},
+		{name: "cancelled", view: projectTaskView{State: "cancelled"}, state: "none"},
+		{name: "awaiting model", view: projectTaskView{Workers: []projectTaskWorkerView{{State: "running", RuntimeState: string(modelturn.RuntimeStateAwaitingModel)}}}, state: "needs_model", nextTool: "model_turn_next", attention0: "needs_model"},
+		{name: "completed requires review", view: projectTaskView{Workers: []projectTaskWorkerView{{State: "acceptance_pending"}}}, state: "review_required", attention0: "review_required"},
+		{name: "failure before pending turn", view: projectTaskView{Workers: []projectTaskWorkerView{{State: "running", RuntimeState: string(modelturn.RuntimeStateAwaitingModel)}, {State: "failed"}}}, state: "inspect_failure", attention0: "needs_model"},
+		{name: "reconcile before failure", view: projectTaskView{Workers: []projectTaskWorkerView{{State: "failed"}, {State: "reconciliation_required"}}}, state: "reconcile", attention0: "inspect_failure"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setProjectTaskContinuation(&test.view)
+			if test.view.Continuation == nil || test.view.Continuation.State != test.state || test.view.Continuation.NextTool != test.nextTool {
+				t.Fatalf("continuation=%+v, want state=%q next_tool=%q", test.view.Continuation, test.state, test.nextTool)
+			}
+			if test.attention0 != "" && test.view.Workers[0].Attention != test.attention0 {
+				t.Fatalf("worker attention=%q, want %q", test.view.Workers[0].Attention, test.attention0)
+			}
+		})
 	}
 }
 

@@ -47,6 +47,7 @@ type projectTaskCleanupParams struct {
 type projectTaskWorkerView struct {
 	Ordinal          int             `json:"ordinal"`
 	State            string          `json:"state"`
+	Attention        string          `json:"attention,omitempty"`
 	LifecycleState   workqueue.State `json:"lifecycle_state"`
 	RuntimeState     string          `json:"runtime_state,omitempty"`
 	AcceptanceState  string          `json:"acceptance_state"`
@@ -63,18 +64,24 @@ type projectTaskWorkerView struct {
 	Summary          string          `json:"summary,omitempty"`
 }
 
+type projectTaskContinuation struct {
+	State    string `json:"state"`
+	NextTool string `json:"next_tool,omitempty"`
+}
+
 type projectTaskView struct {
-	TaskID         string                  `json:"task_id"`
-	Alias          string                  `json:"alias"`
-	Target         string                  `json:"target"`
-	BaseCommit     string                  `json:"base_commit"`
-	State          string                  `json:"state"`
-	LifecycleState workqueue.TaskState     `json:"lifecycle_state"`
-	WorkerCount    int                     `json:"worker_count"`
-	Workers        []projectTaskWorkerView `json:"workers"`
-	CreatedAt      time.Time               `json:"created_at"`
-	UpdatedAt      time.Time               `json:"updated_at"`
-	Cleaned        bool                    `json:"cleaned,omitempty"`
+	TaskID         string                   `json:"task_id"`
+	Alias          string                   `json:"alias"`
+	Target         string                   `json:"target"`
+	BaseCommit     string                   `json:"base_commit"`
+	State          string                   `json:"state"`
+	LifecycleState workqueue.TaskState      `json:"lifecycle_state"`
+	WorkerCount    int                      `json:"worker_count"`
+	Continuation   *projectTaskContinuation `json:"continuation,omitempty"`
+	Workers        []projectTaskWorkerView  `json:"workers"`
+	CreatedAt      time.Time                `json:"created_at"`
+	UpdatedAt      time.Time                `json:"updated_at"`
+	Cleaned        bool                     `json:"cleaned,omitempty"`
 }
 
 func (s *Server) WithWorkQueue(store *workqueue.Store) *Server {
@@ -655,6 +662,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 			}
 		}
 		view.State = projectTaskViewSemanticState(view.Workers)
+		setProjectTaskContinuation(&view)
 		return view
 	}
 	resolver, resolverOK := s.edgeDevices.(edgeDeviceAliasRegistry)
@@ -720,7 +728,55 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 		}
 	}
 	view.State = projectTaskViewSemanticState(view.Workers)
+	setProjectTaskContinuation(&view)
 	return view
+}
+
+// setProjectTaskContinuation gives a new client a bounded resumption hint from
+// durable state. It does not select or restrict the model's tools, create a new
+// runtime, retry an effect, or assert that a completed worker met its goal.
+func setProjectTaskContinuation(view *projectTaskView) {
+	state := "wait"
+	for index := range view.Workers {
+		worker := &view.Workers[index]
+		switch {
+		case worker.State == "reconciliation_required" || worker.RuntimeState == string(modelturn.RuntimeStateDisconnected):
+			worker.Attention = "reconcile"
+		case worker.State == "failed":
+			worker.Attention = "inspect_failure"
+		case worker.State == "cancelled":
+			worker.Attention = "none"
+		case worker.State == "acceptance_pending":
+			worker.Attention = "review_required"
+		case worker.RuntimeState == string(modelturn.RuntimeStateAwaitingModel):
+			worker.Attention = "needs_model"
+		default:
+			worker.Attention = "wait"
+		}
+		switch worker.Attention {
+		case "reconcile":
+			state = "reconcile"
+		case "inspect_failure":
+			if state != "reconcile" {
+				state = "inspect_failure"
+			}
+		case "needs_model":
+			if state != "reconcile" && state != "inspect_failure" {
+				state = "needs_model"
+			}
+		case "review_required":
+			if state == "wait" {
+				state = "review_required"
+			}
+		}
+	}
+	if view.State == "cancelled" && state == "wait" {
+		state = "none"
+	}
+	view.Continuation = &projectTaskContinuation{State: state}
+	if state == "needs_model" {
+		view.Continuation.NextTool = "model_turn_next"
+	}
 }
 
 func projectTaskViewSemanticState(workers []projectTaskWorkerView) string {
