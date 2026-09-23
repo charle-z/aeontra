@@ -70,3 +70,24 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		}
 	}
 }
+
+func TestFrontDoorRuntimeUsesPinnedFixedBase(t *testing.T) {
+	data, err := os.ReadFile("../../Dockerfile.front-door")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dockerfile := string(data)
+	for _, required := range []string{
+		"FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build",
+		"FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
+		"apk upgrade --no-cache",
+		"apk add --no-cache ca-certificates curl",
+		"addgroup -S -g 10002 mcpfront",
+		"USER 10002:10002",
+		"curl -fsS --max-time 2 http://127.0.0.1:8765/front-door/healthz",
+	} {
+		if !strings.Contains(dockerfile, required) {
+			t.Errorf("Dockerfile.front-door missing %q", required)
+		}
+	}
+}
