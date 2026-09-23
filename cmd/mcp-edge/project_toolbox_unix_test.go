@@ -17,6 +17,7 @@ type fakeProjectToolboxManager struct {
 	createRequest  edgeclient.ProjectToolboxCreateRequest
 	execRequest    edgeclient.ProjectToolboxExecRequest
 	serviceRequest edgeclient.ProjectToolboxServiceStartRequest
+	cleanupRequest edgeclient.ProjectToolboxCleanupRequest
 	removed        bool
 	statusErr      error
 	statusCalls    int
@@ -103,9 +104,20 @@ func browserHarnessFixtureSnapshot() edgeclient.ProjectBrowserHarnessSnapshot {
 	return edgeclient.ProjectBrowserHarnessSnapshot{RunID: "bh_44444444444444444444444444444444", State: "running", Profile: "default", CreatedAt: time.Date(2026, 8, 4, 4, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 8, 4, 4, 0, 1, 0, time.UTC), TimeoutSeconds: 3600, StorageMiB: 2048, StdoutEOF: true, StderrEOF: true}
 }
 
-func (manager *fakeProjectToolboxManager) Cleanup(context.Context, edgeclient.ProjectToolboxCleanupRequest) (bool, error) {
+func (manager *fakeProjectToolboxManager) Cleanup(_ context.Context, request edgeclient.ProjectToolboxCleanupRequest) (bool, error) {
+	manager.cleanupRequest = request
 	manager.removed = true
 	return true, nil
+}
+func (manager *fakeProjectToolboxManager) CleanupMissing(_ context.Context, request edgeclient.ProjectToolboxCleanupRequest) (edgeclient.ProjectToolboxSnapshot, bool, error) {
+	manager.cleanupRequest = request
+	manager.removed = true
+	snapshot := toolboxFixtureSnapshot()
+	snapshot.State = "removed"
+	snapshot.ReclaimReason = "removed"
+	snapshot.RootFSBytes = 0
+	snapshot.WritableBytes = 0
+	return snapshot, true, nil
 }
 
 func toolboxFixtureService() edgeclient.ProjectToolboxServiceSnapshot {

@@ -171,6 +171,14 @@ func TestProjectToolboxCompletionIsBoundToItsOperationKind(t *testing.T) {
 	if !validOperationCompletionForKind(OperationProjectToolboxCleanup, cleaned, "") {
 		t.Fatal("toolbox cleanup result was rejected")
 	}
+	cleaned.ToolboxWritableBytes = 0
+	cleaned.ToolboxRootFSBytes = 0
+	if !validOperationCompletionForKind(OperationProjectToolboxCleanup, cleaned, "") {
+		t.Fatal("cleanup of an absent container should not require a fabricated rootfs size")
+	}
+	if validOperationCompletionForKind(OperationProjectToolboxStatus, cleaned, "") {
+		t.Fatal("removed toolbox result was accepted as a live status")
+	}
 	service := result
 	service.ToolboxServiceID = "ts_33333333333333333333333333333333"
 	service.ToolboxServiceName = "preview-server"
