@@ -50,43 +50,49 @@ type labRetargetParams struct {
 }
 
 type edgeOperationPublicView struct {
-	OperationID           string              `json:"operation_id"`
-	DeviceID              string              `json:"device_id,omitempty"`
-	State                 edge.OperationState `json:"state"`
-	WorkspaceID           string              `json:"workspace_id,omitempty"`
-	AuthorizationRevision uint64              `json:"authorization_revision,omitempty"`
-	SafeCode              string              `json:"safe_code,omitempty"`
-	JobID                 string              `json:"job_id,omitempty"`
-	JobState              string              `json:"job_state,omitempty"`
-	ProgressRevision      uint64              `json:"progress_revision,omitempty"`
-	ProgressPhase         string              `json:"progress_phase,omitempty"`
-	ProgressCompleted     uint64              `json:"progress_completed_units,omitempty"`
-	ProgressTotal         uint64              `json:"progress_total_units,omitempty"`
-	CycleCount            uint64              `json:"cycle_count,omitempty"`
-	JobSafeCode           string              `json:"job_safe_code,omitempty"`
-	Release               string              `json:"release,omitempty"`
-	Commit                string              `json:"commit,omitempty"`
-	EdgeProtocolVersion   string              `json:"edge_protocol_version,omitempty"`
-	EdgeCatalogHash       string              `json:"edge_catalog_hash,omitempty"`
-	ManifestStatus        string              `json:"manifest_status,omitempty"`
-	ComponentsCompatible  bool                `json:"components_compatible,omitempty"`
-	ServiceActive         bool                `json:"service_active,omitempty"`
-	ServiceState          string              `json:"service_state,omitempty"`
-	ServiceRestarts       uint64              `json:"service_restarts,omitempty"`
-	ServiceRestartsKnown  bool                `json:"service_restarts_known,omitempty"`
-	ProcessState          string              `json:"process_state,omitempty"`
-	LockState             string              `json:"lock_state,omitempty"`
-	Coherence             string              `json:"coherence,omitempty"`
-	ProcessRelease        string              `json:"process_release,omitempty"`
-	ProcessCommit         string              `json:"process_commit,omitempty"`
-	UpdateAvailable       bool                `json:"update_available"`
-	Paired                bool                `json:"paired,omitempty"`
-	BubblewrapValid       bool                `json:"bubblewrap_valid,omitempty"`
-	RootlessValid         bool                `json:"rootless_valid,omitempty"`
-	WorkspaceCount        int                 `json:"workspace_count,omitempty"`
-	ProviderValid         bool                `json:"provider_valid,omitempty"`
-	DriverValid           bool                `json:"driver_valid,omitempty"`
-	Blockers              []string            `json:"blockers,omitempty"`
+	OperationID             string              `json:"operation_id"`
+	DeviceID                string              `json:"device_id,omitempty"`
+	State                   edge.OperationState `json:"state"`
+	WorkspaceID             string              `json:"workspace_id,omitempty"`
+	AuthorizationRevision   uint64              `json:"authorization_revision,omitempty"`
+	SafeCode                string              `json:"safe_code,omitempty"`
+	JobID                   string              `json:"job_id,omitempty"`
+	JobState                string              `json:"job_state,omitempty"`
+	ProgressRevision        uint64              `json:"progress_revision,omitempty"`
+	ProgressPhase           string              `json:"progress_phase,omitempty"`
+	ProgressCompleted       uint64              `json:"progress_completed_units,omitempty"`
+	ProgressTotal           uint64              `json:"progress_total_units,omitempty"`
+	CycleCount              uint64              `json:"cycle_count,omitempty"`
+	JobSafeCode             string              `json:"job_safe_code,omitempty"`
+	Release                 string              `json:"release,omitempty"`
+	Commit                  string              `json:"commit,omitempty"`
+	EdgeProtocolVersion     string              `json:"edge_protocol_version,omitempty"`
+	EdgeCatalogHash         string              `json:"edge_catalog_hash,omitempty"`
+	ManifestStatus          string              `json:"manifest_status,omitempty"`
+	ComponentsCompatible    bool                `json:"components_compatible,omitempty"`
+	ServiceActive           bool                `json:"service_active,omitempty"`
+	ServiceState            string              `json:"service_state,omitempty"`
+	ServiceRestarts         uint64              `json:"service_restarts,omitempty"`
+	ServiceRestartsKnown    bool                `json:"service_restarts_known,omitempty"`
+	ProcessState            string              `json:"process_state,omitempty"`
+	LockState               string              `json:"lock_state,omitempty"`
+	Coherence               string              `json:"coherence,omitempty"`
+	ProcessRelease          string              `json:"process_release,omitempty"`
+	ProcessCommit           string              `json:"process_commit,omitempty"`
+	UpdateAvailable         bool                `json:"update_available"`
+	Paired                  bool                `json:"paired,omitempty"`
+	BubblewrapValid         bool                `json:"bubblewrap_valid,omitempty"`
+	RootlessValid           bool                `json:"rootless_valid,omitempty"`
+	WorkspaceCount          int                 `json:"workspace_count,omitempty"`
+	ProviderValid           bool                `json:"provider_valid,omitempty"`
+	DriverValid             bool                `json:"driver_valid,omitempty"`
+	StorageTotalBytes       uint64              `json:"storage_total_bytes,omitempty"`
+	StorageAvailableBytes   uint64              `json:"storage_available_bytes,omitempty"`
+	StorageReservedMinBytes uint64              `json:"storage_reserved_min_bytes,omitempty"`
+	StoragePressure         string              `json:"storage_pressure,omitempty"`
+	StorageDriver           string              `json:"storage_driver,omitempty"`
+	StorageDriverPosture    string              `json:"storage_driver_posture,omitempty"`
+	Blockers                []string            `json:"blockers,omitempty"`
 }
 
 func (s *Server) addEdgeControlTools() {
@@ -395,6 +401,12 @@ func publicEdgeOperation(op edge.Operation) edgeOperationPublicView {
 	view.Coherence = op.Result.Coherence
 	view.ProcessRelease = op.Result.ProcessRelease
 	view.ProcessCommit = op.Result.ProcessCommit
+	view.StorageTotalBytes = op.Result.StorageTotalBytes
+	view.StorageAvailableBytes = op.Result.StorageAvailableBytes
+	view.StorageReservedMinBytes = op.Result.StorageReservedMinBytes
+	view.StoragePressure = op.Result.StoragePressure
+	view.StorageDriver = op.Result.StorageDriver
+	view.StorageDriverPosture = op.Result.StorageDriverPosture
 	return view
 }
 

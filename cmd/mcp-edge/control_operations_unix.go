@@ -168,8 +168,10 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		edge.OperationProjectToolboxRepair, edge.OperationProjectToolboxServiceStart, edge.OperationProjectToolboxServiceStatus, edge.OperationProjectToolboxServiceStop,
 		edge.OperationProjectBrowserHarnessStart, edge.OperationProjectBrowserHarnessStatus, edge.OperationProjectBrowserHarnessList, edge.OperationProjectBrowserHarnessStop, edge.OperationProjectBrowserHarnessCleanup, edge.OperationProjectBrowserHarnessArtifactList, edge.OperationProjectBrowserHarnessArtifactRead:
 		return executeProjectToolbox(ctx, stateRoot, operation)
-	case edge.OperationBundleStatus, edge.OperationOnboardingStatus:
+	case edge.OperationBundleStatus:
 		return collectEdgeDiagnostic(stateRoot, true)
+	case edge.OperationOnboardingStatus:
+		return collectEdgeOnboardingStatus(stateRoot)
 	case edge.OperationBundleUpdate, edge.OperationBundleRollback, edge.OperationEdgeRepair:
 		return executeBundleControl(ctx, stateRoot, operation)
 	default:

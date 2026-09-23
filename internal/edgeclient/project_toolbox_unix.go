@@ -31,9 +31,11 @@ const (
 	ProjectToolboxStopped ProjectToolboxState = "stopped"
 	ProjectToolboxUnknown ProjectToolboxState = "unknown"
 
-	projectToolboxSchemaVersion  = 2
+	projectToolboxSchemaVersion  = 3
 	projectToolboxRuntimeV1      = "v1"
 	projectToolboxRuntimeV2      = "v2"
+	projectToolboxPersistent     = "persistent"
+	projectToolboxDisposable     = "disposable"
 	projectToolboxStateDirectory = "project-toolboxes"
 	projectToolboxBaseImage      = "docker.io/library/debian:bookworm-slim"
 	projectToolboxLabelKey       = "mcp.devbox.toolbox"
@@ -89,6 +91,7 @@ type ProjectToolboxManager struct {
 type ProjectToolboxCreateRequest struct {
 	ProjectAlias, TargetAlias string
 	Workspace                 Workspace
+	Lifecycle                 string
 	CPUMillis                 int
 	MemoryMiB                 int
 	ProcessLimit              int
@@ -151,6 +154,10 @@ type ProjectToolboxServiceSnapshot struct {
 type ProjectToolboxSnapshot struct {
 	ToolboxID       string
 	State           ProjectToolboxState
+	Lifecycle       string
+	Generation      uint64
+	Reclaimable     bool
+	ReclaimReason   string
 	BaseImage       string
 	BaseImageID     string
 	CreatedAt       time.Time
@@ -169,6 +176,7 @@ type projectToolboxRecord struct {
 	SchemaVersion                                     int    `json:"schema_version"`
 	RuntimeVersion                                    string `json:"runtime_version"`
 	Generation                                        uint64 `json:"generation"`
+	Lifecycle                                         string `json:"lifecycle"`
 	WorkspacePath                                     string `json:"workspace_path,omitempty"`
 	WorkspaceFingerprint                              string `json:"workspace_fingerprint,omitempty"`
 	MountFingerprint                                  string `json:"mount_fingerprint,omitempty"`
@@ -249,14 +257,15 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	request.CPUMillis, request.MemoryMiB, request.ProcessLimit = normalizeProjectToolboxResourceLimits(request.CPUMillis, request.MemoryMiB, request.ProcessLimit)
+	request.Lifecycle = normalizeProjectToolboxLifecycle(request.Lifecycle)
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return ProjectToolboxSnapshot{}, false, err
 	}
-	if !validProjectToolboxResourceLimits(request.CPUMillis, request.MemoryMiB, request.ProcessLimit) {
+	if !validProjectToolboxResourceLimits(request.CPUMillis, request.MemoryMiB, request.ProcessLimit) || !validProjectToolboxLifecycle(request.Lifecycle) {
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
 	}
 	if record, err := manager.loadForWorkspace(request.Workspace); err == nil {
-		if record.CPUMillis != request.CPUMillis || record.MemoryMiB != request.MemoryMiB || record.ProcessLimit != request.ProcessLimit {
+		if record.CPUMillis != request.CPUMillis || record.MemoryMiB != request.MemoryMiB || record.ProcessLimit != request.ProcessLimit || record.Lifecycle != request.Lifecycle {
 			return ProjectToolboxSnapshot{}, true, ErrProjectToolboxUnsafeState
 		}
 		snapshot, statusErr := manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
@@ -299,7 +308,7 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	}
 	created := manager.now().UTC()
 	record := projectToolboxRecord{
-		SchemaVersion: projectToolboxSchemaVersion, RuntimeVersion: projectToolboxRuntimeV2, Generation: 1,
+		SchemaVersion: projectToolboxSchemaVersion, RuntimeVersion: projectToolboxRuntimeV2, Generation: 1, Lifecycle: request.Lifecycle,
 		WorkspacePath: request.Workspace.Path, WorkspaceFingerprint: workspaceFingerprint,
 		MountFingerprint:    projectRuntimeMountFingerprint(request.Workspace.Path, workspaceFingerprint, runtimeRoots, projectToolboxRuntimeV2),
 		EndpointFingerprint: projectRuntimeEndpointFingerprint(manager.endpoint),
@@ -979,7 +988,13 @@ func (manager *ProjectToolboxManager) status(ctx context.Context, record project
 	if err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
-	return ProjectToolboxSnapshot{ToolboxID: record.ToolboxID, State: state, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB, ProcessLimit: record.ProcessLimit, ContainerAccess: false, WritableBytes: writableBytes, RootFSBytes: rootFSBytes}, nil
+	reclaimable, reclaimReason := projectToolboxReclaimability(record, state)
+	return ProjectToolboxSnapshot{
+		ToolboxID: record.ToolboxID, State: state, Lifecycle: record.Lifecycle, Generation: record.Generation,
+		Reclaimable: reclaimable, ReclaimReason: reclaimReason, BaseImage: record.BaseImage, BaseImageID: record.BaseImageID,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB,
+		ProcessLimit: record.ProcessLimit, ContainerAccess: false, WritableBytes: writableBytes, RootFSBytes: rootFSBytes,
+	}, nil
 }
 
 func (manager *ProjectToolboxManager) recoverOwnedContainer(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
@@ -1176,10 +1191,11 @@ func (manager *ProjectToolboxManager) recordPath(workspaceID string) string {
 	return filepath.Join(manager.stateRoot, workspaceID+".json")
 }
 
-// loadForWorkspace performs the only on-disk migration used by toolbox v2.
-// Schema v1 records are retained and upgraded in place; their existing
-// container is still treated as a legacy runtime until an explicit reconcile
-// recreates it. No workspace contents are touched or removed.
+// loadForWorkspace performs the only on-disk migration used by toolbox v3.
+// Older records are retained and upgraded in place. Their lifecycle is forced
+// to persistent; an old or stale record can never acquire disposable semantics
+// merely by carrying an unexpected field. No workspace contents are touched or
+// removed.
 func (manager *ProjectToolboxManager) loadForWorkspace(workspace Workspace) (projectToolboxRecord, error) {
 	record, err := manager.load(workspace.ID)
 	if err != nil {
@@ -1198,6 +1214,7 @@ func (manager *ProjectToolboxManager) loadForWorkspace(workspace Workspace) (pro
 		if record.Generation == 0 {
 			record.Generation = 1
 		}
+		record.Lifecycle = projectToolboxPersistent
 		changed = true
 	}
 	if record.WorkspacePath == "" {
@@ -1254,10 +1271,19 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 	if record.SchemaVersion < 1 || record.SchemaVersion > projectToolboxSchemaVersion {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
+	if record.SchemaVersion < projectToolboxSchemaVersion && record.Generation == 0 {
+		record.Generation = 1
+	}
 	if record.SchemaVersion == 1 && record.RuntimeVersion == "" {
 		record.RuntimeVersion = projectToolboxRuntimeV1
 	}
-	if record.RuntimeVersion != projectToolboxRuntimeV1 && record.RuntimeVersion != projectToolboxRuntimeV2 {
+	if record.SchemaVersion < projectToolboxSchemaVersion {
+		record.Lifecycle = projectToolboxPersistent
+	}
+	if record.Generation == 0 {
+		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
+	}
+	if record.RuntimeVersion != projectToolboxRuntimeV1 && record.RuntimeVersion != projectToolboxRuntimeV2 || !validProjectToolboxLifecycle(record.Lifecycle) {
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	if len(record.Services) > 64 || len(record.BrowserHarnessRuns) > 128 {
@@ -1275,6 +1301,18 @@ func (manager *ProjectToolboxManager) load(workspaceID string) (projectToolboxRe
 		return projectToolboxRecord{}, ErrProjectToolboxUnsafeState
 	}
 	return record, nil
+}
+
+func normalizeProjectToolboxLifecycle(lifecycle string) string {
+	lifecycle = strings.ToLower(strings.TrimSpace(lifecycle))
+	if lifecycle == "" {
+		return projectToolboxPersistent
+	}
+	return lifecycle
+}
+
+func validProjectToolboxLifecycle(lifecycle string) bool {
+	return lifecycle == projectToolboxPersistent || lifecycle == projectToolboxDisposable
 }
 
 func validProjectToolboxResourceLimits(cpuMillis, memoryMiB, processLimit int) bool {

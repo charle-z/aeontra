@@ -19,17 +19,32 @@ func TestProjectToolboxOperationContractsAreClosedAndIdempotent(t *testing.T) {
 	create.ToolboxCPUMillis = 12000
 	create.ToolboxMemoryMiB = 24576
 	create.ToolboxProcessLimit = 6144
+	create.ToolboxLifecycle = ProjectToolboxLifecycleDisposable
 	if normalized, err := validateOperationRequestWithProjectExec(OperationProjectToolboxCreate, create); err != nil {
 		t.Fatal(err)
-	} else if normalized.ToolboxCPUMillis != 12000 || normalized.ToolboxMemoryMiB != 24576 || normalized.ToolboxProcessLimit != 6144 {
+	} else if normalized.ToolboxCPUMillis != 12000 || normalized.ToolboxMemoryMiB != 24576 || normalized.ToolboxProcessLimit != 6144 || normalized.ToolboxLifecycle != ProjectToolboxLifecycleDisposable {
 		t.Fatalf("normalized create=%+v", normalized)
 	}
 	defaults := common
 	defaults.IdempotencyKey = "toolbox-create-defaults"
 	if normalized, err := validateOperationRequestWithProjectExec(OperationProjectToolboxCreate, defaults); err != nil {
 		t.Fatal(err)
-	} else if normalized.ToolboxCPUMillis != DefaultProjectToolboxCPUMillis || normalized.ToolboxMemoryMiB != DefaultProjectToolboxMemoryMiB || normalized.ToolboxProcessLimit != DefaultProjectToolboxProcessLimit {
+	} else if normalized.ToolboxCPUMillis != DefaultProjectToolboxCPUMillis || normalized.ToolboxMemoryMiB != DefaultProjectToolboxMemoryMiB || normalized.ToolboxProcessLimit != DefaultProjectToolboxProcessLimit || normalized.ToolboxLifecycle != ProjectToolboxLifecyclePersistent {
 		t.Fatalf("defaulted create=%+v", normalized)
+	}
+	invalidLifecycle := common
+	invalidLifecycle.IdempotencyKey = "toolbox-create-invalid-lifecycle"
+	invalidLifecycle.ToolboxLifecycle = "temporary"
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectToolboxCreate, invalidLifecycle); err == nil {
+		t.Fatal("accepted invalid toolbox lifecycle")
+	}
+	crossLifecycle := common
+	crossLifecycle.IdempotencyKey = "project-exec-lifecycle"
+	crossLifecycle.ToolboxLifecycle = ProjectToolboxLifecycleDisposable
+	crossLifecycle.Argv = []string{"go", "version"}
+	crossLifecycle.TimeoutSeconds = 60
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectExec, crossLifecycle); err == nil {
+		t.Fatal("accepted toolbox lifecycle on project exec")
 	}
 	serviceStart := common
 	serviceStart.IdempotencyKey = "toolbox-service-start-1"
@@ -103,19 +118,42 @@ func TestProjectToolboxOperationContractsAreClosedAndIdempotent(t *testing.T) {
 	if _, err := validateOperationRequestWithProjectExec(OperationProjectToolboxStatus, statusWithLimits); err == nil {
 		t.Fatal("status accepted create-only resource limits")
 	}
+	statusWithLifecycle := common
+	statusWithLifecycle.ToolboxLifecycle = ProjectToolboxLifecycleDisposable
+	if _, err := validateOperationRequestWithProjectExec(OperationProjectToolboxStatus, statusWithLifecycle); err == nil {
+		t.Fatal("status accepted create-only lifecycle")
+	}
 }
 
 func TestProjectToolboxCompletionIsBoundToItsOperationKind(t *testing.T) {
 	result := OperationResult{
 		WorkspaceID: "ws_11111111111111111111111111111111", ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
 		ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
-		ToolboxID: "tb_22222222222222222222222222222222", ToolboxState: "running", ToolboxBase: "debian-bookworm-slim",
+		ToolboxID: "tb_22222222222222222222222222222222", ToolboxState: "running", ToolboxLifecycle: ProjectToolboxLifecyclePersistent,
+		ToolboxGeneration: 1, ToolboxReclaimable: false, ToolboxReclaimReason: "persistent", ToolboxBase: "debian-bookworm-slim",
 		ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z",
 		ToolboxCPUMillis: DefaultProjectToolboxCPUMillis, ToolboxMemoryMiB: DefaultProjectToolboxMemoryMiB, ToolboxProcessLimit: DefaultProjectToolboxProcessLimit,
 		ToolboxContainerAccess: false, ToolboxWritableBytes: 4096, ToolboxRootFSBytes: 80 << 20,
 	}
 	if !validOperationCompletionForKind(OperationProjectToolboxStatus, result, "") {
 		t.Fatal("valid toolbox status was rejected")
+	}
+	disposable := result
+	disposable.ToolboxState = "stopped"
+	disposable.ToolboxLifecycle = ProjectToolboxLifecycleDisposable
+	disposable.ToolboxReclaimable = true
+	disposable.ToolboxReclaimReason = "eligible"
+	if !validOperationCompletionForKind(OperationProjectToolboxStatus, disposable, "") {
+		t.Fatal("valid disposable reclaimable status was rejected")
+	}
+	disposable.ToolboxState = "running"
+	if validOperationCompletionForKind(OperationProjectToolboxStatus, disposable, "") {
+		t.Fatal("running toolbox accepted as reclaimable")
+	}
+	disposable.ToolboxReclaimable = false
+	disposable.ToolboxReclaimReason = "active"
+	if !validOperationCompletionForKind(OperationProjectToolboxStatus, disposable, "") {
+		t.Fatal("active disposable status was rejected")
 	}
 	if validOperationCompletionForKind(OperationProjectExec, result, "") {
 		t.Fatal("toolbox result masqueraded as project exec")
@@ -128,6 +166,8 @@ func TestProjectToolboxCompletionIsBoundToItsOperationKind(t *testing.T) {
 	cleaned := result
 	cleaned.ToolboxState = "removed"
 	cleaned.ToolboxRemoved = true
+	cleaned.ToolboxReclaimable = false
+	cleaned.ToolboxReclaimReason = "removed"
 	if !validOperationCompletionForKind(OperationProjectToolboxCleanup, cleaned, "") {
 		t.Fatal("toolbox cleanup result was rejected")
 	}

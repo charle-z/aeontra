@@ -37,7 +37,7 @@ func TestProjectToolboxToolsExposeClosedProjectScopedInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsAll(string(createSchema), `"cpu_millis"`, `"memory_mib"`, `"process_limit"`, `"minimum":250`, `"maximum":65536`) {
+	if !containsAll(string(createSchema), `"lifecycle"`, `"persistent"`, `"disposable"`, `"cpu_millis"`, `"memory_mib"`, `"process_limit"`, `"minimum":250`, `"maximum":65536`) {
 		t.Fatalf("create schema=%s", createSchema)
 	}
 	for _, name := range []string{"project_toolbox_status", "project_toolbox_exec", "project_toolbox_service_start"} {
@@ -45,7 +45,7 @@ func TestProjectToolboxToolsExposeClosedProjectScopedInputs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(encoded), `"cpu_millis"`) || strings.Contains(string(encoded), `"memory_mib"`) || strings.Contains(string(encoded), `"process_limit"`) {
+		if strings.Contains(string(encoded), `"lifecycle"`) || strings.Contains(string(encoded), `"cpu_millis"`) || strings.Contains(string(encoded), `"memory_mib"`) || strings.Contains(string(encoded), `"process_limit"`) {
 			t.Fatalf("%s exposed create-only limits: %s", name, encoded)
 		}
 	}
@@ -54,20 +54,20 @@ func TestProjectToolboxToolsExposeClosedProjectScopedInputs(t *testing.T) {
 func TestProjectToolboxCreatePropagatesAndReturnsResourceLimits(t *testing.T) {
 	store := &projectGitSyncToolStore{waitResult: edge.Operation{State: edge.OperationSucceeded, Result: edge.OperationResult{
 		ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
-		ToolboxID: "tb_11111111111111111111111111111111", ToolboxState: "running", ToolboxBase: "debian-bookworm-slim",
+		ToolboxID: "tb_11111111111111111111111111111111", ToolboxState: "running", ToolboxLifecycle: edge.ProjectToolboxLifecycleDisposable, ToolboxGeneration: 7, ToolboxReclaimReason: "active", ToolboxBase: "debian-bookworm-slim",
 		ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z",
 		ToolboxCPUMillis: 12000, ToolboxMemoryMiB: 24576, ToolboxProcessLimit: 6144,
 		ToolboxContainerAccess: false, ToolboxWritableBytes: 4096, ToolboxRootFSBytes: 80 << 20,
 	}}}
 	server := New(nil).WithEdgeStore(store)
-	output, err := server.handleProjectToolbox(json.RawMessage(`{"alias":"project","target":"parrot","idempotency_key":"create-limits-1","cpu_millis":12000,"memory_mib":24576,"process_limit":6144}`), edge.OperationProjectToolboxCreate)
+	output, err := server.handleProjectToolbox(json.RawMessage(`{"alias":"project","target":"parrot","idempotency_key":"create-limits-1","lifecycle":"disposable","cpu_millis":12000,"memory_mib":24576,"process_limit":6144}`), edge.OperationProjectToolboxCreate)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store.createdRequest.ToolboxCPUMillis != 12000 || store.createdRequest.ToolboxMemoryMiB != 24576 || store.createdRequest.ToolboxProcessLimit != 6144 {
+	if store.createdRequest.ToolboxCPUMillis != 12000 || store.createdRequest.ToolboxMemoryMiB != 24576 || store.createdRequest.ToolboxProcessLimit != 6144 || store.createdRequest.ToolboxLifecycle != edge.ProjectToolboxLifecycleDisposable {
 		t.Fatalf("request=%+v", store.createdRequest)
 	}
-	if !containsAll(output, `"cpu_millis":12000`, `"memory_mib":24576`, `"process_limit":6144`, `"writable_bytes":4096`, `"rootfs_bytes":83886080`) || strings.Contains(output, `"rootless_engine_access":true`) {
+	if !containsAll(output, `"cpu_millis":12000`, `"memory_mib":24576`, `"process_limit":6144`, `"writable_bytes":4096`, `"rootfs_bytes":83886080`, `"lifecycle":"disposable"`, `"generation":7`, `"reclaimable":false`, `"reclaim_reason":"active"`) || strings.Contains(output, `"rootless_engine_access":true`) {
 		t.Fatalf("output=%s", output)
 	}
 }
@@ -77,7 +77,7 @@ func TestProjectToolboxServiceHandlerUsesOpaqueIdentityAndFiltersProcessState(t 
 		State: edge.OperationSucceeded,
 		Result: edge.OperationResult{
 			ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
-			ToolboxID: "tb_11111111111111111111111111111111", ToolboxState: "running", ToolboxBase: "debian-bookworm-slim",
+			ToolboxID: "tb_11111111111111111111111111111111", ToolboxState: "running", ToolboxLifecycle: edge.ProjectToolboxLifecyclePersistent, ToolboxGeneration: 1, ToolboxReclaimReason: "persistent", ToolboxBase: "debian-bookworm-slim",
 			ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z",
 			ToolboxServiceID: "ts_33333333333333333333333333333333", ToolboxServiceName: "preview", ToolboxServiceState: "running",
 			ToolboxServiceCreatedAt: "2026-08-02T12:02:00Z", ToolboxServiceUpdatedAt: "2026-08-02T12:03:00Z",
@@ -108,7 +108,7 @@ func TestProjectToolboxHandlerQueuesExplicitOperationAndFiltersInternalState(t *
 		State: edge.OperationSucceeded,
 		Result: edge.OperationResult{
 			ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
-			ToolboxID: "tb_11111111111111111111111111111111", ToolboxState: "running", ToolboxBase: "debian-bookworm-slim",
+			ToolboxID: "tb_11111111111111111111111111111111", ToolboxState: "running", ToolboxLifecycle: edge.ProjectToolboxLifecyclePersistent, ToolboxGeneration: 1, ToolboxReclaimReason: "persistent", ToolboxBase: "debian-bookworm-slim",
 			ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z", ToolboxOutput: "ruby 3.3\n",
 			ToolboxCPUMillis: 4000, ToolboxMemoryMiB: 8192, ToolboxProcessLimit: 2048, ToolboxContainerAccess: false, ToolboxWritableBytes: 4096, ToolboxRootFSBytes: 80 << 20,
 		},

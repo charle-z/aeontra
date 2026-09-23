@@ -19,6 +19,8 @@ const (
 	MinProjectToolboxProcessLimit     = 128
 	MaxProjectToolboxProcessLimit     = 8192
 	DefaultProjectToolboxProcessLimit = 2048
+	ProjectToolboxLifecyclePersistent = "persistent"
+	ProjectToolboxLifecycleDisposable = "disposable"
 )
 
 var (
@@ -40,8 +42,12 @@ func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	request.ToolboxServiceID = strings.TrimSpace(request.ToolboxServiceID)
 	request.ToolboxServiceName = strings.ToLower(strings.TrimSpace(request.ToolboxServiceName))
+	request.ToolboxLifecycle = strings.ToLower(strings.TrimSpace(request.ToolboxLifecycle))
 	if !validProjectOperationRequestCommon(request) || request.Repository != "" {
 		return OperationRequest{}, errors.New("project toolbox request is invalid")
+	}
+	if kind != OperationProjectToolboxCreate && request.ToolboxLifecycle != "" {
+		return OperationRequest{}, errors.New("project toolbox lifecycle is create-only")
 	}
 	switch kind {
 	case OperationProjectToolboxStatus:
@@ -51,6 +57,12 @@ func normalizeProjectToolboxRequest(kind OperationKind, request OperationRequest
 	case OperationProjectToolboxCreate:
 		if !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) || request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || !emptyProjectExecRequestFields(request) {
 			return OperationRequest{}, errors.New("project toolbox lifecycle request is invalid")
+		}
+		if request.ToolboxLifecycle == "" {
+			request.ToolboxLifecycle = ProjectToolboxLifecyclePersistent
+		}
+		if !validProjectToolboxLifecycle(request.ToolboxLifecycle) {
+			return OperationRequest{}, errors.New("project toolbox lifecycle is invalid")
 		}
 		if request.ToolboxCPUMillis == 0 {
 			request.ToolboxCPUMillis = DefaultProjectToolboxCPUMillis
@@ -118,6 +130,7 @@ func validProjectToolboxResources(cpuMillis, memoryMiB, processLimit int) bool {
 
 func hasProjectToolboxResult(result OperationResult) bool {
 	return result.ToolboxID != "" || result.ToolboxState != "" || result.ToolboxBase != "" || result.ToolboxBaseImageID != "" ||
+		result.ToolboxLifecycle != "" || result.ToolboxGeneration != 0 || result.ToolboxReclaimable || result.ToolboxReclaimReason != "" ||
 		result.ToolboxCreatedAt != "" || result.ToolboxUpdatedAt != "" || result.ToolboxOutput != "" || result.ToolboxOutputTruncated || result.ToolboxRemoved
 }
 
@@ -129,6 +142,7 @@ func hasProjectToolboxServiceResult(result OperationResult) bool {
 func validProjectToolboxResult(result OperationResult) bool {
 	if !projectToolboxIDPattern.MatchString(result.ToolboxID) || !projectToolboxStatePattern.MatchString(result.ToolboxState) ||
 		result.ToolboxBase != "debian-bookworm-slim" || !projectToolboxImageIDPattern.MatchString(result.ToolboxBaseImageID) ||
+		!validProjectToolboxLifecycleResult(result) ||
 		!validProjectToolboxResources(result.ToolboxCPUMillis, result.ToolboxMemoryMiB, result.ToolboxProcessLimit) ||
 		result.ToolboxContainerAccess || result.ToolboxWritableBytes < 0 || result.ToolboxRootFSBytes <= 0 ||
 		len(result.ToolboxOutput) > MaxProjectToolboxOutputBytes || !utf8.ValidString(result.ToolboxOutput) || strings.ContainsRune(result.ToolboxOutput, 0) {
@@ -147,6 +161,8 @@ func validProjectToolboxResult(result OperationResult) bool {
 	}
 	metadata := result
 	metadata.ToolboxID, metadata.ToolboxState, metadata.ToolboxBase, metadata.ToolboxBaseImageID = "", "", "", ""
+	metadata.ToolboxLifecycle, metadata.ToolboxReclaimReason = "", ""
+	metadata.ToolboxGeneration, metadata.ToolboxReclaimable = 0, false
 	metadata.ToolboxCreatedAt, metadata.ToolboxUpdatedAt, metadata.ToolboxOutput = "", "", ""
 	metadata.ToolboxOutputTruncated, metadata.ToolboxRemoved = false, false
 	metadata.ToolboxCPUMillis, metadata.ToolboxMemoryMiB, metadata.ToolboxProcessLimit = 0, 0, 0

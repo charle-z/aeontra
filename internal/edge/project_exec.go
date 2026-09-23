@@ -43,7 +43,7 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 		return OperationRequest{}, errors.New("project browser fields are invalid for this operation")
 	}
 	isToolbox := kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop
-	if !isToolbox && (request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || hasProjectToolboxResourceRequest(request)) {
+	if !isToolbox && (request.ToolboxServiceID != "" || request.ToolboxServiceName != "" || request.ToolboxLifecycle != "" || hasProjectToolboxResourceRequest(request)) {
 		return OperationRequest{}, errors.New("project toolbox service fields are invalid for this operation")
 	}
 	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
