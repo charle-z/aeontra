@@ -22,6 +22,7 @@ type projectGitSyncRunner struct {
 	relation            string
 	trackingMissing     bool
 	remoteObjectMissing bool
+	unborn              bool
 	published           bool
 	calls               []string
 	credentialCalls     []string
@@ -44,9 +45,19 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 	remoteURL := "https://github.com/charle-z/repo.git"
 	switch call {
 	case "rev-parse --verify HEAD":
+		if r.unborn {
+			return "", errors.New("exit status 128")
+		}
 		return r.head, nil
 	case "branch --show-current":
 		return branch, nil
+	case "symbolic-ref --quiet --short HEAD":
+		return branch, nil
+	case "show-ref --verify --quiet refs/heads/" + branch:
+		if r.unborn {
+			return "", projectGitTestExitError(1)
+		}
+		return r.head, nil
 	case "status --porcelain=v1 --untracked-files=normal":
 		if r.dirty {
 			return " M dirty.go", nil
@@ -165,6 +176,19 @@ func TestInspectProjectGitCheckoutAllowsCleanUnpublishedBranch(t *testing.T) {
 	}
 	if strings.Join(runner.credentialCalls, "\n") != "ls-remote --heads https://github.com/charle-z/repo.git refs/heads/"+runner.branch {
 		t.Fatalf("credential calls=%v", runner.credentialCalls)
+	}
+}
+
+func TestInspectProjectGitCheckoutReportsUnbornBranchWithoutPublishing(t *testing.T) {
+	runner := &projectGitSyncRunner{branch: "main", unborn: true, dirty: true}
+	resolved := projectGitResolution()
+	credential := edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}
+	result, err := inspectProjectGitCheckout(context.Background(), resolved, runner, credential)
+	if err != nil || result.GitBranch != "main" || result.GitHead != "" || !result.GitUnborn || !result.GitDirty || result.GitRemoteHead != "" {
+		t.Fatalf("unborn Git branch=%q head=%q unborn=%t dirty=%t remote=%q err=%v", result.GitBranch, result.GitHead, result.GitUnborn, result.GitDirty, result.GitRemoteHead, err)
+	}
+	if _, err := previewProjectGitPublish(context.Background(), t.TempDir(), resolved, runner, credential, time.Now().UTC()); err == nil {
+		t.Fatal("unborn checkout received a publication plan")
 	}
 }
 

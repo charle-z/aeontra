@@ -313,6 +313,7 @@ type OperationResult struct {
 	ProjectToolchainManifests        []string                        `json:"project_toolchain_manifests,omitempty"`
 	SnapshotBranch                   string                          `json:"snapshot_branch,omitempty"`
 	SnapshotHead                     string                          `json:"snapshot_head,omitempty"`
+	SnapshotUnborn                   bool                            `json:"snapshot_unborn,omitempty"`
 	SnapshotClean                    bool                            `json:"snapshot_clean,omitempty"`
 	ExecCompleted                    bool                            `json:"exec_completed,omitempty"`
 	ExecExitCode                     int                             `json:"exec_exit_code,omitempty"`
@@ -354,6 +355,7 @@ type OperationResult struct {
 	BackgroundCleanupActive          int                             `json:"background_cleanup_active,omitempty"`
 	GitBranch                        string                          `json:"git_branch,omitempty"`
 	GitHead                          string                          `json:"git_head,omitempty"`
+	GitUnborn                        bool                            `json:"git_unborn,omitempty"`
 	GitRemoteHead                    string                          `json:"git_remote_head,omitempty"`
 	GitAhead                         int                             `json:"git_ahead,omitempty"`
 	GitBehind                        int                             `json:"git_behind,omitempty"`
@@ -916,7 +918,7 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if hasProjectToolboxResult(result) {
 		return code == "" && validProjectToolboxResult(result)
 	}
-	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
+	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotUnborn || result.SnapshotClean {
 		return code == "" && validProjectSnapshotResult(result)
 	}
 	if code != "" {
@@ -1013,7 +1015,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectToolboxResult(result) {
 		return validProjectToolboxResultForKind(kind, result)
 	}
-	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotClean {
+	if result.SnapshotBranch != "" || result.SnapshotHead != "" || result.SnapshotUnborn || result.SnapshotClean {
 		return kind == OperationProjectSnapshot && validOperationCompletion(result, "")
 	}
 	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
@@ -1183,12 +1185,14 @@ func validProjectSnapshotResult(result OperationResult) bool {
 	if result.SnapshotClean != (result.ProjectState == "ready") || !projectSnapshotBranchPattern.MatchString(branch) ||
 		strings.HasPrefix(branch, "-") || strings.Contains(branch, "..") || strings.Contains(branch, "//") ||
 		strings.Contains(branch, "@{") || strings.HasSuffix(branch, "/") || strings.HasSuffix(branch, ".") ||
-		strings.HasSuffix(branch, ".lock") || !projectSnapshotCommitPattern.MatchString(result.SnapshotHead) {
+		strings.HasSuffix(branch, ".lock") ||
+		!(result.SnapshotUnborn && result.SnapshotHead == "" || !result.SnapshotUnborn && projectSnapshotCommitPattern.MatchString(result.SnapshotHead)) {
 		return false
 	}
 	metadata := result
 	metadata.SnapshotBranch = ""
 	metadata.SnapshotHead = ""
+	metadata.SnapshotUnborn = false
 	metadata.SnapshotClean = false
 	return validProjectOperationResult(metadata)
 }

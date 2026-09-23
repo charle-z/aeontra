@@ -24,6 +24,7 @@ type projectGitSyncPublicView struct {
 	Target         string              `json:"target"`
 	Branch         string              `json:"branch,omitempty"`
 	Head           string              `json:"head,omitempty"`
+	Unborn         bool                `json:"unborn,omitempty"`
 	RemoteHead     string              `json:"remote_head,omitempty"`
 	Ahead          int                 `json:"ahead"`
 	Behind         int                 `json:"behind"`
@@ -97,6 +98,7 @@ func (s *Server) handleProjectGitSync(arguments json.RawMessage, kind edge.Opera
 		view.Target = r.ProjectTarget
 		view.Branch = r.GitBranch
 		view.Head = r.GitHead
+		view.Unborn = r.GitUnborn
 		view.RemoteHead = r.GitRemoteHead
 		view.Ahead = r.GitAhead
 		view.Behind = r.GitBehind

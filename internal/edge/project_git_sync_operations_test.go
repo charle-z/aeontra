@@ -81,3 +81,28 @@ func TestProjectGitSyncCompletionRejectsMixedOrLeakyResults(t *testing.T) {
 		t.Fatal("verified publication result was rejected")
 	}
 }
+
+func TestProjectGitStatusAcceptsUnbornOnlyAsReadOnlyState(t *testing.T) {
+	result := OperationResult{
+		WorkspaceID: "ws_0123456789abcdef0123456789abcdef", ProjectAlias: "project",
+		ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
+		ProjectState: "dirty", ProjectProfile: "linux-workcell", ProjectMode: "dev",
+		GitBranch: "main", GitUnborn: true, GitDirty: true,
+	}
+	if !validOperationCompletionForKind(OperationProjectGitStatus, result, "") {
+		t.Fatal("unborn Git status rejected")
+	}
+	if validOperationCompletionForKind(OperationProjectGitPublishPreview, result, "") {
+		t.Fatal("unborn checkout accepted as publishable")
+	}
+	invalid := result
+	invalid.GitHead = "0123456789abcdef0123456789abcdef01234567"
+	if validOperationCompletionForKind(OperationProjectGitStatus, invalid, "") {
+		t.Fatal("unborn checkout with a commit was accepted")
+	}
+	invalid = result
+	invalid.GitDetached = true
+	if validOperationCompletionForKind(OperationProjectGitStatus, invalid, "") {
+		t.Fatal("detached unborn checkout was accepted")
+	}
+}

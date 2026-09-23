@@ -330,7 +330,12 @@ func windowsDirectWorkcellEnvironment(requested map[string]string, tempDir, syst
 		return nil, "", ErrDirectWorkcellContract
 	}
 	system32 := filepath.Join(systemRoot, "System32")
-	pathValue := strings.Join([]string{filepath.Join(runtimeRoots.Runtime, "tools", "bin"), filepath.Join(runtimeRoots.Runtime, "cargo", "bin"), filepath.Join(runtimeRoots.Runtime, "go", "bin"), filepath.Join(runtimeRoots.Runtime, "pnpm"), filepath.Join(runtimeRoots.Runtime, "tools", "go", "bin"), filepath.Join(runtimeRoots.Runtime, "tools", "cargo", "bin"), system32, systemRoot, filepath.Join(system32, "Wbem"), filepath.Join(system32, "WindowsPowerShell", "v1.0")}, ";")
+	pathEntries := []string{filepath.Join(runtimeRoots.Runtime, "tools", "bin"), filepath.Join(runtimeRoots.Runtime, "cargo", "bin"), filepath.Join(runtimeRoots.Runtime, "go", "bin"), filepath.Join(runtimeRoots.Runtime, "pnpm"), filepath.Join(runtimeRoots.Runtime, "tools", "go", "bin"), filepath.Join(runtimeRoots.Runtime, "tools", "cargo", "bin")}
+	if gitPath, err := resolveWindowsGitPath(""); err == nil {
+		pathEntries = append(pathEntries, filepath.Dir(gitPath))
+	}
+	pathEntries = append(pathEntries, system32, systemRoot, filepath.Join(system32, "Wbem"), filepath.Join(system32, "WindowsPowerShell", "v1.0"))
+	pathValue := strings.Join(pathEntries, ";")
 	home := filepath.Join(runtimeRoots.Runtime, "home")
 	baseline := map[string]string{
 		"ComSpec":                    filepath.Join(system32, "cmd.exe"),

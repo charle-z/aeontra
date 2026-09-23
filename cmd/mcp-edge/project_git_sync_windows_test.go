@@ -14,6 +14,7 @@ import (
 
 type windowsProjectGitSyncTestRunner struct {
 	head, remote, branch, upstream string
+	unborn                         bool
 	published                      bool
 	calls                          []string
 }
@@ -31,9 +32,19 @@ func (r *windowsProjectGitSyncTestRunner) Run(_ context.Context, _ string, args 
 	remoteURL := "https://github.com/charle-z/repo.git"
 	switch call {
 	case "rev-parse --verify HEAD":
+		if r.unborn {
+			return "", windowsGitTestExitError(128)
+		}
 		return r.head, nil
 	case "branch --show-current":
 		return branch, nil
+	case "symbolic-ref --quiet --short HEAD":
+		return branch, nil
+	case "show-ref --verify --quiet refs/heads/" + branch:
+		if r.unborn {
+			return "", windowsGitTestExitError(1)
+		}
+		return r.head, nil
 	case "status --porcelain=v1 --untracked-files=normal":
 		return "", nil
 	case "remote get-url origin", "remote get-url --push origin":
@@ -73,6 +84,24 @@ func (r *windowsProjectGitSyncTestRunner) Run(_ context.Context, _ string, args 
 		return "", nil
 	default:
 		return "", errors.New("unexpected Git command: " + call)
+	}
+}
+
+type windowsGitTestExitError int
+
+func (e windowsGitTestExitError) Error() string { return "Git exited without a matching ref" }
+func (e windowsGitTestExitError) ExitCode() int { return int(e) }
+
+func TestWindowsProjectGitStatusReportsUnbornWithoutPublishing(t *testing.T) {
+	runner := &windowsProjectGitSyncTestRunner{branch: "main", unborn: true}
+	resolved := windowsProjectGitTestResolution()
+	credential := edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}
+	status, err := inspectWindowsProjectGit(context.Background(), resolved, runner, credential)
+	if err != nil || status.GitBranch != "main" || status.GitHead != "" || !status.GitUnborn || !status.GitClean {
+		t.Fatalf("unborn Windows Git status: branch=%q head=%q unborn=%t clean=%t err=%v", status.GitBranch, status.GitHead, status.GitUnborn, status.GitClean, err)
+	}
+	if _, err := previewWindowsProjectGitPublish(context.Background(), t.TempDir(), resolved, runner, credential, time.Now().UTC()); err == nil {
+		t.Fatal("unborn Windows checkout received a publication plan")
 	}
 }
 

@@ -276,6 +276,7 @@ func (s *Server) handleProjectSnapshot(arguments json.RawMessage) (string, error
 		view.Mode = operation.Result.ProjectMode
 		view.Branch = operation.Result.SnapshotBranch
 		view.Head = operation.Result.SnapshotHead
+		view.Unborn = operation.Result.SnapshotUnborn
 		view.Clean = operation.Result.SnapshotClean
 	} else if operation.State == edge.OperationFailed {
 		view.Reason = operation.SafeCode
@@ -426,6 +427,7 @@ type projectSnapshotPublicView struct {
 	Mode        string              `json:"mode,omitempty"`
 	Branch      string              `json:"branch,omitempty"`
 	Head        string              `json:"head,omitempty"`
+	Unborn      bool                `json:"unborn,omitempty"`
 	Clean       bool                `json:"clean"`
 	Reused      bool                `json:"reused"`
 	Reason      string              `json:"reason,omitempty"`

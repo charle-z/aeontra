@@ -103,6 +103,11 @@ a PID other than SCM's current process, the signed bundle or managed roots are i
 or the private workspace registry cannot be read. It does not repair or restart the
 service.
 
+The direct Windows workcell uses a controlled PATH. If a regular Git executable is
+installed under the standard Program Files Git directory, its directory is included
+in that PATH, so `git` works without inheriting the operator's ambient PATH. The
+workcell does not receive GitHub credentials through this change.
+
 ### Durable worker reconciliation
 
 `project-process-worker` processes are separate from the single `windows-agent`
