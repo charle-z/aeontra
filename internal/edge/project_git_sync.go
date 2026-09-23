@@ -41,14 +41,16 @@ func normalizeProjectGitSyncRequest(kind OperationKind, request OperationRequest
 }
 
 func hasProjectGitSyncResult(result OperationResult) bool {
-	return result.GitBranch != "" || result.GitHead != "" || result.GitRemoteHead != "" || result.GitAhead != 0 || result.GitBehind != 0 ||
+	return result.GitBranch != "" || result.GitHead != "" || result.GitUnborn || result.GitRemoteHead != "" || result.GitAhead != 0 || result.GitBehind != 0 ||
 		result.GitDiverged || result.GitDetached || result.GitDirty || result.GitClean || result.GitFetched || result.GitFastForwarded || result.GitPublished || result.GitPlanExpiresAt != ""
 }
 
 func validProjectGitSyncResult(result OperationResult) bool {
 	attached := projectSnapshotBranchPattern.MatchString(result.GitBranch) && !result.GitDetached
 	detached := result.GitBranch == "" && result.GitDetached && result.GitRemoteHead == "" && !result.GitFetched && result.GitAhead == 0 && result.GitBehind == 0 && !result.GitDiverged
-	if (!attached && !detached) || !projectSnapshotCommitPattern.MatchString(result.GitHead) ||
+	validHead := !result.GitUnborn && projectSnapshotCommitPattern.MatchString(result.GitHead)
+	validUnborn := result.GitUnborn && attached && result.GitHead == "" && result.GitAhead == 0 && result.GitBehind == 0 && !result.GitDiverged && !result.GitFastForwarded && !result.GitPublished && result.GitPlanID == ""
+	if (!attached && !detached) || (!validHead && !validUnborn) ||
 		(result.GitRemoteHead != "" && !projectSnapshotCommitPattern.MatchString(result.GitRemoteHead)) || result.GitAhead < 0 || result.GitBehind < 0 ||
 		result.GitDirty == result.GitClean || (result.GitDiverged && (result.GitAhead == 0 || result.GitBehind == 0)) ||
 		(result.GitFetched && result.GitRemoteHead == "") || (result.GitFastForwarded && (!result.GitClean || !result.GitFetched || result.GitHead != result.GitRemoteHead)) ||
@@ -58,6 +60,7 @@ func validProjectGitSyncResult(result OperationResult) bool {
 	}
 	metadata := result
 	metadata.GitBranch, metadata.GitHead, metadata.GitRemoteHead = "", "", ""
+	metadata.GitUnborn = false
 	metadata.GitAhead, metadata.GitBehind = 0, 0
 	metadata.GitDiverged, metadata.GitDetached, metadata.GitDirty, metadata.GitClean = false, false, false, false
 	metadata.GitFetched, metadata.GitFastForwarded, metadata.GitPublished, metadata.GitPlanID, metadata.GitPlanExpiresAt = false, false, false, "", ""
@@ -66,6 +69,9 @@ func validProjectGitSyncResult(result OperationResult) bool {
 
 func validProjectGitSyncResultForKind(kind OperationKind, result OperationResult) bool {
 	if !validProjectGitSyncResult(result) {
+		return false
+	}
+	if result.GitUnborn && kind != OperationProjectGitStatus {
 		return false
 	}
 	hasPlan := result.GitPlanID != ""

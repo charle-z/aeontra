@@ -287,14 +287,11 @@ func collectProjectSnapshot(ctx context.Context, resolved edgeclient.ProjectReso
 	if runner == nil || resolved.Workspace.Profile != edgeclient.WorkspaceProfileLinuxWorkcell || resolved.Workspace.Mode != edgeclient.WorkspaceModeDev {
 		return edge.OperationResult{}, "project_snapshot_invalid"
 	}
-	headOutput, err := runner.Run(ctx, resolved.Workspace.Path, []string{"rev-parse", "--verify", "HEAD"}, credential)
-	head := strings.TrimSpace(headOutput)
-	if err != nil || !projectSnapshotHeadPattern.MatchString(head) {
-		return edge.OperationResult{}, "project_snapshot_failed"
+	run := func(args ...string) (string, error) {
+		return runner.Run(ctx, resolved.Workspace.Path, args, credential)
 	}
-	branchOutput, err := runner.Run(ctx, resolved.Workspace.Path, []string{"branch", "--show-current"}, credential)
-	branch := strings.TrimSpace(branchOutput)
-	if err != nil || !validProjectSnapshotBranch(branch) {
+	head, branch, unborn, detached, err := observeProjectHead(ctx, run, projectSnapshotHeadPattern.MatchString, validProjectSnapshotBranch)
+	if err != nil || detached {
 		return edge.OperationResult{}, "project_snapshot_failed"
 	}
 	statusOutput, err := runner.Run(ctx, resolved.Workspace.Path, edgeclient.ProjectCheckoutStatusArgs(), credential)
@@ -311,7 +308,7 @@ func collectProjectSnapshot(ctx context.Context, resolved edgeclient.ProjectReso
 		ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner,
 		ProjectRepository: resolved.Project.Repository, ProjectTarget: resolved.TargetAlias,
 		ProjectState: projectState, ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
-		SnapshotBranch: branch, SnapshotHead: head, SnapshotClean: clean,
+		SnapshotBranch: branch, SnapshotHead: head, SnapshotUnborn: unborn, SnapshotClean: clean,
 	}, ""
 }
 

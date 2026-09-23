@@ -240,8 +240,8 @@ validates the workspace boundary and attestation, and only runs Git inspection w
 caller needs current checkout state. Process status, process stop, process list and
 other registry-only operations do not perform filesystem discovery or Git status.
 
-Recovery discovery validates the development root and reads at most 128 direct children
-by default, with a hard maximum of 512 and one 30-second total deadline. It never
+Recovery discovery validates the development root and reads at most 512 direct children
+by default, with the same hard maximum of 512 and one 30-second total deadline. It never
 recurses, follows a symlink, creates a directory, registers a workspace or changes Git
 state. Slow or failed inspection is reported as `checkout_timeout` or
 `checkout_unavailable`, not as a generic unsafe state.

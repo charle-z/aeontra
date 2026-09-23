@@ -221,6 +221,16 @@ func TestProjectSnapshotOperationIsDurablyIdempotent(t *testing.T) {
 	if validOperationCompletion(inconsistent, "") {
 		t.Fatal("inconsistent dirty project snapshot result accepted")
 	}
+	unborn := dirty
+	unborn.SnapshotHead = ""
+	unborn.SnapshotUnborn = true
+	if !validOperationCompletionForKind(OperationProjectSnapshot, unborn, "") {
+		t.Fatal("unborn project snapshot was rejected")
+	}
+	unborn.SnapshotHead = "0123456789abcdef0123456789abcdef01234567"
+	if validOperationCompletionForKind(OperationProjectSnapshot, unborn, "") {
+		t.Fatal("unborn snapshot with a commit was accepted")
+	}
 }
 
 func TestResolveActiveDeviceNameRequiresUniqueActiveAlias(t *testing.T) {

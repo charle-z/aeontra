@@ -89,6 +89,28 @@ func TestWindowsDirectWorkcellRequiresWindowsDevProfile(t *testing.T) {
 	}
 }
 
+func TestWindowsDirectWorkcellPathIncludesInstalledGit(t *testing.T) {
+	programFiles := t.TempDir()
+	t.Setenv("ProgramFiles", programFiles)
+	gitDir := filepath.Join(programFiles, "Git", "cmd")
+	if err := os.MkdirAll(gitDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "git.exe"), []byte("fixture"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	runtimeRoots := ProjectRuntimeRoots{Runtime: filepath.Join(root, "runtime"), Cache: filepath.Join(root, "cache"), Artifacts: filepath.Join(root, "artifacts")}
+	env, _, err := windowsDirectWorkcellEnvironment(nil, filepath.Join(root, "temp"), windowsDirectSystemRoot(), runtimeRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment := windowsEnvironmentMap(env)
+	if !strings.Contains(strings.ToLower(environment["PATH"]), strings.ToLower(gitDir)) {
+		t.Fatalf("Git installation is absent from clean PATH: %q", environment["PATH"])
+	}
+}
+
 func TestWindowsDirectWorkcellControlsCodexHomeOutsideWorkspace(t *testing.T) {
 	workspace := windowsDirectWorkcellFixture(t)
 	request := windowsDirectWorkcellRequest(workspace)

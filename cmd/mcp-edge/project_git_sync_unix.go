@@ -46,22 +46,12 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 	if runner == nil || resolved.Workspace.Profile != edgeclient.WorkspaceProfileLinuxWorkcell || resolved.Workspace.Mode != edgeclient.WorkspaceModeDev || credential.Owner != resolved.Project.Owner {
 		return edge.OperationResult{}, errors.New("project Git checkout is unavailable")
 	}
-	head, err := runProjectGitLocal(ctx, runner, resolved, "rev-parse", "--verify", "HEAD")
-	if err != nil || !projectSnapshotHeadPattern.MatchString(head) {
-		return edge.OperationResult{}, errors.New("project Git HEAD is invalid")
-	}
-	result.GitHead = head
-	branch, err := runProjectGitLocal(ctx, runner, resolved, "branch", "--show-current")
+	run := func(args ...string) (string, error) { return runProjectGitLocal(ctx, runner, resolved, args...) }
+	head, branch, unborn, detached, err := observeProjectHead(ctx, run, projectSnapshotHeadPattern.MatchString, validProjectSnapshotBranch)
 	if err != nil {
-		return edge.OperationResult{}, errors.New("project Git branch is unavailable")
+		return edge.OperationResult{}, err
 	}
-	if branch == "" {
-		result.GitDetached = true
-	} else if !validProjectSnapshotBranch(branch) {
-		return edge.OperationResult{}, errors.New("project Git branch is invalid")
-	} else {
-		result.GitBranch = branch
-	}
+	result.GitHead, result.GitBranch, result.GitUnborn, result.GitDetached = head, branch, unborn, detached
 	status, err := runProjectGitLocal(ctx, runner, resolved, edgeclient.ProjectCheckoutStatusArgs()...)
 	if err != nil {
 		return edge.OperationResult{}, errors.New("project Git status is unavailable")
@@ -100,6 +90,9 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 	if trackErr == nil && tracked == result.GitRemoteHead {
 		result.GitFetched = true
 	}
+	if result.GitUnborn {
+		return result, nil
+	}
 	counts, err := runProjectGitLocal(ctx, runner, resolved, "rev-list", "--left-right", "--count", head+"..."+result.GitRemoteHead)
 	if err != nil && !result.GitFetched {
 		return result, nil
@@ -120,7 +113,7 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 
 func fetchProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential) (edge.OperationResult, error) {
 	before, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
-	if err != nil || before.GitDetached {
+	if err != nil || before.GitDetached || before.GitUnborn {
 		return edge.OperationResult{}, errors.New("project Git fetch preflight failed")
 	}
 	refspec := "refs/heads/" + before.GitBranch + ":refs/remotes/origin/" + before.GitBranch
@@ -137,7 +130,7 @@ func fetchProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectRes
 
 func previewProjectGitFastForward(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
 	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
-	if err != nil || status.GitDetached || !status.GitClean || !status.GitFetched || status.GitDiverged || status.GitAhead != 0 {
+	if err != nil || status.GitDetached || status.GitUnborn || !status.GitClean || !status.GitFetched || status.GitDiverged || status.GitAhead != 0 {
 		return edge.OperationResult{}, errors.New("project Git checkout cannot fast-forward")
 	}
 	if _, err := runProjectGitLocal(ctx, runner, resolved, "merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead); err != nil {
@@ -161,7 +154,7 @@ func executeProjectGitFastForward(ctx context.Context, stateRoot string, resolve
 		return edge.OperationResult{}, errors.New("project Git fast-forward plan is unavailable")
 	}
 	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
-	if err != nil || !status.GitClean || !status.GitFetched || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitAhead != 0 {
+	if err != nil || status.GitUnborn || !status.GitClean || !status.GitFetched || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitAhead != 0 {
 		return edge.OperationResult{}, errors.New("project Git fast-forward state changed")
 	}
 	if err := consumeProjectGitPlan(stateRoot, plan.ID); err != nil {
@@ -184,7 +177,7 @@ func executeProjectGitFastForward(ctx context.Context, stateRoot string, resolve
 
 func previewProjectGitPublish(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
 	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
-	if err != nil || status.GitDetached || !status.GitClean || status.GitDiverged || status.GitBehind != 0 {
+	if err != nil || status.GitDetached || status.GitUnborn || !status.GitClean || status.GitDiverged || status.GitBehind != 0 {
 		return edge.OperationResult{}, errors.New("project Git checkout cannot publish")
 	}
 	if status.GitRemoteHead != "" {
@@ -210,7 +203,7 @@ func executeProjectGitPublish(ctx context.Context, stateRoot string, resolved ed
 		return edge.OperationResult{}, errors.New("project Git publication plan is unavailable")
 	}
 	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
-	if err != nil || !status.GitClean || status.GitDetached || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitBehind != 0 {
+	if err != nil || status.GitUnborn || !status.GitClean || status.GitDetached || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitBehind != 0 {
 		return edge.OperationResult{}, errors.New("project Git publication state changed")
 	}
 	if status.GitRemoteHead != "" {

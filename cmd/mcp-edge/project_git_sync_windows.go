@@ -97,22 +97,11 @@ func inspectWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectRe
 		output, err := runner.Run(ctx, resolved.Workspace.Path, args, credential)
 		return strings.TrimSpace(output), err
 	}
-	head, err := local("rev-parse", "--verify", "HEAD")
-	if err != nil || !windowsGitCommit(head) {
-		return edge.OperationResult{}, errors.New("Windows Git HEAD is invalid")
-	}
-	result.GitHead = head
-	branch, err := local("branch", "--show-current")
+	head, branch, unborn, detached, err := observeProjectHead(ctx, local, windowsGitCommit, windowsGitBranch)
 	if err != nil {
-		return edge.OperationResult{}, errors.New("Windows Git branch is unavailable")
+		return edge.OperationResult{}, err
 	}
-	if branch == "" {
-		result.GitDetached = true
-	} else if !windowsGitBranch(branch) {
-		return edge.OperationResult{}, errors.New("Windows Git branch is invalid")
-	} else {
-		result.GitBranch = branch
-	}
+	result.GitHead, result.GitBranch, result.GitUnborn, result.GitDetached = head, branch, unborn, detached
 	status, err := local(edgeclient.ProjectCheckoutStatusArgs()...)
 	if err != nil {
 		return edge.OperationResult{}, errors.New("Windows Git status is unavailable")
@@ -149,6 +138,9 @@ func inspectWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectRe
 	result.GitRemoteHead = fields[0]
 	tracked, trackErr := local("rev-parse", "--verify", "refs/remotes/origin/"+branch)
 	result.GitFetched = trackErr == nil && tracked == result.GitRemoteHead
+	if result.GitUnborn {
+		return result, nil
+	}
 	counts, countErr := local("rev-list", "--left-right", "--count", head+"..."+result.GitRemoteHead)
 	if countErr != nil {
 		return result, nil
@@ -168,7 +160,7 @@ func inspectWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectRe
 
 func fetchWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential) (edge.OperationResult, error) {
 	before, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
-	if err != nil || before.GitDetached {
+	if err != nil || before.GitDetached || before.GitUnborn {
 		return edge.OperationResult{}, errors.New("project Git fetch preflight failed")
 	}
 	refspec := "refs/heads/" + before.GitBranch + ":refs/remotes/origin/" + before.GitBranch
@@ -185,7 +177,7 @@ func fetchWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectReso
 
 func previewWindowsProjectGitFastForward(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
 	status, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
-	if err != nil || status.GitDetached || !status.GitClean || !status.GitFetched || status.GitDiverged || status.GitAhead != 0 {
+	if err != nil || status.GitDetached || status.GitUnborn || !status.GitClean || !status.GitFetched || status.GitDiverged || status.GitAhead != 0 {
 		return edge.OperationResult{}, errors.New("project Git checkout cannot fast-forward")
 	}
 	if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead}, edgeclient.GitHubCredential{}); err != nil {
@@ -209,7 +201,7 @@ func executeWindowsProjectGitFastForward(ctx context.Context, stateRoot string, 
 		return edge.OperationResult{}, errors.New("project Git fast-forward plan is unavailable")
 	}
 	status, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
-	if err != nil || !status.GitClean || !status.GitFetched || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitAhead != 0 {
+	if err != nil || status.GitUnborn || !status.GitClean || !status.GitFetched || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitAhead != 0 {
 		return edge.OperationResult{}, errors.New("project Git fast-forward state changed")
 	}
 	if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead}, edgeclient.GitHubCredential{}); err != nil {
@@ -235,7 +227,7 @@ func executeWindowsProjectGitFastForward(ctx context.Context, stateRoot string, 
 
 func previewWindowsProjectGitPublish(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
 	status, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
-	if err != nil || status.GitDetached || !status.GitClean || status.GitDiverged || status.GitBehind != 0 {
+	if err != nil || status.GitDetached || status.GitUnborn || !status.GitClean || status.GitDiverged || status.GitBehind != 0 {
 		return edge.OperationResult{}, errors.New("project Git checkout cannot publish")
 	}
 	if status.GitRemoteHead != "" {
@@ -261,7 +253,7 @@ func executeWindowsProjectGitPublish(ctx context.Context, stateRoot string, reso
 		return edge.OperationResult{}, errors.New("project Git publication plan is unavailable")
 	}
 	status, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
-	if err != nil || !status.GitClean || status.GitDetached || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitBehind != 0 {
+	if err != nil || status.GitUnborn || !status.GitClean || status.GitDetached || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitBehind != 0 {
 		return edge.OperationResult{}, errors.New("project Git publication state changed")
 	}
 	if status.GitRemoteHead != "" {

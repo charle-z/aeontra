@@ -156,12 +156,11 @@ func executeWindowsProjectSnapshot(ctx context.Context, stateRoot string, reques
 	if runner == nil || resolved.Workspace.Profile != edgeclient.WorkspaceProfileWindowsWorkcell || resolved.Workspace.Mode != edgeclient.WorkspaceModeDev {
 		return edge.OperationResult{}, "project_snapshot_invalid"
 	}
-	head, err := runner.Run(ctx, resolved.Workspace.Path, []string{"rev-parse", "--verify", "HEAD"}, edgeclient.GitHubCredential{})
-	if err != nil || !windowsGitCommit(strings.TrimSpace(head)) {
-		return edge.OperationResult{}, "project_snapshot_failed"
+	run := func(args ...string) (string, error) {
+		return runner.Run(ctx, resolved.Workspace.Path, args, edgeclient.GitHubCredential{})
 	}
-	branch, err := runner.Run(ctx, resolved.Workspace.Path, []string{"branch", "--show-current"}, edgeclient.GitHubCredential{})
-	if err != nil || !windowsGitBranch(strings.TrimSpace(branch)) {
+	head, branch, unborn, detached, err := observeProjectHead(ctx, run, windowsGitCommit, windowsGitBranch)
+	if err != nil || detached {
 		return edge.OperationResult{}, "project_snapshot_failed"
 	}
 	status, err := runner.Run(ctx, resolved.Workspace.Path, edgeclient.ProjectCheckoutStatusArgs(), edgeclient.GitHubCredential{})
@@ -173,7 +172,7 @@ func executeWindowsProjectSnapshot(ctx context.Context, stateRoot string, reques
 	if !clean {
 		state = string(edgeclient.ProjectCheckoutDirty)
 	}
-	return edge.OperationResult{WorkspaceID: resolved.Workspace.ID, ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository, ProjectTarget: resolved.TargetAlias, ProjectState: state, ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode), SnapshotBranch: strings.TrimSpace(branch), SnapshotHead: strings.TrimSpace(head), SnapshotClean: clean}, ""
+	return edge.OperationResult{WorkspaceID: resolved.Workspace.ID, ProjectAlias: resolved.Project.Alias, ProjectOwner: resolved.Project.Owner, ProjectRepository: resolved.Project.Repository, ProjectTarget: resolved.TargetAlias, ProjectState: state, ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode), SnapshotBranch: branch, SnapshotHead: head, SnapshotUnborn: unborn, SnapshotClean: clean}, ""
 }
 
 func windowsProjectControlResult(ctx context.Context, projects *edgeclient.ProjectRegistry, alias, target string, includeToolchain bool) (edge.OperationResult, string) {

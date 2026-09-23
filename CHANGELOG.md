@@ -6,6 +6,9 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Report an attached Git branch with no first commit as `unborn` in read-only project
+  snapshot and Git status; keep publication and fast-forward blocked until a valid
+  commit exists. Include validated installed Git in the controlled Windows workcell PATH.
 - Report Edge storage pressure and rootless storage-driver posture. Toolboxes can be
   marked disposable and inspected for reclaimability; cleanup remains explicit.
 - Show advisory continuation and per-worker attention in `project_task_status` so a
