@@ -205,7 +205,7 @@ func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reused || created.ToolboxID != "tb_11111111111111111111111111111111" || created.State != ProjectToolboxRunning || created.BaseImageID != "sha256:"+strings.Repeat("a", 64) || created.CPUMillis != 4000 || created.MemoryMiB != 8192 || created.ProcessLimit != 2048 {
+	if reused || created.ToolboxID != "tb_11111111111111111111111111111111" || created.State != ProjectToolboxRunning || created.BaseImageID != "sha256:"+strings.Repeat("a", 64) || created.CPUMillis != 4000 || created.MemoryMiB != 8192 || created.ProcessLimit != 2048 || created.Lifecycle != projectToolboxPersistent || created.Generation != 1 || created.Reclaimable || created.ReclaimReason != "persistent" {
 		t.Fatalf("created=%+v reused=%v", created, reused)
 	}
 	var createCall string
@@ -276,6 +276,11 @@ func TestProjectToolboxRejectsLimitDriftOnReuse(t *testing.T) {
 	request.MemoryMiB = 16384
 	if _, _, err := manager.Create(t.Context(), request); !errors.Is(err, ErrProjectToolboxUnsafeState) {
 		t.Fatalf("limit drift err=%v", err)
+	}
+	request.MemoryMiB = 8192
+	request.Lifecycle = projectToolboxDisposable
+	if _, _, err := manager.Create(t.Context(), request); !errors.Is(err, ErrProjectToolboxUnsafeState) {
+		t.Fatalf("lifecycle drift err=%v", err)
 	}
 }
 

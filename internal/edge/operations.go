@@ -153,6 +153,7 @@ type OperationRequest struct {
 	GitPlanID                    string            `json:"git_plan_id,omitempty"`
 	ToolboxServiceID             string            `json:"toolbox_service_id,omitempty"`
 	ToolboxServiceName           string            `json:"toolbox_service_name,omitempty"`
+	ToolboxLifecycle             string            `json:"toolbox_lifecycle,omitempty"`
 	ToolboxCPUMillis             int               `json:"toolbox_cpu_millis,omitempty"`
 	ToolboxMemoryMiB             int               `json:"toolbox_memory_mib,omitempty"`
 	ToolboxProcessLimit          int               `json:"toolbox_process_limit,omitempty"`
@@ -286,6 +287,12 @@ type OperationResult struct {
 	WorkspaceCount                   int                             `json:"workspace_count,omitempty"`
 	ProviderValid                    bool                            `json:"provider_valid,omitempty"`
 	DriverValid                      bool                            `json:"driver_valid,omitempty"`
+	StorageTotalBytes                uint64                          `json:"storage_total_bytes,omitempty"`
+	StorageAvailableBytes            uint64                          `json:"storage_available_bytes,omitempty"`
+	StorageReservedMinBytes          uint64                          `json:"storage_reserved_min_bytes,omitempty"`
+	StoragePressure                  string                          `json:"storage_pressure,omitempty"`
+	StorageDriver                    string                          `json:"storage_driver,omitempty"`
+	StorageDriverPosture             string                          `json:"storage_driver_posture,omitempty"`
 	Blockers                         []string                        `json:"blockers,omitempty"`
 	ProjectAlias                     string                          `json:"project_alias,omitempty"`
 	ProjectOwner                     string                          `json:"project_owner,omitempty"`
@@ -372,6 +379,10 @@ type OperationResult struct {
 	GitHubPermissionIssues           []string                        `json:"github_permission_issues,omitempty"`
 	ToolboxID                        string                          `json:"toolbox_id,omitempty"`
 	ToolboxState                     string                          `json:"toolbox_state,omitempty"`
+	ToolboxLifecycle                 string                          `json:"toolbox_lifecycle,omitempty"`
+	ToolboxGeneration                uint64                          `json:"toolbox_generation,omitempty"`
+	ToolboxReclaimable               bool                            `json:"toolbox_reclaimable,omitempty"`
+	ToolboxReclaimReason             string                          `json:"toolbox_reclaim_reason,omitempty"`
 	ToolboxBase                      string                          `json:"toolbox_base,omitempty"`
 	ToolboxBaseImageID               string                          `json:"toolbox_base_image_id,omitempty"`
 	ToolboxCreatedAt                 string                          `json:"toolbox_created_at,omitempty"`
@@ -945,6 +956,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if code != "" {
 		return validOperationCompletion(result, code)
 	}
+	if hasEdgeStorageResult(result) {
+		return kind == OperationOnboardingStatus && validEdgeStorageResult(result)
+	}
 	if hasProjectToolchainSummary(result) && kind != OperationProjectStatus {
 		return false
 	}
@@ -1211,7 +1225,7 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 }
 
 func emptyOperationResult(result OperationResult) bool {
-	if hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
+	if hasEdgeStorageResult(result) || hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
 	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.EdgeProtocolVersion == "" && result.EdgeCatalogHash == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && result.ProjectReason == "" && result.ProjectDiagnosticReason == "" && !result.ProjectRepairable && result.ProjectRecommendedAction == "" && result.ProjectRegistryAction == "" && result.ProjectClaimGeneration == 0 && len(result.ProjectClaims) == 0 && !hasProjectToolchainSummary(result) && !hasProjectGitHubResult(result)

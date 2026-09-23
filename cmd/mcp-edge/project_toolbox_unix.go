@@ -142,7 +142,7 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	var err error
 	switch operation.Kind {
 	case edge.OperationProjectToolboxCreate:
-		snapshot, _, err = manager.Create(ctx, edgeclient.ProjectToolboxCreateRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace, CPUMillis: request.ToolboxCPUMillis, MemoryMiB: request.ToolboxMemoryMiB, ProcessLimit: request.ToolboxProcessLimit})
+		snapshot, _, err = manager.Create(ctx, edgeclient.ProjectToolboxCreateRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace, Lifecycle: request.ToolboxLifecycle, CPUMillis: request.ToolboxCPUMillis, MemoryMiB: request.ToolboxMemoryMiB, ProcessLimit: request.ToolboxProcessLimit})
 	case edge.OperationProjectToolboxStatus:
 		snapshot, err = manager.Status(ctx, edgeclient.ProjectToolboxStatusRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 	case edge.OperationProjectToolboxRepair:
@@ -161,6 +161,8 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 			removed, err = manager.Cleanup(ctx, edgeclient.ProjectToolboxCleanupRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 			if removed {
 				snapshot.State = edgeclient.ProjectToolboxState("removed")
+				snapshot.Reclaimable = false
+				snapshot.ReclaimReason = "removed"
 			}
 		}
 	case edge.OperationProjectBrowserHarnessStart, edge.OperationProjectBrowserHarnessStatus, edge.OperationProjectBrowserHarnessList, edge.OperationProjectBrowserHarnessStop, edge.OperationProjectBrowserHarnessCleanup, edge.OperationProjectBrowserHarnessArtifactList, edge.OperationProjectBrowserHarnessArtifactRead:
@@ -199,6 +201,10 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	result := projectProcessBaseResult(resolved)
 	result.ToolboxID = snapshot.ToolboxID
 	result.ToolboxState = string(snapshot.State)
+	result.ToolboxLifecycle = snapshot.Lifecycle
+	result.ToolboxGeneration = snapshot.Generation
+	result.ToolboxReclaimable = snapshot.Reclaimable
+	result.ToolboxReclaimReason = snapshot.ReclaimReason
 	result.ToolboxBase = "debian-bookworm-slim"
 	result.ToolboxBaseImageID = snapshot.BaseImageID
 	result.ToolboxCreatedAt = snapshot.CreatedAt.UTC().Format(time.RFC3339Nano)

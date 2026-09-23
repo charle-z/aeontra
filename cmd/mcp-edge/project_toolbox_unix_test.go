@@ -26,7 +26,14 @@ type fakeProjectToolboxManager struct {
 
 func (manager *fakeProjectToolboxManager) Create(_ context.Context, request edgeclient.ProjectToolboxCreateRequest) (edgeclient.ProjectToolboxSnapshot, bool, error) {
 	manager.createRequest = request
-	return toolboxFixtureSnapshot(), false, nil
+	snapshot := toolboxFixtureSnapshot()
+	if request.Lifecycle != "" {
+		snapshot.Lifecycle = request.Lifecycle
+		if request.Lifecycle == "disposable" {
+			snapshot.ReclaimReason = "active"
+		}
+	}
+	return snapshot, false, nil
 }
 func (manager *fakeProjectToolboxManager) Status(context.Context, edgeclient.ProjectToolboxStatusRequest) (edgeclient.ProjectToolboxSnapshot, error) {
 	manager.statusCalls++
@@ -111,6 +118,7 @@ func toolboxFixtureService() edgeclient.ProjectToolboxServiceSnapshot {
 func toolboxFixtureSnapshot() edgeclient.ProjectToolboxSnapshot {
 	return edgeclient.ProjectToolboxSnapshot{
 		ToolboxID: "tb_11111111111111111111111111111111", State: edgeclient.ProjectToolboxRunning,
+		Lifecycle: "persistent", Generation: 1, Reclaimable: false, ReclaimReason: "persistent",
 		BaseImage: "docker.io/library/debian:bookworm-slim", BaseImageID: "sha256:" + strings.Repeat("a", 64),
 		CreatedAt: time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 8, 2, 12, 1, 0, 0, time.UTC),
 		CPUMillis: 4000, MemoryMiB: 8192, ProcessLimit: 2048,
@@ -124,12 +132,12 @@ func TestCollectProjectToolboxMapsCreateResourceLimits(t *testing.T) {
 		Workspace: edgeclient.Workspace{ID: "ws_22222222222222222222222222222222", Path: "/private/workspace", Profile: edgeclient.WorkspaceProfileLinuxWorkcell, Mode: edgeclient.WorkspaceModeDev},
 	}
 	manager := &fakeProjectToolboxManager{}
-	operation := edge.Operation{Kind: edge.OperationProjectToolboxCreate, Request: edge.OperationRequest{ToolboxCPUMillis: 4000, ToolboxMemoryMiB: 8192, ToolboxProcessLimit: 2048}}
+	operation := edge.Operation{Kind: edge.OperationProjectToolboxCreate, Request: edge.OperationRequest{ToolboxLifecycle: "disposable", ToolboxCPUMillis: 4000, ToolboxMemoryMiB: 8192, ToolboxProcessLimit: 2048}}
 	result, code := collectProjectToolbox(t.Context(), manager, resolved, operation)
-	if code != "" || manager.createRequest.CPUMillis != 4000 || manager.createRequest.MemoryMiB != 8192 || manager.createRequest.ProcessLimit != 2048 {
+	if code != "" || manager.createRequest.CPUMillis != 4000 || manager.createRequest.MemoryMiB != 8192 || manager.createRequest.ProcessLimit != 2048 || manager.createRequest.Lifecycle != "disposable" {
 		t.Fatalf("request=%+v result=%+v code=%q", manager.createRequest, result, code)
 	}
-	if result.ToolboxCPUMillis != 4000 || result.ToolboxMemoryMiB != 8192 || result.ToolboxProcessLimit != 2048 {
+	if result.ToolboxCPUMillis != 4000 || result.ToolboxMemoryMiB != 8192 || result.ToolboxProcessLimit != 2048 || result.ToolboxLifecycle != "disposable" || result.ToolboxGeneration != 1 || result.ToolboxReclaimable || result.ToolboxReclaimReason != "active" {
 		t.Fatalf("result=%+v", result)
 	}
 	if result.ToolboxContainerAccess || result.ToolboxWritableBytes != 4096 || result.ToolboxRootFSBytes != 80<<20 {
