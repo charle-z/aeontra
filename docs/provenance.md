@@ -24,8 +24,10 @@ contributions:
 - `t <t@t>` — two early managed-agent commits produced under the maintainer's direction.
 
 These identities are provenance labels, not independent maintainers or copyright
-holders. The repository does not add artificial `Co-Authored-By` trailers to generated
-or agent-assisted work.
+holders. Aeontra's own repository history does not add artificial `Co-Authored-By`
+trailers to generated or agent-assisted work. This does not prohibit preserving genuine
+human co-authorship when Aeontra is used to prepare a contribution to an external
+open-source repository under that upstream project's attribution rules.
 
 ## Third-party and future contributions
 

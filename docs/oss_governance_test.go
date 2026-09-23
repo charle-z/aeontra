@@ -59,6 +59,32 @@ func TestOSSGovernanceDocumentsDefinePublicBoundaries(t *testing.T) {
 	}
 }
 
+func TestExternalOSSAttributionPolicyPreservesHumanCreditWithoutDuplication(t *testing.T) {
+	agents := readDoc(t, "../AGENTS.md")
+	for _, marker := range []string{
+		"Preserve genuine human attribution",
+		"Co-authored-by",
+		"Never add the operator as a co-author",
+		"Aeontra is the public name for the development assistance",
+		"verify that the pull request is actually owned by the intended configured GitHub operator",
+	} {
+		if !containsNormalizedProse(agents, marker) {
+			t.Errorf("AGENTS.md missing external OSS attribution marker %q", marker)
+		}
+	}
+
+	constitution := readDoc(t, "../.specify/memory/constitution.md")
+	for _, marker := range []string{
+		"Commits in Aeontra itself use no `Co-Authored-By` or AI signature",
+		"one genuine human `Co-authored-by` trailer may be used",
+		"Never invent an Aeontra GitHub identity for attribution",
+	} {
+		if !containsNormalizedProse(constitution, marker) {
+			t.Errorf("constitution missing external OSS attribution marker %q", marker)
+		}
+	}
+}
+
 func TestOSSIssueFormsAreValidAndDoNotSolicitSecrets(t *testing.T) {
 	for _, path := range []string{
 		"../.github/ISSUE_TEMPLATE/config.yml",
