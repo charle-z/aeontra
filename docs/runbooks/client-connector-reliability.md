@@ -24,6 +24,45 @@ Create one incident row before retrying anything:
 
 Never use a later healthy snapshot as proof that the server was healthy at the incident time. Record both timestamps.
 
+## Silent end of a ChatGPT development turn
+
+Use this procedure when a client turn is reported complete without an assistant reply or
+the next action promised by the assistant. This is distinct from a managed
+`model_turn_respond` completion: its pending-work gate can only inspect a response
+submitted to that tool. It cannot keep an ordinary ChatGPT conversation turn alive.
+
+1. Record the UTC time, conversation/turn identity when available, whether the turn is
+   still running, and the last visible assistant message or tool name. A completed
+   user-only turn is an observed symptom, not evidence that a particular backend call
+   failed. Do not copy the conversation, tool arguments or chain of thought into the
+   server audit record.
+2. Align that time window with the existing MCP request ID and content-free event. If
+   the client exposes no request ID, record `unknown`; do not invent a match based on
+   adjacent timestamps. Compare with `/version`, health, deployment state and one
+   innocuous authenticated MCP call. Inspect the relevant Edge operation by its
+   durable ID, or use `edge_operation_list` to find a pending one. A healthy later
+   snapshot proves current availability only.
+3. Record the narrowest supported boundary: **before visible MCP request**, **MCP
+   request failed**, **Edge operation pending/failed**, **MCP result returned but client
+   turn ended**, or **insufficient evidence**. The first and fourth categories do not
+   reveal the internal reason ChatGPT ended the turn. A UI warning, model suggestion or
+   `{}` shown in a client log is not proof that Aeontra received an empty request.
+4. Before recovery, query the project/task/process state and exact Git branch, HEAD,
+   remote relation and dirty flag using read-only tools. Reconcile any durable
+   operation or external effect by its existing ID. If its outcome is uncertain,
+   stop at `reconciliation_required`; never re-run a build, publication, deployment or
+   destructive action solely because the client lost its response.
+5. Save a compact checkpoint in the existing Brain or task journal: objective, last
+   verified action, identities/commit, pending gate, blocker/evidence boundary and
+   next read-only check. The next client resumes from that checkpoint and fresh state,
+   not from a replayed transcript. It still needs the original authorization for
+   consequential actions.
+
+A scheduled observer may detect a new completed user-only turn and prepare this
+checkpoint. It must remain read-only and must not keep resending the same prompt or
+create a second scheduler. Automatic objective supervision, semantic acceptance and
+model-provider handoff are separate P17 work; this procedure does not claim them.
+
 ## First-response sequence
 
 1. Preserve the current `deployment_id`; do not trigger another deployment.
