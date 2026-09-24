@@ -86,7 +86,8 @@ export default function GraphView({ brain }: Props) {
         try {
           const canvas = document.createElement("canvas");
           context = canvas.getContext("2d");
-          if (context) context.font = "600 12px Aptos, Segoe UI, sans-serif";
+          // Keep this stack identical to .graph-label text in dataStyles.css.
+          if (context) context.font = '600 12px Aptos, "Segoe UI", system-ui, sans-serif';
         } catch {
           context = null;
         }

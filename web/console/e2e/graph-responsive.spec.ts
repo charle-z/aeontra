@@ -159,10 +159,17 @@ async function verifyCollisionContract(page: Page): Promise<void> {
     return {
       controls: toBox(controls),
       detail: toBox(detail),
-      labels: Array.from(document.querySelectorAll('[data-graph-label="true"]')).map((element) => ({
-        nodeId: element.getAttribute("data-node-id") ?? "",
-        box: toBox(element),
-      })),
+      labels: Array.from(document.querySelectorAll('[data-graph-label="true"]')).map((element) => {
+        const plate = element.querySelector("rect");
+        const text = element.querySelector("text");
+        if (!plate || !text) throw new Error("graph label plate or text missing");
+        return {
+          nodeId: element.getAttribute("data-node-id") ?? "",
+          box: toBox(element),
+          plate: toBox(plate),
+          text: toBox(text),
+        };
+      }),
       nodes: Array.from(document.querySelectorAll('[data-graph-node="true"]')).map((element) => {
         const visual = element.querySelector(".graph-node-visual");
         if (!visual) throw new Error("graph node visual missing");
@@ -175,6 +182,8 @@ async function verifyCollisionContract(page: Page): Promise<void> {
     expect(label.nodeId).not.toBe("");
     expect(label.box.width).toBeGreaterThan(0);
     expect(label.box.height).toBeGreaterThan(0);
+    expect(label.text.x).toBeGreaterThanOrEqual(label.plate.x + 2);
+    expect(label.text.x + label.text.width).toBeLessThanOrEqual(label.plate.x + label.plate.width - 2);
     expect(overlaps(label.box, snapshot.controls)).toBe(false);
     expect(overlaps(label.box, snapshot.detail)).toBe(false);
     for (const prior of snapshot.labels.slice(0, index)) expect(overlaps(label.box, prior.box)).toBe(false);
