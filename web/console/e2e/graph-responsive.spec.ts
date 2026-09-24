@@ -120,7 +120,7 @@ const emptyEvents = {
   has_more: false,
 };
 
-async function boot(page: Page): Promise<void> {
+async function bootConsole(page: Page): Promise<void> {
   await page.addInitScript(() => {
     Object.defineProperty(window, "EventSource", { value: undefined, configurable: true });
   });
@@ -132,6 +132,10 @@ async function boot(page: Page): Promise<void> {
   await page.route("**/console/tasks?**", async (route) => route.fulfill({ json: emptyJournal }));
   await page.route("**/console/event-log?**", async (route) => route.fulfill({ json: emptyEvents }));
   await page.goto("/");
+}
+
+async function boot(page: Page): Promise<void> {
+  await bootConsole(page);
   await page.getByRole("tab", { name: "Graph" }).click();
   await expect(page.locator('[data-graph-node="true"]')).toHaveCount(36);
 }
@@ -186,6 +190,30 @@ async function saveArtifact(page: Page, testInfo: TestInfo): Promise<void> {
   await page.screenshot({ path, fullPage: true });
   await testInfo.attach("brain-graph-screenshot", { path, contentType: "image/png" });
 }
+
+test("operator console keeps system and Brain usable at every viewport", async ({ page }, testInfo) => {
+  await bootConsole(page);
+  await expect(page.getByRole("heading", { name: "System" })).toBeVisible();
+  await expect(page.getByText("92 tools", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Console sections" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await page.getByRole("tab", { name: "Brain" }).click();
+  await expect(page.getByRole("heading", { name: "Explore notes" })).toBeVisible();
+  await expect(page.locator(".brain-note-list li")).toHaveCount(12);
+  await page.getByRole("button", { name: "Show more notes" }).click();
+  await expect(page.locator(".brain-note-list li")).toHaveCount(24);
+  await page.getByRole("searchbox", { name: "Find a note" }).fill("OpenCode");
+  await expect(page.getByRole("heading", { name: "Complete safe Brain node title 1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Complete safe Brain node title 4/ })).toHaveCount(0);
+  await page.getByRole("searchbox", { name: "Find a note" }).fill("");
+  await page.getByRole("combobox", { name: "Brain trust filter" }).selectOption("curated");
+  await expect(page.locator(".brain-note-list li")).toHaveCount(12);
+  const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  expect(horizontalOverflow).toBe(false);
+  const path = testInfo.outputPath(`${testInfo.project.name}-brain-explorer.png`);
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach("brain-explorer-screenshot", { path, contentType: "image/png" });
+});
 
 test("responsive graph has collision-free labels and bounded selection", async ({ page }, testInfo) => {
   await boot(page);

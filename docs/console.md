@@ -8,7 +8,7 @@ The console is an authenticated, presentation-only surface embedded in the exist
 https://<your-mcp-host>/console
 ```
 
-The authenticated console and `/oauth/authorize` use the same Neo-BIOS/VGA firmware stylesheet. The surface uses monospaced text, square geometry, tabbed screens, keyboard/mouse/touch navigation, accessible help/tooltips and `prefers-reduced-motion`. There are no gradients, external fonts, remote scripts or inline script/style blocks.
+The authenticated console uses a responsive light workspace and dark navigation rail. The visual system follows Aeontra's paper, ink and restrained signal colors. Sections remain real tabs with keyboard arrow navigation only while a tab has focus; form fields keep their normal arrow-key behavior. Brain exposes a searchable list of safe console metadata and a two-dimensional SVG relationship map with depth cues, zoom, pan and keyboard node selection. There is no 3D engine, animation loop or additional runtime dependency. The login and `/oauth/authorize` pages retain their separate firmware stylesheet for now. All surfaces honor `prefers-reduced-motion` and use local assets only.
 
 ## Authentication and durable sessions
 
@@ -22,7 +22,7 @@ Browser sessions persist in `/state/console/sessions.db`. The database stores on
 
 | Route | Method | Authentication | Purpose |
 |---|---|---|---|
-| `/console` | GET | Login or opaque session/direct auth | Render the firmware shell. |
+| `/console` | GET | Login or opaque session/direct auth | Render the operator console. |
 | `/auth/assets/firmware.css` | GET | None | Shared static authentication firmware CSS. |
 | `/console/auth/start` | GET | None | Start console OAuth state/PKCE flow. |
 | `/console/auth/callback` | GET | Exact state and one-use code | Create durable session and redirect cleanly. |
@@ -61,8 +61,8 @@ The UI does not invent projects, devices, agents or measurements.
 - **System:** exact runtime identity plus real container CPU, RAM, disk, load and a combined storage budget.
 - **Agents:** controllers and model runtimes are separate entities. Tool calls remain operations, never agents.
 - **Tasks:** durable pages, exact filters, versions and precise timestamps.
-- **Brain:** aggregate index state and a bounded real link graph.
-- **Graph:** stable HMAC node IDs plus explicit redacted title, `console_summary`, trust and degree. No slug, body, private provenance or path.
+- **Brain:** aggregate index state and a searchable, incrementally revealed list of bounded safe note metadata. Filtering happens in the browser over the already allowlisted response; it does not query note bodies.
+- **Graph:** stable HMAC node IDs plus explicit redacted title, `console_summary`, trust and degree in an interactive SVG map. No slug, body, private provenance or path.
 - **Edge:** active durable Edge devices only. Raw device ID, name, key and network details remain private.
 - **Projects:** one option per real configured policy root. Paths and repository names remain private.
 - **Events:** server-persisted journal history, not browser-generated notices.
@@ -85,7 +85,7 @@ The combined reporting limit is 256 MiB: below 75% is `healthy`, from 75% is `ne
 
 Only same-origin embedded assets are loaded. CSP permits same-origin script/connect sources for REST and SSE and excludes `unsafe-inline`. There are no WebSockets, remote fonts, analytics, third-party scripts, inline handlers, `dangerouslySetInnerHTML`, `innerHTML`, eval, service workers, local/session storage, IndexedDB or JavaScript-readable cookies.
 
-The console remains presentation-only. F9/F10 do not approve or execute anything. MCP single-use plans remain the only authority path for consequential actions.
+The console remains presentation-only. The previous F9/F10 affordances have been removed to avoid implying that the browser can approve or execute anything. MCP single-use plans remain the only authority path for consequential actions.
 
 ## Production configuration
 
@@ -105,12 +105,9 @@ Reuse the existing private `/state` and `/brain` persistent mounts. Do not creat
 
 ## Upgrade and rollback
 
-Before rollout, verify the exact catalog:
-
-```text
-86
-sha256:ea9cc3749c68fcc12b608efbddc259b01eb7868c98bbc1ab35c75f456e118a98
-```
+Before rollout, verify the candidate's tool count and catalog hash against the
+running `/version` or `system_runtime_info`. Do not use historical counts as a
+deployment gate.
 
 Upgrade is additive and idempotent: legacy task JSON is imported into `/state/tasks/tasks.db`; durable sessions begin in `/state/console/sessions.db`; `/state/brain/console-node.key` is created once; and Brain reindex creates/refreshes `console_metadata` without changing Markdown truth.
 

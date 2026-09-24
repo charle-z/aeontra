@@ -22,6 +22,18 @@ import { TimeDisplayProvider, Timestamp } from "./TimeDisplay";
 import { DEFAULT_TIMEZONE } from "./time-format";
 
 const tabs = ["System", "Agents", "Tasks", "Brain", "Graph", "Edge", "Observability", "Security", "Events"] as const;
+const consoleHelp = "Choose a section from the navigation. Use the filters to narrow real records, and Refresh to reload safe endpoints. This console cannot execute tools or approve actions.";
+const tabDescriptions: Record<(typeof tabs)[number], string> = {
+  System: "Runtime health and capacity at a glance.",
+  Agents: "Controllers, model runtimes and measured activity.",
+  Tasks: "Durable operations and their current state.",
+  Brain: "Browse the safe index metadata available to this console.",
+  Graph: "Explore relationships between safe Brain notes.",
+  Edge: "Paired devices and their reported state.",
+  Observability: "Bounded route counters and response times.",
+  Security: "Authentication and console authority boundaries.",
+  Events: "Persistent journal events and live updates.",
+};
 const taskStates: TaskState[] = ["requested", "planned", "awaiting_approval", "executing", "observing", "validating", "completed", "failed", "cancelled", "disconnected"];
 const controllers: Controller[] = ["http", "stdio", "internal"];
 const eventTypes: EventType[] = ["started", "heartbeat", "transition"];
@@ -40,24 +52,24 @@ function bytes(value: number): string {
 }
 
 function stateTone(state: string): Tone {
-  if (state === "completed" || state === "healthy" || state === "live" || state === "connected") return "ok";
+  if (state === "ok" || state === "ready" || state === "completed" || state === "healthy" || state === "live" || state === "connected") return "ok";
   if (["failed", "cancelled", "disconnected", "degraded", "offline", "unavailable"].includes(state)) return "warn";
   if (["planned", "awaiting_approval", "nearing_limit", "reconnecting", "connecting"].includes(state)) return "dim";
   return "normal";
 }
 
 function Row({ label, value, tone = "normal", help }: { label: string; value: React.ReactNode; tone?: Tone; help: string }) {
-  return <button className="firmware-row" type="button" data-help={help}><span>{label}</span><strong data-tone={tone}>{value}</strong></button>;
+  return <button className="detail-row" type="button" data-help={help}><span>{label}</span><strong data-tone={tone}>{value}</strong></button>;
 }
 function Section({ title }: { title: string }) { return <h2 className="section-title">{title}</h2>; }
 function Panel({ children }: { children: React.ReactNode }) {
-  const [help, setHelp] = useState("Select an item to inspect its verified meaning.");
+  const [help, setHelp] = useState("Select a detail to see where its value comes from.");
   return (
-    <div className="firmware-body">
-      <section className="firmware-list" onFocus={(event) => { const next = (event.target as HTMLElement).dataset.help; if (next) setHelp(next); }} onClick={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-help]"); if (target?.dataset.help) setHelp(target.dataset.help); }}>
+    <div className="detail-layout">
+      <section className="detail-grid" onFocus={(event) => { const next = (event.target as HTMLElement).dataset.help; if (next) setHelp(next); }} onClick={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-help]"); if (target?.dataset.help) setHelp(target.dataset.help); }}>
         {children}
       </section>
-      <aside className="item-help"><h2>Item Specific Help</h2><p>{help}</p><small>↑↓ item · ←→ screen · F1 help · F5 refresh</small></aside>
+      <aside className="item-help"><h2>About this detail</h2><p>{help}</p></aside>
     </div>
   );
 }
@@ -140,20 +152,33 @@ function TasksTab({ tasks, filters, setFilters, loadMore, loading }: { tasks: Ta
   );
 }
 
-function BrainTab({ data }: { data: ConsoleData | null }) {
+function BrainTab({ data, onOpenGraph }: { data: ConsoleData | null; onOpenGraph: () => void }) {
+  const [query, setQuery] = useState("");
+  const [trust, setTrust] = useState("");
+  const [visibleCount, setVisibleCount] = useState(12);
   const brain = data?.brain;
+  const nodes = brain?.nodes ?? [];
+  const matching = nodes.filter((node) => {
+    const text = query.trim().toLocaleLowerCase();
+    return (!trust || node.trust === trust)
+      && (!text || (node.title + " " + node.summary + " " + node.console_label).toLocaleLowerCase().includes(text));
+  });
   return (
-    <Panel>
-      <Section title="Brain Index" />
-      <Row label="Available" value={brain ? String(brain.available) : "—"} tone={brain?.available ? "ok" : "warn"} help="Whether the isolated Brain store is attached to this runtime." />
-      <Row label="Ready" value={brain?.available ? String(brain.ready) : "Unavailable"} tone={brain?.ready ? "ok" : "warn"} help="Disposable SQLite index readiness." />
-      <Row label="Schema" value={brain?.available ? String(brain.schema_version) : "—"} help="Real index schema version." />
-      <Row label="Notes" value={brain?.available ? String(brain.note_count) : "—"} help="Aggregate note count. Only explicit redacted console metadata is shown in Graph." />
-      <Row label="Source bytes" value={brain?.available ? bytes(brain.source_bytes) : "—"} help="Aggregate Markdown source size." />
-      <Row label="Links" value={brain?.available ? brain.link_count + " total · " + brain.broken_link_count + " broken" : "—"} help="Aggregate link counts from the Brain index." />
-      <Row label="Indexed at" value={<Timestamp value={brain?.indexed_at || ""} />} help="Last real index timestamp." />
-      <Row label="Graph" value={brain?.available ? brain.nodes.length + " opaque nodes · " + brain.edges.length + " edges" : "Unavailable"} help="Stable HMAC IDs, safe title/summary, trust and degree; no slugs, bodies, provenance or paths." />
-    </Panel>
+    <div className="brain-page">
+      <div className="brain-overview" aria-label="Brain index summary">
+        <div className="metric-card"><span>Index</span><strong data-tone={brain?.ready ? "ok" : "warn"}>{brain?.ready ? "Ready" : "Unavailable"}</strong><small>Schema {brain?.available ? brain.schema_version : "—"}</small></div>
+        <div className="metric-card"><span>Notes</span><strong>{brain?.available ? brain.note_count : "—"}</strong><small>{brain?.available ? bytes(brain.source_bytes) : "Unavailable"} indexed source</small></div>
+        <div className="metric-card"><span>Links</span><strong>{brain?.available ? brain.link_count : "—"}</strong><small>{brain?.available ? brain.broken_link_count : "—"} broken</small></div>
+        <div className="metric-card"><span>Graph</span><strong>{brain?.available ? nodes.length : "—"}</strong><small>safe nodes · {brain?.available ? brain.edges.length : "—"} edges</small></div>
+      </div>
+      <div className="brain-explorer">
+        <div className="brain-explorer-heading"><div><Section title="Explore notes" /><p>Titles and summaries are explicitly prepared for this console. Source text and paths stay private.</p></div><button type="button" onClick={onOpenGraph}>Open relationship map <span aria-hidden="true">↗</span></button></div>
+        <div className="filter-bar" aria-label="Brain filters"><label>Find a note<input type="search" aria-label="Find a note" value={query} onChange={(event) => { setQuery(event.target.value); setVisibleCount(12); }} placeholder="Search safe titles and summaries" /></label><label>Trust<select aria-label="Brain trust filter" value={trust} onChange={(event) => { setTrust(event.target.value); setVisibleCount(12); }}><option value="">All notes</option><option value="curated">Curated</option><option value="working">Working</option></select></label></div>
+        {!brain?.available ? <p className="empty-note">Brain is unavailable.</p> : matching.length ? <ul className="brain-note-list">{matching.slice(0, visibleCount).map((node) => <li key={node.id}><div><span className="trust-label" data-trust={node.trust}>{node.trust}</span><span className="link-count">{node.degree} {node.degree === 1 ? "link" : "links"}</span></div><h3>{node.title}</h3><p>{node.summary.trim() || "No curated summary available."}</p></li>)}</ul> : <p className="empty-note">No safe notes match these filters.</p>}
+        {brain?.available && matching.length > visibleCount && <div className="paging-bar"><span>Showing {visibleCount} of {matching.length} safe nodes</span><button type="button" onClick={() => setVisibleCount((count) => count + 12)}>Show more notes</button></div>}
+        <p className="panel-note">Indexed at <Timestamp value={brain?.indexed_at || ""} />{brain?.graph_truncated ? " · The relationship map is bounded; this list may be incomplete." : ""}</p>
+      </div>
+    </div>
   );
 }
 
@@ -273,7 +298,6 @@ export default function AppShell() {
   const [eventLog, setEventLog] = useState<EventLogResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [attract, setAttract] = useState(false);
   const [projectSelection, setProjectSelection] = useState("");
   const [edgeSelection, setEdgeSelection] = useState("");
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>({ controller: "", state: "", operation: "" });
@@ -294,7 +318,6 @@ export default function AppShell() {
   const taskFiltersRef = useRef<TaskFilters>({});
   const eventFiltersRef = useRef<EventFilters>({});
   const pendingEventsRef = useRef<JournalEvent[]>([]);
-  const reducedMotion = useMemo(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches, []);
 
   const scopedTaskFilters = useMemo<TaskFilters>(() => ({ ...taskFilters, project_id: projectSelection, edge_id: edgeSelection }), [taskFilters, projectSelection, edgeSelection]);
   const scopedEventFilters = useMemo<EventFilters>(() => ({ ...eventFilters, project_id: projectSelection, edge_id: edgeSelection }), [eventFilters, projectSelection, edgeSelection]);
@@ -440,38 +463,14 @@ export default function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (!attract || reducedMotion) return;
-    const timer = window.setInterval(() => setActive((current) => tabs[(tabs.indexOf(current) + 1) % tabs.length]), 2600);
-    return () => window.clearInterval(timer);
-  }, [attract, reducedMotion]);
-
-  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const index = tabs.indexOf(active);
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        event.preventDefault();
-        const delta = event.key === "ArrowLeft" ? -1 : 1;
-        setActive(tabs[(index + delta + tabs.length) % tabs.length]);
-      } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        const rows = Array.from(document.querySelectorAll<HTMLButtonElement>(".firmware-row"));
-        if (!rows.length) return;
-        event.preventDefault();
-        const current = rows.indexOf(document.activeElement as HTMLButtonElement);
-        const delta = event.key === "ArrowUp" ? -1 : 1;
-        rows[(Math.max(current, 0) + delta + rows.length) % rows.length].focus();
-      } else if (event.key === "F1") {
-        event.preventDefault(); setDialog({ title: "Help", body: "Arrow keys and touch navigate verified screens. F5 refreshes safe endpoints. Events reconnect from the last durable server event ID." });
-      } else if (event.key === "F5") {
-        event.preventDefault(); void refresh();
-      } else if (event.key === "F8") {
-        event.preventDefault(); if (reducedMotion) setDialog({ title: "Attract", body: "Automatic rotation is disabled by reduced-motion preference." }); else setAttract((value) => !value);
-      } else if (event.key === "F9" || event.key === "F10") {
-        event.preventDefault(); setDialog({ title: event.key === "F9" ? "Cancel" : "Approve", body: "No consequential action is exposed by this presentation-only console. MCP single-use plans remain the authority path." });
+      if (event.key === "F1") {
+        event.preventDefault(); setDialog({ title: "Help", body: consoleHelp });
       } else if (event.key === "Escape") setDialog(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, reducedMotion, refresh]);
+  }, []);
 
   const loadMoreTasks = useCallback(async () => {
     if (!tasks?.has_more || taskPaging) return;
@@ -507,7 +506,7 @@ export default function AppShell() {
       case "System": return <SystemTab status={status} data={data} error={error} />;
       case "Agents": return <AgentsTab data={data} projectSelection={projectSelection} edgeSelection={edgeSelection} />;
       case "Tasks": return <TasksTab tasks={tasks} filters={taskFilters} setFilters={setTaskFilters} loadMore={() => void loadMoreTasks()} loading={taskPaging || taskRefreshing} />;
-      case "Brain": return <BrainTab data={data} />;
+      case "Brain": return <BrainTab data={data} onOpenGraph={() => setActive("Graph")} />;
       case "Graph": return <div className="graph-panel"><Section title="Brain Link Graph" /><GraphView brain={data?.brain ?? null} /></div>;
       case "Edge": return <EdgeTab data={data} />;
       case "Observability": return <ObservabilityTab data={data} projectSelection={projectSelection} edgeSelection={edgeSelection} />;
@@ -518,13 +517,88 @@ export default function AppShell() {
 
   return (
     <TimeDisplayProvider value={{ timezone, now: relativeNow }}>
-    <main className="firmware-shell">
-      <header className="firmware-header"><span>MCP DEVBOX OPERATIONS FIRMWARE</span><div className="runtime-selectors"><form className="timezone-control" onSubmit={(event) => { event.preventDefault(); void saveTimezone(); }}><label>Timezone<input aria-label="Timezone" list="console-timezones" maxLength={64} value={timezoneDraft} onChange={(event) => setTimezoneDraft(event.target.value)} /></label><datalist id="console-timezones"><option value="America/Bogota" /><option value="America/Argentina/Buenos_Aires" /><option value="Europe/Moscow" /><option value="UTC" /></datalist><button type="submit" disabled={timezoneSaving}>{timezoneSaving ? "Saving…" : "Apply"}</button><span aria-live="polite">Timezone: {timezone}</span></form><label>Project<select aria-label="Project" value={projectSelection} onChange={(event) => { projectSelectionInitializedRef.current = true; setProjectSelection(event.target.value); }}><option value="">All projects</option>{data?.projects.map((project) => <option key={project.id} value={project.id}>{project.label}{project.current ? " [current]" : ""}</option>)}</select></label><label>Edge<select aria-label="Edge device" value={edgeSelection} onChange={(event) => { edgeSelectionInitializedRef.current = true; setEdgeSelection(event.target.value); }}><option value="">All Edge devices</option>{data?.edge.devices.map((device) => <option key={device.id} value={device.id}>{device.label}</option>)}</select></label></div><span>Rev {status?.commit ? status.commit.slice(0, 8) : "unknown"}</span></header>
-      <nav className="tabs" role="tablist" aria-label="Console screens">{tabs.map((tab) => <button key={tab} type="button" role="tab" aria-selected={active === tab} onClick={() => { setActive(tab); setAttract(false); }}>{tab}</button>)}</nav>
-      <section className="screen" aria-live="polite">{content}</section>
-      <footer className="keybar"><span><b>F1</b> Help</span><span><b>↑↓</b> Item</span><span><b>←→</b> Screen</span><span><b>F5</b> Refresh</span><span><b>F8</b> Attract</span><span><b>F9</b> Cancel</span><span><b>F10</b> Approve</span><form method="post" action="/console/logout"><button type="submit">ESC Sign out</button></form></footer>
-      {dialog && <div className="dialog-backdrop" role="presentation" onClick={() => setDialog(null)}><section className="firmware-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={(event) => event.stopPropagation()}><h2 id="dialog-title">{dialog.title}</h2><p>{dialog.body}</p><button type="button" onClick={() => setDialog(null)}>[ Ok ]</button></section></div>}
-    </main>
+      <main className="console-layout">
+      <aside className="console-sidebar">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <div><strong>Aeontra</strong><small>Operator console</small></div>
+        </div>
+        <p className="sidebar-label">Workspace</p>
+        <nav aria-label="Console sections">
+          <div className="tabs" role="tablist" aria-label="Console screens">
+            {tabs.map((tab) => <button
+              key={tab}
+              id={`tab-${tab.toLowerCase()}`}
+              type="button"
+              role="tab"
+              aria-controls="console-panel"
+              aria-selected={active === tab}
+              tabIndex={active === tab ? 0 : -1}
+              onClick={() => setActive(tab)}
+              onKeyDown={(event) => {
+                const delta = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+                if (!delta) return;
+                event.preventDefault();
+                const next = tabs[(tabs.indexOf(tab) + delta + tabs.length) % tabs.length];
+                setActive(next);
+                document.getElementById(`tab-${next.toLowerCase()}`)?.focus();
+              }}
+            >{tab}<span aria-hidden="true">↗</span></button>)}
+          </div>
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-status"><span className="status-dot" data-tone={stateTone(streamState)} /><span>Event stream <strong>{streamState}</strong></span></div>
+          <form method="post" action="/console/logout"><button type="submit">Sign out <span aria-hidden="true">↗</span></button></form>
+        </div>
+      </aside>
+      <div className="console-main">
+        <header className="console-header">
+          <div><p className="eyebrow">Control plane / {active}</p><h1>{active}</h1><p className="page-description">{tabDescriptions[active]}</p></div>
+          <div className="header-actions">
+            <span className="runtime-badge" data-tone={error ? "warn" : status ? stateTone(status.status) : "dim"}>
+              <span className="status-dot" />{error ? "Partial data" : status ? status.status : "Loading"}
+            </span>
+            <button type="button" onClick={() => void refresh()}>Refresh</button>
+            <button type="button" onClick={() => setDialog({ title: "Help", body: consoleHelp })}>Help</button>
+          </div>
+        </header>
+        <div className="console-toolbar">
+          <div className="runtime-selectors">
+            <label>Project
+              <select aria-label="Project" value={projectSelection} onChange={(event) => { projectSelectionInitializedRef.current = true; setProjectSelection(event.target.value); }}>
+                <option value="">All projects</option>
+                {data?.projects.map((project) => <option key={project.id} value={project.id}>{project.label}{project.current ? " [current]" : ""}</option>)}
+              </select>
+            </label>
+            <label>Edge device
+              <select aria-label="Edge device" value={edgeSelection} onChange={(event) => { edgeSelectionInitializedRef.current = true; setEdgeSelection(event.target.value); }}>
+                <option value="">All Edge devices</option>
+                {data?.edge.devices.map((device) => <option key={device.id} value={device.id}>{device.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <form className="timezone-control" onSubmit={(event) => { event.preventDefault(); void saveTimezone(); }}>
+            <label>Timezone<input aria-label="Timezone" list="console-timezones" maxLength={64} value={timezoneDraft} onChange={(event) => setTimezoneDraft(event.target.value)} /></label>
+            <datalist id="console-timezones"><option value="America/Bogota" /><option value="America/Argentina/Buenos_Aires" /><option value="Europe/Moscow" /><option value="UTC" /></datalist>
+            <button type="submit" disabled={timezoneSaving}>{timezoneSaving ? "Saving…" : "Apply"}</button>
+            <span aria-live="polite">Timezone: {timezone}</span>
+          </form>
+        </div>
+        {error && <p className="load-error" role="alert">Some console data is unavailable: {error}.</p>}
+        <section id="console-panel" className="screen" role="tabpanel" aria-labelledby={`tab-${active.toLowerCase()}`}>{content}</section>
+        <footer className="console-footer">
+          <span>Read-only view · consequential actions remain in MCP</span>
+          <span>{status?.tool_count ?? "—"} tools · Rev {status?.commit ? status.commit.slice(0, 8) : "unknown"}</span>
+        </footer>
+      </div>
+      {dialog && <div className="dialog-backdrop" role="presentation" onClick={() => setDialog(null)}>
+        <section className="console-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={(event) => event.stopPropagation()}>
+          <h2 id="dialog-title">{dialog.title}</h2>
+          <p>{dialog.body}</p>
+          <button type="button" onClick={() => setDialog(null)}>Close</button>
+        </section>
+      </div>}
+      </main>
     </TimeDisplayProvider>
   );
 }

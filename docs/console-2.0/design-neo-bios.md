@@ -1,5 +1,10 @@
 # Console 2.0 — Neo-BIOS Operations Firmware (design handoff)
 
+> Historical design proposal. The current console visual and interaction
+> contract is in `docs/console.md`; the operator workspace supersedes this
+> firmware styling for `/console`. Authentication pages retain their separate
+> firmware stylesheet.
+
 Status: **design proposal** for milestone P8.1 (Console 2.0). Not implemented.
 Prepared on a separate branch so it does not touch `main` or `p9-brain`.
 The reference mockup lives beside this file: `mockup.html` (self-contained, no build).
