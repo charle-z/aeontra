@@ -11,6 +11,8 @@
 /vendor/
 node_modules/
 /.pnpm-store/
+web/console/playwright-report/
+web/console/test-results/
 
 # Local runtime / audit artifacts
 /.mcp-devbox/

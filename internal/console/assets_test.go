@@ -28,21 +28,21 @@ func TestEmbeddedConsoleAssetsAreSelfContainedAndHardened(t *testing.T) {
 	assertScriptsAreExternal(t, assets["index"])
 
 	css := strings.ToLower(assets["css"])
-	for _, required := range []string{"#0000a8", "border-radius:0", "prefers-reduced-motion", ":focus-visible", "max-width:720px"} {
+	for _, required := range []string{"#f4f2eb", ".console-sidebar", ".brain-note-list", ".graph-node-depth", "prefers-reduced-motion", ":focus-visible", "max-width:640px"} {
 		if !strings.Contains(css, required) {
 			t.Errorf("CSS missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"linear-gradient", "radial-gradient", "border-radius:999", "backdrop-filter"} {
+	for _, forbidden := range []string{"#0000a8", "backdrop-filter", "url(http://", "url(https://"} {
 		if strings.Contains(css, forbidden) {
-			t.Errorf("CSS contains forbidden Neo-BIOS styling %q", forbidden)
+			t.Errorf("CSS contains forbidden styling or external capability %q", forbidden)
 		}
 	}
 
 	js := strings.ToLower(assets["js"])
 	for _, required := range []string{
-		"mcp devbox operations firmware", "item specific help", "system", "agents", "tasks", "brain", "graph", "edge", "observability", "security", "events",
-		"arrowleft", "arrowright", "arrowup", "arrowdown", "f1", "f5", "f8", "f9", "f10", "prefers-reduced-motion", "pointerdown",
+		"operator console", "explore notes", "console sections", "system", "agents", "tasks", "brain", "graph", "edge", "observability", "security", "events",
+		"arrowleft", "arrowright", "arrowup", "arrowdown", "f1", "pointerdown",
 	} {
 		if !strings.Contains(js, required) {
 			t.Errorf("JavaScript missing %q", required)

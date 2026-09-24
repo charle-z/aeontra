@@ -83,7 +83,7 @@ function fetchFixture(input: RequestInfo | URL, init?: RequestInit) {
   return Promise.reject(new Error("unexpected fetch: " + path));
 }
 
-describe("Neo-BIOS operations firmware", () => {
+describe("operator console", () => {
   beforeEach(() => {
     EventSourceStub.instances = [];
     savedTimezone = "America/Bogota";
@@ -94,7 +94,8 @@ describe("Neo-BIOS operations firmware", () => {
 
   it("renders exact catalog, real selectors, VPS and combined storage", async () => {
     render(<App />);
-    expect(screen.getByText("MCP DEVBOX OPERATIONS FIRMWARE")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "System" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Console sections" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("92 tools")).toBeInTheDocument());
     expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue(data.projects[0].id);
     expect(screen.getByRole("combobox", { name: "Edge device" })).toHaveValue(data.edge.devices[0].id);
@@ -253,5 +254,28 @@ describe("Neo-BIOS operations firmware", () => {
     expect(detail).toHaveTextContent("Verified release controls.");
     fireEvent.keyDown(window, { key: "F1" });
     expect(screen.getByRole("dialog", { name: "Help" })).toBeInTheDocument();
+  });
+
+  it("lets an operator find safe Brain notes without showing source content", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("92 tools")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("tab", { name: "Brain" }));
+    expect(screen.getByRole("heading", { name: "Explore notes" })).toBeInTheDocument();
+    expect(screen.getByText("Verified release controls.")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find a note" }), { target: { value: "release" } });
+    expect(screen.getByText("Release gates")).toBeInTheDocument();
+    expect(screen.queryByText("Console hypothesis")).not.toBeInTheDocument();
+    expect(screen.queryByText("bn_release")).not.toBeInTheDocument();
+  });
+
+  it("does not steal arrow keys from a filter field", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("92 tools")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
+    const filter = screen.getByRole("textbox", { name: "Task operation filter" });
+    fireEvent.keyDown(filter, { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "Tasks" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Tasks" }), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Brain" })).toHaveAttribute("aria-selected", "true");
   });
 });
