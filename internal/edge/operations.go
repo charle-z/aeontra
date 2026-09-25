@@ -391,6 +391,7 @@ type OperationResult struct {
 	ToolboxUpdatedAt                 string                          `json:"toolbox_updated_at,omitempty"`
 	ToolboxOutput                    string                          `json:"toolbox_output,omitempty"`
 	ToolboxOutputTruncated           bool                            `json:"toolbox_output_truncated,omitempty"`
+	ToolboxExitCode                  *int                            `json:"toolbox_exit_code,omitempty"`
 	ToolboxRemoved                   bool                            `json:"toolbox_removed,omitempty"`
 	ToolboxServiceID                 string                          `json:"toolbox_service_id,omitempty"`
 	ToolboxServiceName               string                          `json:"toolbox_service_name,omitempty"`

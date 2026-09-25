@@ -35,6 +35,14 @@ type ContainerCommandRunner interface {
 
 type execContainerCommandRunner struct{}
 
+type rootlessCommandOutputLimitError struct{ exitCode int }
+
+func (err *rootlessCommandOutputLimitError) Error() string {
+	return "rootless container command output exceeded its limit"
+}
+
+func (err *rootlessCommandOutputLimitError) ExitCode() int { return err.exitCode }
+
 var containerResourceIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 func DiscoverRootlessContainerEndpoint(uid int, toolPath string) (*RootlessContainerEndpoint, error) {
@@ -230,8 +238,30 @@ func (execContainerCommandRunner) Run(ctx context.Context, executable string, ar
 	}
 	command.WaitDelay = 5 * time.Second
 	err := command.Run()
-	if stdout.Len()+stderr.Len() > 64<<10 {
-		return nil, errors.New("rootless container command output exceeded its limit")
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
-	return stdout.Bytes(), err
+	output := stdout.Bytes()
+	if err != nil {
+		output = append(append([]byte(nil), output...), stderr.Bytes()...)
+	}
+	if stdout.Len()+stderr.Len() > 64<<10 {
+		exitCode := 0
+		if err != nil {
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				return nil, err
+			}
+			exitCode = exitErr.ExitCode()
+			if len(output) > 64<<10 {
+				output = output[len(output)-(64<<10):]
+			}
+		} else {
+			if len(output) > 64<<10 {
+				output = output[:64<<10]
+			}
+		}
+		return output, &rootlessCommandOutputLimitError{exitCode: exitCode}
+	}
+	return output, err
 }

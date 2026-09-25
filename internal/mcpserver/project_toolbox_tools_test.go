@@ -104,12 +104,13 @@ func TestProjectToolboxServiceHandlerUsesOpaqueIdentityAndFiltersProcessState(t 
 }
 
 func TestProjectToolboxHandlerQueuesExplicitOperationAndFiltersInternalState(t *testing.T) {
+	exitCode := 2
 	store := &projectGitSyncToolStore{waitResult: edge.Operation{
 		State: edge.OperationSucceeded,
 		Result: edge.OperationResult{
 			ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
 			ToolboxID: "tb_11111111111111111111111111111111", ToolboxState: "running", ToolboxLifecycle: edge.ProjectToolboxLifecyclePersistent, ToolboxGeneration: 1, ToolboxReclaimReason: "persistent", ToolboxBase: "debian-bookworm-slim",
-			ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z", ToolboxOutput: "ruby 3.3\n",
+			ToolboxBaseImageID: "sha256:" + strings.Repeat("a", 64), ToolboxCreatedAt: "2026-08-02T12:00:00Z", ToolboxUpdatedAt: "2026-08-02T12:01:00Z", ToolboxOutput: "ruby 3.3\n", ToolboxExitCode: &exitCode,
 			ToolboxCPUMillis: 4000, ToolboxMemoryMiB: 8192, ToolboxProcessLimit: 2048, ToolboxContainerAccess: false, ToolboxWritableBytes: 4096, ToolboxRootFSBytes: 80 << 20,
 		},
 	}}
@@ -121,7 +122,7 @@ func TestProjectToolboxHandlerQueuesExplicitOperationAndFiltersInternalState(t *
 	if store.createdKind != edge.OperationProjectToolboxExec || store.createdRequest.Profile != "linux-workcell" || store.createdRequest.Argv[0] != "ruby" || store.createdRequest.TimeoutSeconds != 60 {
 		t.Fatalf("kind=%q request=%+v", store.createdKind, store.createdRequest)
 	}
-	for _, required := range []string{`"operation_state":"succeeded"`, `"repository":"charle-z/repo"`, `"toolbox_id":"tb_11111111111111111111111111111111"`, `"base":"debian-bookworm-slim"`, `"output":"ruby 3.3\n"`} {
+	for _, required := range []string{`"operation_state":"succeeded"`, `"repository":"charle-z/repo"`, `"toolbox_id":"tb_11111111111111111111111111111111"`, `"base":"debian-bookworm-slim"`, `"output":"ruby 3.3\n"`, `"exit_code":2`} {
 		if !strings.Contains(output, required) {
 			t.Fatalf("output missing %q: %s", required, output)
 		}

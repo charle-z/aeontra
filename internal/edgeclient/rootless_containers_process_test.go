@@ -4,7 +4,9 @@ package edgeclient
 
 import (
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,6 +27,28 @@ func TestExecContainerCommandRunnerKeepsStderrOutOfMachineOutput(t *testing.T) {
 	}
 	if got := string(output); got != "resource-id\n" {
 		t.Fatalf("machine output=%q", got)
+	}
+}
+
+func TestExecContainerCommandRunnerPreservesFailedCommandOutput(t *testing.T) {
+	output, err := execContainerCommandRunner{}.Run(
+		t.Context(), "/bin/sh", []string{"-c", `printf 'test started\n'; printf 'assertion failed\n' >&2; exit 2`},
+		[]string{"PATH=/usr/bin:/bin", "LANG=C", "LC_ALL=C"},
+	)
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 2 || string(output) != "test started\nassertion failed\n" {
+		t.Fatalf("output=%q err=%v", output, err)
+	}
+}
+
+func TestExecContainerCommandRunnerBoundsFailedCommandOutput(t *testing.T) {
+	output, err := execContainerCommandRunner{}.Run(
+		t.Context(), "/bin/sh", []string{"-c", `printf '%070000d' 0; printf 'failure-tail\n' >&2; exit 2`},
+		[]string{"PATH=/usr/bin:/bin", "LANG=C", "LC_ALL=C"},
+	)
+	var limitErr *rootlessCommandOutputLimitError
+	if !errors.As(err, &limitErr) || limitErr.ExitCode() != 2 || len(output) != 64<<10 || !strings.HasSuffix(string(output), "failure-tail\n") {
+		t.Fatalf("length=%d tail=%q err=%v", len(output), string(output[max(0, len(output)-32):]), err)
 	}
 }
 

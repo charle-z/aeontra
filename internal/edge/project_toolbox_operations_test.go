@@ -163,6 +163,15 @@ func TestProjectToolboxCompletionIsBoundToItsOperationKind(t *testing.T) {
 	if !validOperationCompletionForKind(OperationProjectToolboxExec, executed, "") || validOperationCompletionForKind(OperationProjectToolboxStatus, executed, "") {
 		t.Fatal("toolbox exec result kind validation failed")
 	}
+	exitCode := 2
+	executed.ToolboxExitCode = &exitCode
+	if !validOperationCompletionForKind(OperationProjectToolboxExec, executed, "") || validOperationCompletionForKind(OperationProjectToolboxStatus, executed, "") {
+		t.Fatal("nonzero toolbox command exit was rejected or accepted as status")
+	}
+	exitCode = 256
+	if validOperationCompletionForKind(OperationProjectToolboxExec, executed, "") {
+		t.Fatal("out-of-range toolbox exit was accepted")
+	}
 	cleaned := result
 	cleaned.ToolboxState = "removed"
 	cleaned.ToolboxRemoved = true
