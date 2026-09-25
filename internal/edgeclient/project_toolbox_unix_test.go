@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +18,7 @@ import (
 
 type recordingToolboxRunner struct {
 	calls          [][]string
+	execExitCode   int
 	environments   [][]string
 	fail           string
 	workspace      string
@@ -98,6 +101,10 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 	case strings.Contains(joined, "mcp-toolbox-service-stop"):
 		return []byte("stopped\n"), nil
 	case strings.Contains(joined, " exec "):
+		if runner.execExitCode != 0 {
+			command := exec.Command("/bin/sh", "-c", "exit "+strconv.Itoa(runner.execExitCode))
+			return []byte("make: *** test failed\n"), command.Run()
+		}
 		return []byte("toolbox-ok\n"), nil
 	case strings.Contains(joined, " start "):
 		runner.state = "running|true"
@@ -249,6 +256,13 @@ func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *test
 	wantTail := []string{"exec", "--workdir", "/workspace/src", "--env", "CI=true", "mcp-toolbox-11111111111111111111111111111111", "sh", "-lc", "command -v ruby || true"}
 	if len(last) < len(wantTail) || !reflect.DeepEqual(last[len(last)-len(wantTail):], wantTail) {
 		t.Fatalf("exec call=%q", last)
+	}
+	runner.execExitCode = 2
+	failed, err := manager.Exec(t.Context(), ProjectToolboxExecRequest{
+		ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Argv: []string{"make", "test"},
+	})
+	if err != nil || failed.Output != "make: *** test failed\n" || failed.ExitCode == nil || *failed.ExitCode != 2 {
+		t.Fatalf("failed command result=%+v err=%v", failed, err)
 	}
 }
 

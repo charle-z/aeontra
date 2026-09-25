@@ -225,6 +225,7 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	result.ToolboxUpdatedAt = snapshot.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	result.ToolboxOutput = snapshot.Output
 	result.ToolboxOutputTruncated = snapshot.Truncated
+	result.ToolboxExitCode = snapshot.ExitCode
 	result.ToolboxRemoved = snapshot.State == "removed"
 	result.ToolboxCPUMillis = snapshot.CPUMillis
 	result.ToolboxMemoryMiB = snapshot.MemoryMiB

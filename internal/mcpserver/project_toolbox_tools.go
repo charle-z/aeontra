@@ -43,6 +43,7 @@ type projectToolboxPublicView struct {
 	UpdatedAt        string              `json:"updated_at,omitempty"`
 	Output           string              `json:"output,omitempty"`
 	OutputTruncated  bool                `json:"output_truncated"`
+	ExitCode         *int                `json:"exit_code,omitempty"`
 	Removed          bool                `json:"removed"`
 	ServiceID        string              `json:"service_id,omitempty"`
 	ServiceName      string              `json:"service_name,omitempty"`
@@ -138,6 +139,7 @@ func (s *Server) handleProjectToolbox(arguments json.RawMessage, kind edge.Opera
 		view.Generation, view.Reclaimable = result.ToolboxGeneration, result.ToolboxReclaimable
 		view.CreatedAt, view.UpdatedAt, view.Output = result.ToolboxCreatedAt, result.ToolboxUpdatedAt, result.ToolboxOutput
 		view.OutputTruncated, view.Removed = result.ToolboxOutputTruncated, result.ToolboxRemoved
+		view.ExitCode = result.ToolboxExitCode
 		view.CPUMillis, view.MemoryMiB, view.ProcessLimit = result.ToolboxCPUMillis, result.ToolboxMemoryMiB, result.ToolboxProcessLimit
 		view.ContainerAccess, view.WritableBytes, view.RootFSBytes = result.ToolboxContainerAccess, result.ToolboxWritableBytes, result.ToolboxRootFSBytes
 		view.ServiceID, view.ServiceName, view.ServiceState = result.ToolboxServiceID, result.ToolboxServiceName, result.ToolboxServiceState

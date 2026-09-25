@@ -131,7 +131,7 @@ func validProjectToolboxResources(cpuMillis, memoryMiB, processLimit int) bool {
 func hasProjectToolboxResult(result OperationResult) bool {
 	return result.ToolboxID != "" || result.ToolboxState != "" || result.ToolboxBase != "" || result.ToolboxBaseImageID != "" ||
 		result.ToolboxLifecycle != "" || result.ToolboxGeneration != 0 || result.ToolboxReclaimable || result.ToolboxReclaimReason != "" ||
-		result.ToolboxCreatedAt != "" || result.ToolboxUpdatedAt != "" || result.ToolboxOutput != "" || result.ToolboxOutputTruncated || result.ToolboxRemoved
+		result.ToolboxCreatedAt != "" || result.ToolboxUpdatedAt != "" || result.ToolboxOutput != "" || result.ToolboxOutputTruncated || result.ToolboxExitCode != nil || result.ToolboxRemoved
 }
 
 func hasProjectToolboxServiceResult(result OperationResult) bool {
@@ -146,7 +146,8 @@ func validProjectToolboxResult(result OperationResult) bool {
 		!validProjectToolboxResources(result.ToolboxCPUMillis, result.ToolboxMemoryMiB, result.ToolboxProcessLimit) ||
 		result.ToolboxContainerAccess || result.ToolboxWritableBytes < 0 || result.ToolboxRootFSBytes < 0 ||
 		(!result.ToolboxRemoved && result.ToolboxRootFSBytes == 0) ||
-		len(result.ToolboxOutput) > MaxProjectToolboxOutputBytes || !utf8.ValidString(result.ToolboxOutput) || strings.ContainsRune(result.ToolboxOutput, 0) {
+		len(result.ToolboxOutput) > MaxProjectToolboxOutputBytes || !utf8.ValidString(result.ToolboxOutput) || strings.ContainsRune(result.ToolboxOutput, 0) ||
+		(result.ToolboxExitCode != nil && (*result.ToolboxExitCode < 0 || *result.ToolboxExitCode > 255)) {
 		return false
 	}
 	created, err := time.Parse(time.RFC3339Nano, result.ToolboxCreatedAt)
@@ -166,6 +167,7 @@ func validProjectToolboxResult(result OperationResult) bool {
 	metadata.ToolboxGeneration, metadata.ToolboxReclaimable = 0, false
 	metadata.ToolboxCreatedAt, metadata.ToolboxUpdatedAt, metadata.ToolboxOutput = "", "", ""
 	metadata.ToolboxOutputTruncated, metadata.ToolboxRemoved = false, false
+	metadata.ToolboxExitCode = nil
 	metadata.ToolboxCPUMillis, metadata.ToolboxMemoryMiB, metadata.ToolboxProcessLimit = 0, 0, 0
 	metadata.ToolboxContainerAccess, metadata.ToolboxWritableBytes, metadata.ToolboxRootFSBytes = false, 0, 0
 	return validProjectOperationResult(metadata)
@@ -178,11 +180,11 @@ func validProjectToolboxResultForKind(kind OperationKind, result OperationResult
 	hasOutput := result.ToolboxOutput != "" || result.ToolboxOutputTruncated
 	switch kind {
 	case OperationProjectToolboxCreate, OperationProjectToolboxStatus, OperationProjectToolboxRepair:
-		return !hasOutput && !result.ToolboxRemoved
+		return !hasOutput && result.ToolboxExitCode == nil && !result.ToolboxRemoved
 	case OperationProjectToolboxExec, OperationProjectToolboxInstall:
 		return !result.ToolboxRemoved && result.ToolboxState == "running"
 	case OperationProjectToolboxCleanup:
-		return !hasOutput && result.ToolboxRemoved
+		return !hasOutput && result.ToolboxExitCode == nil && result.ToolboxRemoved
 	default:
 		return false
 	}
@@ -221,7 +223,7 @@ func validProjectToolboxServiceResult(result OperationResult) bool {
 	base := result
 	base.ToolboxServiceID, base.ToolboxServiceName, base.ToolboxServiceState = "", "", ""
 	base.ToolboxServiceCreatedAt, base.ToolboxServiceUpdatedAt = "", ""
-	if !validProjectToolboxResult(base) || result.ToolboxOutput != "" || result.ToolboxOutputTruncated || result.ToolboxRemoved {
+	if !validProjectToolboxResult(base) || result.ToolboxOutput != "" || result.ToolboxOutputTruncated || result.ToolboxExitCode != nil || result.ToolboxRemoved {
 		return false
 	}
 	return true

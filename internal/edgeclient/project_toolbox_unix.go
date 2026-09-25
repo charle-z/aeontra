@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -164,6 +165,7 @@ type ProjectToolboxSnapshot struct {
 	UpdatedAt       time.Time
 	Output          string
 	Truncated       bool
+	ExitCode        *int
 	CPUMillis       int
 	MemoryMiB       int
 	ProcessLimit    int
@@ -430,13 +432,34 @@ func (manager *ProjectToolboxManager) Exec(ctx context.Context, request ProjectT
 	args = append(args, record.ContainerName)
 	args = append(args, request.Argv...)
 	output, err := manager.run(ctx, args...)
+	exitCode := 0
+	var limitedOutput *rootlessCommandOutputLimitError
 	if err != nil {
-		return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
+		if ctx.Err() != nil {
+			return ProjectToolboxSnapshot{}, ctx.Err()
+		}
+		var exitErr *exec.ExitError
+		switch {
+		case errors.As(err, &limitedOutput):
+			exitCode = limitedOutput.ExitCode()
+		case errors.As(err, &exitErr):
+			exitCode = exitErr.ExitCode()
+		default:
+			return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
+		}
+		if exitCode < 0 || exitCode == 125 {
+			return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
+		}
 	}
-	truncated := len(output) > projectToolboxOutputLimit
-	if truncated {
-		output = output[:projectToolboxOutputLimit]
+	truncated := limitedOutput != nil || len(output) > projectToolboxOutputLimit
+	if len(output) > projectToolboxOutputLimit {
+		if exitCode != 0 {
+			output = output[len(output)-projectToolboxOutputLimit:]
+		} else {
+			output = output[:projectToolboxOutputLimit]
+		}
 	}
+	output = []byte(strings.ToValidUTF8(string(output), ""))
 	redacted, _ := policy.Redact(string(output))
 	record.UpdatedAt = manager.now().UTC()
 	if err := manager.save(record); err != nil {
@@ -446,6 +469,7 @@ func (manager *ProjectToolboxManager) Exec(ctx context.Context, request ProjectT
 	snapshot.UpdatedAt = record.UpdatedAt
 	snapshot.Output = redacted
 	snapshot.Truncated = truncated
+	snapshot.ExitCode = &exitCode
 	return snapshot, nil
 }
 
