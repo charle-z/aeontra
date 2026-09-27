@@ -151,6 +151,11 @@ branding.
 - Do not force-push, mirror, publish arbitrary refspecs, or rewrite shared history.
 - `git_commit` commits locally and does not push.
 - Use preview/execute pairs for publication, pull requests, merges, and deployment.
+- Treat redacted tool output as diagnostic text, never as source bytes for a new file,
+  commit, branch, or PR. Publish the checkout's Git objects through `project_git_publish`
+  or `repo_publish`, and verify that the remote branch resolves to the intended commit.
+  If no supported Git publication route exists, report that limitation; do not rebuild
+  the source or history from command output.
 - Do not add AI signatures or `Co-Authored-By` trailers.
 - Use Conventional Commits. Planning or milestone identifiers belong in issues,
   specifications, Brain, and dated evidence—not in public commit subjects.
