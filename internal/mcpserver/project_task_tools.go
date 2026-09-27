@@ -1214,7 +1214,10 @@ func finalizeProjectTaskView(view *projectTaskView, now time.Time) {
 	sort.Slice(view.AttentionOrder, func(left, right int) bool {
 		a, b := view.Workers[view.AttentionOrder[left]].ActiveTurnCreatedAt, view.Workers[view.AttentionOrder[right]].ActiveTurnCreatedAt
 		if a == nil || b == nil {
-			return a != nil
+			if a == nil && b == nil {
+				return view.AttentionOrder[left] < view.AttentionOrder[right]
+			}
+			return a == nil
 		}
 		if a.Equal(*b) {
 			return view.AttentionOrder[left] < view.AttentionOrder[right]

@@ -46,9 +46,14 @@ func TestProjectTaskHandoffIsBoundedAndInvalidatesOnProgress(t *testing.T) {
 }
 
 func TestProjectTaskHandoffDoesNotInventUnknownModelWait(t *testing.T) {
-	view := projectTaskView{TaskID: "tg_0123456789abcdef0123456789abcdef", State: "running", Workers: []projectTaskWorkerView{{Ordinal: 0, State: "running", RuntimeState: string(modelturn.RuntimeStateAwaitingModel)}}}
-	finalizeProjectTaskView(&view, time.Date(2026, 9, 27, 21, 0, 0, 0, time.UTC))
-	if view.Workers[0].ModelWaitSeconds != nil || len(view.AttentionOrder) != 1 || view.AttentionOrder[0] != 0 {
+	now := time.Date(2026, 9, 27, 21, 0, 0, 0, time.UTC)
+	known := now.Add(-time.Minute)
+	view := projectTaskView{TaskID: "tg_0123456789abcdef0123456789abcdef", State: "running", Workers: []projectTaskWorkerView{
+		{Ordinal: 0, State: "running", RuntimeState: string(modelturn.RuntimeStateAwaitingModel), ActiveTurnCreatedAt: &known},
+		{Ordinal: 1, State: "running", RuntimeState: string(modelturn.RuntimeStateAwaitingModel)},
+	}}
+	finalizeProjectTaskView(&view, now)
+	if view.Workers[1].ModelWaitSeconds != nil || len(view.AttentionOrder) != 2 || view.AttentionOrder[0] != 1 || view.AttentionOrder[1] != 0 {
 		t.Fatalf("unknown timestamp must stay unknown while the worker remains actionable: %+v", view)
 	}
 }
