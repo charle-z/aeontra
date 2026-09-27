@@ -407,9 +407,12 @@ checks as the single-runtime wait. It returns one offered turn, does not consume
 and cannot extend a worker's workspace or tool authority.
 No source path or diff is returned. Missing Edge connectivity, an unknown runtime,
 base/head mismatch or absent evidence becomes `reconciliation_required`; it is never
-converted into success. An optional version-1 Git evidence contract records a durable receipt
-only for clean, committed Git evidence measured against the exact base and bound to the
-task, worker, worktree/workspace, branch, lease and fence. The receipt does not establish
+converted into success. The status view reports a bounded `reconciliation_reason`
+and last recorded runtime phase for diagnosis; neither authorizes retrying a
+completed effect or overrides the task's evidence and acceptance gates. An optional
+version-1 Git evidence contract records a durable receipt only for clean, committed
+Git evidence measured against the exact base and bound to the task, worker,
+worktree/workspace, branch, lease and fence. The receipt does not establish
 natural-language goal satisfaction or test success. Before cleanup, the exact live
 evidence is revalidated; after successful cleanup, the receipt and cleanup checkpoint
 preserve the verified Git evidence predicate, not semantic acceptance. Task and worker
