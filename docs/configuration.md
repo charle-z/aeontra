@@ -165,6 +165,9 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   operations use bounded shared capacity. Signed bundle update, rollback and repair
   acquire an Edge-wide exclusive gate. The worker count is a server/Edge setting and
   is not caller-controlled; waiting operations remain bounded by their own deadline.
+  An unstarted `project_exec` expires after three minutes in the queue. The
+  terminal operation remains readable by id; use a new idempotency key for a
+  fresh command after confirming the current project state.
 - **Recovery metadata:** project claims, checkout attestations, toolbox generations and
   process bindings are durable. Schema migrations are additive and fail closed on a
   newer schema. Reconciliation is explicit and never resets or deletes a source tree.

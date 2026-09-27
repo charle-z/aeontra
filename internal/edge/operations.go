@@ -568,6 +568,9 @@ func (s *Store) CreateOperation(deviceID string, kind OperationKind, request Ope
 	if err := s.recoverExpiredOperationLeasesForDeviceLocked(deviceID); err != nil {
 		return Operation{}, false, errors.New("edge operation persistence failed: recovery")
 	}
+	if err := expireQueuedProjectExecs(s.db, s.now().UTC(), "device_id", deviceID); err != nil {
+		return Operation{}, false, errors.New("edge operation persistence failed: recovery")
+	}
 	var state State
 	if err := s.db.QueryRow(`SELECT state FROM devices WHERE device_id=?`, deviceID).Scan(&state); err != nil || state != StateActive {
 		return Operation{}, false, errors.New("active edge device not found")
@@ -632,6 +635,9 @@ func (s *Store) LeaseOperationCompatible(deviceID string, ttl time.Duration, obs
 	}
 	defer tx.Rollback()
 	if err := recoverExpiredOperationLeases(tx, now, "device_id", deviceID); err != nil {
+		return OperationLease{}, errors.New("operation lease unavailable")
+	}
+	if err := expireQueuedProjectExecs(tx, now, "device_id", deviceID); err != nil {
 		return OperationLease{}, errors.New("operation lease unavailable")
 	}
 	expectedProtocol := s.expectedOperationProtocol
@@ -719,6 +725,9 @@ func (s *Store) OperationStatus(operationID string) (Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.recoverExpiredOperationLeaseByIDLocked(operationID); err != nil {
+		return Operation{}, errors.New("edge operation unavailable")
+	}
+	if err := expireQueuedProjectExecs(s.db, s.now().UTC(), "operation_id", operationID); err != nil {
 		return Operation{}, errors.New("edge operation unavailable")
 	}
 	op, err := s.operationLifecycleByID(operationID)

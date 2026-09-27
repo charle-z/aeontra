@@ -3,10 +3,82 @@ package edge
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestQueuedProjectExecExpiresBeforeOfflineEdgeCanRunIt(t *testing.T) {
+	now := time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC)
+	store, err := Open(Config{Root: filepath.Join(t.TempDir(), "edge"), Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	code, _ := store.CreatePairing(time.Minute)
+	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	device, err := store.Pair(code, "parrot", publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec, _, err := store.CreateOperation(device.ID, OperationProjectExec, OperationRequest{
+		Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell",
+		IdempotencyKey: "stale-interactive-exec", Argv: []string{"touch", "should-not-exist"}, TimeoutSeconds: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(3*time.Minute + time.Second)
+	status, err := store.OperationLifecycleStatus(exec.ID)
+	if err != nil || status.State != OperationFailed || status.SafeCode != "operation_queue_expired" {
+		t.Fatalf("stale status=%+v err=%v", status, err)
+	}
+	if _, err := store.LeaseOperation(device.ID, MinLeaseTTL); !errors.Is(err, ErrNoTaskAvailable) {
+		t.Fatalf("stale interactive command became executable: %v", err)
+	}
+	active, err := store.ActiveOperations(device.ID, 10)
+	if err != nil || len(active) != 0 {
+		t.Fatalf("active=%+v err=%v", active, err)
+	}
+	late, _, err := store.CreateOperation(device.ID, OperationProjectExec, OperationRequest{
+		Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell",
+		IdempotencyKey: "stale-at-lease", Argv: []string{"true"}, TimeoutSeconds: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(projectExecQueueTTL + time.Second)
+	if _, err := store.LeaseOperation(device.ID, MinLeaseTTL); !errors.Is(err, ErrNoTaskAvailable) {
+		t.Fatalf("stale command leased on Edge reconnect: %v", err)
+	}
+	status, err = store.OperationStatus(late.ID)
+	if err != nil || status.State != OperationFailed || status.SafeCode != projectExecQueueExpired {
+		t.Fatalf("late status=%+v err=%v", status, err)
+	}
+	durable, _, err := store.CreateOperation(device.ID, OperationBundleStatus, OperationRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(projectExecQueueTTL + time.Second)
+	lease, err := store.LeaseOperation(device.ID, MinLeaseTTL)
+	if err != nil || lease.Operation.ID != durable.ID {
+		t.Fatalf("unrelated durable operation was restricted: lease=%+v err=%v", lease, err)
+	}
+	onTime, _, err := store.CreateOperation(device.ID, OperationProjectExec, OperationRequest{
+		Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell",
+		IdempotencyKey: "within-interactive-wait", Argv: []string{"true"}, TimeoutSeconds: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(projectExecQueueTTL - time.Second)
+	lease, err = store.LeaseOperation(device.ID, MinLeaseTTL)
+	if err != nil || lease.Operation.ID != onTime.ID {
+		t.Fatalf("fresh interactive command was restricted: lease=%+v err=%v", lease, err)
+	}
+}
 
 func TestProjectExecOperationIsDurablyIdempotentAndBounded(t *testing.T) {
 	store := openHTTPTestStore(t)
