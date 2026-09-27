@@ -15,6 +15,8 @@ type projectExecToolStore struct {
 	resolvedTarget string
 	createdKind    edge.OperationKind
 	createdRequest edge.OperationRequest
+	execExitCode   int
+	execStderr     string
 }
 
 func (*projectExecToolStore) DeviceActive(string) bool { return true }
@@ -52,10 +54,36 @@ func (store *projectExecToolStore) WaitOperation(_ context.Context, operationID 
 			WorkspaceID:  "ws_33333333333333333333333333333333",
 			ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo",
 			ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
-			ExecCompleted: true, ExecExitCode: 0, ExecStdout: "ok\n", ExecTimingKnown: true,
+			ExecCompleted: true, ExecExitCode: store.execExitCode, ExecStdout: "ok\n", ExecStderr: store.execStderr, ExecTimingKnown: true,
 			ExecPreflightUS: 1100, ExecExecutionUS: 2200, ExecResultUS: 300,
 		},
 	}, nil
+}
+
+func TestProjectExecSuggestsToolboxOnlyForMissingWorkcellProgram(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		argv   string
+		stderr string
+		want   bool
+	}{
+		{name: "missing node", argv: `["node","--version"]`, stderr: "bwrap: execvp node: No such file or directory\n", want: true},
+		{name: "command failure", argv: `["node","--version"]`, stderr: "node: application failed\n"},
+		{name: "different program", argv: `["go","test","./..."]`, stderr: "bwrap: execvp node: No such file or directory\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &projectExecToolStore{execExitCode: 1, execStderr: test.stderr}
+			server := New(nil).WithEdgeStore(store)
+			output, err := server.table["project_exec"].handler(json.RawMessage(`{"alias":"project","target":"parrot","idempotency_key":"toolchain-test-1","argv":` + test.argv + `,"timeout_seconds":20}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Contains(output, `"execution_hint":"workcell_executable_unavailable"`) && strings.Contains(output, `"next_tool":"project_toolbox_status"`)
+			if got != test.want {
+				t.Fatalf("hint=%t want=%t output=%s", got, test.want, output)
+			}
+		})
+	}
 }
 
 func TestProjectExecQueuesOneBoundedWorkcellCommand(t *testing.T) {
