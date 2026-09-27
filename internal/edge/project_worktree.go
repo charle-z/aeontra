@@ -70,7 +70,7 @@ func normalizeProjectWorktreeRequest(kind OperationKind, request OperationReques
 }
 
 func emptyProjectWorktreeRequestFields(request OperationRequest) bool {
-	return request.WorktreeID == "" && request.WorktreeBaseCommit == "" && request.WorktreeRole == "" && request.WorkJobID == "" && request.WorkLeaseID == "" && request.WorkFence == 0 && request.WorktreeLimit == 0
+	return request.WorktreeID == "" && request.WorktreeBaseCommit == "" && request.WorktreeRole == "" && request.WorkJobID == "" && request.WorkLeaseID == "" && request.WorkFence == 0 && request.WorktreeLimit == 0 && request.TestProfileID == "" && request.TestProfileDigest == ""
 }
 
 func hasProjectWorktreeResult(result OperationResult) bool {

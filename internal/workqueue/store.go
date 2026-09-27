@@ -213,11 +213,11 @@ func (s *Store) initialize() error {
 	return s.Integrity()
 }
 
-// ensureTaskAcceptanceColumns applies a backward-readable additive extension.
-// The public SQLite user_version remains 2 so the previous v2 backend can open
-// the database and ignore these fields. Every ALTER and the v1->v2 version
-// transition is atomic; presence checks also recover a partially provisioned
-// database without attempting duplicate ALTER statements.
+// ensureTaskAcceptanceColumns applies backward-readable additive columns while
+// keeping SQLite user_version at 2. Legacy tasks remain readable. Test-contract
+// rows use acceptance_contract_version=2, which older v2 readers reject rather
+// than silently ignoring. Every ALTER and any v1->v2 version transition is
+// atomic; presence checks recover partial provisioning without duplicate ALTERs.
 func ensureTaskAcceptanceColumns(db *sql.DB, version int) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -232,10 +232,13 @@ func ensureTaskAcceptanceColumns(db *sql.DB, version int) error {
 			{"acceptance_contract_version", `INTEGER NOT NULL DEFAULT 0`},
 			{"acceptance_min_commits_ahead", `INTEGER NOT NULL DEFAULT 0`},
 			{"acceptance_min_changed_paths", `INTEGER NOT NULL DEFAULT 0`},
+			{"test_profile_id", `TEXT NOT NULL DEFAULT ''`},
+			{"test_profile_digest", `TEXT NOT NULL DEFAULT ''`},
 		}},
 		{name: "task_workers", columns: []struct{ name, declaration string }{
 			{"acceptance_receipt", `TEXT NOT NULL DEFAULT ''`},
 			{"worktree_cleaned", `INTEGER NOT NULL DEFAULT 0`},
+			{"test_acceptance_receipt", `TEXT NOT NULL DEFAULT ''`},
 		}},
 	} {
 		present := make(map[string]bool)

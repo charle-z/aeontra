@@ -183,8 +183,11 @@ func TestSchemaTwoMigrationPreservesLegacyTasksWithoutAcceptanceContract(t *test
 		`ALTER TABLE task_groups DROP COLUMN acceptance_contract_version`,
 		`ALTER TABLE task_groups DROP COLUMN acceptance_min_commits_ahead`,
 		`ALTER TABLE task_groups DROP COLUMN acceptance_min_changed_paths`,
+		`ALTER TABLE task_groups DROP COLUMN test_profile_id`,
+		`ALTER TABLE task_groups DROP COLUMN test_profile_digest`,
 		`ALTER TABLE task_workers DROP COLUMN acceptance_receipt`,
 		`ALTER TABLE task_workers DROP COLUMN worktree_cleaned`,
+		`ALTER TABLE task_workers DROP COLUMN test_acceptance_receipt`,
 		`PRAGMA user_version=2`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
@@ -245,7 +248,7 @@ func TestTaskAcceptanceSchemaExtensionMigrationIsAtomic(t *testing.T) {
 		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
 			t.Fatal(err)
 		}
-		if strings.HasPrefix(name, "acceptance_") {
+		if strings.HasPrefix(name, "acceptance_") || name == "test_profile_id" || name == "test_profile_digest" {
 			t.Fatalf("partial migration left column %q behind", name)
 		}
 	}
@@ -345,6 +348,126 @@ func TestTaskAcceptanceContractRejectsUnknownOrUnboundedCriteria(t *testing.T) {
 	}
 	if err := ValidateTaskAcceptanceContract(nil); err != nil {
 		t.Fatalf("nil contract must retain manual-review compatibility: %v", err)
+	}
+}
+
+func TestTaskTestAcceptanceReceiptIsDurableImmutableAndContractBound(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "queue")
+	store, err := Open(Config{Root: root, ControllerID: "controller-test-receipt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := &TaskTestAcceptanceContract{Version: 1, ProfileID: "go.unit", ProfileDigest: "sha256:" + strings.Repeat("c", 64)}
+	task, created, err := store.CreateTask(TaskSpec{
+		IdempotencyKey: "task-test-receipt-0123", Project: "project", Target: "parrot",
+		BaseCommit: strings.Repeat("a", 40), GoalHash: "sha256:" + strings.Repeat("b", 64),
+		WorkerGoalHashes: []string{"sha256:" + strings.Repeat("1", 64)}, WorkerGoalRefs: []string{"mb_11111111111111111111111111111111"},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+		TestAcceptanceContract: contract,
+	})
+	if err != nil || !created || task.TestAcceptanceContract == nil || *task.TestAcceptanceContract != *contract {
+		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
+	}
+	var contractDiscriminator int
+	if err := store.db.QueryRow(`SELECT acceptance_contract_version FROM task_groups WHERE task_id=?`, task.ID).Scan(&contractDiscriminator); err != nil || contractDiscriminator != 2 {
+		t.Fatalf("test-contract legacy fail-closed discriminator=%d err=%v", contractDiscriminator, err)
+	}
+	conflictingSpec := TaskSpec{
+		IdempotencyKey: "task-test-receipt-0123", Project: "project", Target: "parrot",
+		BaseCommit: strings.Repeat("a", 40), GoalHash: "sha256:" + strings.Repeat("b", 64),
+		WorkerGoalHashes: []string{"sha256:" + strings.Repeat("1", 64)}, WorkerGoalRefs: []string{"mb_11111111111111111111111111111111"},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+		TestAcceptanceContract: &TaskTestAcceptanceContract{Version: 1, ProfileID: "go.unit", ProfileDigest: "sha256:" + strings.Repeat("d", 64)},
+	}
+	if _, _, err := store.CreateTask(conflictingSpec); err == nil || !strings.Contains(err.Error(), "idempotency key conflicts") {
+		t.Fatalf("changed profile digest error=%v", err)
+	}
+	worker, err := store.LeaseTaskWorker(task.ID, 0, "worker-holder-0001", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err = store.BindTaskWorker(TaskWorkerBinding{TaskID: task.ID, Ordinal: 0, JobID: worker.JobID, LeaseID: worker.LeaseID, Fence: worker.Fence,
+		WorktreeID: "wt_0123456789abcdef0123456789abcdef", WorkspaceID: "ws_0123456789abcdef0123456789abcdef"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CompleteTaskWorker(task.ID, 0, worker.LeaseID, worker.Fence, Result{Outcome: StateSucceeded, Summary: "worker completed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkTaskWorkerWorktreeCleaned(task.ID, 0, worker.LeaseID, worker.Fence); err == nil {
+		t.Fatal("test-contract worktree was cleaned before recording its content digest and result")
+	}
+	receipt := TaskTestAcceptanceReceipt{
+		Version: 1, TaskID: task.ID, Ordinal: 0, JobID: worker.JobID, WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID,
+		BaseCommit: task.BaseCommit, HeadCommit: strings.Repeat("d", 40), Branch: "codex/worktree-0123456789abcdef0123456789abcdef",
+		LeaseID: worker.LeaseID, Fence: worker.Fence, ContentDigest: "sha256:" + strings.Repeat("e", 64),
+		ProfileID: contract.ProfileID, ProfileDigest: contract.ProfileDigest, ContractDigest: TaskTestAcceptanceContractDigest(contract),
+		EdgeOperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", EdgeResult: TaskTestEdgeResultPassed,
+	}
+	invalidReceipt := receipt
+	invalidReceipt.Fence++
+	if _, err := store.RecordTaskWorkerTestReceipt(invalidReceipt); err == nil {
+		t.Fatal("stale fence was accepted for a test receipt")
+	}
+	failedReceipt := receipt
+	failedReceipt.EdgeResult = "failed"
+	if _, err := store.RecordTaskWorkerTestReceipt(failedReceipt); err == nil {
+		t.Fatal("a failed test became the final acceptance receipt")
+	}
+	if err := store.MarkTaskWorkerWorktreeCleaned(task.ID, 0, worker.LeaseID, worker.Fence); err == nil {
+		t.Fatal("failed tests allowed cleanup before a passing rerun")
+	}
+	recorded, err := store.RecordTaskWorkerTestReceipt(receipt)
+	if err != nil || recorded.RecordedAt.IsZero() {
+		t.Fatalf("receipt=%+v err=%v", recorded, err)
+	}
+	replayed, err := store.RecordTaskWorkerTestReceipt(receipt)
+	if err != nil || !replayed.RecordedAt.Equal(recorded.RecordedAt) {
+		t.Fatalf("replay=%+v err=%v", replayed, err)
+	}
+	conflicting := receipt
+	conflicting.ContentDigest = "sha256:" + strings.Repeat("f", 64)
+	if _, err := store.RecordTaskWorkerTestReceipt(conflicting); err == nil {
+		t.Fatal("conflicting content digest replaced the original receipt")
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(Config{Root: root, ControllerID: "controller-test-receipt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var version int
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+		t.Fatalf("schema version=%d err=%v", version, err)
+	}
+	persisted, found, err := store.Task(task.ID)
+	if err != nil || !found || persisted.TestAcceptanceContract == nil || *persisted.TestAcceptanceContract != *contract ||
+		persisted.Workers[0].TestAcceptanceReceipt == nil || !persisted.Workers[0].TestAcceptanceReceipt.RecordedAt.Equal(recorded.RecordedAt) {
+		t.Fatalf("persisted=%+v found=%v err=%v", persisted, found, err)
+	}
+	if persisted.State != TaskCompleted || persisted.Workers[0].State != StateSucceeded {
+		t.Fatalf("a test receipt changed task lifecycle: %+v", persisted)
+	}
+	if err := store.MarkTaskWorkerWorktreeCleaned(task.ID, 0, worker.LeaseID, worker.Fence); err != nil {
+		t.Fatalf("cleanup after recording the test receipt: %v", err)
+	}
+}
+
+func TestTaskTestAcceptanceContractIsVersionedProfileReferenceOnly(t *testing.T) {
+	for _, contract := range []*TaskTestAcceptanceContract{
+		{Version: 2, ProfileID: "go.unit", ProfileDigest: "sha256:" + strings.Repeat("a", 64)},
+		{Version: 1, ProfileID: "go.unit", ProfileDigest: ""},
+		{Version: 1, ProfileID: "go test ./...", ProfileDigest: "sha256:" + strings.Repeat("a", 64)},
+		{Version: 1, ProfileID: "go.unit", ProfileDigest: "sha256:" + strings.Repeat("g", 64)},
+	} {
+		if err := ValidateTaskTestAcceptanceContract(contract); err == nil {
+			t.Errorf("invalid test contract accepted: %+v", contract)
+		}
+	}
+	if err := ValidateTaskTestAcceptanceContract(nil); err != nil {
+		t.Fatalf("nil contract must retain legacy compatibility: %v", err)
 	}
 }
 
