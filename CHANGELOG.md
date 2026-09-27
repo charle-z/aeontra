@@ -6,6 +6,9 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Run operator-pinned tests for a durable task in its isolated worker checkout and
+  retain a source-bound, immutable result receipt. Test execution is opt-in and does
+  not turn process completion into automatic task acceptance.
 - Keep Bubblewrap 0.12 workcells executable under the packaged Linux Edge units by
   permitting `openat2` while retaining non-root, no-new-privileges and empty-capability
   boundaries.

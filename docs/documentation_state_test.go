@@ -128,7 +128,7 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"Last updated: 2026-08-29",
+		"Last updated: 2026-09-27",
 		"Codex harness",
 		"P16 worktrees and parallel tasks",
 		"P17 durable objective supervisor",

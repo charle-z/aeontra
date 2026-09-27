@@ -1,11 +1,13 @@
 package edgeclient
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,10 +21,14 @@ import (
 )
 
 const (
-	projectWorktreeRegistryFile = "project-worktrees.db"
-	projectWorktreeRootName     = ".mcp-devbox-worktrees"
-	projectWorktreeSchema       = 1
-	MaxProjectWorktreeList      = 100
+	projectWorktreeRegistryFile            = "project-worktrees.db"
+	projectWorktreeRootName                = ".mcp-devbox-worktrees"
+	projectWorktreeSchema                  = 1
+	MaxProjectWorktreeList                 = 100
+	maxProjectWorktreeContentFiles         = 4096
+	maxProjectWorktreeContentBytes         = int64(64 << 20)
+	maxProjectWorktreeContentPathListBytes = 512 << 10
+	maxProjectWorktreeContentPathBytes     = 4096
 )
 
 type ProjectWorktreeRole string
@@ -330,6 +336,73 @@ func (m *ProjectWorktreeManager) Claim(request ProjectWorktreeClaimRequest) (Pro
 	}
 	snapshot.LeaseID, snapshot.Fence, snapshot.UpdatedAt = request.LeaseID, request.Fence, now
 	return snapshot, nil
+}
+
+// ContentDigest hashes the exact managed worktree files selected by Git at
+// read time. It requires the current job, lease, and fence, and revalidates the
+// registered managed worktree before reading. The digest is not an immutable
+// snapshot and does not establish test or semantic task acceptance. Git-ignored
+// untracked paths, filesystem entries Git omits, and inputs outside the worktree
+// are not represented; this is not a hermetic test-input boundary. Test inputs
+// must be constrained separately by an operator-owned profile and sandbox.
+func (m *ProjectWorktreeManager) ContentDigest(ctx context.Context, request ProjectWorktreeClaimRequest) (string, error) {
+	if m == nil || m.db == nil || ctx == nil || !projectWorktreeIDPattern.MatchString(request.ID) ||
+		!projectWorktreeJobPattern.MatchString(request.JobID) || !projectWorktreeLeasePattern.MatchString(request.LeaseID) || request.Fence == 0 {
+		return "", ErrProjectWorktreeInvalid
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	snapshot, found, err := m.byID(request.ID)
+	if err != nil {
+		return "", err
+	}
+	if !found || snapshot.State != ProjectWorktreeReady {
+		return "", ErrProjectWorktreeNotFound
+	}
+	if snapshot.JobID != request.JobID {
+		return "", ErrProjectWorktreeConflict
+	}
+	if snapshot.LeaseID != request.LeaseID || snapshot.Fence != request.Fence {
+		return "", ErrProjectWorktreeStaleFence
+	}
+	if err := m.revalidate(ctx, snapshot); err != nil {
+		return "", err
+	}
+	return projectWorktreeContentDigest(ctx, m, snapshot)
+}
+
+func parseProjectWorktreeContentPaths(output []byte) ([]string, error) {
+	if len(output) > maxProjectWorktreeContentPathListBytes || (len(output) > 0 && output[len(output)-1] != 0) {
+		return nil, ErrProjectWorktreeUnsafe
+	}
+	paths := make([]string, 0)
+	seen := make(map[string]struct{})
+	for start := 0; start < len(output); {
+		relativeEnd := bytes.IndexByte(output[start:], 0)
+		if relativeEnd < 0 {
+			return nil, ErrProjectWorktreeUnsafe
+		}
+		end := start + relativeEnd
+		if end == start || end-start > maxProjectWorktreeContentPathBytes {
+			return nil, ErrProjectWorktreeUnsafe
+		}
+		name := string(output[start:end])
+		local := filepath.FromSlash(name)
+		if !fs.ValidPath(name) || !filepath.IsLocal(local) || filepath.IsAbs(local) ||
+			(filepath.Separator == '\\' && strings.ContainsRune(name, '\\')) {
+			return nil, ErrProjectWorktreeUnsafe
+		}
+		if _, ok := seen[name]; !ok {
+			seen[name] = struct{}{}
+			paths = append(paths, name)
+			if len(paths) > maxProjectWorktreeContentFiles {
+				return nil, ErrProjectWorktreeUnsafe
+			}
+		}
+		start = end + 1
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func (m *ProjectWorktreeManager) Status(ctx context.Context, id string) (ProjectWorktreeSnapshot, error) {

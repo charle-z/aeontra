@@ -22,7 +22,7 @@ type controlOperationProgressReporter interface {
 
 type controlOperationExecutor func(context.Context) (edge.OperationResult, string)
 
-func executeControlOperationWithProgressAndGate(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, controlGate *controlOperationGate, lease edge.OperationLease) (edge.OperationResult, string, bool, bool, bool, error) {
+func executeControlOperationWithProgressAndGate(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, tests *edgeclient.ProjectWorktreeTestProcessManager, browsers *edgeclient.ProjectBrowserManager, controlGate *controlOperationGate, lease edge.OperationLease) (edge.OperationResult, string, bool, bool, bool, error) {
 	exclusive := isBundleOperation(lease.Operation.Kind)
 	gateHeld := false
 	result, code, cancelRequested, err := executeControlOperationLifecycle(ctx, transport, lease, 15*time.Second, func(executionCtx context.Context) (edge.OperationResult, string) {
@@ -35,7 +35,7 @@ func executeControlOperationWithProgressAndGate(ctx context.Context, stateRoot s
 		// The worker releases the gate after the durable completion/cancel
 		// acknowledgement. Holding it only around this closure permits a second
 		// bundle operation to race the first operation's receipt cleanup.
-		return executeControlOperation(executionCtx, stateRoot, processes, browsers, lease.Operation)
+		return executeControlOperationWithWorktreeTests(executionCtx, stateRoot, processes, tests, browsers, lease.Operation)
 	})
 	return result, code, cancelRequested, gateHeld, exclusive, err
 }

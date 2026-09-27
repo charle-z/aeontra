@@ -1,6 +1,6 @@
 # Aeontra product roadmap
 
-Last updated: 2026-08-29
+Last updated: 2026-09-27
 
 ## Current delivery state
 
@@ -19,7 +19,7 @@ the active runtime contract.
 | Native Windows Edge | Deployed and real-device accepted | The signed SCM service, custom fixed-drive roots, updater, Windows workcell result handling and a registered project were accepted on a real device. |
 | Current dual-Edge release | Deployed and accepted | Linux/Parrot and native Windows were reconciled on `v1.2.24`; see [`baselines/2026-08-27-v1_2_24-dual-edge.md`](baselines/2026-08-27-v1_2_24-dual-edge.md). |
 | Public product site | Deployed and verified | The bilingual, dependency-free site is live at `https://aeontra.com/`; exact-head gates, managed deployment, HTTPS, responsive browser acceptance and exact site-build identity are recorded in [`baselines/2026-08-29-public-site.md`](baselines/2026-08-29-public-site.md). |
-| P17 durable objective supervisor | Partially implemented | The managed model-turn completion gate enforces explicit `active`, `blocked` and `complete` states. `project_task_status` separates lifecycle, runtime, semantic acceptance and Git evidence; `project_task_list` lets a new chat discover a retained task without the prior task ID. An optional version-1 Git evidence contract persists a receipt for exact clean committed-change counts and revalidates it before cleanup, but it never accepts the task. Trusted objective evaluation and exact-tree test evidence are still required for semantic acceptance. Fair pending-turn attention, reviewed integration, compact handoff and content-free efficiency metrics remain planned. |
+| P17 durable objective supervisor | Partially implemented | The managed model-turn completion gate enforces explicit `active`, `blocked` and `complete` states. `project_task_status` separates lifecycle, runtime and semantic acceptance; `project_task_list` helps a new chat recover a task ID. An optional Git evidence contract records exact clean committed-change counts. A separate test-profile contract records a known zero exit against a selected source-content digest in the worker worktree. Neither receipt accepts the natural-language goal, and the test digest is not hermetic. Trusted objective evaluation, fair pending-turn attention, reviewed integration, compact handoff and content-free efficiency metrics remain planned. |
 | Managed image and asset broker | Not started | A browser can acquire files, but no server-owned workflow yet searches, validates licensing, records attribution and delivers assets as an auditable product operation. |
 | CubePath migration or removal | Deferred | No core execution contract depends on CubePath. Historical evidence remains unchanged until an explicit hosting/branding migration is approved. |
 | Multi-user and fleet operation | Deferred | Tenant identity, RBAC, quotas, abuse controls, audit ownership, billing and recovery must be designed before shared service operation. |

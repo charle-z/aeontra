@@ -24,6 +24,12 @@ type projectTaskEdgeStore struct {
 	next                   int
 	snapshotRequests       int
 	worktreeStatusRequests int
+	testStatusRequests     int
+	testProcessState       string
+	testExitKnown          bool
+	testExitCode           int
+	testStale              bool
+	testProfileUnavailable bool
 	operations             map[string]edge.Operation
 	workspaces             map[string]edge.WorkspaceBinding
 	worktrees              map[string]edge.OperationResult
@@ -62,8 +68,11 @@ func (s *projectTaskEdgeStore) CreateOperation(deviceID string, kind edge.Operat
 	if kind == edge.OperationProjectSnapshot {
 		s.snapshotRequests++
 	}
+	if kind == edge.OperationProjectWorktreeTestStatus {
+		s.testStatusRequests++
+	}
 	for _, existing := range s.operations {
-		if existing.DeviceID == deviceID && existing.Kind == kind && reflect.DeepEqual(existing.Request, request) {
+		if kind != edge.OperationProjectWorktreeTestStatus && existing.DeviceID == deviceID && existing.Kind == kind && reflect.DeepEqual(existing.Request, request) {
 			return existing, false, nil
 		}
 	}
@@ -136,6 +145,286 @@ func TestProjectTaskExactReplayWorksOfflineWithoutRestaging(t *testing.T) {
 	changedTimeout := strings.Replace(request, `"timeout_seconds":600`, `"timeout_seconds":601`, 1)
 	if _, err := server.table["project_task_start"].handler(json.RawMessage(changedTimeout)); err == nil || !strings.Contains(err.Error(), "idempotency key conflicts") {
 		t.Fatalf("changed timeout replay error=%v", err)
+	}
+}
+
+func TestProjectTaskStartPinsOperatorTestProfileAndRejectsConflictingReplay(t *testing.T) {
+	server, _ := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test-profile"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+
+	const request = `{"alias":"project","target":"parrot","goals":["Make one focused change."],"timeout_seconds":600,"idempotency_key":"task-test-profile-0001","test_profile_id":"go-check"}`
+	output, err := server.table["project_task_start"].handler(json.RawMessage(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view projectTaskView
+	if err := json.Unmarshal([]byte(output), &view); err != nil {
+		t.Fatal(err)
+	}
+	task, found, err := queue.Task(view.TaskID)
+	if err != nil || !found || task.TestAcceptanceContract == nil || task.TestAcceptanceContract.ProfileID != "go-check" || task.TestAcceptanceContract.ProfileDigest == "" {
+		t.Fatalf("test profile contract not durably pinned: task=%+v found=%v err=%v", task, found, err)
+	}
+	server.edgeOperations = nil
+	server.edgeDevices = nil
+	server.edgeWorkspaces = nil
+	if _, err := server.table["project_task_start"].handler(json.RawMessage(request)); err != nil {
+		t.Fatalf("exact replay should be offline-safe: %v", err)
+	}
+	conflict := strings.Replace(request, `"test_profile_id":"go-check"`, `"test_profile_id":"other-check"`, 1)
+	if _, err := server.table["project_task_start"].handler(json.RawMessage(conflict)); err == nil || !strings.Contains(err.Error(), "idempotency key conflicts") {
+		t.Fatalf("changed profile replay error=%v", err)
+	}
+}
+
+func TestProjectTaskStartCanRetryAfterOperatorRepairsTestProfile(t *testing.T) {
+	server, _ := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test-profile-retry"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	edges.testProfileUnavailable = true
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	request := json.RawMessage(`{"alias":"project","target":"parrot","goals":["Make one focused change."],"timeout_seconds":600,"idempotency_key":"task-test-profile-retry-0001","test_profile_id":"go-check"}`)
+	if _, err := server.table["project_task_start"].handler(request); err == nil {
+		t.Fatal("missing operator profile unexpectedly created a task")
+	}
+	edges.mu.Lock()
+	edges.testProfileUnavailable = false
+	edges.mu.Unlock()
+	if _, err := server.table["project_task_start"].handler(request); err != nil {
+		t.Fatalf("fixed operator profile remained blocked by a cached failed lookup: %v", err)
+	}
+	edges.mu.Lock()
+	keys := make(map[string]struct{})
+	for _, operation := range edges.operations {
+		if operation.Kind == edge.OperationProjectWorktreeTestProfile {
+			keys[operation.Request.IdempotencyKey] = struct{}{}
+		}
+	}
+	edges.mu.Unlock()
+	if len(keys) != 2 {
+		t.Fatalf("profile retry reused an old failed Edge operation: distinct keys=%d", len(keys))
+	}
+}
+
+func TestProjectTaskTestEvidenceRequiresTerminalZeroExitAndLiveRevalidation(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test-evidence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Make one focused change."],"timeout_seconds":600,"idempotency_key":"task-test-evidence-0001","test_profile_id":"go-check"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil || len(started.Workers) != 1 {
+		t.Fatalf("started=%+v err=%v", started, err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))
+	if _, err := server.table["project_task_cleanup"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q,"idempotency_key":"test-cleanup-early-0001"}`, started.TaskID))); err == nil || !strings.Contains(err.Error(), "test evidence receipt is required") {
+		t.Fatalf("cleanup before test evidence error=%v", err)
+	}
+	startResponse, err := server.table["project_task_test_start"].handler(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(startResponse, `"state":"status_required"`) || strings.Contains(startResponse, `"process_state":`) {
+		t.Fatalf("start claimed a current process state from replayable evidence: %s", startResponse)
+	}
+	running, err := server.table["project_task_test_status"].handler(request)
+	if err != nil || !strings.Contains(running, `"test_evidence_state":"running"`) {
+		t.Fatalf("running test status=%s err=%v", running, err)
+	}
+	edges.mu.Lock()
+	edges.testProcessState, edges.testExitKnown, edges.testExitCode = "exited", true, 0
+	edges.mu.Unlock()
+	passed, err := server.table["project_task_test_status"].handler(request)
+	if err != nil || !strings.Contains(passed, `"test_evidence_state":"verified"`) || !strings.Contains(passed, `"acceptance_state":"pending"`) {
+		t.Fatalf("passing test status=%s err=%v", passed, err)
+	}
+	task, found, err := queue.Task(started.TaskID)
+	if err != nil || !found || task.Workers[0].TestAcceptanceReceipt == nil {
+		t.Fatalf("receipt missing: task=%+v found=%v err=%v", task, found, err)
+	}
+	edges.mu.Lock()
+	edges.testStale = true
+	edges.mu.Unlock()
+	stale, err := server.table["project_task_test_status"].handler(request)
+	if err != nil || !strings.Contains(stale, `"test_evidence_state":"stale"`) {
+		t.Fatalf("stale test status=%s err=%v", stale, err)
+	}
+	if _, err := server.table["project_task_cleanup"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q,"idempotency_key":"test-cleanup-stale-0001"}`, started.TaskID))); err == nil || !strings.Contains(err.Error(), "test evidence changed") {
+		t.Fatalf("cleanup with stale test evidence error=%v", err)
+	}
+}
+
+func TestProjectTaskTestNonzeroExitNeverRecordsPassingReceipt(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test-nonzero"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Make one focused change."],"timeout_seconds":600,"idempotency_key":"task-test-nonzero-0001","test_profile_id":"go-check"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil || len(started.Workers) != 1 {
+		t.Fatalf("started=%+v err=%v", started, err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))
+	if _, err := server.table["project_task_test_start"].handler(request); err != nil {
+		t.Fatal(err)
+	}
+	edges.mu.Lock()
+	edges.testProcessState, edges.testExitKnown, edges.testExitCode = "exited", true, 1
+	edges.mu.Unlock()
+	failed, err := server.table["project_task_test_status"].handler(request)
+	if err != nil || !strings.Contains(failed, `"test_evidence_state":"failed"`) {
+		t.Fatalf("failed test status=%s err=%v", failed, err)
+	}
+	task, found, err := queue.Task(started.TaskID)
+	if err != nil || !found || task.Workers[0].TestAcceptanceReceipt != nil {
+		t.Fatalf("nonzero exit recorded receipt: task=%+v found=%v err=%v", task, found, err)
+	}
+	if _, err := server.table["project_task_cleanup"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q,"idempotency_key":"test-cleanup-nonzero-0001"}`, started.TaskID))); err == nil || !strings.Contains(err.Error(), "test evidence receipt is required") {
+		t.Fatalf("cleanup after nonzero test error=%v", err)
+	}
+}
+
+func TestProjectTaskTestStopDoesNotAcceptWorker(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test-stop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Make one focused change."],"timeout_seconds":600,"idempotency_key":"task-test-stop-0001","test_profile_id":"go-check"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))
+	if _, err := server.table["project_task_test_stop"].handler(request); err == nil {
+		t.Fatal("stop without a captured test process unexpectedly succeeded")
+	}
+	if _, err := server.table["project_task_test_start"].handler(request); err != nil {
+		t.Fatal(err)
+	}
+	stopped, err := server.table["project_task_test_stop"].handler(request)
+	if err != nil || !strings.Contains(stopped, `"state":"stopping"`) || !strings.Contains(stopped, `"acceptance_state":"pending"`) {
+		t.Fatalf("stop=%s err=%v", stopped, err)
+	}
+	edges.mu.Lock()
+	edges.testProcessState = "stopped"
+	edges.mu.Unlock()
+	status, err := server.table["project_task_test_status"].handler(request)
+	if err != nil || !strings.Contains(status, `"test_evidence_state":"failed"`) {
+		t.Fatalf("status after stop=%s err=%v", status, err)
+	}
+	task, found, err := queue.Task(started.TaskID)
+	if err != nil || !found || task.Workers[0].TestAcceptanceReceipt != nil {
+		t.Fatalf("stop recorded passing receipt: task=%+v found=%v err=%v", task, found, err)
+	}
+}
+
+func TestProjectTaskTestReceiptSurvivesCleanup(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test-cleanup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Make one focused change."],"timeout_seconds":600,"idempotency_key":"task-test-cleanup-0001","test_profile_id":"go-check"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))
+	if _, err := server.table["project_task_test_start"].handler(request); err != nil {
+		t.Fatal(err)
+	}
+	edges.mu.Lock()
+	edges.testProcessState, edges.testExitKnown = "exited", true
+	edges.mu.Unlock()
+	if _, err := server.table["project_task_test_status"].handler(request); err != nil {
+		t.Fatal(err)
+	}
+	cleaned, err := server.table["project_task_cleanup"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q,"idempotency_key":"task-test-cleanup-call-0001"}`, started.TaskID)))
+	if err != nil || !strings.Contains(cleaned, `"cleaned":true`) || !strings.Contains(cleaned, `"test_evidence_state":"verified"`) {
+		t.Fatalf("cleanup=%s err=%v", cleaned, err)
+	}
+	status, err := server.table["project_task_status"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q}`, started.TaskID)))
+	if err != nil || !strings.Contains(status, `"test_evidence_state":"verified"`) || !strings.Contains(status, `"acceptance_state":"pending"`) {
+		t.Fatalf("status after cleanup=%s err=%v", status, err)
+	}
+	testStatus, err := server.table["project_task_test_status"].handler(request)
+	if err != nil || !strings.Contains(testStatus, `"test_evidence_state":"verified"`) {
+		t.Fatalf("test status after cleanup=%s err=%v", testStatus, err)
+	}
+}
+
+func TestProjectTaskTestCapturedStopRemainsBoundAfterLeaseRotation(t *testing.T) {
+	task := workqueue.TaskGroup{ID: "tg_11111111111111111111111111111111", Project: "project", Target: "parrot", BaseCommit: "0123456789abcdef0123456789abcdef01234567", TestAcceptanceContract: &workqueue.TaskTestAcceptanceContract{Version: 1, ProfileID: "go-check", ProfileDigest: "sha256:" + strings.Repeat("e", 64)}}
+	worker := workqueue.TaskWorker{Ordinal: 0, JobID: "j_11111111111111111111111111111111", WorktreeID: "wt_11111111111111111111111111111111", WorkspaceID: "ws_11111111111111111111111111111111", LeaseID: "le_new", Fence: 2}
+	start := edge.Operation{DeviceID: testEdgeDeviceID, Kind: edge.OperationProjectWorktreeTestStart, State: edge.OperationSucceeded}
+	start.Request = edge.OperationRequest{Alias: task.Project, TargetAlias: task.Target, Profile: "linux-workcell", WorktreeID: worker.WorktreeID, WorkJobID: worker.JobID, WorkLeaseID: "le_old", WorkFence: 1, TestProfileID: task.TestAcceptanceContract.ProfileID, TestProfileDigest: task.TestAcceptanceContract.ProfileDigest, IdempotencyKey: projectTaskTestOperationKey(task.ID, 0, "start")}
+	start.Result = edge.OperationResult{WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID, WorkJobID: worker.JobID, WorkLeaseID: "le_old", WorkFence: 1, WorktreeBaseCommit: task.BaseCommit, WorktreeHeadCommit: "1123456789abcdef0123456789abcdef01234567", WorktreeBranch: "codex/worktree-11111111111111111111111111111111", ContentDigest: "sha256:" + strings.Repeat("b", 64), TestProfileID: task.TestAcceptanceContract.ProfileID, TestProfileDigest: task.TestAcceptanceContract.ProfileDigest, BackgroundProcessID: "pr_11111111111111111111111111111111"}
+	if !validProjectTaskTestCapturedStart(task, worker, testEdgeDeviceID, start) {
+		t.Fatal("captured process lost stop authority after lease rotation")
+	}
+	if validProjectTaskTestStart(task, worker, testEdgeDeviceID, start) {
+		t.Fatal("old lease incorrectly remains valid for passing test evidence")
 	}
 }
 
@@ -256,6 +545,11 @@ func (s *projectTaskEdgeStore) WaitOperation(_ context.Context, id string, _ tim
 	defer s.mu.Unlock()
 	op := s.operations[id]
 	op.State = edge.OperationSucceeded
+	if op.Kind == edge.OperationProjectWorktreeTestProfile && s.testProfileUnavailable {
+		op.State = edge.OperationFailed
+		s.operations[id] = op
+		return op, nil
+	}
 	result := edge.OperationResult{
 		ProjectAlias: "project", ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
 		ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
@@ -266,6 +560,28 @@ func (s *projectTaskEdgeStore) WaitOperation(_ context.Context, id string, _ tim
 		result.SnapshotBranch = "main"
 		result.SnapshotHead = "0123456789abcdef0123456789abcdef01234567"
 		result.SnapshotClean = true
+	case edge.OperationKind("project_worktree_test_profile"):
+		result.TestProfileID = op.Request.TestProfileID
+		result.TestProfileDigest = "sha256:" + strings.Repeat("e", 64)
+		result.TestTimeoutSeconds = 600
+	case edge.OperationProjectWorktreeTestStart, edge.OperationProjectWorktreeTestStatus, edge.OperationProjectWorktreeTestStop:
+		result = s.worktrees[op.Request.WorktreeID]
+		if result.WorktreeHeadCommit == "" {
+			result.WorktreeHeadCommit = "1123456789abcdef0123456789abcdef01234567"
+		}
+		result.TestProfileID, result.TestProfileDigest = op.Request.TestProfileID, op.Request.TestProfileDigest
+		result.ContentDigest = "sha256:" + strings.Repeat("b", 64)
+		result.BackgroundProcessID = "pr_11111111111111111111111111111111"
+		result.BackgroundProcessState = "running"
+		if op.Kind == edge.OperationProjectWorktreeTestStatus {
+			if s.testProcessState != "" {
+				result.BackgroundProcessState = s.testProcessState
+			}
+			result.BackgroundExitKnown, result.BackgroundExitCode, result.TestStale = s.testExitKnown, s.testExitCode, s.testStale
+		}
+		if op.Kind == edge.OperationProjectWorktreeTestStop {
+			result.BackgroundProcessState = "stopping"
+		}
 	case edge.OperationProjectWorktreeCreate:
 		parsed, _ := strconv.ParseUint(strings.TrimPrefix(id, "eo_"), 16, 64)
 		index := int(parsed)

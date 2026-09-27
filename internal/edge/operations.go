@@ -102,6 +102,10 @@ const (
 	OperationProjectWorktreeStatus             OperationKind = "project_worktree_status"
 	OperationProjectWorktreeList               OperationKind = "project_worktree_list"
 	OperationProjectWorktreeCleanup            OperationKind = "project_worktree_cleanup"
+	OperationProjectWorktreeTestProfile        OperationKind = "project_worktree_test_profile"
+	OperationProjectWorktreeTestStart          OperationKind = "project_worktree_test_start"
+	OperationProjectWorktreeTestStatus         OperationKind = "project_worktree_test_status"
+	OperationProjectWorktreeTestStop           OperationKind = "project_worktree_test_stop"
 
 	OperationQueued    OperationState = "queued"
 	OperationLeased    OperationState = "leased"
@@ -186,6 +190,8 @@ type OperationRequest struct {
 	WorkLeaseID                  string            `json:"work_lease_id,omitempty"`
 	WorkFence                    uint64            `json:"work_fence,omitempty"`
 	WorktreeLimit                int               `json:"worktree_limit,omitempty"`
+	TestProfileID                string            `json:"test_profile_id,omitempty"`
+	TestProfileDigest            string            `json:"test_profile_digest,omitempty"`
 }
 
 type BackgroundProcessSummary struct {
@@ -479,6 +485,12 @@ type OperationResult struct {
 	WorktreeCreatedAt                string                          `json:"worktree_created_at,omitempty"`
 	WorktreeUpdatedAt                string                          `json:"worktree_updated_at,omitempty"`
 	Worktrees                        []ProjectWorktreeSummary        `json:"worktrees,omitempty"`
+	TestProfileID                    string                          `json:"test_profile_id,omitempty"`
+	TestProfileDigest                string                          `json:"test_profile_digest,omitempty"`
+	TestTimeoutSeconds               int                             `json:"test_timeout_seconds,omitempty"`
+	ContentDigest                    string                          `json:"content_digest,omitempty"`
+	TestStale                        bool                            `json:"test_stale,omitempty"`
+	TestStaleReason                  string                          `json:"test_stale_reason,omitempty"`
 }
 
 type OperationProgress struct {
@@ -904,6 +916,9 @@ func validOperationCompletion(result OperationResult, code string) bool {
 	if hasProjectWorktreeResult(result) {
 		return false
 	}
+	if hasProjectWorktreeTestResult(result) {
+		return false
+	}
 	if hasProjectExecResult(result) {
 		return code == "" && validProjectExecResult(result)
 	}
@@ -989,6 +1004,9 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if hasProjectDiagnosticResult(result) {
 		return kind == OperationProjectStatus && validProjectDiagnosticResult(result)
 	}
+	if hasProjectWorktreeTestResult(result) {
+		return validProjectWorktreeTestResultForKind(kind, result)
+	}
 	if hasProjectWorktreeResult(result) {
 		return validProjectWorktreeResultForKind(kind, result)
 	}
@@ -1031,7 +1049,7 @@ func validOperationCompletionForKind(kind OperationKind, result OperationResult,
 	if kind == OperationProjectNetworkRoute || kind == OperationProjectNetworkProbe {
 		return false
 	}
-	if kind == OperationProjectRegistryList || kind == OperationProjectReconcile || kind == OperationProjectRelease || kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStdin || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
+	if kind == OperationProjectRegistryList || kind == OperationProjectReconcile || kind == OperationProjectRelease || kind == OperationProjectExec || kind == OperationProjectWorktreeCreate || kind == OperationProjectWorktreeClaim || kind == OperationProjectWorktreeStatus || kind == OperationProjectWorktreeList || kind == OperationProjectWorktreeCleanup || kind == OperationProjectWorktreeTestProfile || kind == OperationProjectWorktreeTestStart || kind == OperationProjectWorktreeTestStatus || kind == OperationProjectWorktreeTestStop || kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead || kind == OperationProjectBrowserCreate || kind == OperationProjectBrowserStatus || kind == OperationProjectBrowserList || kind == OperationProjectBrowserRun || kind == OperationProjectBrowserArtifactRead || kind == OperationProjectBrowserClose || kind == OperationProjectBrowserCleanup || kind == OperationProjectProcessStart || kind == OperationProjectProcessStatus || kind == OperationProjectProcessStdin || kind == OperationProjectProcessStop || kind == OperationProjectProcessSignal || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectSnapshot || kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitFastForwardPreview || kind == OperationProjectGitFastForward || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish || kind == OperationProjectGitHubStatus || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus || kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxCleanup || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop {
 		return false
 	}
 	return validOperationCompletion(result, "")
@@ -1241,7 +1259,7 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 }
 
 func emptyOperationResult(result OperationResult) bool {
-	if hasEdgeStorageResult(result) || hasProjectWorktreeResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
+	if hasEdgeStorageResult(result) || hasProjectWorktreeResult(result) || hasProjectWorktreeTestResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
 	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.EdgeProtocolVersion == "" && result.EdgeCatalogHash == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && result.ProjectReason == "" && result.ProjectDiagnosticReason == "" && !result.ProjectRepairable && result.ProjectRecommendedAction == "" && result.ProjectRegistryAction == "" && result.ProjectClaimGeneration == 0 && len(result.ProjectClaims) == 0 && !hasProjectToolchainSummary(result) && !hasProjectGitHubResult(result)

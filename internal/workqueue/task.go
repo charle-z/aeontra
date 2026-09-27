@@ -45,6 +45,7 @@ type TaskSpec struct {
 	BaseCommit              string
 	GoalHash                string
 	AcceptanceContract      *TaskAcceptanceContract
+	TestAcceptanceContract  *TaskTestAcceptanceContract
 	WorkerGoalHashes        []string
 	WorkerGoalRefs          []string
 	Pool                    string
@@ -54,21 +55,22 @@ type TaskSpec struct {
 }
 
 type TaskGroup struct {
-	ID                      string                  `json:"task_id"`
-	IdempotencyKey          string                  `json:"-"`
-	Project                 string                  `json:"project"`
-	Target                  string                  `json:"target"`
-	BaseCommit              string                  `json:"base_commit"`
-	GoalHash                string                  `json:"-"`
-	Pool                    string                  `json:"pool"`
-	Profile                 string                  `json:"profile"`
-	WorkerCount             int                     `json:"worker_count"`
-	ExecutionTimeoutSeconds int                     `json:"execution_timeout_seconds"`
-	AcceptanceContract      *TaskAcceptanceContract `json:"git_evidence_contract,omitempty"`
-	State                   TaskState               `json:"state"`
-	Workers                 []TaskWorker            `json:"workers"`
-	CreatedAt               time.Time               `json:"created_at"`
-	UpdatedAt               time.Time               `json:"updated_at"`
+	ID                      string                      `json:"task_id"`
+	IdempotencyKey          string                      `json:"-"`
+	Project                 string                      `json:"project"`
+	Target                  string                      `json:"target"`
+	BaseCommit              string                      `json:"base_commit"`
+	GoalHash                string                      `json:"-"`
+	Pool                    string                      `json:"pool"`
+	Profile                 string                      `json:"profile"`
+	WorkerCount             int                         `json:"worker_count"`
+	ExecutionTimeoutSeconds int                         `json:"execution_timeout_seconds"`
+	AcceptanceContract      *TaskAcceptanceContract     `json:"git_evidence_contract,omitempty"`
+	TestAcceptanceContract  *TaskTestAcceptanceContract `json:"-"`
+	State                   TaskState                   `json:"state"`
+	Workers                 []TaskWorker                `json:"workers"`
+	CreatedAt               time.Time                   `json:"created_at"`
+	UpdatedAt               time.Time                   `json:"updated_at"`
 }
 
 // TaskAcceptanceContractV1 describes a bounded Git evidence predicate. A
@@ -80,6 +82,32 @@ type TaskAcceptanceContract struct {
 	MinimumCommitsAheadPerWorker int `json:"minimum_commits_ahead_per_worker"`
 	MinimumChangedPathsPerWorker int `json:"minimum_changed_paths_per_worker"`
 }
+
+// TaskTestAcceptanceContract selects one operator-owned immutable test profile.
+// It contains no command, argv, environment, or working-directory input.
+type TaskTestAcceptanceContract struct {
+	Version       int    `json:"version"`
+	ProfileID     string `json:"profile_id"`
+	ProfileDigest string `json:"profile_digest"`
+}
+
+// ValidateTaskTestAcceptanceContract accepts no contract for legacy/manual
+// review, or a versioned reference to one bounded operator-owned profile.
+func ValidateTaskTestAcceptanceContract(contract *TaskTestAcceptanceContract) error {
+	if contract == nil {
+		return nil
+	}
+	if contract.Version != 1 || !profilePattern.MatchString(contract.ProfileID) || !payloadHashPattern.MatchString(contract.ProfileDigest) {
+		return errors.New("workqueue: task test acceptance contract is invalid")
+	}
+	return nil
+}
+
+type TaskTestEdgeResult string
+
+const (
+	TaskTestEdgeResultPassed TaskTestEdgeResult = "passed"
+)
 
 // ValidateTaskAcceptanceContract accepts no contract for legacy/manual review,
 // or the one bounded Git-only contract currently supported.
@@ -95,26 +123,27 @@ func ValidateTaskAcceptanceContract(contract *TaskAcceptanceContract) error {
 }
 
 type TaskWorker struct {
-	Ordinal           int                    `json:"ordinal"`
-	JobID             string                 `json:"job_id"`
-	State             State                  `json:"state"`
-	Reason            Reason                 `json:"reason,omitempty"`
-	CancelRequested   bool                   `json:"cancel_requested"`
-	Attempt           int                    `json:"attempt"`
-	LeaseID           string                 `json:"lease_id,omitempty"`
-	Fence             uint64                 `json:"fence"`
-	LeaseExpiresAt    time.Time              `json:"lease_expires_at,omitempty"`
-	LeaseHolder       string                 `json:"-"`
-	OperationID       string                 `json:"-"`
-	WorktreeID        string                 `json:"worktree_id,omitempty"`
-	WorkspaceID       string                 `json:"workspace_id,omitempty"`
-	RuntimeID         string                 `json:"runtime_id,omitempty"`
-	WorktreeCleaned   bool                   `json:"-"`
-	AcceptanceReceipt *TaskAcceptanceReceipt `json:"-"`
-	Summary           string                 `json:"summary,omitempty"`
-	GoalHash          string                 `json:"-"`
-	GoalRef           string                 `json:"-"`
-	UpdatedAt         time.Time              `json:"updated_at"`
+	Ordinal               int                        `json:"ordinal"`
+	JobID                 string                     `json:"job_id"`
+	State                 State                      `json:"state"`
+	Reason                Reason                     `json:"reason,omitempty"`
+	CancelRequested       bool                       `json:"cancel_requested"`
+	Attempt               int                        `json:"attempt"`
+	LeaseID               string                     `json:"lease_id,omitempty"`
+	Fence                 uint64                     `json:"fence"`
+	LeaseExpiresAt        time.Time                  `json:"lease_expires_at,omitempty"`
+	LeaseHolder           string                     `json:"-"`
+	OperationID           string                     `json:"-"`
+	WorktreeID            string                     `json:"worktree_id,omitempty"`
+	WorkspaceID           string                     `json:"workspace_id,omitempty"`
+	RuntimeID             string                     `json:"runtime_id,omitempty"`
+	WorktreeCleaned       bool                       `json:"-"`
+	AcceptanceReceipt     *TaskAcceptanceReceipt     `json:"-"`
+	TestAcceptanceReceipt *TaskTestAcceptanceReceipt `json:"-"`
+	Summary               string                     `json:"summary,omitempty"`
+	GoalHash              string                     `json:"-"`
+	GoalRef               string                     `json:"-"`
+	UpdatedAt             time.Time                  `json:"updated_at"`
 }
 
 // TaskAcceptanceReceipt is a durable, immutable record of exact Git facts that
@@ -137,6 +166,40 @@ type TaskAcceptanceReceipt struct {
 	CommitsAheadBase int       `json:"commits_ahead_base"`
 	ChangedPathCount int       `json:"changed_path_count"`
 	RecordedAt       time.Time `json:"recorded_at"`
+}
+
+// TaskTestAcceptanceReceipt is immutable evidence that one exact workspace
+// content digest passed a named Edge operation and operator profile. Failed
+// attempts remain in the Edge operation journal but do not produce a receipt.
+// This store does not decide semantic task acceptance.
+type TaskTestAcceptanceReceipt struct {
+	Version         int                `json:"version"`
+	TaskID          string             `json:"task_id"`
+	Ordinal         int                `json:"ordinal"`
+	JobID           string             `json:"job_id"`
+	WorktreeID      string             `json:"worktree_id"`
+	WorkspaceID     string             `json:"workspace_id"`
+	BaseCommit      string             `json:"base_commit"`
+	HeadCommit      string             `json:"head_commit"`
+	Branch          string             `json:"branch"`
+	LeaseID         string             `json:"lease_id"`
+	Fence           uint64             `json:"fence"`
+	ContentDigest   string             `json:"content_digest"`
+	ProfileID       string             `json:"profile_id"`
+	ProfileDigest   string             `json:"profile_digest"`
+	ContractDigest  string             `json:"contract_digest"`
+	EdgeOperationID string             `json:"edge_operation_id"`
+	EdgeResult      TaskTestEdgeResult `json:"edge_result"`
+	RecordedAt      time.Time          `json:"recorded_at"`
+}
+
+func TaskTestAcceptanceContractDigest(contract *TaskTestAcceptanceContract) string {
+	if ValidateTaskTestAcceptanceContract(contract) != nil || contract == nil {
+		return ""
+	}
+	canonical := fmt.Sprintf("task-test-acceptance-v%d\n%s\n%s", contract.Version, contract.ProfileID, contract.ProfileDigest)
+	digest := sha256.Sum256([]byte(canonical))
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 func TaskAcceptanceContractDigest(contract *TaskAcceptanceContract) string {
@@ -218,9 +281,9 @@ func (s *Store) CreateTask(spec TaskSpec) (TaskGroup, bool, error) {
 		return TaskGroup{}, false, errors.New("workqueue: task identity unavailable")
 	}
 	now := s.clock().UTC()
-	contractVersion, minimumCommits, minimumChangedPaths := acceptanceContractColumns(spec.AcceptanceContract)
-	if _, err := tx.Exec(`INSERT INTO task_groups(task_id,idempotency_key,project_alias,target_alias,base_commit,goal_hash,pool,profile,worker_count,execution_timeout_seconds,acceptance_contract_version,acceptance_min_commits_ahead,acceptance_min_changed_paths,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		taskID, spec.IdempotencyKey, spec.Project, spec.Target, spec.BaseCommit, spec.GoalHash, spec.Pool, spec.Profile, spec.WorkerCount, spec.ExecutionTimeoutSeconds, contractVersion, minimumCommits, minimumChangedPaths, now.UnixNano(), now.UnixNano()); err != nil {
+	contractVersion, minimumCommits, minimumChangedPaths, testProfileID, testProfileDigest := taskAcceptanceColumns(spec.AcceptanceContract, spec.TestAcceptanceContract)
+	if _, err := tx.Exec(`INSERT INTO task_groups(task_id,idempotency_key,project_alias,target_alias,base_commit,goal_hash,pool,profile,worker_count,execution_timeout_seconds,acceptance_contract_version,acceptance_min_commits_ahead,acceptance_min_changed_paths,test_profile_id,test_profile_digest,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		taskID, spec.IdempotencyKey, spec.Project, spec.Target, spec.BaseCommit, spec.GoalHash, spec.Pool, spec.Profile, spec.WorkerCount, spec.ExecutionTimeoutSeconds, contractVersion, minimumCommits, minimumChangedPaths, testProfileID, testProfileDigest, now.UnixNano(), now.UnixNano()); err != nil {
 		return TaskGroup{}, false, errors.New("workqueue: task persistence failed")
 	}
 	for ordinal := 0; ordinal < spec.WorkerCount; ordinal++ {
@@ -450,8 +513,65 @@ func (s *Store) RecordTaskWorkerAcceptance(receipt TaskAcceptanceReceipt) (TaskA
 	return receipt, nil
 }
 
+// RecordTaskWorkerTestReceipt atomically stores one immutable Edge test receipt.
+// Its content digest is supplied by the trusted Edge integration and represents
+// Git-selected tracked and non-ignored untracked files. The queue never reads
+// the workspace or evaluates the result as semantic task acceptance.
+func (s *Store) RecordTaskWorkerTestReceipt(receipt TaskTestAcceptanceReceipt) (TaskTestAcceptanceReceipt, error) {
+	if s == nil || s.db == nil || !taskIDPattern.MatchString(receipt.TaskID) || receipt.Ordinal < 0 || receipt.Ordinal >= MaxTaskWorkers {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt transaction failed")
+	}
+	defer tx.Rollback()
+	task, found, err := taskByIDTx(tx, receipt.TaskID)
+	if err != nil || !found || receipt.Ordinal >= len(task.Workers) {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt worker unavailable")
+	}
+	worker := task.Workers[receipt.Ordinal]
+	if worker.TestAcceptanceReceipt != nil {
+		if sameTaskTestAcceptanceReceipt(*worker.TestAcceptanceReceipt, receipt) {
+			if err := tx.Commit(); err != nil {
+				return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt replay failed")
+			}
+			return *worker.TestAcceptanceReceipt, nil
+		}
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt conflicts")
+	}
+	if receipt.Version != 1 {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt version is unsupported")
+	}
+	receipt.RecordedAt = s.clock().UTC()
+	if !validTaskTestAcceptanceReceipt(task, worker, receipt) || worker.WorktreeCleaned {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt evidence is stale or invalid")
+	}
+	encoded, err := json.Marshal(receipt)
+	if err != nil {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt encoding failed")
+	}
+	result, err := tx.Exec(`UPDATE task_workers SET test_acceptance_receipt=? WHERE task_id=? AND ordinal=? AND test_acceptance_receipt=''`, string(encoded), receipt.TaskID, receipt.Ordinal)
+	if err != nil {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt persistence failed")
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt conflicts")
+	}
+	if _, err := tx.Exec(`UPDATE task_groups SET updated_at=? WHERE task_id=?`, receipt.RecordedAt.UnixNano(), receipt.TaskID); err != nil {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt timestamp persistence failed")
+	}
+	if err := tx.Commit(); err != nil {
+		return TaskTestAcceptanceReceipt{}, errors.New("workqueue: task test receipt commit failed")
+	}
+	return receipt, nil
+}
+
 // MarkTaskWorkerWorktreeCleaned records successful cleanup after the exact Edge
-// cleanup operation succeeds. A completed worker covered by a Git evidence
+// cleanup operation succeeds. A completed worker covered by an evidence
 // contract cannot cross this checkpoint without its immutable receipt.
 func (s *Store) MarkTaskWorkerWorktreeCleaned(taskID string, ordinal int, leaseID string, fence uint64) error {
 	if s == nil || s.db == nil || !taskIDPattern.MatchString(taskID) || ordinal < 0 || ordinal >= MaxTaskWorkers || !leaseIDPattern.MatchString(leaseID) || fence == 0 {
@@ -479,6 +599,9 @@ func (s *Store) MarkTaskWorkerWorktreeCleaned(taskID string, ordinal int, leaseI
 		return nil
 	}
 	if task.AcceptanceContract != nil && worker.State == StateSucceeded && worker.AcceptanceReceipt == nil {
+		return errors.New("workqueue: task cleanup evidence is incomplete")
+	}
+	if task.TestAcceptanceContract != nil && worker.State == StateSucceeded && worker.TestAcceptanceReceipt == nil {
 		return errors.New("workqueue: task cleanup evidence is incomplete")
 	}
 	if _, err := tx.Exec(`UPDATE task_workers SET worktree_cleaned=1 WHERE task_id=? AND ordinal=? AND worktree_cleaned=0`, taskID, ordinal); err != nil {
@@ -731,6 +854,12 @@ func normalizeTaskSpec(spec TaskSpec) TaskSpec {
 	spec.GoalHash = strings.ToLower(strings.TrimSpace(spec.GoalHash))
 	spec.Pool = strings.ToLower(strings.TrimSpace(spec.Pool))
 	spec.Profile = strings.ToLower(strings.TrimSpace(spec.Profile))
+	if spec.TestAcceptanceContract != nil {
+		contract := *spec.TestAcceptanceContract
+		contract.ProfileID = strings.ToLower(strings.TrimSpace(contract.ProfileID))
+		contract.ProfileDigest = strings.ToLower(strings.TrimSpace(contract.ProfileDigest))
+		spec.TestAcceptanceContract = &contract
+	}
 	for index := range spec.WorkerGoalHashes {
 		spec.WorkerGoalHashes[index] = strings.ToLower(strings.TrimSpace(spec.WorkerGoalHashes[index]))
 	}
@@ -744,7 +873,8 @@ func validateTaskSpec(spec TaskSpec) error {
 	if len(spec.IdempotencyKey) > 118 || !idempotencyPattern.MatchString(spec.IdempotencyKey) || !taskProjectPattern.MatchString(spec.Project) || !taskTargetPattern.MatchString(spec.Target) ||
 		!taskCommitPattern.MatchString(spec.BaseCommit) || !payloadHashPattern.MatchString(spec.GoalHash) || !poolPattern.MatchString(spec.Pool) ||
 		!profilePattern.MatchString(spec.Profile) || spec.WorkerCount < 1 || spec.WorkerCount > MaxTaskWorkers || spec.ExecutionTimeoutSeconds < 1 || spec.ExecutionTimeoutSeconds > 86400 || len(spec.WorkerGoalHashes) != spec.WorkerCount || len(spec.WorkerGoalRefs) != spec.WorkerCount ||
-		ValidateTaskAcceptanceContract(spec.AcceptanceContract) != nil {
+		ValidateTaskAcceptanceContract(spec.AcceptanceContract) != nil || ValidateTaskTestAcceptanceContract(spec.TestAcceptanceContract) != nil ||
+		(spec.AcceptanceContract != nil && spec.TestAcceptanceContract != nil) {
 		return errors.New("workqueue: task specification is invalid")
 	}
 	for index, hash := range spec.WorkerGoalHashes {
@@ -780,8 +910,9 @@ func taskByID(scanner interface {
 	var task TaskGroup
 	var createdAt, updatedAt int64
 	var contractVersion, minimumCommits, minimumChangedPaths int
-	err := scanner.QueryRow(`SELECT task_id,idempotency_key,project_alias,target_alias,base_commit,goal_hash,pool,profile,worker_count,execution_timeout_seconds,acceptance_contract_version,acceptance_min_commits_ahead,acceptance_min_changed_paths,created_at,updated_at FROM task_groups WHERE task_id=?`, taskID).Scan(
-		&task.ID, &task.IdempotencyKey, &task.Project, &task.Target, &task.BaseCommit, &task.GoalHash, &task.Pool, &task.Profile, &task.WorkerCount, &task.ExecutionTimeoutSeconds, &contractVersion, &minimumCommits, &minimumChangedPaths, &createdAt, &updatedAt)
+	var testProfileID, testProfileDigest string
+	err := scanner.QueryRow(`SELECT task_id,idempotency_key,project_alias,target_alias,base_commit,goal_hash,pool,profile,worker_count,execution_timeout_seconds,acceptance_contract_version,acceptance_min_commits_ahead,acceptance_min_changed_paths,test_profile_id,test_profile_digest,created_at,updated_at FROM task_groups WHERE task_id=?`, taskID).Scan(
+		&task.ID, &task.IdempotencyKey, &task.Project, &task.Target, &task.BaseCommit, &task.GoalHash, &task.Pool, &task.Profile, &task.WorkerCount, &task.ExecutionTimeoutSeconds, &contractVersion, &minimumCommits, &minimumChangedPaths, &testProfileID, &testProfileDigest, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TaskGroup{}, false, nil
 	}
@@ -790,16 +921,27 @@ func taskByID(scanner interface {
 	}
 	switch contractVersion {
 	case 0:
-		if minimumCommits != 0 || minimumChangedPaths != 0 {
+		if minimumCommits != 0 || minimumChangedPaths != 0 || testProfileID != "" || testProfileDigest != "" {
 			return TaskGroup{}, false, errors.New("workqueue: task acceptance contract is invalid")
 		}
 	case 1:
+		if testProfileID != "" || testProfileDigest != "" {
+			return TaskGroup{}, false, errors.New("workqueue: task acceptance contract is invalid")
+		}
 		task.AcceptanceContract = &TaskAcceptanceContract{Version: contractVersion, MinimumCommitsAheadPerWorker: minimumCommits, MinimumChangedPathsPerWorker: minimumChangedPaths}
+	case 2:
+		// Version 2 is deliberately outside the Git-only discriminator set in
+		// older v2 binaries, which therefore reject the task instead of dropping
+		// or ignoring its test contract during rollback.
+		if minimumCommits != 0 || minimumChangedPaths != 0 {
+			return TaskGroup{}, false, errors.New("workqueue: task test acceptance contract is invalid")
+		}
+		task.TestAcceptanceContract = &TaskTestAcceptanceContract{Version: 1, ProfileID: testProfileID, ProfileDigest: testProfileDigest}
 	default:
 		return TaskGroup{}, false, errors.New("workqueue: task acceptance contract is unsupported")
 	}
 	task.CreatedAt, task.UpdatedAt = time.Unix(0, createdAt).UTC(), time.Unix(0, updatedAt).UTC()
-	rows, err := scanner.Query(`SELECT tw.ordinal,j.job_id,j.state,j.reason,j.cancel_requested,j.attempt,j.fence,COALESCE(j.lease_id,''),COALESCE(j.lease_holder,''),COALESCE(j.lease_until,0),tw.operation_id,tw.worktree_id,tw.workspace_id,tw.runtime_id,tw.worktree_cleaned,tw.acceptance_receipt,COALESCE(j.summary,''),j.payload_hash,tw.goal_ref,j.updated_at FROM task_workers tw JOIN jobs j ON j.job_id=tw.job_id WHERE tw.task_id=? ORDER BY tw.ordinal`, taskID)
+	rows, err := scanner.Query(`SELECT tw.ordinal,j.job_id,j.state,j.reason,j.cancel_requested,j.attempt,j.fence,COALESCE(j.lease_id,''),COALESCE(j.lease_holder,''),COALESCE(j.lease_until,0),tw.operation_id,tw.worktree_id,tw.workspace_id,tw.runtime_id,tw.worktree_cleaned,tw.acceptance_receipt,tw.test_acceptance_receipt,COALESCE(j.summary,''),j.payload_hash,tw.goal_ref,j.updated_at FROM task_workers tw JOIN jobs j ON j.job_id=tw.job_id WHERE tw.task_id=? ORDER BY tw.ordinal`, taskID)
 	if err != nil {
 		return TaskGroup{}, false, errors.New("workqueue: task workers unavailable")
 	}
@@ -807,8 +949,8 @@ func taskByID(scanner interface {
 	for rows.Next() {
 		var worker TaskWorker
 		var leaseUntil, workerUpdatedAt int64
-		var receiptJSON string
-		if err := rows.Scan(&worker.Ordinal, &worker.JobID, &worker.State, &worker.Reason, &worker.CancelRequested, &worker.Attempt, &worker.Fence, &worker.LeaseID, &worker.LeaseHolder, &leaseUntil, &worker.OperationID, &worker.WorktreeID, &worker.WorkspaceID, &worker.RuntimeID, &worker.WorktreeCleaned, &receiptJSON, &worker.Summary, &worker.GoalHash, &worker.GoalRef, &workerUpdatedAt); err != nil {
+		var receiptJSON, testReceiptJSON string
+		if err := rows.Scan(&worker.Ordinal, &worker.JobID, &worker.State, &worker.Reason, &worker.CancelRequested, &worker.Attempt, &worker.Fence, &worker.LeaseID, &worker.LeaseHolder, &leaseUntil, &worker.OperationID, &worker.WorktreeID, &worker.WorkspaceID, &worker.RuntimeID, &worker.WorktreeCleaned, &receiptJSON, &testReceiptJSON, &worker.Summary, &worker.GoalHash, &worker.GoalRef, &workerUpdatedAt); err != nil {
 			return TaskGroup{}, false, errors.New("workqueue: task worker read failed")
 		}
 		if receiptJSON != "" {
@@ -817,6 +959,13 @@ func taskByID(scanner interface {
 				return TaskGroup{}, false, errors.New("workqueue: task acceptance receipt is corrupt")
 			}
 			worker.AcceptanceReceipt = &receipt
+		}
+		if testReceiptJSON != "" {
+			var receipt TaskTestAcceptanceReceipt
+			if err := json.Unmarshal([]byte(testReceiptJSON), &receipt); err != nil {
+				return TaskGroup{}, false, errors.New("workqueue: task test acceptance receipt is corrupt")
+			}
+			worker.TestAcceptanceReceipt = &receipt
 		}
 		worker.UpdatedAt = time.Unix(0, workerUpdatedAt).UTC()
 		if worker.UpdatedAt.After(task.UpdatedAt) {
@@ -844,7 +993,7 @@ func taskByIDTx(tx *sql.Tx, taskID string) (TaskGroup, bool, error) {
 func taskMatchesSpec(task TaskGroup, spec TaskSpec) bool {
 	if task.IdempotencyKey != spec.IdempotencyKey || task.Project != spec.Project || task.Target != spec.Target || task.BaseCommit != spec.BaseCommit ||
 		task.GoalHash != spec.GoalHash || task.Pool != spec.Pool || task.Profile != spec.Profile || task.WorkerCount != spec.WorkerCount || task.ExecutionTimeoutSeconds != spec.ExecutionTimeoutSeconds ||
-		!sameAcceptanceContract(task.AcceptanceContract, spec.AcceptanceContract) {
+		!sameAcceptanceContract(task.AcceptanceContract, spec.AcceptanceContract) || !sameTaskTestAcceptanceContract(task.TestAcceptanceContract, spec.TestAcceptanceContract) {
 		return false
 	}
 	for index, worker := range task.Workers {
@@ -864,7 +1013,7 @@ func validTask(task TaskGroup) bool {
 	for _, worker := range task.Workers {
 		workerRefs = append(workerRefs, worker.GoalRef)
 	}
-	if !taskIDPattern.MatchString(task.ID) || validateTaskSpec(TaskSpec{IdempotencyKey: task.IdempotencyKey, Project: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, GoalHash: task.GoalHash, AcceptanceContract: task.AcceptanceContract, WorkerGoalHashes: workerHashes, WorkerGoalRefs: workerRefs, Pool: task.Pool, Profile: task.Profile, WorkerCount: task.WorkerCount, ExecutionTimeoutSeconds: task.ExecutionTimeoutSeconds}) != nil ||
+	if !taskIDPattern.MatchString(task.ID) || validateTaskSpec(TaskSpec{IdempotencyKey: task.IdempotencyKey, Project: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, GoalHash: task.GoalHash, AcceptanceContract: task.AcceptanceContract, TestAcceptanceContract: task.TestAcceptanceContract, WorkerGoalHashes: workerHashes, WorkerGoalRefs: workerRefs, Pool: task.Pool, Profile: task.Profile, WorkerCount: task.WorkerCount, ExecutionTimeoutSeconds: task.ExecutionTimeoutSeconds}) != nil ||
 		task.CreatedAt.IsZero() || task.UpdatedAt.Before(task.CreatedAt) {
 		return false
 	}
@@ -883,7 +1032,13 @@ func validTask(task TaskGroup) bool {
 		if worker.WorktreeCleaned && task.AcceptanceContract != nil && worker.State == StateSucceeded && worker.AcceptanceReceipt == nil {
 			return false
 		}
+		if worker.WorktreeCleaned && task.TestAcceptanceContract != nil && worker.State == StateSucceeded && worker.TestAcceptanceReceipt == nil {
+			return false
+		}
 		if worker.AcceptanceReceipt != nil && !validTaskAcceptanceReceipt(task, worker, *worker.AcceptanceReceipt) {
+			return false
+		}
+		if worker.TestAcceptanceReceipt != nil && !validTaskTestAcceptanceReceipt(task, worker, *worker.TestAcceptanceReceipt) {
 			return false
 		}
 	}
@@ -910,11 +1065,15 @@ func sameTaskAcceptanceReceipt(left, right TaskAcceptanceReceipt) bool {
 	return left == right
 }
 
-func acceptanceContractColumns(contract *TaskAcceptanceContract) (version, minimumCommits, minimumChangedPaths int) {
-	if contract == nil {
-		return 0, 0, 0
+func taskAcceptanceColumns(gitContract *TaskAcceptanceContract, testContract *TaskTestAcceptanceContract) (version, minimumCommits, minimumChangedPaths int, profileID, profileDigest string) {
+	if testContract != nil {
+		// The existing discriminator makes an older v2 reader fail closed.
+		return 2, 0, 0, testContract.ProfileID, testContract.ProfileDigest
 	}
-	return contract.Version, contract.MinimumCommitsAheadPerWorker, contract.MinimumChangedPathsPerWorker
+	if gitContract != nil {
+		return gitContract.Version, gitContract.MinimumCommitsAheadPerWorker, gitContract.MinimumChangedPathsPerWorker, "", ""
+	}
+	return 0, 0, 0, "", ""
 }
 
 func sameAcceptanceContract(left, right *TaskAcceptanceContract) bool {
@@ -922,6 +1081,32 @@ func sameAcceptanceContract(left, right *TaskAcceptanceContract) bool {
 		return left == nil && right == nil
 	}
 	return *left == *right
+}
+
+func sameTaskTestAcceptanceContract(left, right *TaskTestAcceptanceContract) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func validTaskTestAcceptanceReceipt(task TaskGroup, worker TaskWorker, receipt TaskTestAcceptanceReceipt) bool {
+	contract := task.TestAcceptanceContract
+	branch := "codex/worktree-" + strings.TrimPrefix(worker.WorktreeID, "wt_")
+	return contract != nil && ValidateTaskTestAcceptanceContract(contract) == nil && receipt.Version == 1 &&
+		receipt.TaskID == task.ID && receipt.Ordinal == worker.Ordinal && receipt.JobID == worker.JobID &&
+		receipt.WorktreeID == worker.WorktreeID && receipt.WorkspaceID == worker.WorkspaceID && worker.WorktreeID != "" && worker.WorkspaceID != "" &&
+		receipt.BaseCommit == task.BaseCommit && taskCommitPattern.MatchString(receipt.HeadCommit) && receipt.HeadCommit == strings.ToLower(receipt.HeadCommit) &&
+		receipt.Branch == branch && worker.State == StateSucceeded && receipt.LeaseID == worker.LeaseID && leaseIDPattern.MatchString(receipt.LeaseID) &&
+		receipt.Fence == worker.Fence && receipt.Fence > 0 && payloadHashPattern.MatchString(receipt.ContentDigest) &&
+		receipt.ProfileID == contract.ProfileID && receipt.ProfileDigest == contract.ProfileDigest &&
+		receipt.ContractDigest == TaskTestAcceptanceContractDigest(contract) && taskOperationPattern.MatchString(receipt.EdgeOperationID) && receipt.EdgeResult == TaskTestEdgeResultPassed &&
+		!receipt.RecordedAt.IsZero()
+}
+
+func sameTaskTestAcceptanceReceipt(left, right TaskTestAcceptanceReceipt) bool {
+	left.RecordedAt, right.RecordedAt = time.Time{}, time.Time{}
+	return left == right
 }
 
 func validState(state State) bool {

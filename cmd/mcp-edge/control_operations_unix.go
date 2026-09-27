@@ -32,6 +32,13 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 		return
 	}
 	defer processes.Close()
+	tests, err := edgeclient.OpenProjectWorktreeTestProcessManager(edgeclient.ProjectWorktreeTestProcessManagerConfig{StateRoot: stateRoot, Processes: processes})
+	if err != nil {
+		fmt.Fprintln(stderr, "mcp-edge: managed worktree test journal unavailable")
+		tests = nil
+	} else {
+		defer tests.Close()
+	}
 	browsers, err := edgeclient.OpenProjectBrowserManager(edgeclient.ProjectBrowserManagerConfig{Root: filepath.Join(stateRoot, "project-browser"), Runner: edgeclient.NewProjectBrowserRunner()})
 	if err != nil {
 		fmt.Fprintln(stderr, "mcp-edge: project browser journal failed safely")
@@ -50,13 +57,13 @@ func runControlOperationLoop(ctx context.Context, stateRoot string, transport *e
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			runControlOperationWorker(ctx, stateRoot, transport, processes, browsers, controlGate, stderr)
+			runControlOperationWorker(ctx, stateRoot, transport, processes, tests, browsers, controlGate, stderr)
 		}()
 	}
 	workers.Wait()
 }
 
-func runControlOperationWorker(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, controlGate *controlOperationGate, stderr io.Writer) {
+func runControlOperationWorker(ctx context.Context, stateRoot string, transport *edgeclient.Transport, processes *edgeclient.ProjectProcessManager, tests *edgeclient.ProjectWorktreeTestProcessManager, browsers *edgeclient.ProjectBrowserManager, controlGate *controlOperationGate, stderr io.Writer) {
 	for {
 		if ctx.Err() != nil {
 			return
@@ -75,7 +82,7 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 			}
 			continue
 		}
-		result, code, cancelRequested, gateHeld, exclusive, lifecycleErr := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, browsers, controlGate, *lease)
+		result, code, cancelRequested, gateHeld, exclusive, lifecycleErr := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, tests, browsers, controlGate, *lease)
 		if lifecycleErr != nil {
 			if gateHeld {
 				controlGate.release(exclusive)
@@ -124,7 +131,7 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 	}
 }
 
-func executeControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, operation edge.Operation) (edge.OperationResult, string) {
+func executeControlOperationWithWorktreeTests(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, tests *edgeclient.ProjectWorktreeTestProcessManager, browsers *edgeclient.ProjectBrowserManager, operation edge.Operation) (edge.OperationResult, string) {
 	var output strings.Builder
 	switch operation.Kind {
 	case edge.OperationLabPrepare:
@@ -152,6 +159,8 @@ func executeControlOperation(ctx context.Context, stateRoot string, processes *e
 		return executeProjectSnapshot(ctx, stateRoot, operation.Request)
 	case edge.OperationProjectWorktreeCreate, edge.OperationProjectWorktreeClaim, edge.OperationProjectWorktreeStatus, edge.OperationProjectWorktreeList, edge.OperationProjectWorktreeCleanup:
 		return executeProjectWorktree(ctx, stateRoot, operation)
+	case edge.OperationProjectWorktreeTestProfile, edge.OperationProjectWorktreeTestStart, edge.OperationProjectWorktreeTestStatus, edge.OperationProjectWorktreeTestStop:
+		return executeProjectWorktreeTest(ctx, stateRoot, processes, tests, operation)
 	case edge.OperationProjectExec:
 		return executeProjectExec(ctx, stateRoot, operation)
 	case edge.OperationProjectNetworkRoute, edge.OperationProjectNetworkProbe:

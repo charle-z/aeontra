@@ -397,7 +397,7 @@ explicit failure/cancellation, and `complete` requires a non-truncated stop resp
 that does not declare pending work. Rejection leaves the durable turn unconsumed. This
 does not extend MCP authority into a direct client response that makes no tool call.
 Model-runtime completion is not semantic acceptance. Task status exposes these as
-separate states and revalidates only bounded Git facts from the exact managed worktree.
+separate states and revalidates bounded evidence from the exact managed worktree.
 No source path or diff is returned. Missing Edge connectivity, an unknown runtime,
 base/head mismatch or absent evidence becomes `reconciliation_required`; it is never
 converted into success. An optional version-1 Git evidence contract records a durable receipt
@@ -406,9 +406,18 @@ task, worker, worktree/workspace, branch, lease and fence. The receipt does not 
 natural-language goal satisfaction or test success. Before cleanup, the exact live
 evidence is revalidated; after successful cleanup, the receipt and cleanup checkpoint
 preserve the verified Git evidence predicate, not semantic acceptance. Task and worker
-acceptance remain pending until a trusted objective and test evaluator exists. Missing or
-changed evidence remains reconciliation, not success. No contract is inferred for old or
-contractless tasks, and this status predicate grants no authority beyond the existing
+acceptance remain pending until a trusted objective evaluator exists. Missing or
+changed evidence remains reconciliation, not success. A separate opt-in test contract
+pins an operator-owned Edge profile by ID and digest at task creation. The client cannot
+supply its argv, environment, stdin or cwd. Its process runs asynchronously in the
+worker's registered worktree; a terminal known zero exit creates a receipt only when
+profile, base/HEAD, branch, workspace, lease/fence and selected content digest still
+match. A status read never stops the process, and explicit stop uses its captured
+process identity even when the checkout has changed. This digest covers Git-selected
+source files, not Git-ignored inputs or files outside the worktree, so the receipt is
+not a hermetic test proof or natural-language evaluation. Git and test contracts are
+mutually exclusive in this first version. No contract is inferred for old or
+contractless tasks, and neither predicate grants authority beyond the existing
 worktree, preview, CI and merge contracts. Automated integration remains out of scope.
 For a linked worktree, the outer Bubblewrap launcher projects that repository's validated
 common Git directory at one fixed internal mount and sets `GIT_DIR` to the exact
