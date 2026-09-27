@@ -278,9 +278,10 @@ source pin.
 
 The bounded local toolchain preflight reads only well-known markers (`go.mod`,
 `package.json` plus a lockfile, `pyproject.toml`, `Cargo.toml`, Rust/mise/asdf pins,
-Java build markers and `CMakeLists.txt`). It never installs anything. It reports
-`supported` for the fixed L3 baseline, `edge-required` for Java, pnpm, CMake or
-alternate manager versions, and `pin-conflict` when exact declarations disagree.
+Java build markers, `CMakeLists.txt`, and root-level .NET markers `global.json`,
+`*.csproj` or `*.sln`). It never installs anything. It reports `supported` for the
+fixed L3 baseline, `edge-required` for .NET, Java, pnpm, CMake or alternate manager
+versions, and `pin-conflict` when exact declarations disagree.
 
 ## Cancellation
 

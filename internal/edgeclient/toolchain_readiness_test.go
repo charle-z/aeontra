@@ -1,6 +1,7 @@
 package edgeclient
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -61,6 +62,35 @@ func TestDetectToolchainReadinessRequiresEdgeForMissingL3Capabilities(t *testing
 	}
 }
 
+func TestDetectToolchainReadinessRequiresEdgeForDotnetRootMarkers(t *testing.T) {
+	workspace := t.TempDir()
+	writeToolchainFixture(t, workspace, map[string]string{
+		"global.json":     `{"sdk":{"version":"10.0.100"}}`,
+		"Paytness.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+		"Paytness.sln":    "Microsoft Visual Studio Solution File\n",
+	})
+
+	readiness, err := DetectToolchainReadiness(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readiness.Status != ToolchainEdgeRequired {
+		t.Fatalf("status=%q findings=%+v", readiness.Status, readiness.Findings)
+	}
+	if !hasReadinessFinding(readiness.Findings, "dotnet", ToolchainEdgeRequired) {
+		t.Fatalf("missing .NET Edge-required finding: %+v", readiness.Findings)
+	}
+	wantManifests := []string{"global.json", "*.csproj", "*.sln"}
+	if !reflect.DeepEqual(readiness.Manifests, wantManifests) {
+		t.Fatalf("manifests=%v want=%v", readiness.Manifests, wantManifests)
+	}
+	for _, manifest := range readiness.Manifests {
+		if strings.Contains(manifest, "Paytness") {
+			t.Fatalf("project-specific filename leaked in manifest summary: %q", manifest)
+		}
+	}
+}
+
 func TestDetectToolchainReadinessReportsConflictingPins(t *testing.T) {
 	workspace := t.TempDir()
 	writeToolchainFixture(t, workspace, map[string]string{
@@ -97,6 +127,24 @@ func TestDetectToolchainReadinessRequiresPackageLockAndRejectsUnsafeWorkspace(t 
 		if _, err := DetectToolchainReadiness(invalid); err == nil {
 			t.Fatalf("unsafe workspace accepted: %q", invalid)
 		}
+	}
+}
+
+func TestDetectToolchainReadinessHandlesLargeWorkspaceRoot(t *testing.T) {
+	workspace := t.TempDir()
+	for index := 0; index <= 1024; index++ {
+		name := filepath.Join(workspace, fmt.Sprintf("entry-%04d", index))
+		if err := os.Mkdir(name, 0o700); err != nil {
+			t.Fatalf("create root entry %d: %v", index, err)
+		}
+	}
+	writeToolchainFixture(t, workspace, map[string]string{"Paytness.csproj": "<Project />\n"})
+	readiness, err := DetectToolchainReadiness(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readiness.Status != ToolchainEdgeRequired || !hasReadinessFinding(readiness.Findings, "dotnet", ToolchainEdgeRequired) {
+		t.Fatalf("large workspace classification=%+v", readiness)
 	}
 }
 

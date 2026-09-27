@@ -39,13 +39,15 @@ distribution:
 | Go, Rust/Cargo, Python, Node/npm | Fixed, image-pinned baseline | Available through explicit installation too |
 | C/C++ compiler and `make` | Fixed compiler/build baseline | Available through the Debian toolchain |
 | pnpm | Not part of the reference image; projects that require it are Edge-required | Install and cache under the toolbox/workspace |
+| .NET SDK | Not part of the reference image; root `global.json`, `*.csproj` or `*.sln` markers are Edge-required | Not preinstalled; provision explicitly in the toolbox when needed |
 | Java/JDK, CMake, alternate versions, `mise` or `rustup` | Not part of the reference image | Edge-required and persistent until explicit cleanup |
 
 L3 has no package-manager network access and its `/tmp` cache is ephemeral. Project
-manifests and lockfiles are inspected locally by the bounded Edge preflight; that
-preflight never installs a manager or dependency. A result of `supported` describes
-the fixed runtime baseline only, `edge-required` selects the persistent toolbox, and
-`pin-conflict` fails closed until competing manifest pins are reconciled.
+manifests, root-level .NET project markers and lockfiles are inspected locally by the
+bounded Edge preflight; that preflight never installs a manager or dependency. A result
+of `supported` describes the fixed runtime baseline only, `edge-required` selects the
+persistent toolbox, and `pin-conflict` fails closed until competing manifest pins are
+reconciled.
 
 The project toolbox currently pulls the server-owned `debian:bookworm-slim` reference
 by tag and records the resolved local image ID. A tag is mutable, so a fresh toolbox
