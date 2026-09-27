@@ -37,6 +37,7 @@ func TestModelTurnToolsFailClosedWithoutStore(t *testing.T) {
 		"opencode_runtime_start":     `{"device_id":"ed_11111111111111111111111111111111","workspace_id":"ws_22222222222222222222222222222222","goal":"bounded","timeout_seconds":60,"idempotency_key":"key-1"}`,
 		"model_runtime_status":       `{"runtime_id":"mr_00000000000000000000000000000000"}`,
 		"model_turn_next":            `{"runtime_id":"mr_00000000000000000000000000000000"}`,
+		"model_turn_next_any":        `{"runtimes":[{"runtime_id":"mr_00000000000000000000000000000000"}]}`,
 		"model_turn_respond":         `{"runtime_id":"mr_00000000000000000000000000000000","turn_id":"mt_00000000000000000000000000000000","expected_sequence":1,"request_digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","task_state":"complete","response":{"finish_reason":"stop"}}`,
 		"model_runtime_cancel":       `{"runtime_id":"mr_00000000000000000000000000000000"}`,
 	} {
@@ -50,6 +51,57 @@ func TestModelTurnToolsFailClosedWithoutStore(t *testing.T) {
 			t.Fatalf("%s result=%s", name, encoded)
 		}
 	}
+}
+
+func TestModelTurnNextAnyReturnsOldestPendingRuntime(t *testing.T) {
+	server, store := modelTurnServer(t)
+	first, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	older, err := store.CreateTurn(context.Background(), modelturn.ModelRequest{RuntimeID: second.RuntimeID, Sequence: 1, Payload: json.RawMessage(`{"prompt":"older"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateTurn(context.Background(), modelturn.ModelRequest{RuntimeID: first.RuntimeID, Sequence: 1, Payload: json.RawMessage(`{"prompt":"newer"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	arguments := `{"runtimes":[{"runtime_id":"` + first.RuntimeID + `"},{"runtime_id":"` + second.RuntimeID + `"}]}`
+	result := toolText(t, call(t, server, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"model_turn_next_any","arguments":`+arguments+`}}`))
+	if !strings.Contains(result, `"cursor_index":1`) || !strings.Contains(result, `"turn_id":"`+string(older.ID)+`"`) || !strings.Contains(result, `"pending":true`) {
+		t.Fatalf("next-any result=%s", result)
+	}
+	duplicate := call(t, server, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"model_turn_next_any","arguments":{"runtimes":[{"runtime_id":"`+first.RuntimeID+`"},{"runtime_id":"`+first.RuntimeID+`"}]}}}`)
+	var rejected toolResult
+	encoded, _ := json.Marshal(duplicate.Result)
+	if err := json.Unmarshal(encoded, &rejected); err != nil || !rejected.IsError {
+		t.Fatalf("duplicate runtime was accepted: %s err=%v", encoded, err)
+	}
+}
+
+func TestModelTurnNextAnyWaitReservationIsPerSessionAndRuntime(t *testing.T) {
+	server, _ := modelTurnServer(t)
+	first := "mr_11111111111111111111111111111111"
+	second := "mr_22222222222222222222222222222222"
+	if !server.beginModelWaitMany("session-a", []string{first, second}) {
+		t.Fatal("first wait reservation failed")
+	}
+	if server.beginModelWait("session-a", second) || server.beginModelWaitMany("session-a", []string{first, second}) {
+		t.Fatal("overlapping wait was accepted for the same session")
+	}
+	if !server.beginModelWait("session-b", second) {
+		t.Fatal("another session must not be globally serialized")
+	}
+	server.endModelWaitMany("session-a", []string{first, second})
+	server.endModelWait("session-b", second)
+	if !server.beginModelWait("session-a", second) {
+		t.Fatal("reservation was not released")
+	}
+	server.endModelWait("session-a", second)
 }
 
 func TestModelTurnRespondSchemaKeepsTaskStateOptionalForCachedClients(t *testing.T) {
