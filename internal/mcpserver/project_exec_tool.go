@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
@@ -40,6 +41,8 @@ type projectExecPublicView struct {
 	ResultUS        *int64              `json:"result_us,omitempty"`
 	Reused          bool                `json:"reused"`
 	Reason          string              `json:"reason,omitempty"`
+	ExecutionHint   string              `json:"execution_hint,omitempty"`
+	NextTool        string              `json:"next_tool,omitempty"`
 }
 
 func (s *Server) addProjectExecTool(projectSchema map[string]any) {
@@ -110,6 +113,10 @@ func (s *Server) handleProjectExec(arguments json.RawMessage) (string, error) {
 		view.Completed = operation.Result.ExecCompleted
 		view.Stdout = operation.Result.ExecStdout
 		view.Stderr = operation.Result.ExecStderr
+		if view.ExitCode != 0 && missingWorkcellExecutable(params.Argv, view.Stderr) {
+			view.ExecutionHint = "workcell_executable_unavailable"
+			view.NextTool = "project_toolbox_status"
+		}
 		if operation.Result.ExecTimingKnown {
 			view.PreflightUS = int64Pointer(operation.Result.ExecPreflightUS)
 			view.ExecutionUS = int64Pointer(operation.Result.ExecExecutionUS)
@@ -119,6 +126,13 @@ func (s *Server) handleProjectExec(arguments json.RawMessage) (string, error) {
 		view.Reason = operation.SafeCode
 	}
 	return marshalToolValue(view, err)
+}
+
+func missingWorkcellExecutable(argv []string, stderr string) bool {
+	if len(argv) == 0 || len(argv[0]) == 0 || len(argv[0]) > 64 || strings.ContainsAny(argv[0], "/\\ \r\n\t") {
+		return false
+	}
+	return stderr == "bwrap: execvp "+argv[0]+": No such file or directory\n"
 }
 
 func int64Pointer(value int64) *int64 {
