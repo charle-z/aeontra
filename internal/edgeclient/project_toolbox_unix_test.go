@@ -26,6 +26,7 @@ type recordingToolboxRunner struct {
 	workspace      string
 	socket         string
 	state          string
+	sizeOutput     string
 	inspectImageID string
 	harnessState   string
 	psLabelOutput  string
@@ -72,6 +73,9 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 		encoded, _ := json.Marshal(runner.containerEnv)
 		return encoded, nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "SizeRw"):
+		if runner.sizeOutput != "" {
+			return []byte(runner.sizeOutput), nil
+		}
 		return []byte("4096|83886080\n"), nil
 	case strings.Contains(joined, " inspect "):
 		if runner.state == "" {
@@ -438,15 +442,23 @@ func TestProjectToolboxStatusDoesNotCreateOrRepairRuntimeRoots(t *testing.T) {
 
 func TestProjectToolboxStatusDistinguishesMissingContainerFromEngineFailure(t *testing.T) {
 	for _, test := range []struct {
-		name          string
-		failPatterns  []string
-		psLabelOutput string
-		want          error
-		wantNameQuery bool
+		name           string
+		failPatterns   []string
+		psLabelOutput  string
+		sizeOutput     string
+		want           error
+		wantCause      error
+		wantLabelQuery bool
+		wantNameQuery  bool
 	}{
-		{name: "missing owned container", failPatterns: []string{"inspect --format {{index .Config.Labels"}, want: ErrProjectToolboxContainerMissing, wantNameQuery: true},
-		{name: "engine unavailable during scoped probe", failPatterns: []string{"inspect --format {{index .Config.Labels", "ps -aq"}, want: ErrProjectToolboxUnavailable},
-		{name: "labelled candidate is not declared missing", failPatterns: []string{"inspect --format {{index .Config.Labels"}, psLabelOutput: strings.Repeat("c", 64), want: ErrProjectToolboxContainerUnavailable},
+		{name: "missing owned container", failPatterns: []string{"inspect --format {{index .Config.Labels"}, want: ErrProjectToolboxContainerMissing, wantLabelQuery: true, wantNameQuery: true},
+		{name: "engine unavailable during scoped probe", failPatterns: []string{"inspect --format {{index .Config.Labels", "ps -aq"}, want: ErrProjectToolboxOwnershipInspectUnavailable, wantCause: ErrProjectToolboxUnavailable, wantLabelQuery: true},
+		{name: "labelled candidate is not declared missing", failPatterns: []string{"inspect --format {{index .Config.Labels"}, psLabelOutput: strings.Repeat("c", 64), want: ErrProjectToolboxOwnershipInspectUnavailable, wantCause: ErrProjectToolboxContainerUnavailable, wantLabelQuery: true},
+		{name: "state inspect unavailable during scoped probe", failPatterns: []string{".State.Status", "ps -aq"}, want: ErrProjectToolboxStateInspectUnavailable, wantCause: ErrProjectToolboxUnavailable, wantLabelQuery: true},
+		{name: "state inspect finds a candidate", failPatterns: []string{".State.Status"}, psLabelOutput: strings.Repeat("c", 64), want: ErrProjectToolboxStateInspectUnavailable, wantCause: ErrProjectToolboxContainerUnavailable, wantLabelQuery: true},
+		{name: "state inspect confirms missing", failPatterns: []string{".State.Status"}, want: ErrProjectToolboxContainerMissing, wantLabelQuery: true, wantNameQuery: true},
+		{name: "storage inspect unavailable", failPatterns: []string{"--size --format"}, want: ErrProjectToolboxStorageInspectUnavailable, wantCause: ErrProjectToolboxUnavailable},
+		{name: "storage inspect malformed", sizeOutput: "not-a-size|83886080\n", want: ErrProjectToolboxStorageInspectUnavailable, wantCause: ErrProjectToolboxUnavailable},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stateRoot := t.TempDir()
@@ -462,9 +474,13 @@ func TestProjectToolboxStatusDistinguishesMissingContainerFromEngineFailure(t *t
 			runner.calls = nil
 			runner.failPatterns = test.failPatterns
 			runner.psLabelOutput = test.psLabelOutput
+			runner.sizeOutput = test.sizeOutput
 			_, err = manager.Status(t.Context(), ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
 			if !errors.Is(err, test.want) {
 				t.Fatalf("status err=%v want %v", err, test.want)
+			}
+			if test.wantCause != nil && !errors.Is(err, test.wantCause) {
+				t.Fatalf("status err=%v does not preserve cause %v", err, test.wantCause)
 			}
 			var labelQuery, nameQuery bool
 			for _, call := range runner.calls {
@@ -472,8 +488,8 @@ func TestProjectToolboxStatusDistinguishesMissingContainerFromEngineFailure(t *t
 				labelQuery = labelQuery || strings.Contains(joined, "ps -aq --filter label="+projectToolboxLabelKey+"=tb_11111111111111111111111111111111")
 				nameQuery = nameQuery || strings.Contains(joined, "ps -aq --filter name=mcp-toolbox-11111111111111111111111111111111")
 			}
-			if !labelQuery || nameQuery != test.wantNameQuery {
-				t.Fatalf("status used unexpected scoped probes: label=%t name=%t wantName=%t calls=%q", labelQuery, nameQuery, test.wantNameQuery, runner.calls)
+			if labelQuery != test.wantLabelQuery || nameQuery != test.wantNameQuery {
+				t.Fatalf("status used unexpected scoped probes: label=%t name=%t wantLabel=%t wantName=%t calls=%q", labelQuery, nameQuery, test.wantLabelQuery, test.wantNameQuery, runner.calls)
 			}
 			for _, call := range runner.calls {
 				joined := strings.Join(call, " ")
@@ -482,6 +498,28 @@ func TestProjectToolboxStatusDistinguishesMissingContainerFromEngineFailure(t *t
 				}
 			}
 		})
+	}
+}
+
+func TestProjectToolboxStatusKeepsUnknownStateNonReclaimable(t *testing.T) {
+	stateRoot := t.TempDir()
+	workspace := Workspace{ID: "ws_55555555555555555555555555555555", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"}, Runner: runner, environment: testRootlessContainerEnvironment, NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace, Lifecycle: projectToolboxDisposable}
+	if _, _, err := manager.Create(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	runner.state = "paused|true"
+	snapshot, err := manager.Status(t.Context(), ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.State != ProjectToolboxUnknown || snapshot.Reclaimable || snapshot.ReclaimReason != "unknown_state" {
+		t.Fatalf("unknown status state=%q reclaimable=%t reason=%q", snapshot.State, snapshot.Reclaimable, snapshot.ReclaimReason)
 	}
 }
 
