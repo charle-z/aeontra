@@ -1163,12 +1163,13 @@ func validProjectToolchainSummary(result OperationResult) bool {
 	if !hasProjectToolchainSummary(result) {
 		return true
 	}
+	const projectToolchainManifestLimit = 17
 	wantRoute := map[string]string{
 		"supported":     "l3",
 		"edge-required": "edge-toolbox",
 		"pin-conflict":  "resolve-pins",
 	}[result.ProjectToolchainState]
-	if wantRoute == "" || result.ProjectToolchainRoute != wantRoute || len(result.ProjectToolchainManifests) > 16 {
+	if wantRoute == "" || result.ProjectToolchainRoute != wantRoute || len(result.ProjectToolchainManifests) > projectToolchainManifestLimit {
 		return false
 	}
 	allowed := map[string]bool{
@@ -1176,6 +1177,7 @@ func validProjectToolchainSummary(result OperationResult) bool {
 		"package.json": true, "go.mod": true, "pyproject.toml": true, "Cargo.toml": true,
 		"pom.xml": true, "build.gradle": true, "build.gradle.kts": true,
 		"settings.gradle": true, "settings.gradle.kts": true, "CMakeLists.txt": true, "Makefile": true,
+		"global.json": true, "*.csproj": true, "*.sln": true,
 	}
 	seen := make(map[string]bool, len(result.ProjectToolchainManifests))
 	for _, manifest := range result.ProjectToolchainManifests {

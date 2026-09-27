@@ -3,6 +3,7 @@ package edgeclient
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +23,7 @@ const (
 
 	toolchainManifestMaxBytes = 128 << 10
 	toolchainFindingLimit     = 32
+	toolchainRootReadBatch    = 256
 )
 
 // ToolchainReadinessFinding contains only fixed manifest names and bounded
@@ -75,6 +77,7 @@ var toolchainManifestNames = []string{
 	"settings.gradle.kts",
 	"CMakeLists.txt",
 	"Makefile",
+	"global.json",
 }
 
 // DetectToolchainReadiness reads a bounded set of well-known project markers.
@@ -103,6 +106,10 @@ func DetectToolchainReadiness(workspace string) (ToolchainReadiness, error) {
 		}
 		result.Manifests = append(result.Manifests, name)
 		contents[name] = content
+	}
+	dotnetMarkers, err := readDotnetRootMarkers(workspace)
+	if err != nil {
+		return ToolchainReadiness{}, err
 	}
 
 	addFinding := func(manifest, tool string, status ToolchainReadinessStatus, pin, reason string) {
@@ -165,6 +172,14 @@ func DetectToolchainReadiness(workspace string) (ToolchainReadiness, error) {
 			return ToolchainReadiness{}, err
 		}
 	}
+	const dotnetReason = ".NET SDK is absent from the fixed L3 image; use an explicitly provisioned Edge toolbox"
+	if _, ok := contents["global.json"]; ok {
+		addFinding("global.json", "dotnet", ToolchainEdgeRequired, "", dotnetReason)
+	}
+	for _, marker := range dotnetMarkers {
+		result.Manifests = append(result.Manifests, marker)
+		addFinding(marker, "dotnet", ToolchainEdgeRequired, "", dotnetReason)
+	}
 
 	if content, ok := contents["go.mod"]; ok {
 		version := firstCapture(toolchainGoVersionPattern, content)
@@ -210,6 +225,46 @@ func DetectToolchainReadiness(workspace string) (ToolchainReadiness, error) {
 
 	addPinConflictFindings(&result, pins)
 	return result, nil
+}
+
+func readDotnetRootMarkers(workspace string) ([]string, error) {
+	root, err := os.Open(workspace)
+	if err != nil {
+		return nil, errors.New("toolchain workspace is unavailable")
+	}
+	defer root.Close()
+	var hasCsproj, hasSln bool
+	for !(hasCsproj && hasSln) {
+		// Bound each read without rejecting a large, otherwise valid checkout.
+		// The entries themselves are never opened.
+		entries, readErr := root.ReadDir(toolchainRootReadBatch)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return nil, errors.New("toolchain workspace is unavailable")
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			switch strings.ToLower(filepath.Ext(entry.Name())) {
+			case ".csproj":
+				hasCsproj = true
+			case ".sln":
+				hasSln = true
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+	}
+
+	markers := make([]string, 0, 2)
+	if hasCsproj {
+		markers = append(markers, "*.csproj")
+	}
+	if hasSln {
+		markers = append(markers, "*.sln")
+	}
+	return markers, nil
 }
 
 func (result *ToolchainReadiness) raise(status ToolchainReadinessStatus) {

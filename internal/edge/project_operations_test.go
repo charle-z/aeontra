@@ -47,7 +47,7 @@ func TestProjectOperationsUseHumanAliasesAndSafeResults(t *testing.T) {
 	toolchainResult := result
 	toolchainResult.ProjectToolchainState = "edge-required"
 	toolchainResult.ProjectToolchainRoute = "edge-toolbox"
-	toolchainResult.ProjectToolchainManifests = []string{"package.json", "pom.xml"}
+	toolchainResult.ProjectToolchainManifests = []string{"package.json", "pom.xml", "global.json", "*.csproj", "*.sln"}
 	if !validOperationCompletionForKind(OperationProjectStatus, toolchainResult, "") {
 		t.Fatal("valid toolchain summary rejected")
 	}
