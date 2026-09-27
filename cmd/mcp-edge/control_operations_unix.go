@@ -131,10 +131,6 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 	}
 }
 
-func executeControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, browsers *edgeclient.ProjectBrowserManager, operation edge.Operation) (edge.OperationResult, string) {
-	return executeControlOperationWithWorktreeTests(ctx, stateRoot, processes, nil, browsers, operation)
-}
-
 func executeControlOperationWithWorktreeTests(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, tests *edgeclient.ProjectWorktreeTestProcessManager, browsers *edgeclient.ProjectBrowserManager, operation edge.Operation) (edge.OperationResult, string) {
 	var output strings.Builder
 	switch operation.Kind {

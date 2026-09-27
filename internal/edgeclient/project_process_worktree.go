@@ -38,7 +38,6 @@ var (
 	projectWorktreeTestJobIDRE      = regexp.MustCompile(`^wj_[a-f0-9]{32}$`)
 	projectWorktreeTestLeaseIDRE    = regexp.MustCompile(`^wl_[a-f0-9]{32}$`)
 	projectWorktreeTestWorktreeIDRE = regexp.MustCompile(`^wt_[a-f0-9]{32}$`)
-	projectWorktreeTestCommitRE     = regexp.MustCompile(`^[a-f0-9]{40}$`)
 	projectWorktreeTestDigestRE     = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 	projectWorktreeTestAliasRE      = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 	projectWorktreeTestTargetRE     = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$`)

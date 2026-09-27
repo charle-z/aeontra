@@ -17,10 +17,10 @@ func projectWorktreeTestRequest(kind OperationKind) OperationRequest {
 		request.TestProfileID, request.TestProfileDigest, request.IdempotencyKey = "linux-workcell", "sha256:"+strings.Repeat("a", 64), "task-start-0001"
 	case OperationProjectWorktreeTestStatus:
 		request.WorktreeID, request.WorkJobID, request.WorkLeaseID, request.WorkFence = "wt_0123456789abcdef0123456789abcdef", "wj_0123456789abcdef0123456789abcdef", "wl_0123456789abcdef0123456789abcdef", 7
-		request.BackgroundProcessID, request.TestProfileID, request.TestProfileDigest = "pr_0123456789abcdef0123456789abcdef", "linux-workcell", "sha256:"+strings.Repeat("a", 64)
+		request.BackgroundProcessID, request.TestProfileID, request.TestProfileDigest = "pr_11111111111111111111111111111111", "linux-workcell", "sha256:"+strings.Repeat("a", 64)
 	case OperationProjectWorktreeTestStop:
 		request.WorktreeID, request.WorkJobID, request.WorkLeaseID, request.WorkFence = "wt_0123456789abcdef0123456789abcdef", "wj_0123456789abcdef0123456789abcdef", "wl_0123456789abcdef0123456789abcdef", 7
-		request.BackgroundProcessID, request.TestProfileID, request.TestProfileDigest, request.IdempotencyKey = "pr_0123456789abcdef0123456789abcdef", "linux-workcell", "sha256:"+strings.Repeat("a", 64), "task-stop-0001"
+		request.BackgroundProcessID, request.TestProfileID, request.TestProfileDigest, request.IdempotencyKey = "pr_11111111111111111111111111111111", "linux-workcell", "sha256:"+strings.Repeat("a", 64), "task-stop-0001"
 	}
 	return request
 }
@@ -71,7 +71,7 @@ func validProjectWorktreeTestOperationResult() OperationResult {
 		WorktreeBaseCommit: strings.Repeat("a", 40), WorktreeHeadCommit: strings.Repeat("b", 40), WorktreeBranch: "codex/worktree-0123456789abcdef0123456789abcdef",
 		WorkJobID: "wj_0123456789abcdef0123456789abcdef", WorkLeaseID: "wl_0123456789abcdef0123456789abcdef", WorkFence: 7,
 		TestProfileID: "linux-workcell", TestProfileDigest: "sha256:" + strings.Repeat("c", 64), TestTimeoutSeconds: 300,
-		ContentDigest: "sha256:" + strings.Repeat("d", 64), BackgroundProcessID: "pr_0123456789abcdef0123456789abcdef",
+		ContentDigest: "sha256:" + strings.Repeat("d", 64), BackgroundProcessID: "pr_11111111111111111111111111111111",
 		BackgroundProcessState: "running", BackgroundStartedAt: now,
 	}
 }

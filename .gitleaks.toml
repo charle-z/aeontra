@@ -24,6 +24,14 @@ paths = [
 regexes = ['''sx_0123456789abcdef0123456789abcdef''']
 
 [[allowlists]]
+description = "Historical synthetic managed test process ID; no credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^internal/edge/project_worktree_test_operations_test\.go$''']
+regexes = ['''request\.BackgroundProcessID, request\.TestProfileID, request\.TestProfileDigest, request\.IdempotencyKey = "pr_0123456789abcdef0123456789abcdef"''']
+
+[[allowlists]]
 description = "Exact synthetic values and key names used by tests and documentation"
 targetRules = ["generic-api-key"]
 condition = "AND"

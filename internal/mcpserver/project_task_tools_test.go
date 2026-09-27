@@ -320,6 +320,100 @@ func TestProjectTaskTestNonzeroExitNeverRecordsPassingReceipt(t *testing.T) {
 	}
 }
 
+func TestProjectTaskTestStopDoesNotAcceptWorker(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test-stop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Make one focused change."],"timeout_seconds":600,"idempotency_key":"task-test-stop-0001","test_profile_id":"go-check"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))
+	if _, err := server.table["project_task_test_stop"].handler(request); err == nil {
+		t.Fatal("stop without a captured test process unexpectedly succeeded")
+	}
+	if _, err := server.table["project_task_test_start"].handler(request); err != nil {
+		t.Fatal(err)
+	}
+	stopped, err := server.table["project_task_test_stop"].handler(request)
+	if err != nil || !strings.Contains(stopped, `"state":"stopping"`) || !strings.Contains(stopped, `"acceptance_state":"pending"`) {
+		t.Fatalf("stop=%s err=%v", stopped, err)
+	}
+	edges.mu.Lock()
+	edges.testProcessState = "stopped"
+	edges.mu.Unlock()
+	status, err := server.table["project_task_test_status"].handler(request)
+	if err != nil || !strings.Contains(status, `"test_evidence_state":"failed"`) {
+		t.Fatalf("status after stop=%s err=%v", status, err)
+	}
+	task, found, err := queue.Task(started.TaskID)
+	if err != nil || !found || task.Workers[0].TestAcceptanceReceipt != nil {
+		t.Fatalf("stop recorded passing receipt: task=%+v found=%v err=%v", task, found, err)
+	}
+}
+
+func TestProjectTaskTestReceiptSurvivesCleanup(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test-cleanup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Make one focused change."],"timeout_seconds":600,"idempotency_key":"task-test-cleanup-0001","test_profile_id":"go-check"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	request := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))
+	if _, err := server.table["project_task_test_start"].handler(request); err != nil {
+		t.Fatal(err)
+	}
+	edges.mu.Lock()
+	edges.testProcessState, edges.testExitKnown = "exited", true
+	edges.mu.Unlock()
+	if _, err := server.table["project_task_test_status"].handler(request); err != nil {
+		t.Fatal(err)
+	}
+	cleaned, err := server.table["project_task_cleanup"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q,"idempotency_key":"task-test-cleanup-call-0001"}`, started.TaskID)))
+	if err != nil || !strings.Contains(cleaned, `"cleaned":true`) || !strings.Contains(cleaned, `"test_evidence_state":"verified"`) {
+		t.Fatalf("cleanup=%s err=%v", cleaned, err)
+	}
+	status, err := server.table["project_task_status"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q}`, started.TaskID)))
+	if err != nil || !strings.Contains(status, `"test_evidence_state":"verified"`) || !strings.Contains(status, `"acceptance_state":"pending"`) {
+		t.Fatalf("status after cleanup=%s err=%v", status, err)
+	}
+	testStatus, err := server.table["project_task_test_status"].handler(request)
+	if err != nil || !strings.Contains(testStatus, `"test_evidence_state":"verified"`) {
+		t.Fatalf("test status after cleanup=%s err=%v", testStatus, err)
+	}
+}
+
 func TestProjectTaskTestCapturedStopRemainsBoundAfterLeaseRotation(t *testing.T) {
 	task := workqueue.TaskGroup{ID: "tg_11111111111111111111111111111111", Project: "project", Target: "parrot", BaseCommit: "0123456789abcdef0123456789abcdef01234567", TestAcceptanceContract: &workqueue.TaskTestAcceptanceContract{Version: 1, ProfileID: "go-check", ProfileDigest: "sha256:" + strings.Repeat("e", 64)}}
 	worker := workqueue.TaskWorker{Ordinal: 0, JobID: "j_11111111111111111111111111111111", WorktreeID: "wt_11111111111111111111111111111111", WorkspaceID: "ws_11111111111111111111111111111111", LeaseID: "le_new", Fence: 2}
