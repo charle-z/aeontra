@@ -19,11 +19,12 @@ import (
 )
 
 type projectTaskEdgeStore struct {
-	mu         sync.Mutex
-	next       int
-	operations map[string]edge.Operation
-	workspaces map[string]edge.WorkspaceBinding
-	worktrees  map[string]edge.OperationResult
+	mu               sync.Mutex
+	next             int
+	snapshotRequests int
+	operations       map[string]edge.Operation
+	workspaces       map[string]edge.WorkspaceBinding
+	worktrees        map[string]edge.OperationResult
 }
 
 type inactiveProjectTaskEdgeStore struct{ *projectTaskEdgeStore }
@@ -53,6 +54,9 @@ func (s *projectTaskEdgeStore) ResolveWorkspace(id string) (edge.WorkspaceBindin
 func (s *projectTaskEdgeStore) CreateOperation(deviceID string, kind edge.OperationKind, request edge.OperationRequest) (edge.Operation, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if kind == edge.OperationProjectSnapshot {
+		s.snapshotRequests++
+	}
 	for _, existing := range s.operations {
 		if existing.DeviceID == deviceID && existing.Kind == kind && reflect.DeepEqual(existing.Request, request) {
 			return existing, false, nil
@@ -63,6 +67,183 @@ func (s *projectTaskEdgeStore) CreateOperation(deviceID string, kind edge.Operat
 	op := edge.Operation{ID: id, DeviceID: deviceID, Kind: kind, Request: request, State: edge.OperationQueued}
 	s.operations[id] = op
 	return op, true, nil
+}
+
+func TestProjectTaskExactReplayWorksOfflineWithoutRestaging(t *testing.T) {
+	server := stampServer(t)
+	quota := int64(1024)
+	turns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: filepath.Join(t.TempDir(), "model-turns"), QuotaBytes: quota})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = turns.Close() })
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-replay-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithModelTurnStore(turns).WithEdgeStore(edges).WithWorkQueue(queue)
+
+	const request = `{"alias":"project","target":"parrot","goals":["Retain this exact task goal."],"timeout_seconds":600,"idempotency_key":"parallel-replay-offline-01"}`
+	first, err := server.table["project_task_start"].handler(json.RawMessage(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var original projectTaskView
+	if err := json.Unmarshal([]byte(first), &original); err != nil {
+		t.Fatal(err)
+	}
+	bodies, _, err := projectTaskGoalBodies([]string{"Retain this exact task goal."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	filler := make([]byte, int(quota)-len(bodies[0]))
+	if _, err := turns.StageRuntimeGoal(context.Background(), filler, modelturn.MaxTurnTTL); err != nil {
+		t.Fatalf("filling the remaining bounded goal quota: %v", err)
+	}
+
+	edges.mu.Lock()
+	snapshotCount := edges.snapshotRequests
+	edges.mu.Unlock()
+	server.edgeOperations = nil
+	server.edgeDevices = nil
+	server.edgeWorkspaces = nil
+	replayed, err := server.table["project_task_start"].handler(json.RawMessage(request))
+	if err != nil {
+		t.Fatalf("exact replay with Edge unavailable and goal quota full: %v", err)
+	}
+	var replay projectTaskView
+	if err := json.Unmarshal([]byte(replayed), &replay); err != nil || replay.TaskID != original.TaskID {
+		t.Fatalf("replay=%+v original=%+v err=%v", replay, original, err)
+	}
+	edges.mu.Lock()
+	gotSnapshots := edges.snapshotRequests
+	edges.mu.Unlock()
+	if gotSnapshots != snapshotCount {
+		t.Fatalf("snapshot requests changed from %d to %d during replay", snapshotCount, gotSnapshots)
+	}
+
+	changedGoal := strings.Replace(request, "Retain this exact task goal.", "A different task goal.", 1)
+	if _, err := server.table["project_task_start"].handler(json.RawMessage(changedGoal)); err == nil || !strings.Contains(err.Error(), "idempotency key conflicts") {
+		t.Fatalf("changed goal replay error=%v", err)
+	}
+	changedTimeout := strings.Replace(request, `"timeout_seconds":600`, `"timeout_seconds":601`, 1)
+	if _, err := server.table["project_task_start"].handler(json.RawMessage(changedTimeout)); err == nil || !strings.Contains(err.Error(), "idempotency key conflicts") {
+		t.Fatalf("changed timeout replay error=%v", err)
+	}
+}
+
+func TestProjectTaskReplayFailsClosedBeforeEdgeForMissingOrMismatchedGoal(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		missingRef bool
+	}{
+		{name: "missing", missingRef: true},
+		{name: "mismatched"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, turns := modelTurnServer(t)
+			queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-goal-fail-test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = queue.Close() })
+			edges := newProjectTaskEdgeStore()
+			server.WithEdgeStore(edges).WithWorkQueue(queue)
+			const key = "parallel-goal-integrity-01"
+			const request = `{"alias":"project","target":"parrot","goals":["Inspect the exact goal body."],"timeout_seconds":600,"idempotency_key":"parallel-goal-integrity-01"}`
+			_, hashes, err := projectTaskGoalBodies([]string{"Inspect the exact goal body."})
+			if err != nil {
+				t.Fatal(err)
+			}
+			goalRef := "mb_11111111111111111111111111111111"
+			if !test.missingRef {
+				other, err := turns.StageRuntimeGoal(context.Background(), []byte("different immutable body"), modelturn.MaxTurnTTL)
+				if err != nil {
+					t.Fatal(err)
+				}
+				goalRef = other.BodyRef
+			}
+			_, _, err = queue.CreateTask(workqueue.TaskSpec{
+				IdempotencyKey: key, Project: "project", Target: "parrot", BaseCommit: strings.Repeat("a", 40),
+				GoalHash: projectTaskGroupHash(hashes), WorkerGoalHashes: hashes, WorkerGoalRefs: []string{goalRef},
+				Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := server.table["project_task_start"].handler(json.RawMessage(request)); !errors.Is(err, modelturn.ErrRequestRefConflict) {
+				t.Fatalf("invalid task goal replay error=%v", err)
+			}
+			edges.mu.Lock()
+			snapshotRequests, operations := edges.snapshotRequests, len(edges.operations)
+			edges.mu.Unlock()
+			if snapshotRequests != 0 || operations != 0 {
+				t.Fatalf("invalid goal caused Edge effects: snapshots=%d operations=%d", snapshotRequests, operations)
+			}
+		})
+	}
+}
+
+func TestProjectTaskStatusMarksOnlyWorkerWithUnavailableGoal(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-goal-status-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	bodies, hashes, err := projectTaskGoalBodies([]string{"Valid worker goal.", "Unavailable worker goal."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	validGoal, err := turns.StageRuntimeGoal(context.Background(), bodies[0], modelturn.MaxTurnTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _, err := queue.CreateTask(workqueue.TaskSpec{
+		IdempotencyKey: "parallel-goal-status-0001", Project: "project", Target: "parrot", BaseCommit: strings.Repeat("a", 40),
+		GoalHash: projectTaskGroupHash(hashes), WorkerGoalHashes: hashes,
+		WorkerGoalRefs: []string{validGoal.BodyRef, "mb_11111111111111111111111111111111"},
+		Pool:           "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 2, ExecutionTimeoutSeconds: 600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leased, err := queue.LeaseTaskWorker(task.ID, 1, server.projectTaskHolder(), projectTaskLeaseTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const worktreeID = "wt_22222222222222222222222222222222"
+	const workspaceID = "ws_22222222222222222222222222222222"
+	const runtimeID = "mr_22222222222222222222222222222222"
+	if _, err := queue.BindTaskWorker(workqueue.TaskWorkerBinding{
+		TaskID: task.ID, Ordinal: 1, JobID: leased.JobID, LeaseID: leased.LeaseID, Fence: leased.Fence,
+		WorktreeID: worktreeID, WorkspaceID: workspaceID, RuntimeID: runtimeID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	output, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + task.ID + `"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view projectTaskView
+	if err := json.Unmarshal([]byte(output), &view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Workers) != 2 || view.Workers[0].Attention == "task_goal_unavailable" || view.Workers[0].State == "reconciliation_required" ||
+		view.Workers[1].State != "reconciliation_required" || view.Workers[1].Attention != "task_goal_unavailable" ||
+		view.Workers[1].WorktreeID != worktreeID || view.Workers[1].WorkspaceID != workspaceID || view.Workers[1].RuntimeID != runtimeID {
+		t.Fatalf("task status lost worker identity or marked the wrong worker: %+v", view)
+	}
+	edges.mu.Lock()
+	operations := len(edges.operations)
+	edges.mu.Unlock()
+	if operations != 0 {
+		t.Fatalf("missing goal status caused %d Edge operations", operations)
+	}
 }
 
 func (s *projectTaskEdgeStore) WaitOperation(_ context.Context, id string, _ time.Duration) (edge.Operation, error) {

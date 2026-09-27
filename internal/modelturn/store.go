@@ -63,10 +63,15 @@ var (
 var safeIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 type StoreConfig struct {
-	Root       string
-	QuotaBytes int64
-	DefaultTTL time.Duration
-	Now        func() time.Time
+	Root           string
+	QuotaBytes     int64
+	DefaultTTL     time.Duration
+	Now            func() time.Time
+	TaskGoalOwners []TaskGoalOwner
+	// DeferTaskGoalCleanup lets the application restore cross-store task pins
+	// individually before the first expiry sweep. Callers must reconcile pins
+	// and invoke Cleanup before exposing the store to task work.
+	DeferTaskGoalCleanup bool
 }
 
 type Record struct {
@@ -177,13 +182,21 @@ func OpenStore(cfg StoreConfig) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if !cfg.DeferTaskGoalCleanup {
+		if err := store.ReconcileTaskGoalPins(context.Background(), cfg.TaskGoalOwners, 0); err != nil {
+			_ = db.Close()
+			return nil, errors.New("model task goal references are unavailable or inconsistent")
+		}
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = db.Close()
 		return nil, errors.New("model turn database permissions could not be secured")
 	}
-	if err := store.Cleanup(context.Background()); err != nil {
-		_ = db.Close()
-		return nil, err
+	if !cfg.DeferTaskGoalCleanup {
+		if err := store.Cleanup(context.Background()); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
 	}
 	store.lastCleanup = store.now().UTC()
 	return store, nil
@@ -657,7 +670,8 @@ func (s *Store) cleanupLocked(ctx context.Context, tx *sql.Tx, now time.Time) er
 	if _, err := tx.ExecContext(ctx, `DELETE FROM turn_bodies WHERE expires_at<=?`, now.UnixNano()); err != nil {
 		return errors.New("model body cleanup failed")
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?`, now.UnixNano()); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?
+		AND NOT EXISTS (SELECT 1 FROM runtime_goal_pins p WHERE p.body_ref=runtime_bodies.body_ref)`, now.UnixNano()); err != nil {
 		return errors.New("runtime body cleanup failed")
 	}
 	return nil

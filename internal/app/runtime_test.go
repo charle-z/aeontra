@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/observability"
+	"github.com/charle-z/mcp-devbox/internal/workqueue"
 )
 
 func clearRuntimeEnv(t *testing.T) {
@@ -170,6 +172,83 @@ func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 	}
 	if status := runtime.Service.SandboxStatus(); !strings.Contains(status, "backend: none") {
 		t.Fatalf("sandbox status = %q", status)
+	}
+}
+
+func TestRestoreActiveTaskGoalPinsPrecedesCleanupAndQuarantinesLostQueuedGoal(t *testing.T) {
+	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	modelRoot := filepath.Join(t.TempDir(), "model-turns")
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "app-goal-recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	turns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: modelRoot, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalContent := []byte("legacy task goal that remains private")
+	goal, err := turns.StageRuntimeGoal(context.Background(), goalContent, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validTask, _, err := queue.CreateTask(workqueue.TaskSpec{
+		IdempotencyKey: "legacy-valid-task-0001", Project: "project", Target: "parrot", BaseCommit: strings.Repeat("a", 40),
+		GoalHash: goal.ContentDigest, WorkerGoalHashes: []string{goal.ContentDigest}, WorkerGoalRefs: []string{goal.BodyRef},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingDigest := "sha256:" + strings.Repeat("1", 64)
+	missingTask, _, err := queue.CreateTask(workqueue.TaskSpec{
+		IdempotencyKey: "legacy-missing-task-0001", Project: "project", Target: "parrot", BaseCommit: strings.Repeat("b", 40),
+		GoalHash: missingDigest, WorkerGoalHashes: []string{missingDigest}, WorkerGoalRefs: []string{"mb_11111111111111111111111111111111"},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.Close(); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Hour)
+	turns, err = modelturn.OpenStore(modelturn.StoreConfig{Root: modelRoot, Now: func() time.Time { return now }, DeferTaskGoalCleanup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = turns.Close() })
+	active, err := queue.ActiveTaskGoalRefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreActiveTaskGoalPins(queue, turns, active); err != nil {
+		t.Fatalf("startup goal reconciliation rejected one irrecoverable task globally: %v", err)
+	}
+	runtime, _, err := turns.StartBoundRuntime(context.Background(), modelturn.BoundRuntimeRequest{
+		DeviceID: "ed_11111111111111111111111111111111", WorkspaceID: "ws_11111111111111111111111111111111",
+		Controller: modelturn.ControllerRemoteEdge, GoalSummary: modelturn.GoalSummary(goalContent), GoalRef: goal.BodyRef,
+		GoalDigest: goal.ContentDigest, IdempotencyKeyDigest: modelturn.IdempotencyDigest("legacy-task-worker"),
+		TTL: modelturn.RemoteRuntimeStartupTTL, ExecutionTTL: 10 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("valid expired legacy goal was not pinned before cleanup: %v", err)
+	}
+	body, digest, err := turns.RuntimeGoal(context.Background(), runtime.RuntimeID, runtime.DeviceID)
+	if err != nil || digest != goal.ContentDigest || string(body) != string(goalContent) {
+		t.Fatalf("restored goal=%q digest=%q err=%v", body, digest, err)
+	}
+	failed, found, err := queue.Task(missingTask.ID)
+	if err != nil || !found || failed.State != workqueue.TaskFailed || failed.Workers[0].Reason != workqueue.ReasonTaskGoalUnavailable || failed.Workers[0].Summary != workqueue.TaskGoalUnavailableSummary {
+		t.Fatalf("missing-goal task=%+v found=%v err=%v", failed, found, err)
+	}
+	activeAfterRestore, err := queue.ActiveTaskGoalRefs()
+	if err != nil || len(activeAfterRestore) != 1 || activeAfterRestore[0].IdempotencyKey != "legacy-valid-task-0001" {
+		t.Fatalf("active refs after per-task quarantine=%+v err=%v", activeAfterRestore, err)
+	}
+	retained, found, err := queue.Task(validTask.ID)
+	if err != nil || !found || retained.State != workqueue.TaskQueued {
+		t.Fatalf("valid legacy task=%+v found=%v err=%v", retained, found, err)
 	}
 }
 

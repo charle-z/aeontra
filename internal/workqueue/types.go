@@ -22,14 +22,17 @@ const (
 )
 
 const (
-	ReasonNone              Reason = ""
-	ReasonDependencyPending Reason = "dependency_pending"
-	ReasonDependencyFailed  Reason = "dependency_failed"
-	ReasonLeaseExpired      Reason = "lease_expired"
-	ReasonRecoveryExhausted Reason = "recovery_exhausted"
-	ReasonCancelled         Reason = "cancelled"
-	ReasonCancelRequested   Reason = "cancel_requested"
+	ReasonNone                Reason = ""
+	ReasonDependencyPending   Reason = "dependency_pending"
+	ReasonDependencyFailed    Reason = "dependency_failed"
+	ReasonLeaseExpired        Reason = "lease_expired"
+	ReasonRecoveryExhausted   Reason = "recovery_exhausted"
+	ReasonTaskGoalUnavailable Reason = "task_goal_unavailable"
+	ReasonCancelled           Reason = "cancelled"
+	ReasonCancelRequested     Reason = "cancel_requested"
 )
+
+const TaskGoalUnavailableSummary = "task goal reference unavailable after restart; worker was not started"
 
 var ErrNoJobAvailable = errors.New("workqueue: no job available")
 
