@@ -44,23 +44,27 @@ const (
 )
 
 var (
-	projectToolboxIDPattern               = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
-	projectToolboxImageIDPattern          = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
-	projectToolboxEnvKeyPattern           = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
-	projectToolboxServiceIDPattern        = regexp.MustCompile(`^ts_[a-f0-9]{32}$`)
-	projectToolboxServiceNamePattern      = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
-	projectToolboxCgroupParentPattern     = regexp.MustCompile(`^/system\.slice/p12-rootless-podman-[0-9]+-[0-9]+-[0-9]+\.service/containers$`)
-	ErrProjectToolboxNotFound             = errors.New("project toolbox not found")
-	ErrProjectToolboxNotOwned             = errors.New("project toolbox is not owned")
-	ErrProjectToolboxContainerUnavailable = fmt.Errorf("%w: container unavailable", ErrProjectToolboxNotOwned)
-	ErrProjectToolboxContainerMissing     = fmt.Errorf("%w: container missing", ErrProjectToolboxNotOwned)
-	ErrProjectToolboxIdentityMismatch     = fmt.Errorf("%w: identity mismatch", ErrProjectToolboxNotOwned)
-	ErrProjectToolboxMountMismatch        = fmt.Errorf("%w: mount mismatch", ErrProjectToolboxNotOwned)
-	ErrProjectToolboxResourceMismatch     = fmt.Errorf("%w: resource mismatch", ErrProjectToolboxNotOwned)
-	ErrProjectToolboxEnvironmentMismatch  = fmt.Errorf("%w: environment mismatch", ErrProjectToolboxNotOwned)
-	ErrProjectToolboxEndpointStale        = fmt.Errorf("%w: endpoint stale", ErrProjectToolboxNotOwned)
-	ErrProjectToolboxUnsafeState          = errors.New("project toolbox state is unsafe")
-	ErrProjectToolboxUnavailable          = errors.New("project toolbox rootless engine is unavailable")
+	projectToolboxIDPattern                      = regexp.MustCompile(`^tb_[a-f0-9]{32}$`)
+	projectToolboxImageIDPattern                 = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	projectToolboxEnvKeyPattern                  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
+	projectToolboxServiceIDPattern               = regexp.MustCompile(`^ts_[a-f0-9]{32}$`)
+	projectToolboxServiceNamePattern             = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	projectToolboxCgroupParentPattern            = regexp.MustCompile(`^/system\.slice/p12-rootless-podman-[0-9]+-[0-9]+-[0-9]+\.service/containers$`)
+	ErrProjectToolboxNotFound                    = errors.New("project toolbox not found")
+	ErrProjectToolboxNotOwned                    = errors.New("project toolbox is not owned")
+	ErrProjectToolboxContainerUnavailable        = fmt.Errorf("%w: container unavailable", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxContainerMissing            = fmt.Errorf("%w: container missing", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxIdentityMismatch            = fmt.Errorf("%w: identity mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxMountMismatch               = fmt.Errorf("%w: mount mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxResourceMismatch            = fmt.Errorf("%w: resource mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxEnvironmentMismatch         = fmt.Errorf("%w: environment mismatch", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxEndpointStale               = fmt.Errorf("%w: endpoint stale", ErrProjectToolboxNotOwned)
+	ErrProjectToolboxUnsafeState                 = errors.New("project toolbox state is unsafe")
+	ErrProjectToolboxUnavailable                 = errors.New("project toolbox rootless engine is unavailable")
+	ErrProjectToolboxEndpointUnavailable         = errors.New("project toolbox endpoint is unavailable")
+	ErrProjectToolboxOwnershipInspectUnavailable = errors.New("project toolbox ownership inspection is unavailable")
+	ErrProjectToolboxStateInspectUnavailable     = errors.New("project toolbox state inspection is unavailable")
+	ErrProjectToolboxStorageInspectUnavailable   = errors.New("project toolbox storage inspection is unavailable")
 )
 
 type ProjectToolboxManagerConfig struct {
@@ -1072,7 +1076,7 @@ func (manager *ProjectToolboxManager) statusSnapshot(ctx context.Context, record
 	}
 	output, err := manager.run(ctx, "inspect", "--format", "{{.State.Status}}|{{.State.Running}}", record.ContainerName)
 	if err != nil {
-		return ProjectToolboxSnapshot{}, manager.classifyContainerInspectFailure(ctx, record, record.ContainerName)
+		return ProjectToolboxSnapshot{}, projectToolboxInspectionFailure(ErrProjectToolboxStateInspectUnavailable, manager.classifyContainerInspectFailure(ctx, record, record.ContainerName))
 	}
 	state := ProjectToolboxUnknown
 	switch strings.TrimSpace(string(output)) {
@@ -1118,6 +1122,17 @@ func (manager *ProjectToolboxManager) classifyContainerInspectFailure(ctx contex
 		return ErrProjectToolboxEndpointStale
 	}
 	return ErrProjectToolboxContainerMissing
+}
+
+func projectToolboxInspectionFailure(stage, classified error) error {
+	switch {
+	case errors.Is(classified, ErrProjectToolboxContainerMissing), errors.Is(classified, ErrProjectToolboxEndpointStale):
+		return classified
+	case errors.Is(classified, ErrProjectToolboxContainerUnavailable), errors.Is(classified, ErrProjectToolboxUnavailable):
+		return fmt.Errorf("%w: %w", stage, classified)
+	default:
+		return classified
+	}
 }
 
 func (manager *ProjectToolboxManager) recoverOwnedContainer(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
@@ -1183,7 +1198,7 @@ func (manager *ProjectToolboxManager) verifyOwnershipReferenceMode(ctx context.C
 	}
 	output, err := manager.run(ctx, "inspect", "--format", `{{index .Config.Labels "`+projectToolboxLabelKey+`"}}|{{.Image}}`, reference)
 	if err != nil {
-		return manager.classifyContainerInspectFailure(ctx, record, reference)
+		return projectToolboxInspectionFailure(ErrProjectToolboxOwnershipInspectUnavailable, manager.classifyContainerInspectFailure(ctx, record, reference))
 	}
 	label, rawImageID, found := strings.Cut(strings.TrimSpace(string(output)), "|")
 	imageID, normalizeErr := normalizeProjectToolboxImageID(rawImageID)
@@ -1305,12 +1320,12 @@ func (manager *ProjectToolboxManager) storage(ctx context.Context, containerName
 	output, err := manager.run(ctx, "inspect", "--size", "--format", "{{.SizeRw}}|{{.SizeRootFs}}", containerName)
 	parts := strings.Split(strings.TrimSpace(string(output)), "|")
 	if err != nil || len(parts) != 2 {
-		return 0, 0, ErrProjectToolboxUnavailable
+		return 0, 0, fmt.Errorf("%w: %w", ErrProjectToolboxStorageInspectUnavailable, ErrProjectToolboxUnavailable)
 	}
 	writableBytes, writableErr := strconv.ParseInt(parts[0], 10, 64)
 	rootFSBytes, rootErr := strconv.ParseInt(parts[1], 10, 64)
 	if writableErr != nil || rootErr != nil || writableBytes < 0 || rootFSBytes <= 0 {
-		return 0, 0, ErrProjectToolboxUnavailable
+		return 0, 0, fmt.Errorf("%w: %w", ErrProjectToolboxStorageInspectUnavailable, ErrProjectToolboxUnavailable)
 	}
 	return writableBytes, rootFSBytes, nil
 }

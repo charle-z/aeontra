@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -45,13 +46,16 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 	}
 	endpoints, err := edgeclient.DiscoverRootlessContainerEndpoints(os.Geteuid(), "")
 	if err != nil || len(endpoints) == 0 {
-		return edge.OperationResult{}, "project_toolbox_unavailable"
+		return edge.OperationResult{}, safeProjectToolboxSelectionFailure(edgeclient.ErrProjectToolboxEndpointUnavailable)
 	}
 	managers := make([]projectToolboxOperations, 0, len(endpoints))
 	for _, endpoint := range endpoints {
 		manager, openErr := edgeclient.OpenProjectToolboxManager(edgeclient.ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint})
 		if openErr != nil {
-			return edge.OperationResult{}, "project_toolbox_unavailable"
+			if errors.Is(openErr, edgeclient.ErrProjectToolboxUnsafeState) {
+				return edge.OperationResult{}, safeProjectToolboxSelectionFailure(openErr)
+			}
+			return edge.OperationResult{}, safeProjectToolboxSelectionFailure(fmt.Errorf("%w: %w", edgeclient.ErrProjectToolboxEndpointUnavailable, openErr))
 		}
 		managers = append(managers, manager)
 	}
@@ -64,6 +68,14 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 
 func safeProjectToolboxSelectionFailure(err error) string {
 	switch {
+	case errors.Is(err, edgeclient.ErrProjectToolboxEndpointUnavailable):
+		return "project_toolbox_endpoint_unavailable"
+	case errors.Is(err, edgeclient.ErrProjectToolboxOwnershipInspectUnavailable):
+		return "project_toolbox_ownership_inspect_unavailable"
+	case errors.Is(err, edgeclient.ErrProjectToolboxStateInspectUnavailable):
+		return "project_toolbox_state_inspect_unavailable"
+	case errors.Is(err, edgeclient.ErrProjectToolboxStorageInspectUnavailable):
+		return "project_toolbox_storage_inspect_unavailable"
 	case errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
 		return "project_toolbox_container_unavailable"
 	case errors.Is(err, edgeclient.ErrProjectToolboxContainerMissing):
@@ -87,7 +99,7 @@ func safeProjectToolboxSelectionFailure(err error) string {
 
 func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxOperations, resolved edgeclient.ProjectResolution, operation edge.Operation) (projectToolboxOperations, error) {
 	if len(managers) == 0 {
-		return nil, edgeclient.ErrProjectToolboxUnavailable
+		return nil, edgeclient.ErrProjectToolboxEndpointUnavailable
 	}
 	if !projectToolboxOperationNeedsLiveOwnership(operation.Kind) {
 		return managers[0], nil
@@ -230,6 +242,14 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	}
 	if err != nil {
 		switch {
+		case errors.Is(err, edgeclient.ErrProjectToolboxEndpointUnavailable):
+			return edge.OperationResult{}, "project_toolbox_endpoint_unavailable"
+		case errors.Is(err, edgeclient.ErrProjectToolboxOwnershipInspectUnavailable):
+			return edge.OperationResult{}, "project_toolbox_ownership_inspect_unavailable"
+		case errors.Is(err, edgeclient.ErrProjectToolboxStateInspectUnavailable):
+			return edge.OperationResult{}, "project_toolbox_state_inspect_unavailable"
+		case errors.Is(err, edgeclient.ErrProjectToolboxStorageInspectUnavailable):
+			return edge.OperationResult{}, "project_toolbox_storage_inspect_unavailable"
 		case errors.Is(err, edgeclient.ErrProjectToolboxContainerMissing):
 			return edge.OperationResult{}, "project_toolbox_container_missing"
 		case errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
