@@ -98,6 +98,18 @@ type RuntimeBodyReference struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 }
 
+// TaskGoalReference is a private reference to one immutable task worker goal.
+type TaskGoalReference struct {
+	BodyRef       string
+	ContentDigest string
+}
+
+// TaskGoalOwner binds staged goals to a durable task's idempotency identity.
+type TaskGoalOwner struct {
+	OwnerDigest string
+	References  []TaskGoalReference
+}
+
 func GoalSummary(goal []byte) string {
 	sum := sha256.Sum256(goal)
 	return "goal:sha256:" + hex.EncodeToString(sum[:12])
@@ -132,7 +144,8 @@ func (s *Store) StageRuntimeGoal(ctx context.Context, content []byte, ttl time.D
 		return RuntimeBodyReference{}, errors.New("runtime goal transaction failed")
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?`, now.UnixNano()); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?
+		AND NOT EXISTS (SELECT 1 FROM runtime_goal_pins p WHERE p.body_ref=runtime_bodies.body_ref)`, now.UnixNano()); err != nil {
 		return RuntimeBodyReference{}, errors.New("runtime goal cleanup failed")
 	}
 	var used int64
@@ -173,7 +186,10 @@ func (s *Store) StartBoundRuntime(ctx context.Context, request BoundRuntimeReque
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var goalDigest string
-	if err := s.db.QueryRowContext(ctx, `SELECT content_digest FROM runtime_bodies WHERE body_ref=? AND kind='goal' AND expires_at>?`, request.GoalRef, now.UnixNano()).Scan(&goalDigest); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT b.content_digest FROM runtime_bodies b
+		WHERE b.body_ref=? AND b.kind='goal' AND (
+			b.expires_at>? OR EXISTS (SELECT 1 FROM runtime_goal_pins p WHERE p.body_ref=b.body_ref AND p.content_digest=b.content_digest)
+		)`, request.GoalRef, now.UnixNano()).Scan(&goalDigest); err != nil {
 		return Runtime{}, false, ErrRequestRefConflict
 	}
 	if goalDigest != request.GoalDigest || !strings.HasPrefix(goalDigest, "sha256:") || len(goalDigest) != len("sha256:")+64 || request.GoalSummary != "goal:sha256:"+goalDigest[len("sha256:"):len("sha256:")+24] {
@@ -436,7 +452,10 @@ func (s *Store) RuntimeGoal(ctx context.Context, runtimeID, deviceID string) ([]
 	}
 	var content []byte
 	var digest string
-	if err := s.db.QueryRowContext(ctx, `SELECT content,content_digest FROM runtime_bodies WHERE body_ref=? AND expires_at>?`, ref, s.now().UTC().UnixNano()).Scan(&content, &digest); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT b.content,b.content_digest FROM runtime_bodies b
+		WHERE b.body_ref=? AND (
+			b.expires_at>? OR EXISTS (SELECT 1 FROM runtime_goal_pins p WHERE p.body_ref=b.body_ref AND p.content_digest=b.content_digest)
+		)`, ref, s.now().UTC().UnixNano()).Scan(&content, &digest); err != nil {
 		return nil, "", errors.New("model runtime goal unavailable")
 	}
 	return content, digest, nil

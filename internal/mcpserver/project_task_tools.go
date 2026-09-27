@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -179,16 +180,6 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 	if s.workQueue == nil {
 		return "", errWorkQueueUnavailable
 	}
-	if s.modelTurns == nil {
-		return "", errModelTurnStoreUnavailable
-	}
-	if s.edgeOperations == nil || s.edgeDevices == nil || s.edgeWorkspaces == nil {
-		return "", errEdgeStoreUnavailable
-	}
-	resolver, ok := s.edgeDevices.(edgeDeviceAliasRegistry)
-	if !ok {
-		return "", errors.New("edge target alias resolution is unavailable")
-	}
 	var params projectTaskStartParams
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
@@ -198,6 +189,45 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 	params.IdempotencyKey = strings.TrimSpace(params.IdempotencyKey)
 	if len(params.Goals) < 1 || len(params.Goals) > workqueue.MaxTaskWorkers || params.TimeoutSeconds < 1 || time.Duration(params.TimeoutSeconds)*time.Second > modelturn.MaxTurnTTL || len(params.IdempotencyKey) < 8 || len(params.IdempotencyKey) > 118 {
 		return "", modelturn.ErrInvalidRequest
+	}
+	bodies, hashes, err := projectTaskGoalBodies(params.Goals)
+	if err != nil {
+		return "", err
+	}
+	groupHash := projectTaskGroupHash(hashes)
+	startLock := s.projectTaskStartLock(params.IdempotencyKey)
+	startLock.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			startLock.Unlock()
+		}
+	}()
+	if existing, found, lookupErr := s.workQueue.TaskByIdempotencyKey(params.IdempotencyKey); lookupErr != nil {
+		return "", lookupErr
+	} else if found {
+		if !projectTaskRequestMatches(existing, params, hashes, groupHash) {
+			return "", errors.New("workqueue: task idempotency key conflicts")
+		}
+		if !terminalProjectTask(existing.State) {
+			if s.modelTurns == nil {
+				return "", errModelTurnStoreUnavailable
+			}
+			if err := s.modelTurns.PinTaskGoalReferences(context.Background(), modelturn.IdempotencyDigest(existing.IdempotencyKey), taskGoalReferences(existing.Workers)); err != nil {
+				return "", err
+			}
+		}
+		return marshalToolValue(projectTaskPublicView(existing, false), nil)
+	}
+	if s.modelTurns == nil {
+		return "", errModelTurnStoreUnavailable
+	}
+	if s.edgeOperations == nil || s.edgeDevices == nil || s.edgeWorkspaces == nil {
+		return "", errEdgeStoreUnavailable
+	}
+	resolver, ok := s.edgeDevices.(edgeDeviceAliasRegistry)
+	if !ok {
+		return "", errors.New("edge target alias resolution is unavailable")
 	}
 	device, err := resolver.ResolveActiveDeviceName(params.Target)
 	if err != nil || !s.edgeDevices.DeviceActive(device.ID) {
@@ -215,27 +245,19 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 		return "", errors.New("project task base snapshot failed")
 	}
 
-	refs := make([]modelturn.RuntimeBodyReference, 0, len(params.Goals))
-	hashes := make([]string, 0, len(params.Goals))
-	for index, goal := range params.Goals {
-		if len([]byte(goal)) == 0 || int64(len([]byte(goal))) > modelturn.MaxGoalBodyBytes || !utf8.ValidString(goal) || strings.TrimSpace(goal) == "" {
-			discardTaskGoalRefs(s.modelTurns, refs)
-			return "", modelturn.ErrInvalidRequest
-		}
-		body := projectTaskWorkerGoal(index, len(params.Goals), goal)
-		if int64(len(body)) > modelturn.MaxGoalBodyBytes {
-			discardTaskGoalRefs(s.modelTurns, refs)
-			return "", modelturn.ErrBodyTooLarge
-		}
+	refs := make([]modelturn.RuntimeBodyReference, 0, len(bodies))
+	for _, body := range bodies {
 		ref, stageErr := s.modelTurns.StageRuntimeGoal(context.Background(), body, modelturn.MaxTurnTTL)
 		if stageErr != nil {
-			discardTaskGoalRefs(s.modelTurns, refs)
-			return "", stageErr
+			return "", errors.Join(stageErr, discardTaskGoalRefs(s.modelTurns, refs))
 		}
 		refs = append(refs, ref)
-		hashes = append(hashes, ref.ContentDigest)
 	}
-	groupHash := projectTaskGroupHash(hashes)
+	goalPins := runtimeTaskGoalReferences(refs)
+	ownerDigest := modelturn.IdempotencyDigest(params.IdempotencyKey)
+	if err := s.modelTurns.PinTaskGoalReferences(context.Background(), ownerDigest, goalPins); err != nil {
+		return "", errors.Join(err, discardTaskGoalRefs(s.modelTurns, refs))
+	}
 	goalRefs := make([]string, len(refs))
 	for index, ref := range refs {
 		goalRefs[index] = ref.BodyRef
@@ -245,15 +267,68 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 		GoalHash: groupHash, WorkerGoalHashes: hashes, WorkerGoalRefs: goalRefs, Pool: "edge." + params.Target + ".runtime", Profile: "codex.worker",
 		WorkerCount: len(params.Goals), ExecutionTimeoutSeconds: params.TimeoutSeconds,
 	})
-	if err != nil || !created {
-		discardTaskGoalRefs(s.modelTurns, refs)
-	}
 	if err != nil {
-		return "", err
+		cleanupErr := s.modelTurns.UnpinTaskGoalReferences(context.Background(), ownerDigest, goalPins)
+		return "", errors.Join(err, cleanupErr, discardTaskGoalRefs(s.modelTurns, refs))
 	}
+	if !created {
+		if !projectTaskRequestMatches(task, params, hashes, groupHash) {
+			cleanupErr := s.modelTurns.UnpinTaskGoalReferences(context.Background(), ownerDigest, goalPins)
+			return "", errors.Join(errors.New("workqueue: task idempotency key conflicts"), cleanupErr, discardTaskGoalRefs(s.modelTurns, refs))
+		}
+		cleanupErr := s.modelTurns.UnpinTaskGoalReferences(context.Background(), ownerDigest, goalPins)
+		if cleanupErr != nil {
+			return "", cleanupErr
+		}
+		if err := s.modelTurns.PinTaskGoalReferences(context.Background(), ownerDigest, taskGoalReferences(task.Workers)); err != nil {
+			return "", err
+		}
+		if err := discardTaskGoalRefs(s.modelTurns, refs); err != nil {
+			return "", err
+		}
+	}
+	startLock.Unlock()
+	locked = false
 	_ = s.reconcileProjectTask(context.Background(), task.ID, true)
 	task, _, err = s.workQueue.Task(task.ID)
 	return marshalToolValue(projectTaskPublicView(task, false), err)
+}
+
+func projectTaskGoalBodies(goals []string) ([][]byte, []string, error) {
+	bodies := make([][]byte, len(goals))
+	hashes := make([]string, len(goals))
+	for index, goal := range goals {
+		if len([]byte(goal)) == 0 || int64(len([]byte(goal))) > modelturn.MaxGoalBodyBytes || !utf8.ValidString(goal) || strings.TrimSpace(goal) == "" {
+			return nil, nil, modelturn.ErrInvalidRequest
+		}
+		body := projectTaskWorkerGoal(index, len(goals), goal)
+		if int64(len(body)) > modelturn.MaxGoalBodyBytes {
+			return nil, nil, modelturn.ErrBodyTooLarge
+		}
+		sum := sha256.Sum256(body)
+		bodies[index] = body
+		hashes[index] = "sha256:" + hex.EncodeToString(sum[:])
+	}
+	return bodies, hashes, nil
+}
+
+func projectTaskRequestMatches(task workqueue.TaskGroup, params projectTaskStartParams, hashes []string, groupHash string) bool {
+	if task.IdempotencyKey != params.IdempotencyKey || task.Project != params.Alias || task.Target != params.Target ||
+		task.BaseCommit == "" || task.GoalHash != groupHash || task.WorkerCount != len(hashes) || task.ExecutionTimeoutSeconds != params.TimeoutSeconds ||
+		task.Pool != "edge."+params.Target+".runtime" || task.Profile != "codex.worker" || len(task.Workers) != len(hashes) {
+		return false
+	}
+	for index, worker := range task.Workers {
+		if worker.Ordinal != index || worker.GoalHash != hashes[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Server) projectTaskStartLock(key string) *sync.Mutex {
+	digest := sha256.Sum256([]byte(key))
+	return &s.taskStartLocks[int(digest[0])%len(s.taskStartLocks)]
 }
 
 func (s *Server) handleProjectTaskStatus(arguments json.RawMessage) (string, error) {
@@ -264,10 +339,39 @@ func (s *Server) handleProjectTaskStatus(arguments json.RawMessage) (string, err
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
 	}
-	_ = s.reconcileProjectTask(context.Background(), params.TaskID, false)
+	reconcileErr := s.reconcileProjectTask(context.Background(), params.TaskID, false)
 	task, found, err := s.workQueue.Task(params.TaskID)
 	if err != nil || !found {
 		return "", errors.New("project task not found")
+	}
+	if errors.Is(reconcileErr, modelturn.ErrRequestRefConflict) {
+		view := projectTaskPublicView(task, false)
+		ownerDigest := modelturn.IdempotencyDigest(task.IdempotencyKey)
+		invalidGoalWorkers := make([]int, 0, 1)
+		for index, worker := range task.Workers {
+			if worker.State == workqueue.StateSucceeded || worker.State == workqueue.StateFailed || worker.State == workqueue.StateCancelled {
+				continue
+			}
+			ref := modelturn.TaskGoalReference{BodyRef: worker.GoalRef, ContentDigest: worker.GoalHash}
+			if err := s.modelTurns.PinTaskGoalReferences(context.Background(), ownerDigest, []modelturn.TaskGoalReference{ref}); !errors.Is(err, modelturn.ErrRequestRefConflict) {
+				continue
+			}
+			view.Workers[index].State = "reconciliation_required"
+			view.Workers[index].AcceptanceState = "reconciliation_required"
+			view.Workers[index].RuntimeState = "unknown"
+			invalidGoalWorkers = append(invalidGoalWorkers, index)
+			if worker.RuntimeID != "" {
+				if runtime, runtimeErr := s.modelTurns.Runtime(context.Background(), worker.RuntimeID); runtimeErr == nil {
+					view.Workers[index].RuntimeState = string(runtime.State)
+				}
+			}
+		}
+		view.State = "reconciliation_required"
+		setProjectTaskContinuation(&view)
+		for _, index := range invalidGoalWorkers {
+			view.Workers[index].Attention = "task_goal_unavailable"
+		}
+		return marshalToolValue(view, nil)
 	}
 	return marshalToolValue(s.projectTaskStatusView(context.Background(), task), nil)
 }
@@ -374,6 +478,9 @@ func (s *Server) reconcileProjectTasksOnce(ctx context.Context) error {
 	if err := s.workQueue.RecoverExpired(); err != nil {
 		return err
 	}
+	if err := s.reconcileProjectTaskGoalPins(ctx); err != nil {
+		return err
+	}
 	tasks, err := s.workQueue.Tasks(workqueue.MaxListResults)
 	if err != nil {
 		return err
@@ -406,6 +513,11 @@ func (s *Server) reconcileProjectTaskUnlocked(ctx context.Context, taskID string
 	task, found, err := s.workQueue.Task(taskID)
 	if err != nil || !found {
 		return errors.New("project task not found")
+	}
+	if !terminalProjectTask(task.State) {
+		if err := s.modelTurns.PinTaskGoalReferences(ctx, modelturn.IdempotencyDigest(task.IdempotencyKey), taskGoalReferences(task.Workers)); err != nil {
+			return err
+		}
 	}
 	resolver, ok := s.edgeDevices.(edgeDeviceAliasRegistry)
 	if !ok {
@@ -444,6 +556,53 @@ func (s *Server) reconcileProjectTaskUnlocked(ctx context.Context, taskID string
 		joined = errors.Join(joined, s.reconcileProjectTaskWorker(ctx, refreshed, worker, device, wait))
 	}
 	return joined
+}
+
+func (s *Server) reconcileProjectTaskGoalPins(ctx context.Context) error {
+	if s.workQueue == nil || s.modelTurns == nil {
+		return errModelTurnStoreUnavailable
+	}
+	refs, err := s.workQueue.ActiveTaskGoalRefs()
+	if err != nil {
+		return err
+	}
+	validByDigest := make(map[string]*modelturn.TaskGoalOwner)
+	for _, ref := range refs {
+		ownerDigest := modelturn.IdempotencyDigest(ref.IdempotencyKey)
+		goalRef := modelturn.TaskGoalReference{BodyRef: ref.BodyRef, ContentDigest: ref.ContentDigest}
+		if err := s.modelTurns.PinTaskGoalReferences(ctx, ownerDigest, []modelturn.TaskGoalReference{goalRef}); err != nil {
+			if !errors.Is(err, modelturn.ErrRequestRefConflict) {
+				return err
+			}
+			task, found, lookupErr := s.workQueue.TaskByIdempotencyKey(ref.IdempotencyKey)
+			if lookupErr != nil {
+				return lookupErr
+			}
+			if found {
+				for _, worker := range task.Workers {
+					if worker.GoalRef != ref.BodyRef || worker.GoalHash != ref.ContentDigest || (worker.State != workqueue.StateQueued && worker.State != workqueue.StateBlocked) || worker.RuntimeID != "" {
+						continue
+					}
+					if _, err := s.workQueue.FailUnstartedTaskWorker(task.ID, worker.Ordinal); err != nil {
+						return err
+					}
+					break
+				}
+			}
+			continue
+		}
+		owner := validByDigest[ownerDigest]
+		if owner == nil {
+			owner = &modelturn.TaskGoalOwner{OwnerDigest: ownerDigest}
+			validByDigest[ownerDigest] = owner
+		}
+		owner.References = append(owner.References, goalRef)
+	}
+	owners := make([]modelturn.TaskGoalOwner, 0, len(validByDigest))
+	for _, owner := range validByDigest {
+		owners = append(owners, *owner)
+	}
+	return s.modelTurns.ReconcileTaskGoalPins(ctx, owners, modelturn.TaskGoalPinOrphanGrace)
 }
 
 func (s *Server) reconcileProjectTaskWorker(ctx context.Context, task workqueue.TaskGroup, worker workqueue.TaskWorker, device edge.Device, wait bool) error {
@@ -859,8 +1018,33 @@ func projectTaskViewSemanticState(workers []projectTaskWorkerView) string {
 	return "running"
 }
 
-func discardTaskGoalRefs(store *modelturn.Store, refs []modelturn.RuntimeBodyReference) {
-	for _, ref := range refs {
-		_ = store.DiscardRuntimeGoal(context.Background(), ref.BodyRef, ref.ContentDigest)
+func terminalProjectTask(state workqueue.TaskState) bool {
+	return state == workqueue.TaskCompleted || state == workqueue.TaskFailed || state == workqueue.TaskCancelled
+}
+
+func taskGoalReferences(workers []workqueue.TaskWorker) []modelturn.TaskGoalReference {
+	refs := make([]modelturn.TaskGoalReference, 0, len(workers))
+	for _, worker := range workers {
+		if worker.State == workqueue.StateSucceeded || worker.State == workqueue.StateFailed || worker.State == workqueue.StateCancelled {
+			continue
+		}
+		refs = append(refs, modelturn.TaskGoalReference{BodyRef: worker.GoalRef, ContentDigest: worker.GoalHash})
 	}
+	return refs
+}
+
+func runtimeTaskGoalReferences(refs []modelturn.RuntimeBodyReference) []modelturn.TaskGoalReference {
+	result := make([]modelturn.TaskGoalReference, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, modelturn.TaskGoalReference{BodyRef: ref.BodyRef, ContentDigest: ref.ContentDigest})
+	}
+	return result
+}
+
+func discardTaskGoalRefs(store *modelturn.Store, refs []modelturn.RuntimeBodyReference) error {
+	var joined error
+	for _, ref := range refs {
+		joined = errors.Join(joined, store.DiscardRuntimeGoal(context.Background(), ref.BodyRef, ref.ContentDigest))
+	}
+	return joined
 }

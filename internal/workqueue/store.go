@@ -862,7 +862,7 @@ func validateStoredJob(job Job) error {
 				return errors.New("workqueue: stored success reason is invalid")
 			}
 		case StateFailed:
-			if job.Reason != ReasonNone && job.Reason != ReasonDependencyFailed && job.Reason != ReasonRecoveryExhausted {
+			if job.Reason != ReasonNone && job.Reason != ReasonDependencyFailed && job.Reason != ReasonRecoveryExhausted && job.Reason != ReasonTaskGoalUnavailable {
 				return errors.New("workqueue: stored failure reason is invalid")
 			}
 		case StateCancelled:
