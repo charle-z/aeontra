@@ -68,6 +68,20 @@ worker jobs. Each worker stores only a private staged-goal reference plus opaque
 worktree, workspace and runtime identities. The goal body stays in the bounded model-turn
 store and never appears in task status.
 
+The model-turn store keeps active task goals with quota-counted private ownership pins
+keyed by the task idempotency digest. Startup reads the complete bounded set of active
+worker goal references and restores those pins before the first expiry cleanup; the
+ordinary one-hour runtime-body TTL is unchanged for non-task goals. A queued worker whose
+legacy goal body is already missing or has a different digest is failed with the bounded
+`task_goal_unavailable` reason rather than starting from altered input. A worker already
+leased or bound to a runtime is not cancelled; reconciliation stops before further Edge
+effects and status reports `reconciliation_required` until the reference can be validated.
+Terminal worker pins are released by reconciliation. Unpinned runtime goals retain their
+ordinary expiry behavior. Cross-store pin-before-queue crashes leave a
+bounded orphan pin that startup reconciliation removes; periodic reconciliation preserves
+new pins for a five-minute staging/commit grace period. Pins remain inside the existing
+model-turn quota and add no database or service.
+
 The coordinator leases every worker independently. A new lease increments the fence;
 the matching Edge worktree accepts a claim only for the same job and a strictly newer
 fence. Startup records the durable Edge operation before waiting for it, binds the

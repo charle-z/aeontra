@@ -52,6 +52,7 @@ type Server struct {
 	modelWaitMu     sync.Mutex
 	modelWaits      map[string]struct{}
 	workQueue       *workqueue.Store
+	taskStartLocks  [64]sync.Mutex
 	taskLifecycleMu sync.Mutex
 	taskReconcileMu sync.Mutex
 	taskCancel      context.CancelFunc

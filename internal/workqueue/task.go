@@ -87,6 +87,14 @@ type TaskWorker struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+// ActiveTaskGoalRef exposes private bounded goal identities to the model-turn
+// owner reconciliation path. It never contains goal content.
+type ActiveTaskGoalRef struct {
+	IdempotencyKey string
+	BodyRef        string
+	ContentDigest  string
+}
+
 type TaskWorkerBinding struct {
 	TaskID      string
 	Ordinal     int
@@ -328,6 +336,57 @@ func (s *Store) CompleteTaskWorker(taskID string, ordinal int, leaseID string, f
 	return updated, nil
 }
 
+// FailUnstartedTaskWorker terminally records an unavailable private goal only
+// while the worker is still unleased. A leased worker keeps its existing fence
+// and runtime identity; callers must not cancel useful in-flight work here.
+func (s *Store) FailUnstartedTaskWorker(taskID string, ordinal int) (TaskGroup, error) {
+	if s == nil || s.db == nil || !taskIDPattern.MatchString(taskID) || ordinal < 0 || ordinal >= MaxTaskWorkers {
+		return TaskGroup{}, errors.New("workqueue: task worker failure is invalid")
+	}
+	if validateResult(Result{Outcome: StateFailed, Summary: TaskGoalUnavailableSummary}) != nil {
+		return TaskGroup{}, errors.New("workqueue: task worker failure summary is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return TaskGroup{}, errors.New("workqueue: task worker failure transaction failed")
+	}
+	defer tx.Rollback()
+	task, found, err := taskByIDTx(tx, taskID)
+	if err != nil || !found || ordinal >= len(task.Workers) {
+		return TaskGroup{}, errors.New("workqueue: task worker not found")
+	}
+	worker := task.Workers[ordinal]
+	if worker.State == StateFailed && worker.Reason == ReasonTaskGoalUnavailable && worker.Summary == TaskGoalUnavailableSummary {
+		return task, nil
+	}
+	if worker.State != StateQueued && worker.State != StateBlocked {
+		return TaskGroup{}, errors.New("workqueue: task worker is already leased or terminal")
+	}
+	now := s.clock().UTC()
+	result, err := tx.Exec(`UPDATE jobs SET state=?,reason=?,cancel_requested=0,outcome=?,summary=?,result_ref=NULL,updated_at=? WHERE job_id=? AND state IN (?,?)`,
+		StateFailed, ReasonTaskGoalUnavailable, StateFailed, TaskGoalUnavailableSummary, now.UnixNano(), worker.JobID, StateQueued, StateBlocked)
+	if err != nil {
+		return TaskGroup{}, errors.New("workqueue: task worker failure update failed")
+	}
+	changed, _ := result.RowsAffected()
+	if changed != 1 {
+		return TaskGroup{}, errors.New("workqueue: task worker changed during failure update")
+	}
+	if err := propagate(tx, worker.JobID, now); err != nil {
+		return TaskGroup{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TaskGroup{}, errors.New("workqueue: task worker failure commit failed")
+	}
+	updated, found, err := taskByID(s.db, taskID)
+	if err != nil || !found {
+		return TaskGroup{}, errors.New("workqueue: failed task worker unavailable")
+	}
+	return updated, nil
+}
+
 func (s *Store) CancelTask(taskID string) (TaskGroup, error) {
 	task, found, err := s.Task(taskID)
 	if err != nil || !found {
@@ -352,6 +411,72 @@ func (s *Store) Task(taskID string) (TaskGroup, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.taskUnlocked(taskID)
+}
+
+func (s *Store) TaskByIdempotencyKey(key string) (TaskGroup, bool, error) {
+	key = strings.TrimSpace(key)
+	if s == nil || s.db == nil || len(key) > 118 || !idempotencyPattern.MatchString(key) {
+		return TaskGroup{}, false, errors.New("workqueue: task idempotency key is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, found, err := taskIDByIdempotency(s.db, key)
+	if err != nil || !found {
+		return TaskGroup{}, found, err
+	}
+	task, present, err := taskByID(s.db, id)
+	if err != nil || !present {
+		return TaskGroup{}, false, errors.New("workqueue: task unavailable")
+	}
+	return task, true, nil
+}
+
+// ActiveTaskGoalRefs returns every worker goal reference owned by a group with
+// at least one nonterminal job. The result is bounded by the configured active
+// job limit rather than the smaller public-list page size.
+func (s *Store) ActiveTaskGoalRefs() ([]ActiveTaskGoalRef, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("workqueue: store is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT tg.task_id FROM task_groups tg WHERE EXISTS (
+		SELECT 1 FROM task_workers tw JOIN jobs j ON j.job_id=tw.job_id
+		WHERE tw.task_id=tg.task_id AND j.state NOT IN (?,?,?)
+	) ORDER BY tg.created_at,tg.task_id LIMIT ?`, StateSucceeded, StateFailed, StateCancelled, s.config.MaxJobs+1)
+	if err != nil {
+		return nil, errors.New("workqueue: active task goal scan failed")
+	}
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return nil, errors.New("workqueue: active task goal scan failed")
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, errors.New("workqueue: active task goal scan failed")
+	}
+	if err := rows.Close(); err != nil || len(ids) > s.config.MaxJobs {
+		return nil, errors.New("workqueue: active task goal bound exceeded")
+	}
+	refs := make([]ActiveTaskGoalRef, 0, len(ids))
+	for _, id := range ids {
+		task, found, err := taskByID(s.db, id)
+		if err != nil || !found {
+			return nil, errors.New("workqueue: active task goal state is invalid")
+		}
+		for _, worker := range task.Workers {
+			if terminal(worker.State) {
+				continue
+			}
+			refs = append(refs, ActiveTaskGoalRef{IdempotencyKey: task.IdempotencyKey, BodyRef: worker.GoalRef, ContentDigest: worker.GoalHash})
+		}
+	}
+	return refs, nil
 }
 
 // Tasks returns a bounded deterministic view of nonterminal groups for restart

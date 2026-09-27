@@ -16,7 +16,8 @@ func (s *Store) DiscardRuntimeGoal(ctx context.Context, bodyRef, contentDigest s
 	defer s.mu.Unlock()
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM runtime_bodies
 		WHERE body_ref=? AND kind='goal' AND content_digest=?
-		AND NOT EXISTS (SELECT 1 FROM model_runtimes WHERE goal_ref=?)`, bodyRef, contentDigest, bodyRef); err != nil {
+		AND NOT EXISTS (SELECT 1 FROM model_runtimes WHERE goal_ref=?)
+		AND NOT EXISTS (SELECT 1 FROM runtime_goal_pins WHERE body_ref=? AND content_digest=?)`, bodyRef, contentDigest, bodyRef, bodyRef, contentDigest); err != nil {
 		return errors.New("runtime goal cleanup failed")
 	}
 	return nil

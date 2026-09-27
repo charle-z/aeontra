@@ -172,8 +172,28 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		return nil, fmt.Errorf("opening result store: %w", err)
 	}
 	service = service.WithResultStore(results)
-	modelTurns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: filepath.Join(stateRoot, "model-turns")})
+	workQueue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(stateRoot, "workqueue"), ControllerID: "mcp-devbox-control-plane"})
 	if err != nil {
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening durable work queue: %w", err)
+	}
+	activeGoalRefs, err := workQueue.ActiveTaskGoalRefs()
+	if err != nil {
+		_ = workQueue.Close()
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("reading active task goal references: %w", err)
+	}
+	modelTurns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: filepath.Join(stateRoot, "model-turns"), DeferTaskGoalCleanup: true})
+	if err != nil {
+		_ = workQueue.Close()
 		_ = results.Close()
 		_ = service.BrainCapability.Close()
 		_ = metrics.Close()
@@ -181,8 +201,19 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, fmt.Errorf("opening model turn store: %w", err)
 	}
+	if err := restoreActiveTaskGoalPins(workQueue, modelTurns, activeGoalRefs); err != nil {
+		_ = workQueue.Close()
+		_ = modelTurns.Close()
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("restoring active task goal references: %w", err)
+	}
 	edgeStore, err := edge.Open(edge.Config{Root: filepath.Join(stateRoot, "edge")})
 	if err != nil {
+		_ = workQueue.Close()
 		_ = modelTurns.Close()
 		_ = results.Close()
 		_ = service.BrainCapability.Close()
@@ -190,17 +221,6 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = observer.Close()
 		_ = logger.Close()
 		return nil, fmt.Errorf("opening edge identity store: %w", err)
-	}
-	workQueue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(stateRoot, "workqueue"), ControllerID: "mcp-devbox-control-plane"})
-	if err != nil {
-		_ = edgeStore.Close()
-		_ = modelTurns.Close()
-		_ = results.Close()
-		_ = service.BrainCapability.Close()
-		_ = metrics.Close()
-		_ = observer.Close()
-		_ = logger.Close()
-		return nil, fmt.Errorf("opening durable work queue: %w", err)
 	}
 	sessions, err := mcpserver.OpenHTTPSessionStore(filepath.Join(stateRoot, "mcp-sessions"))
 	if err != nil {
@@ -247,6 +267,50 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Sessions:    sessions,
 		WorkQueue:   workQueue,
 	}, nil
+}
+
+func restoreActiveTaskGoalPins(queue *workqueue.Store, turns *modelturn.Store, refs []workqueue.ActiveTaskGoalRef) error {
+	validByDigest := make(map[string]*modelturn.TaskGoalOwner)
+	for _, ref := range refs {
+		ownerDigest := modelturn.IdempotencyDigest(ref.IdempotencyKey)
+		goalRef := modelturn.TaskGoalReference{BodyRef: ref.BodyRef, ContentDigest: ref.ContentDigest}
+		if err := turns.PinTaskGoalReferences(context.Background(), ownerDigest, []modelturn.TaskGoalReference{goalRef}); err != nil {
+			if !errors.Is(err, modelturn.ErrRequestRefConflict) {
+				return err
+			}
+			task, found, lookupErr := queue.TaskByIdempotencyKey(ref.IdempotencyKey)
+			if lookupErr != nil {
+				return lookupErr
+			}
+			if !found {
+				continue
+			}
+			for _, worker := range task.Workers {
+				if worker.GoalRef != ref.BodyRef || worker.GoalHash != ref.ContentDigest || (worker.State != workqueue.StateQueued && worker.State != workqueue.StateBlocked) || worker.RuntimeID != "" {
+					continue
+				}
+				if _, err := queue.FailUnstartedTaskWorker(task.ID, worker.Ordinal); err != nil {
+					return err
+				}
+				break
+			}
+			continue
+		}
+		owner := validByDigest[ownerDigest]
+		if owner == nil {
+			owner = &modelturn.TaskGoalOwner{OwnerDigest: ownerDigest}
+			validByDigest[ownerDigest] = owner
+		}
+		owner.References = append(owner.References, goalRef)
+	}
+	owners := make([]modelturn.TaskGoalOwner, 0, len(validByDigest))
+	for _, owner := range validByDigest {
+		owners = append(owners, *owner)
+	}
+	if err := turns.ReconcileTaskGoalPins(context.Background(), owners, 0); err != nil {
+		return err
+	}
+	return turns.Cleanup(context.Background())
 }
 
 func defaultRuntimeStateRoot(primary string) (string, error) {
