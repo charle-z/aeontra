@@ -115,6 +115,239 @@ func TestTaskGroupBindsWorkersToFencedWorktreesAndRuntimes(t *testing.T) {
 	}
 }
 
+func TestTaskAcceptanceContractIsDurableAndIdempotencyBound(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "queue")
+	store, err := Open(Config{Root: root, ControllerID: "controller-acceptance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := TaskSpec{
+		IdempotencyKey: "task-acceptance-0123", Project: "project", Target: "parrot",
+		BaseCommit: strings.Repeat("a", 40), GoalHash: "sha256:" + strings.Repeat("b", 64),
+		WorkerGoalHashes: []string{"sha256:" + strings.Repeat("1", 64)}, WorkerGoalRefs: []string{"mb_11111111111111111111111111111111"},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+		AcceptanceContract: &TaskAcceptanceContract{Version: 1, MinimumCommitsAheadPerWorker: 2, MinimumChangedPathsPerWorker: 3},
+	}
+	task, created, err := store.CreateTask(spec)
+	if err != nil || !created || task.AcceptanceContract == nil || *task.AcceptanceContract != *spec.AcceptanceContract {
+		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(Config{Root: root, ControllerID: "controller-acceptance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	persisted, found, err := store.Task(task.ID)
+	if err != nil || !found || persisted.AcceptanceContract == nil || *persisted.AcceptanceContract != *spec.AcceptanceContract {
+		t.Fatalf("persisted=%+v found=%v err=%v", persisted, found, err)
+	}
+	replayed, created, err := store.CreateTask(spec)
+	if err != nil || created || replayed.ID != task.ID {
+		t.Fatalf("replay=%+v created=%v err=%v", replayed, created, err)
+	}
+	conflicting := spec
+	changedContract := *spec.AcceptanceContract
+	changedContract.MinimumChangedPathsPerWorker++
+	conflicting.AcceptanceContract = &changedContract
+	if _, _, err := store.CreateTask(conflicting); err == nil || !strings.Contains(err.Error(), "idempotency key conflicts") {
+		t.Fatalf("changed acceptance contract error=%v", err)
+	}
+}
+
+func TestSchemaTwoMigrationPreservesLegacyTasksWithoutAcceptanceContract(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "queue")
+	store, err := Open(Config{Root: root, ControllerID: "controller-migration"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _, err := store.CreateTask(TaskSpec{
+		IdempotencyKey: "task-migration-0123", Project: "project", Target: "parrot",
+		BaseCommit: strings.Repeat("a", 40), GoalHash: "sha256:" + strings.Repeat("b", 64),
+		WorkerGoalHashes: []string{"sha256:" + strings.Repeat("1", 64)}, WorkerGoalRefs: []string{"mb_11111111111111111111111111111111"},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(root, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`ALTER TABLE task_groups DROP COLUMN acceptance_contract_version`,
+		`ALTER TABLE task_groups DROP COLUMN acceptance_min_commits_ahead`,
+		`ALTER TABLE task_groups DROP COLUMN acceptance_min_changed_paths`,
+		`ALTER TABLE task_workers DROP COLUMN acceptance_receipt`,
+		`ALTER TABLE task_workers DROP COLUMN worktree_cleaned`,
+		`PRAGMA user_version=2`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			_ = db.Close()
+			t.Fatalf("prepare v2 database with %q: %v", statement, err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(Config{Root: root, ControllerID: "controller-migration"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	var version int
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+		t.Fatalf("version=%d err=%v", version, err)
+	}
+	var ignoredExtension string
+	if err := store.db.QueryRow(`SELECT task_id FROM task_groups WHERE task_id=?`, task.ID).Scan(&ignoredExtension); err != nil || ignoredExtension != task.ID {
+		t.Fatalf("v2-compatible task lookup=%q err=%v", ignoredExtension, err)
+	}
+	preserved, found, err := store.Task(task.ID)
+	if err != nil || !found || preserved.IdempotencyKey != task.IdempotencyKey || preserved.AcceptanceContract != nil || len(preserved.Workers) != 1 {
+		t.Fatalf("preserved=%+v found=%v err=%v", preserved, found, err)
+	}
+}
+
+func TestTaskAcceptanceSchemaExtensionMigrationIsAtomic(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "queue.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	for _, statement := range []string{
+		`CREATE TABLE task_groups(task_id TEXT PRIMARY KEY) WITHOUT ROWID`,
+		`CREATE VIEW task_workers AS SELECT 1 AS task_id`,
+		`PRAGMA user_version=2`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ensureTaskAcceptanceColumns(db, 2); err == nil {
+		t.Fatal("migration unexpectedly altered a view as a worker table")
+	}
+	rows, err := db.Query(`PRAGMA table_info(task_groups)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(name, "acceptance_") {
+			t.Fatalf("partial migration left column %q behind", name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+		t.Fatalf("version=%d err=%v", version, err)
+	}
+}
+
+func TestTaskAcceptanceReceiptIsDurableImmutableAndCleanupGated(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "queue")
+	store, err := Open(Config{Root: root, ControllerID: "controller-receipt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := &TaskAcceptanceContract{Version: 1, MinimumCommitsAheadPerWorker: 1, MinimumChangedPathsPerWorker: 1}
+	task, _, err := store.CreateTask(TaskSpec{
+		IdempotencyKey: "task-receipt-0123", Project: "project", Target: "parrot",
+		BaseCommit: strings.Repeat("a", 40), GoalHash: "sha256:" + strings.Repeat("b", 64),
+		WorkerGoalHashes: []string{"sha256:" + strings.Repeat("1", 64)}, WorkerGoalRefs: []string{"mb_11111111111111111111111111111111"},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+		AcceptanceContract: contract,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := store.LeaseTaskWorker(task.ID, 0, "worker-holder-0001", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err = store.BindTaskWorker(TaskWorkerBinding{TaskID: task.ID, Ordinal: 0, JobID: worker.JobID, LeaseID: worker.LeaseID, Fence: worker.Fence,
+		WorktreeID: "wt_0123456789abcdef0123456789abcdef", WorkspaceID: "ws_0123456789abcdef0123456789abcdef"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CompleteTaskWorker(task.ID, 0, worker.LeaseID, worker.Fence, Result{Outcome: StateSucceeded, Summary: "worker completed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkTaskWorkerWorktreeCleaned(task.ID, 0, worker.LeaseID, worker.Fence); err == nil {
+		t.Fatal("completed acceptance task was cleaned before its receipt")
+	}
+	receipt := TaskAcceptanceReceipt{Version: 1, TaskID: task.ID, Ordinal: 0, JobID: worker.JobID, WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID,
+		WorktreeRole: "writer", BaseCommit: task.BaseCommit, HeadCommit: strings.Repeat("1", 40), Branch: "codex/worktree-0123456789abcdef0123456789abcdef",
+		LeaseID: worker.LeaseID, Fence: worker.Fence, ContractDigest: TaskAcceptanceContractDigest(contract), Clean: true, CommitsAheadBase: 1, ChangedPathCount: 1}
+	recorded, err := store.RecordTaskWorkerAcceptance(receipt)
+	if err != nil || recorded.RecordedAt.IsZero() {
+		t.Fatalf("receipt=%+v err=%v", recorded, err)
+	}
+	replayed, err := store.RecordTaskWorkerAcceptance(receipt)
+	if err != nil || !replayed.RecordedAt.Equal(recorded.RecordedAt) {
+		t.Fatalf("replay=%+v err=%v", replayed, err)
+	}
+	conflicting := receipt
+	conflicting.ChangedPathCount++
+	if _, err := store.RecordTaskWorkerAcceptance(conflicting); err == nil {
+		t.Fatal("conflicting receipt replaced the original checkpoint")
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(Config{Root: root, ControllerID: "controller-receipt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	persisted, found, err := store.Task(task.ID)
+	if err != nil || !found || persisted.Workers[0].AcceptanceReceipt == nil || !persisted.Workers[0].AcceptanceReceipt.RecordedAt.Equal(recorded.RecordedAt) {
+		t.Fatalf("persisted=%+v found=%v err=%v", persisted, found, err)
+	}
+	if err := store.MarkTaskWorkerWorktreeCleaned(task.ID, 0, worker.LeaseID, worker.Fence); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkTaskWorkerWorktreeCleaned(task.ID, 0, "wl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", worker.Fence); err == nil {
+		t.Fatal("stale lease replay was accepted for an already-cleaned worker")
+	}
+	if err := store.MarkTaskWorkerWorktreeCleaned(task.ID, 0, worker.LeaseID, worker.Fence); err != nil {
+		t.Fatalf("cleanup marker replay: %v", err)
+	}
+	cleaned, found, err := store.Task(task.ID)
+	if err != nil || !found || !cleaned.Workers[0].WorktreeCleaned || cleaned.Workers[0].AcceptanceReceipt == nil {
+		t.Fatalf("cleaned=%+v found=%v err=%v", cleaned, found, err)
+	}
+}
+
+func TestTaskAcceptanceContractRejectsUnknownOrUnboundedCriteria(t *testing.T) {
+	for _, contract := range []*TaskAcceptanceContract{
+		{Version: 2, MinimumCommitsAheadPerWorker: 1, MinimumChangedPathsPerWorker: 1},
+		{Version: 1, MinimumCommitsAheadPerWorker: 0, MinimumChangedPathsPerWorker: 1},
+		{Version: 1, MinimumCommitsAheadPerWorker: 1, MinimumChangedPathsPerWorker: 10001},
+	} {
+		if err := ValidateTaskAcceptanceContract(contract); err == nil {
+			t.Errorf("invalid contract accepted: %+v", contract)
+		}
+	}
+	if err := ValidateTaskAcceptanceContract(nil); err != nil {
+		t.Fatalf("nil contract must retain manual-review compatibility: %v", err)
+	}
+}
+
 func TestTaskGroupCancellationPreservesTerminalWorkers(t *testing.T) {
 	store := openTestStore(t, Config{ControllerID: "controller-a"})
 	task, _, err := store.CreateTask(TaskSpec{

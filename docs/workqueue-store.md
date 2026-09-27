@@ -22,8 +22,14 @@ schema version 2, mode `0600`, WAL, `synchronous=FULL`, foreign keys, bounded pa
 one database connection. A non-blocking advisory lock allows exactly one active
 control-plane writer and releases automatically when the process exits. `Writers`
 values other than one fail closed. Redis and additional resident queue services are not
-required. Version-1 databases migrate transactionally to the task-group schema; future
-schema versions fail closed.
+required. Version-1 databases migrate transactionally to schema version 2; future
+schema versions fail closed. The optional acceptance contract, receipt and cleanup
+checkpoint are additive columns migrated in one transaction without changing
+`PRAGMA user_version=2`, so a previous v2 binary can open the database and ignore them.
+That older binary does not enforce the acceptance contract: stop task coordination and
+take a private backup before rollback, and do not let an older binary operate on
+contract-bearing tasks. If recovery must continue under the older binary, restore the
+pre-upgrade backup using the documented restore procedure.
 
 The persisted controller identity must match on reopen. A second controller identity, future schema, unsafe symlink/layout, corrupt database, row overflow or storage above 64 MiB blocks opening.
 
@@ -103,6 +109,29 @@ count. Valid evidence yields `acceptance_pending`; unavailable, stale or inconsi
 evidence yields `reconciliation_required`. P16 deliberately has no generic automatic
 `accepted` transition because acceptance criteria depend on the task.
 
+`project_task_start` may optionally store a typed version-1 Git evidence contract in the
+same workqueue row. It requires each worker's live worktree to be clean and to meet the
+contract's minimum commits-ahead and changed-path counts relative to the exact task base.
+When every worker's live evidence matches the exact task, worker, worktree, workspace,
+branch, base, lease and fence and satisfies the configured predicate, status records a
+durable Git evidence receipt. This sets `git_evidence_state` to `verified`; semantic
+`acceptance_state` and the task/worker state remain pending until a trusted objective and
+test evaluator exists. The receipt binds those identities and counts to a digest of every
+contract field and records when the Git evidence was checked. Before removing a succeeded
+worker's worktree under this contract, cleanup revalidates the same receipt against live
+Edge evidence; a missing or changed worktree remains `reconciliation_required`. After
+successful cleanup, the Git receipt and cleanup marker preserve the verified Git
+predicate, not semantic acceptance. Cleanup uses a stable server-derived key per task and
+worker, so retry after an Edge success/SQLite-marker crash recovers the same operation
+even if the caller supplies a new retry token. The marker is written only
+after the exact cleanup operation succeeds. The predicate is not proof that a
+natural-language goal was satisfied or that tests passed. The Edge status contract does
+not expose changed paths, test results, or an identity for dirty/untracked contents, so
+v1 cannot make those claims. Contractless tasks—including existing tasks migrated from
+schema version 2—remain `acceptance_pending` for explicit review; no global clean-worktree
+or commit requirement is added, and dirty or uncommitted work remains inspectable and is
+never removed by the evidence evaluator.
+
 If a chat ends before retaining its task ID, `project_task_list` reads the local journal's
 project/target index and returns at most 20 recent IDs, including terminal groups. It does
 not poll an Edge, restart a runtime or expose goals. The caller then uses
@@ -110,9 +139,13 @@ not poll an Edge, restart a runtime or expose goals. The caller then uses
 
 Each runtime-completed writer retains one explicit `codex/worktree-<id>` branch. Callers review and
 combine those commits through normal Git and PR gates; the system never guesses conflict
-resolution. `project_task_cleanup` requires a terminal task, exact current lease/fence and
-a clean worktree. It removes the registered worktree but deliberately preserves its Git
-branch and the durable task record.
+resolution. `project_task_cleanup` requires a terminal task and exact current lease/fence.
+For any succeeded worker covered by a Git evidence contract it additionally requires an
+unchanged receipt-backed clean tree. The
+caller key is a retry-correlation token; the Edge cleanup operation key is server-derived
+from the task and worker. Cleanup removes the registered worktree but deliberately
+preserves its Git branch, Git evidence receipt and durable task record. The task remains
+semantically pending for review.
 
 ## Dependencies
 

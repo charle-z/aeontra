@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,12 +20,13 @@ import (
 )
 
 type projectTaskEdgeStore struct {
-	mu               sync.Mutex
-	next             int
-	snapshotRequests int
-	operations       map[string]edge.Operation
-	workspaces       map[string]edge.WorkspaceBinding
-	worktrees        map[string]edge.OperationResult
+	mu                     sync.Mutex
+	next                   int
+	snapshotRequests       int
+	worktreeStatusRequests int
+	operations             map[string]edge.Operation
+	workspaces             map[string]edge.WorkspaceBinding
+	worktrees              map[string]edge.OperationResult
 }
 
 type inactiveProjectTaskEdgeStore struct{ *projectTaskEdgeStore }
@@ -54,6 +56,9 @@ func (s *projectTaskEdgeStore) ResolveWorkspace(id string) (edge.WorkspaceBindin
 func (s *projectTaskEdgeStore) CreateOperation(deviceID string, kind edge.OperationKind, request edge.OperationRequest) (edge.Operation, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if kind == edge.OperationProjectWorktreeStatus {
+		s.worktreeStatusRequests++
+	}
 	if kind == edge.OperationProjectSnapshot {
 		s.snapshotRequests++
 	}
@@ -288,16 +293,25 @@ func (s *projectTaskEdgeStore) WaitOperation(_ context.Context, id string, _ tim
 		s.worktrees[result.WorktreeID] = result
 	case edge.OperationProjectWorktreeStatus:
 		result = s.worktrees[op.Request.WorktreeID]
+		if !result.WorktreeEvidenceKnown {
+			result.WorktreeHeadCommit = "1123456789abcdef0123456789abcdef01234567"
+			result.WorktreeClean = true
+			result.WorktreeCommitsAheadBase = 1
+			result.WorktreeChangedPathCount = 1
+		}
 		result.WorktreeEvidenceKnown = true
-		result.WorktreeHeadCommit = "1123456789abcdef0123456789abcdef01234567"
-		result.WorktreeClean = true
-		result.WorktreeCommitsAheadBase = 1
-		result.WorktreeChangedPathCount = 1
+		s.worktrees[result.WorktreeID] = result
 	case edge.OperationProjectWorktreeCleanup:
 		result = s.worktrees[op.Request.WorktreeID]
 		result.WorktreeState = "removed"
 		result.WorktreeUpdatedAt = time.Unix(3, 0).UTC().Format(time.RFC3339Nano)
 		s.worktrees[result.WorktreeID] = result
+		for operationID, status := range s.operations {
+			if status.Kind == edge.OperationProjectWorktreeStatus && status.Request.WorktreeID == result.WorktreeID {
+				status.Result.WorktreeState = "removed"
+				s.operations[operationID] = status
+			}
+		}
 	}
 	op.Result = result
 	s.operations[id] = op
@@ -604,6 +618,228 @@ func TestProjectTaskStatusRequiresLiveGitEvidenceForCompletedRuntime(t *testing.
 	}
 }
 
+func TestProjectTaskGitAcceptanceContractAcceptsOnlyMatchingLiveEvidence(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-acceptance-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+
+	request := `{"alias":"project","target":"parrot","goals":["Commit one focused change."],"timeout_seconds":600,"idempotency_key":"parallel-acceptance-0001","git_evidence_contract":{"version":1,"minimum_commits_ahead_per_worker":1,"minimum_changed_paths_per_worker":1}}`
+	startedOutput, err := server.table["project_task_start"].handler(json.RawMessage(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(startedOutput), &started); err != nil {
+		t.Fatal(err)
+	}
+	if started.TaskID == "" || !strings.Contains(startedOutput, `"git_evidence_contract":{"version":1,"minimum_commits_ahead_per_worker":1,"minimum_changed_paths_per_worker":1}`) {
+		t.Fatalf("start omitted durable Git evidence contract: %s", startedOutput)
+	}
+	legacyField := strings.Replace(request, `"git_evidence_contract"`, `"acceptance_contract"`, 1)
+	if _, err := server.table["project_task_start"].handler(json.RawMessage(legacyField)); err == nil {
+		t.Fatal("unshipped acceptance_contract alias was accepted")
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	status, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(status, `"state":"acceptance_pending"`) || !strings.Contains(status, `"lifecycle_state":"completed"`) ||
+		!strings.Contains(status, `"runtime_state":"completed"`) || !strings.Contains(status, `"acceptance_state":"pending"`) ||
+		!strings.Contains(status, `"git_evidence_state":"verified"`) || !strings.Contains(status, `"git_evidence_recorded_at":`) ||
+		!strings.Contains(status, `"git_evidence_known":true`) || !strings.Contains(status, `"clean":true`) ||
+		!strings.Contains(status, `"commits_ahead_base":1`) || !strings.Contains(status, `"changed_path_count":1`) {
+		t.Fatalf("status=%s err=%v", status, err)
+	}
+
+	conflicting := strings.Replace(request, `"minimum_changed_paths_per_worker":1`, `"minimum_changed_paths_per_worker":2`, 1)
+	if _, err := server.table["project_task_start"].handler(json.RawMessage(conflicting)); err == nil || !strings.Contains(err.Error(), "idempotency key conflicts") {
+		t.Fatalf("changed acceptance contract replay error=%v", err)
+	}
+	edges.mu.Lock()
+	for worktreeID, worktree := range edges.worktrees {
+		worktree.WorktreeHeadCommit = strings.Repeat("2", 40)
+		worktree.WorktreeCommitsAheadBase = 2
+		worktree.WorktreeChangedPathCount = 2
+		edges.worktrees[worktreeID] = worktree
+	}
+	for operationID, operation := range edges.operations {
+		if operation.Kind == edge.OperationProjectWorktreeStatus {
+			operation.Result.WorktreeHeadCommit = strings.Repeat("2", 40)
+			operation.Result.WorktreeCommitsAheadBase = 2
+			operation.Result.WorktreeChangedPathCount = 2
+			edges.operations[operationID] = operation
+		}
+	}
+	edges.mu.Unlock()
+	stale, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(stale, `"acceptance_state":"reconciliation_required"`) || strings.Contains(stale, `"state":"accepted"`) || !strings.Contains(stale, `"git_evidence_state":"stale"`) {
+		t.Fatalf("changed live evidence status=%s err=%v", stale, err)
+	}
+	persisted, found, err := queue.Task(started.TaskID)
+	if err != nil || !found || persisted.Workers[0].AcceptanceReceipt == nil || persisted.Workers[0].AcceptanceReceipt.HeadCommit != "1123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("changed evidence mutated receipt=%+v found=%v err=%v", persisted.Workers, found, err)
+	}
+	if _, err := server.table["project_task_cleanup"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `","idempotency_key":"cleanup-stale-evidence-01"}`)); err == nil || !strings.Contains(err.Error(), "evidence changed") {
+		t.Fatalf("cleanup accepted changed evidence: %v", err)
+	}
+	for _, operation := range edges.operations {
+		if operation.Kind == edge.OperationProjectWorktreeCleanup {
+			t.Fatal("cleanup operation was created for stale acceptance evidence")
+		}
+	}
+}
+
+func TestProjectTaskLegacyNoContractStaysPendingWithLiveEvidence(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-legacy-pending-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	server.WithEdgeStore(newProjectTaskEdgeStore()).WithWorkQueue(queue)
+	startedOutput, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Commit one focused change."],"timeout_seconds":600,"idempotency_key":"parallel-legacy-pending-01"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(startedOutput), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	status, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(status, `"state":"acceptance_pending"`) || !strings.Contains(status, `"git_evidence_known":true`) ||
+		!strings.Contains(status, `"git_evidence_state":"observed"`) || strings.Contains(status, `"acceptance_state":"accepted"`) {
+		t.Fatalf("legacy status=%s err=%v", status, err)
+	}
+	task, found, err := queue.Task(started.TaskID)
+	if err != nil || !found || task.AcceptanceContract != nil || task.Workers[0].AcceptanceReceipt != nil {
+		t.Fatalf("legacy task=%+v found=%v err=%v", task, found, err)
+	}
+}
+
+func TestProjectTaskGitEvidenceCriteriaNotMetStaysPending(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-git-evidence-pending-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	server.WithEdgeStore(newProjectTaskEdgeStore()).WithWorkQueue(queue)
+	startedOutput, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Commit one focused change."],"timeout_seconds":600,"idempotency_key":"git-evidence-pending-0001","git_evidence_contract":{"version":1,"minimum_commits_ahead_per_worker":2,"minimum_changed_paths_per_worker":2}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(startedOutput), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	status, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(status, `"state":"acceptance_pending"`) ||
+		!strings.Contains(status, `"acceptance_state":"pending"`) || !strings.Contains(status, `"git_evidence_state":"criteria_not_met"`) ||
+		strings.Contains(status, `"git_evidence_state":"verified"`) || strings.Contains(status, `"state":"accepted"`) {
+		t.Fatalf("status=%s err=%v", status, err)
+	}
+	task, found, err := queue.Task(started.TaskID)
+	if err != nil || !found || task.Workers[0].AcceptanceReceipt != nil {
+		t.Fatalf("criteria-miss receipt=%+v found=%v err=%v", task.Workers, found, err)
+	}
+}
+
+func TestProjectTaskAcceptanceReceiptSurvivesCleanupMarkerCrashAndCallerReplay(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	root := filepath.Join(t.TempDir(), "queue")
+	queue, err := workqueue.Open(workqueue.Config{Root: root, ControllerID: "mcp-task-cleanup-replay-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	request := `{"alias":"project","target":"parrot","goals":["Commit one focused change."],"timeout_seconds":600,"idempotency_key":"parallel-cleanup-receipt-01","git_evidence_contract":{"version":1,"minimum_commits_ahead_per_worker":1,"minimum_changed_paths_per_worker":1}}`
+	startedOutput, err := server.table["project_task_start"].handler(json.RawMessage(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(startedOutput), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	status, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(status, `"state":"acceptance_pending"`) || !strings.Contains(status, `"acceptance_state":"pending"`) ||
+		!strings.Contains(status, `"git_evidence_state":"verified"`) || !strings.Contains(status, `"git_evidence_recorded_at":`) {
+		t.Fatalf("status=%s err=%v", status, err)
+	}
+
+	markerDB, err := sql.Open("sqlite", filepath.Join(root, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := markerDB.Exec(`CREATE TRIGGER fail_cleanup_marker BEFORE UPDATE OF worktree_cleaned ON task_workers BEGIN SELECT RAISE(ABORT,'injected receipt marker failure'); END`); err != nil {
+		_ = markerDB.Close()
+		t.Fatal(err)
+	}
+	firstCleanup := `{"task_id":"` + started.TaskID + `","idempotency_key":"caller-cleanup-first-0001"}`
+	if _, err := server.table["project_task_cleanup"].handler(json.RawMessage(firstCleanup)); err == nil || !strings.Contains(err.Error(), "cleanup marker persistence failed") {
+		_ = markerDB.Close()
+		t.Fatalf("first cleanup error=%v", err)
+	}
+	if _, err := markerDB.Exec(`DROP TRIGGER fail_cleanup_marker`); err != nil {
+		_ = markerDB.Close()
+		t.Fatal(err)
+	}
+	if err := markerDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = workqueue.Open(workqueue.Config{Root: root, ControllerID: "mcp-task-cleanup-replay-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.WithWorkQueue(queue)
+	beforeRetryStatusCalls := edges.worktreeStatusRequests
+	secondCleanup := `{"task_id":"` + started.TaskID + `","idempotency_key":"caller-cleanup-second-0002"}`
+	cleaned, err := server.table["project_task_cleanup"].handler(json.RawMessage(secondCleanup))
+	if err != nil || !strings.Contains(cleaned, `"state":"acceptance_pending"`) || !strings.Contains(cleaned, `"cleaned":true`) ||
+		!strings.Contains(cleaned, `"git_evidence_state":"verified"`) || !strings.Contains(cleaned, `"git_evidence_recorded_at":`) {
+		t.Fatalf("cleanup replay=%s err=%v", cleaned, err)
+	}
+	if edges.worktreeStatusRequests != beforeRetryStatusCalls {
+		t.Fatalf("cleanup replay re-polled removed worktree: status requests %d -> %d", beforeRetryStatusCalls, edges.worktreeStatusRequests)
+	}
+	cleanupOperations := 0
+	for _, operation := range edges.operations {
+		if operation.Kind == edge.OperationProjectWorktreeCleanup {
+			cleanupOperations++
+			if operation.Request.IdempotencyKey != projectTaskWorktreeCleanupOperationKey(started.TaskID, 0) {
+				t.Fatalf("cleanup operation key was not task-derived: %q", operation.Request.IdempotencyKey)
+			}
+		}
+	}
+	if cleanupOperations != 1 {
+		t.Fatalf("cleanup operation count=%d, want one server-derived task/worker operation", cleanupOperations)
+	}
+	statusAfterCleanup, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(statusAfterCleanup, `"state":"acceptance_pending"`) || !strings.Contains(statusAfterCleanup, `"acceptance_state":"pending"`) ||
+		!strings.Contains(statusAfterCleanup, `"git_evidence_state":"verified"`) {
+		t.Fatalf("status after worktree removal=%s err=%v", statusAfterCleanup, err)
+	}
+}
+
 func TestProjectTaskSemanticStatePrecedenceIsDeterministic(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -620,6 +856,48 @@ func TestProjectTaskSemanticStatePrecedenceIsDeterministic(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := projectTaskViewSemanticState(tc.workers); got != tc.want {
 				t.Fatalf("state=%s want=%s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectTaskCleanupOperationKeyBindsTaskAndWorker(t *testing.T) {
+	taskA := "tg_11111111111111111111111111111111"
+	taskB := "tg_22222222222222222222222222222222"
+	key := projectTaskWorktreeCleanupOperationKey(taskA, 0)
+	if len(key) > 96 || !validProjectTaskCleanupIdempotencyKey(key) || key != projectTaskWorktreeCleanupOperationKey(taskA, 0) {
+		t.Fatalf("cleanup key is not stable and Edge-bounded: %q", key)
+	}
+	if key == projectTaskWorktreeCleanupOperationKey(taskB, 0) || key == projectTaskWorktreeCleanupOperationKey(taskA, 1) {
+		t.Fatal("cleanup keys collided across task identity or worker ordinal")
+	}
+	for _, invalid := range []string{"short", " caller-key-01", "caller/key-01", strings.Repeat("a", 97)} {
+		if validProjectTaskCleanupIdempotencyKey(invalid) {
+			t.Errorf("invalid caller replay key accepted: %q", invalid)
+		}
+	}
+}
+
+func TestProjectTaskGitAcceptanceContractIsDeterministicAndFailClosed(t *testing.T) {
+	contract := &workqueue.TaskAcceptanceContract{Version: 1, MinimumCommitsAheadPerWorker: 2, MinimumChangedPathsPerWorker: 3}
+	for _, test := range []struct {
+		name         string
+		contract     *workqueue.TaskAcceptanceContract
+		clean        bool
+		commitsAhead int
+		changedPaths int
+		wantAccepted bool
+	}{
+		{name: "criteria match", contract: contract, clean: true, commitsAhead: 2, changedPaths: 3, wantAccepted: true},
+		{name: "contract absent stays manual review", clean: true, commitsAhead: 2, changedPaths: 3},
+		{name: "dirty worktree remains pending", contract: contract, commitsAhead: 2, changedPaths: 3},
+		{name: "too few commits remains pending", contract: contract, clean: true, commitsAhead: 1, changedPaths: 3},
+		{name: "too few paths remains pending", contract: contract, clean: true, commitsAhead: 2, changedPaths: 2},
+		{name: "unknown version fails closed", contract: &workqueue.TaskAcceptanceContract{Version: 2, MinimumCommitsAheadPerWorker: 2, MinimumChangedPathsPerWorker: 3}, clean: true, commitsAhead: 2, changedPaths: 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := taskAcceptanceContractSatisfied(test.contract, test.clean, test.commitsAhead, test.changedPaths); got != test.wantAccepted {
+				t.Fatalf("accepted=%v, want %v", got, test.wantAccepted)
 			}
 		})
 	}

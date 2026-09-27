@@ -200,10 +200,8 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version > schemaVersion {
 		return errors.New("workqueue: schema is unsupported")
 	}
-	if version < schemaVersion {
-		if _, err := s.db.Exec(`PRAGMA user_version=2`); err != nil {
-			return errors.New("workqueue: schema activation failed")
-		}
+	if err := ensureTaskAcceptanceColumns(s.db, version); err != nil {
+		return err
 	}
 	if _, err := s.db.Exec(`INSERT INTO queue_meta(key,value) VALUES('controller_id',?) ON CONFLICT(key) DO NOTHING`, s.config.ControllerID); err != nil {
 		return errors.New("workqueue: controller metadata failed")
@@ -213,6 +211,73 @@ func (s *Store) initialize() error {
 		return errors.New("workqueue: controller identity conflicts")
 	}
 	return s.Integrity()
+}
+
+// ensureTaskAcceptanceColumns applies a backward-readable additive extension.
+// The public SQLite user_version remains 2 so the previous v2 backend can open
+// the database and ignore these fields. Every ALTER and the v1->v2 version
+// transition is atomic; presence checks also recover a partially provisioned
+// database without attempting duplicate ALTER statements.
+func ensureTaskAcceptanceColumns(db *sql.DB, version int) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return errors.New("workqueue: schema migration failed")
+	}
+	defer tx.Rollback()
+	for _, table := range []struct {
+		name    string
+		columns []struct{ name, declaration string }
+	}{
+		{name: "task_groups", columns: []struct{ name, declaration string }{
+			{"acceptance_contract_version", `INTEGER NOT NULL DEFAULT 0`},
+			{"acceptance_min_commits_ahead", `INTEGER NOT NULL DEFAULT 0`},
+			{"acceptance_min_changed_paths", `INTEGER NOT NULL DEFAULT 0`},
+		}},
+		{name: "task_workers", columns: []struct{ name, declaration string }{
+			{"acceptance_receipt", `TEXT NOT NULL DEFAULT ''`},
+			{"worktree_cleaned", `INTEGER NOT NULL DEFAULT 0`},
+		}},
+	} {
+		present := make(map[string]bool)
+		rows, err := tx.Query(`PRAGMA table_info(` + table.name + `)`)
+		if err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+		for rows.Next() {
+			var cid, notNull, primaryKey int
+			var name, columnType string
+			var defaultValue any
+			if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+				_ = rows.Close()
+				return errors.New("workqueue: schema migration failed")
+			}
+			present[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return errors.New("workqueue: schema migration failed")
+		}
+		if err := rows.Close(); err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+		for _, column := range table.columns {
+			if present[column.name] {
+				continue
+			}
+			if _, err := tx.Exec(`ALTER TABLE ` + table.name + ` ADD COLUMN ` + column.name + ` ` + column.declaration); err != nil {
+				return errors.New("workqueue: schema migration failed")
+			}
+		}
+	}
+	if version < schemaVersion {
+		if _, err := tx.Exec(`PRAGMA user_version=2`); err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New("workqueue: schema migration failed")
+	}
+	return nil
 }
 
 func (s *Store) Enqueue(spec Spec) (Job, bool, error) {

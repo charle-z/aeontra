@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -29,11 +30,12 @@ type edgeOperationIdempotencyLookup interface {
 }
 
 type projectTaskStartParams struct {
-	Alias          string   `json:"alias"`
-	Target         string   `json:"target"`
-	Goals          []string `json:"goals"`
-	TimeoutSeconds int      `json:"timeout_seconds"`
-	IdempotencyKey string   `json:"idempotency_key"`
+	Alias               string                            `json:"alias"`
+	Target              string                            `json:"target"`
+	Goals               []string                          `json:"goals"`
+	TimeoutSeconds      int                               `json:"timeout_seconds"`
+	IdempotencyKey      string                            `json:"idempotency_key"`
+	GitEvidenceContract *workqueue.TaskAcceptanceContract `json:"git_evidence_contract,omitempty"`
 }
 
 type projectTaskIDParams struct {
@@ -68,23 +70,25 @@ type projectTaskCleanupParams struct {
 }
 
 type projectTaskWorkerView struct {
-	Ordinal          int             `json:"ordinal"`
-	State            string          `json:"state"`
-	Attention        string          `json:"attention,omitempty"`
-	LifecycleState   workqueue.State `json:"lifecycle_state"`
-	RuntimeState     string          `json:"runtime_state,omitempty"`
-	AcceptanceState  string          `json:"acceptance_state"`
-	WorktreeID       string          `json:"worktree_id,omitempty"`
-	WorkspaceID      string          `json:"workspace_id,omitempty"`
-	RuntimeID        string          `json:"runtime_id,omitempty"`
-	Branch           string          `json:"branch,omitempty"`
-	BaseCommit       string          `json:"base_commit"`
-	HeadCommit       string          `json:"head_commit,omitempty"`
-	GitEvidenceKnown bool            `json:"git_evidence_known,omitempty"`
-	Clean            *bool           `json:"clean,omitempty"`
-	CommitsAheadBase *int            `json:"commits_ahead_base,omitempty"`
-	ChangedPathCount *int            `json:"changed_path_count,omitempty"`
-	Summary          string          `json:"summary,omitempty"`
+	Ordinal               int             `json:"ordinal"`
+	State                 string          `json:"state"`
+	Attention             string          `json:"attention,omitempty"`
+	LifecycleState        workqueue.State `json:"lifecycle_state"`
+	RuntimeState          string          `json:"runtime_state,omitempty"`
+	AcceptanceState       string          `json:"acceptance_state"`
+	GitEvidenceState      string          `json:"git_evidence_state,omitempty"`
+	WorktreeID            string          `json:"worktree_id,omitempty"`
+	WorkspaceID           string          `json:"workspace_id,omitempty"`
+	RuntimeID             string          `json:"runtime_id,omitempty"`
+	Branch                string          `json:"branch,omitempty"`
+	BaseCommit            string          `json:"base_commit"`
+	HeadCommit            string          `json:"head_commit,omitempty"`
+	GitEvidenceKnown      bool            `json:"git_evidence_known,omitempty"`
+	Clean                 *bool           `json:"clean,omitempty"`
+	CommitsAheadBase      *int            `json:"commits_ahead_base,omitempty"`
+	ChangedPathCount      *int            `json:"changed_path_count,omitempty"`
+	GitEvidenceRecordedAt *time.Time      `json:"git_evidence_recorded_at,omitempty"`
+	Summary               string          `json:"summary,omitempty"`
 }
 
 type projectTaskContinuation struct {
@@ -93,18 +97,19 @@ type projectTaskContinuation struct {
 }
 
 type projectTaskView struct {
-	TaskID         string                   `json:"task_id"`
-	Alias          string                   `json:"alias"`
-	Target         string                   `json:"target"`
-	BaseCommit     string                   `json:"base_commit"`
-	State          string                   `json:"state"`
-	LifecycleState workqueue.TaskState      `json:"lifecycle_state"`
-	WorkerCount    int                      `json:"worker_count"`
-	Continuation   *projectTaskContinuation `json:"continuation,omitempty"`
-	Workers        []projectTaskWorkerView  `json:"workers"`
-	CreatedAt      time.Time                `json:"created_at"`
-	UpdatedAt      time.Time                `json:"updated_at"`
-	Cleaned        bool                     `json:"cleaned,omitempty"`
+	TaskID              string                            `json:"task_id"`
+	Alias               string                            `json:"alias"`
+	Target              string                            `json:"target"`
+	BaseCommit          string                            `json:"base_commit"`
+	State               string                            `json:"state"`
+	LifecycleState      workqueue.TaskState               `json:"lifecycle_state"`
+	WorkerCount         int                               `json:"worker_count"`
+	GitEvidenceContract *workqueue.TaskAcceptanceContract `json:"git_evidence_contract,omitempty"`
+	Continuation        *projectTaskContinuation          `json:"continuation,omitempty"`
+	Workers             []projectTaskWorkerView           `json:"workers"`
+	CreatedAt           time.Time                         `json:"created_at"`
+	UpdatedAt           time.Time                         `json:"updated_at"`
+	Cleaned             bool                              `json:"cleaned,omitempty"`
 }
 
 func (s *Server) WithWorkQueue(store *workqueue.Store) *Server {
@@ -161,19 +166,25 @@ func (s *Server) addProjectTaskTools(projectSchema map[string]any) {
 	cancelHints := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}
 	cleanupHints := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}
 	taskID := stringSchema("opaque durable task group id", `^tg_[a-f0-9]{32}$`, 35)
+	gitEvidenceContract := closedObject(map[string]any{
+		"version":                          map[string]any{"type": "integer", "minimum": 1, "maximum": 1},
+		"minimum_commits_ahead_per_worker": map[string]any{"type": "integer", "minimum": 1, "maximum": 10000},
+		"minimum_changed_paths_per_worker": map[string]any{"type": "integer", "minimum": 1, "maximum": 10000},
+	}, []string{"version", "minimum_commits_ahead_per_worker", "minimum_changed_paths_per_worker"})
 	s.addDirectTool(toolDef{
-		Name: "project_task_start", Description: "Start or reuse one durable group of up to four stock Codex workers. Each worker receives one explicit bounded goal, one server-owned fenced Git worktree, one registered workspace and one independent model runtime; workers never share a writer checkout.",
+		Name: "project_task_start", Description: "Start or reuse one durable group of up to four stock Codex workers. Each worker receives one explicit bounded goal, one server-owned fenced Git worktree, one registered workspace and one independent model runtime; workers never share a writer checkout. An optional version-1 Git evidence contract records a clean committed-change predicate with minimum commits and changed-path counts. It does not accept the task, claim tests passed or prove natural-language goal satisfaction.",
 		InputSchema: closedObject(map[string]any{
 			"alias": projectSchema["alias"], "target": projectSchema["target"],
-			"goals":           map[string]any{"type": "array", "minItems": 1, "maxItems": workqueue.MaxTaskWorkers, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": modelturn.MaxGoalBodyBytes}},
-			"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
-			"idempotency_key": stringSchema("caller-generated key for this exact task group", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,117}$`, 118),
-		}, []string{"alias", "target", "goals", "timeout_seconds", "idempotency_key"}), Version: "1", Annotations: startHints,
+			"goals":                 map[string]any{"type": "array", "minItems": 1, "maxItems": workqueue.MaxTaskWorkers, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": modelturn.MaxGoalBodyBytes}},
+			"timeout_seconds":       map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
+			"idempotency_key":       stringSchema("caller-generated key for this exact task group", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,117}$`, 118),
+			"git_evidence_contract": gitEvidenceContract,
+		}, []string{"alias", "target", "goals", "timeout_seconds", "idempotency_key"}), Version: "3", Annotations: startHints,
 	}, s.handleProjectTaskStart)
-	s.addDirectTool(toolDef{Name: "project_task_status", Description: "Reconcile and return one durable multiworker task without exposing leases, fences, paths, prompts or credentials.", InputSchema: closedObject(map[string]any{"task_id": taskID}, []string{"task_id"}), Version: "1", Annotations: readHints}, s.handleProjectTaskStatus)
+	s.addDirectTool(toolDef{Name: "project_task_status", Description: "Reconcile and return one durable multiworker task without exposing leases, fences, paths, prompts or credentials. Runtime completion stays separate from semantic acceptance. An opt-in Git evidence contract may produce a durable verified Git receipt for an exact task/worker/worktree/workspace/base/branch/lease/fence and clean committed-change predicate; `acceptance_state` remains pending because this contract does not evaluate tests or natural-language goals. Receipts are revalidated before cleanup and remain available afterward. Missing or stale evidence requires reconciliation.", InputSchema: closedObject(map[string]any{"task_id": taskID}, []string{"task_id"}), Version: "3", Annotations: readHints}, s.handleProjectTaskStatus)
 	s.addDirectTool(toolDef{Name: "project_task_list", Description: "List up to 20 recent durable tasks for one project and Edge target, including retained terminal tasks, so a new chat can recover a lost task ID. This is local metadata only; use project_task_status for live reconciliation.", InputSchema: closedObject(map[string]any{"alias": projectSchema["alias"], "target": projectSchema["target"], "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20}}, []string{"alias", "target"}), Version: "1", Annotations: readHints}, s.handleProjectTaskList)
 	s.addDirectTool(toolDef{Name: "project_task_cancel", Description: "Request cancellation of every nonterminal worker in one durable task. Repeated cancellation is idempotent.", InputSchema: closedObject(map[string]any{"task_id": taskID}, []string{"task_id"}), Version: "1", Annotations: cancelHints}, s.handleProjectTaskCancel)
-	s.addDirectTool(toolDef{Name: "project_task_cleanup", Description: "Remove only clean terminal worker worktrees after exact lease and fence validation. Worker branches and durable task evidence are retained.", InputSchema: closedObject(map[string]any{"task_id": taskID, "idempotency_key": stringSchema("caller-generated cleanup key", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$`, 96)}, []string{"task_id", "idempotency_key"}), Version: "1", Annotations: cleanupHints}, s.handleProjectTaskCleanup)
+	s.addDirectTool(toolDef{Name: "project_task_cleanup", Description: "Remove only terminal worker worktrees after exact lease and fence validation. For a succeeded worker under an opt-in Git evidence contract, the exact durable Git receipt is revalidated before cleanup and preserved afterward; it is not semantic task acceptance. The caller idempotency key correlates retries; each Edge cleanup operation uses a stable server-derived task/worker key. Worker branches and durable task evidence are retained.", InputSchema: closedObject(map[string]any{"task_id": taskID, "idempotency_key": stringSchema("caller retry-correlation key; Edge operation identity is server-derived per task and worker", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$`, 96)}, []string{"task_id", "idempotency_key"}), Version: "2", Annotations: cleanupHints}, s.handleProjectTaskCleanup)
 }
 
 func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, error) {
@@ -187,7 +198,8 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 	params.Alias = strings.ToLower(strings.TrimSpace(params.Alias))
 	params.Target = strings.ToLower(strings.TrimSpace(params.Target))
 	params.IdempotencyKey = strings.TrimSpace(params.IdempotencyKey)
-	if len(params.Goals) < 1 || len(params.Goals) > workqueue.MaxTaskWorkers || params.TimeoutSeconds < 1 || time.Duration(params.TimeoutSeconds)*time.Second > modelturn.MaxTurnTTL || len(params.IdempotencyKey) < 8 || len(params.IdempotencyKey) > 118 {
+	if len(params.Goals) < 1 || len(params.Goals) > workqueue.MaxTaskWorkers || params.TimeoutSeconds < 1 || time.Duration(params.TimeoutSeconds)*time.Second > modelturn.MaxTurnTTL || len(params.IdempotencyKey) < 8 || len(params.IdempotencyKey) > 118 ||
+		workqueue.ValidateTaskAcceptanceContract(params.GitEvidenceContract) != nil {
 		return "", modelturn.ErrInvalidRequest
 	}
 	bodies, hashes, err := projectTaskGoalBodies(params.Goals)
@@ -264,7 +276,7 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 	}
 	task, created, err := s.workQueue.CreateTask(workqueue.TaskSpec{
 		IdempotencyKey: params.IdempotencyKey, Project: params.Alias, Target: params.Target, BaseCommit: snapshot.Result.SnapshotHead,
-		GoalHash: groupHash, WorkerGoalHashes: hashes, WorkerGoalRefs: goalRefs, Pool: "edge." + params.Target + ".runtime", Profile: "codex.worker",
+		GoalHash: groupHash, AcceptanceContract: params.GitEvidenceContract, WorkerGoalHashes: hashes, WorkerGoalRefs: goalRefs, Pool: "edge." + params.Target + ".runtime", Profile: "codex.worker",
 		WorkerCount: len(params.Goals), ExecutionTimeoutSeconds: params.TimeoutSeconds,
 	})
 	if err != nil {
@@ -315,7 +327,8 @@ func projectTaskGoalBodies(goals []string) ([][]byte, []string, error) {
 func projectTaskRequestMatches(task workqueue.TaskGroup, params projectTaskStartParams, hashes []string, groupHash string) bool {
 	if task.IdempotencyKey != params.IdempotencyKey || task.Project != params.Alias || task.Target != params.Target ||
 		task.BaseCommit == "" || task.GoalHash != groupHash || task.WorkerCount != len(hashes) || task.ExecutionTimeoutSeconds != params.TimeoutSeconds ||
-		task.Pool != "edge."+params.Target+".runtime" || task.Profile != "codex.worker" || len(task.Workers) != len(hashes) {
+		task.Pool != "edge."+params.Target+".runtime" || task.Profile != "codex.worker" || len(task.Workers) != len(hashes) ||
+		!sameProjectTaskAcceptanceContract(task.AcceptanceContract, params.GitEvidenceContract) {
 		return false
 	}
 	for index, worker := range task.Workers {
@@ -324,6 +337,13 @@ func projectTaskRequestMatches(task workqueue.TaskGroup, params projectTaskStart
 		}
 	}
 	return true
+}
+
+func sameProjectTaskAcceptanceContract(left, right *workqueue.TaskAcceptanceContract) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 func (s *Server) projectTaskStartLock(key string) *sync.Mutex {
@@ -434,6 +454,9 @@ func (s *Server) handleProjectTaskCleanup(arguments json.RawMessage) (string, er
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
 	}
+	if !validProjectTaskCleanupIdempotencyKey(params.IdempotencyKey) {
+		return "", errors.New("project task cleanup idempotency key is invalid")
+	}
 	task, found, err := s.workQueue.Task(params.TaskID)
 	if err != nil || !found {
 		return "", errors.New("project task not found")
@@ -450,10 +473,21 @@ func (s *Server) handleProjectTaskCleanup(arguments json.RawMessage) (string, er
 		return "", err
 	}
 	for _, worker := range task.Workers {
-		if worker.WorktreeID == "" {
+		if worker.WorktreeID == "" || worker.WorktreeCleaned {
 			continue
 		}
-		request := edge.OperationRequest{Alias: task.Project, TargetAlias: task.Target, Profile: "linux-workcell", WorktreeID: worker.WorktreeID, WorkJobID: worker.JobID, WorkLeaseID: worker.LeaseID, WorkFence: worker.Fence, IdempotencyKey: fmt.Sprintf("%s:%d", params.IdempotencyKey, worker.Ordinal)}
+		cleanupKey := projectTaskWorktreeCleanupOperationKey(task.ID, worker.Ordinal)
+		request := edge.OperationRequest{Alias: task.Project, TargetAlias: task.Target, Profile: "linux-workcell", WorktreeID: worker.WorktreeID, WorkJobID: worker.JobID, WorkLeaseID: worker.LeaseID, WorkFence: worker.Fence, IdempotencyKey: cleanupKey}
+		if task.AcceptanceContract != nil && worker.State == workqueue.StateSucceeded {
+			if worker.AcceptanceReceipt == nil {
+				return "", errors.New("project task Git evidence receipt is required before cleanup")
+			}
+			if !succeededTaskCleanupAlreadyExists(device.ID, s.edgeOperations, cleanupKey, request) {
+				if err := s.revalidateTaskAcceptanceReceipt(context.Background(), task, worker, device.ID); err != nil {
+					return "", err
+				}
+			}
+		}
 		op, _, createErr := s.edgeOperations.CreateOperation(device.ID, edge.OperationProjectWorktreeCleanup, request)
 		if createErr != nil {
 			return "", createErr
@@ -465,8 +499,65 @@ func (s *Server) handleProjectTaskCleanup(arguments json.RawMessage) (string, er
 			}
 			return "", errors.New("project task worktree cleanup failed: " + op.SafeCode)
 		}
+		if err := s.workQueue.MarkTaskWorkerWorktreeCleaned(task.ID, worker.Ordinal, worker.LeaseID, worker.Fence); err != nil {
+			return "", err
+		}
 	}
-	return marshalToolValue(projectTaskPublicView(task, true), nil)
+	updated, found, err := s.workQueue.Task(task.ID)
+	if err != nil || !found {
+		return "", errors.New("project task cleanup checkpoint unavailable")
+	}
+	cleaned := true
+	for _, worker := range updated.Workers {
+		cleaned = cleaned && (worker.WorktreeID == "" || worker.WorktreeCleaned)
+	}
+	return marshalToolValue(projectTaskPublicView(updated, cleaned), nil)
+}
+
+func validProjectTaskCleanupIdempotencyKey(key string) bool {
+	if len(key) < 8 || len(key) > 96 || !((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z') || (key[0] >= '0' && key[0] <= '9')) {
+		return false
+	}
+	for _, char := range key {
+		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || strings.ContainsRune("._:-", char)) {
+			return false
+		}
+	}
+	return true
+}
+
+func projectTaskWorktreeCleanupOperationKey(taskID string, ordinal int) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("project-task-cleanup:v1:%s:%d", taskID, ordinal)))
+	return "task-cleanup:" + hex.EncodeToString(digest[:])
+}
+
+func succeededTaskCleanupAlreadyExists(deviceID string, operations edgeOperationRegistry, key string, request edge.OperationRequest) bool {
+	lookup, ok := operations.(edgeOperationIdempotencyLookup)
+	if !ok {
+		return false
+	}
+	op, found, err := lookup.OperationByIdempotency(deviceID, edge.OperationProjectWorktreeCleanup, key)
+	return err == nil && found && op.State == edge.OperationSucceeded && reflect.DeepEqual(op.Request, request)
+}
+
+func (s *Server) revalidateTaskAcceptanceReceipt(ctx context.Context, task workqueue.TaskGroup, worker workqueue.TaskWorker, deviceID string) error {
+	receipt := worker.AcceptanceReceipt
+	if receipt == nil || s.edgeOperations == nil {
+		return errors.New("project task Git evidence receipt is unavailable")
+	}
+	status, _, err := s.edgeOperations.CreateOperation(deviceID, edge.OperationProjectWorktreeStatus, edge.OperationRequest{Alias: task.Project, TargetAlias: task.Target, Profile: "linux-workcell", WorktreeID: worker.WorktreeID})
+	if err == nil {
+		status, err = s.edgeOperations.WaitOperation(ctx, status.ID, 10*time.Second)
+	}
+	result := status.Result
+	if err != nil || status.State != edge.OperationSucceeded || result.WorktreeState != "ready" || !result.WorktreeEvidenceKnown ||
+		result.WorktreeID != receipt.WorktreeID || result.WorkspaceID != receipt.WorkspaceID || result.WorktreeRole != receipt.WorktreeRole ||
+		result.WorktreeBaseCommit != receipt.BaseCommit || result.WorktreeBranch != receipt.Branch || result.WorktreeHeadCommit != receipt.HeadCommit ||
+		result.WorkJobID != receipt.JobID || result.WorkLeaseID != receipt.LeaseID || result.WorkFence != receipt.Fence ||
+		result.WorktreeClean != receipt.Clean || result.WorktreeCommitsAheadBase != receipt.CommitsAheadBase || result.WorktreeChangedPathCount != receipt.ChangedPathCount {
+		return errors.New("project task Git evidence changed; cleanup requires reconciliation")
+	}
+	return nil
 }
 
 func (s *Server) reconcileProjectTasksOnce(ctx context.Context) error {
@@ -825,14 +916,21 @@ func projectTaskRuntimeOutcome(runtime modelturn.Runtime) (workqueue.State, stri
 }
 
 func projectTaskPublicView(task workqueue.TaskGroup, cleaned bool) projectTaskView {
-	view := projectTaskView{TaskID: task.ID, Alias: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, State: projectTaskSemanticState(task.State), LifecycleState: task.State, WorkerCount: task.WorkerCount, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt, Cleaned: cleaned, Workers: make([]projectTaskWorkerView, 0, len(task.Workers))}
+	view := projectTaskView{TaskID: task.ID, Alias: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, State: projectTaskSemanticState(task.State), LifecycleState: task.State, WorkerCount: task.WorkerCount, GitEvidenceContract: task.AcceptanceContract, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt, Cleaned: cleaned, Workers: make([]projectTaskWorkerView, 0, len(task.Workers))}
 	for _, worker := range task.Workers {
 		branch := ""
 		if strings.HasPrefix(worker.WorktreeID, "wt_") {
 			branch = "codex/worktree-" + strings.TrimPrefix(worker.WorktreeID, "wt_")
 		}
 		state, runtimeState, acceptanceState := projectTaskWorkerSemanticState(worker)
-		view.Workers = append(view.Workers, projectTaskWorkerView{Ordinal: worker.Ordinal, State: state, LifecycleState: worker.State, RuntimeState: runtimeState, AcceptanceState: acceptanceState, WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID, RuntimeID: worker.RuntimeID, Branch: branch, BaseCommit: task.BaseCommit, Summary: worker.Summary})
+		item := projectTaskWorkerView{Ordinal: worker.Ordinal, State: state, LifecycleState: worker.State, RuntimeState: runtimeState, AcceptanceState: acceptanceState, WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID, RuntimeID: worker.RuntimeID, Branch: branch, BaseCommit: task.BaseCommit, Summary: worker.Summary}
+		if worker.WorktreeCleaned && worker.AcceptanceReceipt != nil {
+			applyTaskAcceptanceReceipt(&item, *worker.AcceptanceReceipt)
+		}
+		view.Workers = append(view.Workers, item)
+	}
+	if task.State == workqueue.TaskCompleted {
+		view.State = projectTaskViewSemanticState(view.Workers)
 	}
 	return view
 }
@@ -863,6 +961,15 @@ func projectTaskWorkerSemanticState(worker workqueue.TaskWorker) (string, string
 	}
 }
 
+func applyTaskAcceptanceReceipt(view *projectTaskWorkerView, receipt workqueue.TaskAcceptanceReceipt) {
+	view.State, view.AcceptanceState, view.GitEvidenceState = "acceptance_pending", "pending", "verified"
+	view.GitEvidenceKnown, view.HeadCommit = true, receipt.HeadCommit
+	clean, ahead, changed := receipt.Clean, receipt.CommitsAheadBase, receipt.ChangedPathCount
+	view.Clean, view.CommitsAheadBase, view.ChangedPathCount = &clean, &ahead, &changed
+	recordedAt := receipt.RecordedAt
+	view.GitEvidenceRecordedAt = &recordedAt
+}
+
 func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskGroup) projectTaskView {
 	view := projectTaskPublicView(task, false)
 	if s.modelTurns == nil || s.edgeOperations == nil || s.edgeDevices == nil {
@@ -887,6 +994,14 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 	}
 	for index, worker := range task.Workers {
 		item := &view.Workers[index]
+		if worker.WorktreeCleaned {
+			if worker.AcceptanceReceipt != nil {
+				applyTaskAcceptanceReceipt(item, *worker.AcceptanceReceipt)
+			} else if worker.State == workqueue.StateSucceeded {
+				item.State, item.RuntimeState, item.AcceptanceState = "reconciliation_required", string(modelturn.RuntimeStateCompleted), "reconciliation_required"
+			}
+			continue
+		}
 		if worker.RuntimeID == "" {
 			if worker.State == workqueue.StateCancelled {
 				item.RuntimeState = string(modelturn.RuntimeStateCancelled)
@@ -910,15 +1025,35 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				status, statusErr = s.edgeOperations.WaitOperation(ctx, status.ID, 10*time.Second)
 			}
 			result := status.Result
-			if statusErr != nil || status.State != edge.OperationSucceeded || !result.WorktreeEvidenceKnown || result.WorktreeID != worker.WorktreeID ||
-				result.WorktreeBaseCommit != task.BaseCommit || result.WorktreeBranch != item.Branch || result.WorktreeHeadCommit == "" {
+			if statusErr != nil || status.State != edge.OperationSucceeded || result.WorktreeState != "ready" || !result.WorktreeEvidenceKnown || result.WorktreeID != worker.WorktreeID ||
+				result.WorkspaceID != worker.WorkspaceID || result.WorktreeRole != "writer" || result.WorkJobID != worker.JobID || result.WorkLeaseID != worker.LeaseID || result.WorkFence != worker.Fence ||
+				result.WorktreeBaseCommit != task.BaseCommit || result.WorktreeBranch != item.Branch || !validProjectTaskCommit(result.WorktreeHeadCommit) ||
+				result.WorktreeCommitsAheadBase < 0 || result.WorktreeCommitsAheadBase > 10000 || result.WorktreeChangedPathCount < 0 || result.WorktreeChangedPathCount > 10000 ||
+				((result.WorktreeHeadCommit == result.WorktreeBaseCommit) != (result.WorktreeCommitsAheadBase == 0)) {
 				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
 				continue
 			}
 			clean, ahead, changed := result.WorktreeClean, result.WorktreeCommitsAheadBase, result.WorktreeChangedPathCount
 			item.State, item.AcceptanceState = "acceptance_pending", "pending"
-			item.GitEvidenceKnown, item.HeadCommit = true, result.WorktreeHeadCommit
+			item.GitEvidenceKnown, item.GitEvidenceState, item.HeadCommit = true, "observed", result.WorktreeHeadCommit
 			item.Clean, item.CommitsAheadBase, item.ChangedPathCount = &clean, &ahead, &changed
+			if taskAcceptanceContractSatisfied(task.AcceptanceContract, clean, ahead, changed) {
+				candidate := workqueue.TaskAcceptanceReceipt{Version: 1, TaskID: task.ID, Ordinal: worker.Ordinal, JobID: worker.JobID, WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID, WorktreeRole: result.WorktreeRole, BaseCommit: result.WorktreeBaseCommit, HeadCommit: result.WorktreeHeadCommit, Branch: result.WorktreeBranch, LeaseID: worker.LeaseID, Fence: worker.Fence, ContractDigest: workqueue.TaskAcceptanceContractDigest(task.AcceptanceContract), Clean: clean, CommitsAheadBase: ahead, ChangedPathCount: changed}
+				recorded, recordErr := s.workQueue.RecordTaskWorkerAcceptance(candidate)
+				if recordErr != nil {
+					item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+					if worker.AcceptanceReceipt != nil {
+						item.GitEvidenceState = "stale"
+					}
+					continue
+				}
+				applyTaskAcceptanceReceipt(item, recorded)
+			} else if worker.AcceptanceReceipt != nil {
+				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				item.GitEvidenceState = "stale"
+			} else if task.AcceptanceContract != nil {
+				item.GitEvidenceState = "criteria_not_met"
+			}
 		case modelturn.RuntimeStateFailed, modelturn.RuntimeStateExpired:
 			if worker.State == workqueue.StateFailed {
 				item.State, item.AcceptanceState = "failed", "failed"
@@ -992,13 +1127,14 @@ func setProjectTaskContinuation(view *projectTaskView) {
 }
 
 func projectTaskViewSemanticState(workers []projectTaskWorkerView) string {
-	allPending, anyFailed, anyReconciliation, anyRunning, anyCancelled := len(workers) > 0, false, false, false, false
+	allPending, anyPending, anyFailed, anyReconciliation, anyRunning, anyCancelled := len(workers) > 0, false, false, false, false, false
 	for _, worker := range workers {
 		anyFailed = anyFailed || worker.State == "failed"
 		anyReconciliation = anyReconciliation || worker.State == "reconciliation_required"
 		anyRunning = anyRunning || worker.State == "running"
 		anyCancelled = anyCancelled || worker.State == "cancelled"
 		allPending = allPending && worker.State == "acceptance_pending"
+		anyPending = anyPending || worker.State == "acceptance_pending"
 	}
 	if anyFailed {
 		return "failed"
@@ -1009,13 +1145,23 @@ func projectTaskViewSemanticState(workers []projectTaskWorkerView) string {
 	if anyRunning {
 		return "running"
 	}
-	if allPending {
+	if allPending || (anyPending && !anyCancelled) {
 		return "acceptance_pending"
 	}
 	if anyCancelled {
 		return "cancelled"
 	}
 	return "running"
+}
+
+func taskAcceptanceContractSatisfied(contract *workqueue.TaskAcceptanceContract, clean bool, commitsAhead, changedPaths int) bool {
+	return contract != nil && workqueue.ValidateTaskAcceptanceContract(contract) == nil && clean &&
+		commitsAhead >= contract.MinimumCommitsAheadPerWorker && changedPaths >= contract.MinimumChangedPathsPerWorker
+}
+
+func validProjectTaskCommit(commit string) bool {
+	decoded, err := hex.DecodeString(commit)
+	return len(commit) == 40 && err == nil && strings.ToLower(commit) == commit && len(decoded) == 20
 }
 
 func terminalProjectTask(state workqueue.TaskState) bool {
