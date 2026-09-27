@@ -987,6 +987,62 @@ func TestProjectTaskGitAcceptanceContractAcceptsOnlyMatchingLiveEvidence(t *test
 		!strings.Contains(status, `"commits_ahead_base":1`) || !strings.Contains(status, `"changed_path_count":1`) {
 		t.Fatalf("status=%s err=%v", status, err)
 	}
+	edges.mu.Lock()
+	for id, worktree := range edges.worktrees {
+		worktree.WorktreeBranch = "codex/other"
+		edges.worktrees[id] = worktree
+	}
+	for id, operation := range edges.operations {
+		if operation.Kind == edge.OperationProjectWorktreeStatus {
+			operation.Result.WorktreeBranch = "codex/other"
+			edges.operations[id] = operation
+		}
+	}
+	edges.mu.Unlock()
+	mismatched, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(mismatched, `"reconciliation_reason":"worktree_evidence_mismatch"`) || strings.Contains(mismatched, `"state":"accepted"`) {
+		t.Fatalf("mismatched worktree evidence status=%s err=%v", mismatched, err)
+	}
+	edges.mu.Lock()
+	for id, worktree := range edges.worktrees {
+		worktree.WorktreeBranch = started.Workers[0].Branch
+		edges.worktrees[id] = worktree
+	}
+	for id, operation := range edges.operations {
+		if operation.Kind == edge.OperationProjectWorktreeStatus {
+			operation.Result.WorktreeBranch = started.Workers[0].Branch
+			edges.operations[id] = operation
+		}
+	}
+	edges.mu.Unlock()
+	edges.mu.Lock()
+	for id, worktree := range edges.worktrees {
+		worktree.WorktreeClean = false
+		edges.worktrees[id] = worktree
+	}
+	for id, operation := range edges.operations {
+		if operation.Kind == edge.OperationProjectWorktreeStatus {
+			operation.Result.WorktreeClean = false
+			edges.operations[id] = operation
+		}
+	}
+	edges.mu.Unlock()
+	dirty, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(dirty, `"reconciliation_reason":"git_evidence_stale"`) || !strings.Contains(dirty, `"git_evidence_state":"stale"`) {
+		t.Fatalf("dirty accepted worktree status=%s err=%v", dirty, err)
+	}
+	edges.mu.Lock()
+	for id, worktree := range edges.worktrees {
+		worktree.WorktreeClean = true
+		edges.worktrees[id] = worktree
+	}
+	for id, operation := range edges.operations {
+		if operation.Kind == edge.OperationProjectWorktreeStatus {
+			operation.Result.WorktreeClean = true
+			edges.operations[id] = operation
+		}
+	}
+	edges.mu.Unlock()
 
 	conflicting := strings.Replace(request, `"minimum_changed_paths_per_worker":1`, `"minimum_changed_paths_per_worker":2`, 1)
 	if _, err := server.table["project_task_start"].handler(json.RawMessage(conflicting)); err == nil || !strings.Contains(err.Error(), "idempotency key conflicts") {
