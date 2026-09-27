@@ -398,6 +398,45 @@ func (s *Store) Tasks(limit int) ([]TaskGroup, error) {
 	return tasks, nil
 }
 
+// RecentProjectTasks includes retained terminal groups so a new client can
+// discover an unfinished acceptance review without the prior chat's task ID.
+func (s *Store) RecentProjectTasks(project, target string, limit int) ([]TaskGroup, error) {
+	if s == nil || s.db == nil || !taskProjectPattern.MatchString(project) || !taskTargetPattern.MatchString(target) || limit < 1 || limit > MaxListResults {
+		return nil, errors.New("workqueue: recent task query is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT task_id FROM task_groups WHERE project_alias=? AND target_alias=? ORDER BY updated_at DESC,task_id DESC LIMIT ?`, project, target, limit)
+	if err != nil {
+		return nil, errors.New("workqueue: recent task list failed")
+	}
+	ids := make([]string, 0, limit)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return nil, errors.New("workqueue: recent task list failed")
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, errors.New("workqueue: recent task list failed")
+	}
+	if err := rows.Close(); err != nil {
+		return nil, errors.New("workqueue: recent task list failed")
+	}
+	tasks := make([]TaskGroup, 0, len(ids))
+	for _, id := range ids {
+		task, found, err := s.taskUnlocked(id)
+		if err != nil || !found {
+			return nil, errors.New("workqueue: recent task list contains invalid state")
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, nil
+}
+
 func (s *Store) taskUnlocked(taskID string) (TaskGroup, bool, error) {
 	return taskByID(s.db, taskID)
 }

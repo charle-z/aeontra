@@ -84,6 +84,7 @@ Use this short map before scanning the complete catalog in `docs/tools.md`.
 | Intent | Canonical tool |
 |---|---|
 | Get initial repository context | `workspace_checkpoint`, then `build_context_pack` only when file context is needed |
+| Recover a durable task after chat interruption | `project_task_list`, then `project_task_status` for the selected task ID |
 | Read one or several files | `read_file` / `read_many_files` |
 | Search code or text | `search_code` |
 | Change existing files | `apply_patch` |

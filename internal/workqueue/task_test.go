@@ -276,3 +276,46 @@ func TestTaskReconciliationListExcludesRetainedTerminalGroups(t *testing.T) {
 		t.Fatalf("retained=%+v found=%v err=%v", retained, found, err)
 	}
 }
+
+func TestRecentProjectTasksRetainsCompletedWorkForChatRecovery(t *testing.T) {
+	store := openTestStore(t, Config{ControllerID: "controller-a"})
+	newTask := func(key, project, target, goalRef string) TaskGroup {
+		t.Helper()
+		task, _, err := store.CreateTask(TaskSpec{
+			IdempotencyKey: key, Project: project, Target: target, BaseCommit: strings.Repeat("a", 40),
+			GoalHash: "sha256:" + strings.Repeat("b", 64), WorkerGoalHashes: []string{"sha256:" + strings.Repeat("1", 64)}, WorkerGoalRefs: []string{goalRef},
+			Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return task
+	}
+	completed := newTask("recover-completed-01", "project", "parrot", "mb_11111111111111111111111111111111")
+	worker, err := store.LeaseTaskWorker(completed.ID, 0, "worker-holder-0001", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CompleteTaskWorker(completed.ID, 0, worker.LeaseID, worker.Fence, Result{Outcome: StateSucceeded, Summary: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	active := newTask("recover-active-00001", "project", "parrot", "mb_22222222222222222222222222222222")
+	other := newTask("recover-unrelated-001", "other", "parrot", "mb_33333333333333333333333333333333")
+	tasks, err := store.RecentProjectTasks("project", "parrot", 10)
+	if err != nil || len(tasks) != 2 {
+		t.Fatalf("tasks=%+v err=%v", tasks, err)
+	}
+	seen := map[string]TaskState{}
+	for _, task := range tasks {
+		seen[task.ID] = task.State
+		if task.ID == other.ID {
+			t.Fatal("unrelated project entered recovery list")
+		}
+	}
+	if seen[completed.ID] != TaskCompleted || seen[active.ID] == "" {
+		t.Fatalf("recovery list omitted terminal or active work: %+v", seen)
+	}
+	if _, err := store.RecentProjectTasks("project", "parrot", MaxListResults+1); err == nil {
+		t.Fatal("unbounded recovery list accepted")
+	}
+}

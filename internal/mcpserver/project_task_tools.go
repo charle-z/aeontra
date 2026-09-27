@@ -39,6 +39,28 @@ type projectTaskIDParams struct {
 	TaskID string `json:"task_id"`
 }
 
+type projectTaskListParams struct {
+	Alias  string `json:"alias"`
+	Target string `json:"target"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+type projectTaskListItem struct {
+	TaskID         string              `json:"task_id"`
+	LifecycleState workqueue.TaskState `json:"lifecycle_state"`
+	BaseCommit     string              `json:"base_commit"`
+	WorkerCount    int                 `json:"worker_count"`
+	CreatedAt      time.Time           `json:"created_at"`
+	UpdatedAt      time.Time           `json:"updated_at"`
+}
+
+type projectTaskListView struct {
+	Alias    string                `json:"alias"`
+	Target   string                `json:"target"`
+	Tasks    []projectTaskListItem `json:"tasks"`
+	NextTool string                `json:"next_tool,omitempty"`
+}
+
 type projectTaskCleanupParams struct {
 	TaskID         string `json:"task_id"`
 	IdempotencyKey string `json:"idempotency_key"`
@@ -148,6 +170,7 @@ func (s *Server) addProjectTaskTools(projectSchema map[string]any) {
 		}, []string{"alias", "target", "goals", "timeout_seconds", "idempotency_key"}), Version: "1", Annotations: startHints,
 	}, s.handleProjectTaskStart)
 	s.addDirectTool(toolDef{Name: "project_task_status", Description: "Reconcile and return one durable multiworker task without exposing leases, fences, paths, prompts or credentials.", InputSchema: closedObject(map[string]any{"task_id": taskID}, []string{"task_id"}), Version: "1", Annotations: readHints}, s.handleProjectTaskStatus)
+	s.addDirectTool(toolDef{Name: "project_task_list", Description: "List up to 20 recent durable tasks for one project and Edge target, including retained terminal tasks, so a new chat can recover a lost task ID. This is local metadata only; use project_task_status for live reconciliation.", InputSchema: closedObject(map[string]any{"alias": projectSchema["alias"], "target": projectSchema["target"], "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20}}, []string{"alias", "target"}), Version: "1", Annotations: readHints}, s.handleProjectTaskList)
 	s.addDirectTool(toolDef{Name: "project_task_cancel", Description: "Request cancellation of every nonterminal worker in one durable task. Repeated cancellation is idempotent.", InputSchema: closedObject(map[string]any{"task_id": taskID}, []string{"task_id"}), Version: "1", Annotations: cancelHints}, s.handleProjectTaskCancel)
 	s.addDirectTool(toolDef{Name: "project_task_cleanup", Description: "Remove only clean terminal worker worktrees after exact lease and fence validation. Worker branches and durable task evidence are retained.", InputSchema: closedObject(map[string]any{"task_id": taskID, "idempotency_key": stringSchema("caller-generated cleanup key", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$`, 96)}, []string{"task_id", "idempotency_key"}), Version: "1", Annotations: cleanupHints}, s.handleProjectTaskCleanup)
 }
@@ -247,6 +270,36 @@ func (s *Server) handleProjectTaskStatus(arguments json.RawMessage) (string, err
 		return "", errors.New("project task not found")
 	}
 	return marshalToolValue(s.projectTaskStatusView(context.Background(), task), nil)
+}
+
+func (s *Server) handleProjectTaskList(arguments json.RawMessage) (string, error) {
+	if s.workQueue == nil {
+		return "", errWorkQueueUnavailable
+	}
+	var params projectTaskListParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	params.Alias = strings.ToLower(strings.TrimSpace(params.Alias))
+	params.Target = strings.ToLower(strings.TrimSpace(params.Target))
+	if params.Limit == 0 {
+		params.Limit = 10
+	}
+	if params.Limit < 1 || params.Limit > 20 {
+		return "", errors.New("project task list limit is invalid")
+	}
+	tasks, err := s.workQueue.RecentProjectTasks(params.Alias, params.Target, params.Limit)
+	if err != nil {
+		return "", err
+	}
+	view := projectTaskListView{Alias: params.Alias, Target: params.Target, Tasks: make([]projectTaskListItem, 0, len(tasks))}
+	for _, task := range tasks {
+		view.Tasks = append(view.Tasks, projectTaskListItem{TaskID: task.ID, LifecycleState: task.State, BaseCommit: task.BaseCommit, WorkerCount: task.WorkerCount, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt})
+	}
+	if len(view.Tasks) > 0 {
+		view.NextTool = "project_task_status"
+	}
+	return marshalToolValue(view, nil)
 }
 
 func (s *Server) handleProjectTaskCancel(arguments json.RawMessage) (string, error) {
