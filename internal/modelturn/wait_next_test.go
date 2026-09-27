@@ -34,6 +34,34 @@ func TestWaitNextAfterReturnsAvailableTurnImmediately(t *testing.T) {
 	}
 }
 
+func TestRuntimeReportsDurableTurnCreationTime(t *testing.T) {
+	store := openWaitStore(t, filepath.Join(t.TempDir(), "turns"), nil)
+	runtimeRecord, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.Runtime(context.Background(), runtimeRecord.RuntimeID)
+	if err != nil || before.ActiveTurnCreatedAt != nil {
+		t.Fatalf("before turn runtime=%+v err=%v", before, err)
+	}
+	created, err := store.CreateTurn(context.Background(), ModelRequest{
+		RuntimeID: runtimeRecord.RuntimeID,
+		Sequence:  1,
+		Payload:   json.RawMessage(`{"prompt":"ready"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.Runtime(context.Background(), runtimeRecord.RuntimeID)
+	if err != nil || first.ActiveTurnCreatedAt == nil || first.ActiveTurnCreatedAt.IsZero() || first.ActiveTurnID != created.ID {
+		t.Fatalf("first runtime=%+v err=%v", first, err)
+	}
+	second, err := store.Runtime(context.Background(), runtimeRecord.RuntimeID)
+	if err != nil || second.ActiveTurnCreatedAt == nil || !second.ActiveTurnCreatedAt.Equal(*first.ActiveTurnCreatedAt) {
+		t.Fatalf("second runtime=%+v err=%v", second, err)
+	}
+}
+
 func TestWaitNextAfterWakesAcrossStoreConnections(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "turns")
 	reader := openWaitStore(t, root, nil)

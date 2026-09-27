@@ -398,6 +398,10 @@ that does not declare pending work. Rejection leaves the durable turn unconsumed
 does not extend MCP authority into a direct client response that makes no tool call.
 Model-runtime completion is not semantic acceptance. Task status exposes these as
 separate states and revalidates bounded evidence from the exact managed worktree.
+Its compact handoff revision is an advisory snapshot identifier, not a bearer token,
+ownership transfer or authorization to replay an effect. A new chat must read current
+task status and reconcile changed state before acting. Pending-turn order and wait
+duration contain no prompt text and do not move a worker lease or writer fence.
 No source path or diff is returned. Missing Edge connectivity, an unknown runtime,
 base/head mismatch or absent evidence becomes `reconciliation_required`; it is never
 converted into success. An optional version-1 Git evidence contract records a durable receipt

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -96,12 +97,21 @@ type projectTaskWorkerView struct {
 	ChangedPathCount       *int            `json:"changed_path_count,omitempty"`
 	GitEvidenceRecordedAt  *time.Time      `json:"git_evidence_recorded_at,omitempty"`
 	TestEvidenceRecordedAt *time.Time      `json:"test_evidence_recorded_at,omitempty"`
+	TurnSequence           uint64          `json:"turn_sequence,omitempty"`
+	ActiveTurnCreatedAt    *time.Time      `json:"active_turn_created_at,omitempty"`
+	ModelWaitSeconds       *int64          `json:"model_wait_seconds,omitempty"`
 	Summary                string          `json:"summary,omitempty"`
 }
 
 type projectTaskContinuation struct {
 	State    string `json:"state"`
 	NextTool string `json:"next_tool,omitempty"`
+}
+
+type projectTaskHandoff struct {
+	Version      int    `json:"version"`
+	Revision     string `json:"revision"`
+	ResumePrompt string `json:"resume_prompt"`
 }
 
 type projectTaskView struct {
@@ -115,6 +125,8 @@ type projectTaskView struct {
 	GitEvidenceContract  *workqueue.TaskAcceptanceContract     `json:"git_evidence_contract,omitempty"`
 	TestEvidenceContract *workqueue.TaskTestAcceptanceContract `json:"test_evidence_contract,omitempty"`
 	Continuation         *projectTaskContinuation              `json:"continuation,omitempty"`
+	AttentionOrder       []int                                 `json:"attention_order,omitempty"`
+	Handoff              *projectTaskHandoff                   `json:"handoff,omitempty"`
 	Workers              []projectTaskWorkerView               `json:"workers"`
 	CreatedAt            time.Time                             `json:"created_at"`
 	UpdatedAt            time.Time                             `json:"updated_at"`
@@ -440,10 +452,11 @@ func (s *Server) handleProjectTaskStatus(arguments json.RawMessage) (string, err
 			}
 		}
 		view.State = "reconciliation_required"
-		setProjectTaskContinuation(&view)
+		finalizeProjectTaskView(&view, time.Now().UTC())
 		for _, index := range invalidGoalWorkers {
 			view.Workers[index].Attention = "task_goal_unavailable"
 		}
+		setProjectTaskHandoff(&view)
 		return marshalToolValue(view, nil)
 	}
 	return marshalToolValue(s.projectTaskStatusView(context.Background(), task), nil)
@@ -1058,7 +1071,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 			}
 		}
 		view.State = projectTaskViewSemanticState(view.Workers)
-		setProjectTaskContinuation(&view)
+		finalizeProjectTaskView(&view, time.Now().UTC())
 		return view
 	}
 	resolver, resolverOK := s.edgeDevices.(edgeDeviceAliasRegistry)
@@ -1093,6 +1106,8 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 			continue
 		}
 		item.RuntimeState = string(runtime.State)
+		item.TurnSequence = runtime.LastSequence
+		item.ActiveTurnCreatedAt = runtime.ActiveTurnCreatedAt
 		switch runtime.State {
 		case modelturn.RuntimeStateCompleted:
 			if worker.State != workqueue.StateSucceeded || worker.WorktreeID == "" || deviceErr != nil {
@@ -1175,8 +1190,62 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 		}
 	}
 	view.State = projectTaskViewSemanticState(view.Workers)
-	setProjectTaskContinuation(&view)
+	finalizeProjectTaskView(&view, time.Now().UTC())
 	return view
+}
+
+// finalizeProjectTaskView adds a versioned, content-free handoff to a fresh
+// status observation. It never changes a lease or grants a new writer.
+func finalizeProjectTaskView(view *projectTaskView, now time.Time) {
+	setProjectTaskContinuation(view)
+	view.AttentionOrder = view.AttentionOrder[:0]
+	for index := range view.Workers {
+		worker := &view.Workers[index]
+		worker.ModelWaitSeconds = nil
+		if worker.Attention != "needs_model" {
+			continue
+		}
+		view.AttentionOrder = append(view.AttentionOrder, index)
+		if worker.ActiveTurnCreatedAt != nil {
+			seconds := max(int64(0), int64(now.Sub(*worker.ActiveTurnCreatedAt)/time.Second))
+			worker.ModelWaitSeconds = &seconds
+		}
+	}
+	sort.Slice(view.AttentionOrder, func(left, right int) bool {
+		a, b := view.Workers[view.AttentionOrder[left]].ActiveTurnCreatedAt, view.Workers[view.AttentionOrder[right]].ActiveTurnCreatedAt
+		if a == nil || b == nil {
+			if a == nil && b == nil {
+				return view.AttentionOrder[left] < view.AttentionOrder[right]
+			}
+			return a == nil
+		}
+		if a.Equal(*b) {
+			return view.AttentionOrder[left] < view.AttentionOrder[right]
+		}
+		return a.Before(*b)
+	})
+	for index, workerIndex := range view.AttentionOrder {
+		view.AttentionOrder[index] = view.Workers[workerIndex].Ordinal
+	}
+	setProjectTaskHandoff(view)
+}
+
+func setProjectTaskHandoff(view *projectTaskView) {
+	view.Handoff = &projectTaskHandoff{Version: 1, Revision: projectTaskCheckpointRevision(*view)}
+	view.Handoff.ResumePrompt = "Continue Aeontra task " + view.TaskID + " from checkpoint " + view.Handoff.Revision + ". First call project_task_status for this task and use its current state; if the revision changed, discard this snapshot. Reconcile pending effects before retrying any action. Runtime completion is not objective acceptance."
+}
+
+func projectTaskCheckpointRevision(view projectTaskView) string {
+	view.Handoff = nil
+	view.AttentionOrder = nil
+	view.Workers = append([]projectTaskWorkerView(nil), view.Workers...)
+	for index := range view.Workers {
+		view.Workers[index].Summary = ""
+		view.Workers[index].ModelWaitSeconds = nil
+	}
+	payload, _ := json.Marshal(view) // This fixed view contains only JSON-supported fields.
+	digest := sha256.Sum256(payload)
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 // setProjectTaskContinuation gives a new client a bounded resumption hint from

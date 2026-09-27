@@ -69,6 +69,7 @@ type Runtime struct {
 	LastSequence            uint64              `json:"last_sequence"`
 	ActiveTurnID            TurnID              `json:"active_turn_id,omitempty"`
 	ActiveTurnStatus        Status              `json:"active_turn_status,omitempty"`
+	ActiveTurnCreatedAt     *time.Time          `json:"active_turn_created_at,omitempty"`
 	ResultRef               string              `json:"result_ref,omitempty"`
 	UpdatedAt               time.Time           `json:"updated_at"`
 	Phases                  []RuntimePhaseEvent `json:"phases,omitempty"`
@@ -548,8 +549,8 @@ func (s *Store) runtimeLocked(ctx context.Context, runtimeID string) (Runtime, e
 	runtime.Phases = phases
 	var turnID sql.NullString
 	var status sql.NullString
-	var sequence sql.NullInt64
-	err = s.db.QueryRowContext(ctx, `SELECT turn_id,status,sequence FROM model_turns WHERE runtime_id=? ORDER BY sequence DESC LIMIT 1`, runtimeID).Scan(&turnID, &status, &sequence)
+	var sequence, turnCreatedAt sql.NullInt64
+	err = s.db.QueryRowContext(ctx, `SELECT turn_id,status,sequence,created_at FROM model_turns WHERE runtime_id=? ORDER BY sequence DESC LIMIT 1`, runtimeID).Scan(&turnID, &status, &sequence, &turnCreatedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Runtime{}, errors.New("model runtime turn read failed")
 	}
@@ -557,6 +558,10 @@ func (s *Store) runtimeLocked(ctx context.Context, runtimeID string) (Runtime, e
 		runtime.ActiveTurnID = TurnID(turnID.String)
 		runtime.ActiveTurnStatus = Status(status.String)
 		runtime.LastSequence = uint64(sequence.Int64)
+		if turnCreatedAt.Valid && turnCreatedAt.Int64 > 0 {
+			createdAt := time.Unix(0, turnCreatedAt.Int64).UTC()
+			runtime.ActiveTurnCreatedAt = &createdAt
+		}
 	}
 	return runtime, nil
 }
