@@ -728,6 +728,9 @@ func TestProjectProcessManagerSerializesStdinWithTerminatingSignals(t *testing.T
 	if err := <-signalled; err != nil {
 		t.Fatal(err)
 	}
+	if _, ok := manager.waitTerminal(context.Background(), started.ProcessID, 5*time.Second); !ok {
+		t.Fatal("terminating signal did not reach a durable terminal state")
+	}
 	base.mu.Lock()
 	defer base.mu.Unlock()
 	process := base.processes[startedProcessPID(base)]

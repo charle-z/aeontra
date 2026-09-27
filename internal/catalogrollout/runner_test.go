@@ -24,6 +24,7 @@ type fp struct {
 	c                  []string
 	f                  map[string]error
 	interrupt          bool
+	cancel             context.CancelFunc
 	backendPinMismatch bool
 }
 
@@ -53,6 +54,9 @@ func (p *fp) DeployBackend(_ context.Context, b Identity) (string, error) {
 	p.o.Backend = b
 	if p.interrupt {
 		p.interrupt = false
+		if p.cancel != nil {
+			p.cancel()
+		}
 		return "backend-deploy", context.Canceled
 	}
 	return "backend-deploy", nil
@@ -145,9 +149,11 @@ func TestRejectThirdAndProtocol(t *testing.T) {
 
 func TestResumeNoDuplicate(t *testing.T) {
 	request := tr()
-	platform := &fp{o: Observation{Backend: request.Previous, Front: FrontContract{Primary: request.Previous.CatalogHash}}, f: map[string]error{}, interrupt: true}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	platform := &fp{o: Observation{Backend: request.Previous, Front: FrontContract{Primary: request.Previous.CatalogHash}}, f: map[string]error{}, interrupt: true, cancel: cancel}
 	runner := rr(t, platform)
-	if _, err := runner.Run(context.Background(), request); !errors.Is(err, ErrInterrupted) {
+	if _, err := runner.Run(ctx, request); !errors.Is(err, ErrInterrupted) {
 		t.Fatalf("%v", err)
 	}
 	status, err := runner.Run(context.Background(), request)
@@ -226,11 +232,32 @@ func TestFailureAfterSwitch(t *testing.T) {
 	}
 }
 
+func TestVerificationChildCancellationDoesNotLeaveRolloutActive(t *testing.T) {
+	for name, childErr := range map[string]error{"deadline": context.DeadlineExceeded, "cancelled": context.Canceled} {
+		t.Run(name, func(t *testing.T) {
+			request := tr()
+			platform := &fp{
+				o: Observation{Backend: request.Previous, Front: FrontContract{Primary: request.Previous.CatalogHash}},
+				f: map[string]error{"verify-backend": childErr},
+			}
+			status, err := rr(t, platform).Run(context.Background(), request)
+			if err == nil || status.State != StateFailed || status.Reason != "candidate_verification_failed" {
+				t.Fatalf("status=%+v err=%v", status, err)
+			}
+			if platform.o.Backend != request.Previous || platform.o.Front != (FrontContract{Primary: request.Previous.CatalogHash}) {
+				t.Fatalf("rollback did not restore previous state: %+v", platform.o)
+			}
+		})
+	}
+}
+
 func TestDifferentActive(t *testing.T) {
 	request := tr()
-	platform := &fp{o: Observation{Backend: request.Previous, Front: FrontContract{Primary: request.Previous.CatalogHash}}, f: map[string]error{}, interrupt: true}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	platform := &fp{o: Observation{Backend: request.Previous, Front: FrontContract{Primary: request.Previous.CatalogHash}}, f: map[string]error{}, interrupt: true, cancel: cancel}
 	runner := rr(t, platform)
-	if _, err := runner.Run(context.Background(), request); !errors.Is(err, ErrInterrupted) {
+	if _, err := runner.Run(ctx, request); !errors.Is(err, ErrInterrupted) {
 		t.Fatal(err)
 	}
 	request.RequestID = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"

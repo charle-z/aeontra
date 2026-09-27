@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -37,6 +38,14 @@ func TestCatalogTerminalMessageIncludesBoundedDeploymentEvidence(t *testing.T) {
 	status.DeploymentID = "unsafe\nvalue"
 	if got := catalogTerminalMessage(status, errors.New("private detail")); strings.Contains(got, "unsafe") {
 		t.Fatal(got)
+	}
+}
+
+func TestCatalogInterruptedMessageIsNotCalledTerminal(t *testing.T) {
+	status := catalogrollout.Status{State: catalogrollout.StateRunning, Phase: catalogrollout.PhaseVerifyBackend, Revision: 7}
+	message := catalogTerminalMessage(status, errors.Join(catalogrollout.ErrInterrupted, context.Canceled))
+	if !strings.Contains(message, "catalog rollout interrupted:") || strings.Contains(message, "terminal") {
+		t.Fatal(message)
 	}
 }
 

@@ -242,8 +242,9 @@ func validateObservation(o Observation, q Request) error {
 	return nil
 }
 
-func interrupted(ctx context.Context, err error) bool {
-	return ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+func interrupted(ctx context.Context, _ error) bool {
+	// A child request can time out while the coordinator is still running.
+	return ctx.Err() != nil
 }
 
 func (r Runner) Run(ctx context.Context, request Request) (Status, error) {
