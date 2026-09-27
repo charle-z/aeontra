@@ -130,14 +130,33 @@ func TestOperationLeaseRejectsVersionSkewWithoutBlockingRecovery(t *testing.T) {
 		return store, device
 	}
 
-	t.Run("ordinary work fails with an actionable compatibility error", func(t *testing.T) {
+	t.Run("catalog-only change preserves ordinary work", func(t *testing.T) {
 		store, device := newFixture(t, OperationProjectStatus, OperationRequest{Alias: "codex", TargetAlias: "parrot-trusted-linux", Profile: "linux-workcell"})
-		_, err := store.LeaseOperationCompatible(device.ID, time.Minute, protocol, otherCatalog)
+		lease, err := store.LeaseOperationCompatible(device.ID, time.Minute, protocol, otherCatalog)
+		if err != nil || lease.Operation.Kind != OperationProjectStatus {
+			t.Fatalf("lease=%+v err=%v", lease, err)
+		}
+	})
+
+	t.Run("protocol mismatch fails with an actionable compatibility error", func(t *testing.T) {
+		store, device := newFixture(t, OperationProjectStatus, OperationRequest{Alias: "codex", TargetAlias: "parrot-trusted-linux", Profile: "linux-workcell"})
+		_, err := store.LeaseOperationCompatible(device.ID, time.Minute, protocol+".future", otherCatalog)
 		var compatibilityErr *OperationCompatibilityError
-		if !errors.As(err, &compatibilityErr) || compatibilityErr.ExpectedCatalog != catalog || compatibilityErr.ObservedCatalog != otherCatalog {
+		if !errors.As(err, &compatibilityErr) || compatibilityErr.ExpectedProtocol != protocol || compatibilityErr.ObservedProtocol != protocol+".future" {
 			t.Fatalf("compatibility error=%#v", err)
 		}
 	})
+
+	for _, observedCatalog := range []string{"", "sha256:invalid"} {
+		t.Run("unstamped or malformed catalog remains recovery-only: "+observedCatalog, func(t *testing.T) {
+			store, device := newFixture(t, OperationProjectStatus, OperationRequest{Alias: "codex", TargetAlias: "parrot-trusted-linux", Profile: "linux-workcell"})
+			_, err := store.LeaseOperationCompatible(device.ID, time.Minute, protocol, observedCatalog)
+			var compatibilityErr *OperationCompatibilityError
+			if !errors.As(err, &compatibilityErr) {
+				t.Fatalf("expected compatibility error, got %v", err)
+			}
+		})
+	}
 
 	t.Run("recovery work remains leaseable", func(t *testing.T) {
 		store, device := newFixture(t, OperationBundleStatus, OperationRequest{})
