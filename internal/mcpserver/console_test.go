@@ -83,7 +83,7 @@ func TestHTTPConsoleDoesNotChangeMCPAuthOrCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.ToolCount != 181 || info.Hash != "sha256:b72d931abb13f40926974f7fdd4325f7c668c1ddf2cdecdc49deaf5ffef85343" {
+	if info.ToolCount != 182 || info.Hash != "sha256:b0998daade282ed39f38f771921d46455834e885ae8945f2ff747777c54de84e" {
 		t.Fatalf("catalog changed: %+v", info)
 	}
 }

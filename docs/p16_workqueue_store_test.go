@@ -24,6 +24,7 @@ func TestP16WorkqueueStoreContractIsDocumented(t *testing.T) {
 		"grants no authority",
 		"schema version 2",
 		"project_task_start",
+		"project_task_list",
 		"managed worktree",
 		"strictly newer fence",
 		"preserves its Git branch",
@@ -85,7 +86,7 @@ func TestManagedTaskWorktreeContractIsDocumented(t *testing.T) {
 			t.Errorf("managed worktree documentation missing %q", required)
 		}
 	}
-	for _, tool := range []string{"project_task_start", "project_task_status", "project_task_cancel", "project_task_cleanup"} {
+	for _, tool := range []string{"project_task_start", "project_task_status", "project_task_list", "project_task_cancel", "project_task_cleanup"} {
 		if !strings.Contains(string(tools), "`"+tool+"`") {
 			t.Errorf("task tool documentation missing %q", tool)
 		}

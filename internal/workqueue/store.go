@@ -179,6 +179,7 @@ func (s *Store) initialize() error {
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL
 		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS task_groups_project_recent ON task_groups(project_alias,target_alias,updated_at DESC,task_id DESC)`,
 		`CREATE TABLE IF NOT EXISTS task_workers(
 			task_id TEXT NOT NULL REFERENCES task_groups(task_id) ON DELETE CASCADE,
 			ordinal INTEGER NOT NULL,

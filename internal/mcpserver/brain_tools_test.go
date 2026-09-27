@@ -64,14 +64,14 @@ func isEdgeReleaseSource(name string) bool {
 
 func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 181 {
-		t.Fatalf("tool order length=%d want=181", len(server.order))
+	if len(server.order) != 182 {
+		t.Fatalf("tool order length=%d want=182", len(server.order))
 	}
-	if server.order[76] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:76])
+	if server.order[77] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:77])
 	}
-	if !reflect.DeepEqual(server.order[81:84], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[81:84])
+	if !reflect.DeepEqual(server.order[82:85], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[82:85])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
@@ -188,7 +188,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 181 || snapshot.Hash != "sha256:b72d931abb13f40926974f7fdd4325f7c668c1ddf2cdecdc49deaf5ffef85343" {
+	if snapshot.ToolCount != 182 || snapshot.Hash != "sha256:b0998daade282ed39f38f771921d46455834e885ae8945f2ff747777c54de84e" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

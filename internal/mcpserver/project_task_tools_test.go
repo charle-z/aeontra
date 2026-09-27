@@ -328,6 +328,12 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	listed, listErr := server.table["project_task_list"].handler(json.RawMessage(`{"alias":"project","target":"parrot"}`))
+	if listErr != nil || !strings.Contains(listed, `"task_id":"`+started.TaskID+`"`) ||
+		!strings.Contains(listed, `"lifecycle_state":"completed"`) || !strings.Contains(listed, `"next_tool":"project_task_status"`) ||
+		strings.Contains(listed, "Commit one focused change") || strings.Contains(listed, "runtime_id") {
+		t.Fatalf("recovery list=%s err=%v", listed, listErr)
+	}
 	if err != nil || !strings.Contains(status, `"state":"acceptance_pending"`) || !strings.Contains(status, `"lifecycle_state":"completed"`) ||
 		!strings.Contains(status, `"runtime_state":"completed"`) || !strings.Contains(status, `"acceptance_state":"pending"`) ||
 		!strings.Contains(status, `"base_commit":"0123456789abcdef0123456789abcdef01234567"`) ||
@@ -484,6 +490,7 @@ func TestProjectTaskToolsFailClosedWithoutRequiredStores(t *testing.T) {
 	for name, body := range map[string]string{
 		"project_task_start":   `{"alias":"project","target":"parrot","goals":["goal"],"timeout_seconds":60,"idempotency_key":"parallel-missing-0001"}`,
 		"project_task_status":  `{"task_id":"tg_11111111111111111111111111111111"}`,
+		"project_task_list":    `{"alias":"project","target":"parrot"}`,
 		"project_task_cancel":  `{"task_id":"tg_11111111111111111111111111111111"}`,
 		"project_task_cleanup": `{"task_id":"tg_11111111111111111111111111111111","idempotency_key":"parallel-missing-cleanup"}`,
 	} {
@@ -520,7 +527,7 @@ func TestProjectTaskToolsFailClosedWithoutRequiredStores(t *testing.T) {
 		t.Fatal("inactive edge accepted a task")
 	}
 	server.WithEdgeStore(newProjectTaskEdgeStore())
-	for _, name := range []string{"project_task_start", "project_task_status", "project_task_cancel", "project_task_cleanup"} {
+	for _, name := range []string{"project_task_start", "project_task_status", "project_task_list", "project_task_cancel", "project_task_cleanup"} {
 		if _, err := server.table[name].handler(json.RawMessage(`{"broken"`)); err == nil {
 			t.Fatalf("%s accepted malformed input", name)
 		}

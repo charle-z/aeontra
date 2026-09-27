@@ -89,6 +89,11 @@ count. Valid evidence yields `acceptance_pending`; unavailable, stale or inconsi
 evidence yields `reconciliation_required`. P16 deliberately has no generic automatic
 `accepted` transition because acceptance criteria depend on the task.
 
+If a chat ends before retaining its task ID, `project_task_list` reads the local journal's
+project/target index and returns at most 20 recent IDs, including terminal groups. It does
+not poll an Edge, restart a runtime or expose goals. The caller then uses
+`project_task_status` to reconcile the selected task before taking another action.
+
 Each runtime-completed writer retains one explicit `codex/worktree-<id>` branch. Callers review and
 combine those commits through normal Git and PR gates; the system never guesses conflict
 resolution. `project_task_cleanup` requires a terminal task, exact current lease/fence and
