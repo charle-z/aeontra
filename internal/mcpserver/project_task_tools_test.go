@@ -832,7 +832,9 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 	}
 	active, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
 	if err != nil || !strings.Contains(active, `"continuation":{"state":"needs_model","next_tool":"model_turn_next"}`) ||
-		!strings.Contains(active, `"attention":"needs_model"`) {
+		!strings.Contains(active, `"attention":"needs_model"`) ||
+		!strings.Contains(active, `"attention_order":[0]`) ||
+		!strings.Contains(active, `"handoff":{"version":1,"revision":"sha256:`) {
 		t.Fatalf("active continuation=%s err=%v", active, err)
 	}
 	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
