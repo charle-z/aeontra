@@ -272,6 +272,10 @@ func TestProjectTaskTestEvidenceRequiresTerminalZeroExitAndLiveRevalidation(t *t
 	if err != nil || !strings.Contains(stale, `"test_evidence_state":"stale"`) {
 		t.Fatalf("stale test status=%s err=%v", stale, err)
 	}
+	taskStatus, err := server.table["project_task_status"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q}`, started.TaskID)))
+	if err != nil || !strings.Contains(taskStatus, `"reconciliation_reason":"test_evidence_stale"`) {
+		t.Fatalf("stale task status=%s err=%v", taskStatus, err)
+	}
 	if _, err := server.table["project_task_cleanup"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q,"idempotency_key":"test-cleanup-stale-0001"}`, started.TaskID))); err == nil || !strings.Contains(err.Error(), "test evidence changed") {
 		t.Fatalf("cleanup with stale test evidence error=%v", err)
 	}
@@ -528,7 +532,7 @@ func TestProjectTaskStatusMarksOnlyWorkerWithUnavailableGoal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(view.Workers) != 2 || view.Workers[0].Attention == "task_goal_unavailable" || view.Workers[0].State == "reconciliation_required" ||
-		view.Workers[1].State != "reconciliation_required" || view.Workers[1].Attention != "task_goal_unavailable" ||
+		view.Workers[1].State != "reconciliation_required" || view.Workers[1].Attention != "task_goal_unavailable" || view.Workers[1].ReconciliationReason != "task_goal_unavailable" ||
 		view.Workers[1].WorktreeID != worktreeID || view.Workers[1].WorkspaceID != workspaceID || view.Workers[1].RuntimeID != runtimeID {
 		t.Fatalf("task status lost worker identity or marked the wrong worker: %+v", view)
 	}
@@ -837,6 +841,13 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 		!strings.Contains(active, `"handoff":{"version":1,"revision":"sha256:`) {
 		t.Fatalf("active continuation=%s err=%v", active, err)
 	}
+	if err := turns.SetRuntimeState(context.Background(), started.Workers[0].RuntimeID, modelturn.RuntimeStateDisconnected, modelturn.RuntimeStateAwaitingModel); err != nil {
+		t.Fatal(err)
+	}
+	disconnected, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+	if err != nil || !strings.Contains(disconnected, `"reconciliation_reason":"runtime_disconnected"`) || !strings.Contains(disconnected, `"attention":"reconcile"`) || strings.Contains(disconnected, `"state":"accepted"`) {
+		t.Fatalf("disconnected continuation=%s err=%v", disconnected, err)
+	}
 	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
 		t.Fatal(err)
 	}
@@ -931,6 +942,8 @@ func TestProjectTaskStatusRequiresLiveGitEvidenceForCompletedRuntime(t *testing.
 	status, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
 	if err != nil || !strings.Contains(status, `"state":"reconciliation_required"`) ||
 		!strings.Contains(status, `"runtime_state":"completed"`) || !strings.Contains(status, `"acceptance_state":"reconciliation_required"`) ||
+		!strings.Contains(status, `"reconciliation_reason":"edge_unavailable"`) ||
+		!strings.Contains(status, `"last_runtime_phase":"terminal"`) || !strings.Contains(status, `"last_runtime_phase_at":`) ||
 		strings.Contains(status, `"git_evidence_known":true`) || strings.Contains(status, `"state":"succeeded"`) {
 		t.Fatalf("status=%s err=%v", status, err)
 	}
@@ -969,6 +982,7 @@ func TestProjectTaskGitAcceptanceContractAcceptsOnlyMatchingLiveEvidence(t *test
 	if err != nil || !strings.Contains(status, `"state":"acceptance_pending"`) || !strings.Contains(status, `"lifecycle_state":"completed"`) ||
 		!strings.Contains(status, `"runtime_state":"completed"`) || !strings.Contains(status, `"acceptance_state":"pending"`) ||
 		!strings.Contains(status, `"git_evidence_state":"verified"`) || !strings.Contains(status, `"git_evidence_recorded_at":`) ||
+		strings.Contains(status, `"reconciliation_reason":`) ||
 		!strings.Contains(status, `"git_evidence_known":true`) || !strings.Contains(status, `"clean":true`) ||
 		!strings.Contains(status, `"commits_ahead_base":1`) || !strings.Contains(status, `"changed_path_count":1`) {
 		t.Fatalf("status=%s err=%v", status, err)
@@ -995,7 +1009,7 @@ func TestProjectTaskGitAcceptanceContractAcceptsOnlyMatchingLiveEvidence(t *test
 	}
 	edges.mu.Unlock()
 	stale, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
-	if err != nil || !strings.Contains(stale, `"acceptance_state":"reconciliation_required"`) || strings.Contains(stale, `"state":"accepted"`) || !strings.Contains(stale, `"git_evidence_state":"stale"`) {
+	if err != nil || !strings.Contains(stale, `"acceptance_state":"reconciliation_required"`) || strings.Contains(stale, `"state":"accepted"`) || !strings.Contains(stale, `"git_evidence_state":"stale"`) || !strings.Contains(stale, `"reconciliation_reason":"acceptance_receipt_conflict"`) {
 		t.Fatalf("changed live evidence status=%s err=%v", stale, err)
 	}
 	persisted, found, err := queue.Task(started.TaskID)
@@ -1257,7 +1271,7 @@ func TestProjectTaskSemanticStatesRemainHonestWithoutReconciliationStores(t *tes
 
 	task := workqueue.TaskGroup{State: workqueue.TaskCompleted, Workers: []workqueue.TaskWorker{{State: workqueue.StateSucceeded}}}
 	view := (&Server{}).projectTaskStatusView(context.Background(), task)
-	if view.State != "reconciliation_required" || len(view.Workers) != 1 || view.Workers[0].RuntimeState != "unknown" || view.Workers[0].AcceptanceState != "reconciliation_required" {
+	if view.State != "reconciliation_required" || len(view.Workers) != 1 || view.Workers[0].RuntimeState != "unknown" || view.Workers[0].AcceptanceState != "reconciliation_required" || view.Workers[0].ReconciliationReason != "control_plane_unavailable" {
 		t.Fatalf("view without reconciliation stores=%+v", view)
 	}
 }

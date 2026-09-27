@@ -76,31 +76,34 @@ type projectTaskCleanupParams struct {
 }
 
 type projectTaskWorkerView struct {
-	Ordinal                int             `json:"ordinal"`
-	State                  string          `json:"state"`
-	Attention              string          `json:"attention,omitempty"`
-	LifecycleState         workqueue.State `json:"lifecycle_state"`
-	RuntimeState           string          `json:"runtime_state,omitempty"`
-	AcceptanceState        string          `json:"acceptance_state"`
-	GitEvidenceState       string          `json:"git_evidence_state,omitempty"`
-	TestEvidenceState      string          `json:"test_evidence_state,omitempty"`
-	TestProfileID          string          `json:"test_profile_id,omitempty"`
-	WorktreeID             string          `json:"worktree_id,omitempty"`
-	WorkspaceID            string          `json:"workspace_id,omitempty"`
-	RuntimeID              string          `json:"runtime_id,omitempty"`
-	Branch                 string          `json:"branch,omitempty"`
-	BaseCommit             string          `json:"base_commit"`
-	HeadCommit             string          `json:"head_commit,omitempty"`
-	GitEvidenceKnown       bool            `json:"git_evidence_known,omitempty"`
-	Clean                  *bool           `json:"clean,omitempty"`
-	CommitsAheadBase       *int            `json:"commits_ahead_base,omitempty"`
-	ChangedPathCount       *int            `json:"changed_path_count,omitempty"`
-	GitEvidenceRecordedAt  *time.Time      `json:"git_evidence_recorded_at,omitempty"`
-	TestEvidenceRecordedAt *time.Time      `json:"test_evidence_recorded_at,omitempty"`
-	TurnSequence           uint64          `json:"turn_sequence,omitempty"`
-	ActiveTurnCreatedAt    *time.Time      `json:"active_turn_created_at,omitempty"`
-	ModelWaitSeconds       *int64          `json:"model_wait_seconds,omitempty"`
-	Summary                string          `json:"summary,omitempty"`
+	Ordinal                int                    `json:"ordinal"`
+	State                  string                 `json:"state"`
+	Attention              string                 `json:"attention,omitempty"`
+	LifecycleState         workqueue.State        `json:"lifecycle_state"`
+	RuntimeState           string                 `json:"runtime_state,omitempty"`
+	AcceptanceState        string                 `json:"acceptance_state"`
+	ReconciliationReason   string                 `json:"reconciliation_reason,omitempty"`
+	LastRuntimePhase       modelturn.RuntimePhase `json:"last_runtime_phase,omitempty"`
+	LastRuntimePhaseAt     *time.Time             `json:"last_runtime_phase_at,omitempty"`
+	GitEvidenceState       string                 `json:"git_evidence_state,omitempty"`
+	TestEvidenceState      string                 `json:"test_evidence_state,omitempty"`
+	TestProfileID          string                 `json:"test_profile_id,omitempty"`
+	WorktreeID             string                 `json:"worktree_id,omitempty"`
+	WorkspaceID            string                 `json:"workspace_id,omitempty"`
+	RuntimeID              string                 `json:"runtime_id,omitempty"`
+	Branch                 string                 `json:"branch,omitempty"`
+	BaseCommit             string                 `json:"base_commit"`
+	HeadCommit             string                 `json:"head_commit,omitempty"`
+	GitEvidenceKnown       bool                   `json:"git_evidence_known,omitempty"`
+	Clean                  *bool                  `json:"clean,omitempty"`
+	CommitsAheadBase       *int                   `json:"commits_ahead_base,omitempty"`
+	ChangedPathCount       *int                   `json:"changed_path_count,omitempty"`
+	GitEvidenceRecordedAt  *time.Time             `json:"git_evidence_recorded_at,omitempty"`
+	TestEvidenceRecordedAt *time.Time             `json:"test_evidence_recorded_at,omitempty"`
+	TurnSequence           uint64                 `json:"turn_sequence,omitempty"`
+	ActiveTurnCreatedAt    *time.Time             `json:"active_turn_created_at,omitempty"`
+	ModelWaitSeconds       *int64                 `json:"model_wait_seconds,omitempty"`
+	Summary                string                 `json:"summary,omitempty"`
 }
 
 type projectTaskContinuation struct {
@@ -444,6 +447,7 @@ func (s *Server) handleProjectTaskStatus(arguments json.RawMessage) (string, err
 			view.Workers[index].State = "reconciliation_required"
 			view.Workers[index].AcceptanceState = "reconciliation_required"
 			view.Workers[index].RuntimeState = "unknown"
+			view.Workers[index].ReconciliationReason = "task_goal_unavailable"
 			invalidGoalWorkers = append(invalidGoalWorkers, index)
 			if worker.RuntimeID != "" {
 				if runtime, runtimeErr := s.modelTurns.Runtime(context.Background(), worker.RuntimeID); runtimeErr == nil {
@@ -1068,6 +1072,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				view.Workers[index].State = "reconciliation_required"
 				view.Workers[index].RuntimeState = "unknown"
 				view.Workers[index].AcceptanceState = "reconciliation_required"
+				view.Workers[index].ReconciliationReason = "control_plane_unavailable"
 			}
 		}
 		view.State = projectTaskViewSemanticState(view.Workers)
@@ -1091,6 +1096,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				applyTaskTestReceipt(item, *worker.TestAcceptanceReceipt)
 			} else if worker.State == workqueue.StateSucceeded {
 				item.State, item.RuntimeState, item.AcceptanceState = "reconciliation_required", string(modelturn.RuntimeStateCompleted), "reconciliation_required"
+				item.ReconciliationReason = "acceptance_receipt_missing"
 			}
 			continue
 		}
@@ -1103,15 +1109,35 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 		runtime, err := s.modelTurns.Runtime(ctx, worker.RuntimeID)
 		if err != nil {
 			item.State, item.RuntimeState, item.AcceptanceState = "reconciliation_required", "unknown", "reconciliation_required"
+			item.ReconciliationReason = "runtime_unavailable"
 			continue
 		}
 		item.RuntimeState = string(runtime.State)
 		item.TurnSequence = runtime.LastSequence
 		item.ActiveTurnCreatedAt = runtime.ActiveTurnCreatedAt
+		for _, phase := range runtime.Phases {
+			at := phase.LastTimestamp
+			if at.IsZero() {
+				at = phase.Timestamp
+			}
+			if at.IsZero() || (item.LastRuntimePhaseAt != nil && !at.After(*item.LastRuntimePhaseAt)) {
+				continue
+			}
+			item.LastRuntimePhase = phase.Phase
+			item.LastRuntimePhaseAt = &at
+		}
 		switch runtime.State {
 		case modelturn.RuntimeStateCompleted:
 			if worker.State != workqueue.StateSucceeded || worker.WorktreeID == "" || deviceErr != nil {
 				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				switch {
+				case deviceErr != nil:
+					item.ReconciliationReason = "edge_unavailable"
+				case worker.State != workqueue.StateSucceeded:
+					item.ReconciliationReason = "runtime_lifecycle_mismatch"
+				case worker.WorktreeID == "":
+					item.ReconciliationReason = "worktree_identity_missing"
+				}
 				continue
 			}
 			status, _, statusErr := s.edgeOperations.CreateOperation(device.ID, edge.OperationProjectWorktreeStatus, edge.OperationRequest{Alias: task.Project, TargetAlias: task.Target, Profile: "linux-workcell", WorktreeID: worker.WorktreeID})
@@ -1119,12 +1145,18 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				status, statusErr = s.edgeOperations.WaitOperation(ctx, status.ID, 10*time.Second)
 			}
 			result := status.Result
-			if statusErr != nil || status.State != edge.OperationSucceeded || result.WorktreeState != "ready" || !result.WorktreeEvidenceKnown || result.WorktreeID != worker.WorktreeID ||
+			if statusErr != nil || status.State != edge.OperationSucceeded {
+				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				item.ReconciliationReason = "worktree_status_unavailable"
+				continue
+			}
+			if result.WorktreeState != "ready" || !result.WorktreeEvidenceKnown || result.WorktreeID != worker.WorktreeID ||
 				result.WorkspaceID != worker.WorkspaceID || result.WorktreeRole != "writer" || result.WorkJobID != worker.JobID || result.WorkLeaseID != worker.LeaseID || result.WorkFence != worker.Fence ||
 				result.WorktreeBaseCommit != task.BaseCommit || result.WorktreeBranch != item.Branch || !validProjectTaskCommit(result.WorktreeHeadCommit) ||
 				result.WorktreeCommitsAheadBase < 0 || result.WorktreeCommitsAheadBase > 10000 || result.WorktreeChangedPathCount < 0 || result.WorktreeChangedPathCount > 10000 ||
 				((result.WorktreeHeadCommit == result.WorktreeBaseCommit) != (result.WorktreeCommitsAheadBase == 0)) {
 				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				item.ReconciliationReason = "worktree_evidence_mismatch"
 				continue
 			}
 			clean, ahead, changed := result.WorktreeClean, result.WorktreeCommitsAheadBase, result.WorktreeChangedPathCount
@@ -1136,6 +1168,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				recorded, recordErr := s.workQueue.RecordTaskWorkerAcceptance(candidate)
 				if recordErr != nil {
 					item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+					item.ReconciliationReason = "acceptance_receipt_conflict"
 					if worker.AcceptanceReceipt != nil {
 						item.GitEvidenceState = "stale"
 					}
@@ -1144,6 +1177,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				applyTaskAcceptanceReceipt(item, recorded)
 			} else if worker.AcceptanceReceipt != nil {
 				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				item.ReconciliationReason = "git_evidence_stale"
 				item.GitEvidenceState = "stale"
 			} else if task.AcceptanceContract != nil {
 				item.GitEvidenceState = "criteria_not_met"
@@ -1153,18 +1187,24 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				item.State, item.AcceptanceState = "failed", "failed"
 			} else {
 				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				item.ReconciliationReason = "runtime_lifecycle_mismatch"
 			}
 		case modelturn.RuntimeStateCancelled:
 			if worker.State == workqueue.StateCancelled {
 				item.State, item.AcceptanceState = "cancelled", "cancelled"
 			} else {
 				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				item.ReconciliationReason = "runtime_lifecycle_mismatch"
 			}
 		default:
 			if worker.State == workqueue.StateSucceeded || worker.State == workqueue.StateFailed || worker.State == workqueue.StateCancelled {
 				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				item.ReconciliationReason = "runtime_lifecycle_mismatch"
 			} else {
 				item.State, item.AcceptanceState = "running", "not_ready"
+				if runtime.State == modelturn.RuntimeStateDisconnected {
+					item.ReconciliationReason = "runtime_disconnected"
+				}
 			}
 		}
 	}
@@ -1177,6 +1217,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 			testView, testErr := s.projectTaskTestStatus(ctx, projectTaskTestParams{TaskID: task.ID, Ordinal: worker.Ordinal})
 			if testErr != nil {
 				item.State, item.AcceptanceState, item.TestEvidenceState = "reconciliation_required", "reconciliation_required", "unavailable"
+				item.ReconciliationReason = "test_evidence_unavailable"
 				continue
 			}
 			item.TestEvidenceState = testView.TestEvidenceState
@@ -1186,6 +1227,11 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 			}
 			if testView.TestEvidenceState == "stale" || testView.TestEvidenceState == "unavailable" {
 				item.State, item.AcceptanceState = "reconciliation_required", "reconciliation_required"
+				if testView.TestEvidenceState == "stale" {
+					item.ReconciliationReason = "test_evidence_stale"
+				} else {
+					item.ReconciliationReason = "test_evidence_unavailable"
+				}
 			}
 		}
 	}
