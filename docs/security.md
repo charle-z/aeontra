@@ -400,9 +400,16 @@ Model-runtime completion is not semantic acceptance. Task status exposes these a
 separate states and revalidates only bounded Git facts from the exact managed worktree.
 No source path or diff is returned. Missing Edge connectivity, an unknown runtime,
 base/head mismatch or absent evidence becomes `reconciliation_required`; it is never
-converted into success. Task-specific acceptance and automated integration remain a
-future supervisor concern and cannot grant authority beyond the existing worktree,
-preview, CI and merge contracts.
+converted into success. An optional version-1 Git evidence contract records a durable receipt
+only for clean, committed Git evidence measured against the exact base and bound to the
+task, worker, worktree/workspace, branch, lease and fence. The receipt does not establish
+natural-language goal satisfaction or test success. Before cleanup, the exact live
+evidence is revalidated; after successful cleanup, the receipt and cleanup checkpoint
+preserve the verified Git evidence predicate, not semantic acceptance. Task and worker
+acceptance remain pending until a trusted objective and test evaluator exists. Missing or
+changed evidence remains reconciliation, not success. No contract is inferred for old or
+contractless tasks, and this status predicate grants no authority beyond the existing
+worktree, preview, CI and merge contracts. Automated integration remains out of scope.
 For a linked worktree, the outer Bubblewrap launcher projects that repository's validated
 common Git directory at one fixed internal mount and sets `GIT_DIR` to the exact
 server-owned worktree entry. This is writable repository-scoped Git authority required
