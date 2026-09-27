@@ -10,7 +10,23 @@ import (
 const (
 	maxOperationProgressBytes = 1024
 	operationHeartbeatTTL     = time.Minute
+	projectExecQueueTTL       = 3 * time.Minute
+	projectExecQueueExpired   = "operation_queue_expired"
 )
+
+// Foreground project_exec calls have a bounded client wait. An offline Edge
+// must not run one after that wait has ended. Background processes and other
+// durable operation kinds intentionally do not share this deadline.
+func expireQueuedProjectExecs(execer interface {
+	Exec(string, ...any) (sql.Result, error)
+}, now time.Time, column, value string) error {
+	if column != "device_id" && column != "operation_id" {
+		return errors.New("operation expiry selector is invalid")
+	}
+	_, err := execer.Exec(`UPDATE edge_operations SET state=?,safe_code=?,updated_at=? WHERE `+column+`=? AND kind=? AND state=? AND created_at<=?`,
+		OperationFailed, projectExecQueueExpired, now.UnixNano(), value, OperationProjectExec, OperationQueued, now.Add(-projectExecQueueTTL).UnixNano())
+	return err
+}
 
 func (s *Store) recoverExpiredOperationLeasesForDeviceLocked(deviceID string) error {
 	return recoverExpiredOperationLeases(s.db, s.now(), "device_id", deviceID)
@@ -114,6 +130,9 @@ func (s *Store) ActiveOperations(deviceID string, limit int) ([]Operation, error
 	if err := s.recoverExpiredOperationLeasesForDeviceLocked(deviceID); err != nil {
 		return nil, errors.New("active operation list unavailable")
 	}
+	if err := expireQueuedProjectExecs(s.db, s.now().UTC(), "device_id", deviceID); err != nil {
+		return nil, errors.New("active operation list unavailable")
+	}
 	rows, err := s.db.Query(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,leased_at,running_at,finalizing_at,updated_at FROM edge_operations WHERE device_id=? AND state IN (?,?) ORDER BY created_at,operation_id LIMIT ?`, deviceID, OperationQueued, OperationLeased, limit)
 	if err != nil {
 		return nil, errors.New("active operation list unavailable")
@@ -140,6 +159,9 @@ func (s *Store) OperationLifecycleStatus(operationID string) (Operation, error) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.recoverExpiredOperationLeaseByIDLocked(operationID); err != nil {
+		return Operation{}, errors.New("edge operation unavailable")
+	}
+	if err := expireQueuedProjectExecs(s.db, s.now().UTC(), "operation_id", operationID); err != nil {
 		return Operation{}, errors.New("edge operation unavailable")
 	}
 	op, err := s.operationLifecycleByID(operationID)

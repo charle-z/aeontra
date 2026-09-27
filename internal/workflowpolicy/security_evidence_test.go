@@ -154,7 +154,7 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"libcrypt1-2.44=2.44-r6",
 		"nodejs-24=24.19.0-r0",
 		"npm=12.0.2-r0",
-		"python-3.14=3.14.7-r6",
+		"python-3.14=3.14.7_git20260925-r0",
 		"rust-1.96=1.96.1-r0",
 		"zlib=1.3.2-r7",
 		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
