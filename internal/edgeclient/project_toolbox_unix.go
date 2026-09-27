@@ -370,11 +370,11 @@ func (manager *ProjectToolboxManager) Status(ctx context.Context, request Projec
 	if err := validateProjectToolboxBinding(request.ProjectAlias, request.TargetAlias, request.Workspace); err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
-	record, err := manager.loadForWorkspace(request.Workspace)
+	record, err := manager.loadForWorkspaceReadOnly(request.Workspace)
 	if err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
-	return manager.status(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
+	return manager.readStatus(ctx, record, request.ProjectAlias, request.TargetAlias, request.Workspace)
 }
 
 func (manager *ProjectToolboxManager) Exec(ctx context.Context, request ProjectToolboxExecRequest) (ProjectToolboxSnapshot, error) {
@@ -1037,23 +1037,42 @@ const projectToolboxServiceStatusScript = `root=/var/lib/mcp-devbox/services/$1;
 const projectToolboxServiceStopScript = `root=/var/lib/mcp-devbox/services/$1; test -r "$root/identity" || { printf 'stopped\n'; exit 0; }; read pid ticks < "$root/identity"; case "$pid:$ticks" in *[!0-9:]*|:*|*:) printf 'stopped\n'; exit 0;; esac; test -r "/proc/$pid/stat" || { printf 'stopped\n'; exit 0; }; current=$(awk '{print $22}' "/proc/$pid/stat"); test "$current" = "$ticks" || { printf 'stopped\n'; exit 0; }; kill -TERM "$pid" 2>/dev/null || true; i=0; while kill -0 "$pid" 2>/dev/null && test "$i" -lt 100; do sleep 0.1; i=$((i+1)); done; kill -KILL "$pid" 2>/dev/null || true; printf 'stopped\n'`
 
 func (manager *ProjectToolboxManager) status(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) (ProjectToolboxSnapshot, error) {
-	if err := manager.verifyOwnership(ctx, record, alias, target, workspace); err != nil {
+	snapshot, err := manager.statusSnapshot(ctx, record, alias, target, workspace, false)
+	if err != nil {
 		return ProjectToolboxSnapshot{}, err
 	}
 	if record.EndpointFingerprint != projectRuntimeEndpointFingerprint(manager.endpoint) {
-		// A rootless engine can be recreated or move from Podman to Docker while
-		// retaining the owned container. Once the container's identity, mounts,
-		// resources and environment are attested, refresh only endpoint metadata.
+		// Endpoint adoption is persisted only by an operation that is already
+		// allowed to update toolbox metadata. Status uses readStatus directly.
 		record.EndpointFingerprint = projectRuntimeEndpointFingerprint(manager.endpoint)
 		record.Generation++
 		record.UpdatedAt = manager.now().UTC()
 		if err := manager.save(record); err != nil {
 			return ProjectToolboxSnapshot{}, err
 		}
+		snapshot.Generation = record.Generation
+		snapshot.UpdatedAt = record.UpdatedAt
+	}
+	return snapshot, nil
+}
+
+func (manager *ProjectToolboxManager) readStatus(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) (ProjectToolboxSnapshot, error) {
+	return manager.statusSnapshot(ctx, record, alias, target, workspace, true)
+}
+
+func (manager *ProjectToolboxManager) statusSnapshot(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace, readOnly bool) (ProjectToolboxSnapshot, error) {
+	var ownershipErr error
+	if readOnly {
+		ownershipErr = manager.verifyOwnershipReadOnly(ctx, record, alias, target, workspace)
+	} else {
+		ownershipErr = manager.verifyOwnership(ctx, record, alias, target, workspace)
+	}
+	if ownershipErr != nil {
+		return ProjectToolboxSnapshot{}, ownershipErr
 	}
 	output, err := manager.run(ctx, "inspect", "--format", "{{.State.Status}}|{{.State.Running}}", record.ContainerName)
 	if err != nil {
-		return ProjectToolboxSnapshot{}, ErrProjectToolboxUnavailable
+		return ProjectToolboxSnapshot{}, manager.classifyContainerInspectFailure(ctx, record, record.ContainerName)
 	}
 	state := ProjectToolboxUnknown
 	switch strings.TrimSpace(string(output)) {
@@ -1075,6 +1094,30 @@ func (manager *ProjectToolboxManager) status(ctx context.Context, record project
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, CPUMillis: record.CPUMillis, MemoryMiB: record.MemoryMiB,
 		ProcessLimit: record.ProcessLimit, ContainerAccess: false, WritableBytes: writableBytes, RootFSBytes: rootFSBytes,
 	}, nil
+}
+
+func (manager *ProjectToolboxManager) classifyContainerInspectFailure(ctx context.Context, record projectToolboxRecord, reference string) error {
+	if reference != record.ContainerName {
+		return ErrProjectToolboxContainerUnavailable
+	}
+	labelOutput, err := manager.run(ctx, "ps", "-aq", "--filter", "label="+projectToolboxLabelKey+"="+record.ToolboxID)
+	if err != nil {
+		return ErrProjectToolboxUnavailable
+	}
+	if strings.TrimSpace(string(labelOutput)) != "" {
+		return ErrProjectToolboxContainerUnavailable
+	}
+	nameOutput, err := manager.run(ctx, "ps", "-aq", "--filter", "name="+record.ContainerName)
+	if err != nil {
+		return ErrProjectToolboxUnavailable
+	}
+	if strings.TrimSpace(string(nameOutput)) != "" {
+		return ErrProjectToolboxContainerUnavailable
+	}
+	if record.EndpointFingerprint != projectRuntimeEndpointFingerprint(manager.endpoint) {
+		return ErrProjectToolboxEndpointStale
+	}
+	return ErrProjectToolboxContainerMissing
 }
 
 func (manager *ProjectToolboxManager) recoverOwnedContainer(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
@@ -1113,7 +1156,15 @@ func (manager *ProjectToolboxManager) verifyOwnership(ctx context.Context, recor
 	return manager.verifyOwnershipReference(ctx, record, alias, target, workspace, record.ContainerName)
 }
 
+func (manager *ProjectToolboxManager) verifyOwnershipReadOnly(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
+	return manager.verifyOwnershipReferenceMode(ctx, record, alias, target, workspace, record.ContainerName, false)
+}
+
 func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace, reference string) error {
+	return manager.verifyOwnershipReferenceMode(ctx, record, alias, target, workspace, reference, true)
+}
+
+func (manager *ProjectToolboxManager) verifyOwnershipReferenceMode(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace, reference string, prepareRoots bool) error {
 	if record.WorkspaceID != workspace.ID || record.ProjectAlias != alias || record.TargetAlias != target || record.SchemaVersion != projectToolboxSchemaVersion || !projectToolboxIDPattern.MatchString(record.ToolboxID) || record.ContainerName != "mcp-toolbox-"+strings.TrimPrefix(record.ToolboxID, "tb_") {
 		return fmt.Errorf("%w: record identity or schema mismatch", ErrProjectToolboxIdentityMismatch)
 	}
@@ -1132,7 +1183,7 @@ func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Conte
 	}
 	output, err := manager.run(ctx, "inspect", "--format", `{{index .Config.Labels "`+projectToolboxLabelKey+`"}}|{{.Image}}`, reference)
 	if err != nil {
-		return ErrProjectToolboxContainerUnavailable
+		return manager.classifyContainerInspectFailure(ctx, record, reference)
 	}
 	label, rawImageID, found := strings.Cut(strings.TrimSpace(string(output)), "|")
 	imageID, normalizeErr := normalizeProjectToolboxImageID(rawImageID)
@@ -1148,7 +1199,13 @@ func (manager *ProjectToolboxManager) verifyOwnershipReference(ctx context.Conte
 		return fmt.Errorf("%w: mount metadata unreadable", ErrProjectToolboxMountMismatch)
 	}
 	if record.RuntimeVersion == projectToolboxRuntimeV2 {
-		runtimeRoots, rootsErr := prepareProjectRuntimeRoots(filepath.Dir(manager.stateRoot), workspace)
+		var runtimeRoots ProjectRuntimeRoots
+		var rootsErr error
+		if prepareRoots {
+			runtimeRoots, rootsErr = prepareProjectRuntimeRoots(filepath.Dir(manager.stateRoot), workspace)
+		} else {
+			runtimeRoots, rootsErr = validateProjectRuntimeRoots(filepath.Dir(manager.stateRoot), workspace)
+		}
 		workspaceFingerprint, fingerprintErr := projectRuntimeWorkspaceFingerprint(workspace.Path)
 		mountFingerprint := projectRuntimeMountFingerprint(workspace.Path, workspaceFingerprint, runtimeRoots, projectToolboxRuntimeV2)
 		if rootsErr != nil || fingerprintErr != nil || record.MountFingerprint != mountFingerprint || !validProjectToolboxMountsV2(mounts, workspace.Path, runtimeRoots) {
@@ -1271,12 +1328,20 @@ func (manager *ProjectToolboxManager) recordPath(workspaceID string) string {
 	return filepath.Join(manager.stateRoot, workspaceID+".json")
 }
 
-// loadForWorkspace performs the only on-disk migration used by toolbox v3.
-// Older records are retained and upgraded in place. Their lifecycle is forced
-// to persistent; an old or stale record can never acquire disposable semantics
-// merely by carrying an unexpected field. No workspace contents are touched or
-// removed.
+// loadForWorkspace applies the additive toolbox v3 migration on an explicit
+// operation. Read-only status uses the same in-memory normalization without
+// persisting it. Older records always normalize to persistent; an old or stale
+// record can never acquire disposable semantics from an unexpected field.
+// No workspace contents are touched or removed.
 func (manager *ProjectToolboxManager) loadForWorkspace(workspace Workspace) (projectToolboxRecord, error) {
+	return manager.loadForWorkspaceMode(workspace, true)
+}
+
+func (manager *ProjectToolboxManager) loadForWorkspaceReadOnly(workspace Workspace) (projectToolboxRecord, error) {
+	return manager.loadForWorkspaceMode(workspace, false)
+}
+
+func (manager *ProjectToolboxManager) loadForWorkspaceMode(workspace Workspace, persistMigration bool) (projectToolboxRecord, error) {
 	record, err := manager.load(workspace.ID)
 	if err != nil {
 		return projectToolboxRecord{}, err
@@ -1313,7 +1378,7 @@ func (manager *ProjectToolboxManager) loadForWorkspace(workspace Workspace) (pro
 		record.EndpointFingerprint = projectRuntimeEndpointFingerprint(manager.endpoint)
 		changed = true
 	}
-	if changed {
+	if changed && persistMigration {
 		record.UpdatedAt = manager.now().UTC()
 		if err := manager.save(record); err != nil {
 			return projectToolboxRecord{}, err

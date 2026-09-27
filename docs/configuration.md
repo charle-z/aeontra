@@ -172,7 +172,9 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   process bindings are durable. Schema migrations are additive and fail closed on a
   newer schema. Reconciliation is explicit and never resets or deletes a source tree.
 - **Toolbox lifecycle:** toolbox metadata schema v3 records `persistent|disposable`
-  plus a durable generation. Missing/historical lifecycle migrates to `persistent`;
+  plus a durable generation. Missing/historical lifecycle is interpreted as
+  `persistent`; read-only status does not rewrite the record, while an explicit
+  mutating operation persists the additive migration;
   lifecycle cannot be changed by reusing create. A disposable toolbox is only reported
   reclaimable when stopped with no nonterminal recorded services/browser runs. This
   classification covers the toolbox rootfs/record only: it does not make project

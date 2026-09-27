@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
@@ -48,8 +49,24 @@ func TestSelectProjectToolboxManagerKeepsPreferredEndpointWithoutRecord(t *testi
 	if err != nil || got != first {
 		t.Fatalf("manager=%T err=%v", got, err)
 	}
-	if first.statusCalls != 1 || second.statusCalls != 0 {
+	if first.statusCalls != 1 || second.statusCalls != 1 {
 		t.Fatalf("status calls first=%d second=%d", first.statusCalls, second.statusCalls)
+	}
+}
+
+func TestSelectProjectToolboxCreateDoesNotInferNoRecordAcrossUnavailableEndpoint(t *testing.T) {
+	for _, managers := range [][]*fakeProjectToolboxManager{
+		{{statusErr: edgeclient.ErrProjectToolboxNotFound}, {statusErr: edgeclient.ErrProjectToolboxUnavailable}},
+		{{statusErr: edgeclient.ErrProjectToolboxUnavailable}, {statusErr: edgeclient.ErrProjectToolboxNotFound}},
+	} {
+		var candidates []projectToolboxOperations
+		for _, manager := range managers {
+			candidates = append(candidates, manager)
+		}
+		selected, err := selectProjectToolboxManager(t.Context(), candidates, toolboxSelectionFixture(), edge.Operation{Kind: edge.OperationProjectToolboxCreate})
+		if selected != nil || !errors.Is(err, edgeclient.ErrProjectToolboxUnavailable) {
+			t.Fatalf("selected=%T err=%v; unavailable endpoint must outrank no-record for create", selected, err)
+		}
 	}
 }
 

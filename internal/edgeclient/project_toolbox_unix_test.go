@@ -3,6 +3,7 @@
 package edgeclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,11 +22,14 @@ type recordingToolboxRunner struct {
 	execExitCode   int
 	environments   [][]string
 	fail           string
+	failPatterns   []string
 	workspace      string
 	socket         string
 	state          string
 	inspectImageID string
 	harnessState   string
+	psLabelOutput  string
+	psNameOutput   string
 	mounts         []struct {
 		Type, Source, Destination string
 		RW                        bool
@@ -41,7 +45,16 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 	if runner.fail != "" && strings.Contains(joined, runner.fail) {
 		return nil, errors.New("runner failed")
 	}
+	for _, pattern := range runner.failPatterns {
+		if strings.Contains(joined, pattern) {
+			return nil, errors.New("runner failed")
+		}
+	}
 	switch {
+	case strings.Contains(joined, " ps -aq ") && strings.Contains(joined, "label="+projectToolboxLabelKey+"="):
+		return []byte(runner.psLabelOutput), nil
+	case strings.Contains(joined, " ps -aq ") && strings.Contains(joined, "name="):
+		return []byte(runner.psNameOutput), nil
 	case strings.Contains(joined, "image inspect"):
 		return []byte("sha256:" + strings.Repeat("a", 64) + "\n"), nil
 	case strings.Contains(joined, " inspect ") && strings.Contains(joined, "Config.Labels"):
@@ -328,6 +341,147 @@ func TestProjectToolboxRejectsCrossProjectAccessAndCleansUpOnlyExplicitly(t *tes
 	last := strings.Join(runner.calls[len(runner.calls)-1], " ")
 	if !strings.Contains(last, " rm -f mcp-toolbox-11111111111111111111111111111111") {
 		t.Fatalf("cleanup call=%q", last)
+	}
+}
+
+func TestProjectToolboxStatusDoesNotPersistEndpointRefresh(t *testing.T) {
+	stateRoot := t.TempDir()
+	workspace := Workspace{ID: "ws_44444444444444444444444444444444", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
+	endpoint := &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"}
+	manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint, Runner: runner, environment: testRootlessContainerEnvironment, NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	}
+	record, err := manager.load(workspace.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.EndpointFingerprint = projectRuntimeEndpointFingerprint(&RootlessContainerEndpoint{Engine: "docker", SocketPath: filepath.Join(stateRoot, "docker.sock"), Executable: "/usr/bin/docker"})
+	record.Generation = 7
+	record.UpdatedAt = time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+	if err := manager.save(record); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(manager.recordPath(workspace.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := manager.Status(t.Context(), ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(manager.recordPath(workspace.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("status rewrote toolbox metadata\nbefore=%s\nafter=%s", before, after)
+	}
+	if snapshot.Generation != record.Generation || !snapshot.UpdatedAt.Equal(record.UpdatedAt) {
+		t.Fatalf("status reported unpersisted metadata: snapshot=%+v record=%+v", snapshot, record)
+	}
+}
+
+func TestProjectToolboxStatusDoesNotCreateOrRepairRuntimeRoots(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(string) error
+		check  func(*testing.T, string)
+	}{
+		{
+			name:   "missing runtime root",
+			mutate: func(root string) error { return os.RemoveAll(root) },
+			check: func(t *testing.T, root string) {
+				if _, err := os.Lstat(root); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("status recreated missing runtime root: info/error=%v", err)
+				}
+			},
+		},
+		{
+			name:   "incorrect runtime root permissions",
+			mutate: func(root string) error { return os.Chmod(root, 0o755) },
+			check: func(t *testing.T, root string) {
+				info, err := os.Lstat(root)
+				if err != nil || info.Mode().Perm() != 0o755 {
+					t.Fatalf("status repaired runtime root permissions: info=%+v err=%v", info, err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stateRoot := t.TempDir()
+			workspace := Workspace{ID: "ws_66666666666666666666666666666666", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+			runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
+			manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"}, Runner: runner, environment: testRootlessContainerEnvironment, NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+				t.Fatal(err)
+			}
+			runtimeRoot := filepath.Join(filepath.Dir(manager.stateRoot), projectRuntimeStateDirectory, workspace.ID)
+			if err := test.mutate(runtimeRoot); err != nil {
+				t.Fatal(err)
+			}
+			_, err = manager.Status(t.Context(), ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+			if !errors.Is(err, ErrProjectToolboxMountMismatch) {
+				t.Fatalf("status err=%v want %v", err, ErrProjectToolboxMountMismatch)
+			}
+			test.check(t, runtimeRoot)
+		})
+	}
+}
+
+func TestProjectToolboxStatusDistinguishesMissingContainerFromEngineFailure(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		failPatterns  []string
+		psLabelOutput string
+		want          error
+		wantNameQuery bool
+	}{
+		{name: "missing owned container", failPatterns: []string{"inspect --format {{index .Config.Labels"}, want: ErrProjectToolboxContainerMissing, wantNameQuery: true},
+		{name: "engine unavailable during scoped probe", failPatterns: []string{"inspect --format {{index .Config.Labels", "ps -aq"}, want: ErrProjectToolboxUnavailable},
+		{name: "labelled candidate is not declared missing", failPatterns: []string{"inspect --format {{index .Config.Labels"}, psLabelOutput: strings.Repeat("c", 64), want: ErrProjectToolboxContainerUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stateRoot := t.TempDir()
+			workspace := Workspace{ID: "ws_55555555555555555555555555555555", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
+			runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(stateRoot, "podman.sock")}
+			manager, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"}, Runner: runner, environment: testRootlessContainerEnvironment, NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := manager.Create(t.Context(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+				t.Fatal(err)
+			}
+			runner.calls = nil
+			runner.failPatterns = test.failPatterns
+			runner.psLabelOutput = test.psLabelOutput
+			_, err = manager.Status(t.Context(), ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace})
+			if !errors.Is(err, test.want) {
+				t.Fatalf("status err=%v want %v", err, test.want)
+			}
+			var labelQuery, nameQuery bool
+			for _, call := range runner.calls {
+				joined := strings.Join(call, " ")
+				labelQuery = labelQuery || strings.Contains(joined, "ps -aq --filter label="+projectToolboxLabelKey+"=tb_11111111111111111111111111111111")
+				nameQuery = nameQuery || strings.Contains(joined, "ps -aq --filter name=mcp-toolbox-11111111111111111111111111111111")
+			}
+			if !labelQuery || nameQuery != test.wantNameQuery {
+				t.Fatalf("status used unexpected scoped probes: label=%t name=%t wantName=%t calls=%q", labelQuery, nameQuery, test.wantNameQuery, runner.calls)
+			}
+			for _, call := range runner.calls {
+				joined := strings.Join(call, " ")
+				if strings.Contains(joined, " rename ") || strings.Contains(joined, " rm ") {
+					t.Fatalf("read-only status mutated container state: %q", joined)
+				}
+			}
+		})
 	}
 }
 

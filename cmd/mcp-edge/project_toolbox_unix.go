@@ -94,39 +94,74 @@ func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxO
 	}
 	request := edgeclient.ProjectToolboxStatusRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace}
 	var lastErr error
+	var missingErr error
+	var unavailableErr error
+	var notFoundManager projectToolboxOperations
 	for _, manager := range managers {
 		_, err := manager.Status(ctx, request)
 		switch {
 		case err == nil:
+			if operation.Kind == edge.OperationProjectToolboxCreate && notFoundManager != nil && unavailableErr == nil {
+				return notFoundManager, nil
+			}
 			return manager, nil
 		case errors.Is(err, edgeclient.ErrProjectToolboxNotFound):
+			if notFoundManager == nil {
+				notFoundManager = manager
+			}
+			continue
+		case operation.Kind == edge.OperationProjectToolboxCleanup && len(managers) == 1 && (errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable) || errors.Is(err, edgeclient.ErrProjectToolboxContainerMissing)):
+			// Only one rootless endpoint exists. Cleanup will still prove that
+			// the pinned record and both container selectors are absent.
 			return manager, nil
+		case errors.Is(err, edgeclient.ErrProjectToolboxEndpointStale):
+			continue
+		case errors.Is(err, edgeclient.ErrProjectToolboxContainerMissing):
+			missingErr = err
+			continue
 		case operation.Kind == edge.OperationProjectToolboxRepair && (errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable) || errors.Is(err, edgeclient.ErrProjectToolboxMountMismatch) || errors.Is(err, edgeclient.ErrProjectToolboxIdentityMismatch)):
 			_, repairErr := manager.Reconcile(ctx, edgeclient.ProjectToolboxReconcileRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 			switch {
 			case repairErr == nil:
 				return manager, nil
-			case errors.Is(repairErr, edgeclient.ErrProjectToolboxContainerMissing), errors.Is(repairErr, edgeclient.ErrProjectToolboxUnavailable):
-				lastErr = repairErr
+			case errors.Is(repairErr, edgeclient.ErrProjectToolboxContainerMissing):
+				missingErr = repairErr
+				continue
+			case errors.Is(repairErr, edgeclient.ErrProjectToolboxUnavailable):
+				unavailableErr = repairErr
+				continue
+			case errors.Is(repairErr, edgeclient.ErrProjectToolboxContainerUnavailable):
+				unavailableErr = repairErr
+				continue
+			case errors.Is(repairErr, edgeclient.ErrProjectToolboxEndpointStale):
 				continue
 			case errors.Is(repairErr, edgeclient.ErrProjectToolboxNotOwned), errors.Is(repairErr, edgeclient.ErrProjectToolboxUnsafeState):
 				return nil, repairErr
 			default:
-				return nil, repairErr
+				lastErr = repairErr
+				continue
 			}
-		case operation.Kind == edge.OperationProjectToolboxCleanup && len(managers) == 1 && errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
-			// Only one rootless endpoint exists. Cleanup will still prove that
-			// the pinned record and both container selectors are absent.
-			return manager, nil
-		case errors.Is(err, edgeclient.ErrProjectToolboxNotOwned), errors.Is(err, edgeclient.ErrProjectToolboxUnavailable):
+		case errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable), errors.Is(err, edgeclient.ErrProjectToolboxUnavailable):
+			unavailableErr = err
+			continue
+		case errors.Is(err, edgeclient.ErrProjectToolboxNotOwned):
 			lastErr = err
 			continue
 		default:
 			return nil, err
 		}
 	}
+	if unavailableErr != nil {
+		return nil, unavailableErr
+	}
+	if missingErr != nil {
+		return nil, missingErr
+	}
 	if lastErr != nil {
 		return nil, lastErr
+	}
+	if notFoundManager != nil {
+		return notFoundManager, nil
 	}
 	return nil, edgeclient.ErrProjectToolboxUnavailable
 }
@@ -170,7 +205,7 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 				snapshot.Reclaimable = false
 				snapshot.ReclaimReason = "removed"
 			}
-		} else if errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable) {
+		} else if errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable) || errors.Is(err, edgeclient.ErrProjectToolboxContainerMissing) {
 			snapshot, _, err = manager.CleanupMissing(ctx, cleanupRequest)
 		}
 	case edge.OperationProjectBrowserHarnessStart, edge.OperationProjectBrowserHarnessStatus, edge.OperationProjectBrowserHarnessList, edge.OperationProjectBrowserHarnessStop, edge.OperationProjectBrowserHarnessCleanup, edge.OperationProjectBrowserHarnessArtifactList, edge.OperationProjectBrowserHarnessArtifactRead:
@@ -195,6 +230,8 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 	}
 	if err != nil {
 		switch {
+		case errors.Is(err, edgeclient.ErrProjectToolboxContainerMissing):
+			return edge.OperationResult{}, "project_toolbox_container_missing"
 		case errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable):
 			return edge.OperationResult{}, "project_toolbox_container_unavailable"
 		case errors.Is(err, edgeclient.ErrProjectToolboxIdentityMismatch):

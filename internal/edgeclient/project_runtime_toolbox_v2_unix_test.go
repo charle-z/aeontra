@@ -3,6 +3,7 @@
 package edgeclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -80,10 +81,24 @@ func TestProjectToolboxMigratesLegacyRecordWithoutDeletingWorkspace(t *testing.T
 	if err := manager.save(record); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Status(context.Background(), ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+	legacyBytes, err := os.ReadFile(manager.recordPath(workspace.ID))
+	if err != nil {
 		t.Fatal(err)
 	}
+	if snapshot, err := manager.Status(context.Background(), ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil || snapshot.Lifecycle != projectToolboxPersistent {
+		t.Fatalf("status snapshot=%+v err=%v", snapshot, err)
+	}
 	data, err := os.ReadFile(manager.recordPath(workspace.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacyBytes, data) {
+		t.Fatal("read-only status persisted the legacy record migration")
+	}
+	if _, reused, err := manager.Create(context.Background(), ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil || !reused {
+		t.Fatalf("explicit create did not apply the legacy migration: reused=%t err=%v", reused, err)
+	}
+	data, err = os.ReadFile(manager.recordPath(workspace.ID))
 	if err != nil {
 		t.Fatal(err)
 	}

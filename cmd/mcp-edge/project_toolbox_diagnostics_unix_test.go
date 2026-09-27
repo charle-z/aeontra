@@ -30,6 +30,14 @@ func TestSafeProjectToolboxSelectionFailureCategories(t *testing.T) {
 	}
 }
 
+func TestCollectProjectToolboxReportsMissingContainerFromDirectStatus(t *testing.T) {
+	manager := &fakeProjectToolboxManager{statusErr: edgeclient.ErrProjectToolboxContainerMissing}
+	_, code := collectProjectToolbox(t.Context(), manager, toolboxSelectionFixture(), edge.Operation{Kind: edge.OperationProjectToolboxStatus})
+	if code != "project_toolbox_container_missing" {
+		t.Fatalf("failure code=%q", code)
+	}
+}
+
 func TestSelectProjectToolboxManagerRecoversAfterSpecificOwnershipMismatch(t *testing.T) {
 	first := &fakeProjectToolboxManager{statusErr: edgeclient.ErrProjectToolboxMountMismatch}
 	second := &fakeProjectToolboxManager{}
