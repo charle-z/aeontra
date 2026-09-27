@@ -61,6 +61,7 @@ func TestSignedTransportLeasesHeartbeatsAndCompletesTask(t *testing.T) {
 
 func TestOperationLeaseNegotiatesCompatibilityWithoutBreakingLegacyServers(t *testing.T) {
 	catalog := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	serverCatalog := "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	originalCatalog := buildinfo.EdgeBundleCatalogHash
 	buildinfo.EdgeBundleCatalogHash = catalog
 	t.Cleanup(func() { buildinfo.EdgeBundleCatalogHash = originalCatalog })
@@ -70,7 +71,7 @@ func TestOperationLeaseNegotiatesCompatibilityWithoutBreakingLegacyServers(t *te
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if err := store.SetExpectedOperationCompatibility(buildinfo.EdgeBundleProtocolVersion, catalog); err != nil {
+	if err := store.SetExpectedOperationCompatibility(buildinfo.EdgeBundleProtocolVersion, serverCatalog); err != nil {
 		t.Fatal(err)
 	}
 	code, _ := store.CreatePairing(time.Minute)

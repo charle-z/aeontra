@@ -311,10 +311,12 @@ The package/updater stages and verifies the complete release, activates it atomi
 checks the fixed service, and restores the previous signed release on failure. Public
 update tools select only the official stable channel or previous known signed release.
 
-Ordinary operation leases are also gated by the installed bundle protocol and catalog
-hash. A mismatched Edge can lease only the bounded status/update/rollback/repair paths
-needed to recover. This keeps backend and Edge version skew from surfacing as an opaque
-executor failure while preserving the rollback path to older backends.
+Ordinary operation leases are gated by the installed bundle's operation protocol and
+require a well-formed stamped catalog identity. The catalog hash remains in skew
+diagnostics but does not gate leases: changing a public MCP tool must not disable an
+unchanged Edge operation contract. A protocol-mismatched or unstamped Edge can lease
+only bounded status/update/rollback/repair paths needed to recover. Incompatible
+operation changes require an explicit protocol bump and signed Edge release.
 They cannot supply a URL, archive, executable, service, hash, or script. Repair restores
 only official packaged components and fixed links/units.
 

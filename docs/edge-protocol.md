@@ -187,12 +187,16 @@ model.
 ## Operation compatibility
 
 Compatibility-aware servers require ordinary operation leases to match the signed
-Edge bundle protocol and deterministic MCP catalog hash. A mismatched or legacy Edge
-receives `409 Conflict` with `edge version skew` instead of a generic bad request.
+Edge operation protocol and carry a valid stamped catalog identity. The public MCP
+catalog can change without changing the Edge operation wire contract; its hash is
+retained for diagnostics, not used to block otherwise compatible work. A protocol
+mismatch or unstamped Edge receives `409 Conflict` with `edge version skew` instead of
+a generic bad request.
 Bundle status, update, rollback, repair and onboarding status remain leaseable so the
 device can converge safely.
 
 New Edge clients first send the legacy lease body. They include their stamped bundle
 identity only after a compatibility conflict, so a new client can still poll an older
-backend during a controlled rollback. The managed rollout order remains backend first,
-then signed Edge release, followed by real-device acceptance.
+backend during a controlled rollback. Incompatible Edge operation changes must bump
+the bundle protocol and receive a signed Edge release. Catalog-only backend changes
+do not require one. Validate actual Edge operations after rollout.

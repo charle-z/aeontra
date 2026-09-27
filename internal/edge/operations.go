@@ -603,9 +603,9 @@ func (s *Store) LeaseOperation(deviceID string, ttl time.Duration) (OperationLea
 	return s.LeaseOperationCompatible(deviceID, ttl, "", "")
 }
 
-// SetExpectedOperationCompatibility configures the bundle identity required
-// for ordinary operations. It is set once by the server after constructing its
-// deterministic MCP catalog.
+// SetExpectedOperationCompatibility configures the operation protocol required
+// for ordinary leases and records the server catalog for skew diagnostics. The
+// MCP catalog can change without changing the Edge operation wire contract.
 func (s *Store) SetExpectedOperationCompatibility(protocol, catalog string) error {
 	protocol = strings.TrimSpace(protocol)
 	catalog = strings.TrimSpace(catalog)
@@ -620,8 +620,8 @@ func (s *Store) SetExpectedOperationCompatibility(protocol, catalog string) erro
 }
 
 // LeaseOperationCompatible leases only work supported by the authenticated
-// Edge bundle. A mismatched device may still lease recovery operations needed
-// to converge to the server catalog.
+// Edge operation protocol. A mismatched or unstamped device may still lease
+// recovery operations needed to update its signed bundle.
 func (s *Store) LeaseOperationCompatible(deviceID string, ttl time.Duration, observedProtocol, observedCatalog string) (OperationLease, error) {
 	if !idPattern.MatchString(deviceID) || ttl < MinLeaseTTL || ttl > MaxLeaseTTL {
 		return OperationLease{}, errors.New("operation lease is invalid")
@@ -642,7 +642,7 @@ func (s *Store) LeaseOperationCompatible(deviceID string, ttl time.Duration, obs
 	}
 	expectedProtocol := s.expectedOperationProtocol
 	expectedCatalog := s.expectedOperationCatalog
-	compatible := expectedProtocol == "" || (strings.TrimSpace(observedProtocol) == expectedProtocol && strings.TrimSpace(observedCatalog) == expectedCatalog)
+	compatible := expectedProtocol == "" || (strings.TrimSpace(observedProtocol) == expectedProtocol && operationCatalogPattern.MatchString(strings.TrimSpace(observedCatalog)))
 	var id string
 	var selectErr error
 	if compatible {

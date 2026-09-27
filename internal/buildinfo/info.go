@@ -9,8 +9,10 @@ const (
 	// ProtocolVersion is the default MCP protocol version when the client does not
 	// request a specific compatible version.
 	ProtocolVersion = "2024-11-05"
-	// EdgeBundleProtocolVersion is the compatibility contract shared by the
-	// packaged Edge, provider, driver and local autopilot worker.
+	// EdgeBundleProtocolVersion is the operation compatibility contract shared
+	// by the packaged Edge, provider, driver and local autopilot worker. Bump it
+	// when an Edge operation wire contract changes incompatibly; a change to the
+	// public MCP tool catalog alone does not require a new Edge bundle.
 	EdgeBundleProtocolVersion = "mcp-devbox.edge-bundle.v1"
 )
 
