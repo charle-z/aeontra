@@ -26,6 +26,20 @@ type fakePlatform struct {
 	failCounts      map[string]int
 }
 
+type childCancellationProbePlatform struct {
+	*fakePlatform
+	first    bool
+	childErr error
+}
+
+func (p *childCancellationProbePlatform) ProbeBackend(ctx context.Context, origin string) error {
+	if !p.first {
+		p.first = true
+		return p.childErr
+	}
+	return p.fakePlatform.ProbeBackend(ctx, origin)
+}
+
 func (f *fakePlatform) Topology(context.Context) (Topology, error) {
 	if err := f.failOnce("topology"); err != nil {
 		return Topology{}, err
@@ -332,6 +346,24 @@ func TestRunnerPreservesActiveRequestWhenInterrupted(t *testing.T) {
 	}
 	if after.Revision != before.Revision || after.State != StateRunning || after.RequestID != testRequestID || len(platform.calls) != 0 || platform.publishCalls != 0 {
 		t.Fatalf("before=%+v after=%+v calls=%v publish_calls=%d", before, after, platform.calls, platform.publishCalls)
+	}
+}
+
+func TestRunnerCompensatesNestedProbeCancellation(t *testing.T) {
+	for name, childErr := range map[string]error{"deadline": context.DeadlineExceeded, "cancelled": context.Canceled} {
+		t.Run(name, func(t *testing.T) {
+			journal, err := OpenJournal(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			initial := Topology{FrontDomain: FrontTemporaryOrigin, FrontBackendURL: FrontPublicOrigin, BackendDomains: FrontPublicOrigin}
+			platform := &childCancellationProbePlatform{fakePlatform: &fakePlatform{topology: initial}, childErr: childErr}
+			runner := Runner{Platform: platform, Journal: journal, RequestID: testRequestID}
+			status, err := runner.Run(context.Background(), TargetCutover)
+			if err == nil || status.State != StateFailed || platform.topology != initial {
+				t.Fatalf("status=%+v topology=%+v err=%v", status, platform.topology, err)
+			}
+		})
 	}
 }
 

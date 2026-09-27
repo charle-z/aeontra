@@ -63,6 +63,9 @@ It resumes from observation and journal state rather than repeating actions blin
 - Failure after the backend switch uses the same fixed-branch stop-first recovery and
   restores the previous Front Door contract.
 - A different active request is rejected.
+- A timeout or cancellation from one Coolify/MCP request is an operation failure and
+  follows the bounded recovery path. Only cancellation of the coordinator's own run
+  preserves an active journal for restart.
 - A topology transition and a catalog rollout cannot run at the same time.
 - The official domain is never pointed at a backend that is outside the admitted pair.
 - OAuth discovery remains independent from the MCP catalog gate; `/mcp` remains
@@ -98,6 +101,13 @@ rollout state is terminal. A successful rollout ends with:
 The coordinator allows up to 20 minutes for each normal Coolify deployment to reach a
 terminal state. This covers clean, single-core production builds while keeping the
 deployment phase finite; expiry enters the existing compensation path.
+
+If the coordinator is healthy but publishes an active rollout with no journal revision
+progress and no live deployment, inspect its `/status`, application deployment, and
+bounded logs before taking action. A normal managed redeployment of the same pinned
+coordinator commit can resume the durable request; verify that the journal reaches a
+terminal state before previewing another backend rollout. Do not clear the published
+description or journal by hand, and do not launch a second backend deployment.
 
 Do not edit the Front Door allowlist manually, add a third catalog, enable wildcard
 matching, re-enable backend auto-deploy, or trigger a direct Coolify deployment while a

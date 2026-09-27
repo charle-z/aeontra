@@ -137,8 +137,9 @@ func (r Runner) Run(ctx context.Context, target Target) (Status, error) {
 	return r.compensate(ctx, current, "transition_budget_exhausted", budgetErr)
 }
 
-func transitionInterrupted(ctx context.Context, err error) bool {
-	return ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+func transitionInterrupted(ctx context.Context, _ error) bool {
+	// Only cancellation of the coordinator itself preserves an active journal.
+	return ctx.Err() != nil
 }
 
 func interruptedTransition(current Status, cause error) (Status, error) {

@@ -40,6 +40,9 @@ func catalogTerminalMessage(status catalogrollout.Status, runErr error) string {
 	if _, err := catalogrollout.EncodePublishedStatus(status); err == nil {
 		deploymentID = status.DeploymentID
 	}
+	if errors.Is(runErr, catalogrollout.ErrInterrupted) {
+		return fmt.Sprintf("catalog rollout interrupted: state=%s phase=%s deployment_id=%s revision=%d", status.State, status.Phase, deploymentID, status.Revision)
+	}
 	if runErr != nil {
 		return fmt.Sprintf("catalog rollout terminal: state=%s phase=%s deployment_id=%s reason=%s", status.State, status.Phase, deploymentID, status.Reason)
 	}
