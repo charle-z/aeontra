@@ -402,6 +402,9 @@ Its compact handoff revision is an advisory snapshot identifier, not a bearer to
 ownership transfer or authorization to replay an effect. A new chat must read current
 task status and reconcile changed state before acting. Pending-turn order and wait
 duration contain no prompt text and do not move a worker lease or writer fence.
+The multi-runtime turn wait uses the same opaque runtime IDs and response identity
+checks as the single-runtime wait. It returns one offered turn, does not consume it,
+and cannot extend a worker's workspace or tool authority.
 No source path or diff is returned. Missing Edge connectivity, an unknown runtime,
 base/head mismatch or absent evidence becomes `reconciliation_required`; it is never
 converted into success. An optional version-1 Git evidence contract records a durable receipt

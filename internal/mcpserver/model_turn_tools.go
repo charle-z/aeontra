@@ -88,6 +88,20 @@ func (s *Server) addModelTurnTools() {
 		Annotations: readHints,
 	}, s.handleModelTurnNext)
 
+	s.addSessionTool(toolDef{
+		Name:        "model_turn_next_any",
+		Description: "Wait up to 180 seconds for the oldest pending turn across one to four known runtimes, without serial waits. A terminal runtime is returned only when no pending turn exists. No turn is consumed.",
+		InputSchema: closedObject(map[string]any{
+			"runtimes": map[string]any{"type": "array", "minItems": 1, "maxItems": 4, "items": closedObject(map[string]any{
+				"runtime_id":     stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
+				"after_sequence": map[string]any{"type": "integer", "minimum": 0},
+			}, []string{"runtime_id"})},
+			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": 180},
+		}, []string{"runtimes"}),
+		Version:     "1",
+		Annotations: readHints,
+	}, s.handleModelTurnNextAny)
+
 	s.addDirectTool(toolDef{
 		Name:        "model_turn_respond",
 		Description: "Submit one bounded response after identity validation. Explicit task_state is preferred; legacy clients may omit it and the server infers it from finish_reason. Active must include an offered tool call, blocked must use error or cancelled, and complete must use stop without declaring pending work.",
@@ -168,6 +182,14 @@ type modelTurnNextParams struct {
 	RuntimeID     string `json:"runtime_id"`
 	AfterSequence uint64 `json:"after_sequence,omitempty"`
 	WaitSeconds   int    `json:"wait_seconds,omitempty"`
+}
+
+type modelTurnNextAnyParams struct {
+	Runtimes []struct {
+		RuntimeID     string `json:"runtime_id"`
+		AfterSequence uint64 `json:"after_sequence,omitempty"`
+	} `json:"runtimes"`
+	WaitSeconds int `json:"wait_seconds,omitempty"`
 }
 
 type modelToolCall struct {
@@ -260,6 +282,56 @@ func (s *Server) handleModelTurnNext(arguments json.RawMessage, sessionKey strin
 	return marshalModelTurnNext(params.RuntimeID, offer, pending, runtime, err)
 }
 
+func (s *Server) handleModelTurnNextAny(arguments json.RawMessage, sessionKey string) (string, error) {
+	if s.modelTurns == nil {
+		return "", errModelTurnStoreUnavailable
+	}
+	var params modelTurnNextAnyParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	if len(params.Runtimes) == 0 || len(params.Runtimes) > 4 || params.WaitSeconds < 0 || params.WaitSeconds > 180 {
+		return "", modelturn.ErrInvalidRequest
+	}
+	cursors := make([]modelturn.RuntimeCursor, len(params.Runtimes))
+	ids := make([]string, len(params.Runtimes))
+	for index, runtime := range params.Runtimes {
+		cursors[index] = modelturn.RuntimeCursor{RuntimeID: runtime.RuntimeID, AfterSequence: runtime.AfterSequence}
+		ids[index] = runtime.RuntimeID
+	}
+	if params.WaitSeconds == 0 {
+		result, found, err := s.modelTurns.PollAnyAfter(context.Background(), cursors)
+		return marshalModelTurnNextAny(result, found, err)
+	}
+	if !s.beginModelWaitMany(sessionKey, ids) {
+		return "", modelturn.ErrTurnConflict
+	}
+	defer s.endModelWaitMany(sessionKey, ids)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(params.WaitSeconds)*time.Second)
+	defer cancel()
+	result, err := s.modelTurns.WaitNextAnyAfter(ctx, cursors)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return marshalToolValue(map[string]any{"pending": false, "status": "no_change"}, nil)
+	}
+	return marshalModelTurnNextAny(result, err == nil, err)
+}
+
+func marshalModelTurnNextAny(result modelturn.AnyTurnResult, found bool, err error) (string, error) {
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return marshalToolValue(map[string]any{"pending": false, "status": "no_change"}, nil)
+	}
+	if result.Pending {
+		return marshalToolValue(map[string]any{"pending": true, "status": "turn", "cursor_index": result.CursorIndex, "turn": result.Offer}, nil)
+	}
+	return marshalToolValue(map[string]any{
+		"pending": false, "status": modelTurnResultStatus(result.Runtime), "cursor_index": result.CursorIndex,
+		"runtime_id": result.Runtime.RuntimeID, "last_sequence": result.Runtime.LastSequence,
+	}, nil)
+}
+
 func marshalModelTurnNext(runtimeID string, offer modelturn.Offer, pending bool, runtime modelturn.Runtime, err error) (string, error) {
 	if err != nil {
 		return "", err
@@ -267,6 +339,15 @@ func marshalModelTurnNext(runtimeID string, offer modelturn.Offer, pending bool,
 	if pending {
 		return marshalToolValue(map[string]any{"pending": true, "status": "turn", "turn": offer}, nil)
 	}
+	return marshalToolValue(map[string]any{
+		"runtime_id":    runtimeID,
+		"pending":       false,
+		"status":        modelTurnResultStatus(runtime),
+		"last_sequence": runtime.LastSequence,
+	}, nil)
+}
+
+func modelTurnResultStatus(runtime modelturn.Runtime) string {
 	status := "no_change"
 	if runtime.Status == modelturn.RuntimeCompleted || runtime.Status == modelturn.RuntimeCancelled || runtime.Status == modelturn.RuntimeFailed {
 		status = string(runtime.Status)
@@ -276,29 +357,36 @@ func marshalModelTurnNext(runtimeID string, offer modelturn.Offer, pending bool,
 			status = string(runtime.ActiveTurnStatus)
 		}
 	}
-	return marshalToolValue(map[string]any{
-		"runtime_id":    runtimeID,
-		"pending":       false,
-		"status":        status,
-		"last_sequence": runtime.LastSequence,
-	}, nil)
+	return status
 }
 
 func (s *Server) beginModelWait(sessionKey, runtimeID string) bool {
-	key := sessionKey + "\x00" + runtimeID
+	return s.beginModelWaitMany(sessionKey, []string{runtimeID})
+}
+
+func (s *Server) beginModelWaitMany(sessionKey string, runtimeIDs []string) bool {
 	s.modelWaitMu.Lock()
 	defer s.modelWaitMu.Unlock()
-	if _, exists := s.modelWaits[key]; exists {
-		return false
+	for _, runtimeID := range runtimeIDs {
+		if _, exists := s.modelWaits[sessionKey+"\x00"+runtimeID]; exists {
+			return false
+		}
 	}
-	s.modelWaits[key] = struct{}{}
+	for _, runtimeID := range runtimeIDs {
+		s.modelWaits[sessionKey+"\x00"+runtimeID] = struct{}{}
+	}
 	return true
 }
 
 func (s *Server) endModelWait(sessionKey, runtimeID string) {
-	key := sessionKey + "\x00" + runtimeID
+	s.endModelWaitMany(sessionKey, []string{runtimeID})
+}
+
+func (s *Server) endModelWaitMany(sessionKey string, runtimeIDs []string) {
 	s.modelWaitMu.Lock()
-	delete(s.modelWaits, key)
+	for _, runtimeID := range runtimeIDs {
+		delete(s.modelWaits, sessionKey+"\x00"+runtimeID)
+	}
 	s.modelWaitMu.Unlock()
 }
 

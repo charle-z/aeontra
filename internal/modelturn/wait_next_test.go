@@ -62,6 +62,153 @@ func TestRuntimeReportsDurableTurnCreationTime(t *testing.T) {
 	}
 }
 
+func TestPollAnyAfterChoosesOldestPendingTurn(t *testing.T) {
+	store := openWaitStore(t, filepath.Join(t.TempDir(), "turns"), nil)
+	first, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	older, err := store.CreateTurn(context.Background(), ModelRequest{RuntimeID: second.RuntimeID, Sequence: 1, Payload: json.RawMessage(`{"prompt":"older"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	if _, err := store.CreateTurn(context.Background(), ModelRequest{RuntimeID: first.RuntimeID, Sequence: 1, Payload: json.RawMessage(`{"prompt":"newer"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	result, found, err := store.PollAnyAfter(context.Background(), []RuntimeCursor{{RuntimeID: first.RuntimeID}, {RuntimeID: second.RuntimeID}})
+	if err != nil || !found || !result.Pending || result.CursorIndex != 1 || result.Offer.TurnID != older.ID {
+		t.Fatalf("result=%+v found=%t err=%v", result, found, err)
+	}
+	if _, _, err := store.PollAnyAfter(context.Background(), []RuntimeCursor{{RuntimeID: first.RuntimeID}, {RuntimeID: first.RuntimeID}}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("duplicate runtime error=%v", err)
+	}
+}
+
+func TestWaitNextAnyAfterWakesForAnotherRuntime(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "turns")
+	reader := openWaitStore(t, root, nil)
+	writer := openWaitStore(t, root, nil)
+	first, err := reader.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := reader.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	type waitResult struct {
+		result AnyTurnResult
+		err    error
+	}
+	done := make(chan waitResult, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		result, err := reader.WaitNextAnyAfter(ctx, []RuntimeCursor{{RuntimeID: first.RuntimeID}, {RuntimeID: second.RuntimeID}})
+		done <- waitResult{result: result, err: err}
+	}()
+	time.Sleep(30 * time.Millisecond)
+	created, err := writer.CreateTurn(context.Background(), ModelRequest{RuntimeID: second.RuntimeID, Sequence: 1, Payload: json.RawMessage(`{"prompt":"wake"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-done:
+		if got.err != nil || !got.result.Pending || got.result.CursorIndex != 1 || got.result.Offer.TurnID != created.ID {
+			t.Fatalf("result=%+v err=%v", got.result, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("multi-runtime waiter did not wake")
+	}
+}
+
+func TestPollAnyAfterPrefersPendingOverTerminal(t *testing.T) {
+	store := openWaitStore(t, filepath.Join(t.TempDir(), "turns"), nil)
+	terminal, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CancelRuntime(context.Background(), terminal.RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.CreateTurn(context.Background(), ModelRequest{RuntimeID: pending.RuntimeID, Sequence: 1, Payload: json.RawMessage(`{"prompt":"ready"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursors := []RuntimeCursor{{RuntimeID: terminal.RuntimeID}, {RuntimeID: pending.RuntimeID}}
+	result, found, err := store.PollAnyAfter(context.Background(), cursors)
+	if err != nil || !found || !result.Pending || result.CursorIndex != 1 || result.Offer.TurnID != created.ID {
+		t.Fatalf("pending result=%+v found=%t err=%v", result, found, err)
+	}
+	result, found, err = store.PollAnyAfter(context.Background(), cursors[:1])
+	if err != nil || !found || result.Pending || result.Runtime.State != RuntimeStateCancelled {
+		t.Fatalf("terminal result=%+v found=%t err=%v", result, found, err)
+	}
+}
+
+func TestPollAnyAfterExpiredWorkerDoesNotBlockAnother(t *testing.T) {
+	now := time.Date(2026, 9, 27, 21, 0, 0, 0, time.UTC)
+	store := openWaitStore(t, filepath.Join(t.TempDir(), "turns"), func() time.Time { return now })
+	expired, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateTurn(context.Background(), ModelRequest{RuntimeID: expired.RuntimeID, Sequence: 1, Payload: json.RawMessage(`{"prompt":"expired"}`), TTL: time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.CreateTurn(context.Background(), ModelRequest{RuntimeID: ready.RuntimeID, Sequence: 1, Payload: json.RawMessage(`{"prompt":"ready"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.PollAfter(context.Background(), ready.RuntimeID, 0); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(100 * time.Millisecond)
+	result, found, err := store.PollAnyAfter(context.Background(), []RuntimeCursor{{RuntimeID: expired.RuntimeID}, {RuntimeID: ready.RuntimeID}})
+	if err != nil || !found || result.CursorIndex != 1 || result.Offer.TurnID != created.ID {
+		t.Fatalf("ready worker blocked by expired peer: result=%+v found=%t err=%v", result, found, err)
+	}
+}
+
+func TestWaitNextAnyAfterTimeoutDoesNotSpin(t *testing.T) {
+	var calls atomic.Int64
+	store := openWaitStore(t, filepath.Join(t.TempDir(), "turns"), func() time.Time {
+		calls.Add(1)
+		return time.Now()
+	})
+	first, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.StartRuntime(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls.Store(0)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	_, err = store.WaitNextAnyAfter(ctx, []RuntimeCursor{{RuntimeID: first.RuntimeID}, {RuntimeID: second.RuntimeID}})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wait error=%v", err)
+	}
+	if got := calls.Load(); got > 12 {
+		t.Fatalf("idle wait made too many time checks: %d", got)
+	}
+}
+
 func TestWaitNextAfterWakesAcrossStoreConnections(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "turns")
 	reader := openWaitStore(t, root, nil)

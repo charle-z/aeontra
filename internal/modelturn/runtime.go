@@ -625,6 +625,110 @@ func (s *Store) WaitNextAfter(ctx context.Context, runtimeID string, afterSequen
 	}
 }
 
+// RuntimeCursor binds a durable runtime to the last sequence already observed
+// by this caller. A pending turn is still delivered only when newer than that
+// cursor; callers may use zero after a lost response to recover an unconsumed
+// turn.
+type RuntimeCursor struct {
+	RuntimeID     string
+	AfterSequence uint64
+}
+
+type AnyTurnResult struct {
+	CursorIndex int
+	Offer       Offer
+	Pending     bool
+	Runtime     Runtime
+}
+
+func validateRuntimeCursors(cursors []RuntimeCursor) error {
+	if len(cursors) == 0 || len(cursors) > 4 {
+		return ErrInvalidRequest
+	}
+	seen := make(map[string]struct{}, len(cursors))
+	for _, cursor := range cursors {
+		if !safeIdentifier.MatchString(cursor.RuntimeID) {
+			return ErrInvalidRequest
+		}
+		if _, exists := seen[cursor.RuntimeID]; exists {
+			return ErrInvalidRequest
+		}
+		seen[cursor.RuntimeID] = struct{}{}
+	}
+	return nil
+}
+
+// PollAnyAfter checks every runtime before selecting a result, so a terminal
+// runtime or a noisy first worker cannot hide an older pending turn. It holds
+// no cross-runtime lock and does not consume the selected turn.
+func (s *Store) PollAnyAfter(ctx context.Context, cursors []RuntimeCursor) (AnyTurnResult, bool, error) {
+	if err := validateRuntimeCursors(cursors); err != nil {
+		return AnyTurnResult{}, false, err
+	}
+	var pending, terminal AnyTurnResult
+	hasPending, hasTerminal := false, false
+	var lateErr error
+	for index, cursor := range cursors {
+		if err := ctx.Err(); err != nil {
+			return AnyTurnResult{}, false, err
+		}
+		offer, found, runtime, err := s.PollAfter(ctx, cursor.RuntimeID, cursor.AfterSequence)
+		if errors.Is(err, ErrLateResponse) {
+			lateErr = err
+			continue
+		}
+		if err != nil {
+			return AnyTurnResult{}, false, err
+		}
+		candidate := AnyTurnResult{CursorIndex: index, Offer: offer, Pending: found, Runtime: runtime}
+		if found {
+			if !hasPending || offer.CreatedAt.Before(pending.Offer.CreatedAt) {
+				pending = candidate
+				hasPending = true
+			}
+			continue
+		}
+		if !hasTerminal && runtimeStopsWait(runtime, cursor.AfterSequence) {
+			terminal = candidate
+			hasTerminal = true
+		}
+	}
+	if hasPending {
+		return pending, true, nil
+	}
+	if hasTerminal {
+		return terminal, true, nil
+	}
+	if lateErr != nil {
+		return AnyTurnResult{}, false, lateErr
+	}
+	return AnyTurnResult{}, false, nil
+}
+
+// WaitNextAnyAfter shares the same store wakeup as single-runtime waits. The
+// one-second fallback handles cross-process writers without a polling goroutine.
+func (s *Store) WaitNextAnyAfter(ctx context.Context, cursors []RuntimeCursor) (AnyTurnResult, error) {
+	if err := validateRuntimeCursors(cursors); err != nil {
+		return AnyTurnResult{}, err
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return AnyTurnResult{}, err
+		}
+		wake := s.waitChannel()
+		result, found, err := s.PollAnyAfter(ctx, cursors)
+		if err != nil || found {
+			return result, err
+		}
+		select {
+		case <-ctx.Done():
+			return AnyTurnResult{}, ctx.Err()
+		case <-wake:
+		case <-time.After(time.Second):
+		}
+	}
+}
+
 func runtimeStopsWait(runtime Runtime, afterSequence uint64) bool {
 	switch runtime.State {
 	case RuntimeStateCompleted, RuntimeStateCancelled, RuntimeStateFailed, RuntimeStateExpired:
