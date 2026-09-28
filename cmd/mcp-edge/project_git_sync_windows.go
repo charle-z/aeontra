@@ -160,7 +160,7 @@ func inspectWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectRe
 
 func fetchWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential) (edge.OperationResult, error) {
 	before, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
-	if err != nil || before.GitDetached || before.GitUnborn {
+	if err != nil || before.GitDetached {
 		return edge.OperationResult{}, errors.New("project Git fetch preflight failed")
 	}
 	refspec := "refs/heads/" + before.GitBranch + ":refs/remotes/origin/" + before.GitBranch
@@ -177,11 +177,13 @@ func fetchWindowsProjectGit(ctx context.Context, resolved edgeclient.ProjectReso
 
 func previewWindowsProjectGitFastForward(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
 	status, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
-	if err != nil || status.GitDetached || status.GitUnborn || !status.GitClean || !status.GitFetched || status.GitDiverged || status.GitAhead != 0 {
+	if err != nil || status.GitDetached || !status.GitClean || !status.GitFetched || status.GitDiverged || status.GitAhead != 0 {
 		return edge.OperationResult{}, errors.New("project Git checkout cannot fast-forward")
 	}
-	if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead}, edgeclient.GitHubCredential{}); err != nil {
-		return edge.OperationResult{}, errors.New("project Git fast-forward relation rejected")
+	if !status.GitUnborn {
+		if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead}, edgeclient.GitHubCredential{}); err != nil {
+			return edge.OperationResult{}, errors.New("project Git fast-forward relation rejected")
+		}
 	}
 	id, err := newWindowsProjectGitPlanID()
 	if err != nil {
@@ -201,11 +203,13 @@ func executeWindowsProjectGitFastForward(ctx context.Context, stateRoot string, 
 		return edge.OperationResult{}, errors.New("project Git fast-forward plan is unavailable")
 	}
 	status, err := inspectWindowsProjectGit(ctx, resolved, runner, credential)
-	if err != nil || status.GitUnborn || !status.GitClean || !status.GitFetched || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitAhead != 0 {
+	if err != nil || status.GitUnborn != (plan.Head == "") || !status.GitClean || !status.GitFetched || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitAhead != 0 {
 		return edge.OperationResult{}, errors.New("project Git fast-forward state changed")
 	}
-	if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead}, edgeclient.GitHubCredential{}); err != nil {
-		return edge.OperationResult{}, errors.New("project Git fast-forward relation rejected")
+	if !status.GitUnborn {
+		if _, err := runner.Run(ctx, resolved.Workspace.Path, []string{"merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead}, edgeclient.GitHubCredential{}); err != nil {
+			return edge.OperationResult{}, errors.New("project Git fast-forward relation rejected")
+		}
 	}
 	if err := consumeWindowsProjectGitPlan(stateRoot, plan.ID); err != nil {
 		return edge.OperationResult{}, errors.New("project Git fast-forward plan was already consumed")
@@ -390,8 +394,9 @@ func readWindowsProjectGitPlan(stateRoot, id string) (windowsProjectGitPlan, err
 		return windowsProjectGitPlan{}, errors.New("project Git plan is invalid")
 	}
 	remoteValid := (plan.Action == windowsProjectGitPlanPublish && plan.RemoteHead == "") || windowsGitCommit(plan.RemoteHead)
+	headValid := windowsGitCommit(plan.Head) || (plan.Action == windowsProjectGitPlanFastForward && plan.Head == "")
 	if dec.Decode(&struct{}{}) != io.EOF || plan.Version != 1 || plan.ID != id || plan.ExpiresAt.IsZero() ||
-		(plan.Action != windowsProjectGitPlanFastForward && plan.Action != windowsProjectGitPlanPublish) || !windowsGitCommit(plan.Head) || !remoteValid || !windowsGitBranch(plan.Branch) ||
+		(plan.Action != windowsProjectGitPlanFastForward && plan.Action != windowsProjectGitPlanPublish) || !headValid || !remoteValid || !windowsGitBranch(plan.Branch) ||
 		plan.WorkspaceID == "" || plan.Alias == "" || plan.Target == "" {
 		return windowsProjectGitPlan{}, errors.New("project Git plan is invalid")
 	}

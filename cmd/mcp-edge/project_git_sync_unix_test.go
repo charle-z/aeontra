@@ -96,9 +96,11 @@ func (r *projectGitSyncRunner) Run(_ context.Context, _ string, args []string, c
 		}
 		return "", nil
 	case "fetch --no-tags " + remoteURL + " refs/heads/" + branch + ":refs/remotes/origin/" + branch:
+		r.trackingMissing = false
 		return "", nil
 	case "merge --ff-only " + r.remote:
 		r.head = r.remote
+		r.unborn = false
 		return "", nil
 	case "push --porcelain " + remoteURL + " " + branch + ":refs/heads/" + branch:
 		r.remote = r.head
@@ -189,6 +191,54 @@ func TestInspectProjectGitCheckoutReportsUnbornBranchWithoutPublishing(t *testin
 	}
 	if _, err := previewProjectGitPublish(context.Background(), t.TempDir(), resolved, runner, credential, time.Now().UTC()); err == nil {
 		t.Fatal("unborn checkout received a publication plan")
+	}
+}
+
+func TestUnbornProjectGitFetchAndFastForward(t *testing.T) {
+	remote := "1123456789abcdef0123456789abcdef01234567"
+	runner := &projectGitSyncRunner{branch: "main", remote: remote, unborn: true, trackingMissing: true}
+	resolved := projectGitResolution()
+	credential := edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}
+	fetched, err := fetchProjectGitCheckout(context.Background(), resolved, runner, credential)
+	if err != nil || !fetched.GitUnborn || !fetched.GitFetched || fetched.GitRemoteHead != remote {
+		t.Fatalf("fetch=%+v err=%v", fetched, err)
+	}
+	stateRoot := t.TempDir()
+	now := time.Now().UTC()
+	preview, err := previewProjectGitFastForward(context.Background(), stateRoot, resolved, runner, credential, now)
+	if err != nil || preview.GitPlanID == "" || !preview.GitUnborn || preview.GitHead != "" {
+		t.Fatalf("preview=%+v err=%v", preview, err)
+	}
+	advanced, err := executeProjectGitFastForward(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, credential, now)
+	if err != nil || advanced.GitUnborn || !advanced.GitFastForwarded || advanced.GitHead != remote || !advanced.GitClean {
+		t.Fatalf("fast-forward=%+v err=%v", advanced, err)
+	}
+	if _, err := executeProjectGitFastForward(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, credential, now); err == nil {
+		t.Fatal("bootstrap plan replay accepted")
+	}
+	for _, call := range runner.calls {
+		if strings.HasPrefix(call, "merge-base --is-ancestor  ") {
+			t.Fatalf("unborn head used as an ancestor: %q", call)
+		}
+	}
+}
+
+func TestUnbornProjectGitFastForwardRejectsNewLocalCommit(t *testing.T) {
+	runner := &projectGitSyncRunner{
+		branch: "main", remote: "1123456789abcdef0123456789abcdef01234567", unborn: true,
+	}
+	resolved := projectGitResolution()
+	credential := edgeclient.GitHubCredential{Owner: "charle-z"}
+	stateRoot := t.TempDir()
+	now := time.Now().UTC()
+	preview, err := previewProjectGitFastForward(context.Background(), stateRoot, resolved, runner, credential, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.unborn = false
+	runner.head = "0123456789abcdef0123456789abcdef01234567"
+	if _, err := executeProjectGitFastForward(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, credential, now); err == nil {
+		t.Fatal("bootstrap plan accepted a new local commit")
 	}
 }
 

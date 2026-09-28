@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 type windowsProjectGitSyncTestRunner struct {
 	head, remote, branch, upstream string
 	unborn                         bool
+	trackingMissing                bool
 	published                      bool
 	calls                          []string
 }
@@ -57,7 +59,7 @@ func (r *windowsProjectGitSyncTestRunner) Run(_ context.Context, _ string, args 
 		}
 		return r.remote + "\trefs/heads/" + branch + "\n", nil
 	case "rev-parse --verify refs/remotes/origin/" + branch:
-		if r.remote == "" {
+		if r.remote == "" || r.trackingMissing {
 			return "", errors.New("tracking ref missing")
 		}
 		return r.remote, nil
@@ -72,12 +74,14 @@ func (r *windowsProjectGitSyncTestRunner) Run(_ context.Context, _ string, args 
 		return "", nil
 	case "fetch --no-tags " + remoteURL + " refs/heads/" + branch + ":refs/remotes/origin/" + branch:
 		r.upstream = "origin/" + branch
+		r.trackingMissing = false
 		if r.remote == "" {
 			r.remote = r.head
 		}
 		return "", nil
 	case "merge --ff-only " + r.remote:
 		r.head = r.remote
+		r.unborn = false
 		return "", nil
 	case "push --porcelain " + remoteURL + " " + branch + ":refs/heads/" + branch:
 		r.remote, r.published = r.head, true
@@ -105,6 +109,55 @@ func TestWindowsProjectGitStatusReportsUnbornWithoutPublishing(t *testing.T) {
 	}
 }
 
+func TestWindowsUnbornProjectGitFetchAndFastForward(t *testing.T) {
+	remote := "1123456789abcdef0123456789abcdef01234567"
+	runner := &windowsProjectGitSyncTestRunner{branch: "main", remote: remote, unborn: true, trackingMissing: true}
+	resolved := windowsProjectGitTestResolution()
+	credential := edgeclient.GitHubCredential{Owner: "charle-z", Token: "private"}
+	fetched, err := fetchWindowsProjectGit(context.Background(), resolved, runner, credential)
+	if err != nil || !fetched.GitUnborn || !fetched.GitFetched || fetched.GitRemoteHead != remote {
+		t.Fatalf("fetch=%+v err=%v", fetched, err)
+	}
+	stateRoot := filepath.Join(t.TempDir(), "private")
+	if err := edgeclient.PreparePrivateRoot(stateRoot); err != nil {
+		t.Skipf("private Windows test root unavailable: %v", err)
+	}
+	now := time.Now().UTC()
+	preview, err := previewWindowsProjectGitFastForward(context.Background(), stateRoot, resolved, runner, credential, now)
+	if err != nil || preview.GitPlanID == "" || !preview.GitUnborn || preview.GitHead != "" {
+		t.Fatalf("preview=%+v err=%v", preview, err)
+	}
+	advanced, err := executeWindowsProjectGitFastForward(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, credential, now)
+	if err != nil || advanced.GitUnborn || !advanced.GitFastForwarded || advanced.GitHead != remote || !advanced.GitClean {
+		t.Fatalf("fast-forward=%+v err=%v", advanced, err)
+	}
+	if _, err := executeWindowsProjectGitFastForward(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, credential, now); err == nil {
+		t.Fatal("bootstrap plan replay accepted")
+	}
+}
+
+func TestWindowsUnbornProjectGitFastForwardRejectsNewLocalCommit(t *testing.T) {
+	runner := &windowsProjectGitSyncTestRunner{
+		branch: "main", remote: "1123456789abcdef0123456789abcdef01234567", unborn: true,
+	}
+	resolved := windowsProjectGitTestResolution()
+	credential := edgeclient.GitHubCredential{Owner: "charle-z"}
+	stateRoot := filepath.Join(t.TempDir(), "private")
+	if err := edgeclient.PreparePrivateRoot(stateRoot); err != nil {
+		t.Skipf("private Windows test root unavailable: %v", err)
+	}
+	now := time.Now().UTC()
+	preview, err := previewWindowsProjectGitFastForward(context.Background(), stateRoot, resolved, runner, credential, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.unborn = false
+	runner.head = "0123456789abcdef0123456789abcdef01234567"
+	if _, err := executeWindowsProjectGitFastForward(context.Background(), stateRoot, resolved, preview.GitPlanID, runner, credential, now); err == nil {
+		t.Fatal("bootstrap plan accepted a new local commit")
+	}
+}
+
 func windowsProjectGitTestResolution() edgeclient.ProjectResolution {
 	return edgeclient.ProjectResolution{
 		Project:     edgeclient.Project{Alias: "project", Owner: "charle-z", Repository: "repo"},
@@ -116,7 +169,7 @@ func windowsProjectGitTestResolution() edgeclient.ProjectResolution {
 func TestWindowsProjectGitPublishPlanIsExactSingleUse(t *testing.T) {
 	runner := &windowsProjectGitSyncTestRunner{head: "0123456789abcdef0123456789abcdef01234567"}
 	resolved := windowsProjectGitTestResolution()
-	stateRoot := t.TempDir()
+	stateRoot := filepath.Join(t.TempDir(), "private")
 	if err := edgeclient.PreparePrivateRoot(stateRoot); err != nil {
 		t.Skipf("private Windows test root unavailable: %v", err)
 	}
@@ -137,7 +190,7 @@ func TestWindowsProjectGitPlanRejectsExpiredPlan(t *testing.T) {
 	runner := &windowsProjectGitSyncTestRunner{head: "0123456789abcdef0123456789abcdef01234567"}
 	resolved := windowsProjectGitTestResolution()
 	now := time.Now().UTC()
-	stateRoot := t.TempDir()
+	stateRoot := filepath.Join(t.TempDir(), "private")
 	if err := edgeclient.PreparePrivateRoot(stateRoot); err != nil {
 		t.Skipf("private Windows test root unavailable: %v", err)
 	}
