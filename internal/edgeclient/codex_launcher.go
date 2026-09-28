@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ const (
 	pinnedCodexBinarySHA256  = "cb0a15567e9a60a5820d54b0f6ae86d504dc3805c1eab21a47f70e3eb7b73a40"
 	codexModelID             = "mcp-devbox-codex"
 	codexSandboxExecutable   = "/mcp-codex"
+	codexContainerToolsMount = "/container-tools"
 )
 
 type runtimeHarness string
@@ -58,13 +60,62 @@ type CodexLauncherConfig struct {
 }
 
 func NewCodexLauncher(config CodexLauncherConfig) (*OpenCodeLauncher, error) {
-	return newRuntimeLauncher(OpenCodeLauncherConfig{
+	launcher, err := newRuntimeLauncher(OpenCodeLauncherConfig{
 		StateRoot: config.StateRoot, SocketRoot: config.SocketRoot,
 		CodexPath: config.CodexPath, CodexPinPath: config.CodexPinPath,
 		BubblewrapPath: config.BubblewrapPath, StopPath: config.StopPath, ToolPath: config.ToolPath,
 		OutputLimit: config.OutputLimit, Heartbeat: config.Heartbeat, RuntimeStartupBudget: config.RuntimeStartupBudget,
 		HTTPClient: config.HTTPClient, Workspaces: config.Workspaces, Journal: config.Journal,
 	}, runtimeHarnessCodex)
+	if err != nil {
+		return nil, err
+	}
+	launcher.rootlessEndpoint = func(uid int, toolPath string) (*RootlessContainerEndpoint, error) {
+		clients, err := codexManagedContainerTools(launcher.config.CodexPath)
+		if err != nil {
+			return nil, err
+		}
+		if clients != "" {
+			// Docker Desktop's WSL CLI may resolve outside the allowed host tool roots.
+			// The signed client can address only the separately validated user socket.
+			runtimeRoot := filepath.Join("/run/user", strconv.Itoa(uid))
+			socket := filepath.Join(runtimeRoot, "docker.sock")
+			if err := validateRootlessContainerSocket(socket, runtimeRoot, uid); err == nil {
+				return &RootlessContainerEndpoint{Engine: "docker", SocketPath: socket, Executable: filepath.Join(clients, "bin", "docker")}, nil
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+		}
+		return DiscoverRootlessContainerEndpoint(uid, toolPath)
+	}
+	return launcher, nil
+}
+
+func codexManagedContainerTools(codexPath string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(codexPath)
+	if err != nil {
+		return "", errors.New("pinned Codex executable could not be resolved")
+	}
+	root := filepath.Join(filepath.Dir(resolved), "container-tools")
+	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
+		return "", nil // Pre-v7 signed Edge bundles do not carry container clients.
+	} else if err != nil {
+		return "", errors.New("signed container clients are unavailable")
+	}
+	for _, directory := range []string{root, filepath.Join(root, "bin"), filepath.Join(root, "config"), filepath.Join(root, "config", "cli-plugins")} {
+		info, err := os.Lstat(directory)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
+			return "", errors.New("signed container client directory is unsafe")
+		}
+	}
+	for _, relative := range []string{"bin/docker", "config/cli-plugins/docker-buildx"} {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
+			return "", errors.New("signed container client is unsafe")
+		}
+	}
+	return root, nil
 }
 
 type codexPin struct {
@@ -163,9 +214,18 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 	if err != nil || !filepath.IsAbs(resolvedCodex) {
 		return openCodeProcessSpec{}, errors.New("pinned Codex executable could not be resolved")
 	}
+	containerTools, err := codexManagedContainerTools(l.config.CodexPath)
+	if err != nil {
+		return openCodeProcessSpec{}, err
+	}
 	runtimeRoots, err := prepareProjectRuntimeRoots(l.config.StateRoot, workspace)
 	if err != nil {
 		return openCodeProcessSpec{}, errors.New("codex private toolchain runtime is unavailable")
+	}
+	if containerTools != "" {
+		if err := os.MkdirAll(filepath.Join(runtimeRoots.Runtime, "docker", "cli-plugins"), 0o700); err != nil {
+			return openCodeProcessSpec{}, errors.New("codex Docker configuration directory is unavailable")
+		}
 	}
 	home := filepath.Join(runtimeDir, "home")
 	for _, dir := range []string{home, filepath.Join(home, ".config"), filepath.Join(home, ".local", "share"), filepath.Join(home, ".local", "state"), filepath.Join(home, ".cache")} {
@@ -179,6 +239,9 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		"/toolchain/cargo/bin",
 		l.config.ToolPath,
 	}, ":")
+	if containerTools != "" {
+		persistentPath = codexContainerToolsMount + "/bin:" + persistentPath
+	}
 	environment := map[string]string{
 		"PATH": persistentPath, "HOME": openCodeSandboxHome, "USER": "mcpedge", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TERM": "dumb", "SHELL": "/bin/sh",
 		"CODEX_HOME": openCodeSandboxHome, "XDG_CONFIG_HOME": openCodeSandboxHome + "/.config", "XDG_DATA_HOME": openCodeSandboxHome + "/.local/share",
@@ -212,6 +275,9 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 			args = append(args, "--ro-bind", toolDir, toolDir)
 		}
 	}
+	if containerTools != "" {
+		args = append(args, "--ro-bind", containerTools, codexContainerToolsMount)
+	}
 	for _, target := range []string{"/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/etc/passwd", "/etc/group", "/etc/services", "/etc/protocols"} {
 		if source, ok := safeLinuxWorkcellSystemFile(target); ok {
 			args = append(args, "--ro-bind", source, target)
@@ -223,7 +289,6 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		}
 	}
 	if preparation.RootlessContainer != nil {
-		args = append(args, "--bind", preparation.RootlessContainer.SocketPath, rootlessContainerSocketTarget)
 		uri := "unix://" + rootlessContainerSocketTarget
 		environment["DOCKER_HOST"], environment["CONTAINER_HOST"] = uri, uri
 		environment["MCP_DEVBOX_CONTAINER_ENGINE"] = preparation.RootlessContainer.Engine
@@ -243,6 +308,14 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		"--bind", projectRuntimeControlRoot(runtimeRoots), openCodeSandboxWorkspace+"/.mcp-devbox",
 		"--chdir", openCodeSandboxWorkspace,
 	)
+	if containerTools != "" {
+		args = append(args, "--ro-bind", filepath.Join(containerTools, "config", "cli-plugins", "docker-buildx"), "/toolchain/docker/cli-plugins/docker-buildx")
+	}
+	// The socket is a child of /runtime. Binding it earlier would be hidden by
+	// the later runtime directory mount.
+	if preparation.RootlessContainer != nil {
+		args = append(args, "--bind", preparation.RootlessContainer.SocketPath, rootlessContainerSocketTarget)
+	}
 	keys := make([]string, 0, len(environment))
 	for key := range environment {
 		keys = append(keys, key)
@@ -344,6 +417,19 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots Workspace
 			return errors.New("codex workcell required mount is missing or unsafe")
 		}
 	}
+	containerTools, err := codexManagedContainerTools(codexPath)
+	if err != nil {
+		return err
+	}
+	if containerTools != "" {
+		if mounts[codexContainerToolsMount] != (openCodeSandboxMount{Source: containerTools, Target: codexContainerToolsMount, Kind: "bind"}) ||
+			mounts["/toolchain/docker/cli-plugins/docker-buildx"] != (openCodeSandboxMount{Source: filepath.Join(containerTools, "config", "cli-plugins", "docker-buildx"), Target: "/toolchain/docker/cli-plugins/docker-buildx", Kind: "bind"}) ||
+			!strings.HasPrefix(spec.Environment["PATH"], codexContainerToolsMount+"/bin:") || spec.Environment["DOCKER_CONFIG"] != "/toolchain/docker" {
+			return errors.New("codex workcell signed container clients are unavailable")
+		}
+	} else if _, mounted := mounts[codexContainerToolsMount]; mounted {
+		return errors.New("codex workcell contains unsigned container clients")
+	}
 	if linkedWorktree {
 		if mounts[codexSandboxGitCommon] != (openCodeSandboxMount{Source: gitMetadata.CommonDir, Target: codexSandboxGitCommon, Writable: true, Kind: "bind"}) ||
 			spec.Environment["GIT_DIR"] != gitMetadata.SandboxGitDir || spec.Environment["GIT_COMMON_DIR"] != "" || spec.Environment["GIT_WORK_TREE"] != openCodeSandboxWorkspace {
@@ -354,6 +440,26 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots Workspace
 	}
 	if spec.Environment["CODEX_HOME"] != openCodeSandboxHome || spec.Environment["MCP_DEVBOX_RUNTIME_ID"] != lease.RuntimeID || spec.Environment["PATH"] == toolPath {
 		return errors.New("codex workcell environment is incomplete")
+	}
+	if spec.Environment["DOCKER_HOST"] != "" || spec.Environment["CONTAINER_HOST"] != "" {
+		if spec.Environment["DOCKER_HOST"] != "unix://"+rootlessContainerSocketTarget || spec.Environment["CONTAINER_HOST"] != "unix://"+rootlessContainerSocketTarget {
+			return errors.New("codex workcell rootless container environment is invalid")
+		}
+		socketIndex, runtimeIndex := -1, -1
+		for index, mount := range spec.Mounts {
+			if mount.Target == rootlessContainerSocketTarget {
+				socketIndex = index
+			}
+			if mount.Target == openCodeSandboxRuntime {
+				runtimeIndex = index
+			}
+		}
+		socket := mounts[rootlessContainerSocketTarget]
+		if socketIndex <= runtimeIndex || socketIndex < 0 || !socket.Writable || socket.Kind != "bind" || !pathInside("/run/user", socket.Source) {
+			return errors.New("codex workcell rootless container socket is invalid")
+		}
+	} else if _, mounted := mounts[rootlessContainerSocketTarget]; mounted {
+		return errors.New("codex workcell rootless container socket has no endpoint")
 	}
 	if spec.Environment["GIT_AUTHOR_NAME"] != "MCP Devbox Codex" || spec.Environment["GIT_AUTHOR_EMAIL"] != "codex@mcp-devbox.invalid" ||
 		spec.Environment["GIT_COMMITTER_NAME"] != "MCP Devbox Codex" || spec.Environment["GIT_COMMITTER_EMAIL"] != "codex@mcp-devbox.invalid" {

@@ -31,6 +31,12 @@ if [ -f "$BUNDLE/codex/codex" ] || [ -f "$BUNDLE/codex/pin.json" ]; then
   }
   COMPONENTS+=(codex/codex codex/pin.json)
 fi
+if [ -e "$BUNDLE/codex/container-tools" ]; then
+  for path in codex/container-tools/bin/docker codex/container-tools/config/cli-plugins/docker-buildx; do
+    [ -f "$BUNDLE/$path" ] && [ ! -L "$BUNDLE/$path" ] || { printf 'signed container client is unavailable: %s\n' "$path" >&2; exit 1; }
+    COMPONENTS+=("$path")
+  done
+fi
 if [ -f "$BUNDLE/opencode/opencode" ] || [ -f "$BUNDLE/opencode/package-lock.json" ]; then
   for path in libexec/model-turn-driver libexec/node opencode/opencode opencode/package-lock.json opencode-provider/index.js opencode-provider/htb-actions.js opencode-provider/dev-actions.js opencode-provider/package.json; do
     [ -f "$BUNDLE/$path" ] && [ ! -L "$BUNDLE/$path" ] || { printf 'signed OpenCode components are incomplete: %s\n' "$path" >&2; exit 1; }

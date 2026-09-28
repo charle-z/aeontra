@@ -40,6 +40,8 @@ const (
 	ComponentOpenCodeLock    = "opencode-lock"
 	ComponentCodex           = "codex"
 	ComponentCodexPin        = "codex-pin"
+	ComponentDockerCLI       = "docker-cli"
+	ComponentDockerBuildx    = "docker-buildx"
 	ComponentSystemd         = "systemd-unit"
 	ComponentSystemdPath     = "systemd-onboard-path"
 	ComponentWindowsEdge     = "windows-edge"
@@ -173,6 +175,10 @@ func RequiredComponents() []string {
 	return []string{ComponentEdge, ComponentWorker, ComponentUpdater, ComponentGitHubCLI, ComponentCodex, ComponentCodexPin, ComponentSystemd, ComponentSystemdPath}
 }
 
+func versionSevenRequiredComponents() []string {
+	return append(RequiredComponents(), ComponentDockerCLI, ComponentDockerBuildx)
+}
+
 func WindowsRequiredComponents() []string {
 	return []string{ComponentWindowsEdge, ComponentWindowsUpdater, ComponentWindowsInstall, ComponentWindowsRemove}
 }
@@ -205,6 +211,8 @@ func requiredComponentsForVersion(version int) ([]string, bool) {
 		return versionFourRequiredComponents(), true
 	case 5:
 		return RequiredComponents(), true
+	case 7:
+		return versionSevenRequiredComponents(), true
 	default:
 		return nil, false
 	}
@@ -236,6 +244,13 @@ func DefaultLayout() map[string]string {
 	}
 }
 
+func versionSevenLayout() map[string]string {
+	layout := DefaultLayout()
+	layout[ComponentDockerCLI] = "codex/container-tools/bin/docker"
+	layout[ComponentDockerBuildx] = "codex/container-tools/config/cli-plugins/docker-buildx"
+	return layout
+}
+
 func WindowsLayout() map[string]string {
 	return map[string]string{
 		ComponentWindowsEdge:    "bin/mcp-edge.exe",
@@ -246,6 +261,9 @@ func WindowsLayout() map[string]string {
 }
 
 func layoutForVersion(version int) (map[string]string, bool) {
+	if version == 7 {
+		return versionSevenLayout(), true
+	}
 	if version == 5 {
 		return DefaultLayout(), true
 	}

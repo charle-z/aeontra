@@ -271,6 +271,52 @@ func TestVersionSixWindowsBundleBindsPlatformAndClosedLayout(t *testing.T) {
 	}
 }
 
+func TestVersionSevenLinuxBundleSignsContainerClients(t *testing.T) {
+	root := t.TempDir()
+	layout, ok := LayoutForVersion(7)
+	if !ok {
+		t.Fatal("version seven layout unavailable")
+	}
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	metadata := Metadata{Release: "v1.2.46", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		ProtocolVersion: "mcp-devbox.edge-bundle.v1", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Architecture: "amd64"}
+	manifest, err := BuildVersion(root, metadata, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := Sign(manifest, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
+		Release: metadata.Release, Commit: metadata.Commit, ProtocolVersion: metadata.ProtocolVersion,
+		CatalogHash: metadata.CatalogHash, Architecture: metadata.Architecture,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(layout[ComponentDockerBuildx])), []byte("tampered"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
+		Release: metadata.Release, Commit: metadata.Commit, ProtocolVersion: metadata.ProtocolVersion,
+		CatalogHash: metadata.CatalogHash, Architecture: metadata.Architecture,
+	}); err == nil {
+		t.Fatal("tampered Buildx component was accepted")
+	}
+}
+
 func TestVersionFourHybridBundleRemainsVerifiableForRollback(t *testing.T) {
 	layout, ok := layoutForVersion(4)
 	if !ok {

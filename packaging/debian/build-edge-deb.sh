@@ -56,6 +56,13 @@ if [ -f "$BUNDLE/codex/codex" ] || [ -f "$BUNDLE/codex/pin.json" ]; then
   }
   HAS_CODEX=1
 fi
+HAS_CONTAINER_CLIENTS=0
+if [ -e "$BUNDLE/codex/container-tools" ]; then
+  for path in codex/container-tools/bin/docker codex/container-tools/config/cli-plugins/docker-buildx; do
+    [ -f "$BUNDLE/$path" ] && [ ! -L "$BUNDLE/$path" ] || { printf 'signed container client is unavailable: %s\n' "$path" >&2; exit 1; }
+  done
+  HAS_CONTAINER_CLIENTS=1
+fi
 EDGE_UNIT=''
 if [ -f "$BUNDLE/systemd/mcp-devbox-edge@.service" ] && [ ! -e "$BUNDLE/systemd/mcp-devbox-opencode-edge@.service" ]; then
   EDGE_UNIT='mcp-devbox-edge@.service'
@@ -101,6 +108,11 @@ if [ "$HAS_CODEX" -eq 1 ]; then
   install -d -m 0755 "$RELEASE_ROOT/codex"
   install -m 0755 "$BUNDLE/codex/codex" "$RELEASE_ROOT/codex/codex"
   install -m 0644 "$BUNDLE/codex/pin.json" "$RELEASE_ROOT/codex/pin.json"
+fi
+if [ "$HAS_CONTAINER_CLIENTS" -eq 1 ]; then
+  install -d -m 0755 "$RELEASE_ROOT/codex/container-tools/bin" "$RELEASE_ROOT/codex/container-tools/config/cli-plugins"
+  install -m 0755 "$BUNDLE/codex/container-tools/bin/docker" "$RELEASE_ROOT/codex/container-tools/bin/docker"
+  install -m 0755 "$BUNDLE/codex/container-tools/config/cli-plugins/docker-buildx" "$RELEASE_ROOT/codex/container-tools/config/cli-plugins/docker-buildx"
 fi
 install -m 0644 "$BUNDLE/systemd/$EDGE_UNIT" "$RELEASE_ROOT/systemd/$EDGE_UNIT"
 if [ "$EDGE_UNIT" = 'mcp-devbox-edge@.service' ]; then

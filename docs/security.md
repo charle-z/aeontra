@@ -513,6 +513,12 @@ The trusted workcell shares the host network by design and may receive one verif
 user-owned rootless Docker/Podman socket. It rejects rootful sockets and Windows mounts.
 Filesystem/process containment, runtime labels, cancellation, and cleanup still apply,
 but this profile is owner-trusted and is **not** universal target or egress isolation.
+The signed Linux v7 Codex harness mounts only its immutable Docker CLI and Buildx
+executables; those clients do not grant container authority by themselves. The socket
+is bound after the private runtime mount and only when the existing user-owned endpoint
+validation succeeds. A rootful host socket, Docker Desktop filesystem tree, and other
+workspace state remain outside the namespace. Direct `project_exec` and the separate
+networkless L3 executor do not inherit this Codex runtime socket.
 
 ### Native Windows Edge
 

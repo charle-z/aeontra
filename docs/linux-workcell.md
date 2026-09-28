@@ -252,6 +252,16 @@ The socket is mounted at the private namespace path:
 /runtime/rootless-container.sock
 ```
 
+The Codex workcell binds `/runtime` before the nested socket, so the endpoint remains
+visible inside Bubblewrap. Linux manifest v7 also provides a signed Docker CLI and
+Buildx plugin without mounting Docker Desktop, host home, Windows filesystems, or a
+rootful daemon socket. The CLI uses writable per-workspace Docker configuration under
+`/toolchain/docker`; the Buildx executable itself is read-only. When a validated
+rootless Docker socket exists, Codex prefers it. A host with only a validated rootless
+Podman socket retains the Podman fallback, but Docker/Buildx compatibility must be
+validated separately on that host. Direct `project_exec` is a separate workcell route
+and does not gain a container socket from this Codex change.
+
 The runtime receives:
 
 ```text

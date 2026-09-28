@@ -2,11 +2,11 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: stage-edge-bundle.sh --output <ABS_DIR> --release <p15.x.y|vMAJOR.MINOR.PATCH> --manifest-version <3|4|5> --commit <SHA> --catalog <SHA256> --public-key <HEX> --gh-bin <ABS_FILE> [--node-bin <ABS_FILE> --opencode-bin <ABS_FILE> --opencode-lock <ABS_FILE>] [--codex-bin <ABS_FILE> --codex-pin <ABS_FILE>]\n' >&2
+  printf 'usage: stage-edge-bundle.sh --output <ABS_DIR> --release <p15.x.y|vMAJOR.MINOR.PATCH> --manifest-version <3|4|5|7> --commit <SHA> --catalog <SHA256> --public-key <HEX> --gh-bin <ABS_FILE> [--node-bin <ABS_FILE> --opencode-bin <ABS_FILE> --opencode-lock <ABS_FILE>] [--codex-bin <ABS_FILE> --codex-pin <ABS_FILE>] [--container-clients <ABS_DIR>]\n' >&2
   exit 2
 }
 
-OUTPUT=''; RELEASE=''; MANIFEST_VERSION=''; COMMIT=''; CATALOG=''; PUBLIC_KEY=''; NODE_BIN=''; GH_BIN=''; OPENCODE_BIN=''; OPENCODE_LOCK=''; CODEX_BIN=''; CODEX_PIN=''
+OUTPUT=''; RELEASE=''; MANIFEST_VERSION=''; COMMIT=''; CATALOG=''; PUBLIC_KEY=''; NODE_BIN=''; GH_BIN=''; OPENCODE_BIN=''; OPENCODE_LOCK=''; CODEX_BIN=''; CODEX_PIN=''; CONTAINER_CLIENTS=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output) OUTPUT="${2:-}"; shift 2 ;;
@@ -21,12 +21,13 @@ while [ "$#" -gt 0 ]; do
     --opencode-lock) OPENCODE_LOCK="${2:-}"; shift 2 ;;
     --codex-bin) CODEX_BIN="${2:-}"; shift 2 ;;
     --codex-pin) CODEX_PIN="${2:-}"; shift 2 ;;
+    --container-clients) CONTAINER_CLIENTS="${2:-}"; shift 2 ;;
     *) usage ;;
   esac
 done
 
 [[ "$OUTPUT" = /* && "$GH_BIN" = /* ]] || usage
-[[ "$MANIFEST_VERSION" = 3 || "$MANIFEST_VERSION" = 4 || "$MANIFEST_VERSION" = 5 ]] || usage
+[[ "$MANIFEST_VERSION" = 3 || "$MANIFEST_VERSION" = 4 || "$MANIFEST_VERSION" = 5 || "$MANIFEST_VERSION" = 7 ]] || usage
 [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ || "$RELEASE" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || usage
 [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] || usage
 [[ "$CATALOG" =~ ^sha256:[a-f0-9]{64}$ ]] || usage
@@ -38,10 +39,18 @@ if [ "$MANIFEST_VERSION" = 3 ] || [ "$MANIFEST_VERSION" = 4 ]; then
   [ -x "$OPENCODE_BIN" ] && [ ! -L "$OPENCODE_BIN" ] || usage
   [ -f "$OPENCODE_LOCK" ] && [ ! -L "$OPENCODE_LOCK" ] || usage
 fi
-if [ "$MANIFEST_VERSION" = 4 ] || [ "$MANIFEST_VERSION" = 5 ]; then
+if [ "$MANIFEST_VERSION" = 4 ] || [ "$MANIFEST_VERSION" = 5 ] || [ "$MANIFEST_VERSION" = 7 ]; then
   [[ "$CODEX_BIN" = /* && "$CODEX_PIN" = /* ]] || usage
   [ -x "$CODEX_BIN" ] && [ ! -L "$CODEX_BIN" ] || usage
   [ -f "$CODEX_PIN" ] && [ ! -L "$CODEX_PIN" ] || usage
+fi
+if [ "$MANIFEST_VERSION" = 7 ]; then
+  [[ "$CONTAINER_CLIENTS" = /* ]] || usage
+  for path in bin/docker config/cli-plugins/docker-buildx; do
+    [ -x "$CONTAINER_CLIENTS/$path" ] && [ ! -L "$CONTAINER_CLIENTS/$path" ] || usage
+  done
+elif [ -n "$CONTAINER_CLIENTS" ]; then
+  usage
 fi
 [ ! -e "$OUTPUT" ] || { printf 'output already exists\n' >&2; exit 1; }
 
@@ -68,12 +77,17 @@ if [ "$MANIFEST_VERSION" = 3 ] || [ "$MANIFEST_VERSION" = 4 ]; then
   install -m 0644 integrations/opencode/provider/dev-actions.js "$OUTPUT/opencode-provider/dev-actions.js"
   install -m 0644 integrations/opencode/provider/package.json "$OUTPUT/opencode-provider/package.json"
 fi
-if [ "$MANIFEST_VERSION" = 4 ] || [ "$MANIFEST_VERSION" = 5 ]; then
+if [ "$MANIFEST_VERSION" = 4 ] || [ "$MANIFEST_VERSION" = 5 ] || [ "$MANIFEST_VERSION" = 7 ]; then
   install -d -m 0755 "$OUTPUT/codex"
   install -m 0755 "$CODEX_BIN" "$OUTPUT/codex/codex"
   install -m 0644 "$CODEX_PIN" "$OUTPUT/codex/pin.json"
 fi
-if [ "$MANIFEST_VERSION" = 5 ]; then
+if [ "$MANIFEST_VERSION" = 7 ]; then
+  install -d -m 0755 "$OUTPUT/codex/container-tools/bin" "$OUTPUT/codex/container-tools/config/cli-plugins"
+  install -m 0755 "$CONTAINER_CLIENTS/bin/docker" "$OUTPUT/codex/container-tools/bin/docker"
+  install -m 0755 "$CONTAINER_CLIENTS/config/cli-plugins/docker-buildx" "$OUTPUT/codex/container-tools/config/cli-plugins/docker-buildx"
+fi
+if [ "$MANIFEST_VERSION" = 5 ] || [ "$MANIFEST_VERSION" = 7 ]; then
   install -m 0644 packaging/systemd/mcp-devbox-edge@.service "$OUTPUT/systemd/mcp-devbox-edge@.service"
   install -m 0644 packaging/systemd/mcp-devbox-edge-onboard@.path "$OUTPUT/systemd/mcp-devbox-edge-onboard@.path"
 elif [ "$MANIFEST_VERSION" = 4 ]; then
