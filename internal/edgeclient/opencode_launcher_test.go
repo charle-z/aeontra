@@ -46,6 +46,8 @@ type fakeOpenCodeRemote struct {
 	completedCalls int
 	heartbeatState modelturn.RuntimeState
 	heartbeatErr   error
+	completeWait   <-chan struct{}
+	failWait       <-chan struct{}
 	phases         []modelturn.RuntimePhase
 	retries        map[modelturn.RuntimeRetryCategory]uint32
 }
@@ -191,23 +193,93 @@ func (f *fakeOpenCodeRemote) Heartbeat(context.Context) (modelturn.Runtime, erro
 	}
 	return f.runtime, nil
 }
-func (f *fakeOpenCodeRemote) Failed(context.Context, string) (modelturn.Runtime, error) {
+func (f *fakeOpenCodeRemote) Failed(ctx context.Context, _ string) (modelturn.Runtime, error) {
+	f.mu.Lock()
+	f.failedCalls++
+	wait := f.failWait
+	f.mu.Unlock()
+	if wait != nil {
+		select {
+		case <-ctx.Done():
+			return modelturn.Runtime{}, ctx.Err()
+		case <-wait:
+		}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.failedCalls++
 	f.runtime.State = modelturn.RuntimeStateFailed
 	f.runtime.Status = modelturn.RuntimeFailed
 	return f.runtime, nil
 }
-func (f *fakeOpenCodeRemote) Completed(context.Context, string) (modelturn.Runtime, error) {
+func (f *fakeOpenCodeRemote) Completed(ctx context.Context, _ string) (modelturn.Runtime, error) {
+	f.mu.Lock()
+	f.completedCalls++
+	wait := f.completeWait
+	f.mu.Unlock()
+	if wait != nil {
+		select {
+		case <-ctx.Done():
+			return modelturn.Runtime{}, ctx.Err()
+		case <-wait:
+		}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.completedCalls++
 	f.runtime.State = modelturn.RuntimeStateCompleted
 	f.runtime.Status = modelturn.RuntimeCompleted
 	return f.runtime, nil
 }
 func (f *fakeOpenCodeRemote) Close() error { return nil }
+
+func TestOpenCodeLauncherBoundsTerminalCompletion(t *testing.T) {
+	fixture := newOpenCodeLauncherFixture(t)
+	fixture.launcher.terminalReportTimeout = 50 * time.Millisecond
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	fixture.remote.completeWait = release
+	fixture.launcher.runProcess = func(_ context.Context, spec openCodeProcessSpec) openCodeProcessResult {
+		if err := spec.Started(); err != nil {
+			return openCodeProcessResult{ExitCode: -1, Err: err}
+		}
+		return openCodeProcessResult{ExitCode: 0}
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := fixture.launcher.RunLease(context.Background(), fixture.lease)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("terminal completion error = %v, want deadline exceeded", err)
+		}
+	case <-time.After(3 * time.Second):
+		releaseOnce.Do(func() { close(release) })
+		<-done
+		t.Fatal("terminal completion held the Edge polling loop indefinitely")
+	}
+}
+
+func TestOpenCodeLauncherBoundsTerminalFailure(t *testing.T) {
+	fixture := newOpenCodeLauncherFixture(t)
+	fixture.launcher.terminalReportTimeout = 50 * time.Millisecond
+	fixture.remote.failWait = make(chan struct{})
+	fixture.launcher.runProcess = func(_ context.Context, spec openCodeProcessSpec) openCodeProcessResult {
+		if err := spec.Started(); err != nil {
+			return openCodeProcessResult{ExitCode: -1, Err: err}
+		}
+		return openCodeProcessResult{ExitCode: 1, Err: errors.New("fixture process failed")}
+	}
+	started := time.Now()
+	_, err := fixture.launcher.RunLease(t.Context(), fixture.lease)
+	if err == nil {
+		t.Fatal("expected process failure")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("terminal failure report blocked for %s", elapsed)
+	}
+}
 
 func TestOpenCodeLauncherUsesOnlyFixedLocalConfiguration(t *testing.T) {
 	fixture := newOpenCodeLauncherFixture(t)

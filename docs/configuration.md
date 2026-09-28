@@ -195,6 +195,13 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   `--project-process-log-limit` defaults to `67108864` bytes per stdout/stderr stream
   (maximum `1073741824`). Neither setting is a TTL and terminal rows are not removed
   automatically.
+- **Model runtime polling:** `mcp-edge codex --model-runtime-pollers` defaults to
+  four concurrent lease pollers (range `1`–`4`). Each leased runtime retains its
+  own workspace and journal identity. A slow runtime does not block lease polling
+  for the other slots. Final completed/failed reports have a 30-second deadline;
+  if delivery cannot be confirmed, the local failure remains visible for
+  reconciliation instead of holding a poller indefinitely. `--once` still
+  attempts only one lease.
 - **Security posture:** the ordinary Edge sandbox is networkless; the trusted Linux
   workcell intentionally shares the host network; authorized target-locked actions
   revalidate the private target and VPN route. These are distinct boundaries.
