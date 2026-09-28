@@ -51,7 +51,9 @@ a binary or image distribution.
 The official Edge workflow generates separate Linux and Windows third-party notice
 assets from the exact release commit. It resolves the Go binary dependency graph through
 the pinned `go-licenses` module, includes full detected license texts, and adds the
-reviewed notices for the pinned Codex and GitHub CLI binaries shipped by Linux. Unknown
+reviewed notices for the pinned Codex and GitHub CLI binaries shipped by Linux. Linux
+manifest v7 also adds Apache-2.0 notices for its pinned Docker CLI and Buildx binaries;
+older bundles do not claim to contain those clients. Unknown
 licenses fail the release. The notice assets accompany the immutable archives, packages,
 checksums, signatures and SBOMs; they do not replace those SBOMs.
 

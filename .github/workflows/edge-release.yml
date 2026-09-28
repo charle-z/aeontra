@@ -8,13 +8,14 @@ on:
         required: true
         type: string
       generation:
-        description: Use codex-v4 once as the updater bridge, then codex-v5 for Codex-only releases
+        description: Use codex-v4 once as the updater bridge, codex-v5 for legacy Codex-only releases, or codex-v7 with signed container clients
         required: true
         type: choice
         options:
           - bridge-v3
           - codex-v4
           - codex-v5
+          - codex-v7
 
 permissions:
   contents: read
@@ -46,9 +47,9 @@ jobs:
           GENERATION: ${{ inputs.generation }}
         run: |
           [[ "$RELEASE" =~ ^p15\.[0-9]+\.[0-9]+$ || "$RELEASE" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          [[ "$GENERATION" = bridge-v3 || "$GENERATION" = codex-v4 || "$GENERATION" = codex-v5 ]]
+          [[ "$GENERATION" = bridge-v3 || "$GENERATION" = codex-v4 || "$GENERATION" = codex-v5 || "$GENERATION" = codex-v7 ]]
           if [[ "$RELEASE" = v* ]]; then
-            [[ "$GENERATION" = codex-v4 || "$GENERATION" = codex-v5 ]]
+            [[ "$GENERATION" = codex-v4 || "$GENERATION" = codex-v5 || "$GENERATION" = codex-v7 ]]
           fi
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           ! git rev-parse "$RELEASE" >/dev/null 2>&1
@@ -60,7 +61,7 @@ jobs:
           cache: true
 
       - name: Set up pinned Node
-        if: inputs.generation != 'codex-v5'
+        if: inputs.generation != 'codex-v5' && inputs.generation != 'codex-v7'
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.18.0'
@@ -68,7 +69,7 @@ jobs:
           cache-dependency-path: test/opencode-e2e/package-lock.json
 
       - name: Install pinned OpenCode
-        if: inputs.generation != 'codex-v5'
+        if: inputs.generation != 'codex-v5' && inputs.generation != 'codex-v7'
         run: npm ci --prefix test/opencode-e2e --no-audit --no-fund
 
       - name: Verify release source before exposing signing identities
@@ -114,17 +115,23 @@ jobs:
             manifest_version=4
           elif [ "$GENERATION" = codex-v5 ]; then
             manifest_version=5
+          elif [ "$GENERATION" = codex-v7 ]; then
+            manifest_version=7
           fi
           printf '%s\n' "$commit" > "$RUNNER_TEMP/release/commit.txt"
           printf '%s\n' "$catalog" > "$RUNNER_TEMP/release/catalog.txt"
           printf '%s\n' "$manifest_version" > "$RUNNER_TEMP/release/manifest-version.txt"
-          if [ "$GENERATION" = codex-v4 ] || [ "$GENERATION" = codex-v5 ]; then
+          if [ "$GENERATION" = codex-v4 ] || [ "$GENERATION" = codex-v5 ] || [ "$GENERATION" = codex-v7 ]; then
             bash packaging/codex/stage-pinned.sh \
               --output-bin "$RUNNER_TEMP/release/codex" \
               --output-pin "$RUNNER_TEMP/release/codex-pin.json"
             codex_args=(--codex-bin "$RUNNER_TEMP/release/codex" --codex-pin "$RUNNER_TEMP/release/codex-pin.json")
           fi
-          if [ "$GENERATION" != codex-v5 ]; then
+          if [ "$GENERATION" = codex-v7 ]; then
+            bash packaging/container-clients/stage-pinned.sh --output "$RUNNER_TEMP/release/container-clients"
+            codex_args+=(--container-clients "$RUNNER_TEMP/release/container-clients")
+          fi
+          if [ "$GENERATION" != codex-v5 ] && [ "$GENERATION" != codex-v7 ]; then
             legacy_args=(
               --node-bin "$(command -v node)"
               --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode"
@@ -232,10 +239,14 @@ jobs:
           test "$(printf '%s' "$metadata" | jq -r .GoModSum)" = 'h1:efibo0EDNGkau6AIMOViGW+rTNPudhxX9rCxtfw5zKE='
           install -d -m 0755 "$RUNNER_TEMP/release/tools"
           GOBIN="$RUNNER_TEMP/release/tools" go install github.com/google/go-licenses/v2@v2.0.1
+          notice_args=()
+          if [ "${{ inputs.generation }}" = codex-v7 ]; then
+            notice_args+=(--container-clients)
+          fi
           bash packaging/licenses/generate-edge-notices.sh \
             --go-licenses "$RUNNER_TEMP/release/tools/go-licenses" \
             --output "$RUNNER_TEMP/release/assets/$RELEASE" \
-            --release "$RELEASE"
+            --release "$RELEASE" "${notice_args[@]}"
           test -s "$RUNNER_TEMP/release/assets/$RELEASE/mcp-devbox-edge_${RELEASE}_amd64.third-party-notices.txt"
           test -s "$RUNNER_TEMP/release/assets/$RELEASE/mcp-devbox-edge_${RELEASE}_windows_amd64.third-party-notices.txt"
 

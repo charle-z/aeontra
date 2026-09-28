@@ -196,7 +196,7 @@ func (s *systemdService) ReconcileRootlessPodmanSocket() error {
 
 func repairComponentPermissions(releaseRoot, component, relative string) error {
 	mode := os.FileMode(0o644)
-	if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentGitHubCLI || component == bundle.ComponentOpenCode || component == bundle.ComponentCodex {
+	if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentGitHubCLI || component == bundle.ComponentOpenCode || component == bundle.ComponentCodex || component == bundle.ComponentDockerCLI || component == bundle.ComponentDockerBuildx {
 		mode = 0o755
 	}
 	err := os.Chmod(filepath.Join(releaseRoot, filepath.FromSlash(relative)), mode)

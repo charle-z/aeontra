@@ -2,18 +2,20 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: generate-edge-notices.sh --go-licenses <ABS_FILE> --output <ABS_DIR> --release <vMAJOR.MINOR.PATCH>\n' >&2
+  printf 'usage: generate-edge-notices.sh --go-licenses <ABS_FILE> --output <ABS_DIR> --release <vMAJOR.MINOR.PATCH> [--container-clients]\n' >&2
   exit 2
 }
 
 GO_LICENSES=''
 OUTPUT=''
 RELEASE=''
+CONTAINER_CLIENTS=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --go-licenses) GO_LICENSES="${2:-}"; shift 2 ;;
     --output) OUTPUT="${2:-}"; shift 2 ;;
     --release) RELEASE="${2:-}"; shift 2 ;;
+    --container-clients) CONTAINER_CLIENTS=1; shift ;;
     *) usage ;;
   esac
 done
@@ -83,6 +85,18 @@ WINDOWS_OUTPUT="$OUTPUT/mcp-devbox-edge_${RELEASE}_windows_amd64.third-party-not
   cat "$PROJECT_LICENSE"
   printf '\nUpstream NOTICE:\n\n'
   cat "$CODEX_NOTICE"
+  if [ "$CONTAINER_CLIENTS" -eq 1 ]; then
+    printf '\n================================================================================\n'
+    printf 'Bundled component: Docker CLI 29.8.1\n'
+    printf 'Source: https://github.com/docker/cli/tree/v29.8.1\n'
+    printf 'License: Apache-2.0\n\n'
+    cat "$PROJECT_LICENSE"
+    printf '\n================================================================================\n'
+    printf 'Bundled component: Docker Buildx 0.37.1\n'
+    printf 'Source: https://github.com/docker/buildx/tree/v0.37.1\n'
+    printf 'License: Apache-2.0\n\n'
+    cat "$PROJECT_LICENSE"
+  fi
 } >"$LINUX_OUTPUT"
 
 {
