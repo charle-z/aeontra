@@ -113,7 +113,7 @@ func inspectProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectR
 
 func fetchProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential) (edge.OperationResult, error) {
 	before, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
-	if err != nil || before.GitDetached || before.GitUnborn {
+	if err != nil || before.GitDetached {
 		return edge.OperationResult{}, errors.New("project Git fetch preflight failed")
 	}
 	refspec := "refs/heads/" + before.GitBranch + ":refs/remotes/origin/" + before.GitBranch
@@ -130,11 +130,13 @@ func fetchProjectGitCheckout(ctx context.Context, resolved edgeclient.ProjectRes
 
 func previewProjectGitFastForward(ctx context.Context, stateRoot string, resolved edgeclient.ProjectResolution, runner edgeclient.DevGitCommandRunner, credential edgeclient.GitHubCredential, now time.Time) (edge.OperationResult, error) {
 	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
-	if err != nil || status.GitDetached || status.GitUnborn || !status.GitClean || !status.GitFetched || status.GitDiverged || status.GitAhead != 0 {
+	if err != nil || status.GitDetached || !status.GitClean || !status.GitFetched || status.GitDiverged || status.GitAhead != 0 {
 		return edge.OperationResult{}, errors.New("project Git checkout cannot fast-forward")
 	}
-	if _, err := runProjectGitLocal(ctx, runner, resolved, "merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead); err != nil {
-		return edge.OperationResult{}, errors.New("project Git fast-forward relation rejected")
+	if !status.GitUnborn {
+		if _, err := runProjectGitLocal(ctx, runner, resolved, "merge-base", "--is-ancestor", status.GitHead, status.GitRemoteHead); err != nil {
+			return edge.OperationResult{}, errors.New("project Git fast-forward relation rejected")
+		}
 	}
 	id, err := newProjectGitPlanID()
 	if err != nil {
@@ -154,7 +156,7 @@ func executeProjectGitFastForward(ctx context.Context, stateRoot string, resolve
 		return edge.OperationResult{}, errors.New("project Git fast-forward plan is unavailable")
 	}
 	status, err := inspectProjectGitCheckout(ctx, resolved, runner, credential)
-	if err != nil || status.GitUnborn || !status.GitClean || !status.GitFetched || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitAhead != 0 {
+	if err != nil || status.GitUnborn != (plan.Head == "") || !status.GitClean || !status.GitFetched || status.GitBranch != plan.Branch || status.GitHead != plan.Head || status.GitRemoteHead != plan.RemoteHead || status.GitDiverged || status.GitAhead != 0 {
 		return edge.OperationResult{}, errors.New("project Git fast-forward state changed")
 	}
 	if err := consumeProjectGitPlan(stateRoot, plan.ID); err != nil {
@@ -325,8 +327,9 @@ func readProjectGitPlan(stateRoot, id string) (projectGitPlan, error) {
 		return projectGitPlan{}, errors.New("project Git plan is invalid")
 	}
 	remoteValid := (plan.Action == projectGitPlanPublish && plan.RemoteHead == "") || projectSnapshotHeadPattern.MatchString(plan.RemoteHead)
+	headValid := projectSnapshotHeadPattern.MatchString(plan.Head) || (plan.Action == projectGitPlanFastForward && plan.Head == "")
 	if dec.Decode(&struct{}{}) != io.EOF || plan.Version != 1 || plan.ID != id || plan.ExpiresAt.IsZero() ||
-		(plan.Action != projectGitPlanFastForward && plan.Action != projectGitPlanPublish) || !projectSnapshotHeadPattern.MatchString(plan.Head) || !remoteValid || !validProjectSnapshotBranch(plan.Branch) ||
+		(plan.Action != projectGitPlanFastForward && plan.Action != projectGitPlanPublish) || !headValid || !remoteValid || !validProjectSnapshotBranch(plan.Branch) ||
 		plan.WorkspaceID == "" || plan.Alias == "" || plan.Target == "" {
 		return projectGitPlan{}, errors.New("project Git plan is invalid")
 	}

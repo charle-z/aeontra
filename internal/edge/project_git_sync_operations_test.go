@@ -106,3 +106,39 @@ func TestProjectGitStatusAcceptsUnbornOnlyAsReadOnlyState(t *testing.T) {
 		t.Fatal("detached unborn checkout was accepted")
 	}
 }
+
+func TestProjectGitSyncAcceptsOnlyFetchedUnbornBootstrap(t *testing.T) {
+	result := OperationResult{
+		WorkspaceID: "ws_0123456789abcdef0123456789abcdef", ProjectAlias: "project",
+		ProjectOwner: "charle-z", ProjectRepository: "repo", ProjectTarget: "parrot",
+		ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
+		GitBranch: "main", GitUnborn: true, GitClean: true,
+		GitRemoteHead: "1123456789abcdef0123456789abcdef01234567", GitFetched: true,
+	}
+	if !validOperationCompletionForKind(OperationProjectGitStatus, result, "") {
+		t.Fatal("fetched unborn status rejected")
+	}
+	if !validOperationCompletionForKind(OperationProjectGitFetch, result, "") {
+		t.Fatal("fetched unborn checkout rejected")
+	}
+	if validOperationCompletionForKind(OperationProjectGitPublishPreview, result, "") {
+		t.Fatal("unborn checkout accepted for publication")
+	}
+	preview := result
+	preview.GitPlanID = "gp_0123456789abcdef0123456789abcdef"
+	preview.GitPlanExpiresAt = "2026-08-15T12:00:00Z"
+	if !validOperationCompletionForKind(OperationProjectGitFastForwardPreview, preview, "") {
+		t.Fatal("clean fetched unborn checkout rejected for bootstrap fast-forward")
+	}
+	preview.GitFetched = false
+	if validOperationCompletionForKind(OperationProjectGitFastForwardPreview, preview, "") {
+		t.Fatal("unfetched unborn checkout accepted for bootstrap fast-forward")
+	}
+	preview = result
+	preview.GitDirty, preview.GitClean = true, false
+	preview.GitPlanID = "gp_0123456789abcdef0123456789abcdef"
+	preview.GitPlanExpiresAt = "2026-08-15T12:00:00Z"
+	if validOperationCompletionForKind(OperationProjectGitFastForwardPreview, preview, "") {
+		t.Fatal("dirty unborn checkout accepted for bootstrap fast-forward")
+	}
+}

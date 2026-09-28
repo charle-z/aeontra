@@ -49,7 +49,7 @@ func validProjectGitSyncResult(result OperationResult) bool {
 	attached := projectSnapshotBranchPattern.MatchString(result.GitBranch) && !result.GitDetached
 	detached := result.GitBranch == "" && result.GitDetached && result.GitRemoteHead == "" && !result.GitFetched && result.GitAhead == 0 && result.GitBehind == 0 && !result.GitDiverged
 	validHead := !result.GitUnborn && projectSnapshotCommitPattern.MatchString(result.GitHead)
-	validUnborn := result.GitUnborn && attached && result.GitHead == "" && result.GitAhead == 0 && result.GitBehind == 0 && !result.GitDiverged && !result.GitFastForwarded && !result.GitPublished && result.GitPlanID == ""
+	validUnborn := result.GitUnborn && attached && result.GitHead == "" && result.GitAhead == 0 && result.GitBehind == 0 && !result.GitDiverged && !result.GitFastForwarded && !result.GitPublished
 	if (!attached && !detached) || (!validHead && !validUnborn) ||
 		(result.GitRemoteHead != "" && !projectSnapshotCommitPattern.MatchString(result.GitRemoteHead)) || result.GitAhead < 0 || result.GitBehind < 0 ||
 		result.GitDirty == result.GitClean || (result.GitDiverged && (result.GitAhead == 0 || result.GitBehind == 0)) ||
@@ -71,7 +71,7 @@ func validProjectGitSyncResultForKind(kind OperationKind, result OperationResult
 	if !validProjectGitSyncResult(result) {
 		return false
 	}
-	if result.GitUnborn && kind != OperationProjectGitStatus {
+	if result.GitUnborn && kind != OperationProjectGitStatus && kind != OperationProjectGitFetch && kind != OperationProjectGitFastForwardPreview {
 		return false
 	}
 	hasPlan := result.GitPlanID != ""
