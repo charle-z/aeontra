@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -163,6 +164,7 @@ func runHarnessRelay(harness string, args []string, stderr io.Writer) error {
 	outputLimit := fs.Int64("output-limit", 1<<20, "maximum transient bytes per OpenCode output stream")
 	processLimit := fs.Int("project-process-limit", 256, "maximum concurrent durable project processes")
 	processLogLimit := fs.Int64("project-process-log-limit", 64<<20, "maximum persisted bytes per project process output stream")
+	runtimePollers := fs.Int("model-runtime-pollers", 4, "maximum concurrent model runtime leases (1-4)")
 	once := fs.Bool("once", false, "process at most one runtime lease")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -178,6 +180,9 @@ func runHarnessRelay(harness string, args []string, stderr io.Writer) error {
 	}
 	if *processLimit < 1 || *processLimit > 4096 || *processLogLimit < 1 || *processLogLimit > 1<<30 {
 		return errors.New("project process emergency limits are outside the safe bounds")
+	}
+	if *runtimePollers < 1 || *runtimePollers > 4 {
+		return errors.New("model runtime poller limit is outside the safe bounds")
 	}
 	if strings.TrimSpace(*bubblewrapPath) == "" {
 		resolved, err := exec.LookPath("bwrap")
@@ -246,44 +251,66 @@ func runHarnessRelay(harness string, args []string, stderr io.Writer) error {
 	defer stop()
 	go runControlOperationLoop(ctx, *state, transport, *processLimit, *processLogLimit, stderr)
 	go runAutopilotSupervisor(ctx, *state, *bundleRoot, transport, stderr)
-	for {
+	var registrationMu sync.Mutex
+	pollRuntime := func(ctx context.Context) (bool, error) {
+		registrationMu.Lock()
 		workspaces, registryErr := registry.List()
 		if registryErr == nil {
 			registryErr = transport.RegisterWorkspaces(ctx, workspaces)
 		}
+		registrationMu.Unlock()
 		if registryErr != nil {
-			if *once {
-				return registryErr
+			if ctx.Err() == nil {
+				fmt.Fprintf(stderr, "mcp-edge: %s runtime failed safely runtime= state= failure=%s\n", harness, openCodeFailureCode(registryErr))
 			}
-			fmt.Fprintf(stderr, "mcp-edge: %s runtime failed safely runtime= state= failure=%s\n", harness, openCodeFailureCode(registryErr))
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(*poll):
-			}
-			continue
+			return false, registryErr
 		}
 		worked, result, runErr := launcher.RunNext(ctx, *wait)
 		if result.LeaseRetryCategory != "" {
 			fmt.Fprintf(stderr, "mcp-edge: model runtime lease retry category=%s\n", result.LeaseRetryCategory)
 		}
-		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(runErr, edgeclient.ErrKillSwitch) {
-			return nil
-		}
-		if runErr != nil {
+		if runErr != nil && ctx.Err() == nil && !errors.Is(runErr, edgeclient.ErrKillSwitch) {
 			fmt.Fprintf(stderr, "mcp-edge: %s runtime failed safely runtime=%s state=%s failure=%s\n", harness, result.RuntimeID, result.State, openCodeFailureCode(runErr))
 		}
-		if *once {
-			return runErr
-		}
-		delay := *poll
-		if worked && runErr == nil {
-			delay = time.Second
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(delay):
-		}
+		return worked, runErr
 	}
+	if *once {
+		_, err := pollRuntime(ctx)
+		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, edgeclient.ErrKillSwitch) {
+			return nil
+		}
+		return err
+	}
+	runModelRuntimePollers(ctx, *runtimePollers, *poll, pollRuntime)
+	return nil
+}
+
+func runModelRuntimePollers(ctx context.Context, limit int, poll time.Duration, run func(context.Context) (bool, error)) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var workers sync.WaitGroup
+	for range limit {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for ctx.Err() == nil {
+				worked, runErr := run(ctx)
+				if errors.Is(runErr, edgeclient.ErrKillSwitch) {
+					cancel()
+					return
+				}
+				delay := poll
+				if worked && runErr == nil {
+					delay = time.Second
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(delay):
+				}
+			}
+		}()
+	}
+	<-ctx.Done()
+	workers.Wait()
 }
