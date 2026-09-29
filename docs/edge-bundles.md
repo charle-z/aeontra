@@ -38,6 +38,10 @@ v5 release. Likewise, a device still running a v5 updater built before version 7
 first receive a v5 bridge built from version-7-aware source before it can consume the
 signed v7 bundle. Other manifest versions fail closed.
 
+The official updater extracts only known component paths and then checks the exact
+file set against the authenticated v5 or v7 manifest. A v5 archive cannot carry
+unsigned v7 clients as extra files.
+
 Every component must be a regular non-symlink file below the release root. Unknown,
 missing, extra or malformed manifest fields fail closed. The Edge verifies the bundle
 before polling for a new runtime, so a partial or mixed installation never discovers
