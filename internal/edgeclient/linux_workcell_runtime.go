@@ -26,13 +26,14 @@ const (
 )
 
 type LinuxWorkcellPreparation struct {
-	Workspace         Workspace
-	LHOST             string
-	InstructionsPath  string
-	CurrentStatePath  string
-	ToolInventoryPath string
-	RootlessContainer *RootlessContainerEndpoint
-	ResumeState       string
+	Workspace            Workspace
+	LHOST                string
+	InstructionsPath     string
+	CurrentStatePath     string
+	ToolInventoryPath    string
+	RootlessContainer    *RootlessContainerEndpoint
+	ContainerProxySocket string
+	ResumeState          string
 }
 
 type systemLinuxNetworkProbe struct{}

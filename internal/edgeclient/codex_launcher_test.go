@@ -110,6 +110,16 @@ func TestCodexLinuxWorkcellRootlessSocketMountedAfterRuntime(t *testing.T) {
 	if runtimeIndex < 0 || socketIndex <= runtimeIndex {
 		t.Fatalf("rootless socket mount must follow runtime mount: runtime=%d socket=%d", runtimeIndex, socketIndex)
 	}
+	runtimeDir := filepath.Join(fixture.state, "r", fixture.lease.RuntimeID)
+	prepared.ContainerProxySocket = filepath.Join(runtimeDir, rootlessDockerProxySocketName)
+	proxied, err := launcher.codexLinuxWorkcellProcessSpec(runtimeDir, workspace, prepared, "http://127.0.0.1:43210/v1", fixture.lease, io.Discard, io.Discard)
+	if err != nil || findSandboxMount(proxied.Sandbox.Mounts, rootlessContainerSocketTarget).Source != prepared.ContainerProxySocket {
+		t.Fatalf("private Docker proxy socket was not mounted: err=%v", err)
+	}
+	prepared.ContainerProxySocket = filepath.Join(fixture.state, "other.sock")
+	if _, err := launcher.codexLinuxWorkcellProcessSpec(runtimeDir, workspace, prepared, "http://127.0.0.1:43210/v1", fixture.lease, io.Discard, io.Discard); err == nil {
+		t.Fatal("arbitrary Docker proxy socket was accepted")
+	}
 }
 
 func TestCodexLinuxWorkcellRootlessSocketRealBubblewrap(t *testing.T) {
@@ -174,8 +184,32 @@ func TestCodexLinuxWorkcellRootlessSocketRealBubblewrap(t *testing.T) {
 		}
 	}
 	workspace := Workspace{ID: fixture.lease.WorkspaceID, Path: fixture.workspace, Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}
-	spec, err := launcher.codexLinuxWorkcellProcessSpec(filepath.Join(fixture.state, "r", fixture.lease.RuntimeID), workspace,
-		LinuxWorkcellPreparation{Workspace: workspace, RootlessContainer: endpoint}, "http://127.0.0.1:43210/v1", fixture.lease, io.Discard, io.Discard)
+	runtimeDir := filepath.Join(fixture.state, "r", fixture.lease.RuntimeID)
+	prepared := LinuxWorkcellPreparation{Workspace: workspace, RootlessContainer: endpoint}
+	if os.Getenv("CODEX_ROOTLESS_DOCKER_PROXY_E2E") == "1" {
+		if endpoint.Engine != "docker" || os.Getenv("CODEX_CONTAINER_CLIENTS_ROOT") == "" {
+			t.Fatal("Docker proxy acceptance requires the signed Docker client and rootless Docker endpoint")
+		}
+		if err := preparePrivateRoot(runtimeDir); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		proxySocket, done, cleanup, err := startRootlessDockerWorkspaceProxy(ctx, *endpoint, workspace.Path, runtimeDir, os.Geteuid())
+		if err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		prepared.ContainerProxySocket = proxySocket
+		t.Cleanup(func() { cancel(); <-done; cleanup() })
+		if err := os.MkdirAll(filepath.Join(workspace.Path, "bin", "testreports"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(workspace.Path, "bin", "testreports", "proof"), []byte("ok\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	spec, err := launcher.codexLinuxWorkcellProcessSpec(runtimeDir, workspace,
+		prepared, "http://127.0.0.1:43210/v1", fixture.lease, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +231,9 @@ func TestCodexLinuxWorkcellRootlessSocketRealBubblewrap(t *testing.T) {
 		}
 		commands = append(commands, []string{"/container-tools/bin/docker", "run", "--rm", "--pull=never", "--privileged", "--label", rootlessRuntimeLabelKey + "=" + fixture.lease.RuntimeID, "hello-world:latest"})
 	}
+	if os.Getenv("CODEX_ROOTLESS_DOCKER_PROXY_E2E") == "1" {
+		commands = append(commands, []string{"/container-tools/bin/docker", "run", "--rm", "--pull=never", "-v", "/workspace/bin/testreports:/testreports:ro", "alpine:latest", "cat", "/testreports/proof"})
+	}
 	for _, arguments := range commands {
 		args := append(append([]string(nil), spec.Args[:separator+1]...), arguments...)
 		commandContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -208,6 +245,9 @@ func TestCodexLinuxWorkcellRootlessSocketRealBubblewrap(t *testing.T) {
 			t.Fatalf("rootless workcell command %v failed: %v: %s", arguments, runErr, strings.TrimSpace(string(output)))
 		} else {
 			t.Logf("rootless workcell command %v: %s", arguments, strings.TrimSpace(string(output)))
+			if os.Getenv("CODEX_ROOTLESS_DOCKER_PROXY_E2E") == "1" && slices.Contains(arguments, "/testreports/proof") && strings.TrimSpace(string(output)) != "ok" {
+				t.Fatalf("Docker bind mount inside Bubblewrap read %q, want ok", output)
+			}
 		}
 	}
 }

@@ -449,6 +449,18 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	socketPath := filepath.Join(runtimeDir, openCodeDriverSocketName)
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(lease.TimeoutSeconds)*time.Second+l.config.RuntimeStartupBudget)
 	defer cancel()
+	var containerProxyDone <-chan error
+	if l.harness == runtimeHarnessCodex && preparation != nil && preparation.RootlessContainer != nil && preparation.RootlessContainer.Engine == "docker" {
+		proxySocket, proxyDone, proxyCleanup, proxyErr := startRootlessDockerWorkspaceProxy(runCtx, *preparation.RootlessContainer, workspaceRecord.Path, runtimeDir, l.effectiveUID())
+		if proxyErr != nil {
+			failLocal(OpenCodeLocalFailed, -1, false)
+			l.reportTerminalFailure(remote)
+			return result, proxyErr
+		}
+		preparation.ContainerProxySocket = proxySocket
+		containerProxyDone = proxyDone
+		defer proxyCleanup()
+	}
 	executionTimeoutSeconds := lease.TimeoutSeconds
 	lease.TimeoutSeconds += int(l.config.RuntimeStartupBudget / time.Second)
 	var internalBrokerDone <-chan error
@@ -571,16 +583,17 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 
 	processResult := openCodeProcessResult{}
 	var internalBrokerErr error
-	if internalBrokerDone == nil {
+	var containerProxyErr error
+	select {
+	case processResult = <-processDone:
+	case internalBrokerErr = <-internalBrokerDone:
+		internalBrokerDone = nil
+		cancel()
 		processResult = <-processDone
-	} else {
-		select {
-		case processResult = <-processDone:
-		case internalBrokerErr = <-internalBrokerDone:
-			internalBrokerDone = nil
-			cancel()
-			processResult = <-processDone
-		}
+	case containerProxyErr = <-containerProxyDone:
+		containerProxyDone = nil
+		cancel()
+		processResult = <-processDone
 	}
 	runContextErr := runCtx.Err()
 	cancel()
@@ -590,6 +603,10 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 	if internalBrokerDone != nil {
 		internalBrokerErr = <-internalBrokerDone
 		internalBrokerDone = nil
+	}
+	if containerProxyDone != nil {
+		containerProxyErr = <-containerProxyDone
+		containerProxyDone = nil
 	}
 	adapterErr := <-adapterDone
 	terminalRuntime := modelturn.Runtime{}
@@ -616,6 +633,11 @@ func (l *OpenCodeLauncher) RunLease(ctx context.Context, lease ModelRuntimeLease
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
 		l.reportTerminalFailure(remote)
 		return result, fmt.Errorf("%s broker terminated unexpectedly", internalBrokerName)
+	}
+	if containerProxyErr != nil {
+		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
+		l.reportTerminalFailure(remote)
+		return result, errors.New("rootless Docker workspace proxy terminated unexpectedly")
 	}
 	if cleanupErr != nil {
 		failLocal(OpenCodeLocalFailed, processResult.ExitCode, stdout.Truncated() || stderr.Truncated())
