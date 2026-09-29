@@ -21,6 +21,9 @@ func TestRewriteDockerCreateWorkspaceBinds(t *testing.T) {
 	if err := os.MkdirAll(reports, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := createDockerWorkspaceAlias(workspace, aliasDir); err != nil {
+		t.Fatal(err)
+	}
 	input := []byte(`{"Image":"example","HostConfig":{"Binds":["/workspace/bin/testreports:/testreports:rw","/tmp/other:/other:ro"],"Mounts":[{"Type":"bind","Source":"/workspace/bin/testreports","Target":"/reports","ReadOnly":true}]}}`)
 	output, err := rewriteDockerCreateWorkspaceBinds(input, workspace, aliasDir)
 	if err != nil {
@@ -61,9 +64,13 @@ func TestRewriteDockerCreateRejectsWorkspaceEscape(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(workspace, "escape")); err != nil {
 		t.Fatal(err)
 	}
+	aliasDir := t.TempDir()
+	if err := createDockerWorkspaceAlias(workspace, aliasDir); err != nil {
+		t.Fatal(err)
+	}
 	for _, source := range []string{"/workspace/../etc", "/workspace/escape", "/workspace/missing"} {
 		input := []byte(`{"HostConfig":{"Binds":["` + source + `:/target"]}}`)
-		if _, err := rewriteDockerCreateWorkspaceBinds(input, workspace, t.TempDir()); err == nil {
+		if _, err := rewriteDockerCreateWorkspaceBinds(input, workspace, aliasDir); err == nil {
 			t.Fatalf("unsafe workspace bind %q was accepted", source)
 		}
 	}

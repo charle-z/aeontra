@@ -5,11 +5,8 @@ package edgeclient
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -42,6 +39,10 @@ func startRootlessDockerWorkspaceProxy(ctx context.Context, endpoint RootlessCon
 	aliasDir, err := os.MkdirTemp(runtimeRoot, "mcp-devbox-bind-")
 	if err != nil {
 		return "", nil, nil, errors.New("rootless Docker bind alias directory is unavailable")
+	}
+	if err := createDockerWorkspaceAlias(workspace, aliasDir); err != nil {
+		_ = os.RemoveAll(aliasDir)
+		return "", nil, nil, err
 	}
 	socketPath := filepath.Join(runtimeDir, rootlessDockerProxySocketName)
 	listener, err := net.Listen("unix", socketPath)
@@ -190,6 +191,21 @@ func workspaceDockerPath(path string) bool {
 	return path == openCodeSandboxWorkspace || strings.HasPrefix(path, openCodeSandboxWorkspace+"/")
 }
 
+func createDockerWorkspaceAlias(workspace, aliasDir string) error {
+	root, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return errors.New("docker workspace root is unavailable")
+	}
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
+		return errors.New("docker workspace root is not a directory")
+	}
+	if err := os.Symlink(root, filepath.Join(aliasDir, "workspace")); err != nil {
+		return errors.New("docker workspace alias could not be created")
+	}
+	return nil
+}
+
 func aliasWorkspaceDockerPath(source, workspace, aliasDir string) (string, error) {
 	if !workspaceDockerPath(source) {
 		return "", errors.New("docker bind source is outside the workcell")
@@ -211,16 +227,14 @@ func aliasWorkspaceDockerPath(source, workspace, aliasDir string) (string, error
 	if err != nil || !pathInside(root, resolved) {
 		return "", errors.New("docker bind source is missing or escapes the workcell")
 	}
-	digest := sha256.Sum256([]byte(resolved))
-	alias := filepath.Join(aliasDir, hex.EncodeToString(digest[:]))
-	if err := os.Symlink(resolved, alias); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return "", errors.New("docker bind alias could not be created")
-		}
-		previous, readErr := os.Readlink(alias)
-		if readErr != nil || previous != resolved {
-			return "", fmt.Errorf("docker bind alias identity changed: %w", err)
-		}
+	aliasRoot := filepath.Join(aliasDir, "workspace")
+	aliasTarget, err := os.Readlink(aliasRoot)
+	if err != nil || aliasTarget != root {
+		return "", errors.New("docker workspace alias identity changed")
 	}
-	return alias, nil
+	resolvedRelative, err := filepath.Rel(root, resolved)
+	if err != nil || resolvedRelative == ".." || strings.HasPrefix(resolvedRelative, ".."+string(os.PathSeparator)) {
+		return "", errors.New("docker bind source is outside the workcell")
+	}
+	return filepath.Join(aliasRoot, resolvedRelative), nil
 }
