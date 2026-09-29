@@ -3,7 +3,9 @@
 package edgeupdate
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -90,6 +92,128 @@ func TestOfficialArchiveDestinationRejectsTraversal(t *testing.T) {
 	if err != nil || filepath.ToSlash(relative) != "opencode-provider/index.js" {
 		t.Fatalf("safe archive path resolved incorrectly: path=%q relative=%q err=%v", path, relative, err)
 	}
+}
+
+func TestOfficialArchiveAcceptsVersionSevenAndRejectsExtraVersionFiveFiles(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	layout, ok := bundle.LayoutForVersion(7)
+	if !ok {
+		t.Fatal("version-seven layout unavailable")
+	}
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	metadata := bundle.Metadata{
+		Release: "v1.3.4", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ProtocolVersion: buildinfo.EdgeBundleProtocolVersion,
+		CatalogHash:     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Architecture:    "amd64",
+	}
+	manifest, err := bundle.BuildVersion(root, metadata, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := bundle.Sign(manifest, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, bundle.ManifestFile), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, bundle.SignatureFile), signature, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	extracted := t.TempDir()
+	if err := extractOfficialArchive(officialArchiveFixture(t, root), extracted, publicKey); err != nil {
+		t.Fatalf("signed version-seven archive rejected: %v", err)
+	}
+	engine := Engine{Root: t.TempDir(), PublicKey: publicKey, Service: &fakeService{healthy: true}}
+	status, err := engine.Install(extracted, bundle.Compatibility{
+		Release: metadata.Release, Commit: metadata.Commit, ProtocolVersion: metadata.ProtocolVersion,
+		CatalogHash: metadata.CatalogHash, Architecture: metadata.Architecture,
+	})
+	if err != nil || status.Release != metadata.Release {
+		t.Fatalf("signed version-seven archive was not installed: status=%+v err=%v", status, err)
+	}
+	if _, err := os.Stat(filepath.Join(engine.Root, ReleasesDirectory, metadata.Release, "codex", "container-tools", "config", "cli-plugins", "docker-buildx")); err != nil {
+		t.Fatalf("installed version-seven bundle lost Buildx: %v", err)
+	}
+	dockerClient := filepath.Join(root, "codex", "container-tools", "bin", "docker")
+	if err := os.WriteFile(dockerClient, []byte("tampered client"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := extractOfficialArchive(officialArchiveFixture(t, root), t.TempDir(), publicKey); err == nil {
+		t.Fatal("tampered version-seven container client accepted")
+	}
+
+	legacy, _ := signedRelease(t, "v1.3.3", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", privateKey)
+	if err := extractOfficialArchive(officialArchiveFixture(t, legacy), t.TempDir(), publicKey); err != nil {
+		t.Fatalf("signed version-five archive rejected: %v", err)
+	}
+	extra := filepath.Join(legacy, "codex", "container-tools", "bin", "docker")
+	if err := os.MkdirAll(filepath.Dir(extra), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(extra, []byte("unsigned extra"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := extractOfficialArchive(officialArchiveFixture(t, legacy), t.TempDir(), publicKey); err == nil {
+		t.Fatal("unsigned container client accepted in version-five archive")
+	}
+}
+
+func officialArchiveFixture(t *testing.T, root string) []byte {
+	t.Helper()
+	var output bytes.Buffer
+	compressed := gzip.NewWriter(&output)
+	archive := tar.NewWriter(compressed)
+	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil || info.IsDir() {
+			return walkErr
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.ToSlash(relative)
+		if err := archive.WriteHeader(header); err != nil {
+			return err
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		_, err = archive.Write(content)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := compressed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.Bytes()
 }
 
 type fakeService struct {

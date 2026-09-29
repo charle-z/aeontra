@@ -56,7 +56,7 @@ func (r OfficialResolver) UpdateStable(ctx context.Context, engine Engine) (Stat
 		return Status{}, errors.New("official release staging unavailable")
 	}
 	defer os.RemoveAll(staging)
-	if err := extractOfficialArchive(archive, staging); err != nil {
+	if err := extractOfficialArchive(archive, staging, r.PublicKey); err != nil {
 		return Status{}, err
 	}
 	return engine.Install(staging, bundle.Compatibility{
@@ -132,7 +132,7 @@ func getBounded(ctx context.Context, client *http.Client, url string, limit int6
 	return content, nil
 }
 
-func extractOfficialArchive(content []byte, destination string) error {
+func extractOfficialArchive(content []byte, destination string, publicKey ed25519.PublicKey) error {
 	gzipReader, err := gzip.NewReader(bytes.NewReader(content))
 	if err != nil {
 		return &bundle.VerificationError{Code: bundle.BundleMismatch}
@@ -140,6 +140,13 @@ func extractOfficialArchive(content []byte, destination string) error {
 	defer gzipReader.Close()
 	allowed := map[string]struct{}{bundle.ManifestFile: {}, bundle.SignatureFile: {}}
 	for _, relative := range bundle.DefaultLayout() {
+		allowed[filepath.ToSlash(relative)] = struct{}{}
+	}
+	versionSevenLayout, ok := bundle.LayoutForVersion(7)
+	if !ok {
+		return &bundle.VerificationError{Code: bundle.BundleMismatch}
+	}
+	for _, relative := range versionSevenLayout {
 		allowed[filepath.ToSlash(relative)] = struct{}{}
 	}
 	seen := map[string]struct{}{}
@@ -190,8 +197,24 @@ func extractOfficialArchive(content []byte, destination string) error {
 			return errors.New("official release staging failed")
 		}
 	}
-	if len(seen) != len(allowed) {
+	// The union above bounds extraction to known paths. Only the authenticated
+	// manifest determines which exact layout may be installed; v5 cannot carry
+	// unsigned v7 clients as additional archive members.
+	manifest, err := bundle.LoadTrustedManifest(destination, publicKey)
+	if err != nil {
+		return err
+	}
+	if manifest.Version != 5 && manifest.Version != 7 {
 		return &bundle.VerificationError{Code: bundle.BundleMismatch}
+	}
+	layout, ok := bundle.LayoutFor(manifest.Version, manifest.Platform)
+	if !ok || len(seen) != len(layout)+2 {
+		return &bundle.VerificationError{Code: bundle.BundleMismatch}
+	}
+	for _, relative := range layout {
+		if _, present := seen[filepath.ToSlash(relative)]; !present {
+			return &bundle.VerificationError{Code: bundle.BundleMismatch}
+		}
 	}
 	return nil
 }

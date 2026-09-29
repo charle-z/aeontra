@@ -183,6 +183,14 @@ func (e Engine) Install(source string, expected bundle.Compatibility) (Status, e
 }
 
 func stageSignedRelease(source, releases string, expected bundle.Compatibility, publicKey ed25519.PublicKey) (string, error) {
+	manifest, err := bundle.LoadTrustedManifest(source, publicKey)
+	if err != nil {
+		return "", err
+	}
+	layout, ok := bundle.LayoutFor(manifest.Version, manifest.Platform)
+	if !ok {
+		return "", &bundle.VerificationError{Code: bundle.ManifestInvalid}
+	}
 	staging, err := os.MkdirTemp(releases, ".staging-"+expected.Release+"-")
 	if err != nil {
 		return "", errors.New("release staging unavailable")
@@ -191,7 +199,7 @@ func stageSignedRelease(source, releases string, expected bundle.Compatibility, 
 		_ = os.RemoveAll(staging)
 		return "", errors.New("release staging permissions failed")
 	}
-	if err := copySignedRelease(source, staging); err != nil {
+	if err := copySignedRelease(source, staging, layout); err != nil {
 		_ = os.RemoveAll(staging)
 		return "", err
 	}
@@ -273,8 +281,7 @@ func (e Engine) validRoot() (string, error) {
 	return root, nil
 }
 
-func copySignedRelease(source, destination string) error {
-	files := bundle.DefaultLayout()
+func copySignedRelease(source, destination string, files map[string]string) error {
 	files[bundle.ManifestFile] = bundle.ManifestFile
 	files[bundle.SignatureFile] = bundle.SignatureFile
 	for _, relative := range files {
