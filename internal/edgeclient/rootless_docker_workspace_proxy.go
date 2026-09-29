@@ -36,12 +36,8 @@ func startRootlessDockerWorkspaceProxy(ctx context.Context, endpoint RootlessCon
 	if err := validateRootlessContainerSocket(endpoint.SocketPath, runtimeRoot, uid); err != nil {
 		return "", nil, nil, errors.New("rootless Docker endpoint changed before runtime start")
 	}
-	aliasDir, err := os.MkdirTemp(runtimeRoot, "mcp-devbox-bind-")
+	aliasDir, err := prepareDockerWorkspaceAlias(workspace, runtimeDir)
 	if err != nil {
-		return "", nil, nil, errors.New("rootless Docker bind alias directory is unavailable")
-	}
-	if err := createDockerWorkspaceAlias(workspace, aliasDir); err != nil {
-		_ = os.RemoveAll(aliasDir)
 		return "", nil, nil, err
 	}
 	socketPath := filepath.Join(runtimeDir, rootlessDockerProxySocketName)
@@ -189,6 +185,20 @@ func rewriteDockerCreateWorkspaceBinds(body []byte, workspace, aliasDir string) 
 
 func workspaceDockerPath(path string) bool {
 	return path == openCodeSandboxWorkspace || strings.HasPrefix(path, openCodeSandboxWorkspace+"/")
+}
+
+func prepareDockerWorkspaceAlias(workspace, runtimeDir string) (string, error) {
+	// Only runtimeDir is mounted into the workcell. Its private parent remains
+	// writable by the Edge service and invisible to the agent process.
+	aliasDir, err := os.MkdirTemp(filepath.Dir(runtimeDir), "mcp-devbox-bind-")
+	if err != nil {
+		return "", errors.New("rootless Docker bind alias directory is unavailable")
+	}
+	if err := createDockerWorkspaceAlias(workspace, aliasDir); err != nil {
+		_ = os.RemoveAll(aliasDir)
+		return "", err
+	}
+	return aliasDir, nil
 }
 
 func createDockerWorkspaceAlias(workspace, aliasDir string) error {
