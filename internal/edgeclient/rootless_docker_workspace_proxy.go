@@ -192,34 +192,34 @@ func workspaceDockerPath(path string) bool {
 
 func aliasWorkspaceDockerPath(source, workspace, aliasDir string) (string, error) {
 	if !workspaceDockerPath(source) {
-		return "", errors.New("Docker bind source is outside the workcell")
+		return "", errors.New("docker bind source is outside the workcell")
 	}
 	for _, part := range strings.Split(source, "/") {
 		if part == ".." {
-			return "", errors.New("Docker bind source contains traversal")
+			return "", errors.New("docker bind source contains traversal")
 		}
 	}
 	relative, err := filepath.Rel(openCodeSandboxWorkspace, filepath.Clean(source))
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
-		return "", errors.New("Docker bind source is outside the workcell")
+		return "", errors.New("docker bind source is outside the workcell")
 	}
 	root, err := filepath.EvalSymlinks(workspace)
 	if err != nil {
-		return "", errors.New("Docker workspace root is unavailable")
+		return "", errors.New("docker workspace root is unavailable")
 	}
 	resolved, err := filepath.EvalSymlinks(filepath.Join(root, relative))
 	if err != nil || !pathInside(root, resolved) {
-		return "", errors.New("Docker bind source is missing or escapes the workcell")
+		return "", errors.New("docker bind source is missing or escapes the workcell")
 	}
 	digest := sha256.Sum256([]byte(resolved))
 	alias := filepath.Join(aliasDir, hex.EncodeToString(digest[:]))
 	if err := os.Symlink(resolved, alias); err != nil {
 		if !errors.Is(err, os.ErrExist) {
-			return "", errors.New("Docker bind alias could not be created")
+			return "", errors.New("docker bind alias could not be created")
 		}
 		previous, readErr := os.Readlink(alias)
 		if readErr != nil || previous != resolved {
-			return "", fmt.Errorf("Docker bind alias identity changed: %w", err)
+			return "", fmt.Errorf("docker bind alias identity changed: %w", err)
 		}
 	}
 	return alias, nil
