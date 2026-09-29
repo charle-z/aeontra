@@ -84,6 +84,27 @@ func TestRewriteDockerCreateLeavesOtherBindsUnchanged(t *testing.T) {
 	}
 }
 
+func TestDockerWorkspaceAliasStaysOutsideMountedRuntime(t *testing.T) {
+	workspace := t.TempDir()
+	socketRoot := t.TempDir()
+	runtimeDir := filepath.Join(socketRoot, "runtime")
+	if err := os.Mkdir(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	aliasDir, err := prepareDockerWorkspaceAlias(workspace, runtimeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(aliasDir)
+	if !pathInside(socketRoot, aliasDir) || pathInside(runtimeDir, aliasDir) {
+		t.Fatalf("Docker alias %q must be outside mounted runtime %q", aliasDir, runtimeDir)
+	}
+	resolved, err := filepath.EvalSymlinks(filepath.Join(aliasDir, "workspace"))
+	if err != nil || resolved != workspace {
+		t.Fatalf("Docker alias target=%q err=%v want=%q", resolved, err, workspace)
+	}
+}
+
 func TestRootlessDockerWorkspaceProxyRealEngine(t *testing.T) {
 	if os.Getenv("CODEX_ROOTLESS_DOCKER_PROXY_E2E") != "1" {
 		t.Skip("real Docker rootless workspace bind acceptance is explicit")
@@ -97,7 +118,11 @@ func TestRootlessDockerWorkspaceProxyRealEngine(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "bin", "testreports", "proof"), []byte("ok\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	runtimeDir := t.TempDir()
+	socketRoot := t.TempDir()
+	runtimeDir := filepath.Join(socketRoot, "runtime")
+	if err := os.Mkdir(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	proxySocket, done, cleanup, err := startRootlessDockerWorkspaceProxy(ctx, endpoint, workspace, runtimeDir, uid)
@@ -106,6 +131,10 @@ func TestRootlessDockerWorkspaceProxyRealEngine(t *testing.T) {
 	}
 	defer cleanup()
 	defer func() { cancel(); <-done }()
+	aliases, err := filepath.Glob(filepath.Join(socketRoot, "mcp-devbox-bind-*", "workspace"))
+	if err != nil || len(aliases) != 1 || pathInside(runtimeDir, aliases[0]) {
+		t.Fatalf("workspace alias must live outside the mounted runtime: aliases=%v err=%v", aliases, err)
+	}
 	docker := os.Getenv("CODEX_DOCKER_CLIENT")
 	if docker == "" {
 		t.Fatal("CODEX_DOCKER_CLIENT must name the pinned Docker client")
