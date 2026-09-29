@@ -516,9 +516,14 @@ but this profile is owner-trusted and is **not** universal target or egress isol
 The signed Linux v7 Codex harness mounts only its immutable Docker CLI and Buildx
 executables; those clients do not grant container authority by themselves. The socket
 is bound after the private runtime mount and only when the existing user-owned endpoint
-validation succeeds. A rootful host socket, Docker Desktop filesystem tree, and other
-workspace state remain outside the namespace. Direct `project_exec` and the separate
-networkless L3 executor do not inherit this Codex runtime socket.
+validation succeeds. For Docker, the workcell socket is a private runtime proxy to that
+rootless endpoint. Container-create bind sources under `/workspace` resolve to existing
+paths inside the registered workspace and use temporary opaque host aliases; traversal
+and symlinks outside that workspace are rejected. This translation does not narrow the
+other authority of a rootless Docker socket or make Docker a host isolation boundary.
+A rootful host socket, Docker Desktop filesystem tree, and other workspace state remain
+outside the namespace. Direct `project_exec` and the separate networkless L3 executor
+do not inherit this Codex runtime socket.
 
 ### Native Windows Edge
 

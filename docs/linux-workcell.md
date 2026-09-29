@@ -257,10 +257,20 @@ visible inside Bubblewrap. Linux manifest v7 also provides a signed Docker CLI a
 Buildx plugin without mounting Docker Desktop, host home, Windows filesystems, or a
 rootful daemon socket. The CLI uses writable per-workspace Docker configuration under
 `/toolchain/docker`; the Buildx executable itself is read-only. When a validated
-rootless Docker socket exists, Codex prefers it. A host with only a validated rootless
-Podman socket retains the Podman fallback, but Docker/Buildx compatibility must be
-validated separately on that host. Direct `project_exec` is a separate workcell route
-and does not gain a container socket from this Codex change.
+rootless Docker socket exists, Codex prefers it. The Codex runtime puts a private Unix
+proxy at the namespace socket path. It forwards Docker API calls to that validated
+rootless endpoint. For container creation, bind sources at `/workspace` or beneath it
+are resolved within the selected workspace and replaced with temporary opaque host
+aliases. This lets Docker use files that Bubblewrap presents at `/workspace` without
+exposing the host checkout path in the workcell or Docker create request. The source
+must already exist; a missing source or a symlink escaping the workspace is rejected.
+The aliases and proxy are removed when the runtime ends. Other Docker API calls and
+bind sources retain their rootless Docker behavior and authority.
+
+A host with only a validated rootless Podman socket retains the Podman fallback, but
+this Docker bind-path translation and Docker/Buildx compatibility are not asserted for
+Podman. Direct `project_exec` is a separate workcell route and does not gain a
+container socket from this Codex change.
 
 The runtime receives:
 

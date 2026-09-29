@@ -314,7 +314,14 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 	// The socket is a child of /runtime. Binding it earlier would be hidden by
 	// the later runtime directory mount.
 	if preparation.RootlessContainer != nil {
-		args = append(args, "--bind", preparation.RootlessContainer.SocketPath, rootlessContainerSocketTarget)
+		containerSocket := preparation.RootlessContainer.SocketPath
+		if preparation.ContainerProxySocket != "" {
+			if preparation.RootlessContainer.Engine != "docker" || preparation.ContainerProxySocket != filepath.Join(runtimeDir, rootlessDockerProxySocketName) {
+				return openCodeProcessSpec{}, errors.New("codex Docker workspace proxy identity is invalid")
+			}
+			containerSocket = preparation.ContainerProxySocket
+		}
+		args = append(args, "--bind", containerSocket, rootlessContainerSocketTarget)
 	}
 	keys := make([]string, 0, len(environment))
 	for key := range environment {
@@ -344,7 +351,7 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 	if err != nil {
 		return openCodeProcessSpec{}, err
 	}
-	if err := validateCodexLinuxWorkcellSandbox(parsed, l.config.Workspaces.roots, l.config.StateRoot, runtimeDir, workspace, resolvedCodex, l.config.ToolPath, lease, adapterURL); err != nil {
+	if err := validateCodexLinuxWorkcellSandbox(parsed, l.config.Workspaces.roots, l.config.StateRoot, runtimeDir, workspace, resolvedCodex, l.config.ToolPath, lease, adapterURL, preparation.ContainerProxySocket); err != nil {
 		return openCodeProcessSpec{}, err
 	}
 	env := []string{"PATH=" + l.config.ToolPath, "HOME=" + home, "USER=mcpedge", "LANG=C.UTF-8", "LC_ALL=C.UTF-8"}
@@ -360,7 +367,7 @@ func validCodexAdapterURL(value string) bool {
 	return err == nil && port >= 1 && port <= 65535
 }
 
-func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots WorkspaceRoots, stateRoot, runtimeDir string, workspace Workspace, codexPath, toolPath string, lease ModelRuntimeLease, adapterURL string) error {
+func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots WorkspaceRoots, stateRoot, runtimeDir string, workspace Workspace, codexPath, toolPath string, lease ModelRuntimeLease, adapterURL, containerProxySocket string) error {
 	if !spec.DieWithParent || !spec.NewSession || !spec.UnshareAll || !spec.ShareNetwork || !spec.ClearEnv || spec.WorkingDirectory != openCodeSandboxWorkspace {
 		return errors.New("codex workcell namespace posture is incomplete")
 	}
@@ -395,7 +402,7 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots Workspace
 				return errors.New("codex workcell exposes a forbidden host path")
 			}
 		}
-		allowedPrivate := mount.Source == runtimeDir || mount.Source == runtimeRoots.Runtime || mount.Source == projectRuntimeControlRoot(runtimeRoots) || mount.Source == runtimeRoots.Cache || mount.Source == runtimeRoots.Artifacts
+		allowedPrivate := mount.Source == runtimeDir || mount.Source == runtimeRoots.Runtime || mount.Source == projectRuntimeControlRoot(runtimeRoots) || mount.Source == runtimeRoots.Cache || mount.Source == runtimeRoots.Artifacts || (containerProxySocket != "" && mount.Source == containerProxySocket && containerProxySocket == filepath.Join(runtimeDir, rootlessDockerProxySocketName))
 		if mount.Source == stateRoot || (pathInside(stateRoot, mount.Source) && !allowedPrivate) {
 			return errors.New("codex workcell exposes private Edge state")
 		}
@@ -455,7 +462,11 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots Workspace
 			}
 		}
 		socket := mounts[rootlessContainerSocketTarget]
-		if socketIndex <= runtimeIndex || socketIndex < 0 || !socket.Writable || socket.Kind != "bind" || !pathInside("/run/user", socket.Source) {
+		validSocketSource := pathInside("/run/user", socket.Source)
+		if containerProxySocket != "" {
+			validSocketSource = containerProxySocket == filepath.Join(runtimeDir, rootlessDockerProxySocketName) && socket.Source == containerProxySocket
+		}
+		if socketIndex <= runtimeIndex || socketIndex < 0 || !socket.Writable || socket.Kind != "bind" || !validSocketSource {
 			return errors.New("codex workcell rootless container socket is invalid")
 		}
 	} else if _, mounted := mounts[rootlessContainerSocketTarget]; mounted {
