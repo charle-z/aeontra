@@ -217,10 +217,14 @@ BuildKit special case.
 
 ## Delivery after this ADR
 
+The first source slice now also persists bounded canonical objective/step/attempt records
+inside the existing workqueue SQLite store with revision CAS, transition validation and
+v2-to-v3 migration. This is persistence only; it does not yet dispatch objective steps.
+
 The remaining implementation sequence is:
 
-1. persist objectives, step requirements, attempts and capability receipts in the
-   existing durable coordination plane rather than introducing a second scheduler;
+1. connect persisted objectives to the existing workqueue coordinator without
+   introducing a second scheduler or public authority surface;
 2. build attestations from L3, workcell, toolbox, rootless runtime and runner state;
 3. connect dependency/service provisioning to capability receipts and generations;
 4. add a generic isolated runner/VM broker for kernel and CI contracts;

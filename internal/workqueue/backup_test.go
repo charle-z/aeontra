@@ -3,13 +3,48 @@ package workqueue
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/charle-z/mcp-devbox/internal/development"
 )
 
 func TestBackupRestorePreservesJobsAndRejectsOverwrite(t *testing.T) {
 	store := openTestStore(t, Config{})
 	job, _, err := store.Enqueue(testSpec("backup-job-0001", "alpha"))
 	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := development.NewResolutionPolicy(development.TierWorkcell, development.ClassWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requirements, err := development.Requirements("toolchain.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, err := development.NewObjective("backup-objective-1", policy, []development.StepSpec{{
+		StepID: "validate", Requirements: requirements,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := store.SaveDevelopmentObjective(objective); err != nil || !created {
+		t.Fatalf("initial objective created=%t err=%v", created, err)
+	}
+	capabilities, err := development.NewCapabilitySet("toolchain.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment, err := development.NewEnvironmentAttestation("l3", development.ClassWorkcell, 1, capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, _, err = objective.PlanAttempt("validate", "backup-attempt-1", "sha256:"+strings.Repeat("a", 64), []development.EnvironmentAttestation{environment})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.SaveDevelopmentObjective(objective); err != nil {
 		t.Fatal(err)
 	}
 	backupRoot := filepath.Join(t.TempDir(), "backup")
@@ -33,6 +68,12 @@ func TestBackupRestorePreservesJobsAndRejectsOverwrite(t *testing.T) {
 	got, found, err := restored.Get(job.ID)
 	if err != nil || !found || got.ID != job.ID || got.PayloadHash != job.PayloadHash {
 		t.Fatalf("restored=%+v found=%v err=%v", got, found, err)
+	}
+	restoredObjective, found, err := restored.DevelopmentObjective(objective.ObjectiveID)
+	if err != nil || !found || restoredObjective.Revision != objective.Revision ||
+		len(restoredObjective.Steps) != 1 || len(restoredObjective.Steps[0].Attempts) != 1 ||
+		restoredObjective.Steps[0].Attempts[0].EnvironmentDigest != environment.Digest {
+		t.Fatalf("restored objective=%+v found=%v err=%v", restoredObjective, found, err)
 	}
 	if _, err := RestoreBackup(backupPath, Config{Root: restoreRoot, ControllerID: "control-plane"}); err == nil || err.Error() != "workqueue: restore destination is occupied" {
 		t.Fatalf("occupied restore err=%v", err)

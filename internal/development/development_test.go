@@ -349,3 +349,268 @@ func mustPolicy(t *testing.T, max AuthorityTier, classes ...ExecutionClass) Reso
 	}
 	return policy
 }
+
+func TestObjectiveRecordRoundTripPreservesAttemptHistory(t *testing.T) {
+	l3 := mustEnvironment(t, "l3", ClassWorkcell, 7, "toolchain.go", "build.make")
+	isolated := mustEnvironment(t, "linux-ci-vm", ClassIsolatedRunner, 3,
+		"toolchain.go", "build.make", "namespace.user.nested",
+	)
+	policy := mustPolicy(t, TierIsolatedRunner, ClassWorkcell, ClassIsolatedRunner)
+	objective, err := NewObjective("objective-record-1", policy, []StepSpec{{
+		StepID: "validate", Requirements: mustRequirements(t, "toolchain.go", "build.make"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, _, err = objective.PlanAttempt("validate", "attempt-1", sourceDigest("a"), []EnvironmentAttestation{l3, isolated})
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, err = objective.StartAttempt("validate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, _, err = objective.FailAttempt("validate", FailureKernelSemantics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, err = objective.RefineRequirements("validate", mustRequirements(t, "namespace.user.nested"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, _, err = objective.PlanAttempt("validate", "attempt-2", sourceDigest("a"), []EnvironmentAttestation{l3, isolated})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := objective.MarshalRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseObjectiveRecord(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reencoded, secondDigest, err := parsed.MarshalRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest == "" || digest != secondDigest || string(body) != string(reencoded) {
+		t.Fatalf("record round trip changed canonical identity: %s %s", digest, secondDigest)
+	}
+	if len(parsed.Steps) != 1 || len(parsed.Steps[0].Attempts) != 2 ||
+		parsed.Steps[0].Attempts[1].ParentAttemptID != parsed.Steps[0].Attempts[0].AttemptID ||
+		parsed.Steps[0].Attempts[0].EnvironmentID != l3.EnvironmentID ||
+		parsed.Steps[0].Attempts[1].EnvironmentID != isolated.EnvironmentID {
+		t.Fatalf("record lost immutable attempt history: %+v", parsed)
+	}
+}
+
+func TestObjectiveRecordRejectsUnknownAndNonCanonicalFields(t *testing.T) {
+	policy := mustPolicy(t, TierIsolatedRunner, ClassWorkcell, ClassIsolatedRunner)
+	objective, err := NewObjective("objective-record-2", policy, []StepSpec{{
+		StepID: "validate", Requirements: mustRequirements(t, "toolchain.go", "build.make"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _, err := objective.MarshalRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unknown := strings.TrimSuffix(string(body), "}") + `,"unexpected":true}`
+	if _, err := ParseObjectiveRecord([]byte(unknown)); err == nil {
+		t.Fatal("objective record accepted an unknown field")
+	}
+
+	canonicalRequirements := `"requirements":["build.make","toolchain.go"]`
+	if !strings.Contains(string(body), canonicalRequirements) {
+		t.Fatalf("fixture missing canonical requirements: %s", body)
+	}
+	reordered := strings.Replace(string(body), canonicalRequirements, `"requirements":["toolchain.go","build.make"]`, 1)
+	if _, err := ParseObjectiveRecord([]byte(reordered)); err == nil {
+		t.Fatal("objective record accepted non-canonical requirements")
+	}
+
+	canonicalClasses := `"allowed_classes":["isolated-runner","workcell"]`
+	if !strings.Contains(string(body), canonicalClasses) {
+		t.Fatalf("fixture missing canonical classes: %s", body)
+	}
+	reorderedClasses := strings.Replace(string(body), canonicalClasses, `"allowed_classes":["workcell","isolated-runner"]`, 1)
+	if _, err := ParseObjectiveRecord([]byte(reorderedClasses)); err == nil {
+		t.Fatal("objective record accepted non-canonical execution classes")
+	}
+}
+
+func TestObjectiveRecordRejectsTamperedAttemptChainAndOversizeInput(t *testing.T) {
+	workcell := mustEnvironment(t, "l3", ClassWorkcell, 1, "toolchain.go")
+	expanded := mustEnvironment(t, "l3-expanded", ClassManagedToolchain, 2, "toolchain.go", "dependency.ready")
+	policy := mustPolicy(t, TierManagedToolchain, ClassWorkcell, ClassManagedToolchain)
+	objective, _ := NewObjective("objective-record-3", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	objective, _, _ = objective.PlanAttempt("test", "attempt-1", sourceDigest("a"), []EnvironmentAttestation{workcell, expanded})
+	objective, _ = objective.StartAttempt("test")
+	objective, _, _ = objective.FailAttempt("test", FailureDependencyMissing)
+	objective, _ = objective.RefineRequirements("test", mustRequirements(t, "dependency.ready"))
+	objective, _, _ = objective.PlanAttempt("test", "attempt-2", sourceDigest("a"), []EnvironmentAttestation{workcell, expanded})
+	body, _, err := objective.MarshalRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tampered := strings.Replace(string(body), `"parent_attempt_id":"attempt-1"`, `"parent_attempt_id":"attempt-x"`, 1)
+	if tampered == string(body) {
+		t.Fatal("fixture did not contain parent attempt identity")
+	}
+	if _, err := ParseObjectiveRecord([]byte(tampered)); err == nil {
+		t.Fatal("objective record accepted a tampered attempt chain")
+	}
+	if _, err := ParseObjectiveRecord(make([]byte, MaxObjectiveRecordBytes+1)); err == nil {
+		t.Fatal("objective record accepted oversized input")
+	}
+}
+
+func TestObjectiveRecordContainsOnlyCoordinationMetadata(t *testing.T) {
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, _ := NewObjective("objective-record-4", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	body, digest, err := objective.MarshalRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest != ObjectiveRecordDigest(body) {
+		t.Fatal("objective record digest is not stable")
+	}
+	for _, forbidden := range []string{
+		`"prompt"`, `"command"`, `"argv"`, `"credential"`, `"source_body"`, `"filesystem_path"`,
+	} {
+		if strings.Contains(string(body), forbidden) {
+			t.Fatalf("objective record contains forbidden content field %s: %s", forbidden, body)
+		}
+	}
+}
+
+func TestObjectiveTransitionRejectsAuthorityAndHistoryRewrite(t *testing.T) {
+	workcell := mustEnvironment(t, "l3", ClassWorkcell, 1, "toolchain.go")
+	runner := mustEnvironment(t, "ci-vm", ClassIsolatedRunner, 1, "toolchain.go", "namespace.user.nested")
+	policy := mustPolicy(t, TierIsolatedRunner, ClassWorkcell, ClassIsolatedRunner)
+	previous, _ := NewObjective("objective-transition-1", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	next, _, err := previous.PlanAttempt("test", "attempt-1", sourceDigest("a"), []EnvironmentAttestation{workcell, runner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTransition(previous, next); err != nil {
+		t.Fatalf("valid plan transition rejected: %v", err)
+	}
+
+	escalated := next.clone()
+	escalated.Revision++
+	escalated.Policy = mustPolicy(t, TierIsolatedRunner, ClassIsolatedRunner)
+	if err := ValidateTransition(next, escalated); err == nil {
+		t.Fatal("transition accepted an authority-policy rewrite")
+	}
+
+	started, _ := next.StartAttempt("test")
+	if err := ValidateTransition(next, started); err != nil {
+		t.Fatalf("valid start transition rejected: %v", err)
+	}
+	rewritten := started.clone()
+	rewritten.Revision++
+	rewritten.Steps[0].Attempts[0].EnvironmentID = runner.EnvironmentID
+	if err := ValidateTransition(started, rewritten); err == nil {
+		t.Fatal("transition accepted historical environment rewrite")
+	}
+}
+
+func TestObjectiveTransitionAllowsOnlyMonotonicRequirements(t *testing.T) {
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	previous, _ := NewObjective("objective-transition-2", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "build.make"),
+	}})
+	refined, err := previous.RefineRequirements("test", mustRequirements(t, "toolchain.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTransition(previous, refined); err != nil {
+		t.Fatalf("monotonic requirement refinement rejected: %v", err)
+	}
+
+	removed := refined.clone()
+	removed.Revision++
+	removed.Steps[0].Requirements = mustRequirements(t, "toolchain.go")
+	if err := ValidateTransition(refined, removed); err == nil {
+		t.Fatal("transition accepted requirement removal")
+	}
+}
+
+func TestCodeRetryRejectsRefinedRequirementsMissingFromSameEnvironment(t *testing.T) {
+	workcell := mustEnvironment(t, "l3", ClassWorkcell, 1, "toolchain.go")
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, _ := NewObjective("objective-code-refine", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	objective, _, _ = objective.PlanAttempt("test", "attempt-1", sourceDigest("a"), []EnvironmentAttestation{workcell})
+	objective, _ = objective.StartAttempt("test")
+	objective, _, _ = objective.FailAttempt("test", FailureCode)
+	objective, err := objective.RefineRequirements("test", mustRequirements(t, "service.postgres"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := objective.PlanAttempt("test", "attempt-2", sourceDigest("b"), []EnvironmentAttestation{workcell}); err == nil {
+		t.Fatal("code retry ignored refined requirements missing from the unchanged environment")
+	}
+}
+
+func TestObjectiveCancellationIsDurableAndStopsActiveAttempts(t *testing.T) {
+	workcell := mustEnvironment(t, "l3", ClassWorkcell, 1, "toolchain.go")
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, _ := NewObjective("objective-cancel-1", policy, []StepSpec{
+		{StepID: "active", Requirements: mustRequirements(t, "toolchain.go")},
+		{StepID: "not-started", Requirements: mustRequirements(t, "toolchain.go")},
+	})
+	objective, _, _ = objective.PlanAttempt("active", "attempt-1", sourceDigest("a"), []EnvironmentAttestation{workcell})
+	objective, _ = objective.StartAttempt("active")
+	cancelled, err := objective.Cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancelled.State != ObjectiveCancelled ||
+		cancelled.Steps[0].State != StepCancelled ||
+		cancelled.Steps[0].Attempts[0].State != AttemptCancelled ||
+		cancelled.Steps[1].State != StepCancelled {
+		t.Fatalf("unexpected cancelled objective: %+v", cancelled)
+	}
+	if err := ValidateTransition(objective, cancelled); err != nil {
+		t.Fatalf("cancel transition rejected: %v", err)
+	}
+	body, _, err := cancelled.MarshalRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseObjectiveRecord(body)
+	if err != nil || parsed.State != ObjectiveCancelled {
+		t.Fatalf("cancelled record parsed=%+v err=%v", parsed, err)
+	}
+}
+
+func TestCancelledObjectiveCannotResume(t *testing.T) {
+	workcell := mustEnvironment(t, "l3", ClassWorkcell, 1, "toolchain.go")
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, _ := NewObjective("objective-cancel-2", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	cancelled, err := objective.Cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := cancelled.PlanAttempt("test", "attempt-1", sourceDigest("a"), []EnvironmentAttestation{workcell}); err == nil {
+		t.Fatal("cancelled objective resumed")
+	}
+	if _, err := cancelled.Accept(); err == nil {
+		t.Fatal("cancelled objective was accepted")
+	}
+}

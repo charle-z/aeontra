@@ -5,7 +5,16 @@ import (
 	"strings"
 )
 
-const ObjectiveVersion = 1
+const (
+	ObjectiveVersion        = 1
+	MaxObjectiveSteps       = 64
+	MaxAttemptsPerStep      = 32
+	MaxObjectiveRecordBytes = 256 << 10
+)
+
+func ValidObjectiveID(value string) bool {
+	return identityPattern.MatchString(strings.TrimSpace(value))
+}
 
 type ObjectiveState string
 
@@ -26,6 +35,7 @@ const (
 	StepRunning   StepState = "running"
 	StepSucceeded StepState = "succeeded"
 	StepFailed    StepState = "failed"
+	StepCancelled StepState = "cancelled"
 )
 
 type StepSpec struct {
@@ -51,7 +61,7 @@ type Objective struct {
 
 func NewObjective(objectiveID string, policy ResolutionPolicy, specs []StepSpec) (Objective, error) {
 	objectiveID = strings.TrimSpace(objectiveID)
-	if !identityPattern.MatchString(objectiveID) || !policy.valid() || len(specs) == 0 || len(specs) > 64 {
+	if !identityPattern.MatchString(objectiveID) || !policy.valid() || len(specs) == 0 || len(specs) > MaxObjectiveSteps {
 		return Objective{}, errors.New("development objective is invalid")
 	}
 	seen := make(map[string]struct{}, len(specs))
@@ -123,6 +133,9 @@ func (objective Objective) PlanAttempt(stepID, attemptID, sourceDigest string, c
 	if step.State == StepSucceeded {
 		return Objective{}, Resolution{}, errors.New("development objective step already succeeded")
 	}
+	if len(step.Attempts) >= MaxAttemptsPerStep {
+		return Objective{}, Resolution{}, errors.New("development objective attempt budget is exhausted")
+	}
 
 	var (
 		resolution Resolution
@@ -152,6 +165,9 @@ func (objective Objective) PlanAttempt(stepID, attemptID, sourceDigest string, c
 			environment, found := exactEnvironmentByDigest(candidates, previous.EnvironmentDigest)
 			if !found || !copy.Policy.Allows(environment) {
 				return Objective{}, Resolution{}, errors.New("development objective previous environment is unavailable")
+			}
+			if len(environment.Capabilities.Missing(step.Requirements)) != 0 {
+				return Objective{}, Resolution{}, errors.New("development objective previous environment no longer satisfies requirements")
 			}
 			resolution = Resolution{Environment: environment}
 		case ActionProvisionOrMigrate:
@@ -264,6 +280,36 @@ func (objective Objective) Accept() (Objective, error) {
 	}
 	copy := objective.clone()
 	copy.State = ObjectiveAccepted
+	copy.Revision++
+	return copy, nil
+}
+
+func (objective Objective) Cancel() (Objective, error) {
+	if objective.terminal() {
+		return Objective{}, errors.New("development objective is terminal")
+	}
+	copy := objective.clone()
+	for index := range copy.Steps {
+		step := &copy.Steps[index]
+		if step.State == StepSucceeded || step.State == StepFailed || step.State == StepCancelled {
+			continue
+		}
+		if len(step.Attempts) == 0 {
+			step.State = StepCancelled
+			continue
+		}
+		last := step.Attempts[len(step.Attempts)-1]
+		if last.State != AttemptPlanned && last.State != AttemptRunning {
+			return Objective{}, errors.New("development objective cannot cancel attempt")
+		}
+		cancelled, err := last.Transition(AttemptCancelled)
+		if err != nil {
+			return Objective{}, err
+		}
+		step.Attempts[len(step.Attempts)-1] = cancelled
+		step.State = StepCancelled
+	}
+	copy.State = ObjectiveCancelled
 	copy.Revision++
 	return copy, nil
 }

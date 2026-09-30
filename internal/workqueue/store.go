@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 type Store struct {
 	root     string
@@ -200,7 +200,7 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version > schemaVersion {
 		return errors.New("workqueue: schema is unsupported")
 	}
-	if err := ensureTaskAcceptanceColumns(s.db, version); err != nil {
+	if err := ensureSchemaExtensions(s.db, version); err != nil {
 		return err
 	}
 	if _, err := s.db.Exec(`INSERT INTO queue_meta(key,value) VALUES('controller_id',?) ON CONFLICT(key) DO NOTHING`, s.config.ControllerID); err != nil {
@@ -213,12 +213,12 @@ func (s *Store) initialize() error {
 	return s.Integrity()
 }
 
-// ensureTaskAcceptanceColumns applies backward-readable additive columns while
-// keeping SQLite user_version at 2. Legacy tasks remain readable. Test-contract
-// rows use acceptance_contract_version=2, which older v2 readers reject rather
-// than silently ignoring. Every ALTER and any v1->v2 version transition is
-// atomic; presence checks recover partial provisioning without duplicate ALTERs.
-func ensureTaskAcceptanceColumns(db *sql.DB, version int) error {
+// ensureSchemaExtensions migrates the v1/v2 queue into the v3 coordination
+// schema in one transaction. Existing task acceptance columns remain
+// backward-readable data, while v3 adds durable development objectives. A v2
+// binary must fail closed on user_version=3 instead of operating without the
+// objective/attempt contract.
+func ensureSchemaExtensions(db *sql.DB, version int) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return errors.New("workqueue: schema migration failed")
@@ -272,8 +272,24 @@ func ensureTaskAcceptanceColumns(db *sql.DB, version int) error {
 			}
 		}
 	}
+	for _, statement := range []string{
+		`CREATE TABLE IF NOT EXISTS development_objectives(
+			objective_id TEXT PRIMARY KEY,
+			revision INTEGER NOT NULL,
+			state TEXT NOT NULL,
+			record_digest TEXT NOT NULL,
+			record_json BLOB NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS development_objectives_recent ON development_objectives(updated_at DESC,objective_id DESC)`,
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+	}
 	if version < schemaVersion {
-		if _, err := tx.Exec(`PRAGMA user_version=2`); err != nil {
+		if _, err := tx.Exec(`PRAGMA user_version=3`); err != nil {
 			return errors.New("workqueue: schema migration failed")
 		}
 	}
@@ -804,6 +820,31 @@ func (s *Store) Integrity() error {
 	for _, taskID := range taskIDs {
 		if _, found, err := taskByID(s.db, taskID); err != nil || !found {
 			return errors.New("workqueue: task semantic integrity failed")
+		}
+	}
+	objectiveRows, err := s.db.Query(`SELECT objective_id FROM development_objectives ORDER BY objective_id`)
+	if err != nil {
+		return errors.New("workqueue: development objective semantic scan failed")
+	}
+	objectiveIDs := make([]string, 0)
+	for objectiveRows.Next() {
+		var objectiveID string
+		if err := objectiveRows.Scan(&objectiveID); err != nil {
+			_ = objectiveRows.Close()
+			return errors.New("workqueue: development objective semantic scan failed")
+		}
+		objectiveIDs = append(objectiveIDs, objectiveID)
+		if len(objectiveIDs) > MaxDevelopmentObjectives {
+			_ = objectiveRows.Close()
+			return errors.New("workqueue: development objective row bound exceeded")
+		}
+	}
+	if err := objectiveRows.Close(); err != nil {
+		return errors.New("workqueue: development objective semantic scan failed")
+	}
+	for _, objectiveID := range objectiveIDs {
+		if _, found, err := developmentObjectiveByID(s.db, objectiveID); err != nil || !found {
+			return errors.New("workqueue: development objective semantic integrity failed")
 		}
 	}
 	foreignRows, err := s.db.Query(`PRAGMA foreign_key_check`)
