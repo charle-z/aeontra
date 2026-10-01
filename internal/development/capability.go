@@ -16,8 +16,9 @@ const (
 )
 
 var (
-	capabilityIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$`)
-	identityPattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+	capabilityIDPattern      = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$`)
+	capabilityVersionPattern = regexp.MustCompile(`^v?[0-9]+(?:\.[0-9]+){0,3}$`)
+	identityPattern          = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 )
 
 // CapabilityID names one execution property. Repositories may require a
@@ -124,10 +125,57 @@ func normalizeCapabilityID(raw string) (CapabilityID, error) {
 	return CapabilityID(value), nil
 }
 
+// VersionCapabilityIDs returns the generic capability plus cumulative numeric
+// version prefixes. An observed 1.26.6 therefore satisfies exact requirements
+// for 1, 1.26 and 1.26.6 without claiming compatibility with another major or
+// minor version.
+func VersionCapabilityIDs(base, version string) ([]CapabilityID, error) {
+	baseID, err := normalizeCapabilityID(base)
+	if err != nil {
+		return nil, err
+	}
+	canonical, err := canonicalCapabilityVersion(version)
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Split(canonical, ".")
+	result := []CapabilityID{baseID}
+	for index := range parts {
+		id, err := normalizeCapabilityID(string(baseID) + ".v" + strings.Join(parts[:index+1], "-"))
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, id)
+	}
+	return result, nil
+}
+
+func VersionRequirement(base, version string) (Requirement, error) {
+	ids, err := VersionCapabilityIDs(base, version)
+	if err != nil {
+		return Requirement{}, err
+	}
+	return Requirement{ID: ids[len(ids)-1]}, nil
+}
+
+func canonicalCapabilityVersion(raw string) (string, error) {
+	value := strings.TrimSpace(strings.ToLower(raw))
+	if !capabilityVersionPattern.MatchString(value) {
+		return "", errors.New("development capability version is invalid")
+	}
+	value = strings.TrimPrefix(value, "v")
+	parts := strings.Split(value, ".")
+	for len(parts) > 1 && parts[len(parts)-1] == "0" {
+		parts = parts[:len(parts)-1]
+	}
+	return strings.Join(parts, "."), nil
+}
+
 type AuthorityTier uint8
 
 const (
-	TierWorkcell AuthorityTier = iota + 1
+	TierL3Sandbox AuthorityTier = iota + 1
+	TierWorkcell
 	TierManagedToolchain
 	TierToolbox
 	TierRootlessRuntime
@@ -138,6 +186,7 @@ const (
 type ExecutionClass string
 
 const (
+	ClassL3Sandbox                ExecutionClass = "l3-sandbox"
 	ClassWorkcell                 ExecutionClass = "workcell"
 	ClassManagedToolchain         ExecutionClass = "managed-toolchain"
 	ClassToolbox                  ExecutionClass = "toolbox"
@@ -149,6 +198,8 @@ const (
 
 func (class ExecutionClass) Tier() (AuthorityTier, bool) {
 	switch class {
+	case ClassL3Sandbox:
+		return TierL3Sandbox, true
 	case ClassWorkcell:
 		return TierWorkcell, true
 	case ClassManagedToolchain:
@@ -233,7 +284,7 @@ type ResolutionPolicy struct {
 }
 
 func NewResolutionPolicy(maxTier AuthorityTier, allowed ...ExecutionClass) (ResolutionPolicy, error) {
-	if maxTier < TierWorkcell || maxTier > TierIsolatedRunner || len(allowed) == 0 {
+	if maxTier < TierL3Sandbox || maxTier > TierIsolatedRunner || len(allowed) == 0 {
 		return ResolutionPolicy{}, errors.New("development resolution policy is invalid")
 	}
 	seen := make(map[ExecutionClass]struct{}, len(allowed))
@@ -274,7 +325,7 @@ func (p ResolutionPolicy) Allows(attestation EnvironmentAttestation) bool {
 }
 
 func (p ResolutionPolicy) valid() bool {
-	if p.maxTier < TierWorkcell || p.maxTier > TierIsolatedRunner || len(p.allowed) == 0 {
+	if p.maxTier < TierL3Sandbox || p.maxTier > TierIsolatedRunner || len(p.allowed) == 0 {
 		return false
 	}
 	for index, class := range p.allowed {

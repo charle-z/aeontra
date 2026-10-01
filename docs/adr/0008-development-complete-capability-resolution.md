@@ -60,6 +60,15 @@ server-owned execution environment attests them.
 Capability IDs are intentionally generic and tool-independent. Production routing must
 not branch on a repository name such as BuildKit.
 
+Exact numeric toolchain pins are represented generically as cumulative capability
+prefixes. For example, an observed Go `1.26.6` can attest `toolchain.go.v1`,
+`toolchain.go.v1-26` and `toolchain.go.v1-26-6`; a repository requiring Go `1.26`
+therefore cannot be satisfied by an environment that only attests `v1-25`. Broad
+constraints are never degraded to an unversioned claim: when the existing detector has
+already proved the fixed L3 baseline satisfies the range, the requirement is bound to
+that concrete baseline version; an Edge-required range that still needs version
+selection fails closed until the managed version resolver can satisfy it.
+
 ### Environment attestations
 
 Every execution environment that participates in resolution has a server-owned
@@ -74,14 +83,34 @@ attestation containing:
 The digest changes when the environment generation or capability set changes. Callers
 cannot enlarge an attestation by supplying repository data.
 
+The source implementation now has adapters for four existing typed states:
+
+- authenticated L3 status must retain its exact rootless, network-deny, filesystem, Git
+  and core-toolchain posture;
+- a trusted development workcell uses only its sanitized local inventory plus fixed
+  Bubblewrap/workspace/network properties;
+- a Codex rootless runtime is a separate higher-authority attestation, and Docker
+  client/Buildx capabilities are added only after the signed container-client bundle
+  passes its existing filesystem validation;
+- a running toolbox must retain its generation, fixed base image and non-zero
+  CPU/memory/PID limits; the Debian image grants package/service provisioning but never
+  implies that Java, pnpm or another project toolchain is already installed.
+
+Repository toolchain detection is converted only into requirements. It never adds a
+capability to one of those environment attestations.
+
 Initial execution classes follow the existing authority ladder:
 
-1. workcell;
-2. managed toolchain;
-3. persistent toolbox;
-4. dedicated rootless runtime;
-5. brokered privileged capability;
-6. isolated or external validation runner.
+1. networkless L3 sandbox;
+2. trusted workcell;
+3. managed toolchain;
+4. persistent toolbox;
+5. dedicated rootless runtime;
+6. brokered privileged capability;
+7. isolated or external validation runner.
+
+L3 and the trusted workcell are intentionally distinct. A networkless L3 execution must
+not inherit host-shared networking merely because a workcell is available.
 
 These are authority classes, not command allowlists.
 
@@ -219,7 +248,9 @@ BuildKit special case.
 
 The first source slice now also persists bounded canonical objective/step/attempt records
 inside the existing workqueue SQLite store with revision CAS, transition validation and
-v2-to-v3 migration. This is persistence only; it does not yet dispatch objective steps.
+v2-to-v3 migration. The next source slice adds the L3/workcell/rootless/toolbox attestation
+adapters and exact numeric toolchain capability prefixes described above. These pieces
+still do not dispatch objective steps.
 
 The remaining implementation sequence is:
 

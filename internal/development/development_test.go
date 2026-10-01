@@ -34,6 +34,21 @@ func TestResolverKeepsCurrentEnvironmentWhenItSatisfiesRequirements(t *testing.T
 	}
 }
 
+func TestResolverPrefersL3SandboxToTrustedWorkcellWhenBothSatisfy(t *testing.T) {
+	requirements := mustRequirements(t, "toolchain.go")
+	l3 := mustEnvironment(t, "l3", ClassL3Sandbox, 1, "toolchain.go")
+	workcell := mustEnvironment(t, "trusted-workcell", ClassWorkcell, 1, "toolchain.go", "network.host-shared")
+	policy := mustPolicy(t, TierWorkcell, ClassL3Sandbox, ClassWorkcell)
+
+	resolution, err := Resolve(requirements, nil, []EnvironmentAttestation{workcell, l3}, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Environment.EnvironmentID != l3.EnvironmentID || resolution.Environment.Class != ClassL3Sandbox {
+		t.Fatalf("resolver skipped lower-authority L3 sandbox: %+v", resolution)
+	}
+}
+
 func TestResolverChoosesLowestAuthoritySingleEnvironment(t *testing.T) {
 	requirements := mustRequirements(t, "toolchain.go", "service.postgres")
 	toolbox := mustEnvironment(t, "project-toolbox", ClassToolbox, 1, "toolchain.go", "service.postgres")
@@ -165,18 +180,18 @@ func TestExternalTransientRetryRequiresSameSourceAndEnvironment(t *testing.T) {
 
 func TestBuildKitValidateAllFixtureRequiresKernelAndCICompatibleRunner(t *testing.T) {
 	requirements := buildKitValidateAllRequirements(t)
-	l3 := mustEnvironment(t, "l3", ClassWorkcell, 7,
-		"toolchain.go", "build.make", "git.metadata.full",
+	l3 := mustEnvironment(t, "l3", ClassL3Sandbox, 7,
+		"toolchain.go", "toolchain.go.v1-26", "build.make", "git.metadata.full",
 	)
 	rootless := mustEnvironment(t, "parrot-rootless", ClassRootlessRuntime, 12,
-		"toolchain.go", "build.make", "container.docker.rootless", "filesystem.workspace-bind", "git.metadata.full",
+		"toolchain.go", "toolchain.go.v1-26", "build.make", "container.docker.rootless", "filesystem.workspace-bind", "git.metadata.full",
 	)
 	isolated := mustEnvironment(t, "linux-ci-vm", ClassIsolatedRunner, 3,
-		"toolchain.go", "build.make", "container.docker.rootless", "filesystem.workspace-bind",
+		"toolchain.go", "toolchain.go.v1-26", "build.make", "container.docker.rootless", "filesystem.workspace-bind",
 		"namespace.user.nested", "idmap.subuid", "cgroup.v2.delegated", "git.metadata.full",
 		"ci.github-actions.runtime", "ci.github-actions.cache", "service.containerd", "worker.stargz",
 	)
-	policy := mustPolicy(t, TierIsolatedRunner, ClassWorkcell, ClassRootlessRuntime, ClassIsolatedRunner)
+	policy := mustPolicy(t, TierIsolatedRunner, ClassL3Sandbox, ClassRootlessRuntime, ClassIsolatedRunner)
 
 	resolution, err := Resolve(requirements, &l3, []EnvironmentAttestation{l3, rootless, isolated}, policy)
 	if err != nil {
@@ -203,16 +218,16 @@ func TestBuildKitValidateAllFixtureRequiresKernelAndCICompatibleRunner(t *testin
 }
 
 func TestObjectiveRefinesBuildKitRequirementsAndCreatesNewAttempt(t *testing.T) {
-	l3 := mustEnvironment(t, "l3", ClassWorkcell, 7, "toolchain.go", "build.make", "git.metadata.full")
+	l3 := mustEnvironment(t, "l3", ClassL3Sandbox, 7, "toolchain.go", "toolchain.go.v1-26", "build.make", "git.metadata.full")
 	isolated := mustEnvironment(t, "linux-ci-vm", ClassIsolatedRunner, 3,
-		"toolchain.go", "build.make", "container.docker.rootless", "filesystem.workspace-bind",
+		"toolchain.go", "toolchain.go.v1-26", "build.make", "container.docker.rootless", "filesystem.workspace-bind",
 		"namespace.user.nested", "idmap.subuid", "cgroup.v2.delegated", "git.metadata.full",
 		"ci.github-actions.runtime", "ci.github-actions.cache", "service.containerd", "worker.stargz",
 	)
-	policy := mustPolicy(t, TierIsolatedRunner, ClassWorkcell, ClassIsolatedRunner)
+	policy := mustPolicy(t, TierIsolatedRunner, ClassL3Sandbox, ClassIsolatedRunner)
 	objective, err := NewObjective("buildkit-7206-validation", policy, []StepSpec{{
 		StepID:       "validate-all",
-		Requirements: mustRequirements(t, "toolchain.go", "build.make"),
+		Requirements: mustRequirements(t, "toolchain.go.v1-26", "build.make"),
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +310,7 @@ func TestFailureClassesHaveClosedContinuationPolicy(t *testing.T) {
 func buildKitValidateAllRequirements(t *testing.T) []Requirement {
 	t.Helper()
 	return mustRequirements(t,
-		"toolchain.go",
+		"toolchain.go.v1-26",
 		"build.make",
 		"container.docker.rootless",
 		"filesystem.workspace-bind",
@@ -612,5 +627,41 @@ func TestCancelledObjectiveCannotResume(t *testing.T) {
 	}
 	if _, err := cancelled.Accept(); err == nil {
 		t.Fatal("cancelled objective was accepted")
+	}
+}
+
+func TestVersionCapabilityIDsUseNumericPrefixes(t *testing.T) {
+	ids, err := VersionCapabilityIDs("toolchain.go", "v1.26.6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CapabilityID{"toolchain.go", "toolchain.go.v1", "toolchain.go.v1-26", "toolchain.go.v1-26-6"}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("version capability ids=%v want=%v", ids, want)
+	}
+	requirement, err := VersionRequirement("toolchain.go", "1.26.0")
+	if err != nil || requirement.ID != "toolchain.go.v1-26" {
+		t.Fatalf("requirement=%+v err=%v", requirement, err)
+	}
+	if _, err := VersionRequirement("toolchain.go", ">=1.26"); err == nil {
+		t.Fatal("range was accepted as an exact version")
+	}
+}
+
+func TestVersionedRequirementRejectsDifferentToolchainVersion(t *testing.T) {
+	requirements := mustRequirements(t, "toolchain.go.v1-26")
+	go125 := mustEnvironment(t, "go-125", ClassManagedToolchain, 1, "toolchain.go", "toolchain.go.v1", "toolchain.go.v1-25")
+	go126 := mustEnvironment(t, "go-126", ClassManagedToolchain, 2, "toolchain.go", "toolchain.go.v1", "toolchain.go.v1-26", "toolchain.go.v1-26-6")
+	policy := mustPolicy(t, TierManagedToolchain, ClassManagedToolchain)
+
+	resolution, err := Resolve(requirements, nil, []EnvironmentAttestation{go125, go126}, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Environment.EnvironmentID != go126.EnvironmentID {
+		t.Fatalf("versioned requirement selected incompatible toolchain: %+v", resolution)
+	}
+	if _, err := Resolve(requirements, nil, []EnvironmentAttestation{go125}, policy); err == nil {
+		t.Fatal("Go 1.25 satisfied a Go 1.26 requirement")
 	}
 }
