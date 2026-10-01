@@ -665,3 +665,89 @@ func TestVersionedRequirementRejectsDifferentToolchainVersion(t *testing.T) {
 		t.Fatal("Go 1.25 satisfied a Go 1.26 requirement")
 	}
 }
+
+func TestPlannedAttemptCanFailClosedOnEnvironmentDrift(t *testing.T) {
+	workcell := mustEnvironment(t, "workcell", ClassWorkcell, 1, "toolchain.go")
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, _ := NewObjective("objective-preflight-drift", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	objective, _, _ = objective.PlanAttempt("test", "attempt-1", sourceDigest("a"), []EnvironmentAttestation{workcell})
+
+	rejected, action, err := objective.RejectAttempt("test", FailureCapabilityDrift)
+	if err != nil || action != ActionProvisionOrMigrate {
+		t.Fatalf("preflight rejection action=%s err=%v", action, err)
+	}
+	if rejected.Steps[0].State != StepFailed ||
+		rejected.Steps[0].Attempts[0].State != AttemptFailed ||
+		rejected.Steps[0].Attempts[0].Failure != FailureCapabilityDrift {
+		t.Fatalf("preflight rejection was not durable: %+v", rejected)
+	}
+	if err := ValidateTransition(objective, rejected); err != nil {
+		t.Fatalf("preflight transition rejected: %v", err)
+	}
+}
+
+func TestPlannedAttemptCannotInventCodeFailure(t *testing.T) {
+	workcell := mustEnvironment(t, "workcell", ClassWorkcell, 1, "toolchain.go")
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, _ := NewObjective("objective-preflight-code", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	objective, _, _ = objective.PlanAttempt("test", "attempt-1", sourceDigest("a"), []EnvironmentAttestation{workcell})
+	if _, _, err := objective.RejectAttempt("test", FailureCode); err == nil {
+		t.Fatal("planned attempt accepted an impossible code failure")
+	}
+}
+
+func TestScopedObjectiveRecordRoundTripAndScopeIsImmutable(t *testing.T) {
+	scope, err := NewObjectiveScope("Project-A", "Parrot-Trusted-Linux")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope.Project != "project-a" || scope.Target != "parrot-trusted-linux" {
+		t.Fatalf("scope was not canonicalized: %+v", scope)
+	}
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, err := NewScopedObjective("objective-scope-1", scope, policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _, err := objective.MarshalRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseObjectiveRecord(body)
+	if err != nil || parsed.Scope != scope {
+		t.Fatalf("scoped record parsed=%+v err=%v", parsed, err)
+	}
+	next, err := objective.RefineRequirements("test", mustRequirements(t, "build.make"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateTransition(objective, next); err != nil {
+		t.Fatalf("scoped transition rejected: %v", err)
+	}
+	rewritten := next.clone()
+	rewritten.Scope.Target = "other-edge"
+	if err := ValidateTransition(objective, rewritten); err == nil {
+		t.Fatal("transition accepted an objective scope rewrite")
+	}
+}
+
+func TestLegacyUnscopedObjectiveRecordRemainsReadable(t *testing.T) {
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, _ := NewObjective("objective-legacy-unscoped", policy, []StepSpec{{
+		StepID: "test", Requirements: mustRequirements(t, "toolchain.go"),
+	}})
+	body, _, err := objective.MarshalRecord()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseObjectiveRecord(body)
+	if err != nil || parsed.Scope.Bound() || parsed.Scope != (ObjectiveScope{}) {
+		t.Fatalf("legacy unscoped record parsed=%+v err=%v", parsed, err)
+	}
+}

@@ -2,6 +2,7 @@ package development
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 )
 
@@ -10,6 +11,11 @@ const (
 	MaxObjectiveSteps       = 64
 	MaxAttemptsPerStep      = 32
 	MaxObjectiveRecordBytes = 256 << 10
+)
+
+var (
+	projectScopePattern = regexp.MustCompile("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+	targetScopePattern  = regexp.MustCompile("^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$")
 )
 
 func ValidObjectiveID(value string) bool {
@@ -43,6 +49,30 @@ type StepSpec struct {
 	Requirements []Requirement
 }
 
+type ObjectiveScope struct {
+	Project string
+	Target  string
+}
+
+func NewObjectiveScope(project, target string) (ObjectiveScope, error) {
+	scope := ObjectiveScope{
+		Project: strings.ToLower(strings.TrimSpace(project)),
+		Target:  strings.ToLower(strings.TrimSpace(target)),
+	}
+	if !scope.Bound() {
+		return ObjectiveScope{}, errors.New("development objective scope is invalid")
+	}
+	return scope, nil
+}
+
+func (scope ObjectiveScope) Bound() bool {
+	return projectScopePattern.MatchString(scope.Project) && targetScopePattern.MatchString(scope.Target)
+}
+
+func (scope ObjectiveScope) validOrEmpty() bool {
+	return (scope.Project == "" && scope.Target == "") || scope.Bound()
+}
+
 type ObjectiveStep struct {
 	StepID       string
 	Requirements []Requirement
@@ -55,6 +85,7 @@ type Objective struct {
 	ObjectiveID string
 	Revision    uint64
 	State       ObjectiveState
+	Scope       ObjectiveScope
 	Policy      ResolutionPolicy
 	Steps       []ObjectiveStep
 }
@@ -93,6 +124,18 @@ func NewObjective(objectiveID string, policy ResolutionPolicy, specs []StepSpec)
 		Policy:      policy,
 		Steps:       steps,
 	}, nil
+}
+
+func NewScopedObjective(objectiveID string, scope ObjectiveScope, policy ResolutionPolicy, specs []StepSpec) (Objective, error) {
+	if !scope.Bound() {
+		return Objective{}, errors.New("development objective scope is invalid")
+	}
+	objective, err := NewObjective(objectiveID, policy, specs)
+	if err != nil {
+		return Objective{}, err
+	}
+	objective.Scope = scope
+	return objective, nil
 }
 
 // RefineRequirements only adds requirements. Runtime failure diagnosis may
@@ -209,6 +252,39 @@ func (objective Objective) StartAttempt(stepID string) (Objective, error) {
 	copy.State = ObjectiveRunning
 	copy.Revision++
 	return copy, nil
+}
+
+func (objective Objective) RejectAttempt(stepID string, class FailureClass) (Objective, ContinuationAction, error) {
+	index := objective.stepIndex(stepID)
+	if index < 0 || objective.terminal() {
+		return Objective{}, "", errors.New("development objective cannot reject attempt")
+	}
+	action, ok := ContinuationForFailure(class)
+	if !ok || !preflightFailureAllowed(class) {
+		return Objective{}, "", errors.New("development objective preflight failure class is invalid")
+	}
+	copy := objective.clone()
+	step := &copy.Steps[index]
+	if len(step.Attempts) == 0 {
+		return Objective{}, "", errors.New("development objective attempt is missing")
+	}
+	last := step.Attempts[len(step.Attempts)-1]
+	failed, err := last.RejectPreflight(class)
+	if err != nil {
+		return Objective{}, "", err
+	}
+	step.Attempts[len(step.Attempts)-1] = failed
+	step.State = StepFailed
+	switch action {
+	case ActionReconcile:
+		copy.State = ObjectiveReconciliationRequired
+	case ActionStopPolicy:
+		copy.State = ObjectiveFailed
+	default:
+		copy.State = ObjectiveRunning
+	}
+	copy.Revision++
+	return copy, action, nil
 }
 
 func (objective Objective) FailAttempt(stepID string, class FailureClass) (Objective, ContinuationAction, error) {

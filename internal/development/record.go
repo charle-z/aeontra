@@ -16,8 +16,14 @@ type objectiveRecord struct {
 	ObjectiveID string                `json:"objective_id"`
 	Revision    uint64                `json:"revision"`
 	State       ObjectiveState        `json:"state"`
+	Scope       *objectiveScopeRecord `json:"scope,omitempty"`
 	Policy      objectivePolicyRecord `json:"policy"`
 	Steps       []objectiveStepRecord `json:"steps"`
+}
+
+type objectiveScopeRecord struct {
+	Project string `json:"project"`
+	Target  string `json:"target"`
 }
 
 type objectivePolicyRecord struct {
@@ -66,6 +72,12 @@ func (objective Objective) MarshalRecord() ([]byte, string, error) {
 			AllowedClasses: objective.Policy.AllowedClasses(),
 		},
 		Steps: make([]objectiveStepRecord, 0, len(objective.Steps)),
+	}
+	if objective.Scope.Bound() {
+		record.Scope = &objectiveScopeRecord{
+			Project: objective.Scope.Project,
+			Target:  objective.Scope.Target,
+		}
 	}
 	for _, step := range objective.Steps {
 		stepRecord := objectiveStepRecord{
@@ -126,6 +138,13 @@ func ParseObjectiveRecord(body []byte) (Objective, error) {
 		Policy:      policy,
 		Steps:       make([]ObjectiveStep, 0, len(record.Steps)),
 	}
+	if record.Scope != nil {
+		scope, err := NewObjectiveScope(record.Scope.Project, record.Scope.Target)
+		if err != nil || scope.Project != record.Scope.Project || scope.Target != record.Scope.Target {
+			return Objective{}, errors.New("development objective record is invalid")
+		}
+		objective.Scope = scope
+	}
 	for _, stepRecord := range record.Steps {
 		requirements, err := Requirements(stepRecord.Requirements...)
 		if err != nil || !sameRequirementStrings(stepRecord.Requirements, requirements) {
@@ -177,7 +196,7 @@ func objectiveRecordDigest(body []byte) string {
 
 func validateObjectiveSnapshot(objective Objective) error {
 	if objective.Version != ObjectiveVersion || !identityPattern.MatchString(objective.ObjectiveID) ||
-		objective.Revision == 0 || !objective.Policy.valid() || len(objective.Steps) == 0 ||
+		objective.Revision == 0 || !objective.Scope.validOrEmpty() || !objective.Policy.valid() || len(objective.Steps) == 0 ||
 		len(objective.Steps) > MaxObjectiveSteps || !validObjectiveState(objective.State) {
 		return errors.New("development objective snapshot is invalid")
 	}

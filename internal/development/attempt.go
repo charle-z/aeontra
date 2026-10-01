@@ -138,6 +138,25 @@ func (attempt ExecutionAttempt) Fail(class FailureClass) (ExecutionAttempt, erro
 	return copy, nil
 }
 
+// RejectPreflight records a typed environmental/policy failure before an
+// attempt starts. It is used when a previously attested environment drifted or
+// no longer satisfies refined requirements. Code failures are impossible
+// before execution and transient retries are left to the dispatch/effect layer.
+func (attempt ExecutionAttempt) RejectPreflight(class FailureClass) (ExecutionAttempt, error) {
+	if attempt.State != AttemptPlanned || !preflightFailureAllowed(class) {
+		return ExecutionAttempt{}, errors.New("development execution attempt preflight rejection is invalid")
+	}
+	copy := attempt
+	copy.State = AttemptFailed
+	copy.Failure = class
+	return copy, nil
+}
+
+func preflightFailureAllowed(class FailureClass) bool {
+	action, ok := ContinuationForFailure(class)
+	return ok && (action == ActionProvisionOrMigrate || action == ActionStopPolicy || action == ActionReconcile)
+}
+
 // ContinueExecutionAttempt creates the only legal next attempt for a classified
 // failure. Code failures require changed source at unchanged authority.
 // Capability failures require a changed environment attestation. Transient

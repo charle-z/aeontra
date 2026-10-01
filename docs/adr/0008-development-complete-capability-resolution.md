@@ -126,6 +126,20 @@ The resolver chooses the lowest-authority *single* environment that satisfies ev
 requirement. It never combines partial authority from multiple environments into one
 attempt.
 
+### Durable objective scope
+
+A development objective may carry one immutable project/target scope. The scope uses the
+same bounded human aliases as project resolution and is serialized inside the canonical
+objective record.
+
+Legacy version-1 objective records without a scope remain readable for inspection and
+backup compatibility, but the development supervisor refuses to dispatch them. Once a
+scoped objective is created, its project or target cannot change in a later revision.
+
+The supervisor therefore never accepts a caller-selected execution target for an
+attempt. It obtains the project/Edge binding from the durable objective scope and obtains
+candidate execution environments from server-owned attestation providers.
+
 ### Immutable execution attempts
 
 ADR 0004 made a scheduled target immutable. That invariant remains correct at the
@@ -171,6 +185,38 @@ requirements or change its authority policy.
 This allows a workflow to begin with known properties such as Go and Make, observe a
 typed nested-user-namespace failure, add that requirement, resolve a compatible runner
 and continue. The original attempt and evidence remain immutable.
+
+### Internal durable supervisor
+
+The source now includes an internal supervisor above the existing workqueue store. It is
+not a public MCP authority surface.
+
+For one scoped objective step it:
+
+1. reloads the current durable revision;
+2. requests a bounded environment catalog from injected server-owned attestation
+   providers;
+3. resolves the least-authority compatible environment;
+4. derives the attempt identity from objective, step, parent attempt, source digest,
+   requirements and environment attestation;
+5. persists the planned revision through workqueue CAS;
+6. re-fetches the catalog before moving the attempt to `running`.
+
+If the selected environment changed between plan and start, the supervisor records the
+planned attempt as `capability_drift` instead of executing it. If requirements were
+refined and the planned environment no longer satisfies them, it records
+`capability_missing`. Both cases can be automatically replanned into a new child attempt
+within a hard bounded transition budget.
+
+Identical concurrent planning converges on one deterministic attempt. Divergent planning
+requests cannot fork one objective revision. Code-failure retries stay on the exact
+previous environment and require changed source; external-transient retries stay on the
+same source and environment even if a newly available lower-authority environment
+appears.
+
+A composite catalog source combines at most 16 providers and at most 64 environment
+attestations. Provider failure, invalid attestation, or duplicate environment identity
+fails the whole catalog closed.
 
 ### Failure classification
 
@@ -246,11 +292,12 @@ BuildKit special case.
 
 ## Delivery after this ADR
 
-The first source slice now also persists bounded canonical objective/step/attempt records
-inside the existing workqueue SQLite store with revision CAS, transition validation and
-v2-to-v3 migration. The next source slice adds the L3/workcell/rootless/toolbox attestation
-adapters and exact numeric toolchain capability prefixes described above. These pieces
-still do not dispatch objective steps.
+The first source slice persists bounded canonical objective/step/attempt records inside
+the existing workqueue SQLite store with revision CAS, transition validation and
+v2-to-v3 migration. The next slice adds the L3/workcell/rootless/toolbox attestation
+adapters and exact numeric toolchain capability prefixes. The current internal slice
+adds durable project/target scope plus the supervisor and composite attestation catalog
+described above. No public objective tool or external execution dispatch is exposed yet.
 
 The remaining implementation sequence is:
 

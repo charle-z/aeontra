@@ -157,6 +157,7 @@ versioned objective record, revision, semantic state, record digest and timestam
 The canonical record is capped at 256 KiB and contains only:
 
 - objective, step and attempt identities;
+- optional immutable project/target scope for dispatchable objectives;
 - the immutable authority policy;
 - canonical capability requirements;
 - source-content digests, never source bodies;
@@ -164,9 +165,9 @@ The canonical record is capped at 256 KiB and contains only:
 - attempt lifecycle and closed failure classes.
 
 The first persisted revision must be revision 1. A later write must be exactly the next
-revision and must satisfy the development transition validator: policy cannot be
-rewritten, requirements can only grow, prior attempts are immutable, and a new attempt
-must descend from the previous failed attempt. Replaying the exact same revision and
+revision and must satisfy the development transition validator: project/target scope and
+policy cannot be rewritten, requirements can only grow, prior attempts are immutable,
+and a new attempt must descend from the previous failed attempt. Replaying the exact same revision and
 digest is idempotent. Stale, skipped, divergent or corrupt revisions fail closed.
 Cancellation is a durable terminal objective state and cancels any currently planned or
 running attempt without rewriting earlier attempts.
@@ -182,8 +183,9 @@ attempt history rather than reconstructing it from chat text.
 
 This persistence grants no new execution authority. Capability attestations, runner
 selection, provisioning, effect dispatch and semantic acceptance remain separate
-layers. A succeeded attempt still leaves the overall objective `acceptance_pending`
-until an explicit evaluator accepts it.
+layers. Legacy unscoped objective records remain readable, but the internal development
+supervisor rejects them for dispatch. A succeeded attempt still leaves the overall
+objective `acceptance_pending` until an explicit evaluator accepts it.
 
 ## Dependencies
 

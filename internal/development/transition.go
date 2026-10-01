@@ -9,6 +9,7 @@ func ValidateTransition(previous, next Objective) error {
 	if !previous.Valid() || !next.Valid() ||
 		previous.Version != next.Version ||
 		previous.ObjectiveID != next.ObjectiveID ||
+		previous.Scope != next.Scope ||
 		next.Revision != previous.Revision+1 ||
 		previous.Policy.MaxTier() != next.Policy.MaxTier() ||
 		!sameExecutionClasses(previous.Policy.AllowedClasses(), next.Policy.AllowedClasses()) ||
@@ -83,7 +84,10 @@ func validAttemptRevision(before, after ExecutionAttempt) bool {
 	}
 	switch before.State {
 	case AttemptPlanned:
-		return (after.State == AttemptRunning || after.State == AttemptCancelled) && after.Failure == ""
+		if (after.State == AttemptRunning || after.State == AttemptCancelled) && after.Failure == "" {
+			return true
+		}
+		return after.State == AttemptFailed && preflightFailureAllowed(after.Failure)
 	case AttemptRunning:
 		if after.State == AttemptSucceeded && after.Failure == "" {
 			return true
@@ -125,7 +129,7 @@ func validStepStateTransition(before, after StepState) bool {
 	}
 	switch before {
 	case StepPlanned:
-		return after == StepRunning || after == StepCancelled
+		return after == StepRunning || after == StepFailed || after == StepCancelled
 	case StepRunning:
 		return after == StepSucceeded || after == StepFailed || after == StepCancelled
 	case StepFailed:
