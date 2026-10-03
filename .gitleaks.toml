@@ -4,6 +4,14 @@ title = "MCP Devbox secret scanning policy"
 useDefault = true
 
 [[allowlists]]
+description = "Synthetic development admission retry key; no credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^internal/mcpserver/project_development_recovery_test\.go$''']
+regexes = ['''"idempotency_key":"validation-key-001"''']
+
+[[allowlists]]
 description = "Synthetic GitHub PAT used only to verify redaction"
 targetRules = ["github-pat"]
 condition = "AND"
