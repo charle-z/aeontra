@@ -1,6 +1,8 @@
 package workflowpolicy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"strings"
@@ -59,7 +61,7 @@ func TestSecurityRiskWatchIsDailyBoundedAndIdentityVerified(t *testing.T) {
 	}
 }
 
-func TestSecurityRiskWatchInventoryDoesNotClaimProductionCoverage(t *testing.T) {
+func TestSecurityRiskWatchInventoryMatchesVerifiedWorkcell(t *testing.T) {
 	content, err := os.ReadFile("../../security/monitored-images.json")
 	if err != nil {
 		t.Fatal(err)
@@ -80,24 +82,32 @@ func TestSecurityRiskWatchInventoryDoesNotClaimProductionCoverage(t *testing.T) 
 	if err := json.Unmarshal(content, &inventory); err != nil {
 		t.Fatal(err)
 	}
-	if inventory.SchemaVersion != 1 || inventory.Coverage != "published-candidate" || inventory.Workcell.DeploymentVerified {
-		t.Fatal("initial inventory must explicitly remain a published candidate, not deployed")
+	if inventory.SchemaVersion != 1 || inventory.Coverage != "deployed-workcell" || !inventory.Workcell.DeploymentVerified {
+		t.Fatal("inventory must identify the verified workcell, not claim all-production coverage")
 	}
 	w := inventory.Workcell
 	if w.Repository != "ghcr.io/charle-z/aeontra-sandbox-workcell" ||
-		w.IndexDigest != "sha256:517a8eb9227dd825710e6380b30502dff4154a2d73b6bbcfe9bcb09d31c2cc7d" ||
-		w.ManifestDigest != "sha256:64942257ee4ff8a5f304c2cfd7a7990ba4c362fa43fdf4724debc6c235b4ffcb" ||
-		w.ImageID != "sha256:0428593270824ab41d988dff4fdd05cf7161bf4a847f6e6fc800ce7fe7443102" ||
-		w.Revision != "c5422e5cf0d9e325862078ce55a54682477f33d4" ||
-		w.RecipeSHA256 != "daa52ebb8ad35c0836aac7832c41eecf313f559bf34ad97c07f80f73671a32d4" {
-		t.Fatal("initial workcell identities differ from the reviewed published candidate")
+		w.IndexDigest != "sha256:a342917779194d6c455f25f760b13d7a1a1f4e88eafec0f231bf099aaa776d41" ||
+		w.ManifestDigest != "sha256:bb0691ef833195e08f583bc4787e00cbc0d0bd84f9438a1a76c568a757dbb54f" ||
+		w.ImageID != "sha256:0b6e0933cfc57d10fcbfdd805e632c638d2eb1071a5e06e86c4f8526e452a1da" ||
+		w.Revision != "f8f641e2d65d696f3ef057c1dda8f99ba5a8cf21" ||
+		w.RecipeSHA256 != "cc5cb19e289aeb0bf82076da5807b7efcdee56bcb2fd3e1adb7cb74c9fc74ccc" {
+		t.Fatal("workcell identities differ from the verified protected image release")
+	}
+	recipe, err := os.ReadFile("../../Dockerfile.sandbox-workcell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(recipe)
+	if hex.EncodeToString(digest[:]) != w.RecipeSHA256 {
+		t.Fatal("monitored image recipe differs from the checked-out approved recipe")
 	}
 	doc, err := os.ReadFile("../../docs/runbooks/security-risk-watch.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"published candidate", "not deployed", "Coolify", "no image rebuild", "24 hours", "7 days", "larger transfer"} {
-		if !strings.Contains(string(doc), required) {
+	for _, required := range []string{"deployed-workcell", "does not discover production", "Coolify", "no image rebuild", "24 hours", "7 days", "larger transfer", "2026-10-03-workcell-rollout.md"} {
+		if !strings.Contains(strings.Join(strings.Fields(string(doc)), " "), required) {
 			t.Errorf("watch runbook missing limitation %q", required)
 		}
 	}
