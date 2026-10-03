@@ -45,7 +45,6 @@ jobs:
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_RUN_ATTEMPT" = 1
           test "$GITHUB_SHA" = "$WORKFLOW_SHA"
-          test "$GITHUB_REPOSITORY_VISIBILITY" = public
           [[ "$EFFECT_ID" =~ ^[a-f0-9]{64}$ ]]
           [[ "$PLAN_DIGEST" =~ ^[a-f0-9]{64}$ ]]
           [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
@@ -56,7 +55,13 @@ jobs:
           case "$COMMAND_PROFILE" in probe-only|make-validate-all|go-test-all) ;; *) exit 1 ;; esac
           # Bind the title to actual inputs; an asserted digest is not evidence.
           python3 - <<'PYTHON'
-          import hashlib, os, struct
+          import hashlib, json, os, struct
+          with open(os.environ['GITHUB_EVENT_PATH'], 'rb') as event_file:
+              event = json.load(event_file)
+          repository = event.get('repository') if isinstance(event, dict) else None
+          if (not isinstance(repository, dict) or repository.get('private') is not False
+                  or repository.get('full_name') != os.environ['GITHUB_REPOSITORY']):
+              raise SystemExit('runner repository must be the exact public repository')
           digest = hashlib.sha256(b'aeontra-development-runner-execution-v1\x00')
           for name in ('EFFECT_ID', 'PLAN_DIGEST', 'SOURCE_OWNER', 'SOURCE_REPO',
                        'SOURCE_SHA', 'COMMAND_PROFILE', 'WORKFLOW_SHA', 'WORKFLOW_ID'):

@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -457,6 +459,116 @@ func TestDevelopmentRunnerWorkflowIsFixedAndContainmentGatesAreMandatory(t *test
 	}
 	if strings.Contains(string(body), "${{ secrets.") || strings.Contains(string(body), "pull_request:") || strings.Contains(string(body), "self-hosted") {
 		t.Fatal("ambient secret or automatic untrusted workflow authority added")
+	}
+}
+
+func TestDevelopmentRunnerWorkflowValidatesPublicEventAndExecutionBinding(t *testing.T) {
+	bash, bashErr := exec.LookPath("bash")
+	python, pythonErr := exec.LookPath("python3")
+	if bashErr != nil || pythonErr != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("hosted Linux validator requires bash and python3; native Windows availability: bash=%v python3=%v", bashErr, pythonErr)
+		}
+		t.Fatalf("hosted Linux validator tools unavailable: bash=%v python3=%v", bashErr, pythonErr)
+	}
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer probeCancel()
+	if output, err := exec.CommandContext(probeCtx, python, "--version").CombinedOutput(); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("python3 is not executable on this native Windows host: %v: %s", err, output)
+		}
+		t.Fatalf("python3 is not executable: %v: %s", err, output)
+	}
+	if runtime.GOOS == "windows" {
+		command := exec.CommandContext(probeCtx, bash, "--noprofile", "--norc", "-c", `python3 -c 'import os; print(os.name)'`)
+		command.Env = []string{"PATH=" + os.Getenv("PATH")}
+		if output, err := command.CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "nt" {
+			t.Skipf("native Windows bash/python3 pair cannot use Windows fixture paths; run this Linux validator in WSL: %v: %s", err, output)
+		}
+	}
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name, Shell, Run string
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(body, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	steps := workflow.Jobs["execution"].Steps
+	if len(steps) == 0 || steps[0].Name != "Validate immutable request" || steps[0].Shell != "bash" || steps[0].Run == "" {
+		t.Fatal("trusted immutable-request validator is not the first execution step")
+	}
+	const publicEvent = `{"repository":{"private":false,"full_name":"acme/aeontra"}}`
+	cases := []struct {
+		name, event, environmentOverride string
+		missingFile                      bool
+		pass                             bool
+	}{
+		{name: "public", event: publicEvent, pass: true},
+		{name: "private", event: `{"repository":{"private":true,"full_name":"acme/aeontra"}}`},
+		{name: "missing repository", event: `{}`},
+		{name: "missing private", event: `{"repository":{"full_name":"acme/aeontra"}}`},
+		{name: "null private", event: `{"repository":{"private":null,"full_name":"acme/aeontra"}}`},
+		{name: "string private", event: `{"repository":{"private":"false","full_name":"acme/aeontra"}}`},
+		{name: "numeric private", event: `{"repository":{"private":0,"full_name":"acme/aeontra"}}`},
+		{name: "wrong identity", event: `{"repository":{"private":false,"full_name":"upstream/project"}}`},
+		{name: "missing identity", event: `{"repository":{"private":false}}`},
+		{name: "null identity", event: `{"repository":{"private":false,"full_name":null}}`},
+		{name: "malformed repository", event: `{"repository":[]}`},
+		{name: "malformed event", event: `[]`},
+		{name: "invalid JSON", event: `{`},
+		{name: "missing event file", missingFile: true},
+		{name: "asserted digest mismatch", event: publicEvent, environmentOverride: "EXECUTION_DIGEST=" + strings.Repeat("9", 64)},
+		{name: "effect binding mismatch", event: publicEvent, environmentOverride: "EFFECT_ID=" + strings.Repeat("9", 64)},
+		{name: "plan binding mismatch", event: publicEvent, environmentOverride: "PLAN_DIGEST=" + strings.Repeat("9", 64)},
+		{name: "owner binding mismatch", event: publicEvent, environmentOverride: "SOURCE_OWNER=upstream"},
+		{name: "repo binding mismatch", event: publicEvent, environmentOverride: "SOURCE_REPO=project"},
+		{name: "source binding mismatch", event: publicEvent, environmentOverride: "SOURCE_SHA=" + strings.Repeat("9", 40)},
+		{name: "profile binding mismatch", event: publicEvent, environmentOverride: "COMMAND_PROFILE=go-test-all"},
+		{name: "template binding mismatch", event: publicEvent, environmentOverride: "WORKFLOW_SHA=" + strings.Repeat("9", 40)},
+		{name: "workflow binding mismatch", event: publicEvent, environmentOverride: "WORKFLOW_ID=32"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			eventPath := filepath.Join(t.TempDir(), "event.json")
+			if !test.missingFile {
+				if err := os.WriteFile(eventPath, []byte(test.event), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, bash, "--noprofile", "--norc", "-c", steps[0].Run)
+			command.Env = []string{
+				"PATH=" + os.Getenv("PATH"), "GITHUB_EVENT_NAME=workflow_dispatch", "GITHUB_RUN_ATTEMPT=1",
+				"GITHUB_SHA=" + strings.Repeat("a", 40), "GITHUB_REPOSITORY=acme/aeontra", "GITHUB_EVENT_PATH=" + eventPath,
+				"EFFECT_ID=" + strings.Repeat("e", 64), "PLAN_DIGEST=" + strings.Repeat("f", 64),
+				"SOURCE_OWNER=acme", "SOURCE_REPO=aeontra", "SOURCE_SHA=" + strings.Repeat("a", 40),
+				"COMMAND_PROFILE=probe-only", "WORKFLOW_SHA=" + strings.Repeat("a", 40), "WORKFLOW_ID=31",
+				"EXECUTION_DIGEST=495a6fcd8c6b602f70bb8f845c37d22f8d6be02a4814bf0e00095172b14488d2",
+			}
+			if test.environmentOverride != "" {
+				name, _, _ := strings.Cut(test.environmentOverride, "=")
+				for index, value := range command.Env {
+					if strings.HasPrefix(value, name+"=") {
+						command.Env[index] = test.environmentOverride
+					}
+				}
+			}
+			output, err := command.CombinedOutput()
+			if ctx.Err() != nil {
+				t.Fatalf("validator exceeded deadline: %v", ctx.Err())
+			}
+			if (err == nil) != test.pass {
+				t.Fatalf("validator pass=%v want=%v err=%v output=%s", err == nil, test.pass, err, output)
+			}
+		})
 	}
 }
 
