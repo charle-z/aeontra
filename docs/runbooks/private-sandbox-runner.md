@@ -26,7 +26,8 @@ place registry credentials in the public MCP container or a launched workcell.
 
 The reference workcell uses a digest-pinned Wolfi base and exact package versions for
 Go, Rust, Node/npm, Python, the C/C++ compiler baseline and common command-line
-utilities. Its two replaced npm transitive packages are fetched over HTTPS and verified
+utilities. Its three replaced npm transitive packages (`brace-expansion`, `undici`,
+and `ip-address`) are fetched over HTTPS and verified
 by SHA-256. The security workflow builds this exact image, emits an SPDX SBOM and
 rejects every current High or Critical Grype finding. Treat any package-version change
 as a reviewed image update and repeat that gate before publishing a new digest.

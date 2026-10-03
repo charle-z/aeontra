@@ -87,6 +87,18 @@ if false; then
   exit 1
 fi
 git --version
+node - <<'JAVASCRIPT'
+const assert = require('node:assert/strict');
+const root = '/usr/lib/node_modules/npm/node_modules/';
+assert.equal(require(root + 'brace-expansion/package.json').version, '5.0.11');
+assert.equal(require(root + 'undici/package.json').version, '6.28.1');
+assert.deepEqual(require(root + 'brace-expansion').expand('{cat,dog}'), ['cat', 'dog']);
+const undici = require(root + 'undici');
+for (const name of ['Agent', 'EnvHttpProxyAgent', 'RetryAgent', 'fetch']) {
+  assert.equal(typeof undici[name], 'function');
+}
+console.log('npm_runtime_modules=ready');
+JAVASCRIPT
 test "$(cat /usr/share/aeontra/security/zlib-gzwrite-fix)" = 4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7
 cc /workspace/zlib-smoke.c -lz -o /tmp/zlib-smoke
 /tmp/zlib-smoke

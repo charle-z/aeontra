@@ -162,9 +162,14 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"urllib.request.urlretrieve",
 		"test/gznonblock.c",
 		"/usr/share/aeontra/security/zlib-gzwrite-fix",
-		"brace-expansion-5.0.9.tgz",
+		"brace-expansion-5.0.11.tgz",
 		"ip-address-10.3.1.tgz",
-		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.9",
+		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.11",
+		"67bb5a1b4d4a8ff497d845a0b891ffe6b7233aea2202641315cec88d0fff15eb",
+		"npm pack --ignore-scripts --pack-destination /tmp undici@6.28.1",
+		"e18191aac9c0ff43dac7fe9b10b7041a22d07addb7b66a6e8ac14a52a5b69b74",
+		"/usr/lib/node_modules/npm/node_modules/undici/package.json",
+		`test "$(find /usr/lib/node_modules/npm -path '*/undici/package.json' -type f | wc -l)" -eq 1`,
 		"npm pack --ignore-scripts --pack-destination /tmp ip-address@10.3.1",
 		"busybox sha256sum -c -",
 	} {
@@ -194,6 +199,10 @@ func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"/usr/share/aeontra/security/zlib-gzwrite-fix",
+		"npm_runtime_modules=ready",
+		"brace-expansion/package.json').version, '5.0.11'",
+		"undici/package.json').version, '6.28.1'",
+		"['Agent', 'EnvHttpProxyAgent', 'RetryAgent', 'fetch']",
 		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
 		"zlibVersion()",
 		"1.3.2.1-motley",
