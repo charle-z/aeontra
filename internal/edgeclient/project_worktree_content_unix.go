@@ -17,6 +17,17 @@ import (
 )
 
 const projectWorktreeContentDigestDomain = "mcp-devbox-managed-worktree-content-v1\x00"
+const registeredProjectSourceDigestDomain = "mcp-devbox-registered-project-source-v1\x00"
+
+type projectSourceContentPolicy struct {
+	maxFiles     int
+	digestDomain string
+	leafSymlinks bool
+}
+
+func registeredProjectSourceContentPolicy() projectSourceContentPolicy {
+	return projectSourceContentPolicy{maxFiles: maxRegisteredProjectSourceFiles, digestDomain: registeredProjectSourceDigestDomain, leafSymlinks: true}
+}
 
 type projectWorktreeContentPath struct {
 	name    string
@@ -30,8 +41,9 @@ func projectWorktreeContentDigest(ctx context.Context, manager *ProjectWorktreeM
 }
 
 // RegisteredProjectContentDigest uses the same bounded descriptor-relative
-// hashing as managed worktrees. The registry is revalidated around inventory
-// and hashing; dirty files remain source, rather than a security violation.
+// hashing as managed worktrees, with separate finite inventory limits and
+// leaf symlinks hashed as text without following their targets. The registry
+// is revalidated around inventory and hashing; dirty files remain source.
 func RegisteredProjectContentDigest(ctx context.Context, registry *ProjectRegistry, resolved ProjectResolution, runner DevGitCommandRunner) (string, error) {
 	if registry == nil || runner == nil || !resolved.Project.ClaimGenerationValid {
 		return "", ErrProjectWorktreeInvalid
@@ -47,13 +59,13 @@ func RegisteredProjectContentDigest(ctx context.Context, registry *ProjectRegist
 		}
 		return nil
 	}
-	return projectSourceContentDigest(ctx, resolved.Workspace.Path, func(args []string) ([]string, error) {
+	return projectSourceContentDigestWithPolicy(ctx, resolved.Workspace.Path, func(args []string) ([]string, error) {
 		output, err := runner.Run(ctx, resolved.Workspace.Path, args, GitHubCredential{})
 		if err != nil {
 			return nil, err
 		}
-		return parseProjectWorktreeContentPaths([]byte(output))
-	}, revalidate)
+		return parseProjectSourceContentPaths([]byte(output), maxRegisteredProjectSourceFiles, maxRegisteredProjectSourcePathBytes)
+	}, revalidate, registeredProjectSourceContentPolicy())
 }
 
 // RegisteredProjectSourceEvidence binds the hash to one stable observed Git
@@ -88,6 +100,10 @@ func RegisteredProjectSourceEvidence(ctx context.Context, registry *ProjectRegis
 }
 
 func projectSourceContentDigest(ctx context.Context, sourcePath string, inventory func([]string) ([]string, error), revalidate func() error) (string, error) {
+	return projectSourceContentDigestWithPolicy(ctx, sourcePath, inventory, revalidate, projectSourceContentPolicy{maxFiles: maxProjectWorktreeContentFiles, digestDomain: projectWorktreeContentDigestDomain})
+}
+
+func projectSourceContentDigestWithPolicy(ctx context.Context, sourcePath string, inventory func([]string) ([]string, error), revalidate func() error, policy projectSourceContentPolicy) (string, error) {
 	root, rootInfo, err := openProjectWorktreeContentRoot(sourcePath)
 	if err != nil {
 		return "", err
@@ -118,7 +134,7 @@ func projectSourceContentDigest(ctx context.Context, sourcePath string, inventor
 			byName[name] = false
 		}
 	}
-	if len(byName) > maxProjectWorktreeContentFiles {
+	if len(byName) > policy.maxFiles {
 		return "", ErrProjectWorktreeUnsafe
 	}
 	paths := make([]projectWorktreeContentPath, 0, len(byName))
@@ -138,7 +154,7 @@ func projectSourceContentDigest(ctx context.Context, sourcePath string, inventor
 		return "", ErrProjectWorktreeUnsafe
 	}
 
-	digest, err := hashProjectWorktreeContent(ctx, int(root.Fd()), paths)
+	digest, err := hashProjectSourceContent(ctx, int(root.Fd()), paths, policy)
 	if err != nil {
 		return "", err
 	}
@@ -191,16 +207,16 @@ func openProjectWorktreeContentRoot(path string) (*os.File, os.FileInfo, error) 
 	return root, openedInfo, nil
 }
 
-func hashProjectWorktreeContent(ctx context.Context, rootFD int, paths []projectWorktreeContentPath) ([sha256.Size]byte, error) {
+func hashProjectSourceContent(ctx context.Context, rootFD int, paths []projectWorktreeContentPath, policy projectSourceContentPolicy) ([sha256.Size]byte, error) {
 	hash := sha256.New()
-	_, _ = io.WriteString(hash, projectWorktreeContentDigestDomain)
+	_, _ = io.WriteString(hash, policy.digestDomain)
 	writeProjectWorktreeDigestUint64(hash, uint64(len(paths)))
 	var totalBytes int64
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return [sha256.Size]byte{}, ErrProjectWorktreeUnavailable
 		}
-		file, found, err := openProjectWorktreeContentFile(rootFD, path.name)
+		file, found, err := openProjectSourceContentFile(rootFD, path.name, policy.leafSymlinks)
 		if err != nil {
 			return [sha256.Size]byte{}, err
 		}
@@ -212,7 +228,16 @@ func hashProjectWorktreeContent(ctx context.Context, rootFD int, paths []project
 			writeProjectWorktreeDigestString(hash, path.name)
 			continue
 		}
-		if err := hashProjectWorktreeRegularFile(ctx, hash, file, path.name, &totalBytes); err != nil {
+		info, err := file.Stat()
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			err = hashRegisteredProjectSourceSymlink(hash, file, path.name, &totalBytes)
+		} else if err == nil {
+			err = hashProjectWorktreeRegularFile(ctx, hash, file, path.name, &totalBytes)
+		}
+		if err == nil && policy.leafSymlinks {
+			err = revalidateProjectSourceContentFile(rootFD, path.name, file)
+		}
+		if err != nil {
 			_ = file.Close()
 			return [sha256.Size]byte{}, err
 		}
@@ -223,6 +248,45 @@ func hashProjectWorktreeContent(ctx context.Context, rootFD int, paths []project
 	var digest [sha256.Size]byte
 	copy(digest[:], hash.Sum(nil))
 	return digest, nil
+}
+
+func hashRegisteredProjectSourceSymlink(hash io.Writer, file *os.File, name string, totalBytes *int64) error {
+	text, err := readPinnedProjectSourceSymlink(file)
+	if err != nil {
+		return err
+	}
+	return writeRegisteredProjectSourceSymlink(hash, name, text, totalBytes)
+}
+
+func writeRegisteredProjectSourceSymlink(hash io.Writer, name string, text []byte, totalBytes *int64) error {
+	if len(text) == 0 || len(text) > maxProjectWorktreeContentPathBytes || int64(len(text)) > maxProjectWorktreeContentBytes-*totalBytes {
+		return ErrProjectWorktreeUnsafe
+	}
+	_, _ = hash.Write([]byte{0x02})
+	writeProjectWorktreeDigestString(hash, name)
+	writeProjectWorktreeDigestString(hash, string(text))
+	*totalBytes += int64(len(text))
+	return nil
+}
+
+func revalidateProjectSourceContentFile(rootFD int, name string, file *os.File) error {
+	before, err := file.Stat()
+	if err != nil {
+		return ErrProjectWorktreeUnavailable
+	}
+	current, found, err := openProjectSourceContentFile(rootFD, name, true)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrProjectWorktreeUnavailable
+	}
+	defer current.Close()
+	after, err := current.Stat()
+	if err != nil || !os.SameFile(before, after) || before.Mode() != after.Mode() || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+		return ErrProjectWorktreeUnsafe
+	}
+	return nil
 }
 
 func hashProjectWorktreeRegularFile(ctx context.Context, hash io.Writer, file *os.File, name string, totalBytes *int64) error {
@@ -277,6 +341,10 @@ func (reader projectWorktreeContextReader) Read(buffer []byte) (int, error) {
 }
 
 func openProjectWorktreeContentFile(rootFD int, relative string) (*os.File, bool, error) {
+	return openProjectSourceContentFile(rootFD, relative, false)
+}
+
+func openProjectSourceContentFile(rootFD int, relative string, leafSymlinks bool) (*os.File, bool, error) {
 	if len(relative) == 0 || len(relative) > maxProjectWorktreeContentPathBytes || strings.HasPrefix(relative, "/") {
 		return nil, false, ErrProjectWorktreeUnsafe
 	}
@@ -313,6 +381,10 @@ func openProjectWorktreeContentFile(rootFD int, relative string) (*os.File, bool
 			return nil, false, nil
 		}
 		return nil, false, ErrProjectWorktreeUnavailable
+	}
+	if before.Mode&unix.S_IFMT == unix.S_IFLNK && leafSymlinks {
+		file, err := openPinnedProjectSourceSymlink(parentFD, name, &before)
+		return file, err == nil, err
 	}
 	if before.Mode&unix.S_IFMT != unix.S_IFREG {
 		return nil, false, ErrProjectWorktreeUnsafe

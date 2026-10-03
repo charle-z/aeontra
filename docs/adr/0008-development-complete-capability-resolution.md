@@ -275,6 +275,19 @@ The existing project-task acceptance separation remains the model to preserve.
 
 #### P6: command contract and acceptance evidence
 
+Registered Linux source inspection uses its own fingerprint domain. The selected
+source is the union of Git HEAD paths, index paths and non-ignored untracked paths,
+not a recursive filesystem scan. Fixed limits are 32,768 unique paths, 2 MiB per Git
+pathname list, 4096 bytes per relative path or leaf-link text, and 64 MiB of cumulative
+regular content and link text. Leaf symlinks contribute their text without target
+resolution or reads; root/parent symlinks, directories, gitlinks and special files remain
+unsupported. Descriptor-relative reads, entry identity checks, registry revalidation
+and stable before/after HEAD/status evidence still apply. Source Git capture has a
+separate bounded stdout budget and rejects truncation instead of parsing a partial list.
+The stricter managed-worktree fingerprint and its existing domain/limits are unchanged.
+Previously pinned command evidence must match its original digest; a different source
+fingerprint does not grant permission to rebind or replay it.
+
 A command-only objective may bind each step to a command contract containing
 the canonical argv digest, source digest, staged private-body reference and digest,
 required capabilities, and opaque artifact references. The durable objective stores no
