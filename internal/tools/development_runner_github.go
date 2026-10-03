@@ -62,7 +62,7 @@ func (c *GitHubClient) developmentRunnerFailure(ctx context.Context, repo string
 		switch step.Name {
 		case "Execute exact profile":
 			return development.FailureCode, nil
-		case "Probe kernel and CI contracts":
+		case developmentRunnerProbeStep:
 			return development.FailureCapabilityMissing, nil
 		case "Prepare disposable VM", "Set up pinned Go":
 			return development.FailureDependencyMissing, nil
@@ -165,7 +165,7 @@ func (c *GitHubClient) developmentRunnerVerifySteps(ctx context.Context, repo st
 	if job.Name != "Isolated development execution" || job.Status != "completed" || job.Conclusion != "success" {
 		return errors.New("development runner job did not succeed")
 	}
-	required := map[string]bool{"Validate immutable request": false, "Prepare disposable VM": false, "Fetch exact public Git objects": false, "Probe kernel and CI contracts": false, "Execute exact profile": false, "Bind trusted receipt": false}
+	required := map[string]bool{"Validate immutable request": false, "Prepare disposable VM": false, "Fetch exact public Git objects": false, developmentRunnerProbeStep: false, "Execute exact profile": false, "Bind trusted receipt": false}
 	for _, step := range job.Steps {
 		if _, ok := required[step.Name]; ok {
 			if required[step.Name] || step.Status != "completed" || step.Conclusion != "success" {

@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -50,8 +52,13 @@ func TestDevelopmentRunnerAutomaticCalibrationIsDurableAndNoWorkload(t *testing.
 	if err != nil || result.State != "succeeded" || f.posts != 1 {
 		t.Fatalf("calibration=%+v err=%v", result, err)
 	}
-	if _, err := f.runner.ConfiguredTemplateAttestation(); err != nil {
+	attestation, err := f.runner.ConfiguredTemplateAttestation()
+	if err != nil {
 		t.Fatal(err)
+	}
+	required, _ := development.Requirements("toolchain.go.v1-26-8")
+	if len(attestation.Capabilities.Missing(required)) != 0 {
+		t.Fatal("calibrated runner does not attest pinned Go 1.26.8")
 	}
 	effect, found, err := f.runner.queue.DevelopmentRunnerEffect(f.req.EffectID)
 	if err != nil || !found || effect.CommandProfile != "probe-only" {
@@ -69,6 +76,7 @@ type runnerFixture struct {
 	visible, duplicate, privateSource bool
 	ack                               bool
 	status, conclusion, failedStep    string
+	probeName                         string
 	headSHA                           string
 	runRequest                        *DevelopmentRunnerRequest
 	runner                            *DevelopmentRunner
@@ -138,7 +146,10 @@ func newRunnerFixture(t *testing.T) *runnerFixture {
 			_ = json.NewEncoder(w).Encode(f.run())
 		case r.Method == http.MethodGet && strings.HasSuffix(path, "/runs/91/jobs"):
 			steps := []githubActionsStep{}
-			for i, name := range []string{"Validate immutable request", "Prepare disposable VM", "Fetch exact public Git objects", "Probe kernel and CI contracts", "Execute exact profile", "Bind trusted receipt"} {
+			for i, name := range []string{"Validate immutable request", "Prepare disposable VM", "Fetch exact public Git objects", "Probe kernel and CI contracts (Go 1.26.8)", "Execute exact profile", "Bind trusted receipt"} {
+				if name == "Probe kernel and CI contracts (Go 1.26.8)" && f.probeName != "" {
+					name = f.probeName
+				}
 				conclusion := "success"
 				if f.failedStep == name {
 					conclusion = "failure"
@@ -337,7 +348,7 @@ func TestDevelopmentRunnerReceiptNeedsExactTrustedRunAndCalibrationProfile(t *te
 	}
 	f.mu.Lock()
 	f.headSHA = strings.Repeat("a", 40)
-	f.failedStep = "Probe kernel and CI contracts"
+	f.failedStep = "Probe kernel and CI contracts (Go 1.26.8)"
 	f.mu.Unlock()
 	if result, err := f.runner.Reconcile(context.Background(), f.req); err == nil || result.ReceiptDigest != "" {
 		t.Fatal("failed trusted gate granted receipt")
@@ -356,6 +367,63 @@ func TestDevelopmentRunnerReceiptNeedsExactTrustedRunAndCalibrationProfile(t *te
 	f.runner.config.Generation++
 	if _, err := f.runner.TemplateAttestation(f.req.EffectID); err == nil {
 		t.Fatal("changed template inherited calibration")
+	}
+}
+
+func TestDevelopmentRunnerOldPersistedCalibrationCannotAttestNewGoPin(t *testing.T) {
+	f := newRunnerFixture(t)
+	identity := f.runner.config
+	identity.CalibrationEffectID = ""
+	body, _ := json.Marshal(identity)
+	legacyHash := sha256.Sum256(append([]byte("aeontra-development-runner-template-v1\x00"), body...))
+	legacyTemplate := "sha256:" + hex.EncodeToString(legacyHash[:])
+	body, _ = json.Marshal(struct {
+		TemplateDigest                                                                                string
+		EffectID, PlanDigest, SourceOwner, SourceRepo, SourceSHA, SourceDigest, CommandProfile, JobID string
+	}{legacyTemplate, f.req.EffectID, f.req.PlanDigest, f.req.SourceOwner, f.req.SourceRepo, f.req.SourceSHA, f.req.SourceDigest, f.req.CommandProfile, f.req.Lease.Job.ID})
+	legacyHash = sha256.Sum256(append([]byte("aeontra-development-runner-binding-v1\x00"), body...))
+	effect := workqueue.DevelopmentRunnerEffect{EffectID: f.req.EffectID, Revision: 1, BindingDigest: "sha256:" + hex.EncodeToString(legacyHash[:]), TemplateDigest: legacyTemplate, WorkflowID: 31, CommandProfile: "probe-only", JobID: f.req.Lease.Job.ID, Fence: f.req.Lease.Fence, State: "dispatch_intent", StartedAt: time.Now().UTC()}
+	if _, err := f.runner.queue.SaveDevelopmentRunnerEffect(effect, f.req.Lease); err != nil {
+		t.Fatal(err)
+	}
+	// Model an intact succeeded journal entry created by the prior binary.
+	effect.Revision++
+	effect.State, effect.RunID, effect.ReceiptDigest = "succeeded", 91, "sha256:"+strings.Repeat("3", 64)
+	if _, err := f.runner.queue.SaveDevelopmentRunnerEffect(effect, f.req.Lease); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.runner.TemplateAttestation(effect.EffectID); err == nil {
+		t.Fatal("old successful calibration granted new pinned Go capability")
+	}
+	if _, err := f.runner.Start(context.Background(), f.req); err == nil {
+		t.Fatal("old template binding was silently adopted")
+	}
+	if _, err := f.runner.Cancel(context.Background(), f.req); err == nil {
+		t.Fatal("old template cancellation was silently retargeted")
+	}
+	preserved, found, err := f.runner.queue.DevelopmentRunnerEffect(effect.EffectID)
+	if err != nil || !found || preserved.Revision != effect.Revision || preserved.TemplateDigest != legacyTemplate || preserved.ReceiptDigest != effect.ReceiptDigest || f.posts != 0 || f.cancels != 0 {
+		t.Fatal("incompatible template rewrote journal or repeated an external effect", err)
+	}
+}
+
+func TestDevelopmentRunnerOldUnversionedProbeCannotYieldReceipt(t *testing.T) {
+	f := newRunnerFixture(t)
+	f.ack = true
+	f.probeName = "Probe kernel and CI contracts"
+	if _, err := f.runner.Start(context.Background(), f.req); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.status = "completed"
+	f.conclusion = "success"
+	f.mu.Unlock()
+	result, err := f.runner.Reconcile(context.Background(), f.req)
+	if err == nil || result.ReceiptDigest != "" {
+		t.Fatal("old unversioned probe granted new pinned-version receipt")
+	}
+	if _, err := f.runner.TemplateAttestation(f.req.EffectID); err == nil {
+		t.Fatal("old unversioned probe granted calibrated capabilities")
 	}
 }
 
@@ -401,7 +469,7 @@ func TestDevelopmentRunnerFailureClassificationDoesNotEscalateCodeFailure(t *tes
 	for _, item := range []struct {
 		step string
 		want development.FailureClass
-	}{{"Execute exact profile", development.FailureCode}, {"Probe kernel and CI contracts", development.FailureCapabilityMissing}, {"Prepare disposable VM", development.FailureDependencyMissing}} {
+	}{{"Execute exact profile", development.FailureCode}, {"Probe kernel and CI contracts (Go 1.26.8)", development.FailureCapabilityMissing}, {"Prepare disposable VM", development.FailureDependencyMissing}} {
 		t.Run(item.step, func(t *testing.T) {
 			f := newRunnerFixture(t)
 			f.ack = true
@@ -418,6 +486,29 @@ func TestDevelopmentRunnerFailureClassificationDoesNotEscalateCodeFailure(t *tes
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})
+	}
+}
+
+func TestDevelopmentRunnerGoPinMatchesAttestedCapability(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pin := range []string{"go-version: '1.26.8'", "name: Probe kernel and CI contracts (Go 1.26.8)", "grep -Fx 'go version go1.26.8 linux/amd64'"} {
+		if !strings.Contains(string(body), pin) {
+			t.Errorf("workflow missing exact Go pin/probe %q", pin)
+		}
+	}
+	result := runnerEffectResult(workqueue.DevelopmentRunnerEffect{State: "succeeded"})
+	found := false
+	for _, id := range result.Capabilities {
+		found = found || id == "toolchain.go.v1-26-8"
+		if id == "toolchain.go.v1-26-6" {
+			t.Error("runner advertises obsolete exact Go version")
+		}
+	}
+	if !found {
+		t.Error("runner receipt missing exact pinned Go capability")
 	}
 }
 

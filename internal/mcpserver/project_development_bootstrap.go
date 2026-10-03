@@ -64,6 +64,10 @@ func (s *Server) reconcileDevelopmentBootstrap(ctx context.Context, request work
 		return objective, environments, false, nil
 	}
 	result, err := supervisor.ProvisionStep(ctx, objective.ObjectiveID, "command", op.Result.DevelopmentInspection.SourceDigest)
+	if errors.Is(err, devsupervisor.ErrProvisionUnsupported) {
+		err := s.finishDevelopmentRequest(request, workqueue.DevelopmentRequestAwaitingReasoning, workqueue.DevelopmentRequestReasonNewRequirement)
+		return objective, environments, false, err
+	}
 	if errors.Is(err, devsupervisor.ErrProvisionUnavailable) || errors.Is(err, devsupervisor.ErrProvisionUnverified) {
 		return objective, environments, false, nil
 	}

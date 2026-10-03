@@ -432,13 +432,13 @@ func TestProjectDevelopmentParallelDistinctAndRepeatedStarts(t *testing.T) {
 	}
 }
 
-func TestProjectDevelopmentMissingCapabilityStaysPendingAndPinned(t *testing.T) {
+func TestProjectDevelopmentUnsupportedCapabilityAwaitsReasoningAndRemainsPinned(t *testing.T) {
 	server, edges, _ := developmentServer(t)
 	edges.missingCapability = true
 	view := developmentStart(t, server, "development-missing-001")
 	developmentRounds(t, server, 3)
 	request, _, _ := server.workQueue.DevelopmentRequest(view.RequestID)
-	if request.State != workqueue.DevelopmentRequestActive || request.Reason != workqueue.DevelopmentRequestReasonCapabilityMissing || edges.starts != 0 {
+	if request.State != workqueue.DevelopmentRequestAwaitingReasoning || request.Reason != workqueue.DevelopmentRequestReasonNewRequirement || edges.starts != 0 {
 		t.Fatalf("request=%+v", request)
 	}
 	if err := server.reconcileProjectTaskGoalPins(context.Background()); err != nil {

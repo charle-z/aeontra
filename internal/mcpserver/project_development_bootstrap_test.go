@@ -11,6 +11,41 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/workqueue"
 )
 
+func TestProjectDevelopmentUnsupportedMissingRequirementAwaitsReasoningWithoutEffects(t *testing.T) {
+	server, edges, _ := developmentServer(t)
+	observer := &developmentScenarioEdge{developmentTestEdge: edges, observe: func(op edge.Operation) edge.Operation {
+		if op.Kind == edge.OperationProjectDevelopmentInspect {
+			op.Result.DevelopmentInspection.Requirements = []development.CapabilityID{"toolchain.go.v1-26-6", "toolchain.pnpm.v10-13-1", "toolchain.rust.v1-95-0"}
+			caps, _ := development.NewCapabilitySet("toolchain.go", "toolchain.go.v1-26-6")
+			attestation, _ := development.NewEnvironmentAttestation("workcell:"+op.Result.WorkspaceID, development.ClassWorkcell, 1, caps)
+			record, _ := attestation.Record()
+			op.Result.DevelopmentInspection.Environments = []development.EnvironmentRecord{record}
+		}
+		return op
+	}}
+	server.WithEdgeStore(observer)
+	view := developmentStart(t, server, "unsupported-pnpm-001")
+	developmentRounds(t, server, 2)
+	request, found, err := server.workQueue.DevelopmentRequest(view.RequestID)
+	if err != nil || !found || request.State != workqueue.DevelopmentRequestAwaitingReasoning || request.Reason != workqueue.DevelopmentRequestReasonNewRequirement {
+		t.Fatalf("unsupported requirement stayed active: request=%+v err=%v", request, err)
+	}
+	objective, found, err := server.workQueue.DevelopmentObjective(request.ObjectiveID)
+	if err != nil || !found || len(objective.Steps[0].Provisioning) != 0 || len(objective.Steps[0].Attempts) != 0 {
+		t.Fatalf("unsupported requirement planned an effect: objective=%+v err=%v", objective, err)
+	}
+	jobs, err := server.workQueue.List(20)
+	if err != nil || len(jobs) != 0 || edges.starts != 0 || edges.bootstrapStarts != 0 {
+		t.Fatalf("unsupported requirement dispatched work: jobs=%+v err=%v", jobs, err)
+	}
+	operationCount := len(edges.operations)
+	developmentRounds(t, server, 4)
+	repeated, _, err := server.workQueue.DevelopmentRequest(view.RequestID)
+	if err != nil || repeated.Revision != request.Revision || repeated.State != request.State || repeated.Reason != request.Reason || len(edges.operations) != operationCount {
+		t.Fatal("awaiting reasoning did not remain quiet", err)
+	}
+}
+
 func TestProjectDevelopmentBootstrapCancellationRequiresExternalStopReceipt(t *testing.T) {
 	for _, mode := range []string{"running", "pending-stop", "lost-stop-ack", "unstarted", "queue-only-cancel"} {
 		t.Run(mode, func(t *testing.T) {
@@ -97,7 +132,7 @@ func TestProjectDevelopmentBootstrapCancellationRequiresExternalStopReceipt(t *t
 }
 
 func TestProjectDevelopmentBootstrapFailClosedOnSourceAndInstallerFailure(t *testing.T) {
-	for _, mode := range []string{"source", "pending-inspection", "bad-inspection", "installer-failed"} {
+	for _, mode := range []string{"source", "pending-inspection", "bad-inspection", "installer-failed", "running-installer", "unverified-receipt"} {
 		t.Run(mode, func(t *testing.T) {
 			server, edges, _ := developmentServer(t)
 			edges.bootstrapEnabled = true
@@ -120,6 +155,15 @@ func TestProjectDevelopmentBootstrapFailClosedOnSourceAndInstallerFailure(t *tes
 					edges.bootstrapInstalled = false
 					edges.mu.Unlock()
 				}
+				if (mode == "running-installer" || mode == "unverified-receipt") && op.Kind == edge.OperationProjectProcessStatus {
+					edges.mu.Lock()
+					edges.bootstrapInstalled = false
+					edges.mu.Unlock()
+					if mode == "running-installer" {
+						op.Result.BackgroundProcessState = "running"
+						op.Result.BackgroundExitKnown = false
+					}
+				}
 				return op
 			}}
 			server.WithEdgeStore(observer)
@@ -136,11 +180,19 @@ func TestProjectDevelopmentBootstrapFailClosedOnSourceAndInstallerFailure(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
+			if mode == "running-installer" || mode == "unverified-receipt" {
+				developmentRounds(t, server, 4)
+				request, _, _ = server.workQueue.DevelopmentRequest(view.RequestID)
+			}
 			if mode == "source" && request.Reason != workqueue.DevelopmentRequestReasonSourceChanged {
 				t.Fatal("changed source installed toolchain")
 			}
 			if mode == "installer-failed" && request.Reason != workqueue.DevelopmentRequestReasonNewRequirement {
 				t.Fatalf("failed installer inferred capabilities: %+v", request)
+			}
+			if (mode == "pending-inspection" || mode == "running-installer" || mode == "unverified-receipt") &&
+				(request.State != workqueue.DevelopmentRequestActive || request.Reason != workqueue.DevelopmentRequestReasonCapabilityMissing) {
+				t.Fatalf("pending or unverified provisioning misclassified: %+v", request)
 			}
 			if edges.starts != 0 {
 				t.Fatal("unverified bootstrap executed command")

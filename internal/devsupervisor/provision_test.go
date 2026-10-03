@@ -3,6 +3,7 @@ package devsupervisor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,6 +15,56 @@ import (
 type fixedProvisioner struct {
 	plans []development.ProvisionPlan
 	err   error
+}
+
+func TestProvisioningUnsupportedOffersPreserveValidAlternativesAndUnavailableStates(t *testing.T) {
+	for _, mode := range []string{"all-unsupported", "valid-first", "valid-last", "empty-offer", "transient-first", "transient-last", "contradictory-offer"} {
+		t.Run(mode, func(t *testing.T) {
+			store, source, _, objective, plan := provisioningFixture(t, "objective-provision-unsupported")
+			unsupported := fixedProvisioner{err: fmt.Errorf("fixed selector: %w", ErrProvisionUnsupported)}
+			valid := fixedProvisioner{plans: []development.ProvisionPlan{plan}}
+			transient := fixedProvisioner{err: errors.New("provider temporarily unavailable")}
+			providers := []Provisioner{unsupported, unsupported}
+			want := ErrProvisionUnsupported
+			switch mode {
+			case "valid-first":
+				providers, want = []Provisioner{valid, unsupported}, nil
+			case "valid-last":
+				providers, want = []Provisioner{unsupported, valid}, nil
+			case "empty-offer":
+				providers, want = []Provisioner{unsupported, fixedProvisioner{}}, ErrProvisionUnavailable
+			case "transient-first":
+				providers, want = []Provisioner{transient, unsupported}, ErrProvisionUnavailable
+			case "transient-last":
+				providers, want = []Provisioner{unsupported, transient}, ErrProvisionUnavailable
+			case "contradictory-offer":
+				providers, want = []Provisioner{fixedProvisioner{plans: valid.plans, err: ErrProvisionUnsupported}}, ErrProvisionUnavailable
+			}
+			supervisor, err := newSupervisor(t, store, source).WithProvisioning(store, providers...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := supervisor.ProvisionStep(context.Background(), objective.ObjectiveID, "validate", supervisorSourceDigest("a"))
+			if !errors.Is(err, want) {
+				t.Fatalf("offer classification: %v, want %v", err, want)
+			}
+			jobs, err := store.List(20)
+			if err != nil {
+				t.Fatal(err)
+			}
+			persisted, err := supervisor.Status(context.Background(), objective.ObjectiveID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want == nil {
+				if len(jobs) != 1 || len(persisted.Steps[0].Provisioning) != 1 || result.Provision.Plan.Digest != plan.Digest {
+					t.Fatal("valid alternative did not select the existing governed plan")
+				}
+			} else if len(jobs) != 0 || len(persisted.Steps[0].Provisioning) != 0 {
+				t.Fatal("unavailable or unsupported offer created an effect")
+			}
+		})
+	}
 }
 
 func (provider fixedProvisioner) Plans(context.Context, development.Objective, development.ObjectiveStep, development.EnvironmentCatalog) ([]development.ProvisionPlan, error) {

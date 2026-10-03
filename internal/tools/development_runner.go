@@ -19,6 +19,7 @@ import (
 
 const DevelopmentRunnerProfile = "github-hosted-ubuntu24-v1"
 const developmentRunnerWorkflow = "development-runner.yml"
+const developmentRunnerProbeStep = "Probe kernel and CI contracts (Go 1.26.8)"
 
 var developmentRunnerSHA = regexp.MustCompile(`^[a-f0-9]{40}$`)
 var developmentRunnerEffectID = regexp.MustCompile(`^[a-f0-9]{64}$`)
@@ -128,7 +129,9 @@ func (r *DevelopmentRunner) templateDigest() string {
 	identity := r.config
 	identity.CalibrationEffectID = ""
 	body, _ := json.Marshal(identity)
-	digest := sha256.Sum256(append([]byte("aeontra-development-runner-template-v1\x00"), body...))
+	// Bind compiled capability interpretation as well as administrator pins.
+	// A prior successful calibration must not attest a new fixed Go version.
+	digest := sha256.Sum256(append([]byte("aeontra-development-runner-template-v1\x00"+developmentRunnerProbeStep+"\x00"), body...))
 	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
@@ -335,7 +338,7 @@ func runnerEffectResult(effect workqueue.DevelopmentRunnerEffect) DevelopmentRun
 	// Capabilities are measured in this completed VM. They do not advertise a
 	// currently live VM and cannot authorize another attempt without a fresh gate.
 	if effect.State == "succeeded" {
-		result.Capabilities = []development.CapabilityID{"build.make", "cgroup.v2.delegated", "ci.github-actions.cache", "ci.github-actions.runtime", "container.docker.rootless", "filesystem.workspace-bind", "git.metadata.full", "idmap.subuid", "namespace.user.nested", "toolchain.go", "toolchain.go.v1", "toolchain.go.v1-26", "toolchain.go.v1-26-6"}
+		result.Capabilities = []development.CapabilityID{"build.make", "cgroup.v2.delegated", "ci.github-actions.cache", "ci.github-actions.runtime", "container.docker.rootless", "filesystem.workspace-bind", "git.metadata.full", "idmap.subuid", "namespace.user.nested", "toolchain.go", "toolchain.go.v1", "toolchain.go.v1-26", "toolchain.go.v1-26-8"}
 	}
 	return result
 }

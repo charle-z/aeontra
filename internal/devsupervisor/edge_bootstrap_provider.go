@@ -90,11 +90,14 @@ func (provider *EdgeBootstrapProvider) Plans(ctx context.Context, objective deve
 	// reconstruct the exact selector set without another catalog read.
 	for _, id := range missing {
 		if _, ok, err := parseBootstrapSelector(id); err != nil || !ok {
-			return nil, ErrProvisionUnavailable
+			return nil, ErrProvisionUnsupported
 		}
 	}
 	selectors, err := bootstrapSelectors(requirements)
-	if err != nil || len(selectors) == 0 || len(selectors) > 2 {
+	if err != nil {
+		return nil, ErrProvisionUnsupported
+	}
+	if len(selectors) == 0 || len(selectors) > 2 {
 		return nil, ErrProvisionUnavailable
 	}
 	plan, err := development.NewProvisionPlan(edgeBootstrapProvider, edgeBootstrapPool, edgeBootstrapProfile,

@@ -56,30 +56,58 @@ func TestEdgeBootstrapPlansAreBoundAndSupportOnlyMissingOfficialSelectors(t *tes
 	if err != nil || len(selectors) != 2 || selectors[0].toolchain != "go" || selectors[0].capability != "toolchain.go.v1-26-6" || selectors[1].toolchain != "rust" || selectors[1].capability != "toolchain.rust.v1-95-0" {
 		t.Fatalf("selectors=%+v err=%v", selectors, err)
 	}
-	if _, err := provider.Plans(context.Background(), objective, step, supervisorCatalog(t, supervisorEnvironment(t, "other", development.ClassWorkcell, anchor.Generation, "toolchain.go"))); err == nil {
-		t.Fatal("unregistered workcell identity accepted")
+	if _, err := provider.Plans(context.Background(), objective, step, supervisorCatalog(t, supervisorEnvironment(t, "other", development.ClassWorkcell, anchor.Generation, "toolchain.go"))); !errors.Is(err, ErrProvisionUnavailable) {
+		t.Fatal("unregistered workcell identity misclassified", err)
 	}
 
 	for name, caps := range map[string][]string{
 		"missing-host-capability": {"build.docker"},
+		"missing-pnpm":            {"toolchain.pnpm.v10-13-1", "toolchain.rust.v1-95-0"},
 		"conflicting-go-pins":     {"toolchain.go.v1-26", "toolchain.go.v1-27-1"},
 		"unsupported-go-version":  {"toolchain.go.v2-26"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			badObjective, badStep := bootstrapPlanObjective(t, "objective-bootstrap-invalid", scope, caps...)
 			_, err := provider.Plans(context.Background(), badObjective, badStep, supervisorCatalog(t, supervisorEnvironment(t, "workcell:"+anchor.WorkspaceID, development.ClassWorkcell, anchor.Generation)))
-			if err == nil {
-				t.Fatal("unsupported plan accepted")
+			if !errors.Is(err, ErrProvisionUnsupported) {
+				t.Fatal("unsupported plan misclassified", err)
 			}
 		})
 	}
-	if _, err := provider.Plans(context.Background(), objective, step, supervisorCatalog(t, supervisorEnvironment(t, "workcell:"+anchor.WorkspaceID, development.ClassL3Sandbox, anchor.Generation))); err == nil {
-		t.Fatal("non-workcell environment accepted")
+	if _, err := provider.Plans(context.Background(), objective, step, supervisorCatalog(t, supervisorEnvironment(t, "workcell:"+anchor.WorkspaceID, development.ClassL3Sandbox, anchor.Generation))); !errors.Is(err, ErrProvisionUnavailable) {
+		t.Fatal("non-workcell environment misclassified", err)
 	}
 	if unbound, unboundStep := bootstrapPlanObjective(t, "objective-bootstrap-unbound", development.ObjectiveScope{Project: "project", Target: "parrot"}, "toolchain.go.v1-26"); true {
-		if _, err := provider.Plans(context.Background(), unbound, unboundStep, supervisorCatalog(t, workcell)); err == nil {
-			t.Fatal("unbound scope accepted")
+		if _, err := provider.Plans(context.Background(), unbound, unboundStep, supervisorCatalog(t, workcell)); !errors.Is(err, ErrProvisionUnavailable) {
+			t.Fatal("unbound scope misclassified", err)
 		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := provider.Plans(ctx, objective, step, supervisorCatalog(t, workcell)); !errors.Is(err, ErrProvisionUnavailable) {
+		t.Fatal("cancelled inspection misclassified", err)
+	}
+	if _, err := provider.Plans(context.Background(), objective, step, development.EnvironmentCatalog{}); !errors.Is(err, ErrProvisionUnavailable) {
+		t.Fatal("invalid catalog misclassified", err)
+	}
+}
+
+func TestEdgeBootstrapAlreadyAttestedUnsupportedRequirementDoesNotBlockSupportedMissingSelector(t *testing.T) {
+	anchor := development.WorkspaceAnchor{DeviceID: "ed_" + strings.Repeat("a", 32), WorkspaceID: "ws_" + strings.Repeat("b", 32), Generation: 7, Owner: "charle-z", Repository: "repo"}
+	scope, err := development.NewObjectiveScope("project", "parrot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.Anchor = anchor
+	objective, step := bootstrapPlanObjective(t, "objective-bootstrap-pnpm-present", scope, "toolchain.go.v1-26-6", "toolchain.pnpm.v10-13-1")
+	workcell := supervisorEnvironment(t, "workcell:"+anchor.WorkspaceID, development.ClassWorkcell, anchor.Generation, "toolchain.pnpm.v10-13-1")
+	plans, err := (&EdgeBootstrapProvider{}).Plans(context.Background(), objective, step, supervisorCatalog(t, workcell))
+	if err != nil || len(plans) != 1 || !plans[0].Covers(requirementIDs(step.Requirements)) {
+		t.Fatalf("attested pnpm prevented Go provisioning: plans=%+v err=%v", plans, err)
+	}
+	selectors, err := selectorsForPlan(plans[0])
+	if err != nil || len(selectors) != 1 || selectors[0].toolchain != "go" {
+		t.Fatalf("attested requirement created extra selector: %+v %v", selectors, err)
 	}
 }
 
