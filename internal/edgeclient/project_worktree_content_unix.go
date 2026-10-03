@@ -340,10 +340,6 @@ func (reader projectWorktreeContextReader) Read(buffer []byte) (int, error) {
 	return reader.reader.Read(buffer)
 }
 
-func openProjectWorktreeContentFile(rootFD int, relative string) (*os.File, bool, error) {
-	return openProjectSourceContentFile(rootFD, relative, false)
-}
-
 func openProjectSourceContentFile(rootFD int, relative string, leafSymlinks bool) (*os.File, bool, error) {
 	if len(relative) == 0 || len(relative) > maxProjectWorktreeContentPathBytes || strings.HasPrefix(relative, "/") {
 		return nil, false, ErrProjectWorktreeUnsafe
