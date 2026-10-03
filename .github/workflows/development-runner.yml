@@ -154,6 +154,31 @@ jobs:
           sudo cp -a "$(go env GOROOT)/." /opt/aeontra-go/
           sudo chown -R root:root /opt/aeontra-go
           sudo chmod -R go-w /opt/aeontra-go
+          # RootlessKit copy-up preserves host /run entries as symlinks. Unlink
+          # only these namespace-local entries, never their host targets.
+          sudo tee /opt/aeontra-bin/rootless-child.py >/dev/null <<'ROOTLESS_CHILD'
+          import os
+          with open('/proc/self/uid_map') as mappings:
+              first = mappings.readline().split()
+          if len(first) != 3 or first[0] != '0' or int(first[1]) <= 0 or first[2] != '1':
+              raise SystemExit('rootless child user namespace missing')
+          with open('/proc/self/mountinfo') as mounts:
+              copied_run = any(len(parts := line.split()) > 6 and parts[4] == '/run'
+                               and ' - tmpfs ' in line for line in mounts)
+          if not copied_run:
+              raise SystemExit('rootless child copied-up runtime missing')
+          for name in ('docker', 'containerd', 'xtables.lock'):
+              path = '/run/' + name
+              if os.path.islink(path):
+                  os.unlink(path)
+              elif os.path.lexists(path):
+                  raise SystemExit('unexpected rootless runtime entry')
+          os.execv('/opt/aeontra-bin/dockerd', ['/opt/aeontra-bin/dockerd', '--rootless',
+                   '--host=unix:///home/aeontra-workload/runtime/docker.sock',
+                   '--data-root=/home/aeontra-workload/docker',
+                   '--exec-root=/home/aeontra-workload/runtime/dockerd'])
+          ROOTLESS_CHILD
+          sudo chmod 0755 /opt/aeontra-bin/rootless-child.py
           sudo tee /etc/systemd/system/aeontra-rootless.service >/dev/null <<'UNIT'
           [Service]
           User=aeontra-workload
@@ -165,7 +190,7 @@ jobs:
           Environment=HOME=/home/aeontra-workload
           Environment=PATH=/opt/aeontra-bin:/usr/bin:/bin
           Environment=XDG_RUNTIME_DIR=/home/aeontra-workload/runtime
-          ExecStart=/opt/aeontra-bin/rootlesskit --net=slirp4netns --port-driver=builtin --disable-host-loopback --copy-up=/etc --copy-up=/run --propagation=rslave /opt/aeontra-bin/dockerd --rootless --host=unix:///home/aeontra-workload/runtime/docker.sock --data-root=/home/aeontra-workload/docker --exec-root=/home/aeontra-workload/runtime/dockerd
+          ExecStart=/opt/aeontra-bin/rootlesskit --net=slirp4netns --port-driver=builtin --disable-host-loopback --copy-up=/etc --copy-up=/run --propagation=rslave /usr/bin/python3 /opt/aeontra-bin/rootless-child.py
           UNIT
           sudo systemctl daemon-reload
           sudo systemctl start aeontra-rootless.service

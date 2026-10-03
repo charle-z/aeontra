@@ -94,6 +94,9 @@ separate workload UID without sudo or controller group membership, subordinate
 UID/GID ranges and delegated cgroup-v2 units. It disables the VM's rootful Docker
 service and applies the reviewed unprivileged-userns AppArmor/sysctl change in
 that VM only. It does not change an Edge or production VPS posture.
+The rootless child verifies its non-host UID mapping and copied-up `/run` mount
+before unlinking the three fixed inherited runtime symlinks. It never follows
+or removes their host targets. Unexpected non-symlink entries block startup.
 
 The untrusted workload receives a user-owned rootless Docker socket, selected
 source and its own home. The controller's files/home and process environment are

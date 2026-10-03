@@ -170,3 +170,94 @@ func TestDevelopmentRunnerDiagnosticsBoundedAndRejectsSymlinks(t *testing.T) {
 		}
 	})
 }
+
+func TestDevelopmentRunnerRootlessRuntimeCopyup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux rootless runtime fixtures are verified in WSL")
+	}
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, script, found := strings.Cut(string(body), "<<'ROOTLESS_CHILD'\n")
+	if !found {
+		t.Fatal("rootless daemon lacks namespace-local runtime preparation")
+	}
+	script, _, found = strings.Cut(script, "\n          ROOTLESS_CHILD")
+	if !found {
+		t.Fatal("missing rootless child terminator")
+	}
+	script = strings.TrimPrefix(strings.ReplaceAll(script, "\n          ", "\n"), "          ")
+	for _, test := range []struct {
+		name, mapping, mount, kind string
+		pass                       bool
+	}{
+		{"copyup", "0 1001 1\n1 100000 65536\n", "31 29 0:30 / /run rw - tmpfs tmpfs rw\n", "symlink", true},
+		{"host root", "0 0 4294967295\n", "31 29 0:30 / /run rw - tmpfs tmpfs rw\n", "symlink", false},
+		{"host run", "0 1001 1\n", "31 29 8:1 / /run rw - ext4 /dev/root rw\n", "symlink", false},
+		{"non-symlink", "0 1001 1\n", "31 29 0:30 / /run rw - tmpfs tmpfs rw\n", "regular", false},
+		{"absent", "0 1001 1\n", "31 29 0:30 / /run rw - tmpfs tmpfs rw\n", "absent", true},
+		{"dangling", "0 1001 1\n", "31 29 0:30 / /run rw - tmpfs tmpfs rw\n", "dangling", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			run := filepath.Join(directory, "run")
+			outside := t.TempDir()
+			if err := os.Mkdir(run, 0700); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"docker", "containerd", "xtables.lock"} {
+				if err := os.WriteFile(filepath.Join(outside, name), []byte("host evidence"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				switch test.kind {
+				case "symlink", "dangling":
+					target := filepath.Join(outside, name)
+					if test.kind == "dangling" {
+						target += "-absent"
+					}
+					if err := os.Symlink(target, filepath.Join(run, name)); err != nil {
+						t.Fatal(err)
+					}
+				case "regular":
+					if err := os.Mkdir(filepath.Join(run, name), 0700); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			uidMap, mountInfo := filepath.Join(directory, "uid_map"), filepath.Join(directory, "mountinfo")
+			if err := os.WriteFile(uidMap, []byte(test.mapping), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(mountInfo, []byte(test.mount), 0600); err != nil {
+				t.Fatal(err)
+			}
+			fixture := strings.ReplaceAll(script, "'/proc/self/uid_map'", fmt.Sprintf("%q", uidMap))
+			fixture = strings.ReplaceAll(fixture, "'/proc/self/mountinfo'", fmt.Sprintf("%q", mountInfo))
+			fixture = strings.ReplaceAll(fixture, "'/run/'", fmt.Sprintf("%q", run+"/"))
+			fixture = "import json, os\nos.execv = lambda executable, argv: print(json.dumps(argv))\n" + fixture
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			output, err := exec.CommandContext(ctx, "python3", "-c", fixture).CombinedOutput()
+			if (err == nil) != test.pass {
+				t.Fatalf("namespace guard pass=%v err=%v: %s", test.pass, err, output)
+			}
+			for _, name := range []string{"docker", "containerd", "xtables.lock"} {
+				if data, err := os.ReadFile(filepath.Join(outside, name)); err != nil || string(data) != "host evidence" {
+					t.Fatalf("host target changed: %s err=%v", name, err)
+				}
+				_, err := os.Lstat(filepath.Join(run, name))
+				if test.pass && !os.IsNotExist(err) || !test.pass && err != nil {
+					t.Fatalf("unexpected copied-up entry state: %s err=%v", name, err)
+				}
+			}
+			if test.pass {
+				var argv []string
+				expected := []string{"/opt/aeontra-bin/dockerd", "--rootless", "--host=unix:///home/aeontra-workload/runtime/docker.sock", "--data-root=/home/aeontra-workload/docker", "--exec-root=/home/aeontra-workload/runtime/dockerd"}
+				if json.Unmarshal(output, &argv) != nil || strings.Join(argv, "\x00") != strings.Join(expected, "\x00") {
+					t.Fatalf("fixed rootless daemon arguments changed: %s", output)
+				}
+			}
+		})
+	}
+}
