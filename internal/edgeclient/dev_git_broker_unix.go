@@ -17,8 +17,9 @@ import (
 )
 
 type execDevGitCommandRunner struct {
-	stateRoot string
-	toolPath  string
+	stateRoot        string
+	toolPath         string
+	sourceInspection bool
 }
 
 func StartDevGitBroker(ctx context.Context, config DevGitBrokerConfig) (<-chan error, error) {
@@ -345,6 +346,9 @@ func (broker *devGitBroker) validRemoteURL(remote string) bool {
 }
 
 func (runner execDevGitCommandRunner) Run(ctx context.Context, dir string, args []string, credential GitHubCredential) (string, error) {
+	if runner.sourceInspection && (credential != (GitHubCredential{}) || !registeredProjectSourceGitArguments(args)) {
+		return "", errors.New("registered source Git request is invalid")
+	}
 	gitPath, ok := findSafeLinuxTool("git", runner.toolPath)
 	if !ok {
 		return "", errors.New("git is unavailable")
@@ -405,13 +409,29 @@ func (runner execDevGitCommandRunner) Run(ctx context.Context, dir string, args 
 	output := &boundedHTBLabCapture{limit: 1 << 20}
 	command.Stdout = output
 	command.Stderr = output
+	var sourceStderr *boundedHTBLabCapture
+	if runner.sourceInspection {
+		output.limit = maxRegisteredProjectSourcePathBytes + 1
+		sourceStderr = &boundedHTBLabCapture{limit: 64 << 10}
+		command.Stderr = sourceStderr
+	}
 	err = command.Run()
+	if runner.sourceInspection {
+		return registeredProjectSourceGitOutput(output, sourceStderr, err)
+	}
 	redactionToken := ""
 	if network {
 		redactionToken = credential.Token
 	}
 	text := redactDevGitCommandOutput(output.buffer.String(), redactionToken)
 	return text, err
+}
+
+func registeredProjectSourceGitOutput(stdout, stderr *boundedHTBLabCapture, err error) (string, error) {
+	if stdout.truncated || stdout.buffer.Len() > maxRegisteredProjectSourcePathBytes || stderr.truncated {
+		return "", errors.New("registered source Git output exceeds its limit")
+	}
+	return stdout.buffer.String(), err
 }
 
 func redactDevGitCommandOutput(output, token string) string {

@@ -149,7 +149,7 @@ func TestCoordinatorInitializationFailureKeepsSanitizedLiveness(t *testing.T) {
 	if status, body := coordinatorGET(t, baseURL, "/healthz"); status != http.StatusOK || body != "ok mcp-front-door-coordinator\n" {
 		t.Fatalf("health status=%d body=%q", status, body)
 	}
-	status, body := coordinatorGET(t, baseURL, "/readyz")
+	status, body := coordinatorGETUntilCode(t, baseURL, "/readyz", "journal_open_failed")
 	if status != http.StatusServiceUnavailable || !strings.Contains(body, `"code":"journal_open_failed"`) {
 		t.Fatalf("ready status=%d body=%q", status, body)
 	}

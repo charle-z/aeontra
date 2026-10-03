@@ -29,6 +29,8 @@ const (
 	maxProjectWorktreeContentBytes         = int64(64 << 20)
 	maxProjectWorktreeContentPathListBytes = 512 << 10
 	maxProjectWorktreeContentPathBytes     = 4096
+	maxRegisteredProjectSourceFiles        = 32768
+	maxRegisteredProjectSourcePathBytes    = 2 << 20
 )
 
 type ProjectWorktreeRole string
@@ -372,7 +374,11 @@ func (m *ProjectWorktreeManager) ContentDigest(ctx context.Context, request Proj
 }
 
 func parseProjectWorktreeContentPaths(output []byte) ([]string, error) {
-	if len(output) > maxProjectWorktreeContentPathListBytes || (len(output) > 0 && output[len(output)-1] != 0) {
+	return parseProjectSourceContentPaths(output, maxProjectWorktreeContentFiles, maxProjectWorktreeContentPathListBytes)
+}
+
+func parseProjectSourceContentPaths(output []byte, maxFiles, maxPathListBytes int) ([]string, error) {
+	if len(output) > maxPathListBytes || (len(output) > 0 && output[len(output)-1] != 0) {
 		return nil, ErrProjectWorktreeUnsafe
 	}
 	paths := make([]string, 0)
@@ -395,7 +401,7 @@ func parseProjectWorktreeContentPaths(output []byte) ([]string, error) {
 		if _, ok := seen[name]; !ok {
 			seen[name] = struct{}{}
 			paths = append(paths, name)
-			if len(paths) > maxProjectWorktreeContentFiles {
+			if len(paths) > maxFiles {
 				return nil, ErrProjectWorktreeUnsafe
 			}
 		}

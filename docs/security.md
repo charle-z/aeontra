@@ -61,6 +61,18 @@ and [isolated-runner runbook](development-runner.md) for the exact acceptance an
 recovery contracts. The optional runner changes data location only through an explicit
 registered profile; it does not upload dirty or private source.
 
+Registered Linux development source evidence inventories only Git HEAD, index and
+non-ignored untracked paths. It accepts at most 32,768 unique paths, 2 MiB per Git
+pathname list, 4096 bytes per relative path or symlink text, and 64 MiB of cumulative
+regular-file content and link text. Leaf symlinks are hashed as length-delimited text
+through a pinned no-follow descriptor; their targets are never resolved or read.
+Source-root and parent-component symlinks, directories (including embedded repositories
+and gitlinks), special files, exchanged entries and truncated inventories fail closed.
+This fingerprint uses a separate domain from managed-worktree test evidence, whose
+regular-file-only hashing and 4096-path limit are unchanged. Neither fingerprint covers
+Git-ignored inputs or claims a hermetic source snapshot. An existing command binding is
+not rewritten when its source digest changes.
+
 ## Threat model
 
 MCP Devbox assumes an AI client may emit malicious, mistaken, or prompt-injected tool

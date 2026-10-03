@@ -30,7 +30,7 @@ type projectDevelopmentInspectionContext struct {
 }
 
 func projectDevelopmentGitRunner(stateRoot string) edgeclient.DevGitCommandRunner {
-	return edgeclient.NewDevGitCommandRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin")
+	return edgeclient.NewRegisteredProjectSourceGitRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin")
 }
 
 func inspectProjectDevelopment(ctx context.Context, stateRoot string, operation edge.Operation) (*projectDevelopmentInspectionContext, string) {
