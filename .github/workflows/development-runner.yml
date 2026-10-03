@@ -188,7 +188,7 @@ jobs:
           MemoryMax=10G
           TasksMax=4096
           Environment=HOME=/home/aeontra-workload
-          Environment=PATH=/opt/aeontra-bin:/usr/bin:/bin
+          Environment=PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin
           Environment=XDG_RUNTIME_DIR=/home/aeontra-workload/runtime
           ExecStart=/opt/aeontra-bin/rootlesskit --net=slirp4netns --port-driver=builtin --disable-host-loopback --copy-up=/etc --copy-up=/run --propagation=rslave /usr/bin/python3 /opt/aeontra-bin/rootless-child.py
           UNIT
@@ -198,7 +198,7 @@ jobs:
           # child. Output cannot inject runner commands or alter GITHUB_OUTPUT.
           sudo tee /opt/aeontra-control/execute.py >/dev/null <<'PYTHON'
           import json, os, subprocess, sys
-          env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin',
+          env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin',
                  'XDG_RUNTIME_DIR': '/home/aeontra-workload/runtime', 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock',
                  'DOCKER_CONFIG': '/home/aeontra-workload/.docker', 'GITHUB_ACTIONS': 'true',
                  'GOTOOLCHAIN': 'local', 'GOENV': 'off'}

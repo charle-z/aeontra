@@ -553,6 +553,21 @@ func TestDevelopmentRunnerWorkflowIsFixedAndContainmentGatesAreMandatory(t *test
 	}
 }
 
+func TestDevelopmentRunnerRootlessNetworkUtilitiesRemainReachable(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"Environment=PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin",
+		"'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin'",
+	} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("rootless runtime cannot find system networking utilities: %s", required)
+		}
+	}
+}
+
 func TestDevelopmentRunnerWorkflowValidatesPublicEventAndExecutionBinding(t *testing.T) {
 	bash, bashErr := exec.LookPath("bash")
 	python, pythonErr := exec.LookPath("python3")
