@@ -122,7 +122,7 @@ jobs:
           sudo useradd --create-home --shell /bin/bash aeontra-workload
           sudo chmod 0700 /home/aeontra-workload
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends uidmap slirp4netns=1.2.1-1build2
+          sudo apt-get install -y --no-install-recommends uidmap dbus-user-session slirp4netns=1.2.1-1build2
           # Ubuntu's AppArmor unprivileged-userns restriction is changed only in
           # this disposable VM; the subsequent nested mount probe is mandatory.
           if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
@@ -179,27 +179,46 @@ jobs:
                    '--exec-root=/home/aeontra-workload/runtime/dockerd'])
           ROOTLESS_CHILD
           sudo chmod 0755 /opt/aeontra-bin/rootless-child.py
-          sudo tee /etc/systemd/system/aeontra-rootless.service >/dev/null <<'UNIT'
+          workload_uid="$(id -u aeontra-workload)"
+          # Bound the manager ancestor, including Docker's sibling scopes.
+          sudo install -d -m 0755 "/etc/systemd/system/user@${workload_uid}.service.d"
+          sudo tee "/etc/systemd/system/user@${workload_uid}.service.d/aeontra.conf" >/dev/null <<'MANAGER'
           [Service]
-          User=aeontra-workload
-          Group=aeontra-workload
+          Delegate=cpu cpuset io memory pids
+          MemoryMax=10G
+          TasksMax=4096
+          MANAGER
+          sudo install -d -m 0755 /etc/systemd/user
+          sudo tee /etc/systemd/user/aeontra-rootless.service >/dev/null <<'UNIT'
+          [Unit]
+          Requires=dbus.socket
+          After=dbus.socket
+          [Service]
           Delegate=yes
           KillMode=control-group
           MemoryMax=10G
           TasksMax=4096
+          TimeoutStopSec=30
           Environment=HOME=/home/aeontra-workload
           Environment=PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin
-          Environment=XDG_RUNTIME_DIR=/home/aeontra-workload/runtime
+          Environment=XDG_RUNTIME_DIR=%t
+          Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
           ExecStart=/opt/aeontra-bin/rootlesskit --net=slirp4netns --port-driver=builtin --disable-host-loopback --copy-up=/etc --copy-up=/run --propagation=rslave /usr/bin/python3 /opt/aeontra-bin/rootless-child.py
           UNIT
           sudo systemctl daemon-reload
-          sudo systemctl start aeontra-rootless.service
+          sudo loginctl enable-linger aeontra-workload
+          sudo systemctl start "user@${workload_uid}.service"
+          test "$(stat -c %u /run/user/"$workload_uid")" = "$workload_uid"
+          test "$(stat -c %a /run/user/"$workload_uid")" = 700
+          sudo -u aeontra-workload env -i HOME=/home/aeontra-workload PATH=/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$workload_uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$workload_uid/bus" systemctl --user start aeontra-rootless.service
           # Trusted executor drops supplementary groups and UID before every
           # child. Output cannot inject runner commands or alter GITHUB_OUTPUT.
           sudo tee /opt/aeontra-control/execute.py >/dev/null <<'PYTHON'
-          import json, os, subprocess, sys
+          import json, os, pwd, subprocess, sys
+          workload_uid = pwd.getpwnam('aeontra-workload').pw_uid
           env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin',
-                 'XDG_RUNTIME_DIR': '/home/aeontra-workload/runtime', 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock',
+                 'XDG_RUNTIME_DIR': '/run/user/' + str(workload_uid), 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock',
+                 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/' + str(workload_uid) + '/bus',
                  'DOCKER_CONFIG': '/home/aeontra-workload/.docker', 'GITHUB_ACTIONS': 'true',
                  'GOTOOLCHAIN': 'local', 'GOENV': 'off'}
           env.update(json.load(open('/opt/aeontra-control/ci.json')))
@@ -255,12 +274,19 @@ jobs:
             sleep 1
           done
           sudo grep -q rootless /opt/aeontra-control/docker-info.log
-          sudo python3 /opt/aeontra-control/execute.py workspace-bind docker run --rm --mount type=bind,src=/home/aeontra-workload/source,dst=/workspace,readonly busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 cat /workspace/.git/HEAD
+          sudo grep -Eq '^ Cgroup Driver: systemd$' /opt/aeontra-control/docker-info.log
+          sudo grep -Eq '^ Cgroup Version: 2$' /opt/aeontra-control/docker-info.log
+          sudo python3 /opt/aeontra-control/execute.py workspace-bind docker run --rm --memory 256m --pids-limit 64 --mount type=bind,src=/home/aeontra-workload/source,dst=/workspace,readonly busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 sh -eu -c 'test "$(cat /sys/fs/cgroup/memory.max)" = 268435456; test "$(cat /sys/fs/cgroup/pids.max)" = 64; cat /workspace/.git/HEAD'
           sudo grep -Fx "$SOURCE_SHA" /opt/aeontra-control/workspace-bind.log
-          sudo systemctl show aeontra-rootless.service --property=Delegate --value | grep -Fx yes
+          workload_uid="$(id -u aeontra-workload)"
+          user_systemctl=(sudo -u aeontra-workload env -i HOME=/home/aeontra-workload PATH=/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$workload_uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$workload_uid/bus" systemctl --user)
+          "${user_systemctl[@]}" show aeontra-rootless.service --property=Delegate --value | grep -Fx yes
           test "$(stat -fc %T /sys/fs/cgroup)" = cgroup2fs
-          cgroup="$(sudo systemctl show aeontra-rootless.service --property=ControlGroup --value)"
-          case "$cgroup" in /system.slice/aeontra-rootless.service) ;; *) exit 1 ;; esac
+          cgroup="$("${user_systemctl[@]}" show aeontra-rootless.service --property=ControlGroup --value)"
+          test "$cgroup" = "/user.slice/user-${workload_uid}.slice/user@${workload_uid}.service/app.slice/aeontra-rootless.service"
+          manager_cgroup="/sys/fs/cgroup/user.slice/user-${workload_uid}.slice/user@${workload_uid}.service"
+          test "$(sudo cat "$manager_cgroup/memory.max")" = 10737418240
+          test "$(sudo cat "$manager_cgroup/pids.max")" = 4096
           sudo runuser -u aeontra-workload -- sh -eu -c 'test -w "$1/cgroup.procs"; test -w "$1/cgroup.subtree_control"' sh "/sys/fs/cgroup$cgroup"
           # Real nested runc/proc execution and GitHub cache export/import. No
           # capability is inferred merely from the runs-on label or env names.
@@ -295,7 +321,8 @@ jobs:
           set -euo pipefail
           # GitHub's exact-run job/step metadata is the broker receipt source.
           # Repository-controlled files/logs/artifacts are never attestation.
-          sudo systemctl stop aeontra-rootless.service
+          workload_uid="$(id -u aeontra-workload)"
+          sudo -u aeontra-workload env -i HOME=/home/aeontra-workload PATH=/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$workload_uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$workload_uid/bus" systemctl --user stop aeontra-rootless.service
           sudo test -f /opt/aeontra-control/command.log
           sudo test ! -L /opt/aeontra-control/command.log
           printf '%s\n' 'Exact command completed; semantic acceptance remains separate.'
@@ -305,7 +332,7 @@ jobs:
         shell: bash
         run: |
           if sudo test -d /opt/aeontra-control; then
-            if ! sudo bash -o pipefail -c 'umask 077; journalctl --no-pager --lines=40 --output=cat --unit=aeontra-rootless.service 2>&1 | tail -c 16384 > /opt/aeontra-control/rootless-service.log'; then
+            if ! sudo bash -o pipefail -c 'umask 077; journalctl --no-pager --lines=40 --output=cat _SYSTEMD_USER_UNIT=aeontra-rootless.service _UID="$(id -u aeontra-workload)" 2>&1 | tail -c 16384 > /opt/aeontra-control/rootless-service.log'; then
               printf '%s\n' 'aeontra-untrusted-log diagnostic "daemon journal capture failed"'
             fi
           fi
@@ -361,9 +388,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if sudo systemctl cat aeontra-rootless.service >/dev/null 2>&1; then
-            sudo systemctl stop aeontra-rootless.service
-          fi
           if id aeontra-workload >/dev/null 2>&1; then
+            workload_uid="$(id -u aeontra-workload)"
+            sudo systemctl stop "user@${workload_uid}.service"
             sudo pkill -KILL -u aeontra-workload || test "$?" = 1
           fi

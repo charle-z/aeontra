@@ -568,6 +568,40 @@ func TestDevelopmentRunnerRootlessNetworkUtilitiesRemainReachable(t *testing.T) 
 	}
 }
 
+func TestDevelopmentRunnerUsesBoundedUserManager(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"/etc/systemd/user/aeontra-rootless.service",
+		"/etc/systemd/system/user@${workload_uid}.service.d",
+		"Delegate=cpu cpuset io memory pids",
+		"sudo loginctl enable-linger aeontra-workload",
+		"sudo systemctl start \"user@${workload_uid}.service\"",
+		"Environment=XDG_RUNTIME_DIR=%t",
+		"Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus",
+		"systemctl --user start aeontra-rootless.service",
+		"systemctl --user stop aeontra-rootless.service",
+		"/user.slice/user-${workload_uid}.slice/user@${workload_uid}.service/app.slice/aeontra-rootless.service",
+		"test \"$(sudo cat \"$manager_cgroup/memory.max\")\" = 10737418240",
+		"test \"$(sudo cat \"$manager_cgroup/pids.max\")\" = 4096",
+		"^ Cgroup Driver: systemd$",
+		"^ Cgroup Version: 2$",
+		"--memory 256m --pids-limit 64",
+		"cat /sys/fs/cgroup/memory.max",
+		"cat /sys/fs/cgroup/pids.max",
+		"_SYSTEMD_USER_UNIT=aeontra-rootless.service",
+	} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("missing rootless user-manager invariant: %s", required)
+		}
+	}
+	if strings.Contains(string(body), "/etc/systemd/system/aeontra-rootless.service") {
+		t.Error("rootless daemon still uses unsupported system-wide User= service")
+	}
+}
+
 func TestDevelopmentRunnerWorkflowValidatesPublicEventAndExecutionBinding(t *testing.T) {
 	bash, bashErr := exec.LookPath("bash")
 	python, pythonErr := exec.LookPath("python3")
