@@ -543,13 +543,107 @@ func TestDevelopmentRunnerWorkflowIsFixedAndContainmentGatesAreMandatory(t *test
 			}
 		}
 	}
-	for _, required := range []string{"sudo mount -o remount,hidepid=2 /proc", "User=aeontra-workload", "MemoryMax=10G", "TasksMax=4096", "--net=slirp4netns", "--disable-host-loopback", "--map-root-user --mount --pid --fork", "version=2,scope=$EFFECT_ID", "builder-import", "make validate-all", "go test ./... -count=1", "GOTOOLCHAIN", "fetch --no-tags origin \"$SOURCE_SHA\"", "probe-only)", "inputs.execution_digest", "execution input binding mismatch", "struct.pack('>I', len(value))"} {
+	for _, required := range []string{`sudo mount -o "remount,hidepid=2,gid=$workload_gid" /proc`, "User=aeontra-workload", "MemoryMax=10G", "TasksMax=4096", "--net=slirp4netns", "--disable-host-loopback", "--map-root-user --mount --pid --fork", "version=2,scope=$EFFECT_ID", "builder-import", "make validate-all", "go test ./... -count=1", "GOTOOLCHAIN", "fetch --no-tags origin \"$SOURCE_SHA\"", "probe-only)", "inputs.execution_digest", "execution input binding mismatch", "struct.pack('>I', len(value))"} {
 		if !strings.Contains(string(body), required) {
 			t.Errorf("missing immutable gate %s", required)
 		}
 	}
 	if strings.Contains(string(body), "${{ secrets.") || strings.Contains(string(body), "pull_request:") || strings.Contains(string(body), "self-hosted") {
 		t.Fatal("ambient secret or automatic untrusted workflow authority added")
+	}
+}
+
+func TestDevelopmentRunnerRootlessNetworkUtilitiesRemainReachable(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin",
+		"'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin'",
+	} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("rootless runtime cannot find system networking utilities: %s", required)
+		}
+	}
+}
+
+func TestDevelopmentRunnerUsesBoundedUserManager(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"/etc/systemd/user/aeontra-rootless.service",
+		"/etc/systemd/system/user@${workload_uid}.service.d",
+		"Delegate=cpu cpuset io memory pids",
+		"sudo loginctl enable-linger aeontra-workload",
+		"sudo systemctl start \"user@${workload_uid}.service\"",
+		"XDG_RUNTIME_DIR=%t",
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus",
+		"systemctl --user start aeontra-rootless.service",
+		"systemctl --user stop aeontra-rootless.service",
+		"/user.slice/user-${workload_uid}.slice/user@${workload_uid}.service/app.slice/aeontra-rootless.service",
+		"test \"$(sudo cat \"$manager_cgroup/memory.max\")\" = 10737418240",
+		"test \"$(sudo cat \"$manager_cgroup/pids.max\")\" = 4096",
+		"^ Cgroup Driver: systemd$",
+		"^ Cgroup Version: 2$",
+		"--memory 256m --pids-limit 64",
+		"cat /sys/fs/cgroup/memory.max",
+		"cat /sys/fs/cgroup/pids.max",
+		"_SYSTEMD_USER_UNIT=aeontra-rootless.service",
+	} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("missing rootless user-manager invariant: %s", required)
+		}
+	}
+	if strings.Contains(string(body), "/etc/systemd/system/aeontra-rootless.service") {
+		t.Error("rootless daemon still uses unsupported system-wide User= service")
+	}
+}
+
+func TestDevelopmentRunnerDaemonDoesNotInheritControllerEnvironment(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"ExecStart=/usr/bin/env -i HOME=/home/aeontra-workload",
+		"XDG_CONFIG_HOME=/home/aeontra-workload/.config",
+		"XDG_DATA_HOME=/home/aeontra-workload/.local/share",
+		"XDG_CACHE_HOME=/home/aeontra-workload/.cache",
+	} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("daemon may inherit controller environment: %s", required)
+		}
+	}
+}
+
+func TestDevelopmentRunnerProcMetadataCompatibilityRetainsCredentialIsolation(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`workload_gid="$(id -g aeontra-workload)"`,
+		`test "$workload_gid" -gt 0`,
+		`test "$workload_gid" != "$(id -g)"`,
+		`sudo mount -o "remount,hidepid=2,gid=$workload_gid" /proc`,
+		`<<'CONTROLLER_ISOLATION'`,
+		`for namespace in (False, True):`,
+		`'/proc/1/cgroup'`,
+		`('environ', 'mem', 'maps')`,
+		`('fd', 'root', 'cwd', 'exe')`,
+		`ptrace(0x4206`,
+		`sentinel.poll() is not None`,
+		`/opt/aeontra-control/ci.json`,
+		`/opt/aeontra-control/isolation-write-probe`,
+		`busctl --user --no-pager status`,
+		`OwnerUID=$workload_uid`,
+	} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("missing measured proc compatibility/isolation gate: %s", required)
+		}
 	}
 }
 

@@ -4,9 +4,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -77,6 +79,15 @@ func TestDevelopmentCommandTimeoutUsesSystemExecutable(t *testing.T) {
 	process := developmentCommandProcessOperation(operation)
 	if process.Request.Argv[0] != "/usr/bin/timeout" {
 		t.Fatalf("deadline wrapper must not resolve through writable runtime PATH: %q", process.Request.Argv[0])
+	}
+}
+
+func TestDevelopmentInventoryFailureKeepsMeasurementDistinct(t *testing.T) {
+	if code := safeDevelopmentInventoryFailure(errors.Join(errors.New("bounded probe observation"), edgeclient.ErrDevelopmentWorkcellInventoryMeasurementFailed)); code != "project_development_inventory_measurement_failed" {
+		t.Fatalf("measurement failure code=%q", code)
+	}
+	if code := safeDevelopmentInventoryFailure(errors.New("journal unavailable")); code != "project_development_inventory_unavailable" {
+		t.Fatalf("inventory unavailable code=%q", code)
 	}
 }
 
@@ -171,11 +182,43 @@ func TestDevelopmentCommandRecoveryOnlyCannotCreateMissingEffect(t *testing.T) {
 	manager, platform, operation, _ := developmentHandlerFixture(t)
 	operation.Request.DevelopmentRecoveryOperationID = "eo_" + strings.Repeat("d", 32)
 	operation.Request.DevelopmentRecoveryIdempotencyKey = "development-original-missing"
-	if _, code := executeProjectDevelopmentCommandStart(context.Background(), filepath.Join(t.TempDir(), "missing-state"), manager, operation); code != "project_development_reconciliation_required" {
+	result, code := executeProjectDevelopmentCommandStart(context.Background(), filepath.Join(t.TempDir(), "missing-state"), manager, operation)
+	if code != edge.DevelopmentCommandEffectAbsentSafeCode {
 		t.Fatalf("missing effect recovery code=%q", code)
+	}
+	receipt := result.DevelopmentCommandAbsence
+	if receipt == nil || receipt.Version != 1 || receipt.OriginalOperationID != operation.Request.DevelopmentRecoveryOperationID ||
+		receipt.OriginalIdempotencyKey != operation.Request.DevelopmentRecoveryIdempotencyKey ||
+		!reflect.DeepEqual(receipt.Command, *operation.Request.DevelopmentCommand) || result.BackgroundProcessID != "" || result.BackgroundExitKnown {
+		t.Fatalf("missing effect recovery lacked exact absence receipt: %+v", result)
 	}
 	if platform.starts != 0 {
 		t.Fatal("recovery-only operation created an effect")
+	}
+}
+
+func TestDevelopmentCommandRecoveryUnavailableJournalCannotProveAbsence(t *testing.T) {
+	manager, platform, operation, _ := developmentHandlerFixture(t)
+	operation.Request.DevelopmentRecoveryOperationID = "eo_" + strings.Repeat("d", 32)
+	operation.Request.DevelopmentRecoveryIdempotencyKey = "development-unavailable-journal"
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	result, code := executeProjectDevelopmentCommandStart(context.Background(), filepath.Join(t.TempDir(), "missing-state"), manager, operation)
+	if code == "" || code == edge.DevelopmentCommandEffectAbsentSafeCode || result.DevelopmentCommandAbsence != nil || platform.starts != 0 {
+		t.Fatalf("unavailable journal fabricated absence: code=%q result=%+v starts=%d", code, result, platform.starts)
+	}
+}
+
+func TestDevelopmentCommandAbsencePreservesEmptyRequirementBinding(t *testing.T) {
+	manager, platform, operation, _ := developmentHandlerFixture(t)
+	operation.Request.DevelopmentCommand.Requirements = []development.CapabilityID{}
+	operation.Request.DevelopmentRecoveryOperationID = "eo_" + strings.Repeat("d", 32)
+	operation.Request.DevelopmentRecoveryIdempotencyKey = "development-original-empty"
+	result, code := executeProjectDevelopmentCommandStart(context.Background(), filepath.Join(t.TempDir(), "missing-state"), manager, operation)
+	if code != edge.DevelopmentCommandEffectAbsentSafeCode || result.DevelopmentCommandAbsence == nil ||
+		!reflect.DeepEqual(result.DevelopmentCommandAbsence.Command, *operation.Request.DevelopmentCommand) || platform.starts != 0 {
+		t.Fatalf("absence changed exact empty requirement binding: code=%q result=%+v", code, result)
 	}
 }
 

@@ -5,13 +5,50 @@ package edgeclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 )
+
+const (
+	developmentWorkcellInventoryProbeTimeoutSeconds        = 5
+	developmentWorkcellInventoryTimeoutSeconds             = 60
+	developmentWorkcellInventoryMeasurementFailureExitCode = 126
+)
+
+// ErrDevelopmentWorkcellInventoryMeasurementFailed reports a present tool whose
+// bounded version probe failed. It does not attest absence or partial inventory.
+var ErrDevelopmentWorkcellInventoryMeasurementFailed = errors.New("development workcell inventory measurement failed")
 
 // CollectDevelopmentWorkcellInventory probes the same confined PATH that
 // execution uses, including project-managed runtime toolchains. Host inventory
 // alone cannot prove a tool installed below /runtime is available.
 func CollectDevelopmentWorkcellInventory(ctx context.Context, request DirectWorkcellCommandRequest) ([]LinuxToolInventoryEntry, error) {
+	script, definitions := developmentWorkcellInventoryProbe()
+	request.Argv = []string{"sh", "-c", script}
+	request.Environment = nil
+	request.Stdin = ""
+	request.CWD = ""
+	request.TimeoutSeconds = developmentWorkcellInventoryTimeoutSeconds
+	result, err := RunDirectWorkcellCommand(ctx, request, nil)
+	if err != nil {
+		return nil, errors.New("development workcell inventory unavailable")
+	}
+	return developmentWorkcellInventoryFromResult(result, definitions)
+}
+
+func developmentWorkcellInventoryFromResult(result DirectWorkcellCommandResult, definitions []linuxToolDefinition) ([]LinuxToolInventoryEntry, error) {
+	if result.ExitCode == developmentWorkcellInventoryMeasurementFailureExitCode && !result.StdoutTruncated && !result.TimedOut {
+		return nil, ErrDevelopmentWorkcellInventoryMeasurementFailed
+	}
+	if result.ExitCode != 0 || result.StdoutTruncated || result.TimedOut {
+		return nil, errors.New("development workcell inventory unavailable")
+	}
+	return parseDevelopmentWorkcellInventory(result.Stdout, definitions)
+}
+
+// developmentWorkcellInventoryProbe owns the fixed definitions and script used
+// for confined inventory measurement, independently of workcell execution.
+func developmentWorkcellInventoryProbe() (string, []linuxToolDefinition) {
 	definitions := []linuxToolDefinition{
 		{Name: "go", Executables: []string{"go"}, VersionArgs: []string{"version"}, Capability: "go-toolchain"},
 		{Name: "rust", Executables: []string{"rustc"}, VersionArgs: []string{"--version"}, Capability: "rust-toolchain"},
@@ -27,18 +64,13 @@ func CollectDevelopmentWorkcellInventory(ctx context.Context, request DirectWork
 	script.WriteString("command -v timeout >/dev/null || exit 125\ntmp=$(mktemp) || exit 125\ntrap 'rm -f \"$tmp\"' EXIT HUP INT TERM\n")
 	for _, definition := range definitions {
 		// Every token is a server-owned literal from this fixed table.
-		script.WriteString("if (ulimit -f 4; timeout 2 " + definition.Executables[0] + " " + strings.Join(definition.VersionArgs, " ") + " >\"$tmp\" 2>/dev/null); then printf '" + definition.Name + "\\t'; head -c 1024 \"$tmp\" | tr '\\n\\r\\t' '   '; printf '\\n'; fi\n")
+		// Only lookup absence may omit a row. A failed measurement of a
+		// present tool invalidates the whole snapshot, including earlier rows.
+		script.WriteString("if command -v " + definition.Executables[0] + " >/dev/null 2>&1; then\n")
+		fmt.Fprintf(&script, "if (ulimit -f 4; timeout %d %s %s >\"$tmp\" 2>/dev/null); then printf '%s\\t'; head -c 1024 \"$tmp\" | tr '\\n\\r\\t' '   '; printf '\\n'; else exit %d; fi\nfi\n",
+			developmentWorkcellInventoryProbeTimeoutSeconds, definition.Executables[0], strings.Join(definition.VersionArgs, " "), definition.Name, developmentWorkcellInventoryMeasurementFailureExitCode)
 	}
-	request.Argv = []string{"sh", "-c", script.String()}
-	request.Environment = nil
-	request.Stdin = ""
-	request.CWD = ""
-	request.TimeoutSeconds = 30
-	result, err := RunDirectWorkcellCommand(ctx, request, nil)
-	if err != nil || result.ExitCode != 0 || result.StdoutTruncated || result.TimedOut {
-		return nil, errors.New("development workcell inventory unavailable")
-	}
-	return parseDevelopmentWorkcellInventory(result.Stdout, definitions)
+	return script.String(), definitions
 }
 
 func parseDevelopmentWorkcellInventory(output string, definitions []linuxToolDefinition) ([]LinuxToolInventoryEntry, error) {
@@ -58,7 +90,13 @@ func parseDevelopmentWorkcellInventory(output string, definitions []linuxToolDef
 		if !ok || !known[name] || versions[name] != "" || len(value) > 1024 {
 			return nil, errors.New("development inventory response invalid")
 		}
+		// Go embeds its numeric version directly after "go", which is not
+		// a word boundary. Strip only its standard server-known output prefix.
 		version := safeToolVersionPattern.FindString(value)
+		if name == "go" && strings.HasPrefix(value, "go version go") {
+			token, _, _ := strings.Cut(strings.TrimPrefix(value, "go version go"), " ")
+			version = exactDevelopmentToolchainVersion(token)
+		}
 		if version == "" || len(version) > 64 {
 			version = "unknown"
 		}

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 
 	"github.com/charle-z/mcp-devbox/internal/development"
@@ -60,7 +61,7 @@ func inspectProjectDevelopment(ctx context.Context, stateRoot string, operation 
 		OperationID: operation.ID, Workspace: resolved.Workspace, StateRoot: stateRoot, WorkspaceRoots: roots,
 	})
 	if err != nil {
-		return nil, "project_development_inventory_unavailable"
+		return nil, safeDevelopmentInventoryFailure(err)
 	}
 	sourceDigest, sourceHead, sourceClean, err := edgeclient.RegisteredProjectSourceEvidence(ctx, projects, resolved, projectDevelopmentGitRunner(stateRoot))
 	if err != nil {
@@ -88,6 +89,13 @@ func inspectProjectDevelopment(ctx context.Context, stateRoot string, operation 
 		ProjectState: resolved.SafeState(), ProjectProfile: string(resolved.Workspace.Profile), ProjectMode: string(resolved.Workspace.Mode),
 		DevelopmentInspection: inspection}
 	return &projectDevelopmentInspectionContext{result: result, resolved: resolved, roots: roots}, ""
+}
+
+func safeDevelopmentInventoryFailure(err error) string {
+	if errors.Is(err, edgeclient.ErrDevelopmentWorkcellInventoryMeasurementFailed) {
+		return "project_development_inventory_measurement_failed"
+	}
+	return "project_development_inventory_unavailable"
 }
 
 func developmentCommandProcessOperation(operation edge.Operation) edge.Operation {
@@ -168,6 +176,13 @@ func recoverDevelopmentProcess(processes *edgeclient.ProjectProcessManager, oper
 	}
 	if !found {
 		if recoveryOnly {
+			if operation.Request.DevelopmentCommand != nil {
+				binding := *operation.Request.DevelopmentCommand
+				binding.Requirements = slices.Clone(binding.Requirements)
+				return edge.OperationResult{DevelopmentCommandAbsence: &edge.ProjectDevelopmentCommandAbsence{
+					Version: 1, OriginalOperationID: operationID, OriginalIdempotencyKey: key, Command: binding,
+				}}, false, edge.DevelopmentCommandEffectAbsentSafeCode
+			}
 			return edge.OperationResult{}, false, "project_development_reconciliation_required"
 		}
 		return edge.OperationResult{}, false, ""
@@ -194,7 +209,7 @@ func executeProjectDevelopmentCommandStart(ctx context.Context, stateRoot string
 	processOperation := developmentCommandProcessOperation(operation)
 	result, recovered, code := recoverDevelopmentProcess(processes, processOperation, binding.Anchor)
 	if code != "" {
-		return edge.OperationResult{}, code
+		return result, code
 	}
 	if recovered {
 		copy := *binding

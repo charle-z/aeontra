@@ -94,20 +94,40 @@ separate workload UID without sudo or controller group membership, subordinate
 UID/GID ranges and delegated cgroup-v2 units. It disables the VM's rootful Docker
 service and applies the reviewed unprivileged-userns AppArmor/sysctl change in
 that VM only. It does not change an Edge or production VPS posture.
+The daemon runs as a systemd user service with its user bus and runtime directory.
+Its fixed `env -i` launch clears the manager's inherited environment and assigns
+only workload-owned HOME/XDG paths, the pinned binary path and the user's bus.
+An instance-specific, root-owned `user@UID.service` drop-in delegates controllers
+and limits the entire manager subtree to 10 GiB and 4096 tasks, including container
+scopes outside the daemon unit. Calibration checks the real cgroup driver/version,
+ancestor limits and a container's enforced memory/pids values.
+The rootless child verifies its non-host UID mapping and copied-up `/run` mount
+before unlinking the three fixed inherited runtime symlinks. It never follows
+or removes their host targets. Unexpected non-symlink entries block startup.
 
 The untrusted workload receives a user-owned rootless Docker socket, selected
 source and its own home. The controller's files/home and process environment are
-protected by separate ownership and `/proc` hidepid. Source transport fetches
+protected by separate UID ownership, private file modes and cross-UID ptrace checks.
+The disposable VM's `hidepid=2` mount exempts only the workload's validated primary
+group: runc/systemd need real process cgroup metadata to identify the user bus.
+This exposes ordinarily readable PID, status, cgroup and command-line metadata;
+controller arguments must remain credential-free. It does not permit environment,
+memory, descriptor or private-file reads. Calibration verifies those denials and
+ptrace denial against a live controller-owned sentinel, both as the workload user
+and mapped namespace root. No Edge or VPS procfs policy is changed.
+Source transport fetches
 Git objects directly from one constructed public GitHub origin at the exact SHA,
 with full non-shallow history, no credentials or client source reconstruction.
 The source's own nested images/dependencies are not transformed into provider
 policy and are not claimed to be hermetically pinned by this broker.
 
-Command diagnostics are untrusted data, never receipt evidence. A trusted final
-step emits at most a 16-KiB log tail as prefixed JSON strings, escaping control
-characters and redacting every staged CI credential value before output. The
-full private log is discarded with the VM; diagnostics do not recover source
-bytes or authorize a retry.
+Command and calibration diagnostics are untrusted data, never receipt evidence.
+A trusted final step reads only fixed controller-owned probe, daemon and command
+logs without following links. It emits at most 16 KiB of prefixed JSON, escaping
+control characters and redacting every staged CI credential value before output.
+Probe errors remain visible even when no command was started. Full private logs
+are discarded with the VM; diagnostics do not recover source bytes or authorize
+a retry.
 
 Fresh trusted probes require:
 

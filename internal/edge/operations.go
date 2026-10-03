@@ -265,18 +265,19 @@ type ProjectClaimSummary struct {
 }
 
 type OperationResult struct {
-	DevelopmentBootstrap  *ProjectDevelopmentBootstrapBinding `json:"development_bootstrap,omitempty"`
-	DevelopmentCommand    *ProjectDevelopmentCommandBinding   `json:"development_command,omitempty"`
-	DevelopmentInspection *ProjectDevelopmentInspection       `json:"development_inspection,omitempty"`
-	WorkspaceID           string                              `json:"workspace_id,omitempty"`
-	AuthorizationRevision uint64                              `json:"authorization_revision,omitempty"`
-	JobID                 string                              `json:"job_id,omitempty"`
-	JobState              string                              `json:"job_state,omitempty"`
-	ProgressRevision      uint64                              `json:"progress_revision,omitempty"`
-	CycleCount            uint64                              `json:"cycle_count,omitempty"`
-	JobSafeCode           string                              `json:"job_safe_code,omitempty"`
-	Release               string                              `json:"release,omitempty"`
-	Commit                string                              `json:"commit,omitempty"`
+	DevelopmentCommandAbsence *ProjectDevelopmentCommandAbsence   `json:"development_command_absence,omitempty"`
+	DevelopmentBootstrap      *ProjectDevelopmentBootstrapBinding `json:"development_bootstrap,omitempty"`
+	DevelopmentCommand        *ProjectDevelopmentCommandBinding   `json:"development_command,omitempty"`
+	DevelopmentInspection     *ProjectDevelopmentInspection       `json:"development_inspection,omitempty"`
+	WorkspaceID               string                              `json:"workspace_id,omitempty"`
+	AuthorizationRevision     uint64                              `json:"authorization_revision,omitempty"`
+	JobID                     string                              `json:"job_id,omitempty"`
+	JobState                  string                              `json:"job_state,omitempty"`
+	ProgressRevision          uint64                              `json:"progress_revision,omitempty"`
+	CycleCount                uint64                              `json:"cycle_count,omitempty"`
+	JobSafeCode               string                              `json:"job_safe_code,omitempty"`
+	Release                   string                              `json:"release,omitempty"`
+	Commit                    string                              `json:"commit,omitempty"`
 	// These fields identify the authenticated Edge bundle independently from
 	// the MCP backend identity, so protocol/catalog skew is observable without
 	// exposing paths or other private state.
@@ -990,6 +991,9 @@ func validEdgeBundleIdentity(result OperationResult) bool {
 }
 
 func validOperationCompletionForKind(kind OperationKind, result OperationResult, code string) bool {
+	if result.DevelopmentCommandAbsence != nil || code == DevelopmentCommandEffectAbsentSafeCode {
+		return kind == OperationProjectDevelopmentCommandStart && code == DevelopmentCommandEffectAbsentSafeCode && validDevelopmentCommandAbsenceResult(result)
+	}
 	if code != "" {
 		return validOperationCompletion(result, code)
 	}
@@ -1278,7 +1282,7 @@ func validRuntimeDiagnostic(result OperationResult) bool {
 }
 
 func emptyOperationResult(result OperationResult) bool {
-	if hasEdgeStorageResult(result) || hasProjectWorktreeResult(result) || hasProjectWorktreeTestResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
+	if result.DevelopmentCommandAbsence != nil || hasEdgeStorageResult(result) || hasProjectWorktreeResult(result) || hasProjectWorktreeTestResult(result) || hasProjectExecResult(result) || hasProjectNetworkResult(result) || hasProjectProcessResult(result) {
 		return false
 	}
 	return result.WorkspaceID == "" && result.AuthorizationRevision == 0 && result.JobID == "" && result.JobState == "" && result.ProgressRevision == 0 && result.CycleCount == 0 && result.JobSafeCode == "" && result.Release == "" && result.Commit == "" && result.EdgeProtocolVersion == "" && result.EdgeCatalogHash == "" && result.ManifestStatus == "" && !result.ComponentsCompatible && !result.ServiceActive && result.ServiceState == "" && result.ServiceRestarts == 0 && !result.ServiceRestartsKnown && result.ProcessState == "" && result.LockState == "" && result.Coherence == "" && result.ProcessRelease == "" && result.ProcessCommit == "" && !result.UpdateAvailable && !result.Paired && !result.BubblewrapValid && !result.RootlessValid && result.WorkspaceCount == 0 && !result.ProviderValid && !result.DriverValid && len(result.Blockers) == 0 && result.ProjectAlias == "" && result.ProjectOwner == "" && result.ProjectRepository == "" && result.ProjectTarget == "" && result.ProjectState == "" && result.ProjectProfile == "" && result.ProjectMode == "" && result.ProjectReason == "" && result.ProjectDiagnosticReason == "" && !result.ProjectRepairable && result.ProjectRecommendedAction == "" && result.ProjectRegistryAction == "" && result.ProjectClaimGeneration == 0 && len(result.ProjectClaims) == 0 && !hasProjectToolchainSummary(result) && !hasProjectGitHubResult(result)
