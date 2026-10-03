@@ -377,6 +377,23 @@ durable provisioning and command acceptance are implemented.
 `project_development_cancel` connect exact commands to the existing coordinator.
 The registered Linux workcell can provision official Go and Rust toolchains into
 its runtime root and recover the original process after a lost acknowledgement.
+Workcell inventory distinguishes a missing executable from a failed version
+measurement. Each present-tool probe has a five-second ceiling; the whole
+confined inventory has a sixty-second ceiling. A timeout or failed probe cannot
+attest an absent capability or a partial snapshot. Exact source and environment
+digest checks still apply before execution.
+
+Cancellation of an acknowledged pre-start source, capability or inventory failure
+requires a separate authenticated absence observation from the healthy process
+journal, bound to the original operation, request key and command contract. A
+generic failed code never proves absence. Legacy recovery results without that
+receipt can obtain one deterministic versioned recovery-only observation; this
+cannot start or replay the command. Missing, unavailable or conflicting evidence
+remains pending for reconciliation.
+Install and verify the receipt-capable signed Edge before upgrading the control
+plane that requests the versioned legacy observation. An older Edge cannot supply
+that receipt; its terminal generic failure remains pending rather than generating
+another observation key.
 The separately opted-in isolated runner supports fixed public-source commands;
 its configuration, calibration and recovery contract are documented in
 `docs/development-runner.md`.

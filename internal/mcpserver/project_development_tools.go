@@ -595,6 +595,73 @@ func validDevelopmentCapturedStart(request workqueue.DevelopmentRequest, objecti
 	return step.AcceptanceContract != nil && binding != nil && binding.Valid() && reflect.DeepEqual(binding, op.Request.DevelopmentCommand) && binding.Anchor == objective.Scope.Anchor && binding.SourceDigest == attempt.SourceDigest && binding.EnvironmentDigest == attempt.EnvironmentDigest && binding.CommandDigest == step.AcceptanceContract.CommandDigest && binding.PrivateBodyRef == request.BodyRef && binding.PrivateBodyDigest == request.BodyDigest && op.Result.WorkspaceID == binding.Anchor.WorkspaceID && op.Result.ProjectOwner == binding.Anchor.Owner && op.Result.ProjectRepository == binding.Anchor.Repository && developmentProcessPattern.MatchString(op.Result.BackgroundProcessID)
 }
 
+func developmentCommandFailedBeforeStart(code string) bool {
+	switch code {
+	case "project_development_capability_drift", "project_development_source_drift",
+		"project_development_inventory_unavailable", "project_development_inventory_measurement_failed":
+		return true
+	default:
+		return false
+	}
+}
+
+func validDevelopmentPreStartOriginal(request workqueue.DevelopmentRequest, objective development.Objective, command projectDevelopmentBody, original edge.Operation) bool {
+	if request.ProcessID != "" || original.State != edge.OperationFailed ||
+		!developmentCommandFailedBeforeStart(original.SafeCode) ||
+		!reflect.DeepEqual(original.Result, edge.OperationResult{}) || original.Request.DevelopmentRecoveryOperationID != "" || original.Request.DevelopmentRecoveryIdempotencyKey != "" ||
+		original.DeviceID != request.DeviceID || original.Kind != edge.OperationProjectDevelopmentCommandStart ||
+		original.Request.IdempotencyKey != developmentOperationKey(request, "command") || original.Request.Alias != request.Alias || original.Request.TargetAlias != request.Target || original.Request.Profile != "linux-workcell" ||
+		!reflect.DeepEqual(original.Request.Argv, command.Argv) || original.Request.CWD != command.CWD || original.Request.Stdin != command.Stdin || !reflect.DeepEqual(original.Request.Environment, command.Environment) ||
+		original.Request.DevelopmentCommand == nil || !original.Request.DevelopmentCommand.Valid() ||
+		!objective.Valid() || objective.ObjectiveID != request.ObjectiveID || objective.Scope.Project != request.Alias || objective.Scope.Target != request.Target ||
+		len(objective.Steps) != 1 || len(objective.Steps[0].Attempts) == 0 {
+		return false
+	}
+	step := objective.Steps[0]
+	attempt := step.Attempts[len(step.Attempts)-1]
+	binding := original.Request.DevelopmentCommand
+	if step.AcceptanceContract == nil || (attempt.State != development.AttemptRunning && attempt.State != development.AttemptCancelled) ||
+		attempt.Class != development.ClassWorkcell || binding.Anchor != objective.Scope.Anchor || binding.Anchor.DeviceID != request.DeviceID ||
+		binding.SourceDigest != attempt.SourceDigest || binding.SourceDigest != step.AcceptanceContract.SourceDigest ||
+		binding.EnvironmentDigest != attempt.EnvironmentDigest || binding.CommandDigest != step.AcceptanceContract.CommandDigest ||
+		binding.PrivateBodyRef != request.BodyRef || binding.PrivateBodyDigest != request.BodyDigest || binding.TimeoutSeconds != command.TimeoutSeconds ||
+		step.AcceptanceContract.PrivateBodyRef != request.BodyRef || step.AcceptanceContract.PrivateBodyDigest != request.BodyDigest ||
+		len(binding.Requirements) != len(step.Requirements) {
+		return false
+	}
+	for i, requirement := range step.Requirements {
+		if binding.Requirements[i] != requirement.ID {
+			return false
+		}
+	}
+	return true
+}
+
+func validDevelopmentCancellationRecovery(request workqueue.DevelopmentRequest, original, recovered edge.Operation, key string) bool {
+	if recovered.DeviceID != request.DeviceID || recovered.Kind != edge.OperationProjectDevelopmentCommandStart || recovered.Request.IdempotencyKey != key ||
+		recovered.Request.Alias != request.Alias || recovered.Request.TargetAlias != request.Target ||
+		recovered.Request.DevelopmentRecoveryOperationID != original.ID || recovered.Request.DevelopmentRecoveryIdempotencyKey != original.Request.IdempotencyKey {
+		return false
+	}
+	body := recovered.Request
+	body.IdempotencyKey = original.Request.IdempotencyKey
+	body.DevelopmentRecoveryOperationID, body.DevelopmentRecoveryIdempotencyKey = "", ""
+	return reflect.DeepEqual(original.Request, body)
+}
+
+// A missing journal row alone cannot settle an interrupted start. Require both
+// the authenticated original acknowledgement that execution stopped before
+// Start, and a healthy recovery lookup bound to that exact command/objective.
+func validDevelopmentPreStartAbsence(request workqueue.DevelopmentRequest, objective development.Objective, command projectDevelopmentBody, original, recovered edge.Operation, key string) bool {
+	receipt := recovered.Result.DevelopmentCommandAbsence
+	return validDevelopmentPreStartOriginal(request, objective, command, original) &&
+		validDevelopmentCancellationRecovery(request, original, recovered, key) &&
+		recovered.State == edge.OperationFailed && recovered.SafeCode == edge.DevelopmentCommandEffectAbsentSafeCode &&
+		receipt != nil && receipt.Valid() && reflect.DeepEqual(recovered.Result, edge.OperationResult{DevelopmentCommandAbsence: receipt}) &&
+		receipt.OriginalOperationID == original.ID && receipt.OriginalIdempotencyKey == original.Request.IdempotencyKey &&
+		reflect.DeepEqual(original.Request.DevelopmentCommand, &receipt.Command)
+}
+
 func (s *Server) pendingDevelopmentCapabilities(request workqueue.DevelopmentRequest) error {
 	if request.Reason == workqueue.DevelopmentRequestReasonCapabilityMissing {
 		return nil
@@ -826,6 +893,7 @@ func (s *Server) cancelDevelopmentRequest(ctx context.Context, request workqueue
 			return errors.New("development cancellation binding mismatch")
 		}
 		if start.State == edge.OperationFailed && (bodyAvailable || request.ProcessID == "") {
+			original := start
 			body := start.Request
 			if !reflect.DeepEqual(body.Argv, command.Argv) || body.CWD != command.CWD || body.Stdin != command.Stdin || !reflect.DeepEqual(body.Environment, command.Environment) {
 				return errors.New("development cancellation body mismatch")
@@ -834,7 +902,36 @@ func (s *Server) cancelDevelopmentRequest(ctx context.Context, request workqueue
 			if err != nil {
 				return err
 			}
-			if start.State == edge.OperationFailed {
+			objective, present, readErr := s.workQueue.DevelopmentObjective(request.ObjectiveID)
+			if readErr != nil {
+				return readErr
+			}
+			key := developmentOperationKey(request, "command-recover")
+			// Old Edges reported a healthy missing marker as a generic failure.
+			// Obtain at most one versioned, recovery-only observation; never
+			// reclassify that old failure or generate a new execution key.
+			if present && validDevelopmentPreStartOriginal(request, objective, command, original) &&
+				validDevelopmentCancellationRecovery(request, original, start, key) && start.State == edge.OperationFailed &&
+				start.SafeCode == "project_development_reconciliation_required" && reflect.DeepEqual(start.Result, edge.OperationResult{}) {
+				key = developmentOperationKey(request, "command-recover-v2")
+				body.DevelopmentRecoveryOperationID, body.DevelopmentRecoveryIdempotencyKey = original.ID, original.Request.IdempotencyKey
+				start, err = s.developmentOperation(request, edge.OperationProjectDevelopmentCommandStart, key, body)
+				if err != nil {
+					return err
+				}
+			}
+			if !validDevelopmentCancellationRecovery(request, original, start, key) {
+				return errors.New("development cancellation recovery binding mismatch")
+			}
+			if request.ActiveOperationID != start.ID {
+				request.ActiveOperationID = start.ID
+				if request, err = s.saveDevelopmentRequest(request); err != nil {
+					return err
+				}
+			}
+			if start.State != edge.OperationSucceeded && (!present || !validDevelopmentPreStartAbsence(request, objective, command, original, start, key)) {
+				// Recovery is observation, so queued/leased/cancelled observations
+				// cannot be cancelled or mistaken for original-command absence.
 				return nil
 			}
 		}

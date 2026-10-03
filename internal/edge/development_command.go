@@ -1,6 +1,7 @@
 package edge
 
 import (
+	"encoding/json"
 	"errors"
 	"regexp"
 	"slices"
@@ -10,6 +11,37 @@ import (
 )
 
 const OperationProjectDevelopmentCommandStart OperationKind = "project_development_command_start"
+
+const DevelopmentCommandEffectAbsentSafeCode = "project_development_effect_absent"
+
+// ProjectDevelopmentCommandAbsence is private, authenticated recovery evidence.
+// It binds a successful journal absence lookup to the original command; it is
+// neither process completion evidence nor permission to replay the command.
+type ProjectDevelopmentCommandAbsence struct {
+	Version                int                              `json:"version"`
+	OriginalOperationID    string                           `json:"original_operation_id"`
+	OriginalIdempotencyKey string                           `json:"original_idempotency_key"`
+	Command                ProjectDevelopmentCommandBinding `json:"command"`
+}
+
+func (receipt ProjectDevelopmentCommandAbsence) Valid() bool {
+	return receipt.Version == 1 && operationIDPattern.MatchString(receipt.OriginalOperationID) &&
+		projectOperationIdempotencyPattern.MatchString(receipt.OriginalIdempotencyKey) && receipt.Command.Valid()
+}
+
+func validDevelopmentCommandAbsenceResult(result OperationResult) bool {
+	body, err := json.Marshal(result)
+	if err != nil || len(body) > MaxOperationResultBytes {
+		return false
+	}
+	if result.DevelopmentCommandAbsence == nil || !result.DevelopmentCommandAbsence.Valid() ||
+		result.DevelopmentCommand != nil || result.DevelopmentBootstrap != nil || result.DevelopmentInspection != nil {
+		return false
+	}
+	metadata := result
+	metadata.DevelopmentCommandAbsence = nil
+	return emptyOperationResult(metadata)
+}
 
 var developmentBodyRefPattern = regexp.MustCompile(`^mb_[a-f0-9]{32}$`)
 
