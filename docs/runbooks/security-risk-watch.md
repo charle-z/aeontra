@@ -14,6 +14,11 @@ published candidate sandbox workcell, explicitly **not deployed**. Publication d
 not prove production rollout. A passing run means only that the inventoried immutable
 image was scanned; it makes no all-production or seven-image coverage claim.
 
+The initial candidate predates the corrected `py3.14-pip=26.2.1-r2` recipe. Its
+old recipe binding must fail until the protected image release publishes the
+replacement and its independently verified identities replace the inventory.
+Do not deploy that older candidate or call the daily watch accepted in the interim.
+
 The workflow validates the index-to-amd64-manifest mapping, manifest-to-OCI-config
 digest, pulled image ID, revision label and Linux/amd64 platform. It verifies the
 workcell Dockerfile SHA-256 both in the recorded source revision and in the monitor's

@@ -154,6 +154,8 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"libcrypt1-2.44=2.44-r6",
 		"nodejs-24=24.19.0-r0",
 		"npm=12.0.2-r0",
+		"py3.14-pip=26.2.1-r2",
+		"py3.14-pip-base=26.2.1-r2",
 		"python-3.14=3.14.7_git20260925-r0",
 		"rust-1.96=1.96.1-r0",
 		"zlib=1.3.2-r7",
@@ -209,6 +211,27 @@ func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("sandbox workcell smoke does not contain %q", required)
+		}
+	}
+}
+
+func TestSandboxWorkcellSmokeVerifiesPipForItsPython(t *testing.T) {
+	content, err := os.ReadFile("../../scripts/test-sandbox-workcell-toolchains.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"python3 -m pip --version",
+		"from pip._vendor import urllib3",
+		"urllib3.__version__ == '2.8.0'",
+		"--no-index --no-deps --no-compile",
+		"--target /tmp/pip-smoke-target",
+		"import aeontra_pip_smoke",
+		"pip_runtime=ready",
+		"--network none", "--read-only", "--cap-drop ALL",
+	} {
+		if !strings.Contains(string(content), required) {
+			t.Errorf("pip smoke must contain %q", required)
 		}
 	}
 }

@@ -118,6 +118,34 @@ cc /workspace/zlib-smoke.c -lz -o /tmp/zlib-smoke
 (cd /workspace/rust && cargo test --offline)
 (cd /workspace/node && node --test smoke.test.js)
 (cd /workspace/python && python3 -m unittest -v)
+pip --version
+python3 -m pip --version
+python3 - <<'PYTHON'
+import zipfile
+from pip._vendor import urllib3
+
+assert urllib3.__version__ == '2.8.0', urllib3.__version__
+files = {
+    'aeontra_pip_smoke.py': 'VALUE = 42\n',
+    'aeontra_pip_smoke-0.0.0.dist-info/METADATA':
+        'Metadata-Version: 2.1\nName: aeontra-pip-smoke\nVersion: 0.0.0\n',
+    'aeontra_pip_smoke-0.0.0.dist-info/WHEEL':
+        'Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n',
+}
+record = 'aeontra_pip_smoke-0.0.0.dist-info/RECORD'
+files[record] = ''.join(f'{name},,\n' for name in [*files, record])
+with zipfile.ZipFile('/tmp/aeontra_pip_smoke-0.0.0-py3-none-any.whl', 'w') as wheel:
+    for name, content in files.items():
+        wheel.writestr(name, content)
+PYTHON
+python3 -m pip install --no-index --no-deps --no-compile \
+  --target /tmp/pip-smoke-target /tmp/aeontra_pip_smoke-0.0.0-py3-none-any.whl
+PYTHONPATH=/tmp/pip-smoke-target python3 - <<'PYTHON'
+import aeontra_pip_smoke
+
+assert aeontra_pip_smoke.VALUE == 42
+print('pip_runtime=ready')
+PYTHON
 printf 'sandbox_workcell_toolchains=ready\n'
 EOF
 chmod 0755 "$fixture/run.sh"
