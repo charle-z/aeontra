@@ -131,6 +131,81 @@ func TestProjectDevelopmentBootstrapCancellationRequiresExternalStopReceipt(t *t
 	}
 }
 
+func TestProjectDevelopmentCancelSettlesOnlyFailedResolutionWithoutStart(t *testing.T) {
+	for _, mode := range []string{"unstarted", "unknown-start-ack"} {
+		t.Run(mode, func(t *testing.T) {
+			server, edges, _ := developmentServer(t)
+			edges.bootstrapEnabled = true
+			edges.missingCapability = true
+			var resolved *edge.ProjectDevelopmentBootstrapBinding
+			observer := &developmentScenarioEdge{developmentTestEdge: edges, observe: func(op edge.Operation) edge.Operation {
+				if op.Kind == edge.OperationProjectDevelopmentBootstrapResolve {
+					resolved = op.Result.DevelopmentBootstrap
+					op.State = edge.OperationFailed
+					op.SafeCode = "project_development_resolution_unavailable"
+					op.Result = edge.OperationResult{}
+				}
+				return op
+			}}
+			server.WithEdgeStore(observer)
+			view := developmentStart(t, server, "bootstrap-failed-cancel-001")
+			developmentRounds(t, server, 2)
+			request, _, _ := server.workQueue.DevelopmentRequest(view.RequestID)
+			objective, _, _ := server.workQueue.DevelopmentObjective(request.ObjectiveID)
+			if len(objective.Steps[0].Provisioning) != 1 || len(objective.Steps[0].Attempts) != 0 || resolved == nil {
+				t.Fatal("test lacks pre-command bootstrap failure")
+			}
+			provision := objective.Steps[0].Provisioning[0]
+			job, _, _ := server.workQueue.Get(provision.JobID)
+			if provision.State != development.ProvisioningFailed || job.State != workqueue.StateFailed {
+				t.Fatalf("test lacks terminal failure: provision=%+v job=%+v", provision, job)
+			}
+			if mode == "unknown-start-ack" {
+				var resolve edge.Operation
+				for _, op := range edges.operations {
+					if op.Kind == edge.OperationProjectDevelopmentBootstrapResolve {
+						resolve = op
+					}
+				}
+				startRequest := resolve.Request
+				startRequest.IdempotencyKey = strings.Replace(startRequest.IdempotencyKey, "bootstrap-resolve:", "bootstrap-start:", 1)
+				startRequest.DevelopmentBootstrap = resolved
+				observer.lostACK = edge.OperationProjectDevelopmentBootstrapStart
+				if _, _, err := observer.CreateOperation(resolve.DeviceID, edge.OperationProjectDevelopmentBootstrapStart, startRequest); err == nil {
+					t.Fatal("test did not lose the installer start acknowledgement")
+				}
+				if _, found, err := edges.OperationByIdempotency(resolve.DeviceID, edge.OperationProjectDevelopmentBootstrapStart, startRequest.IdempotencyKey); err != nil || !found {
+					t.Fatal("lost installer acknowledgement lacked authoritative operation", err)
+				}
+			}
+			operationCount, bootstrapStarts := len(edges.operations), edges.bootstrapStarts
+			if _, err := server.handleProjectDevelopmentCancel(json.RawMessage(`{"request_id":"` + request.ID + `"}`)); err != nil {
+				t.Fatal(err)
+			}
+			if err := server.reconcileDevelopmentRequestsOnce(context.Background()); err != nil && mode == "unstarted" {
+				t.Fatal(err)
+			}
+			request, _, _ = server.workQueue.DevelopmentRequest(request.ID)
+			objective, _, _ = server.workQueue.DevelopmentObjective(request.ObjectiveID)
+			want := workqueue.DevelopmentRequestCancelled
+			if mode == "unknown-start-ack" {
+				want = workqueue.DevelopmentRequestCancelling
+			}
+			if request.State != want || objective.State != development.ObjectiveCancelled {
+				t.Fatalf("cancellation state=%s want=%s objective=%s", request.State, want, objective.State)
+			}
+			retained, _, _ := server.workQueue.Get(job.ID)
+			if retained.State != workqueue.StateFailed || retained.Fence != job.Fence || retained.Summary != job.Summary ||
+				objective.Steps[0].Provisioning[0].State != development.ProvisioningFailed || len(objective.Steps[0].Attempts) != 0 {
+				t.Fatal("cancellation rewrote failure or fabricated command evidence")
+			}
+			if len(edges.operations) != operationCount || edges.bootstrapStarts != bootstrapStarts || edges.starts != 0 {
+				t.Fatal("failed-resolution cancellation dispatched an Edge effect")
+			}
+		})
+	}
+}
+
 func TestProjectDevelopmentBootstrapFailClosedOnSourceAndInstallerFailure(t *testing.T) {
 	for _, mode := range []string{"source", "pending-inspection", "bad-inspection", "installer-failed", "running-installer", "unverified-receipt"} {
 		t.Run(mode, func(t *testing.T) {

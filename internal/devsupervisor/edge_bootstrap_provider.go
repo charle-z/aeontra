@@ -132,6 +132,62 @@ func (provider *EdgeBootstrapProvider) Reconcile(ctx context.Context, request Pr
 }
 
 func (provider *EdgeBootstrapProvider) Cancel(ctx context.Context, request ProvisionRequest) (ProvisionEffect, error) {
+	if request.Provision.State == development.ProvisioningFailed {
+		// A failed queue job cannot obtain another execution lease. Prove only
+		// the terminal pre-install case from its retained immutable identities;
+		// this branch must not dispatch, cancel or recover an Edge operation.
+		if provider == nil || provider.operations == nil || provider.queue == nil || ctx == nil || ctx.Err() != nil ||
+			!request.Scope.Pinned() || !request.Provision.Valid() || request.Provision.Failure != development.FailureReconciliationNeeded {
+			return ProvisionEffect{}, ErrProvisionConflict
+		}
+		selectors, err := selectorsForPlan(request.Provision.Plan)
+		if err != nil {
+			return ProvisionEffect{}, err
+		}
+		job, found, err := provider.queue.Get(request.Provision.JobID)
+		if err != nil {
+			return ProvisionEffect{}, err
+		}
+		owner, stepID, ownerFound, err := provider.queue.DevelopmentProvisionOwner(request.Provision.ProvisionID)
+		if err != nil {
+			return ProvisionEffect{}, err
+		}
+		step, stepFound := objectiveStep(owner, stepID)
+		if !found || !ownerFound || owner.State != development.ObjectiveCancelled || owner.Scope != request.Scope ||
+			!stepFound || len(step.Provisioning) == 0 || !reflect.DeepEqual(step.Provisioning[len(step.Provisioning)-1], request.Provision) {
+			return ProvisionEffect{}, ErrProvisionConflict
+		}
+		spec := provisionSpec(owner, request.Provision)
+		if job.State != workqueue.StateFailed || job.ID != request.Lease.Job.ID || job.Fence == 0 ||
+			job.Fence != request.Provision.JobFence || job.Fence != request.Lease.Fence || job.Fence != request.Lease.Job.Fence ||
+			!matchesProvisionJob(job, spec) || !matchesProvisionJob(request.Lease.Job, spec) {
+			return ProvisionEffect{}, ErrProvisionConflict
+		}
+		var receipts []string
+		for _, selector := range selectors {
+			if err := ctx.Err(); err != nil {
+				return ProvisionEffect{}, err
+			}
+			resolveKey := bootstrapOperationKey("resolve", request.Provision, selector)
+			resolve, found, err := provider.operations.OperationByIdempotency(request.Scope.Anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, resolveKey)
+			if err != nil {
+				return ProvisionEffect{}, err
+			}
+			if !found || resolve.State != edge.OperationFailed || !validBootstrapOperation(resolve, request.Scope.Anchor.DeviceID,
+				edge.OperationProjectDevelopmentBootstrapResolve, bootstrapOperationRequest(request.Scope, selector, nil, resolveKey)) {
+				return reconciliationFailure(), nil
+			}
+			startKey := bootstrapOperationKey("start", request.Provision, selector)
+			if _, found, err := provider.operations.OperationByIdempotency(request.Scope.Anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapStart, startKey); err != nil {
+				return ProvisionEffect{}, err
+			} else if found {
+				// Even a failed start may have lost its process acknowledgement.
+				return reconciliationFailure(), nil
+			}
+			receipts = append(receipts, "cancelled-before-start:"+resolve.ID+":"+string(selector.capability))
+		}
+		return ProvisionEffect{ResultRef: bootstrapResultRef(request.Provision, job, receipts)}, nil
+	}
 	_, err := provider.validateLease(ctx, request, true)
 	if err != nil {
 		return ProvisionEffect{}, err
