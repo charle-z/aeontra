@@ -751,6 +751,30 @@ func (s *Store) List(limit int) ([]Job, error) {
 	return jobs, rows.Err()
 }
 
+// LeasesForHolder lists only current leases in one pool. Retained terminal
+// history cannot crowd active effects out of a coordinator's bounded page.
+func (s *Store) LeasesForHolder(pool, holder string, limit int) ([]Lease, error) {
+	if s == nil || s.db == nil || !poolPattern.MatchString(pool) || !holderPattern.MatchString(holder) || limit < 1 || limit > MaxListResults {
+		return nil, errors.New("workqueue: lease list is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(jobSelect+` WHERE pool=? AND lease_holder=? AND state=? ORDER BY updated_at,job_id LIMIT ?`, pool, holder, StateLeased, limit)
+	if err != nil {
+		return nil, errors.New("workqueue: lease list failed")
+	}
+	defer rows.Close()
+	leases := make([]Lease, 0, limit)
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, errors.New("workqueue: lease list result failed")
+		}
+		leases = append(leases, Lease{Job: job, ID: job.LeaseID, Fence: job.Fence, Attempt: job.Attempt, ExpiresAt: job.LeaseExpiresAt})
+	}
+	return leases, rows.Err()
+}
+
 func (s *Store) Integrity() error {
 	if s == nil || s.db == nil {
 		return errors.New("workqueue: store is unavailable")

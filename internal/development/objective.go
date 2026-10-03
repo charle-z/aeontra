@@ -77,6 +77,7 @@ type ObjectiveStep struct {
 	StepID       string
 	Requirements []Requirement
 	Attempts     []ExecutionAttempt
+	Provisioning []ProvisioningAttempt
 	State        StepState
 }
 
@@ -147,7 +148,7 @@ func (objective Objective) RefineRequirements(stepID string, additional []Requir
 		return Objective{}, errors.New("development objective cannot refine requirements")
 	}
 	step := objective.Steps[index]
-	if step.State == StepRunning || step.State == StepSucceeded {
+	if step.State == StepRunning || step.State == StepSucceeded || activeProvisioning(step) {
 		return Objective{}, errors.New("development objective cannot refine active or succeeded step")
 	}
 	normalized, err := normalizeRequirementList(append(append([]Requirement(nil), step.Requirements...), additional...))
@@ -173,6 +174,9 @@ func (objective Objective) PlanAttempt(stepID, attemptID, sourceDigest string, c
 	}
 	copy := objective.clone()
 	step := &copy.Steps[index]
+	if activeProvisioning(*step) {
+		return Objective{}, Resolution{}, errors.New("development provisioning is still active")
+	}
 	if step.State == StepSucceeded {
 		return Objective{}, Resolution{}, errors.New("development objective step already succeeded")
 	}
@@ -367,6 +371,16 @@ func (objective Objective) Cancel() (Objective, error) {
 	copy := objective.clone()
 	for index := range copy.Steps {
 		step := &copy.Steps[index]
+		if len(step.Provisioning) != 0 {
+			last := len(step.Provisioning) - 1
+			if step.Provisioning[last].State == ProvisioningPlanned || step.Provisioning[last].State == ProvisioningQueued {
+				cancelled, err := step.Provisioning[last].Cancel()
+				if err != nil {
+					return Objective{}, err
+				}
+				step.Provisioning[last] = cancelled
+			}
+		}
 		if step.State == StepSucceeded || step.State == StepFailed || step.State == StepCancelled {
 			continue
 		}
@@ -433,6 +447,10 @@ func (objective Objective) clone() Objective {
 		copy.Steps[index] = step
 		copy.Steps[index].Requirements = append([]Requirement(nil), step.Requirements...)
 		copy.Steps[index].Attempts = append([]ExecutionAttempt(nil), step.Attempts...)
+		copy.Steps[index].Provisioning = make([]ProvisioningAttempt, len(step.Provisioning))
+		for j, provision := range step.Provisioning {
+			copy.Steps[index].Provisioning[j] = cloneProvisionAttempt(provision)
+		}
 	}
 	return copy
 }

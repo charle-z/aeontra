@@ -25,10 +25,15 @@ func NewEnvironmentCatalog(environments ...EnvironmentAttestation) (EnvironmentC
 		return EnvironmentCatalog{}, errors.New("development environment catalog is invalid")
 	}
 	canonical := append([]EnvironmentAttestation(nil), environments...)
+	identities := make(map[string]struct{}, len(canonical))
 	for _, environment := range canonical {
 		if !environment.Valid() {
 			return EnvironmentCatalog{}, errors.New("development environment catalog contains invalid attestation")
 		}
+		if _, duplicate := identities[environment.EnvironmentID]; duplicate {
+			return EnvironmentCatalog{}, errors.New("development environment catalog has ambiguous identity")
+		}
+		identities[environment.EnvironmentID] = struct{}{}
 	}
 	sort.Slice(canonical, func(i, j int) bool {
 		leftTier, _ := canonical[i].Class.Tier()
@@ -44,11 +49,6 @@ func NewEnvironmentCatalog(environments ...EnvironmentAttestation) (EnvironmentC
 		}
 		return canonical[i].Digest < canonical[j].Digest
 	})
-	for index := 1; index < len(canonical); index++ {
-		if canonical[index-1].EnvironmentID == canonical[index].EnvironmentID {
-			return EnvironmentCatalog{}, errors.New("development environment catalog has ambiguous identity")
-		}
-	}
 	catalog := EnvironmentCatalog{environments: canonical}
 	catalog.digest = environmentCatalogDigest(canonical)
 	return catalog, nil

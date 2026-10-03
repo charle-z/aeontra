@@ -541,6 +541,30 @@ func TestObjectiveTransitionRejectsAuthorityAndHistoryRewrite(t *testing.T) {
 	}
 }
 
+func TestObjectiveRecordRejectsForgedContinuationAndEnvironmentDigest(t *testing.T) {
+	workcell := mustEnvironment(t, "workcell", ClassWorkcell, 1, "toolchain.go")
+	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
+	objective, _ := NewObjective("objective-forged-retry", policy, []StepSpec{{StepID: "test", Requirements: mustRequirements(t, "toolchain.go")}})
+	objective, _, _ = objective.PlanAttempt("test", "attempt-one", sourceDigest("a"), []EnvironmentAttestation{workcell})
+	objective, _ = objective.StartAttempt("test")
+	objective, _, _ = objective.FailAttempt("test", FailurePolicyDenied)
+	forged := objective.clone()
+	forged.Revision++
+	forged.State = ObjectiveRunning
+	forged.Steps[0].State = StepPlanned
+	attempt, _ := NewExecutionAttempt("attempt-two", "test", sourceDigest("a"), workcell)
+	attempt.ParentAttemptID = "attempt-one"
+	forged.Steps[0].Attempts = append(forged.Steps[0].Attempts, attempt)
+	if forged.Valid() || ValidateTransition(objective, forged) == nil {
+		t.Fatal("policy-denied attempt continued through a forged snapshot")
+	}
+	forged = objective.clone()
+	forged.Steps[0].Attempts[0].EnvironmentDigest = "claimed-compatible"
+	if forged.Valid() {
+		t.Fatal("non-digest environment identity accepted")
+	}
+}
+
 func TestObjectiveTransitionAllowsOnlyMonotonicRequirements(t *testing.T) {
 	policy := mustPolicy(t, TierWorkcell, ClassWorkcell)
 	previous, _ := NewObjective("objective-transition-2", policy, []StepSpec{{

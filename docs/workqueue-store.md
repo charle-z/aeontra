@@ -163,6 +163,8 @@ The canonical record is capped at 256 KiB and contains only:
 - source-content digests, never source bodies;
 - execution-environment identities, generations, classes and attestation digests;
 - attempt lifecycle and closed failure classes.
+- bounded provisioning plans, stable effect identities, exact job IDs, lease fences
+  and receipt digests; provisioning records contain no executable, host path or secret.
 
 The first persisted revision must be revision 1. A later write must be exactly the next
 revision and must satisfy the development transition validator: project/target scope and
@@ -171,6 +173,18 @@ and a new attempt must descend from the previous failed attempt. Replaying the e
 digest is idempotent. Stale, skipped, divergent or corrupt revisions fail closed.
 Cancellation is a durable terminal objective state and cancels any currently planned or
 running attempt without rewriting earlier attempts.
+
+The supervisor persists a provisioning plan before enqueueing its effect. Replaying
+the same effect key recovers the exact workqueue job, including when enqueue committed
+but its response was lost. The current fence is persisted before invoking a registered
+broker. Completion is recovered only from the queue's exact fenced outcome. An effect
+receipt does not accept an objective or advertise a capability: the supervisor must
+re-attest the output environment before starting an execution attempt.
+
+Cancellation reconciles even an unacknowledged enqueue and requests cancellation of a
+leased effect. A broker can still stop that captured effect after the objective is
+cancelled. Provisioning uses the existing queue, lease limits and coordinator; it does
+not create another scheduler. Each step retains at most 16 provisioning attempts.
 
 The store admits at most 1024 development-objective rows. Capacity is checked inside the
 same write transaction before insertion, and exceeding it fails closed rather than

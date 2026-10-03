@@ -17,6 +17,53 @@ type DevelopmentObjectiveSummary struct {
 	UpdatedAt   time.Time                  `json:"updated_at"`
 }
 
+// DevelopmentProvisionOwner recovers an objective from a durable provisioning
+// identity, including the boundary where enqueue committed but job binding did
+// not. The search is confined to the bounded objective table, never the disk.
+func (s *Store) DevelopmentProvisionOwner(provisionID string) (development.Objective, string, bool, error) {
+	if s == nil || s.db == nil || !development.ValidObjectiveID(provisionID) {
+		return development.Objective{}, "", false, errors.New("workqueue: provision identity is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT d.objective_id
+		FROM development_objectives d, json_each(d.record_json,'$.steps') steps,
+		json_each(steps.value,'$.provisioning') provisions
+		WHERE json_extract(provisions.value,'$.provision_id')=? LIMIT 2`, provisionID)
+	if err != nil {
+		return development.Objective{}, "", false, errors.New("workqueue: provision lookup failed")
+	}
+	ids := make([]string, 0, 2)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return development.Objective{}, "", false, errors.New("workqueue: provision lookup failed")
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil || len(ids) > 1 {
+		return development.Objective{}, "", false, errors.New("workqueue: provision ownership is ambiguous")
+	}
+	if len(ids) == 0 {
+		return development.Objective{}, "", false, nil
+	}
+	objective, found, err := developmentObjectiveByID(s.db, ids[0])
+	if err != nil || !found {
+		return development.Objective{}, "", false, errors.New("workqueue: provision owner is invalid")
+	}
+	for _, step := range objective.Steps {
+		for _, provision := range step.Provisioning {
+			if provision.ProvisionID == provisionID {
+				return objective, step.StepID, true, nil
+			}
+		}
+	}
+	return development.Objective{}, "", false, errors.New("workqueue: provision owner is invalid")
+}
+
 // SaveDevelopmentObjective creates revision one or atomically advances exactly
 // one revision. The canonical objective record is content-free coordination
 // metadata; every update is checked against the immutable transition contract.
@@ -43,7 +90,7 @@ func (s *Store) SaveDevelopmentObjective(objective development.Objective) (devel
 		return development.Objective{}, false, err
 	}
 	if !found {
-		if objective.Revision != 1 {
+		if objective.Revision != 1 || objective.State != development.ObjectivePlanned {
 			return development.Objective{}, false, errors.New("workqueue: development objective revision conflict")
 		}
 		var count int

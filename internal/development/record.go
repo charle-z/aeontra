@@ -36,6 +36,7 @@ type objectiveStepRecord struct {
 	State        StepState                `json:"state"`
 	Requirements []string                 `json:"requirements"`
 	Attempts     []objectiveAttemptRecord `json:"attempts"`
+	Provisioning []ProvisioningAttempt    `json:"provisioning,omitempty"`
 }
 
 type objectiveAttemptRecord struct {
@@ -85,6 +86,9 @@ func (objective Objective) MarshalRecord() ([]byte, string, error) {
 			State:        step.State,
 			Requirements: make([]string, 0, len(step.Requirements)),
 			Attempts:     make([]objectiveAttemptRecord, 0, len(step.Attempts)),
+		}
+		for _, provision := range step.Provisioning {
+			stepRecord.Provisioning = append(stepRecord.Provisioning, cloneProvisionAttempt(provision))
 		}
 		for _, requirement := range step.Requirements {
 			stepRecord.Requirements = append(stepRecord.Requirements, string(requirement.ID))
@@ -156,6 +160,9 @@ func ParseObjectiveRecord(body []byte) (Objective, error) {
 			Requirements: requirements,
 			Attempts:     make([]ExecutionAttempt, 0, len(stepRecord.Attempts)),
 		}
+		for _, provision := range stepRecord.Provisioning {
+			step.Provisioning = append(step.Provisioning, cloneProvisionAttempt(provision))
+		}
 		for _, attemptRecord := range stepRecord.Attempts {
 			attempt := ExecutionAttempt{
 				AttemptID:             attemptRecord.AttemptID,
@@ -219,6 +226,14 @@ func validateObjectiveSnapshot(objective Objective) error {
 		if err := validateObjectiveAttempts(step, attemptIDs); err != nil {
 			return err
 		}
+		for _, attempt := range step.Attempts {
+			if !objective.Policy.AllowsClass(attempt.Class) {
+				return errors.New("development attempt exceeds authority policy")
+			}
+		}
+		if err := validateObjectiveProvisioning(step, objective.Policy, attemptIDs); err != nil {
+			return err
+		}
 		if !stepStateMatchesAttempts(step) {
 			return errors.New("development objective snapshot is invalid")
 		}
@@ -227,7 +242,7 @@ func validateObjectiveSnapshot(objective Objective) error {
 	switch objective.State {
 	case ObjectivePlanned:
 		for _, step := range objective.Steps {
-			if step.State != StepPlanned || len(step.Attempts) != 0 {
+			if step.State != StepPlanned || len(step.Attempts) != 0 || len(step.Provisioning) != 0 {
 				return errors.New("development objective snapshot is invalid")
 			}
 		}
@@ -256,9 +271,45 @@ func validateObjectiveSnapshot(objective Objective) error {
 			if step.State == StepRunning || step.State == StepPlanned {
 				return errors.New("development objective snapshot is invalid")
 			}
+			if activeProvisioning(step) {
+				return errors.New("development objective snapshot is invalid")
+			}
 		}
 	}
 	return nil
+}
+
+func validateObjectiveProvisioning(step ObjectiveStep, policy ResolutionPolicy, global map[string]struct{}) error {
+	if len(step.Provisioning) > MaxProvisioningAttemptsPerStep {
+		return errors.New("development provisioning bound exceeded")
+	}
+	for index, provision := range step.Provisioning {
+		if !provision.Valid() || !policy.AllowsClass(provision.Plan.OutputClass) {
+			return errors.New("development provisioning snapshot is invalid")
+		}
+		if _, duplicate := global[provision.ProvisionID]; duplicate {
+			return errors.New("development provisioning identity duplicated")
+		}
+		global[provision.ProvisionID] = struct{}{}
+		if index < len(step.Provisioning)-1 && (provision.State == ProvisioningPlanned || provision.State == ProvisioningQueued) {
+			return errors.New("development provisioning history is active")
+		}
+	}
+	if activeProvisioning(step) && (step.State == StepRunning || step.State == StepSucceeded || step.State == StepCancelled) {
+		return errors.New("development provisioning overlaps execution")
+	}
+	if activeProvisioning(step) && !step.Provisioning[len(step.Provisioning)-1].Plan.Covers(requirementIDs(step.Requirements)) {
+		return errors.New("development provisioning no longer covers requirements")
+	}
+	return nil
+}
+
+func activeProvisioning(step ObjectiveStep) bool {
+	if len(step.Provisioning) == 0 {
+		return false
+	}
+	state := step.Provisioning[len(step.Provisioning)-1].State
+	return state == ProvisioningPlanned || state == ProvisioningQueued
 }
 
 func validateObjectiveAttempts(step ObjectiveStep, global map[string]struct{}) error {
@@ -276,7 +327,7 @@ func validateObjectiveAttempts(step ObjectiveStep, global map[string]struct{}) e
 			}
 		} else {
 			previous := step.Attempts[index-1]
-			if attempt.ParentAttemptID != previous.AttemptID || previous.State != AttemptFailed {
+			if !validAttemptContinuation(previous, attempt) {
 				return errors.New("development objective attempt snapshot is invalid")
 			}
 		}

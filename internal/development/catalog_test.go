@@ -34,6 +34,15 @@ func TestEnvironmentCatalogRejectsAmbiguousIdentity(t *testing.T) {
 	}
 }
 
+func TestEnvironmentCatalogRejectsSameIdentityAcrossNonAdjacentClasses(t *testing.T) {
+	first := mustEnvironment(t, "shared", ClassL3Sandbox, 1, "toolchain.go")
+	middle := mustEnvironment(t, "other", ClassWorkcell, 1, "toolchain.go")
+	last := mustEnvironment(t, "shared", ClassIsolatedRunner, 1, "toolchain.go")
+	if _, err := NewEnvironmentCatalog(first, middle, last); err == nil {
+		t.Fatal("non-adjacent environment identity collision accepted")
+	}
+}
+
 func TestEnvironmentCatalogRejectsInvalidAndOversizedInput(t *testing.T) {
 	if _, err := NewEnvironmentCatalog(); err == nil {
 		t.Fatal("empty catalog accepted")

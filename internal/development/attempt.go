@@ -208,9 +208,29 @@ func MigrateExecutionAttempt(newAttemptID, sourceDigest string, previous Executi
 func (attempt ExecutionAttempt) validIdentity() bool {
 	if !identityPattern.MatchString(attempt.AttemptID) || !identityPattern.MatchString(attempt.StepID) ||
 		!identityPattern.MatchString(attempt.EnvironmentID) || !sourceDigestPattern.MatchString(attempt.SourceDigest) ||
-		attempt.EnvironmentGeneration == 0 || attempt.EnvironmentDigest == "" {
+		attempt.EnvironmentGeneration == 0 || !sourceDigestPattern.MatchString(attempt.EnvironmentDigest) {
 		return false
 	}
 	tier, ok := attempt.Class.Tier()
 	return ok && tier == attempt.Tier
+}
+
+func validAttemptContinuation(previous, next ExecutionAttempt) bool {
+	if previous.State != AttemptFailed || next.ParentAttemptID != previous.AttemptID {
+		return false
+	}
+	action, ok := ContinuationForFailure(previous.Failure)
+	if !ok {
+		return false
+	}
+	switch action {
+	case ActionFixCode:
+		return next.SourceDigest != previous.SourceDigest && next.EnvironmentDigest == previous.EnvironmentDigest
+	case ActionProvisionOrMigrate:
+		return next.EnvironmentDigest != previous.EnvironmentDigest
+	case ActionRetrySameEnvironment:
+		return next.SourceDigest == previous.SourceDigest && next.EnvironmentDigest == previous.EnvironmentDigest
+	default:
+		return false
+	}
 }

@@ -33,8 +33,10 @@ type CatalogSource interface {
 }
 
 type Supervisor struct {
-	store   ObjectiveStore
-	catalog CatalogSource
+	store          ObjectiveStore
+	catalog        CatalogSource
+	provisionQueue ProvisionQueue
+	provisioners   []Provisioner
 }
 
 func New(store ObjectiveStore, catalog CatalogSource) (*Supervisor, error) {
@@ -52,13 +54,15 @@ type PlanResult struct {
 }
 
 type StartResult struct {
-	Objective     development.Objective
-	Environment   development.EnvironmentAttestation
-	CatalogDigest string
-	Started       bool
-	Reused        bool
-	Rejected      development.FailureClass
-	Action        development.ContinuationAction
+	Objective      development.Objective
+	Environment    development.EnvironmentAttestation
+	CatalogDigest  string
+	Started        bool
+	Reused         bool
+	Rejected       development.FailureClass
+	Action         development.ContinuationAction
+	ProvisionID    string
+	ProvisionJobID string
 }
 
 type FailureResult struct {
@@ -240,6 +244,17 @@ func (supervisor *Supervisor) EnsureStepRunning(ctx context.Context, objectiveID
 		}
 		if len(step.Attempts) == 0 || step.Attempts[len(step.Attempts)-1].State == development.AttemptFailed {
 			if _, err := supervisor.PlanStep(ctx, objectiveID, stepID, sourceDigest); err != nil {
+				if errors.Is(err, development.ErrNoCompatibleEnvironment) && supervisor.provisionQueue != nil {
+					provisioned, provisionErr := supervisor.ProvisionStep(ctx, objectiveID, stepID, sourceDigest)
+					if provisionErr != nil {
+						return StartResult{}, provisionErr
+					}
+					if provisioned.Ready {
+						continue
+					}
+					return StartResult{Objective: provisioned.Objective, ProvisionID: provisioned.Provision.ProvisionID,
+						ProvisionJobID: provisioned.Provision.JobID, Action: development.ActionProvisionOrMigrate}, nil
+				}
 				return StartResult{}, err
 			}
 		}
@@ -335,6 +350,44 @@ func (supervisor *Supervisor) Cancel(ctx context.Context, objectiveID string) (R
 	}
 	if objective.State == development.ObjectiveCancelled {
 		return RevisionResult{Objective: objective, Reused: true}, nil
+	}
+	if supervisor.provisionQueue != nil {
+		for _, step := range objective.Steps {
+			if len(step.Provisioning) == 0 {
+				continue
+			}
+			last := step.Provisioning[len(step.Provisioning)-1]
+			if last.State == development.ProvisioningPlanned {
+				// Enqueue may have committed without returning its ACK. Recover the
+				// same key before cancellation; never leave that job orphaned.
+				job, _, err := supervisor.provisionQueue.Enqueue(provisionSpec(objective, last))
+				if err != nil {
+					return RevisionResult{}, err
+				}
+				if !matchesProvisionJob(job, provisionSpec(objective, last)) {
+					return RevisionResult{}, ErrProvisionConflict
+				}
+				next, err := objective.BindProvisionJob(step.StepID, last.ProvisionID, job.ID)
+				if err != nil {
+					return RevisionResult{}, err
+				}
+				objective, err = supervisor.persistProvision(next, step.StepID, last.ProvisionID)
+				if err != nil {
+					return RevisionResult{}, err
+				}
+				updated, _ := objectiveStep(objective, step.StepID)
+				last = updated.Provisioning[len(updated.Provisioning)-1]
+			}
+			if last.State == development.ProvisioningQueued {
+				job, found, err := supervisor.provisionQueue.Get(last.JobID)
+				if err != nil || !found || !matchesProvisionJob(job, provisionSpec(objective, last)) {
+					return RevisionResult{}, ErrProvisionConflict
+				}
+				if _, err := supervisor.provisionQueue.Cancel(last.JobID); err != nil {
+					return RevisionResult{}, err
+				}
+			}
+		}
 	}
 	next, err := objective.Cancel()
 	if err != nil {

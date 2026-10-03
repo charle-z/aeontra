@@ -6,7 +6,7 @@ import "errors"
 // previous revision without rewriting policy, requirements, source identity,
 // environment identity, or historical attempts.
 func ValidateTransition(previous, next Objective) error {
-	if !previous.Valid() || !next.Valid() ||
+	if !previous.Valid() || !next.Valid() || previous.terminal() ||
 		previous.Version != next.Version ||
 		previous.ObjectiveID != next.ObjectiveID ||
 		previous.Scope != next.Scope ||
@@ -20,6 +20,15 @@ func ValidateTransition(previous, next Objective) error {
 	for index := range previous.Steps {
 		before := previous.Steps[index]
 		after := next.Steps[index]
+		if activeProvisioning(before) && !sameRequirements(before.Requirements, after.Requirements) {
+			return errors.New("development active provisioning contract is immutable")
+		}
+		if !validProvisionHistory(before.Provisioning, after.Provisioning) {
+			return errors.New("development provisioning history transition is invalid")
+		}
+		if len(after.Provisioning) > len(before.Provisioning) && !canPlanProvisioning(before) {
+			return errors.New("development failure does not authorize provisioning")
+		}
 		if before.StepID != after.StepID ||
 			!requirementsSubset(before.Requirements, after.Requirements) ||
 			!validStepStateTransition(before.State, after.State) ||
@@ -59,6 +68,28 @@ func ValidateTransition(previous, next Objective) error {
 		}
 	}
 	return nil
+}
+
+func validProvisionHistory(before, after []ProvisioningAttempt) bool {
+	if len(after) < len(before) || len(after) > len(before)+1 {
+		return false
+	}
+	for index := range before {
+		if index == len(before)-1 && len(before) == len(after) {
+			if !validProvisionRevision(before[index], after[index]) {
+				return false
+			}
+		} else if !sameProvisionAttempt(before[index], after[index]) {
+			return false
+		}
+	}
+	if len(after) == len(before)+1 {
+		if len(before) != 0 && (before[len(before)-1].State == ProvisioningPlanned || before[len(before)-1].State == ProvisioningQueued) {
+			return false
+		}
+		return after[len(after)-1].State == ProvisioningPlanned
+	}
+	return true
 }
 
 func requirementsSubset(before, after []Requirement) bool {

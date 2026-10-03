@@ -142,6 +142,23 @@ func TestDevelopmentObjectiveFirstWriteMustBeRevisionOne(t *testing.T) {
 	}
 }
 
+func TestDevelopmentObjectiveFirstWriteCannotSkipPlanning(t *testing.T) {
+	store := openTestStore(t, Config{ControllerID: "controller-objective-first-state"})
+	objective := developmentObjectiveFixture(t, "objective-first-state")
+	environment := developmentEnvironmentFixture(t, "workcell", development.ClassWorkcell, 1, "toolchain.go")
+	objective, _, err := objective.PlanAttempt("validate", "attempt-forged", objectiveSourceDigest("a"), []development.EnvironmentAttestation{environment})
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective.Revision = 1
+	if !objective.Valid() {
+		t.Fatal("forged first revision must be otherwise valid")
+	}
+	if _, _, err := store.SaveDevelopmentObjective(objective); err == nil {
+		t.Fatal("initial persistence accepted an execution history without its planning revision")
+	}
+}
+
 func developmentObjectiveFixture(t *testing.T, id string) development.Objective {
 	t.Helper()
 	policy, err := development.NewResolutionPolicy(development.TierWorkcell, development.ClassWorkcell)

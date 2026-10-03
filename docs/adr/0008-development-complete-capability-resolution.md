@@ -218,6 +218,27 @@ A composite catalog source combines at most 16 providers and at most 64 environm
 attestations. Provider failure, invalid attestation, or duplicate environment identity
 fails the whole catalog closed.
 
+### Durable provisioning transport
+
+An unsatisfied step can select one bounded plan from registered server-owned
+provisioners, within the objective's immutable authority ceiling. The plan binds the
+provider, queue pool, profile, promised capabilities and optional base attestation;
+it contains no executable, host path, source body or credential.
+
+The objective stores that plan before enqueueing one deterministically keyed job.
+Retries recover the same job through workqueue idempotency. A worker persists its
+current fence before asking the provider to reconcile the stable effect ID. The
+provider must recover pending effects and reject stale authority before starting a
+new effect. Each coordinator round has a bounded deadline; long effects remain in
+the provider's existing journal rather than holding a reconciliation call open.
+
+A completion receipt records only the effect outcome. Capability readiness requires
+a fresh compatible environment attestation; semantic acceptance remains separate.
+Cancellation recovers lost enqueue acknowledgements and can stop a captured leased
+effect even after the objective itself becomes terminal. The transport is internal:
+concrete provisioners and execution dispatch must be wired before claiming live
+automatic provisioning.
+
 ### Failure classification
 
 The initial closed classes are:
