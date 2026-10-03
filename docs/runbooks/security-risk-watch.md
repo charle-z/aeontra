@@ -1,6 +1,7 @@
 # Daily sandbox security risk watch
 
-Status: implemented source workflow; GitHub execution requires separate acceptance.
+Status: deployed workcell inventory verified; GitHub watch execution requires
+separate acceptance.
 
 `.github/workflows/security-risk-watch.yml` runs daily at 11:41 UTC and supports
 manual dispatch from `main`, without caller-selected images or other inputs. It has
@@ -9,15 +10,14 @@ no image execution, no deployment credentials, and no resident monitoring agent.
 
 ## Coverage and identity
 
-`security/monitored-images.json` is the reviewed inventory. Its initial coverage is one
-published candidate sandbox workcell, explicitly **not deployed**. Publication does
-not prove production rollout. A passing run means only that the inventoried immutable
-image was scanned; it makes no all-production or seven-image coverage claim.
-
-The initial candidate predates the corrected `py3.14-pip=26.2.1-r2` recipe. Its
-old recipe binding must fail until the protected image release publishes the
-replacement and its independently verified identities replace the inventory.
-Do not deploy that older candidate or call the daily watch accepted in the interim.
+`security/monitored-images.json` identifies one verified `deployed-workcell` with
+the corrected `py3.14-pip=26.2.1-r2` recipe. The protected publication, independent
+registry hash checks and private runner rollout are recorded in
+[the dated rollout evidence](../baselines/2026-10-03-workcell-rollout.md).
+The previous candidate was not deployed and remains historical Git evidence.
+A passing run means only that the inventoried immutable image was scanned; it
+makes no all-production or seven-image coverage claim. The monitor does not
+discover production state or automatically update this inventory.
 
 The workflow validates the index-to-amd64-manifest mapping, manifest-to-OCI-config
 digest, pulled image ID, revision label and Linux/amd64 platform. It verifies the
