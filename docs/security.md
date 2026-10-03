@@ -28,6 +28,13 @@ The system has several distinct authorities. They must not be collapsed into one
 | Durable development command | One exact staged command, pinned source/environment and captured registered workspace | Existing workcell isolation, journal, queue fences and process identity; source changes invalidate acceptance, not observation or safe cancellation | Existing trusted workcell networking | Private command bytes stay in the pinned staged store; public status returns lifecycle and opaque identities |
 | Isolated development runner | Administrator-pinned public workflow and explicitly requested fixed command profile | Disposable hosted VM; separate workload UID, rootless engine and delegated bounded cgroups; kernel/CI gates repeated for each command | Network-enabled VM; public exact Git source only | Source broker token stays in the control plane; workload receives only ephemeral job-local cache/runtime authority, not production credentials |
 
+The isolated runner's workload group can read ordinary process metadata in its
+disposable VM because systemd/runc require it to identify the user bus. Controller
+arguments must contain no credentials. Separate UID ownership, private file modes
+and cross-UID ptrace restrictions protect controller environments, memory and files;
+mandatory probes verify those denials under both the workload UID and mapped namespace
+root. This exception does not change an Edge or production VPS procfs policy.
+
 MCP output redaction can change source-looking text, including ordinary code that names
 tokens or passwords. Command output is therefore not a byte-preserving publication
 channel. The registered checkout is the source of truth: normal publication pushes its

@@ -105,6 +105,66 @@ func TestDevelopmentRunnerDiagnosticsBeforeCommand(t *testing.T) {
 	}
 }
 
+func TestDevelopmentRunnerControllerIdentityAcrossUserNamespaces(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux probe requires native Python; verified in WSL")
+	}
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, probe, found := strings.Cut(string(body), "probe = r'''\n")
+	if !found {
+		t.Fatal("controller isolation probe missing")
+	}
+	probe, _, found = strings.Cut(probe, "\n          '''")
+	if !found {
+		t.Fatal("controller isolation probe terminator missing")
+	}
+	probe = strings.TrimPrefix(strings.ReplaceAll(probe, "\n          ", "\n"), "          ")
+	identity, _, found := strings.Cut(probe, "def denied(operation):")
+	if !found {
+		t.Fatal("controller isolation deny gates missing")
+	}
+	for _, test := range []struct {
+		name, mapping, observed string
+		pass                    bool
+	}{
+		{"ordinary", "0 0 4294967295\n", "1001", true},
+		{"mapped controller", "0 1001 1\n", "0", true},
+		{"unmapped controller", "0 1002 1\n1 100000 65536\n", "65534", true},
+		{"changed identity", "0 0 4294967295\n", "1002", false},
+		{"wrong namespace identity", "0 1002 1\n", "1001", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			fixture := identity
+			for source, data := range map[string]string{
+				"/proc/1/cgroup":               "0::/\n",
+				"/proc/sys/kernel/overflowuid": "65534\n",
+				"/proc/self/uid_map":           test.mapping,
+			} {
+				path := filepath.Join(directory, filepath.Base(source))
+				if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+					t.Fatal(err)
+				}
+				fixture = strings.ReplaceAll(fixture, "'"+source+"'", fmt.Sprintf("%q", path))
+			}
+			status := filepath.Join(directory, "status")
+			if err := os.WriteFile(status, []byte("Name:\tsleep\nUid:\t"+test.observed+"\t"+test.observed+"\t"+test.observed+"\t"+test.observed+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			fixture = strings.ReplaceAll(fixture, "'/proc/' + pid + '/status'", fmt.Sprintf("%q", status))
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			output, err := exec.CommandContext(ctx, "python3", "-c", fixture, "17", "1001", "private", "home").CombinedOutput()
+			if (err == nil) != test.pass {
+				t.Fatalf("controller namespace identity pass=%v err=%v: %s", test.pass, err, output)
+			}
+		})
+	}
+}
+
 func TestDevelopmentRunnerDiagnosticsBoundedAndRejectsSymlinks(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("hosted Linux no-follow diagnostic fixtures are verified in WSL")

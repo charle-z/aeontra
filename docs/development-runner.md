@@ -107,7 +107,15 @@ or removes their host targets. Unexpected non-symlink entries block startup.
 
 The untrusted workload receives a user-owned rootless Docker socket, selected
 source and its own home. The controller's files/home and process environment are
-protected by separate ownership and `/proc` hidepid. Source transport fetches
+protected by separate UID ownership, private file modes and cross-UID ptrace checks.
+The disposable VM's `hidepid=2` mount exempts only the workload's validated primary
+group: runc/systemd need real process cgroup metadata to identify the user bus.
+This exposes ordinarily readable PID, status, cgroup and command-line metadata;
+controller arguments must remain credential-free. It does not permit environment,
+memory, descriptor or private-file reads. Calibration verifies those denials and
+ptrace denial against a live controller-owned sentinel, both as the workload user
+and mapped namespace root. No Edge or VPS procfs policy is changed.
+Source transport fetches
 Git objects directly from one constructed public GitHub origin at the exact SHA,
 with full non-shallow history, no credentials or client source reconstruction.
 The source's own nested images/dependencies are not transformed into provider

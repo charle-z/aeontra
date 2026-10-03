@@ -543,7 +543,7 @@ func TestDevelopmentRunnerWorkflowIsFixedAndContainmentGatesAreMandatory(t *test
 			}
 		}
 	}
-	for _, required := range []string{"sudo mount -o remount,hidepid=2 /proc", "User=aeontra-workload", "MemoryMax=10G", "TasksMax=4096", "--net=slirp4netns", "--disable-host-loopback", "--map-root-user --mount --pid --fork", "version=2,scope=$EFFECT_ID", "builder-import", "make validate-all", "go test ./... -count=1", "GOTOOLCHAIN", "fetch --no-tags origin \"$SOURCE_SHA\"", "probe-only)", "inputs.execution_digest", "execution input binding mismatch", "struct.pack('>I', len(value))"} {
+	for _, required := range []string{`sudo mount -o "remount,hidepid=2,gid=$workload_gid" /proc`, "User=aeontra-workload", "MemoryMax=10G", "TasksMax=4096", "--net=slirp4netns", "--disable-host-loopback", "--map-root-user --mount --pid --fork", "version=2,scope=$EFFECT_ID", "builder-import", "make validate-all", "go test ./... -count=1", "GOTOOLCHAIN", "fetch --no-tags origin \"$SOURCE_SHA\"", "probe-only)", "inputs.execution_digest", "execution input binding mismatch", "struct.pack('>I', len(value))"} {
 		if !strings.Contains(string(body), required) {
 			t.Errorf("missing immutable gate %s", required)
 		}
@@ -615,6 +615,34 @@ func TestDevelopmentRunnerDaemonDoesNotInheritControllerEnvironment(t *testing.T
 	} {
 		if !strings.Contains(string(body), required) {
 			t.Errorf("daemon may inherit controller environment: %s", required)
+		}
+	}
+}
+
+func TestDevelopmentRunnerProcMetadataCompatibilityRetainsCredentialIsolation(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`workload_gid="$(id -g aeontra-workload)"`,
+		`test "$workload_gid" -gt 0`,
+		`test "$workload_gid" != "$(id -g)"`,
+		`sudo mount -o "remount,hidepid=2,gid=$workload_gid" /proc`,
+		`<<'CONTROLLER_ISOLATION'`,
+		`for namespace in (False, True):`,
+		`'/proc/1/cgroup'`,
+		`('environ', 'mem', 'maps')`,
+		`('fd', 'root', 'cwd', 'exe')`,
+		`ptrace(0x4206`,
+		`sentinel.poll() is not None`,
+		`/opt/aeontra-control/ci.json`,
+		`/opt/aeontra-control/isolation-write-probe`,
+		`busctl --user --no-pager status`,
+		`OwnerUID=$workload_uid`,
+	} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("missing measured proc compatibility/isolation gate: %s", required)
 		}
 	}
 }

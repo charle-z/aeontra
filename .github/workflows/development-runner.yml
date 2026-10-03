@@ -129,7 +129,14 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
           sudo sysctl -w kernel.unprivileged_userns_clone=1
-          sudo mount -o remount,hidepid=2 /proc
+          # runc detects the user-bus owner through real process cgroup metadata.
+          # Exempt only this fixed workload group from hidepid metadata filtering;
+          # cross-UID ptrace/DAC still deny controller secrets and are probed below.
+          workload_gid="$(id -g aeontra-workload)"
+          test "$workload_gid" -gt 0
+          test "$workload_gid" != "$(id -g)"
+          test "$(id -G aeontra-workload)" = "$workload_gid"
+          sudo mount -o "remount,hidepid=2,gid=$workload_gid" /proc
           grep -Eq '^aeontra-workload:[0-9]+:[0-9]+$' /etc/subuid
           grep -Eq '^aeontra-workload:[0-9]+:[0-9]+$' /etc/subgid
           work="$(mktemp -d)"
@@ -265,6 +272,73 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Real cross-UID checks, including mapped namespace root. Fixtures have
+          # no actual credential values; failures never print a private read.
+          sudo test -f /opt/aeontra-control/ci.json
+          python3 - <<'CONTROLLER_ISOLATION'
+          import os, subprocess, tempfile
+          probe = r'''
+          import ctypes, errno, os, sys
+          pid, controller_uid, private_file, private_home = sys.argv[1:]
+          with open('/proc/1/cgroup') as metadata:
+              if not metadata.read(): raise SystemExit('init cgroup metadata unavailable')
+          with open('/proc/sys/kernel/overflowuid') as overflow:
+              expected_uid = int(overflow.read())
+          with open('/proc/self/uid_map') as mappings:
+              for mapping in mappings:
+                  inside, outside, length = map(int, mapping.split())
+                  if outside <= int(controller_uid) < outside + length:
+                      expected_uid = inside + int(controller_uid) - outside
+                      break
+          with open('/proc/' + pid + '/status') as status:
+              observed_uid = next((int(line.split()[1]) for line in status if line.startswith('Uid:')), None)
+              if observed_uid != expected_uid:
+                  raise SystemExit('controller sentinel identity changed')
+          def denied(operation):
+              try: operation()
+              except PermissionError: return
+              raise SystemExit('controller isolation violation')
+          for name in ('environ', 'mem', 'maps'):
+              denied(lambda: os.close(os.open('/proc/' + pid + '/' + name, os.O_RDONLY)))
+          for name in ('fd', 'root', 'cwd', 'exe'):
+              path = '/proc/' + pid + '/' + name
+              denied(lambda: os.listdir(path) if name == 'fd' else os.readlink(path))
+          for path in (private_file, '/opt/aeontra-control/ci.json', '/opt/aeontra-control/execute.py'):
+              denied(lambda: os.close(os.open(path, os.O_RDONLY)))
+          denied(lambda: os.listdir(private_home))
+          denied(lambda: os.close(os.open('/opt/aeontra-control/isolation-write-probe', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)))
+          libc = ctypes.CDLL(None, use_errno=True)
+          if libc.ptrace(0x4206, int(pid), None, None) != -1 or ctypes.get_errno() != errno.EPERM:
+              raise SystemExit('controller ptrace isolation violation')
+          '''
+          with tempfile.NamedTemporaryFile(dir=os.environ['RUNNER_TEMP']) as private_file:
+              sentinel = subprocess.Popen(['/usr/bin/sleep', '120'], cwd=os.environ['HOME'],
+                  env={'AEONTRA_CONTROLLER_SENTINEL': 'nonsecret-isolation-fixture'},
+                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              try:
+                  def live_controller():
+                      if sentinel.poll() is not None: raise SystemExit('controller sentinel exited')
+                      with open('/proc/' + str(sentinel.pid) + '/status') as status:
+                          uid = next((int(line.split()[1]) for line in status if line.startswith('Uid:')), None)
+                          if uid != os.getuid(): raise SystemExit('controller sentinel identity changed')
+                  for namespace in (False, True):
+                      live_controller()
+                      argv = ['/usr/bin/sudo', '/usr/sbin/runuser', '-u', 'aeontra-workload', '--',
+                              '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin']
+                      if namespace: argv += ['/usr/bin/unshare', '--user', '--map-root-user']
+                      argv += ['/usr/bin/python3', '-c', probe, str(sentinel.pid), str(os.getuid()),
+                               private_file.name, os.environ['HOME']]
+                      subprocess.run(argv, check=True, timeout=15)
+                      live_controller()
+              finally:
+                  sentinel.terminate()
+                  sentinel.wait(timeout=5)
+          print('Controller credential and ptrace isolation verified for workload and namespace root')
+          CONTROLLER_ISOLATION
+          workload_uid="$(id -u aeontra-workload)"
+          # Use real bus credentials in the same UID mapping as runc, not a
+          # manufactured OwnerUID or permission to use the system bus.
+          sudo -u aeontra-workload env -i HOME=/home/aeontra-workload PATH=/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$workload_uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$workload_uid/bus" timeout 10s unshare --user --map-root-user busctl --user --no-pager status | sed 's/^[[:space:]]*//' | grep -Fx "OwnerUID=$workload_uid"
           sudo runuser -u aeontra-workload -- unshare --user --map-root-user --mount --pid --fork sh -eu -c 'unshare --user --map-root-user --mount --pid --fork sh -eu -c "mount -t proc proc /proc; test -r /proc/self/status"'
           for attempt in $(seq 1 30); do
             if sudo python3 /opt/aeontra-control/execute.py docker-info docker info; then break; fi
