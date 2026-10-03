@@ -456,11 +456,7 @@ func (manager *ProjectProcessManager) Status(request ProjectProcessReadRequest) 
 				}
 			}
 			if !alive {
-				if watched {
-					_ = manager.finishFailed(record.ProcessID, "process_lost")
-				} else {
-					_ = manager.reconcileRecord(record)
-				}
+				_ = manager.reconcileRecord(record)
 				record, _ = manager.boundRecordScoped(request.ProcessID, request.ProjectAlias, request.TargetAlias, request.WorkspaceID)
 			}
 		}
@@ -849,6 +845,14 @@ func (manager *ProjectProcessManager) reconcileRecord(record projectProcessRecor
 			_, err = manager.db.Exec(`UPDATE project_processes SET state=? WHERE process_id=? AND state=?`, ProjectProcessRunning, record.ProcessID, ProjectProcessStarting)
 		}
 		return err
+	}
+	manager.watchMu.Lock()
+	watched := manager.watching[record.ProcessID]
+	manager.watchMu.Unlock()
+	if watched {
+		// Liveness can disappear before Wait delivers the exact exit result.
+		// The active watcher owns settlement; offline inference would erase it.
+		return nil
 	}
 	if exit, receiptErr := readProjectProcessWorkerExit(manager.workerRoot, record.ProcessID); receiptErr == nil {
 		return manager.finishRecoveredExit(record, exit)
