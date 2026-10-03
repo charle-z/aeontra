@@ -559,7 +559,7 @@ func TestDevelopmentRunnerRootlessNetworkUtilitiesRemainReachable(t *testing.T) 
 		t.Fatal(err)
 	}
 	for _, required := range []string{
-		"Environment=PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin",
+		"PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin",
 		"'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin'",
 	} {
 		if !strings.Contains(string(body), required) {
@@ -579,8 +579,8 @@ func TestDevelopmentRunnerUsesBoundedUserManager(t *testing.T) {
 		"Delegate=cpu cpuset io memory pids",
 		"sudo loginctl enable-linger aeontra-workload",
 		"sudo systemctl start \"user@${workload_uid}.service\"",
-		"Environment=XDG_RUNTIME_DIR=%t",
-		"Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus",
+		"XDG_RUNTIME_DIR=%t",
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus",
 		"systemctl --user start aeontra-rootless.service",
 		"systemctl --user stop aeontra-rootless.service",
 		"/user.slice/user-${workload_uid}.slice/user@${workload_uid}.service/app.slice/aeontra-rootless.service",
@@ -599,6 +599,23 @@ func TestDevelopmentRunnerUsesBoundedUserManager(t *testing.T) {
 	}
 	if strings.Contains(string(body), "/etc/systemd/system/aeontra-rootless.service") {
 		t.Error("rootless daemon still uses unsupported system-wide User= service")
+	}
+}
+
+func TestDevelopmentRunnerDaemonDoesNotInheritControllerEnvironment(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"ExecStart=/usr/bin/env -i HOME=/home/aeontra-workload",
+		"XDG_CONFIG_HOME=/home/aeontra-workload/.config",
+		"XDG_DATA_HOME=/home/aeontra-workload/.local/share",
+		"XDG_CACHE_HOME=/home/aeontra-workload/.cache",
+	} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("daemon may inherit controller environment: %s", required)
+		}
 	}
 }
 

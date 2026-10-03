@@ -95,6 +95,8 @@ UID/GID ranges and delegated cgroup-v2 units. It disables the VM's rootful Docke
 service and applies the reviewed unprivileged-userns AppArmor/sysctl change in
 that VM only. It does not change an Edge or production VPS posture.
 The daemon runs as a systemd user service with its user bus and runtime directory.
+Its fixed `env -i` launch clears the manager's inherited environment and assigns
+only workload-owned HOME/XDG paths, the pinned binary path and the user's bus.
 An instance-specific, root-owned `user@UID.service` drop-in delegates controllers
 and limits the entire manager subtree to 10 GiB and 4096 tasks, including container
 scopes outside the daemon unit. Calibration checks the real cgroup driver/version,

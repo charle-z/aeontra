@@ -199,11 +199,7 @@ jobs:
           MemoryMax=10G
           TasksMax=4096
           TimeoutStopSec=30
-          Environment=HOME=/home/aeontra-workload
-          Environment=PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin
-          Environment=XDG_RUNTIME_DIR=%t
-          Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
-          ExecStart=/opt/aeontra-bin/rootlesskit --net=slirp4netns --port-driver=builtin --disable-host-loopback --copy-up=/etc --copy-up=/run --propagation=rslave /usr/bin/python3 /opt/aeontra-bin/rootless-child.py
+          ExecStart=/usr/bin/env -i HOME=/home/aeontra-workload PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin XDG_CONFIG_HOME=/home/aeontra-workload/.config XDG_DATA_HOME=/home/aeontra-workload/.local/share XDG_CACHE_HOME=/home/aeontra-workload/.cache XDG_RUNTIME_DIR=%t DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus /opt/aeontra-bin/rootlesskit --net=slirp4netns --port-driver=builtin --disable-host-loopback --copy-up=/etc --copy-up=/run --propagation=rslave /usr/bin/python3 /opt/aeontra-bin/rootless-child.py
           UNIT
           sudo systemctl daemon-reload
           sudo loginctl enable-linger aeontra-workload
@@ -218,6 +214,8 @@ jobs:
           workload_uid = pwd.getpwnam('aeontra-workload').pw_uid
           env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin',
                  'XDG_RUNTIME_DIR': '/run/user/' + str(workload_uid), 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock',
+                 'XDG_CONFIG_HOME': '/home/aeontra-workload/.config', 'XDG_DATA_HOME': '/home/aeontra-workload/.local/share',
+                 'XDG_CACHE_HOME': '/home/aeontra-workload/.cache',
                  'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/' + str(workload_uid) + '/bus',
                  'DOCKER_CONFIG': '/home/aeontra-workload/.docker', 'GITHUB_ACTIONS': 'true',
                  'GOTOOLCHAIN': 'local', 'GOENV': 'off'}
