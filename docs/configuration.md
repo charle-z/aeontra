@@ -101,8 +101,13 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 
 ### Global builder
 
-- **Components:** the VPS profile plus Go, Git, Node/npm in the image and optional
+- **Components:** the VPS profile plus Go, Git, and Node 22 in the image and optional
   GitHub/Coolify adapters.
+- **Package management:** the final public backend contains no npm/npx binaries or
+  npm dependency tree. The console is assembled with pinned pnpm in a separate build
+  stage. Repository commands and tests execute in the attested private L3 executor;
+  package-management workflows use that executor, Edge, or the fixed private validation
+  runner rather than the backend runtime.
 - **Minimum configuration:** use `ask`; configure only the integrations needed.
 - **Volumes:** persistent `/repos` and `/state`.
 - **Security posture:** no free shell, no force push, no caller-provided Git refspec,

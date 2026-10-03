@@ -707,6 +707,28 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
 
 ## Security tests and evidence
 
+### Temporary container risk acceptance
+
+Container scans retain their original reports. A reviewed risk acceptance is a
+separate gate input, not a corrected or unaffected VEX statement. The current
+approval in `security/accepted-risks/http-cache-semantics-20261003.json` expires
+on 2026-10-17 at 13:24 UTC. It applies only to CVE-2026-93748 / GHSA-ch52-4w7c-c8xp,
+`http-cache-semantics` 4.2.0 at its exact bundled-npm path in the reviewed sandbox
+workcell. The gate verifies the scanned OCI configuration ID against the verified
+image ID and binds the approval to the workcell Dockerfile SHA-256.
+
+Accepted findings remain visible as warnings with their owner and expiry. Other
+advisories, package versions or locations, Critical/Unknown severity, an available
+fix, a changed image definition, missing image evidence, or expiry remain blocking.
+Approval windows cannot exceed 14 days. The workflow does not extend them or claim
+that the vulnerability has been repaired. Remove the approval when remediation is
+available; no automatic renewal is supported.
+
+The [daily security watch](runbooks/security-risk-watch.md) scans only its explicitly
+inventoried immutable image. An inventoried published candidate is not a deployed
+image, and same-source CI images do not prove the contents of a Coolify build.
+Production coverage requires an actual-image snapshot for every monitored component.
+
 Security behavior is protected by unit, adversarial, race, fuzz, integration, package,
 container, OAuth, documentation, and exact-head CI contracts. Important coverage
 includes traversal/symlink handling, secret denial/redaction, command parsing, plan
