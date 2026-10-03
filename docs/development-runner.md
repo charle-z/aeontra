@@ -48,12 +48,20 @@ timeout.
 `TemplateAttestation` accepts only a succeeded `probe-only` receipt belonging to
 the exact template identity/generation. Queued jobs, environment variables and
 the `runs-on` label cannot supply that attestation.
+The template identity also binds the versioned trusted Go probe required by the
+broker. An earlier successful calibration cannot attest a changed compiled Go
+capability. A valid calibrated template missing a command requirement reports
+`awaiting_reasoning` with `new_requirement` without dispatching a workload;
+unknown or pending calibration remains pending.
 
 A template attestation describes a provisionable one-shot profile, not a living
 VM. Every workload creates a new VM and repeats every kernel, rootless-engine,
 filesystem and CI gate before running its exact command. A terminated VM is
 never advertised as an available execution lease. Updating the workflow SHA,
-generation or provider configuration requires fresh calibration.
+generation or provider configuration requires fresh calibration. Settle active
+effects before rolling out a changed profile pin or compiled probe contract.
+Incompatible captured bindings fail closed; journals are retained and effects
+are neither retargeted nor replayed by the update.
 
 The two workload profiles are fixed:
 

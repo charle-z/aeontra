@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/development"
+	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/tools"
 	"github.com/charle-z/mcp-devbox/internal/workqueue"
@@ -124,15 +125,57 @@ func TestProjectDevelopmentRunnerExactProviderReceiptNoForgedEdgeID(t *testing.T
 }
 
 func TestProjectDevelopmentRunnerMustCalibrateBeforeAnyPlanAttempt(t *testing.T) {
-	server, _, _ := developmentServer(t)
+	server, edges, _ := developmentServer(t)
 	runner := &developmentRunnerTestProvider{queue: server.workQueue}
 	server.developmentRunner = runner
 	view := runnerDevelopmentStart(t, server, "runner-calibration-001")
 	developmentRounds(t, server, 3)
 	request, _, _ := server.workQueue.DevelopmentRequest(view.RequestID)
 	objective, _, _ := server.workQueue.DevelopmentObjective(request.ObjectiveID)
-	if len(objective.Steps[0].Attempts) != 0 || runner.posts != 0 || request.Reason != workqueue.DevelopmentRequestReasonCapabilityMissing {
+	if len(objective.Steps[0].Attempts) != 0 || runner.posts != 0 || request.State != workqueue.DevelopmentRequestActive || request.Reason != workqueue.DevelopmentRequestReasonCapabilityMissing {
 		t.Fatal("uncalibrated runner became a planned attempt")
+	}
+	developmentRounds(t, server, 4)
+	repeated, _, _ := server.workQueue.DevelopmentRequest(view.RequestID)
+	jobs, err := server.workQueue.List(20)
+	if err != nil || len(jobs) != 0 || runner.posts != 0 || edges.starts != 0 || repeated.State != request.State || repeated.Reason != request.Reason {
+		t.Fatal("pending calibration dispatched workload or stopped waiting", err)
+	}
+}
+
+func TestProjectDevelopmentCalibratedRunnerMissingRequirementAwaitsReasoningWithoutWorkload(t *testing.T) {
+	for _, required := range []development.CapabilityID{"toolchain.go.v1-26-9", "toolchain.pnpm.v10-13-1"} {
+		t.Run(string(required), func(t *testing.T) {
+			server, edges, _ := developmentServer(t)
+			server.WithEdgeStore(&developmentScenarioEdge{developmentTestEdge: edges, observe: func(op edge.Operation) edge.Operation {
+				if op.Kind == edge.OperationProjectDevelopmentInspect {
+					op.Result.DevelopmentInspection.Requirements = []development.CapabilityID{"toolchain.go", required}
+				}
+				return op
+			}})
+			runner := &developmentRunnerTestProvider{queue: server.workQueue, calibrated: true}
+			server.developmentRunner = runner
+			view := runnerDevelopmentStart(t, server, "runner-unsupported-001")
+			developmentRounds(t, server, 3)
+			request, found, err := server.workQueue.DevelopmentRequest(view.RequestID)
+			if err != nil || !found || request.State != workqueue.DevelopmentRequestAwaitingReasoning || request.Reason != workqueue.DevelopmentRequestReasonNewRequirement {
+				t.Fatalf("known missing capability stayed pending: request=%+v err=%v", request, err)
+			}
+			objective, found, err := server.workQueue.DevelopmentObjective(request.ObjectiveID)
+			if err != nil || !found || len(objective.Steps[0].Attempts) != 0 || len(objective.Steps[0].Provisioning) != 0 {
+				t.Fatal("known missing capability planned an effect", err)
+			}
+			jobs, err := server.workQueue.List(20)
+			if err != nil || len(jobs) != 0 || runner.posts != 0 || edges.starts != 0 || edges.bootstrapStarts != 0 {
+				t.Fatal("known missing capability dispatched workload", err)
+			}
+			operationCount := len(edges.operations)
+			developmentRounds(t, server, 4)
+			repeated, _, err := server.workQueue.DevelopmentRequest(view.RequestID)
+			if err != nil || repeated.Revision != request.Revision || repeated.State != request.State || repeated.Reason != request.Reason || len(edges.operations) != operationCount {
+				t.Fatal("awaiting reasoning did not remain quiet", err)
+			}
+		})
 	}
 }
 

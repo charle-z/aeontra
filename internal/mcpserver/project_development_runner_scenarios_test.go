@@ -143,8 +143,8 @@ func TestProjectDevelopmentRunnerFailedCalibrationNeverPlansWorkload(t *testing.
 				if err != nil {
 					t.Fatal(err)
 				}
-				if len(objective.Steps[0].Attempts) != 0 || runner.posts != 0 || request.Reason != workqueue.DevelopmentRequestReasonCapabilityMissing {
-					t.Fatal("calibrated template without required capability planned a workload")
+				if len(objective.Steps[0].Attempts) != 0 || runner.posts != 0 || request.State != workqueue.DevelopmentRequestAwaitingReasoning || request.Reason != workqueue.DevelopmentRequestReasonNewRequirement {
+					t.Fatal("calibrated capability mismatch dispatched a workload or kept waiting")
 				}
 			} else {
 				if len(objective.Steps[0].Attempts) != 0 || runner.posts != 0 {

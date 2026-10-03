@@ -114,6 +114,10 @@ func (s *Server) reconcileDevelopmentRunner(ctx context.Context, request workque
 		}
 		next, _, err := objective.PlanAttempt("command", objective.ObjectiveID+":attempt:1", inspection.SourceDigest, []development.EnvironmentAttestation{candidate})
 		if err != nil {
+			var resolutionErr *development.ResolutionError
+			if errors.As(err, &resolutionErr) && resolutionErr.Reason == development.ResolutionFailureCapabilities && len(resolutionErr.Missing) != 0 {
+				return s.finishDevelopmentRequest(request, workqueue.DevelopmentRequestAwaitingReasoning, workqueue.DevelopmentRequestReasonNewRequirement)
+			}
 			return s.pendingDevelopmentCapabilities(request)
 		}
 		if objective, _, err = s.workQueue.SaveDevelopmentObjective(next); err != nil {

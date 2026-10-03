@@ -79,7 +79,7 @@ jobs:
       - name: Set up pinned Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: '1.26.6'
+          go-version: '1.26.8'
           cache: false
 
       - name: Stage trusted CI runtime adapter
@@ -219,7 +219,7 @@ jobs:
           test "$(sudo git -C /home/aeontra-workload/source rev-parse --is-shallow-repository)" = false
           sudo chown -R aeontra-workload:aeontra-workload /home/aeontra-workload/source
 
-      - name: Probe kernel and CI contracts
+      - name: Probe kernel and CI contracts (Go 1.26.8)
         shell: bash
         run: |
           set -euo pipefail
@@ -250,7 +250,7 @@ jobs:
           sudo python3 /opt/aeontra-control/execute.py cache-import docker buildx build --progress=plain --cache-from "type=gha,version=2,scope=$EFFECT_ID" --output type=cacheonly /home/aeontra-workload/probe
           sudo grep -q CACHED /opt/aeontra-control/cache-import.log
           sudo python3 /opt/aeontra-control/execute.py pinned-go go version
-          sudo grep -Fx 'go version go1.26.6 linux/amd64' /opt/aeontra-control/pinned-go.log
+          sudo grep -Fx 'go version go1.26.8 linux/amd64' /opt/aeontra-control/pinned-go.log
           sudo python3 /opt/aeontra-control/execute.py make make --version
 
       - name: Execute exact profile
