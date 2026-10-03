@@ -45,13 +45,15 @@ const (
 )
 
 type StepSpec struct {
-	StepID       string
-	Requirements []Requirement
+	StepID             string
+	Requirements       []Requirement
+	AcceptanceContract *CommandAcceptanceContract
 }
 
 type ObjectiveScope struct {
 	Project string
 	Target  string
+	Anchor  WorkspaceAnchor
 }
 
 func NewObjectiveScope(project, target string) (ObjectiveScope, error) {
@@ -66,19 +68,22 @@ func NewObjectiveScope(project, target string) (ObjectiveScope, error) {
 }
 
 func (scope ObjectiveScope) Bound() bool {
-	return projectScopePattern.MatchString(scope.Project) && targetScopePattern.MatchString(scope.Target)
+	return projectScopePattern.MatchString(scope.Project) && targetScopePattern.MatchString(scope.Target) &&
+		(scope.Anchor == (WorkspaceAnchor{}) || scope.Anchor.Valid())
 }
 
 func (scope ObjectiveScope) validOrEmpty() bool {
-	return (scope.Project == "" && scope.Target == "") || scope.Bound()
+	return (scope == (ObjectiveScope{})) || scope.Bound()
 }
 
 type ObjectiveStep struct {
-	StepID       string
-	Requirements []Requirement
-	Attempts     []ExecutionAttempt
-	Provisioning []ProvisioningAttempt
-	State        StepState
+	StepID             string
+	Requirements       []Requirement
+	AcceptanceContract *CommandAcceptanceContract
+	AcceptanceReceipt  *CommandAcceptanceReceipt
+	Attempts           []ExecutionAttempt
+	Provisioning       []ProvisioningAttempt
+	State              StepState
 }
 
 type Objective struct {
@@ -111,11 +116,22 @@ func NewObjective(objectiveID string, policy ResolutionPolicy, specs []StepSpec)
 		if err != nil {
 			return Objective{}, err
 		}
-		steps = append(steps, ObjectiveStep{
+		step := ObjectiveStep{
 			StepID:       stepID,
 			Requirements: requirements,
 			State:        StepPlanned,
-		})
+		}
+		if spec.AcceptanceContract != nil {
+			contract := spec.AcceptanceContract.clone()
+			if !contract.validFor(policy, requirements) {
+				return Objective{}, errors.New("development command acceptance contract does not match objective")
+			}
+			step.AcceptanceContract = &contract
+		}
+		steps = append(steps, step)
+	}
+	if !sameCommandAcceptanceContractMode(steps) {
+		return Objective{}, errors.New("development objective cannot mix command and semantic acceptance")
 	}
 	return Objective{
 		Version:     ObjectiveVersion,
@@ -148,7 +164,7 @@ func (objective Objective) RefineRequirements(stepID string, additional []Requir
 		return Objective{}, errors.New("development objective cannot refine requirements")
 	}
 	step := objective.Steps[index]
-	if step.State == StepRunning || step.State == StepSucceeded || activeProvisioning(step) {
+	if step.State == StepRunning || step.State == StepSucceeded || activeProvisioning(step) || step.AcceptanceContract != nil {
 		return Objective{}, errors.New("development objective cannot refine active or succeeded step")
 	}
 	normalized, err := normalizeRequirementList(append(append([]Requirement(nil), step.Requirements...), additional...))
@@ -174,6 +190,9 @@ func (objective Objective) PlanAttempt(stepID, attemptID, sourceDigest string, c
 	}
 	copy := objective.clone()
 	step := &copy.Steps[index]
+	if step.AcceptanceContract != nil && strings.TrimSpace(sourceDigest) != step.AcceptanceContract.SourceDigest {
+		return Objective{}, Resolution{}, errors.New("development command acceptance source digest changed")
+	}
 	if activeProvisioning(*step) {
 		return Objective{}, Resolution{}, errors.New("development provisioning is still active")
 	}
@@ -355,12 +374,46 @@ func (objective Objective) CompleteAttempt(stepID string) (Objective, error) {
 }
 
 func (objective Objective) Accept() (Objective, error) {
-	if objective.State != ObjectiveAcceptancePending {
+	if objective.State != ObjectiveAcceptancePending || !sameCommandAcceptanceContractMode(objective.Steps) ||
+		len(objective.Steps) == 0 || objective.Steps[0].AcceptanceContract != nil {
 		return Objective{}, errors.New("development objective is not ready for acceptance")
 	}
 	copy := objective.clone()
 	copy.State = ObjectiveAccepted
 	copy.Revision++
+	return copy, nil
+}
+
+// AcceptWithEvidence accepts a command-only objective after a trusted internal
+// dispatcher has authenticated each terminal Edge operation and constructed an
+// exact receipt for its successful attempt. It is not a public caller receipt
+// path and does not evaluate natural-language goals.
+func (objective Objective) AcceptWithEvidence(receipts []CommandAcceptanceReceipt) (Objective, error) {
+	if !objective.Valid() || objective.State != ObjectiveAcceptancePending || len(objective.Steps) == 0 ||
+		!sameCommandAcceptanceContractMode(objective.Steps) || objective.Steps[0].AcceptanceContract == nil {
+		return Objective{}, errors.New("development objective is not ready for command acceptance")
+	}
+	if len(receipts) != len(objective.Steps) {
+		return Objective{}, errors.New("development command acceptance evidence is incomplete")
+	}
+	copy := objective.clone()
+	seenOperations := make(map[string]struct{}, len(receipts))
+	for _, receipt := range receipts {
+		index := objective.stepIndex(receipt.StepID)
+		if index < 0 || !receipt.validFor(objective, index) {
+			return Objective{}, errors.New("development command acceptance evidence does not match objective")
+		}
+		if _, duplicate := seenOperations[receipt.OperationID]; duplicate {
+			return Objective{}, errors.New("development command acceptance evidence is duplicated")
+		}
+		seenOperations[receipt.OperationID] = struct{}{}
+		copy.Steps[index].AcceptanceReceipt = receipt.clonePointer()
+	}
+	copy.State = ObjectiveAccepted
+	copy.Revision++
+	if !copy.Valid() {
+		return Objective{}, errors.New("development command acceptance evidence is invalid")
+	}
 	return copy, nil
 }
 
@@ -446,6 +499,14 @@ func (objective Objective) clone() Objective {
 	for index, step := range objective.Steps {
 		copy.Steps[index] = step
 		copy.Steps[index].Requirements = append([]Requirement(nil), step.Requirements...)
+		if step.AcceptanceContract != nil {
+			contract := step.AcceptanceContract.clone()
+			copy.Steps[index].AcceptanceContract = &contract
+		}
+		if step.AcceptanceReceipt != nil {
+			receipt := step.AcceptanceReceipt.clone()
+			copy.Steps[index].AcceptanceReceipt = &receipt
+		}
 		copy.Steps[index].Attempts = append([]ExecutionAttempt(nil), step.Attempts...)
 		copy.Steps[index].Provisioning = make([]ProvisioningAttempt, len(step.Provisioning))
 		for j, provision := range step.Provisioning {

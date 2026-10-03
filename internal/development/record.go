@@ -22,8 +22,9 @@ type objectiveRecord struct {
 }
 
 type objectiveScopeRecord struct {
-	Project string `json:"project"`
-	Target  string `json:"target"`
+	Project string           `json:"project"`
+	Target  string           `json:"target"`
+	Anchor  *WorkspaceAnchor `json:"anchor,omitempty"`
 }
 
 type objectivePolicyRecord struct {
@@ -32,11 +33,22 @@ type objectivePolicyRecord struct {
 }
 
 type objectiveStepRecord struct {
-	StepID       string                   `json:"step_id"`
-	State        StepState                `json:"state"`
-	Requirements []string                 `json:"requirements"`
-	Attempts     []objectiveAttemptRecord `json:"attempts"`
-	Provisioning []ProvisioningAttempt    `json:"provisioning,omitempty"`
+	StepID             string                           `json:"step_id"`
+	State              StepState                        `json:"state"`
+	Requirements       []string                         `json:"requirements"`
+	Attempts           []objectiveAttemptRecord         `json:"attempts"`
+	Provisioning       []ProvisioningAttempt            `json:"provisioning,omitempty"`
+	AcceptanceContract *commandAcceptanceContractRecord `json:"acceptance_contract,omitempty"`
+	AcceptanceReceipt  *CommandAcceptanceReceipt        `json:"acceptance_receipt,omitempty"`
+}
+
+type commandAcceptanceContractRecord struct {
+	CommandDigest        string   `json:"command_digest"`
+	SourceDigest         string   `json:"source_digest"`
+	PrivateBodyRef       string   `json:"private_body_ref"`
+	PrivateBodyDigest    string   `json:"private_body_digest"`
+	RequiredCapabilities []string `json:"required_capabilities"`
+	ArtifactRefs         []string `json:"artifact_refs,omitempty"`
 }
 
 type objectiveAttemptRecord struct {
@@ -79,6 +91,10 @@ func (objective Objective) MarshalRecord() ([]byte, string, error) {
 			Project: objective.Scope.Project,
 			Target:  objective.Scope.Target,
 		}
+		if objective.Scope.Anchor.Valid() {
+			anchor := objective.Scope.Anchor
+			record.Scope.Anchor = &anchor
+		}
 	}
 	for _, step := range objective.Steps {
 		stepRecord := objectiveStepRecord{
@@ -86,6 +102,24 @@ func (objective Objective) MarshalRecord() ([]byte, string, error) {
 			State:        step.State,
 			Requirements: make([]string, 0, len(step.Requirements)),
 			Attempts:     make([]objectiveAttemptRecord, 0, len(step.Attempts)),
+		}
+		if step.AcceptanceContract != nil {
+			contract := commandAcceptanceContractRecord{
+				CommandDigest:        step.AcceptanceContract.CommandDigest,
+				SourceDigest:         step.AcceptanceContract.SourceDigest,
+				PrivateBodyRef:       step.AcceptanceContract.PrivateBodyRef,
+				PrivateBodyDigest:    step.AcceptanceContract.PrivateBodyDigest,
+				RequiredCapabilities: make([]string, 0, len(step.AcceptanceContract.RequiredCapabilities)),
+				ArtifactRefs:         append([]string(nil), step.AcceptanceContract.ArtifactRefs...),
+			}
+			for _, requirement := range step.AcceptanceContract.RequiredCapabilities {
+				contract.RequiredCapabilities = append(contract.RequiredCapabilities, string(requirement.ID))
+			}
+			stepRecord.AcceptanceContract = &contract
+		}
+		if step.AcceptanceReceipt != nil {
+			receipt := step.AcceptanceReceipt.clone()
+			stepRecord.AcceptanceReceipt = &receipt
 		}
 		for _, provision := range step.Provisioning {
 			stepRecord.Provisioning = append(stepRecord.Provisioning, cloneProvisionAttempt(provision))
@@ -148,6 +182,12 @@ func ParseObjectiveRecord(body []byte) (Objective, error) {
 			return Objective{}, errors.New("development objective record is invalid")
 		}
 		objective.Scope = scope
+		if record.Scope.Anchor != nil {
+			if !record.Scope.Anchor.Valid() {
+				return Objective{}, errors.New("development workspace anchor is invalid")
+			}
+			objective.Scope.Anchor = *record.Scope.Anchor
+		}
 	}
 	for _, stepRecord := range record.Steps {
 		requirements, err := Requirements(stepRecord.Requirements...)
@@ -159,6 +199,25 @@ func ParseObjectiveRecord(body []byte) (Objective, error) {
 			State:        stepRecord.State,
 			Requirements: requirements,
 			Attempts:     make([]ExecutionAttempt, 0, len(stepRecord.Attempts)),
+		}
+		if stepRecord.AcceptanceContract != nil {
+			requirements, err := Requirements(stepRecord.AcceptanceContract.RequiredCapabilities...)
+			if err != nil || !sameRequirementStrings(stepRecord.AcceptanceContract.RequiredCapabilities, requirements) {
+				return Objective{}, errors.New("development objective record is invalid")
+			}
+			contract := CommandAcceptanceContract{
+				CommandDigest:        stepRecord.AcceptanceContract.CommandDigest,
+				SourceDigest:         stepRecord.AcceptanceContract.SourceDigest,
+				PrivateBodyRef:       stepRecord.AcceptanceContract.PrivateBodyRef,
+				PrivateBodyDigest:    stepRecord.AcceptanceContract.PrivateBodyDigest,
+				RequiredCapabilities: requirements,
+				ArtifactRefs:         append([]string(nil), stepRecord.AcceptanceContract.ArtifactRefs...),
+			}
+			step.AcceptanceContract = &contract
+		}
+		if stepRecord.AcceptanceReceipt != nil {
+			receipt := stepRecord.AcceptanceReceipt.clone()
+			step.AcceptanceReceipt = &receipt
 		}
 		for _, provision := range stepRecord.Provisioning {
 			step.Provisioning = append(step.Provisioning, cloneProvisionAttempt(provision))
@@ -209,8 +268,14 @@ func validateObjectiveSnapshot(objective Objective) error {
 	}
 	stepIDs := make(map[string]struct{}, len(objective.Steps))
 	attemptIDs := make(map[string]struct{})
+	operationIDs := make(map[string]struct{})
 	allSucceeded := true
-	for _, step := range objective.Steps {
+	if !sameCommandAcceptanceContractMode(objective.Steps) {
+		return errors.New("development objective acceptance mode is invalid")
+	}
+	contracted := len(objective.Steps) != 0 && objective.Steps[0].AcceptanceContract != nil
+	receiptCount := 0
+	for index, step := range objective.Steps {
 		if !identityPattern.MatchString(step.StepID) || !validStepState(step.State) ||
 			len(step.Attempts) > MaxAttemptsPerStep {
 			return errors.New("development objective snapshot is invalid")
@@ -225,6 +290,27 @@ func validateObjectiveSnapshot(objective Objective) error {
 		}
 		if err := validateObjectiveAttempts(step, attemptIDs); err != nil {
 			return err
+		}
+		if step.AcceptanceContract != nil && !step.AcceptanceContract.validFor(objective.Policy, step.Requirements) {
+			return errors.New("development command acceptance contract is invalid")
+		}
+		if step.AcceptanceContract != nil {
+			for _, attempt := range step.Attempts {
+				if attempt.SourceDigest != step.AcceptanceContract.SourceDigest {
+					return errors.New("development command acceptance source changed")
+				}
+			}
+		}
+		if step.AcceptanceReceipt != nil {
+			if step.AcceptanceContract == nil || objective.State != ObjectiveAccepted ||
+				!step.AcceptanceReceipt.validFor(objective, index) {
+				return errors.New("development command acceptance receipt is invalid")
+			}
+			if _, duplicate := operationIDs[step.AcceptanceReceipt.OperationID]; duplicate {
+				return errors.New("development command acceptance receipt is duplicated")
+			}
+			operationIDs[step.AcceptanceReceipt.OperationID] = struct{}{}
+			receiptCount++
 		}
 		for _, attempt := range step.Attempts {
 			if !objective.Policy.AllowsClass(attempt.Class) {
@@ -253,6 +339,12 @@ func validateObjectiveSnapshot(objective Objective) error {
 	case ObjectiveAcceptancePending, ObjectiveAccepted:
 		if !allSucceeded {
 			return errors.New("development objective snapshot is invalid")
+		}
+		if objective.State == ObjectiveAcceptancePending && receiptCount != 0 {
+			return errors.New("development acceptance evidence is premature")
+		}
+		if objective.State == ObjectiveAccepted && ((contracted && receiptCount != len(objective.Steps)) || (!contracted && receiptCount != 0)) {
+			return errors.New("development accepted objective lacks required evidence")
 		}
 	case ObjectiveReconciliationRequired:
 		if !objectiveHasFailureClass(objective, FailureReconciliationNeeded) {

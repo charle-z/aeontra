@@ -102,6 +102,9 @@ type ProjectProcessStartRequest struct {
 	Argv                                                   []string
 	CWD, Stdin                                             string
 	Environment                                            map[string]string
+	// DevelopmentBindingDigest is private server-owned authority metadata.
+	// Empty preserves the ordinary process digest and its existing replay contract.
+	DevelopmentBindingDigest string
 }
 
 type ProjectProcessReadRequest struct {
@@ -1156,13 +1159,25 @@ func projectProcessTerminal(state ProjectProcessState) bool {
 }
 
 func projectProcessRequestDigest(request ProjectProcessStartRequest) (string, error) {
-	body, err := json.Marshal(struct {
+	metadata := struct {
 		WorkspaceID, ProjectAlias, TargetAlias, ProjectOwner, ProjectRepository, ProjectState string
 		ProjectClaimGeneration                                                                uint64
 		Argv                                                                                  []string
 		CWD, Stdin                                                                            string
 		Environment                                                                           map[string]string
-	}{request.Workspace.ID, request.ProjectAlias, request.TargetAlias, request.ProjectOwner, request.ProjectRepository, request.ProjectState, request.ProjectClaimGeneration, request.Argv, request.CWD, request.Stdin, request.Environment})
+	}{request.Workspace.ID, request.ProjectAlias, request.TargetAlias, request.ProjectOwner, request.ProjectRepository, request.ProjectState, request.ProjectClaimGeneration, request.Argv, request.CWD, request.Stdin, request.Environment}
+	body, err := json.Marshal(metadata)
+	if request.DevelopmentBindingDigest != "" {
+		if !projectWorktreeTestDigestRE.MatchString(request.DevelopmentBindingDigest) ||
+			request.ProjectState != string(ProjectCheckoutReady) && request.ProjectState != string(ProjectCheckoutDirty) {
+			return "", errors.New("project process development binding is invalid")
+		}
+		// Keep legacy bytes identical when the new private binding is absent.
+		body, err = json.Marshal(struct {
+			Request                  json.RawMessage `json:"request"`
+			DevelopmentBindingDigest string          `json:"development_binding_digest"`
+		}{body, request.DevelopmentBindingDigest})
+	}
 	if err != nil {
 		return "", errors.New("project process request is invalid")
 	}

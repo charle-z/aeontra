@@ -24,21 +24,85 @@ type projectWorktreeContentPath struct {
 }
 
 func projectWorktreeContentDigest(ctx context.Context, manager *ProjectWorktreeManager, snapshot ProjectWorktreeSnapshot) (string, error) {
-	root, rootInfo, err := openProjectWorktreeContentRoot(snapshot.path)
+	return projectSourceContentDigest(ctx, snapshot.path, func(args []string) ([]string, error) {
+		return readProjectWorktreeContentGitPaths(ctx, manager, snapshot, args)
+	}, func() error { return manager.revalidate(ctx, snapshot) })
+}
+
+// RegisteredProjectContentDigest uses the same bounded descriptor-relative
+// hashing as managed worktrees. The registry is revalidated around inventory
+// and hashing; dirty files remain source, rather than a security violation.
+func RegisteredProjectContentDigest(ctx context.Context, registry *ProjectRegistry, resolved ProjectResolution, runner DevGitCommandRunner) (string, error) {
+	if registry == nil || runner == nil || !resolved.Project.ClaimGenerationValid {
+		return "", ErrProjectWorktreeInvalid
+	}
+	revalidate := func() error {
+		current, err := registry.Resolve(ctx, resolved.Project.Alias, resolved.TargetAlias)
+		if err != nil {
+			return err
+		}
+		if current.Workspace != resolved.Workspace || current.Project.ClaimGeneration != resolved.Project.ClaimGeneration ||
+			current.Project.Owner != resolved.Project.Owner || current.Project.Repository != resolved.Project.Repository {
+			return ErrProjectWorktreeUnsafe
+		}
+		return nil
+	}
+	return projectSourceContentDigest(ctx, resolved.Workspace.Path, func(args []string) ([]string, error) {
+		output, err := runner.Run(ctx, resolved.Workspace.Path, args, GitHubCredential{})
+		if err != nil {
+			return nil, err
+		}
+		return parseProjectWorktreeContentPaths([]byte(output))
+	}, revalidate)
+}
+
+// RegisteredProjectSourceEvidence binds the hash to one stable observed Git
+// HEAD/index state. Paths from status never leave the Edge. This is source
+// evidence for development routing, not an assertion that ignored build
+// outputs or a developer's concurrent writes form an immutable snapshot.
+func RegisteredProjectSourceEvidence(ctx context.Context, registry *ProjectRegistry, resolved ProjectResolution, runner DevGitCommandRunner) (digest, head string, clean bool, err error) {
+	if registry == nil || runner == nil {
+		return "", "", false, ErrProjectWorktreeInvalid
+	}
+	read := func() (string, string, error) {
+		head, err := runner.Run(ctx, resolved.Workspace.Path, []string{"rev-parse", "--verify", "HEAD"}, GitHubCredential{})
+		if err != nil || !devGitCommitPattern.MatchString(strings.TrimSpace(head)) {
+			return "", "", ErrProjectWorktreeUnavailable
+		}
+		status, err := runner.Run(ctx, resolved.Workspace.Path, []string{"status", "--porcelain=v1", "-z", "--untracked-files=all"}, GitHubCredential{})
+		return strings.TrimSpace(head), status, err
+	}
+	beforeHead, beforeStatus, err := read()
+	if err != nil {
+		return "", "", false, err
+	}
+	digest, err = RegisteredProjectContentDigest(ctx, registry, resolved, runner)
+	if err != nil {
+		return "", "", false, err
+	}
+	afterHead, afterStatus, err := read()
+	if err != nil || beforeHead != afterHead || beforeStatus != afterStatus {
+		return "", "", false, ErrProjectWorktreeUnavailable
+	}
+	return digest, afterHead, afterStatus == "", nil
+}
+
+func projectSourceContentDigest(ctx context.Context, sourcePath string, inventory func([]string) ([]string, error), revalidate func() error) (string, error) {
+	root, rootInfo, err := openProjectWorktreeContentRoot(sourcePath)
 	if err != nil {
 		return "", err
 	}
 	defer root.Close()
 
-	headPaths, err := readProjectWorktreeContentGitPaths(ctx, manager, snapshot, []string{"ls-tree", "-r", "--full-tree", "-z", "--name-only", "HEAD"})
+	headPaths, err := inventory([]string{"ls-tree", "-r", "--full-tree", "-z", "--name-only", "HEAD"})
 	if err != nil {
 		return "", err
 	}
-	indexPaths, err := readProjectWorktreeContentGitPaths(ctx, manager, snapshot, []string{"ls-files", "--cached", "-z"})
+	indexPaths, err := inventory([]string{"ls-files", "--cached", "-z"})
 	if err != nil {
 		return "", err
 	}
-	untrackedPaths, err := readProjectWorktreeContentGitPaths(ctx, manager, snapshot, []string{"ls-files", "--others", "--exclude-standard", "-z"})
+	untrackedPaths, err := inventory([]string{"ls-files", "--others", "--exclude-standard", "-z"})
 	if err != nil {
 		return "", err
 	}
@@ -66,10 +130,10 @@ func projectWorktreeContentDigest(ctx context.Context, manager *ProjectWorktreeM
 	// Git ran through the managed path, while reads below use the pinned directory
 	// descriptor. Revalidate both the registration and path identity after the Git
 	// inventory so an exchanged worktree cannot silently supply the file list.
-	if err := manager.revalidate(ctx, snapshot); err != nil {
+	if err := revalidate(); err != nil {
 		return "", err
 	}
-	currentRootInfo, err := os.Lstat(snapshot.path)
+	currentRootInfo, err := os.Lstat(sourcePath)
 	if err != nil || !currentRootInfo.IsDir() || currentRootInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(rootInfo, currentRootInfo) {
 		return "", ErrProjectWorktreeUnsafe
 	}
@@ -81,10 +145,10 @@ func projectWorktreeContentDigest(ctx context.Context, manager *ProjectWorktreeM
 	// The descriptor above pins the directory being read, but the next
 	// operation will resolve the path again. Refuse a digest if that path was
 	// exchanged while hashing or its managed identity changed.
-	if err := manager.revalidate(ctx, snapshot); err != nil {
+	if err := revalidate(); err != nil {
 		return "", err
 	}
-	currentRootInfo, err = os.Lstat(snapshot.path)
+	currentRootInfo, err = os.Lstat(sourcePath)
 	if err != nil || !currentRootInfo.IsDir() || currentRootInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(rootInfo, currentRootInfo) {
 		return "", ErrProjectWorktreeUnsafe
 	}

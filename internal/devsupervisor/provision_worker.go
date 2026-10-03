@@ -124,6 +124,14 @@ func (supervisor *Supervisor) ReconcileProvisionLease(ctx context.Context, objec
 	if effect.Pending {
 		return ProvisionResult{Objective: objective, Provision: provision}, nil
 	}
+	if heartbeat.CancelRequested && effect.Failure != "" {
+		if _, known := development.ContinuationForFailure(effect.Failure); !known {
+			return ProvisionResult{}, ErrProvisionConflict
+		}
+		// The queue's cancellation request is not proof that the external
+		// effect stopped. Keep its captured lease and journal recoverable.
+		return ProvisionResult{Objective: objective, Provision: provision}, ErrProvisionReconciliationRequired
+	}
 	result := workqueue.Result{Outcome: workqueue.StateSucceeded, Summary: "provisioned", ResultRef: effect.ResultRef}
 	if heartbeat.CancelRequested {
 		result.Outcome, result.Summary = workqueue.StateCancelled, "cancelled"

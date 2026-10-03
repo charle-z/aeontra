@@ -25,6 +25,8 @@ func clearRuntimeEnv(t *testing.T) {
 		validationRunnerURLEnv, validationRunnerTokenEnv,
 		privilegedTasksEnv, privilegedServicesEnv, privilegedTimeoutEnv,
 		maintainerProfileEnv,
+		developmentRunnerProfileEnv, developmentRunnerRepositoryEnv, developmentRunnerWorkflowRefEnv,
+		developmentRunnerWorkflowSHAEnv, developmentRunnerGenerationEnv, developmentRunnerCalibrationEnv,
 		githubTokenEnv, githubOSSTokenEnv, githubOwnerEnv, githubOwnerTypeEnv, githubDefaultVisibilityEnv,
 		coolifyURLEnv, coolifyAPITokenEnv, coolifyAllowedAppsEnv, coolifyServerUUIDEnv,
 		coolifyProjectUUIDEnv, coolifyEnvironmentNameEnv, coolifyEnvironmentUUIDEnv,
@@ -249,6 +251,57 @@ func TestRestoreActiveTaskGoalPinsPrecedesCleanupAndQuarantinesLostQueuedGoal(t 
 	retained, found, err := queue.Task(validTask.ID)
 	if err != nil || !found || retained.State != workqueue.TaskQueued {
 		t.Fatalf("valid legacy task=%+v found=%v err=%v", retained, found, err)
+	}
+}
+
+func TestRestoreDevelopmentGoalPinsPrecedesExpiredBodyCleanup(t *testing.T) {
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	root := filepath.Join(t.TempDir(), "model-turns")
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "development-body-recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+	turns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: root, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("private command body survives a backend restart")
+	goal, err := turns.StageRuntimeGoal(context.Background(), content, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := modelturn.IdempotencyDigest("development-body-request")
+	request := workqueue.DevelopmentRequest{ID: "dr_" + strings.Repeat("a", 32), Revision: 1, KeyDigest: owner, Alias: "project", Target: "parrot", DeviceID: "ed_" + strings.Repeat("b", 32), BodyRef: goal.BodyRef, BodyDigest: goal.ContentDigest, State: workqueue.DevelopmentRequestPreparing}
+	if _, _, err := queue.SaveDevelopmentRequest(request); err != nil {
+		t.Fatal(err)
+	}
+	missing := request
+	missing.ID = "dr_" + strings.Repeat("c", 32)
+	missing.KeyDigest = modelturn.IdempotencyDigest("missing-development-body")
+	missing.BodyRef = "mb_" + strings.Repeat("d", 32)
+	if _, _, err := queue.SaveDevelopmentRequest(missing); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.Close(); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Hour)
+	turns, err = modelturn.OpenStore(modelturn.StoreConfig{Root: root, Now: func() time.Time { return now }, DeferTaskGoalCleanup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer turns.Close()
+	if err := restoreActiveTaskGoalPins(queue, turns, nil); err != nil {
+		t.Fatal(err)
+	}
+	body, err := turns.PinnedDevelopmentBody(context.Background(), owner, modelturn.TaskGoalReference{BodyRef: goal.BodyRef, ContentDigest: goal.ContentDigest})
+	if err != nil || string(body) != string(content) {
+		t.Fatalf("restart lost pinned development body: %q err=%v", body, err)
+	}
+	retained, found, err := queue.DevelopmentRequest(missing.ID)
+	if err != nil || !found || retained.State != workqueue.DevelopmentRequestPreparing {
+		t.Fatalf("missing body must retain durable effect metadata: %+v found=%v err=%v", retained, found, err)
 	}
 }
 

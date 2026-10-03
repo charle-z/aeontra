@@ -1,6 +1,6 @@
 # P16 durable scheduler store
 
-Status: **P16 durable task groups and fenced Edge workers are implemented in source. The same store now also persists the internal development-objective kernel; public objective routing and real-runner acceptance remain pending.**
+Status: **Durable task groups, fenced Edge workers and exact-command development routing are implemented in source. Real-runner and deployment acceptance must be recorded separately.**
 
 `internal/workqueue` is the private coordination store for admission, VPS workers,
 per-Edge pools and development objectives. It still grants no execution authority by
@@ -186,9 +186,19 @@ leased effect. A broker can still stop that captured effect after the objective 
 cancelled. Provisioning uses the existing queue, lease limits and coordinator; it does
 not create another scheduler. Each step retains at most 16 provisioning attempts.
 
-The store admits at most 1024 development-objective rows. Capacity is checked inside the
-same write transaction before insertion, and exceeding it fails closed rather than
-creating a database that subsequently fails semantic integrity.
+The store admits at most 1024 development-objective rows. Capacity is checked inside
+the same write transaction before insertion. Canonical accepted, failed and cancelled
+objectives older than thirty days can be pruned during new-objective admission only
+when no retained request or nonterminal queue job owns them. Active, recent, corrupt
+or uncertain records are never discarded to free capacity. Exact-ID replay does not
+trigger maintenance.
+
+The same schema also stores bounded development requests and isolated-runner effect
+metadata. Private argv/stdin/environment stay in the pinned model-turn body store;
+queue rows contain only references, digests and lifecycle identities. Terminal request
+keys are retained for thirty days. Runner effect pruning preserves active or uncertain
+dispatches and the configured calibration. See `docs/development-runner.md` for the
+external runner's stricter reconciliation and retention rules.
 
 Every read recomputes the record digest, parses the bounded canonical JSON and checks
 the row identity, revision and state against the record. `Integrity()` performs the same

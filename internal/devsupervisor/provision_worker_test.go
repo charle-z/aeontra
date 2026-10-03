@@ -10,10 +10,11 @@ import (
 )
 
 type recordingProvisionExecutor struct {
-	requests    []ProvisionRequest
-	source      *mutableCatalogSource
-	environment development.EnvironmentAttestation
-	pending     bool
+	requests      []ProvisionRequest
+	source        *mutableCatalogSource
+	environment   development.EnvironmentAttestation
+	pending       bool
+	cancelFailure development.FailureClass
 }
 
 func (executor *recordingProvisionExecutor) Reconcile(_ context.Context, request ProvisionRequest) (ProvisionEffect, error) {
@@ -27,7 +28,7 @@ func (executor *recordingProvisionExecutor) Reconcile(_ context.Context, request
 
 func (executor *recordingProvisionExecutor) Cancel(_ context.Context, request ProvisionRequest) (ProvisionEffect, error) {
 	executor.requests = append(executor.requests, request)
-	return ProvisionEffect{}, nil
+	return ProvisionEffect{Failure: executor.cancelFailure}, nil
 }
 
 func supervisorCatalogForWorker(environment development.EnvironmentAttestation) development.EnvironmentCatalog {
@@ -93,5 +94,27 @@ func TestProvisionWorkerCanCancelLeasedEffectAfterObjectiveCancellation(t *testi
 	job, found, err := store.Get(lease.Job.ID)
 	if err != nil || !found || job.State != workqueue.StateCancelled || len(executor.requests) != 1 {
 		t.Fatalf("cancelled effect queue=%+v calls=%d err=%v", job, len(executor.requests), err)
+	}
+}
+
+func TestProvisionWorkerDoesNotClaimUnknownCancellationAsClean(t *testing.T) {
+	store, source, supervisor, objective, plan := provisioningFixture(t, "objective-provision-cancel-unknown")
+	if _, err := supervisor.ProvisionStep(context.Background(), objective.ObjectiveID, "validate", supervisorSourceDigest("a")); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := store.LeaseNext(plan.Pool, "provision-worker-one", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Cancel(context.Background(), objective.ObjectiveID); err != nil {
+		t.Fatal(err)
+	}
+	executor := &recordingProvisionExecutor{source: source, cancelFailure: development.FailureReconciliationNeeded}
+	if _, err := supervisor.ReconcileProvisionLease(context.Background(), objective.ObjectiveID, "validate", lease, executor); err == nil {
+		t.Fatal("unknown cancellation reported as reconciled")
+	}
+	job, found, err := store.Get(lease.Job.ID)
+	if err != nil || !found || job.State != workqueue.StateLeased || !job.CancelRequested {
+		t.Fatalf("unknown effect falsely terminal: %+v err=%v", job, err)
 	}
 }

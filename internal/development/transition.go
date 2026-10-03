@@ -30,6 +30,8 @@ func ValidateTransition(previous, next Objective) error {
 			return errors.New("development failure does not authorize provisioning")
 		}
 		if before.StepID != after.StepID ||
+			!sameCommandAcceptanceContract(before.AcceptanceContract, after.AcceptanceContract) ||
+			!validAcceptanceReceiptTransition(previous.State, next.State, before, after) ||
 			!requirementsSubset(before.Requirements, after.Requirements) ||
 			!validStepStateTransition(before.State, after.State) ||
 			len(after.Attempts) < len(before.Attempts) ||
@@ -68,6 +70,28 @@ func ValidateTransition(previous, next Objective) error {
 		}
 	}
 	return nil
+}
+
+func validAcceptanceReceiptTransition(previousState, nextState ObjectiveState, before, after ObjectiveStep) bool {
+	if before.AcceptanceReceipt == nil {
+		if after.AcceptanceReceipt == nil {
+			return true
+		}
+		return before.AcceptanceContract != nil && previousState == ObjectiveAcceptancePending && nextState == ObjectiveAccepted
+	}
+	if after.AcceptanceReceipt == nil {
+		return false
+	}
+	return sameCommandAcceptanceReceipt(*before.AcceptanceReceipt, *after.AcceptanceReceipt)
+}
+
+func sameCommandAcceptanceReceipt(left, right CommandAcceptanceReceipt) bool {
+	return left.OperationID == right.OperationID && left.ObjectiveID == right.ObjectiveID &&
+		left.StepID == right.StepID && left.AttemptID == right.AttemptID &&
+		left.ContractDigest == right.ContractDigest && left.CommandDigest == right.CommandDigest &&
+		left.SourceDigest == right.SourceDigest && left.EnvironmentDigest == right.EnvironmentDigest &&
+		left.PrivateBodyRef == right.PrivateBodyRef && left.PrivateBodyDigest == right.PrivateBodyDigest &&
+		left.ExitCode == right.ExitCode && sameStrings(left.ArtifactRefs, right.ArtifactRefs)
 }
 
 func validProvisionHistory(before, after []ProvisioningAttempt) bool {

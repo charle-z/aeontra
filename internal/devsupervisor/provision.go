@@ -13,9 +13,10 @@ import (
 )
 
 var (
-	ErrProvisionUnavailable = errors.New("development supervisor: governed provisioning unavailable")
-	ErrProvisionConflict    = errors.New("development supervisor: provisioning identity conflict")
-	ErrProvisionUnverified  = errors.New("development supervisor: provisioning receipt requires re-attestation")
+	ErrProvisionUnavailable            = errors.New("development supervisor: governed provisioning unavailable")
+	ErrProvisionConflict               = errors.New("development supervisor: provisioning identity conflict")
+	ErrProvisionUnverified             = errors.New("development supervisor: provisioning receipt requires re-attestation")
+	ErrProvisionReconciliationRequired = errors.New("development supervisor: provision cancellation requires reconciliation")
 )
 
 // Provisioner is registered by the administrator, never supplied by an MCP

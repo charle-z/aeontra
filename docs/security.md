@@ -25,6 +25,8 @@ The system has several distinct authorities. They must not be collapsed into one
 | Public OSS GitHub broker | Public external issue/PR reads plus planned issue creation, fork, comment and cross-repository PR writes | Public control-plane schemas, fixed API routes, owner/upstream validation, expiring single-use plans and exact state revalidation | GitHub API for one named public upstream and the configured owner's fork | Reuses the server-side `GITHUB_TOKEN`; it never enters the Edge toolbox, repository, argv, tool schema, output or audit |
 | Direct Edge checkout Git | Registered project checkout and fixed `origin` only | Read status/fetch plus exact single-use fast-forward and same-name no-force publication plans; dirty, detached, non-fast-forward, stale or replayed state fails closed | Existing owner-bound GitHub transport only | Reuses the private askpass authority; public results omit credential, URL, path, argv and PID |
 | Direct Edge GitHub broker | Repository already bound to a registered development project | Only server-constructed official `gh api` argv execute outside the workcell; no arbitrary endpoint, header, command or caller repository is accepted | GitHub API for the exact owner/repository only | `GH_TOKEN` exists only in the bounded child process environment under a private HOME; results are parsed, bounded and token-redacted before safe capability metadata leaves the Edge |
+| Durable development command | One exact staged command, pinned source/environment and captured registered workspace | Existing workcell isolation, journal, queue fences and process identity; source changes invalidate acceptance, not observation or safe cancellation | Existing trusted workcell networking | Private command bytes stay in the pinned staged store; public status returns lifecycle and opaque identities |
+| Isolated development runner | Administrator-pinned public workflow and explicitly requested fixed command profile | Disposable hosted VM; separate workload UID, rootless engine and delegated bounded cgroups; kernel/CI gates repeated for each command | Network-enabled VM; public exact Git source only | Source broker token stays in the control plane; workload receives only ephemeral job-local cache/runtime authority, not production credentials |
 
 MCP output redaction can change source-looking text, including ordinary code that names
 tokens or passwords. Command output is therefore not a byte-preserving publication
@@ -49,6 +51,15 @@ Edge broker for a registered development project; source-hosting issue, fork, pu
 request and Actions operations use the server-side source broker. A workcell's
 `gh auth status` therefore does not determine either broker's configuration. Neither
 broker exposes its token to a workcell, repository, model, tool schema or public result.
+
+Durable development commands preserve the same project/workcell authority. Official
+Go/Rust bootstrap recipes write only the selected runtime/cache roots and require
+fresh independent capability inspection afterward. Unknown dispatch or cancellation
+acknowledgements remain reconciliation states; they do not authorize command replay
+or prove success. See [the development ADR](adr/0008-development-complete-capability-resolution.md)
+and [isolated-runner runbook](development-runner.md) for the exact acceptance and
+recovery contracts. The optional runner changes data location only through an explicit
+registered profile; it does not upload dirty or private source.
 
 ## Threat model
 

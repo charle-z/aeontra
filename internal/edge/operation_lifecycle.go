@@ -192,7 +192,7 @@ func operationKindInterruptible(kind OperationKind) bool {
 }
 
 func (s *Store) operationLifecycleByDigest(deviceID string, kind OperationKind, digest string) (Operation, error) {
-	return scanOperationLifecycle(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,leased_at,running_at,finalizing_at,updated_at FROM edge_operations WHERE device_id=? AND kind=? AND request_digest=? ORDER BY created_at DESC LIMIT 1`, deviceID, kind, digest))
+	return scanOperationLifecycle(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,leased_at,running_at,finalizing_at,updated_at FROM edge_operations WHERE device_id=? AND kind=? AND request_digest=? ORDER BY created_at DESC,rowid DESC LIMIT 1`, deviceID, kind, digest))
 }
 
 func (s *Store) operationLifecycleByID(operationID string) (Operation, error) {

@@ -69,6 +69,10 @@ already proved the fixed L3 baseline satisfies the range, the requirement is bou
 that concrete baseline version; an Edge-required range that still needs version
 selection fails closed until the managed version resolver can satisfy it.
 
+Numeric capability versions preserve their precision. `1.95` denotes the
+minor-version prefix, while `1.95.0` requires that exact patch. Dropping trailing
+zero components would incorrectly allow `1.95.1` to satisfy the latter.
+
 ### Environment attestations
 
 Every execution environment that participates in resolution has a server-owned
@@ -269,6 +273,44 @@ natural-language objective.
 
 The existing project-task acceptance separation remains the model to preserve.
 
+#### P6: command contract and acceptance evidence
+
+A command-only objective may bind each step to a command contract containing
+the canonical argv digest, source digest, staged private-body reference and digest,
+required capabilities, and opaque artifact references. The durable objective stores no
+argv, source bytes, command output, URL, or artifact path. The contract digest also binds
+the objective and step identity plus the immutable resolution policy. A command
+acceptance objective contracts every step; it cannot mix command-only acceptance with
+natural-language evaluator steps.
+
+Planning rejects a source digest that differs from the contract. The attempt captures the
+selected environment attestation. A terminal zero-exit result leaves the objective in
+acceptance pending until an internal dispatcher verifies the exact successful Edge
+operation, device, operation kind and request key, workspace, source, environment and
+fence. The dispatcher then submits a receipt bound to the objective, step, attempt,
+contract, command, source, environment, staged-body reference and artifact references.
+The core checks these bindings and stores the receipt in the same immutable revision that
+moves the objective to accepted; the existing objective-record digest and revision CAS
+protect persistence and concurrent updates.
+
+The core receipt value is not a cryptographic attestation. Receipt authenticity remains
+the responsibility of the server-side dispatcher before it calls the internal acceptance
+method; no caller-facing receipt input is exposed. Natural-language objectives remain
+acceptance pending until an explicit evaluator accepts them. Legacy records without a
+command contract remain readable and do not gain command acceptance authority during
+parsing.
+
+An isolated GitHub execution uses its real numeric run ID, durable effect ID and
+broker receipt digest instead of an invented Edge operation ID. These receipts
+are valid only for isolated-runner attempts. Edge receipts remain bound to the
+original Edge operation and cannot carry GitHub-run identity fields. The dispatcher
+authenticates the source of either receipt; the core checks their immutable command,
+source, environment and private-body bindings.
+
+The command contract is immutable for the lifetime of its objective. After a code
+failure, a source change requires a new objective with a newly staged private body and
+contract; this slice does not support in-place contract refinement.
+
 ## Security invariants
 
 Development-complete does not mean a host shell.
@@ -311,26 +353,28 @@ It proves:
 This fixture is acceptance evidence for the generic resolver. It is not a production
 BuildKit special case.
 
-## Delivery after this ADR
+## Delivery status
 
-The first source slice persists bounded canonical objective/step/attempt records inside
-the existing workqueue SQLite store with revision CAS, transition validation and
-v2-to-v3 migration. The next slice adds the L3/workcell/rootless/toolbox attestation
-adapters and exact numeric toolchain capability prefixes. The current internal slice
-adds durable project/target scope plus the supervisor and composite attestation catalog
-described above. No public objective tool or external execution dispatch is exposed yet.
+The source persists bounded canonical objective/step/attempt records inside the
+existing workqueue SQLite store with revision CAS, transition validation and
+v2-to-v3 migration. Capability adapters, exact numeric toolchain requirements,
+durable provisioning and command acceptance are implemented.
 
-The remaining implementation sequence is:
+`project_development_start`, `project_development_status` and
+`project_development_cancel` connect exact commands to the existing coordinator.
+The registered Linux workcell can provision official Go and Rust toolchains into
+its runtime root and recover the original process after a lost acknowledgement.
+The separately opted-in isolated runner supports fixed public-source commands;
+its configuration, calibration and recovery contract are documented in
+`docs/development-runner.md`.
 
-1. connect persisted objectives to the existing workqueue coordinator without
-   introducing a second scheduler or public authority surface;
-2. build attestations from L3, workcell, toolbox, rootless runtime and runner state;
-3. connect dependency/service provisioning to capability receipts and generations;
-4. add a generic isolated runner/VM broker for kernel and CI contracts;
-5. classify execution failures into the closed failure vocabulary;
-6. bind command/test evidence to exact source and environment digests;
-7. connect model-provider continuity to the same durable objective;
-8. execute BuildKit `make validate-all` as an end-to-end release gate.
+Deterministic execution continues without an attached consumer chat. Code failures
+and requirements that need reasoning remain explicitly `awaiting_reasoning`;
+there is no background model inference or automatic rewrite of source.
+
+Production rollout, real-device concurrency/restart checks and BuildKit's complete
+`make validate-all` remain acceptance gates. Record their actual outcomes before
+claiming deployment or workflow completion.
 
 Source implementation, deployment, signed Edge release and real-device acceptance remain
 separate facts.

@@ -165,8 +165,10 @@ func canonicalCapabilityVersion(raw string) (string, error) {
 	}
 	value = strings.TrimPrefix(value, "v")
 	parts := strings.Split(value, ".")
-	for len(parts) > 1 && parts[len(parts)-1] == "0" {
-		parts = parts[:len(parts)-1]
+	for _, part := range parts {
+		if len(part) > 1 && part[0] == '0' {
+			return "", errors.New("development capability version is not canonical")
+		}
 	}
 	return strings.Join(parts, "."), nil
 }

@@ -123,75 +123,79 @@ var projectOperationIdempotencyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z
 var operationProgressPhasePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
 
 type OperationRequest struct {
-	Platform                     string            `json:"platform,omitempty"`
-	Machine                      string            `json:"machine,omitempty"`
-	Target                       string            `json:"target"`
-	Difficulty                   string            `json:"difficulty,omitempty"`
-	OperatingSystem              string            `json:"operating_system,omitempty"`
-	WorkspaceID                  string            `json:"workspace_id,omitempty"`
-	RunUntil                     string            `json:"run_until,omitempty"`
-	Release                      string            `json:"release,omitempty"`
-	Alias                        string            `json:"alias,omitempty"`
-	Repository                   string            `json:"repository,omitempty"`
-	TargetAlias                  string            `json:"target_alias,omitempty"`
-	ProjectClaimGeneration       uint64            `json:"project_claim_generation,omitempty"`
-	Profile                      string            `json:"profile,omitempty"`
-	IdempotencyKey               string            `json:"idempotency_key,omitempty"`
-	Argv                         []string          `json:"argv,omitempty"`
-	CWD                          string            `json:"cwd,omitempty"`
-	Stdin                        string            `json:"stdin,omitempty"`
-	Environment                  map[string]string `json:"environment,omitempty"`
-	TimeoutSeconds               int               `json:"timeout_seconds,omitempty"`
-	NetworkDestination           string            `json:"network_destination,omitempty"`
-	NetworkPorts                 []int             `json:"network_ports,omitempty"`
-	NetworkTimeoutMillis         int               `json:"network_timeout_millis,omitempty"`
-	BackgroundProcessID          string            `json:"background_process_id,omitempty"`
-	ProcessStdinOffset           int64             `json:"process_stdin_offset,omitempty"`
-	ProcessStdinClose            bool              `json:"process_stdin_close,omitempty"`
-	StdoutOffset                 int64             `json:"stdout_offset,omitempty"`
-	StderrOffset                 int64             `json:"stderr_offset,omitempty"`
-	OutputLimit                  int               `json:"output_limit,omitempty"`
-	GraceSeconds                 int               `json:"grace_seconds,omitempty"`
-	BackgroundSignal             string            `json:"background_signal,omitempty"`
-	ProcessLimit                 int               `json:"process_limit,omitempty"`
-	GitPlanID                    string            `json:"git_plan_id,omitempty"`
-	ToolboxServiceID             string            `json:"toolbox_service_id,omitempty"`
-	ToolboxServiceName           string            `json:"toolbox_service_name,omitempty"`
-	ToolboxLifecycle             string            `json:"toolbox_lifecycle,omitempty"`
-	ToolboxCPUMillis             int               `json:"toolbox_cpu_millis,omitempty"`
-	ToolboxMemoryMiB             int               `json:"toolbox_memory_mib,omitempty"`
-	ToolboxProcessLimit          int               `json:"toolbox_process_limit,omitempty"`
-	BrowserSessionID             string            `json:"browser_session_id,omitempty"`
-	BrowserNetworkScope          string            `json:"browser_network_scope,omitempty"`
-	BrowserInitialURL            string            `json:"browser_initial_url,omitempty"`
-	BrowserViewportWidth         int               `json:"browser_viewport_width,omitempty"`
-	BrowserViewportHeight        int               `json:"browser_viewport_height,omitempty"`
-	BrowserIgnoreHTTPSErrors     bool              `json:"browser_ignore_https_errors,omitempty"`
-	BrowserSteps                 []BrowserStep     `json:"browser_steps,omitempty"`
-	BrowserCapture               string            `json:"browser_capture,omitempty"`
-	BrowserFullPage              bool              `json:"browser_full_page,omitempty"`
-	BrowserTimeoutSeconds        int               `json:"browser_timeout_seconds,omitempty"`
-	BrowserArtifactID            string            `json:"browser_artifact_id,omitempty"`
-	BrowserArtifactOffset        int64             `json:"browser_artifact_offset,omitempty"`
-	BrowserArtifactLimit         int               `json:"browser_artifact_limit,omitempty"`
-	BrowserHarnessRunID          string            `json:"browser_harness_run_id,omitempty"`
-	BrowserHarnessProfile        string            `json:"browser_harness_profile,omitempty"`
-	BrowserHarnessTimeoutSeconds int               `json:"browser_harness_timeout_seconds,omitempty"`
-	BrowserHarnessStorageMiB     int               `json:"browser_harness_storage_mib,omitempty"`
-	BrowserHarnessListLimit      int               `json:"browser_harness_list_limit,omitempty"`
-	BrowserHarnessRemoveProfile  bool              `json:"browser_harness_remove_profile,omitempty"`
-	BrowserHarnessArtifactPath   string            `json:"browser_harness_artifact_path,omitempty"`
-	BrowserHarnessArtifactOffset int64             `json:"browser_harness_artifact_offset,omitempty"`
-	BrowserHarnessArtifactLimit  int               `json:"browser_harness_artifact_limit,omitempty"`
-	WorktreeID                   string            `json:"worktree_id,omitempty"`
-	WorktreeBaseCommit           string            `json:"worktree_base_commit,omitempty"`
-	WorktreeRole                 string            `json:"worktree_role,omitempty"`
-	WorkJobID                    string            `json:"work_job_id,omitempty"`
-	WorkLeaseID                  string            `json:"work_lease_id,omitempty"`
-	WorkFence                    uint64            `json:"work_fence,omitempty"`
-	WorktreeLimit                int               `json:"worktree_limit,omitempty"`
-	TestProfileID                string            `json:"test_profile_id,omitempty"`
-	TestProfileDigest            string            `json:"test_profile_digest,omitempty"`
+	DevelopmentRecoveryOperationID    string                              `json:"development_recovery_operation_id,omitempty"`
+	DevelopmentRecoveryIdempotencyKey string                              `json:"development_recovery_idempotency_key,omitempty"`
+	DevelopmentBootstrap              *ProjectDevelopmentBootstrapBinding `json:"development_bootstrap,omitempty"`
+	DevelopmentCommand                *ProjectDevelopmentCommandBinding   `json:"development_command,omitempty"`
+	Platform                          string                              `json:"platform,omitempty"`
+	Machine                           string                              `json:"machine,omitempty"`
+	Target                            string                              `json:"target"`
+	Difficulty                        string                              `json:"difficulty,omitempty"`
+	OperatingSystem                   string                              `json:"operating_system,omitempty"`
+	WorkspaceID                       string                              `json:"workspace_id,omitempty"`
+	RunUntil                          string                              `json:"run_until,omitempty"`
+	Release                           string                              `json:"release,omitempty"`
+	Alias                             string                              `json:"alias,omitempty"`
+	Repository                        string                              `json:"repository,omitempty"`
+	TargetAlias                       string                              `json:"target_alias,omitempty"`
+	ProjectClaimGeneration            uint64                              `json:"project_claim_generation,omitempty"`
+	Profile                           string                              `json:"profile,omitempty"`
+	IdempotencyKey                    string                              `json:"idempotency_key,omitempty"`
+	Argv                              []string                            `json:"argv,omitempty"`
+	CWD                               string                              `json:"cwd,omitempty"`
+	Stdin                             string                              `json:"stdin,omitempty"`
+	Environment                       map[string]string                   `json:"environment,omitempty"`
+	TimeoutSeconds                    int                                 `json:"timeout_seconds,omitempty"`
+	NetworkDestination                string                              `json:"network_destination,omitempty"`
+	NetworkPorts                      []int                               `json:"network_ports,omitempty"`
+	NetworkTimeoutMillis              int                                 `json:"network_timeout_millis,omitempty"`
+	BackgroundProcessID               string                              `json:"background_process_id,omitempty"`
+	ProcessStdinOffset                int64                               `json:"process_stdin_offset,omitempty"`
+	ProcessStdinClose                 bool                                `json:"process_stdin_close,omitempty"`
+	StdoutOffset                      int64                               `json:"stdout_offset,omitempty"`
+	StderrOffset                      int64                               `json:"stderr_offset,omitempty"`
+	OutputLimit                       int                                 `json:"output_limit,omitempty"`
+	GraceSeconds                      int                                 `json:"grace_seconds,omitempty"`
+	BackgroundSignal                  string                              `json:"background_signal,omitempty"`
+	ProcessLimit                      int                                 `json:"process_limit,omitempty"`
+	GitPlanID                         string                              `json:"git_plan_id,omitempty"`
+	ToolboxServiceID                  string                              `json:"toolbox_service_id,omitempty"`
+	ToolboxServiceName                string                              `json:"toolbox_service_name,omitempty"`
+	ToolboxLifecycle                  string                              `json:"toolbox_lifecycle,omitempty"`
+	ToolboxCPUMillis                  int                                 `json:"toolbox_cpu_millis,omitempty"`
+	ToolboxMemoryMiB                  int                                 `json:"toolbox_memory_mib,omitempty"`
+	ToolboxProcessLimit               int                                 `json:"toolbox_process_limit,omitempty"`
+	BrowserSessionID                  string                              `json:"browser_session_id,omitempty"`
+	BrowserNetworkScope               string                              `json:"browser_network_scope,omitempty"`
+	BrowserInitialURL                 string                              `json:"browser_initial_url,omitempty"`
+	BrowserViewportWidth              int                                 `json:"browser_viewport_width,omitempty"`
+	BrowserViewportHeight             int                                 `json:"browser_viewport_height,omitempty"`
+	BrowserIgnoreHTTPSErrors          bool                                `json:"browser_ignore_https_errors,omitempty"`
+	BrowserSteps                      []BrowserStep                       `json:"browser_steps,omitempty"`
+	BrowserCapture                    string                              `json:"browser_capture,omitempty"`
+	BrowserFullPage                   bool                                `json:"browser_full_page,omitempty"`
+	BrowserTimeoutSeconds             int                                 `json:"browser_timeout_seconds,omitempty"`
+	BrowserArtifactID                 string                              `json:"browser_artifact_id,omitempty"`
+	BrowserArtifactOffset             int64                               `json:"browser_artifact_offset,omitempty"`
+	BrowserArtifactLimit              int                                 `json:"browser_artifact_limit,omitempty"`
+	BrowserHarnessRunID               string                              `json:"browser_harness_run_id,omitempty"`
+	BrowserHarnessProfile             string                              `json:"browser_harness_profile,omitempty"`
+	BrowserHarnessTimeoutSeconds      int                                 `json:"browser_harness_timeout_seconds,omitempty"`
+	BrowserHarnessStorageMiB          int                                 `json:"browser_harness_storage_mib,omitempty"`
+	BrowserHarnessListLimit           int                                 `json:"browser_harness_list_limit,omitempty"`
+	BrowserHarnessRemoveProfile       bool                                `json:"browser_harness_remove_profile,omitempty"`
+	BrowserHarnessArtifactPath        string                              `json:"browser_harness_artifact_path,omitempty"`
+	BrowserHarnessArtifactOffset      int64                               `json:"browser_harness_artifact_offset,omitempty"`
+	BrowserHarnessArtifactLimit       int                                 `json:"browser_harness_artifact_limit,omitempty"`
+	WorktreeID                        string                              `json:"worktree_id,omitempty"`
+	WorktreeBaseCommit                string                              `json:"worktree_base_commit,omitempty"`
+	WorktreeRole                      string                              `json:"worktree_role,omitempty"`
+	WorkJobID                         string                              `json:"work_job_id,omitempty"`
+	WorkLeaseID                       string                              `json:"work_lease_id,omitempty"`
+	WorkFence                         uint64                              `json:"work_fence,omitempty"`
+	WorktreeLimit                     int                                 `json:"worktree_limit,omitempty"`
+	TestProfileID                     string                              `json:"test_profile_id,omitempty"`
+	TestProfileDigest                 string                              `json:"test_profile_digest,omitempty"`
 }
 
 type BackgroundProcessSummary struct {
@@ -261,15 +265,18 @@ type ProjectClaimSummary struct {
 }
 
 type OperationResult struct {
-	WorkspaceID           string `json:"workspace_id,omitempty"`
-	AuthorizationRevision uint64 `json:"authorization_revision,omitempty"`
-	JobID                 string `json:"job_id,omitempty"`
-	JobState              string `json:"job_state,omitempty"`
-	ProgressRevision      uint64 `json:"progress_revision,omitempty"`
-	CycleCount            uint64 `json:"cycle_count,omitempty"`
-	JobSafeCode           string `json:"job_safe_code,omitempty"`
-	Release               string `json:"release,omitempty"`
-	Commit                string `json:"commit,omitempty"`
+	DevelopmentBootstrap  *ProjectDevelopmentBootstrapBinding `json:"development_bootstrap,omitempty"`
+	DevelopmentCommand    *ProjectDevelopmentCommandBinding   `json:"development_command,omitempty"`
+	DevelopmentInspection *ProjectDevelopmentInspection       `json:"development_inspection,omitempty"`
+	WorkspaceID           string                              `json:"workspace_id,omitempty"`
+	AuthorizationRevision uint64                              `json:"authorization_revision,omitempty"`
+	JobID                 string                              `json:"job_id,omitempty"`
+	JobState              string                              `json:"job_state,omitempty"`
+	ProgressRevision      uint64                              `json:"progress_revision,omitempty"`
+	CycleCount            uint64                              `json:"cycle_count,omitempty"`
+	JobSafeCode           string                              `json:"job_safe_code,omitempty"`
+	Release               string                              `json:"release,omitempty"`
+	Commit                string                              `json:"commit,omitempty"`
 	// These fields identify the authenticated Edge bundle independently from
 	// the MCP backend identity, so protocol/catalog skew is observable without
 	// exposing paths or other private state.
@@ -844,12 +851,15 @@ func validateOperationRequest(kind OperationKind, request OperationRequest) (Ope
 			strings.ContainsAny(request.Repository, `/\\`) || strings.HasPrefix(request.Repository, ".") {
 			return OperationRequest{}, errors.New("project prepare request is invalid")
 		}
-	case OperationProjectStatus:
+	case OperationProjectStatus, OperationProjectDevelopmentInspect:
 		request.Alias = strings.ToLower(strings.TrimSpace(request.Alias))
 		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
 		request.Profile = strings.TrimSpace(request.Profile)
 		if !validProjectOperationRequestCommon(request) || request.Repository != "" {
 			return OperationRequest{}, errors.New("project status request is invalid")
+		}
+		if kind == OperationProjectDevelopmentInspect && (request.ProjectClaimGeneration != 0 || !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey)) {
+			return OperationRequest{}, errors.New("project development inspection identity is invalid")
 		}
 	case OperationProjectRegistryList:
 		request.TargetAlias = strings.ToLower(strings.TrimSpace(request.TargetAlias))
@@ -982,6 +992,15 @@ func validEdgeBundleIdentity(result OperationResult) bool {
 func validOperationCompletionForKind(kind OperationKind, result OperationResult, code string) bool {
 	if code != "" {
 		return validOperationCompletion(result, code)
+	}
+	if kind == OperationProjectDevelopmentBootstrapResolve || kind == OperationProjectDevelopmentBootstrapStart || result.DevelopmentBootstrap != nil {
+		return validDevelopmentBootstrapResult(kind, result)
+	}
+	if kind == OperationProjectDevelopmentCommandStart || result.DevelopmentCommand != nil {
+		return kind == OperationProjectDevelopmentCommandStart && validProjectDevelopmentCommandResult(result)
+	}
+	if kind == OperationProjectDevelopmentInspect || result.DevelopmentInspection != nil {
+		return kind == OperationProjectDevelopmentInspect && validProjectDevelopmentInspection(result)
 	}
 	if hasEdgeStorageResult(result) {
 		return kind == OperationOnboardingStatus && validEdgeStorageResult(result)

@@ -283,6 +283,17 @@ func ensureSchemaExtensions(db *sql.DB, version int) error {
 			updated_at INTEGER NOT NULL
 		) WITHOUT ROWID`,
 		`CREATE INDEX IF NOT EXISTS development_objectives_recent ON development_objectives(updated_at DESC,objective_id DESC)`,
+		`CREATE TABLE IF NOT EXISTS development_runner_effects(
+			effect_id TEXT PRIMARY KEY,
+			revision INTEGER NOT NULL,
+			record_json BLOB NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS development_requests(
+			request_id TEXT PRIMARY KEY,key_digest TEXT NOT NULL UNIQUE,
+			revision INTEGER NOT NULL,state TEXT NOT NULL,record_digest TEXT NOT NULL,
+			record_json BLOB NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS development_requests_recent ON development_requests(state,updated_at DESC,request_id DESC)`,
 	} {
 		if _, err := tx.Exec(statement); err != nil {
 			return errors.New("workqueue: schema migration failed")
@@ -870,6 +881,12 @@ func (s *Store) Integrity() error {
 		if _, found, err := developmentObjectiveByID(s.db, objectiveID); err != nil || !found {
 			return errors.New("workqueue: development objective semantic integrity failed")
 		}
+	}
+	if err := s.developmentRunnerIntegrity(); err != nil {
+		return err
+	}
+	if err := s.developmentRequestIntegrity(); err != nil {
+		return err
 	}
 	foreignRows, err := s.db.Query(`PRAGMA foreign_key_check`)
 	if err != nil {

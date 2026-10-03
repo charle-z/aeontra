@@ -24,6 +24,8 @@ func executeWindowsControlOperation(ctx context.Context, stateRoot string, proce
 		return executeProjectRegistryRecovery(ctx, stateRoot, operation, openWindowsProjectControlState, safeWindowsProjectFailure)
 	case edge.OperationProjectSnapshot:
 		return executeWindowsProjectSnapshot(ctx, stateRoot, operation.Request)
+	case edge.OperationProjectDevelopmentInspect, edge.OperationProjectDevelopmentCommandStart, edge.OperationProjectDevelopmentBootstrapResolve, edge.OperationProjectDevelopmentBootstrapStart:
+		return edge.OperationResult{}, "project_development_unavailable_windows"
 	case edge.OperationProjectWorktreeTestProfile, edge.OperationProjectWorktreeTestStart, edge.OperationProjectWorktreeTestStatus, edge.OperationProjectWorktreeTestStop:
 		return edge.OperationResult{}, "project_worktree_test_unavailable_windows"
 	case edge.OperationProjectExec:

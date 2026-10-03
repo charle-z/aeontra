@@ -37,7 +37,7 @@ func DevelopmentRequirementsFromToolchainReadiness(readiness ToolchainReadiness)
 			names = append(names, base)
 			continue
 		}
-		if exact := canonicalToolchainVersion(pin); exact != "" {
+		if exact := exactDevelopmentToolchainVersion(pin); exact != "" {
 			requirement, err := development.VersionRequirement(base, exact)
 			if err != nil {
 				return nil, errors.New("development toolchain version requirement is invalid")
@@ -83,7 +83,6 @@ func DevelopmentWorkcellAttestation(environmentID string, generation uint64, pre
 	names := []string{
 		"exec.argv",
 		"filesystem.workspace-rw",
-		"git.cli",
 		"isolation.bubblewrap",
 		"network.host-shared",
 	}
@@ -115,7 +114,6 @@ func DevelopmentRootlessRuntimeAttestation(environmentID string, generation uint
 	names := []string{
 		"exec.argv",
 		"filesystem.workspace-rw",
-		"git.cli",
 		"isolation.bubblewrap",
 		"network.host-shared",
 		"container.engine.rootless",
@@ -210,7 +208,7 @@ func developmentCapabilitiesFromLinuxInventory(inventory []LinuxToolInventoryEnt
 		}
 		if name, ok := developmentCapabilityForInventoryTool(entry.Name); ok {
 			names = append(names, name)
-			if exact := canonicalToolchainVersion(entry.Version); exact != "" {
+			if exact := exactDevelopmentToolchainVersion(entry.Version); exact != "" {
 				versioned, err := development.VersionCapabilityIDs(name, exact)
 				if err != nil {
 					return development.CapabilitySet{}, err
@@ -305,4 +303,14 @@ func developmentSupportedBaselineVersion(tool string) string {
 	default:
 		return ""
 	}
+}
+
+// Unlike the legacy readiness comparator, exact capabilities retain a zero
+// patch component: 1.95.0 is not an assertion about every 1.95 patch release.
+func exactDevelopmentToolchainVersion(raw string) string {
+	value := strings.TrimSpace(strings.Trim(raw, "\"'"))
+	if !toolchainNumericVersionPattern.MatchString(value) {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(value), "v")
 }

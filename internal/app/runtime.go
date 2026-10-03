@@ -90,6 +90,10 @@ func (r *appRuntime) Close() error {
 }
 
 func buildRuntime(opts serveOptions) (*appRuntime, error) {
+	developmentConfig, err := loadDevelopmentRunnerConfig()
+	if err != nil {
+		return nil, err
+	}
 	pol, err := policy.NewPolicy(opts.Config)
 	if err != nil {
 		return nil, err
@@ -250,7 +254,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		return nil, errors.New("configuring edge operation compatibility")
 	}
 
-	return &appRuntime{
+	runtime := &appRuntime{
 		Policy:      pol,
 		Logger:      logger,
 		Observer:    observer,
@@ -266,7 +270,16 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		Edge:        edgeStore,
 		Sessions:    sessions,
 		WorkQueue:   workQueue,
-	}, nil
+	}
+	if developmentConfig != nil {
+		runner, err := service.SourceCapability.NewDevelopmentRunner(*developmentConfig, workQueue)
+		if err != nil {
+			_ = runtime.Close()
+			return nil, err
+		}
+		server.WithDevelopmentRunner(runner)
+	}
+	return runtime, nil
 }
 
 func restoreActiveTaskGoalPins(queue *workqueue.Store, turns *modelturn.Store, refs []workqueue.ActiveTaskGoalRef) error {
@@ -306,6 +319,22 @@ func restoreActiveTaskGoalPins(queue *workqueue.Store, turns *modelturn.Store, r
 	owners := make([]modelturn.TaskGoalOwner, 0, len(validByDigest))
 	for _, owner := range validByDigest {
 		owners = append(owners, *owner)
+	}
+	developmentOwners, err := queue.DevelopmentGoalOwners()
+	if err != nil {
+		return err
+	}
+	for _, owner := range developmentOwners {
+		if err := turns.PinTaskGoalReferences(context.Background(), owner.OwnerDigest, owner.References); err != nil {
+			if !errors.Is(err, modelturn.ErrRequestRefConflict) {
+				return err
+			}
+			// An unavailable body blocks only its owning request. Keep the
+			// captured operation/process metadata so status and cancellation
+			// can reconcile effects without authorizing a replacement command.
+			continue
+		}
+		owners = append(owners, owner)
 	}
 	if err := turns.ReconcileTaskGoalPins(context.Background(), owners, 0); err != nil {
 		return err

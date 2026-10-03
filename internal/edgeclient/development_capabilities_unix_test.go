@@ -61,6 +61,7 @@ func TestDevelopmentWorkcellAttestationUsesOnlyObservedAvailableTools(t *testing
 	inventory := []LinuxToolInventoryEntry{
 		{Name: "go", Available: true, Version: "1.26.6", Capability: "go-toolchain"},
 		{Name: "make", Available: true, Version: "4.4", Capability: "build-tool"},
+		{Name: "git", Available: true, Version: "2.47.2", Capability: "version-control"},
 		{Name: "pnpm", Available: false, Version: "absent", Capability: "node-packages"},
 		{Name: "javac", Available: false, Version: "absent", Capability: "java-compiler"},
 	}
@@ -195,7 +196,7 @@ func TestDevelopmentCodexRootlessRuntimeAttestsBuildxOnlyFromValidatedBundle(t *
 	}
 	if !attestation.Capabilities.Has("container.docker.client") ||
 		!attestation.Capabilities.Has("container.buildx") ||
-		!attestation.Capabilities.Has("git.cli") {
+		attestation.Capabilities.Has("git.cli") {
 		t.Fatalf("signed container clients were not attested: %+v", attestation)
 	}
 

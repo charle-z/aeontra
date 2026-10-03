@@ -664,7 +664,7 @@ func TestVersionCapabilityIDsUseNumericPrefixes(t *testing.T) {
 		t.Fatalf("version capability ids=%v want=%v", ids, want)
 	}
 	requirement, err := VersionRequirement("toolchain.go", "1.26.0")
-	if err != nil || requirement.ID != "toolchain.go.v1-26" {
+	if err != nil || requirement.ID != "toolchain.go.v1-26-0" {
 		t.Fatalf("requirement=%+v err=%v", requirement, err)
 	}
 	if _, err := VersionRequirement("toolchain.go", ">=1.26"); err == nil {

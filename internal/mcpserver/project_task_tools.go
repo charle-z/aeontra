@@ -156,6 +156,7 @@ func (s *Server) StartProjectTaskCoordinator(parent context.Context) {
 	s.taskWG.Add(1)
 	go func() {
 		defer s.taskWG.Done()
+		_ = s.reconcileDevelopmentRequestsOnce(ctx)
 		_ = s.reconcileProjectTasksOnce(ctx)
 		ticker := time.NewTicker(projectTaskReconcileInterval)
 		defer ticker.Stop()
@@ -164,6 +165,7 @@ func (s *Server) StartProjectTaskCoordinator(parent context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				_ = s.reconcileDevelopmentRequestsOnce(ctx)
 				_ = s.reconcileProjectTasksOnce(ctx)
 			}
 		}
@@ -772,6 +774,11 @@ func (s *Server) reconcileProjectTaskGoalPins(ctx context.Context) error {
 	for _, owner := range validByDigest {
 		owners = append(owners, *owner)
 	}
+	developmentOwners, err := s.workQueue.DevelopmentGoalOwners()
+	if err != nil {
+		return err
+	}
+	owners = append(owners, developmentOwners...)
 	return s.modelTurns.ReconcileTaskGoalPins(ctx, owners, modelturn.TaskGoalPinOrphanGrace)
 }
 

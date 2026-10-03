@@ -372,6 +372,28 @@ repository read and search policy even if an administrator later misconfigures a
 | `GITHUB_OWNER_TYPE` | API routing | Required by documented setup; not secret | constructor default `user`; `user` or `org` | `user`; platform env | Invalid value makes the client unconfigured and tools fail closed. |
 | `GITHUB_DEFAULT_VISIBILITY` | repo creation | Optional; not secret | `private`; `private` or `public` | `private`; platform env | Missing stays private. Invalid requested visibility is rejected. |
 
+### Isolated development runner
+
+The runner is disabled unless an administrator configures the complete reviewed
+template below. It uses the existing GitHub adapter to dispatch one exact workflow;
+the GitHub credential stays in the control plane. It does not grant a workcell host
+Docker access. Source must be a public, clean committed checkout. Only the documented
+fixed command profiles are supported; unsupported command options are rejected.
+
+| Name | Component | Required / secret | Default and valid values | Missing or invalid effect |
+|---|---|---|---|---|
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_PROFILE` | isolated VM broker | Required to enable; not secret | unset/disabled or `github-hosted-ubuntu24-v1` | A partial or unsupported configuration fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_REPOSITORY` | owner-bound reviewed workflow | Required with profile; not secret | exact repository name under `GITHUB_OWNER` | Missing or invalid name fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_REF` | dispatch ref | Required with profile; not secret | exact reviewed branch, revalidated against the SHA before dispatch | A moved branch blocks dispatch; it does not silently update the template. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_SHA` | immutable workflow revision | Required with profile; not secret | 40 lowercase hexadecimal characters | Missing or malformed SHA fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_GENERATION` | template generation | Required with profile; not secret | canonical positive integer, at most `2^63-1` | Missing, zero, or malformed generation fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_CALIBRATION` | successful exact-template probe | Optional; not secret | successful `probe-only` effect ID, 64 lowercase hexadecimal characters | Missing makes the first explicitly requested runner operation run a durable calibration probe; no workload starts before it passes. An explicit stale or incomplete reference blocks workloads. |
+
+The installation and calibration procedure is in
+[`development-runner.md`](development-runner.md). Runner charges and repository
+visibility are independent of Aeontra's execution policy; keep GitHub account budgets
+under operator control.
+
 ### Coolify adapter
 
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |

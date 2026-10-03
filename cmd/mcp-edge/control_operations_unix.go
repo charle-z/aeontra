@@ -157,6 +157,12 @@ func executeControlOperationWithWorktreeTests(ctx context.Context, stateRoot str
 		return executeProjectRegistryRecovery(ctx, stateRoot, operation, openProjectControlState, safeProjectControlFailure)
 	case edge.OperationProjectSnapshot:
 		return executeProjectSnapshot(ctx, stateRoot, operation.Request)
+	case edge.OperationProjectDevelopmentInspect:
+		return executeProjectDevelopmentInspect(ctx, stateRoot, operation)
+	case edge.OperationProjectDevelopmentBootstrapResolve, edge.OperationProjectDevelopmentBootstrapStart:
+		return executeProjectDevelopmentBootstrap(ctx, stateRoot, processes, operation)
+	case edge.OperationProjectDevelopmentCommandStart:
+		return executeProjectDevelopmentCommandStart(ctx, stateRoot, processes, operation)
 	case edge.OperationProjectWorktreeCreate, edge.OperationProjectWorktreeClaim, edge.OperationProjectWorktreeStatus, edge.OperationProjectWorktreeList, edge.OperationProjectWorktreeCleanup:
 		return executeProjectWorktree(ctx, stateRoot, operation)
 	case edge.OperationProjectWorktreeTestProfile, edge.OperationProjectWorktreeTestStart, edge.OperationProjectWorktreeTestStatus, edge.OperationProjectWorktreeTestStop:

@@ -10,6 +10,11 @@ import (
 
 const MaxDevelopmentObjectives = 1024
 
+// DevelopmentObjectiveRetentionTTL preserves terminal replay evidence for at
+// least as long as development request idempotency. Retained requests and live
+// provisioning jobs pin their objectives beyond this interval.
+const DevelopmentObjectiveRetentionTTL = 30 * 24 * time.Hour
+
 type DevelopmentObjectiveSummary struct {
 	ObjectiveID string                     `json:"objective_id"`
 	Revision    uint64                     `json:"revision"`
@@ -93,6 +98,10 @@ func (s *Store) SaveDevelopmentObjective(objective development.Objective) (devel
 		if objective.Revision != 1 || objective.State != development.ObjectivePlanned {
 			return development.Objective{}, false, errors.New("workqueue: development objective revision conflict")
 		}
+		now := s.now().UTC()
+		if err := pruneExpiredDevelopmentObjectives(tx, now); err != nil {
+			return development.Objective{}, false, err
+		}
 		var count int
 		if err := tx.QueryRow(`SELECT COUNT(*) FROM development_objectives`).Scan(&count); err != nil {
 			return development.Objective{}, false, errors.New("workqueue: development objective capacity unavailable")
@@ -100,7 +109,6 @@ func (s *Store) SaveDevelopmentObjective(objective development.Objective) (devel
 		if count < 0 || count >= MaxDevelopmentObjectives {
 			return development.Objective{}, false, errors.New("workqueue: development objective row bound exceeded")
 		}
-		now := s.now().UTC()
 		if _, err := tx.Exec(`INSERT INTO development_objectives(objective_id,revision,state,record_digest,record_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
 			objective.ObjectiveID, objective.Revision, objective.State, digest, body, now.UnixNano(), now.UnixNano()); err != nil {
 			return development.Objective{}, false, errors.New("workqueue: development objective persistence failed")
@@ -140,6 +148,103 @@ func (s *Store) SaveDevelopmentObjective(objective development.Objective) (devel
 		return development.Objective{}, false, errors.New("workqueue: development objective persistence failed")
 	}
 	return objective, false, nil
+}
+
+// Pruning is part of new-objective admission, not replay or revision updates.
+// It removes only canonical terminal coordination rows, never request bodies,
+// job receipts or artifacts. Any uncertain protector aborts the transaction.
+func pruneExpiredDevelopmentObjectives(tx *sql.Tx, now time.Time) error {
+	cutoff := now.Add(-DevelopmentObjectiveRetentionTTL).UnixNano()
+	rows, err := tx.Query(`SELECT objective_id,created_at,updated_at FROM development_objectives
+		WHERE state IN (?,?,?) AND updated_at<? ORDER BY objective_id LIMIT ?`,
+		development.ObjectiveAccepted, development.ObjectiveFailed, development.ObjectiveCancelled, cutoff, MaxDevelopmentObjectives+1)
+	if err != nil {
+		return errors.New("workqueue: development objective retention scan failed")
+	}
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		var createdAt, updatedAt int64
+		if err := rows.Scan(&id, &createdAt, &updatedAt); err != nil || !development.ValidObjectiveID(id) || createdAt > updatedAt {
+			_ = rows.Close()
+			return errors.New("workqueue: development objective retention record is corrupt")
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	closeErr := rows.Close()
+	if err != nil || closeErr != nil || len(ids) > MaxDevelopmentObjectives {
+		return errors.New("workqueue: development objective retention scan failed")
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	objectives := make([]development.Objective, 0, len(ids))
+	pinned := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		objective, found, err := developmentObjectiveByIDTx(tx, id)
+		if err != nil || !found {
+			return errors.New("workqueue: development objective retention record is corrupt")
+		}
+		objectives = append(objectives, objective)
+		pinned[id] = false
+	}
+	// Stream every physically retained request. Selecting only a JSON reference
+	// would silently miss a corrupt protector; raw SQL TTL deletion is not safe
+	// here. Memory is bounded by the objective table, not request history.
+	rows, err = tx.Query(`SELECT request_id,revision,state,key_digest,record_digest,record_json FROM development_requests`)
+	if err != nil {
+		return errors.New("workqueue: development objective retention request scan failed")
+	}
+	for rows.Next() {
+		request, found, err := scanDevelopmentRequest(rows)
+		if err != nil || !found {
+			_ = rows.Close()
+			return errors.New("workqueue: development objective retention request is corrupt")
+		}
+		if _, candidate := pinned[request.ObjectiveID]; candidate {
+			pinned[request.ObjectiveID] = true
+		}
+	}
+	err = rows.Err()
+	closeErr = rows.Close()
+	if err != nil || closeErr != nil {
+		return errors.New("workqueue: development objective retention request scan failed")
+	}
+	for _, objective := range objectives {
+		for _, step := range objective.Steps {
+			for _, provision := range step.Provisioning {
+				// The durable key also covers enqueue-before-BindProvisionJob.
+				job, found, err := jobByIdempotency(tx, "development:"+provision.ProvisionID)
+				if err != nil {
+					return errors.New("workqueue: development objective retention job is corrupt")
+				}
+				if found && !terminal(job.State) {
+					pinned[objective.ObjectiveID] = true
+				}
+				if provision.JobID != "" {
+					job, found, err = jobByID(tx, provision.JobID)
+					if err != nil || !found {
+						return errors.New("workqueue: development objective retention job is corrupt")
+					}
+					if !terminal(job.State) {
+						pinned[objective.ObjectiveID] = true
+					}
+				}
+			}
+		}
+	}
+	// Validate all candidates/protectors before deleting any evidence. Rollback
+	// also preserves every row when capacity remains exhausted after pruning.
+	for _, objective := range objectives {
+		if pinned[objective.ObjectiveID] {
+			continue
+		}
+		if _, err := tx.Exec(`DELETE FROM development_objectives WHERE objective_id=?`, objective.ObjectiveID); err != nil {
+			return errors.New("workqueue: expired development objective pruning failed")
+		}
+	}
+	return nil
 }
 
 func (s *Store) DevelopmentObjective(objectiveID string) (development.Objective, bool, error) {
