@@ -14,6 +14,7 @@ import (
 
 var (
 	ErrProvisionUnavailable            = errors.New("development supervisor: governed provisioning unavailable")
+	ErrProvisionUnsupported            = errors.New("development supervisor: requirements are unsupported by governed provisioning")
 	ErrProvisionConflict               = errors.New("development supervisor: provisioning identity conflict")
 	ErrProvisionUnverified             = errors.New("development supervisor: provisioning receipt requires re-attestation")
 	ErrProvisionReconciliationRequired = errors.New("development supervisor: provision cancellation requires reconciliation")
@@ -197,8 +198,13 @@ func (supervisor *Supervisor) ProvisionStep(ctx context.Context, objectiveID, st
 
 func (supervisor *Supervisor) selectProvisionPlan(ctx context.Context, objective development.Objective, step development.ObjectiveStep, catalog development.EnvironmentCatalog) (development.ProvisionPlan, error) {
 	var candidates []development.ProvisionPlan
+	unsupported := 0
 	for _, provider := range supervisor.provisioners {
 		plans, err := provider.Plans(ctx, objective, step, catalog)
+		if errors.Is(err, ErrProvisionUnsupported) && len(plans) == 0 {
+			unsupported++
+			continue
+		}
 		if err != nil || len(plans) > development.MaxEnvironmentCatalogEntries-len(candidates) {
 			return development.ProvisionPlan{}, ErrProvisionUnavailable
 		}
@@ -219,6 +225,11 @@ func (supervisor *Supervisor) selectProvisionPlan(ctx context.Context, objective
 		}
 	}
 	if len(candidates) == 0 {
+		// Only unanimous explicit rejection is definitive. Empty offers or
+		// unavailable providers cannot establish that no governed route exists.
+		if unsupported > 0 && unsupported == len(supervisor.provisioners) {
+			return development.ProvisionPlan{}, ErrProvisionUnsupported
+		}
 		return development.ProvisionPlan{}, ErrProvisionUnavailable
 	}
 	sort.Slice(candidates, func(i, j int) bool {
