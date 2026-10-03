@@ -130,6 +130,94 @@ func TestProjectPreparationAssociatesExistingCheckoutWithoutGit(t *testing.T) {
 	}
 }
 
+func TestProjectPreparationAssociatesUnregisteredCanonicalCheckoutWithoutGit(t *testing.T) {
+	state := t.TempDir()
+	roots := newProjectDiscoveryRoots(t)
+	canonical := filepath.Join(roots.Dev, "repo")
+	if err := os.MkdirAll(filepath.Join(canonical, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inspector := pathProjectInspector{states: map[string]ProjectCheckoutState{canonical: ProjectCheckoutReady}}
+	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
+	runner := &projectPreparationRunner{}
+	config := ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)}, Runner: runner,
+	}
+	request := ProjectPreparationRequest{Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell}
+	plan, err := PlanProjectPreparation(context.Background(), config, request)
+	if err != nil || plan.Action != ProjectPreparationAssociateExisting || plan.CandidatePath != canonical {
+		t.Fatalf("unregistered canonical plan=%+v err=%v", plan, err)
+	}
+	status, err := ApplyProjectPreparation(context.Background(), config, plan)
+	if err != nil || status.State != "ready" || runner.calls != 0 {
+		t.Fatalf("status=%+v calls=%d err=%v", status, runner.calls, err)
+	}
+	resolved, err := projects.Resolve(context.Background(), request.Alias, request.TargetAlias)
+	if err != nil || resolved.Workspace.Path != canonical || resolved.Workspace.Profile != request.Profile {
+		t.Fatalf("resolved=%+v err=%v", resolved, err)
+	}
+	reuse, err := PlanProjectPreparation(context.Background(), config, request)
+	if err != nil || reuse.Action != ProjectPreparationReuseExisting || reuse.CandidatePath != canonical {
+		t.Fatalf("registered canonical plan=%+v err=%v", reuse, err)
+	}
+	if _, err := ApplyProjectPreparation(context.Background(), config, reuse); err != nil || runner.calls != 0 {
+		t.Fatalf("registered canonical reuse calls=%d err=%v", runner.calls, err)
+	}
+}
+
+func TestProjectPreparationRejectsDisappearedRegisteredBinding(t *testing.T) {
+	state := t.TempDir()
+	roots := newProjectDiscoveryRoots(t)
+	canonical := filepath.Join(roots.Dev, "repo")
+	if err := os.MkdirAll(filepath.Join(canonical, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]ProjectCheckoutState{canonical: ProjectCheckoutReady}
+	workspaces, projects := openProjectPreparationRegistries(t, state, roots, pathProjectInspector{states: states})
+	workspace, _, err := workspaces.AddProfile(canonical, WorkspaceProfileLinuxWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, _, err := projects.Register(ProjectRegistration{
+		Alias: "project", Owner: "charle-z", Repository: "repo", PreferredTarget: "parrot", TargetAlias: "parrot",
+		WorkspaceID: workspace.ID, AllowedProfiles: []WorkspaceProfile{WorkspaceProfileLinuxWorkcell},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &projectPreparationRunner{}
+	config := ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)}, Runner: runner,
+	}
+	plan, err := PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+		Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+	})
+	if err != nil || plan.Action != ProjectPreparationReuseExisting {
+		t.Fatalf("registered plan=%+v err=%v", plan, err)
+	}
+	if err := workspaces.Remove(workspace.ID); err != nil {
+		t.Fatal(err)
+	}
+	claims, err := projects.ReconcileClaims()
+	if err != nil || len(claims) != 1 || claims[0].State != ProjectClaimStale || claims[0].Reason != ProjectErrorWorkspaceMissing {
+		t.Fatalf("stale claims=%+v err=%v", claims, err)
+	}
+	if err := projects.ReleaseClaim("project", "charle-z", "repo", "parrot", project.ClaimGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyProjectPreparation(context.Background(), config, plan); !projectErrorIs(err, ProjectErrorPlanChanged) || runner.calls != 0 {
+		t.Fatalf("disappeared binding calls=%d err=%v", runner.calls, err)
+	}
+	if _, err := projects.ResolveRegistered("project", "parrot"); !projectErrorIs(err, ProjectErrorProjectNotFound) {
+		t.Fatalf("disappeared binding was recreated: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(canonical, ".git")); err != nil {
+		t.Fatalf("source checkout changed: %v", err)
+	}
+}
+
 func TestProjectPreparationUsesRegistryBeforeDiscoveryForClaimedRepository(t *testing.T) {
 	state := t.TempDir()
 	roots := newProjectDiscoveryRoots(t)

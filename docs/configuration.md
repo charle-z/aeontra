@@ -148,6 +148,12 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Minimum configuration:** server `/state` persistence plus the documented signed
   package/onboarding process. Edge identity is not configured through public MCP
   environment variables.
+- **Local operator recovery:** `mcp-edge project prepare --alias <project>
+  --repository <repository> --target <edge-alias>` uses the same owner-bound
+  preparation policy as MCP, with a two-minute deadline and no caller-supplied
+  path, state root or credential. It can associate an unclaimed canonical
+  checkout; disappearance of an already registered binding still fails closed.
+  It does not replace or restart the managed Edge daemon.
 - **Volumes and paths:** server coordination is under `/state/edge` and
   `/state/model-turns`; the real Edge keeps private state under
   `~/.local/state/mcp-edge`, with workspaces under the configured local roots.

@@ -292,9 +292,8 @@ func validateProjectPreparationPlan(config ProjectPreparationConfig, plan Projec
 
 func projectPreparationAction(decision ProjectRecoveryDecision) (ProjectPreparationAction, string, error) {
 	switch decision.State {
-	case ProjectRecoveryReuseExisting:
-		return ProjectPreparationReuseExisting, decision.CandidatePath, nil
-	case ProjectRecoveryAssociateExisting:
+	case ProjectRecoveryReuseExisting, ProjectRecoveryAssociateExisting:
+		// Discovery has no registered binding to reuse, even at the canonical path.
 		return ProjectPreparationAssociateExisting, decision.CandidatePath, nil
 	case ProjectRecoveryCloneRequired:
 		return ProjectPreparationClone, decision.CanonicalPath, nil
