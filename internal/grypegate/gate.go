@@ -68,17 +68,26 @@ func ParseSeverity(value string) (Severity, error) {
 
 // Finding is the bounded subset of one Grype match required for remediation.
 type Finding struct {
-	ID       string
-	Severity Severity
-	Package  string
-	Version  string
-	Type     string
-	FixedIn  string
-	Location string
+	ID           string
+	Severity     Severity
+	Package      string
+	Version      string
+	Type         string
+	FixedIn      string
+	FixState     string
+	FixAvailable bool
+	Location     string
+	Locations    []string
 }
 
 type report struct {
 	Matches []match `json:"matches"`
+	Source  struct {
+		Type   string `json:"type"`
+		Target struct {
+			ImageID string `json:"imageID"`
+		} `json:"target"`
+	} `json:"source"`
 }
 
 type match struct {
@@ -86,8 +95,9 @@ type match struct {
 		ID       string `json:"id"`
 		Severity string `json:"severity"`
 		Fix      struct {
-			Versions []string `json:"versions"`
-			State    string   `json:"state"`
+			Versions  []string          `json:"versions"`
+			State     string            `json:"state"`
+			Available []json.RawMessage `json:"available"`
 		} `json:"fix"`
 	} `json:"vulnerability"`
 	Artifact struct {
@@ -133,17 +143,24 @@ func Evaluate(reader io.Reader, minimum Severity) ([]Finding, error) {
 			continue
 		}
 		location := ""
+		locations := make([]string, 0, len(item.Artifact.Locations))
+		for _, itemLocation := range item.Artifact.Locations {
+			locations = append(locations, strings.TrimSpace(itemLocation.Path))
+		}
 		if len(item.Artifact.Locations) > 0 {
 			location = strings.TrimSpace(item.Artifact.Locations[0].Path)
 		}
 		findings = append(findings, Finding{
-			ID:       id,
-			Severity: severity,
-			Package:  packageName,
-			Version:  strings.TrimSpace(item.Artifact.Version),
-			Type:     strings.TrimSpace(item.Artifact.Type),
-			FixedIn:  strings.Join(item.Vulnerability.Fix.Versions, ","),
-			Location: location,
+			ID:           id,
+			Severity:     severity,
+			Package:      packageName,
+			Version:      strings.TrimSpace(item.Artifact.Version),
+			Type:         strings.TrimSpace(item.Artifact.Type),
+			FixedIn:      strings.Join(item.Vulnerability.Fix.Versions, ","),
+			FixState:     item.Vulnerability.Fix.State,
+			FixAvailable: len(item.Vulnerability.Fix.Available) > 0,
+			Location:     location,
+			Locations:    locations,
 		})
 	}
 

@@ -29,6 +29,10 @@ type projectDevelopmentInspectionContext struct {
 	roots    edgeclient.WorkspaceRoots
 }
 
+func projectDevelopmentGitRunner(stateRoot string) edgeclient.DevGitCommandRunner {
+	return edgeclient.NewDevGitCommandRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin")
+}
+
 func inspectProjectDevelopment(ctx context.Context, stateRoot string, operation edge.Operation) (*projectDevelopmentInspectionContext, string) {
 	request := operation.Request
 	_, workspaces, projects, roots, code := openProjectControlState(stateRoot)
@@ -58,7 +62,7 @@ func inspectProjectDevelopment(ctx context.Context, stateRoot string, operation 
 	if err != nil {
 		return nil, "project_development_inventory_unavailable"
 	}
-	sourceDigest, sourceHead, sourceClean, err := edgeclient.RegisteredProjectSourceEvidence(ctx, projects, resolved, edgeclient.NewDevGitCommandRunner(stateRoot, ""))
+	sourceDigest, sourceHead, sourceClean, err := edgeclient.RegisteredProjectSourceEvidence(ctx, projects, resolved, projectDevelopmentGitRunner(stateRoot))
 	if err != nil {
 		return nil, "project_development_source_unavailable"
 	}

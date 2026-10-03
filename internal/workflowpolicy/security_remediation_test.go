@@ -6,6 +6,71 @@ import (
 	"testing"
 )
 
+func TestBackendBuildContextExcludesNestedNodeModules(t *testing.T) {
+	content, err := os.ReadFile("../../.dockerignore")
+	if err != nil {
+		t.Fatal(err)
+	}
+	patterns := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+	for _, required := range []string{"node_modules", "**/node_modules"} {
+		found := false
+		for _, pattern := range patterns {
+			found = found || strings.TrimSpace(pattern) == required
+		}
+		if !found {
+			t.Errorf("Docker context must exclude %q to keep host package-manager links out of the build", required)
+		}
+	}
+}
+
+func TestBackendRuntimeKeepsNodeWithoutNPM(t *testing.T) {
+	content, err := os.ReadFile("../../Dockerfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dockerfile := string(content)
+	runtimeStart := strings.LastIndex(dockerfile, "\nFROM ")
+	if runtimeStart < 0 {
+		t.Fatal("Dockerfile has no final runtime stage")
+	}
+	runtime := dockerfile[runtimeStart:]
+	for _, required := range []string{
+		"apk add --no-cache ca-certificates curl git libstdc++ nodejs-22",
+		`test "$(node --version)" = v22.23.2`,
+		"test ! -e /usr/local/lib/node_modules/npm",
+		"test ! -e /usr/lib/node_modules/npm",
+		"! command -v npm",
+		"! command -v npx",
+		"COPY --from=build /usr/local/go /usr/local/go",
+		"USER 10001:10001",
+		"curl -fsS --max-time 2 http://127.0.0.1:8765/readyz",
+	} {
+		if !strings.Contains(runtime, required) {
+			t.Errorf("backend runtime must contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"AS node-runtime",
+		"npm pack",
+		"COPY --from=node-runtime",
+		"npm-cli.js",
+		"npx-cli.js",
+	} {
+		if strings.Contains(dockerfile, forbidden) {
+			t.Errorf("backend must not assemble or copy an unused npm tree via %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"corepack prepare pnpm@10.13.1 --activate",
+		"pnpm install --frozen-lockfile --ignore-scripts",
+		"pnpm console:build",
+	} {
+		if !strings.Contains(dockerfile, required) {
+			t.Errorf("console build must retain %q", required)
+		}
+	}
+}
+
 func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 	files := map[string]string{
 		"go.mod":                            "../../go.mod",
@@ -109,28 +174,12 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"FROM node:22.23.2-alpine3.23@sha256:46825fbbd4e996a78b7a2cdc08d75e38a5a505bdab95dcda55605359bf124bc6 AS node-runtime",
-		"npm pack --ignore-scripts --pack-destination /tmp npm@12.0.1",
-		"5e02bea4c784df1c3bbea9e55c7d2232329e1d1920c254789833ed9e8b0a5f16",
-		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.11",
-		"67bb5a1b4d4a8ff497d845a0b891ffe6b7233aea2202641315cec88d0fff15eb",
-		"/usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json",
-		"npm pack --ignore-scripts --pack-destination /tmp undici@6.28.1",
-		"e18191aac9c0ff43dac7fe9b10b7041a22d07addb7b66a6e8ac14a52a5b69b74",
-		"/usr/local/lib/node_modules/npm/node_modules/undici/package.json",
-		`test "$(find /usr/local/lib/node_modules/npm -path '*/undici/package.json' -type f | wc -l)" -eq 1`,
-		"npm pack --ignore-scripts --pack-destination /tmp ip-address@10.3.1",
-		"ad1790063beea11a312c801df30d58e147de762f4f77787552376eb7424623e5",
-		"/usr/local/lib/node_modules/npm/node_modules/ip-address/package.json",
-		"npm pack --ignore-scripts --pack-destination /tmp tar@7.5.21",
-		"bcedf25a21daecd1a18fb5e19ab855b7d79ec8ef1da175e8ba85cfc0ed0069d1",
-		"/usr/local/lib/node_modules/npm/node_modules/tar/package.json",
+		"test ! -e /usr/local/lib/node_modules/npm",
 		"test ! -e /usr/lib/node_modules/npm",
 		"curl -fsS --max-time 2 http://127.0.0.1:8765/readyz",
 		"COPY --from=build /usr/local/go /usr/local/go",
 		`test "$(node --version)" = v22.23.2`,
 		"apk add --no-cache ca-certificates curl git libstdc++ nodejs-22",
-		"COPY --from=node-runtime /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm",
 		"&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)",
 	} {
 		if !strings.Contains(dockerfile, required) {

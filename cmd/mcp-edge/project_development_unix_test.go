@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -14,6 +15,59 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
+
+func TestProjectDevelopmentGitRunnerReadsRealSourceWithoutAmbientPATH(t *testing.T) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("real Git is required for development source evidence")
+	}
+	stores, workspace, _ := newProjectCommandFixture(t)
+	t.Cleanup(func() {
+		_ = stores.projects.Close()
+		_ = stores.workspaces.Close()
+	})
+	gitHome := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		command := exec.CommandContext(t.Context(), gitPath, append([]string{
+			"-c", "core.hooksPath=/dev/null", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test",
+		}, args...)...)
+		command.Dir = workspace.Path
+		command.Env = []string{"HOME=" + gitHome, "PATH=/usr/local/bin:/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_TERMINAL_PROMPT=0"}
+		output, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("fixture Git %q: %v: %s", args, err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+	git("init", "--quiet")
+	readme := filepath.Join(workspace.Path, "README.md")
+	if err := os.WriteFile(readme, []byte("development source fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "README.md")
+	git("commit", "--quiet", "-m", "test: initialize source fixture")
+	expectedHead := git("rev-parse", "HEAD")
+	resolved, err := stores.projects.Resolve(t.Context(), "ekoparty", "parrot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Exercise the production factory with no usable caller PATH. The runner
+	// must discover trusted system Git, not rely on the fixture's setup PATH.
+	t.Setenv("PATH", t.TempDir())
+	runner := projectDevelopmentGitRunner(t.TempDir())
+	digest, head, clean, err := edgeclient.RegisteredProjectSourceEvidence(t.Context(), stores.projects, resolved, runner)
+	if err != nil || !strings.HasPrefix(digest, "sha256:") || head != expectedHead || !clean {
+		t.Fatalf("clean source digest=%q head=%q clean=%v err=%v", digest, head, clean, err)
+	}
+	if err := os.WriteFile(readme, []byte("ordinary development edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dirtyDigest, dirtyHead, dirtyClean, err := edgeclient.RegisteredProjectSourceEvidence(t.Context(), stores.projects, resolved, runner)
+	if err != nil || dirtyDigest == digest || dirtyHead != expectedHead || dirtyClean {
+		t.Fatalf("dirty source digest=%q head=%q clean=%v err=%v", dirtyDigest, dirtyHead, dirtyClean, err)
+	}
+}
 
 func TestDevelopmentCommandTimeoutUsesSystemExecutable(t *testing.T) {
 	operation := edge.Operation{Request: edge.OperationRequest{

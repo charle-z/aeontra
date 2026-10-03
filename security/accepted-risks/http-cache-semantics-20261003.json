@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "vulnerability_ids": ["CVE-2026-93748", "GHSA-ch52-4w7c-c8xp"],
+  "package": "http-cache-semantics",
+  "version": "4.2.0",
+  "type": "npm",
+  "location": "/usr/lib/node_modules/npm/node_modules/http-cache-semantics/package.json",
+  "image_definition": "Dockerfile.sandbox-workcell",
+  "image_definition_sha256": "cc5cb19e289aeb0bf82076da5807b7efcdee56bcb2fd3e1adb7cb74c9fc74ccc",
+  "approved_at": "2026-10-03T13:24:00Z",
+  "expires_at": "2026-10-17T13:24:00Z",
+  "owner": "charle-z",
+  "reason": "Explicit maintainer approval for 14 days while no official fixed release is listed. npm make-fetch-happen uses shared:false, which reduces exposure to the advisory's shared-cache scenario; this is not proof that arbitrary developer use is unaffected. Keep the raw finding visible, scan daily, and reject other locations, versions, advisories, increased severity, or newly available fixes."
+}

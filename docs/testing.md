@@ -315,12 +315,16 @@ observed from GitHub Actions after publication.
   `e22c389904149dbc22b58101806040fa8d37a610` (`v0.24.0`), and scans the local image
   with `anchore/scan-action` pinned to
   `e1165082ffb1fe366ebaf02d8526e7c4989ea9d2` (`v7.4.0`), failing on
-  high-or-critical findings.
+  unaccepted high-or-critical findings. The workcell gate supports only the
+  [reviewed, expiring approval](security.md#temporary-container-risk-acceptance)
+  for the exact bundled package; the original report remains unchanged.
 
-No registry login, image push, workflow secret, artifact/release upload, production
-endpoint, or active DAST exists. SBOM and Grype JSON are verified as non-empty local
-files and disappear with the ephemeral runner. Real action conclusions are observed
-after branch publication.
+This source-security workflow has no registry login, image push, workflow secret,
+production endpoint, or active DAST. SBOM and Grype JSON are verified as non-empty
+local files and retained as artifacts for 7 days, including on failure. Real action
+conclusions are observed after branch publication. The separate
+[daily image watch](runbooks/security-risk-watch.md) uses read-only registry access
+and scans only its explicitly inventoried immutable image, without rebuilding it.
 
 ## Scheduled fuzzing — P6 Step 89
 
