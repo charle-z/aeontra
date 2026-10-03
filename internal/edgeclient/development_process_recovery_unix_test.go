@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func recoveryRequestForStart(request ProjectProcessStartRequest) ProjectProcessRecoveryRequest {
@@ -22,6 +23,45 @@ func recoveryRequestForStart(request ProjectProcessStartRequest) ProjectProcessR
 		Argv: request.Argv, CWD: request.CWD, Stdin: request.Stdin, Environment: request.Environment,
 		DevelopmentBindingDigest: request.DevelopmentBindingDigest,
 	}
+}
+
+func cleanupDevelopmentRecoveryProcess(t *testing.T, manager *ProjectProcessManager, platform *fakeProjectProcessPlatform, processID string) {
+	t.Helper()
+	platform.mu.Lock()
+	pid := 0
+	for candidate, process := range platform.processes {
+		if process.identity.ProcessID == processID {
+			pid = candidate
+			break
+		}
+	}
+	platform.mu.Unlock()
+	if pid == 0 {
+		t.Fatal("recovery fixture lacks the captured fake process")
+	}
+	t.Cleanup(func() {
+		platform.naturalExit(pid, 0)
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			// A reused PID can already have a terminal record while the original
+			// watcher still closes log writers and finishes its SQLite update.
+			manager.watchMu.Lock()
+			watching := manager.watching[processID]
+			manager.watchMu.Unlock()
+			if !watching {
+				return
+			}
+			select {
+			case <-deadline.C:
+				t.Error("recovery process watcher did not finish before fixture cleanup")
+				return
+			case <-ticker.C:
+			}
+		}
+	})
 }
 
 func TestDevelopmentProcessOptionalBindingPreservesLegacyDigestBytes(t *testing.T) {
@@ -51,6 +91,7 @@ func TestDevelopmentProcessRecoveryPreservesCapturedEffectAfterSourceChanges(t *
 	if err != nil || !created {
 		t.Fatalf("start created=%v err=%v", created, err)
 	}
+	cleanupDevelopmentRecoveryProcess(t, manager, platform, started.ProcessID)
 	if err := os.WriteFile(filepath.Join(request.Workspace.Path, "generated.go"), []byte("ordinary command output\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -61,10 +102,6 @@ func TestDevelopmentProcessRecoveryPreservesCapturedEffectAfterSourceChanges(t *
 	if len(platform.specs) != 1 {
 		t.Fatal("recovery started another effect")
 	}
-	platform.mu.Lock()
-	pid := platform.nextPID
-	platform.mu.Unlock()
-	platform.naturalExit(pid, 0)
 }
 
 func TestDevelopmentProcessRecoveryRejectsChangedEffectAndWorkspaceBinding(t *testing.T) {
@@ -73,9 +110,11 @@ func TestDevelopmentProcessRecoveryRejectsChangedEffectAndWorkspaceBinding(t *te
 	request := testProjectProcessRequest(t, "development-recover-bound")
 	request.ProjectState = "ready"
 	request.DevelopmentBindingDigest = "sha256:" + strings.Repeat("a", 64)
-	if _, _, err := manager.Start(context.Background(), request); err != nil {
+	started, _, err := manager.Start(context.Background(), request)
+	if err != nil {
 		t.Fatal(err)
 	}
+	cleanupDevelopmentRecoveryProcess(t, manager, platform, started.ProcessID)
 	for _, mutate := range []func(*ProjectProcessRecoveryRequest){
 		func(r *ProjectProcessRecoveryRequest) { r.OperationID = "eo_ffffffffffffffffffffffffffffffff" },
 		func(r *ProjectProcessRecoveryRequest) { r.WorkspaceID = "ws_ffffffffffffffffffffffffffffffff" },
@@ -106,10 +145,6 @@ func TestDevelopmentProcessRecoveryRejectsChangedEffectAndWorkspaceBinding(t *te
 	if len(platform.specs) != 1 {
 		t.Fatal("recovery created an effect")
 	}
-	platform.mu.Lock()
-	pid := platform.nextPID
-	platform.mu.Unlock()
-	platform.naturalExit(pid, 0)
 }
 
 func TestDevelopmentProcessRecoveryDoesNotAdoptReusedPID(t *testing.T) {
@@ -122,6 +157,7 @@ func TestDevelopmentProcessRecoveryDoesNotAdoptReusedPID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cleanupDevelopmentRecoveryProcess(t, manager, platform, started.ProcessID)
 	platform.mu.Lock()
 	pid := platform.nextPID
 	platform.processes[pid].identity.StartTicks++
@@ -133,7 +169,6 @@ func TestDevelopmentProcessRecoveryDoesNotAdoptReusedPID(t *testing.T) {
 	if len(platform.specs) != 1 || len(platform.signals) != 0 {
 		t.Fatal("recovery affected the replacement process")
 	}
-	platform.naturalExit(pid, 0)
 }
 
 func TestDevelopmentProcessRecoverySurvivesManagerRestart(t *testing.T) {
@@ -146,6 +181,7 @@ func TestDevelopmentProcessRecoverySurvivesManagerRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cleanupDevelopmentRecoveryProcess(t, manager, platform, started.ProcessID)
 	reopened, err := OpenProjectProcessManager(ProjectProcessManagerConfig{StateRoot: manager.stateRoot, Platform: platform})
 	if err != nil {
 		t.Fatal(err)
@@ -155,8 +191,4 @@ func TestDevelopmentProcessRecoverySurvivesManagerRestart(t *testing.T) {
 	if err != nil || !found || recovered.ProcessID != started.ProcessID || recovered.State != ProjectProcessRunning || len(platform.specs) != 1 {
 		t.Fatalf("restart recovery found=%v snapshot=%+v err=%v", found, recovered, err)
 	}
-	platform.mu.Lock()
-	pid := platform.nextPID
-	platform.mu.Unlock()
-	platform.naturalExit(pid, 0)
 }

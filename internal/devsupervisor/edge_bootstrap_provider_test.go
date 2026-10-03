@@ -365,6 +365,154 @@ func TestEdgeBootstrapCancelCancelsOnlyExistingResolveAndRequiresReconciliationF
 	})
 }
 
+func TestEdgeBootstrapCancelFailedResolutionRequiresExactUnstartedProof(t *testing.T) {
+	for _, mode := range []string{"unstarted", "cleared-lease", "present-start", "failed-start", "lookup-error", "missing-resolve", "queued-resolve", "leased-resolve", "succeeded-resolve", "wrong-project", "wrong-generation", "wrong-request", "wrong-scope", "wrong-fence", "wrong-job", "wrong-payload"} {
+		t.Run(mode, func(t *testing.T) {
+			fixture := newBootstrapFixture(t, false)
+			provider := NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+			if effect, err := provider.Reconcile(context.Background(), fixture.request); err != nil || !effect.Pending {
+				t.Fatalf("resolve queue=%+v err=%v", effect, err)
+			}
+			selectors, err := selectorsForPlan(fixture.request.Provision.Plan)
+			if err != nil || len(selectors) != 1 {
+				t.Fatal("test requires one bootstrap selector", err)
+			}
+			selector := selectors[0]
+			resolveKey := bootstrapOperationKey("resolve", fixture.request.Provision, selector)
+			resolve, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, resolveKey)
+			if err != nil || !found {
+				t.Fatal("test lacks resolve operation", err)
+			}
+			completeBootstrapOperation(t, fixture.journal.Store, resolve, edge.OperationResult{}, "project_development_resolution_unavailable")
+			resolve, err = fixture.journal.OperationStatus(resolve.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			job, err := fixture.queue.Complete(fixture.request.Lease.Job.ID, fixture.request.Lease.ID, fixture.request.Lease.Fence,
+				workqueue.Result{Outcome: workqueue.StateFailed, Summary: string(development.FailureReconciliationNeeded)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner, stepID, found, err := fixture.queue.DevelopmentProvisionOwner(fixture.request.Provision.ProvisionID)
+			if err != nil || !found {
+				t.Fatal("test lacks provision owner", err)
+			}
+			owner, err = owner.FailProvision(stepID, fixture.request.Provision.ProvisionID, development.FailureReconciliationNeeded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if owner, _, err = fixture.queue.SaveDevelopmentObjective(owner); err != nil {
+				t.Fatal(err)
+			}
+			owner, err = owner.Cancel()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if owner, _, err = fixture.queue.SaveDevelopmentObjective(owner); err != nil {
+				t.Fatal(err)
+			}
+			request := ProvisionRequest{Scope: owner.Scope, Provision: owner.Steps[0].Provisioning[0],
+				Lease: workqueue.Lease{Job: job, ID: job.LeaseID, Fence: job.Fence}}
+			journal := &failedBootstrapJournal{bootstrapJournal: fixture.journal, resolve: resolve}
+			queue := &failedBootstrapQueue{Store: fixture.queue, job: job}
+			switch mode {
+			case "cleared-lease":
+				// Expired-lease terminalization clears these fields, but retains
+				// the immutable job specification and fence.
+				queue.job.LeaseID, queue.job.LeaseHolder = "", ""
+				queue.job.LeaseExpiresAt = time.Time{}
+				request.Lease = workqueue.Lease{Job: queue.job, Fence: queue.job.Fence}
+			case "present-start", "failed-start":
+				binding := *resolve.Request.DevelopmentBootstrap
+				resolution := goBootstrapResolution(selector.capability)
+				binding.Resolution = &resolution
+				binding.ResolutionDigest, _ = development.BootstrapResolutionDigest(resolution)
+				startKey := bootstrapOperationKey("start", request.Provision, selector)
+				start, _, err := fixture.journal.CreateOperation(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapStart,
+					bootstrapOperationRequest(request.Scope, selector, &binding, startKey))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if mode == "failed-start" {
+					completeBootstrapOperation(t, fixture.journal.Store, start, edge.OperationResult{}, "operation_execution_interrupted")
+				}
+			case "lookup-error":
+				journal.startLookupError = true
+			case "missing-resolve":
+				journal.missingResolve = true
+			case "queued-resolve":
+				journal.resolve.State = edge.OperationQueued
+			case "leased-resolve":
+				journal.resolve.State = edge.OperationLeased
+			case "succeeded-resolve":
+				journal.resolve.State = edge.OperationSucceeded
+			case "wrong-project":
+				journal.resolve.Request.Alias = "other"
+			case "wrong-generation":
+				binding := *journal.resolve.Request.DevelopmentBootstrap
+				binding.Anchor.Generation++
+				journal.resolve.Request.DevelopmentBootstrap = &binding
+			case "wrong-request":
+				journal.resolve.Request.Profile = "other"
+			case "wrong-scope":
+				request.Scope.Project = "other"
+			case "wrong-fence":
+				request.Provision.JobFence++
+			case "wrong-job":
+				request.Lease.Job.ID = "wj_" + strings.Repeat("f", 32)
+			case "wrong-payload":
+				queue.job.PayloadHash = "sha256:" + strings.Repeat("f", 64)
+			}
+			provider = NewEdgeBootstrapProvider(journal, queue)
+			created := fixture.journal.createCalls
+			effect, err := provider.Cancel(context.Background(), request)
+			if mode == "unstarted" || mode == "cleared-lease" {
+				if err != nil || effect.Pending || effect.Failure != "" || !regexp.MustCompile(`^rs_[a-f0-9]{32}$`).MatchString(effect.ResultRef) {
+					t.Fatalf("failed resolution without start did not settle: effect=%+v err=%v", effect, err)
+				}
+			} else if err == nil && !effect.Pending && effect.Failure == "" && effect.ResultRef != "" {
+				t.Fatalf("unproven cancellation settled: effect=%+v", effect)
+			}
+			if fixture.journal.createCalls != created {
+				t.Fatal("terminal-failure cancellation dispatched an Edge operation")
+			}
+			retained, _, err := fixture.queue.Get(job.ID)
+			if err != nil || retained.State != workqueue.StateFailed || retained.Fence != job.Fence || retained.ResultRef != "" {
+				t.Fatal("terminal-failure proof rewrote failed queue evidence", err)
+			}
+		})
+	}
+}
+
+type failedBootstrapJournal struct {
+	*bootstrapJournal
+	resolve          edge.Operation
+	missingResolve   bool
+	startLookupError bool
+}
+
+func (journal *failedBootstrapJournal) OperationByIdempotency(device string, kind edge.OperationKind, key string) (edge.Operation, bool, error) {
+	if kind == edge.OperationProjectDevelopmentBootstrapResolve {
+		return journal.resolve, !journal.missingResolve, nil
+	}
+	if kind == edge.OperationProjectDevelopmentBootstrapStart && journal.startLookupError {
+		return edge.Operation{}, false, errBootstrapLostACK
+	}
+	return journal.bootstrapJournal.OperationByIdempotency(device, kind, key)
+}
+
+type failedBootstrapQueue struct {
+	*workqueue.Store
+	job workqueue.Job
+}
+
+func (queue *failedBootstrapQueue) Get(id string) (workqueue.Job, bool, error) {
+	if id == queue.job.ID {
+		return queue.job, true, nil
+	}
+	return queue.Store.Get(id)
+}
+
 func (journal *bootstrapJournal) OperationByIdempotency(device string, kind edge.OperationKind, key string) (edge.Operation, bool, error) {
 	operation, found, err := journal.Store.OperationByIdempotency(device, kind, key)
 	if err == nil && found && kind == edge.OperationProjectDevelopmentBootstrapResolve && journal.substituteResolve && operation.State == edge.OperationSucceeded {

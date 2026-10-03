@@ -149,6 +149,13 @@ func (s *Server) cancelDevelopmentBootstrap(ctx context.Context, request workque
 		// Lease expiry records queue cancellation without proving host stop.
 		return job.Fence == 0 || job.ResultRef != "", nil
 	}
+	if job.State == workqueue.StateFailed {
+		// Retain failure evidence; the provider can only prove an exact failed
+		// resolution had no corresponding installer start, without dispatching.
+		effect, err := provider.Cancel(ctx, devsupervisor.ProvisionRequest{Scope: objective.Scope, Provision: provision,
+			Lease: workqueue.Lease{Job: job, Fence: job.Fence}})
+		return err == nil && !effect.Pending && effect.Failure == "" && effect.ResultRef != "", err
+	}
 	if job.State != workqueue.StateLeased {
 		return false, nil
 	}
