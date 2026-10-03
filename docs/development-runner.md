@@ -103,11 +103,13 @@ with full non-shallow history, no credentials or client source reconstruction.
 The source's own nested images/dependencies are not transformed into provider
 policy and are not claimed to be hermetically pinned by this broker.
 
-Command diagnostics are untrusted data, never receipt evidence. A trusted final
-step emits at most a 16-KiB log tail as prefixed JSON strings, escaping control
-characters and redacting every staged CI credential value before output. The
-full private log is discarded with the VM; diagnostics do not recover source
-bytes or authorize a retry.
+Command and calibration diagnostics are untrusted data, never receipt evidence.
+A trusted final step reads only fixed controller-owned probe, daemon and command
+logs without following links. It emits at most 16 KiB of prefixed JSON, escaping
+control characters and redacting every staged CI credential value before output.
+Probe errors remain visible even when no command was started. Full private logs
+are discarded with the VM; diagnostics do not recover source bytes or authorize
+a retry.
 
 Fresh trusted probes require:
 

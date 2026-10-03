@@ -279,23 +279,57 @@ jobs:
         if: always()
         shell: bash
         run: |
+          if sudo test -d /opt/aeontra-control; then
+            if ! sudo bash -o pipefail -c 'umask 077; journalctl --no-pager --lines=40 --output=cat --unit=aeontra-rootless.service 2>&1 | tail -c 16384 > /opt/aeontra-control/rootless-service.log'; then
+              printf '%s\n' 'aeontra-untrusted-log diagnostic "daemon journal capture failed"'
+            fi
+          fi
           sudo python3 - <<'PYTHON'
           import json, os, stat
           directory = '/opt/aeontra-control/'
-          path = directory + 'command.log'
-          if not os.path.exists(path):
+          if not os.path.exists(directory + 'ci.json'):
               raise SystemExit(0)
-          mode = os.lstat(path).st_mode
-          if not stat.S_ISREG(mode):
-              raise SystemExit('invalid private diagnostic log')
           values = json.load(open(directory + 'ci.json'))
-          with open(path, 'rb') as log:
-              log.seek(max(0, os.fstat(log.fileno()).st_size - (16 << 10)))
-              data = log.read(16 << 10).decode('utf-8', errors='replace')
-          for value in sorted((value for value in values.values() if isinstance(value, str) and value), key=len, reverse=True):
-              data = data.replace(value, '[REDACTED]')
-          for line in data.splitlines():
-              print('aeontra-untrusted-log ' + json.dumps(line, ensure_ascii=True))
+          secrets = sorted((value for value in values.values() if isinstance(value, str) and value), key=len, reverse=True)
+          # Reserve room for one fixed capture/open error without exceeding
+          # the total encoded-output ceiling.
+          budget = (16 << 10) - 256
+          def invalid_log():
+              print('aeontra-untrusted-log diagnostic "invalid private diagnostic log"')
+              raise SystemExit(1)
+          # Fixed controller-owned logs only; failures before command execution
+          # must remain observable. No glob, environment file or source input.
+          names = ('command', 'rootless-service', 'docker-info', 'workspace-bind',
+                   'builder-export', 'cache-export', 'builder-remove',
+                   'builder-import', 'cache-import', 'pinned-go', 'make')
+          for name in names:
+              try:
+                  fd = os.open(directory + name + '.log', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+              except FileNotFoundError:
+                  continue
+              except OSError:
+                  invalid_log()
+              if not stat.S_ISREG(os.fstat(fd).st_mode):
+                  os.close(fd)
+                  invalid_log()
+              with os.fdopen(fd, 'rb') as log:
+                  start = max(0, os.fstat(log.fileno()).st_size - (4 << 10))
+                  log.seek(start)
+                  raw = log.read(4 << 10)
+              # A truncated first line could begin inside a credential. Keep
+              # complete lines so redaction never sees only its suffix.
+              if start:
+                  _, _, raw = raw.partition(b'\n')
+              data = raw.decode('utf-8', errors='replace')
+              for value in secrets:
+                  data = data.replace(value, '[REDACTED]')
+              for line in data.splitlines():
+                  encoded = 'aeontra-untrusted-log ' + name + ' ' + json.dumps(line[:1024], ensure_ascii=True)
+                  cost = len(encoded) + 1
+                  if cost > budget:
+                      raise SystemExit(0)
+                  print(encoded)
+                  budget -= cost
           PYTHON
 
       - name: Stop disposable workload
