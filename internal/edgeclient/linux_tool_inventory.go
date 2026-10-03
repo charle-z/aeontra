@@ -23,6 +23,16 @@ type linuxToolDefinition struct {
 var safeToolVersionPattern = regexp.MustCompile(`(?i)\bv?\d+(?:\.\d+){0,3}(?:[-+._][a-z0-9]+)*\b`)
 
 func CollectLinuxToolInventory(ctx context.Context, toolPath string) ([]LinuxToolInventoryEntry, error) {
+	return collectLinuxToolInventory(ctx, toolPath, false)
+}
+
+// CollectDevelopmentToolInventory avoids probing unrelated lab tools when a
+// development workflow requests a capability catalog.
+func CollectDevelopmentToolInventory(ctx context.Context, toolPath string) ([]LinuxToolInventoryEntry, error) {
+	return collectLinuxToolInventory(ctx, toolPath, true)
+}
+
+func collectLinuxToolInventory(ctx context.Context, toolPath string, developmentOnly bool) ([]LinuxToolInventoryEntry, error) {
 	if strings.TrimSpace(toolPath) == "" {
 		toolPath = openCodeDefaultToolPath
 	}
@@ -52,6 +62,7 @@ func CollectLinuxToolInventory(ctx context.Context, toolPath string) ([]LinuxToo
 		{Name: "gcc", Executables: []string{"gcc"}, VersionArgs: []string{"--version"}, Capability: "c-compiler"},
 		{Name: "g++", Executables: []string{"g++"}, VersionArgs: []string{"--version"}, Capability: "cxx-compiler"},
 		{Name: "make", Executables: []string{"make"}, VersionArgs: []string{"--version"}, Capability: "build-tool"},
+		{Name: "git", Executables: []string{"git"}, VersionArgs: []string{"--version"}, Capability: "version-control"},
 		{Name: "cmake", Executables: []string{"cmake"}, VersionArgs: []string{"--version"}, Capability: "build-tool"},
 		{Name: "shell", Executables: []string{"bash", "sh"}, VersionArgs: []string{"--version"}, Capability: "shell"},
 		{Name: "go", Executables: []string{"go"}, VersionArgs: []string{"version"}, Capability: "go-toolchain"},
@@ -67,6 +78,11 @@ func CollectLinuxToolInventory(ctx context.Context, toolPath string) ([]LinuxToo
 	}
 	entries := make([]LinuxToolInventoryEntry, 0, len(definitions))
 	for _, definition := range definitions {
+		if developmentOnly {
+			if _, relevant := developmentCapabilityForInventoryTool(definition.Name); !relevant {
+				continue
+			}
+		}
 		entry := LinuxToolInventoryEntry{Name: definition.Name, Version: "absent", Capability: definition.Capability}
 		path := ""
 		for _, executable := range definition.Executables {
@@ -82,6 +98,9 @@ func CollectLinuxToolInventory(ctx context.Context, toolPath string) ([]LinuxToo
 		entry.Available = true
 		entry.Version = safeLinuxToolVersion(ctx, path, definition.VersionArgs, toolPath)
 		entries = append(entries, entry)
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 	return entries, nil
 }

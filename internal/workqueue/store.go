@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 type Store struct {
 	root     string
@@ -200,7 +200,7 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version > schemaVersion {
 		return errors.New("workqueue: schema is unsupported")
 	}
-	if err := ensureTaskAcceptanceColumns(s.db, version); err != nil {
+	if err := ensureSchemaExtensions(s.db, version); err != nil {
 		return err
 	}
 	if _, err := s.db.Exec(`INSERT INTO queue_meta(key,value) VALUES('controller_id',?) ON CONFLICT(key) DO NOTHING`, s.config.ControllerID); err != nil {
@@ -213,12 +213,12 @@ func (s *Store) initialize() error {
 	return s.Integrity()
 }
 
-// ensureTaskAcceptanceColumns applies backward-readable additive columns while
-// keeping SQLite user_version at 2. Legacy tasks remain readable. Test-contract
-// rows use acceptance_contract_version=2, which older v2 readers reject rather
-// than silently ignoring. Every ALTER and any v1->v2 version transition is
-// atomic; presence checks recover partial provisioning without duplicate ALTERs.
-func ensureTaskAcceptanceColumns(db *sql.DB, version int) error {
+// ensureSchemaExtensions migrates the v1/v2 queue into the v3 coordination
+// schema in one transaction. Existing task acceptance columns remain
+// backward-readable data, while v3 adds durable development objectives. A v2
+// binary must fail closed on user_version=3 instead of operating without the
+// objective/attempt contract.
+func ensureSchemaExtensions(db *sql.DB, version int) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return errors.New("workqueue: schema migration failed")
@@ -272,8 +272,35 @@ func ensureTaskAcceptanceColumns(db *sql.DB, version int) error {
 			}
 		}
 	}
+	for _, statement := range []string{
+		`CREATE TABLE IF NOT EXISTS development_objectives(
+			objective_id TEXT PRIMARY KEY,
+			revision INTEGER NOT NULL,
+			state TEXT NOT NULL,
+			record_digest TEXT NOT NULL,
+			record_json BLOB NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS development_objectives_recent ON development_objectives(updated_at DESC,objective_id DESC)`,
+		`CREATE TABLE IF NOT EXISTS development_runner_effects(
+			effect_id TEXT PRIMARY KEY,
+			revision INTEGER NOT NULL,
+			record_json BLOB NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS development_requests(
+			request_id TEXT PRIMARY KEY,key_digest TEXT NOT NULL UNIQUE,
+			revision INTEGER NOT NULL,state TEXT NOT NULL,record_digest TEXT NOT NULL,
+			record_json BLOB NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS development_requests_recent ON development_requests(state,updated_at DESC,request_id DESC)`,
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+	}
 	if version < schemaVersion {
-		if _, err := tx.Exec(`PRAGMA user_version=2`); err != nil {
+		if _, err := tx.Exec(`PRAGMA user_version=3`); err != nil {
 			return errors.New("workqueue: schema migration failed")
 		}
 	}
@@ -735,6 +762,30 @@ func (s *Store) List(limit int) ([]Job, error) {
 	return jobs, rows.Err()
 }
 
+// LeasesForHolder lists only current leases in one pool. Retained terminal
+// history cannot crowd active effects out of a coordinator's bounded page.
+func (s *Store) LeasesForHolder(pool, holder string, limit int) ([]Lease, error) {
+	if s == nil || s.db == nil || !poolPattern.MatchString(pool) || !holderPattern.MatchString(holder) || limit < 1 || limit > MaxListResults {
+		return nil, errors.New("workqueue: lease list is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(jobSelect+` WHERE pool=? AND lease_holder=? AND state=? ORDER BY updated_at,job_id LIMIT ?`, pool, holder, StateLeased, limit)
+	if err != nil {
+		return nil, errors.New("workqueue: lease list failed")
+	}
+	defer rows.Close()
+	leases := make([]Lease, 0, limit)
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, errors.New("workqueue: lease list result failed")
+		}
+		leases = append(leases, Lease{Job: job, ID: job.LeaseID, Fence: job.Fence, Attempt: job.Attempt, ExpiresAt: job.LeaseExpiresAt})
+	}
+	return leases, rows.Err()
+}
+
 func (s *Store) Integrity() error {
 	if s == nil || s.db == nil {
 		return errors.New("workqueue: store is unavailable")
@@ -805,6 +856,37 @@ func (s *Store) Integrity() error {
 		if _, found, err := taskByID(s.db, taskID); err != nil || !found {
 			return errors.New("workqueue: task semantic integrity failed")
 		}
+	}
+	objectiveRows, err := s.db.Query(`SELECT objective_id FROM development_objectives ORDER BY objective_id`)
+	if err != nil {
+		return errors.New("workqueue: development objective semantic scan failed")
+	}
+	objectiveIDs := make([]string, 0)
+	for objectiveRows.Next() {
+		var objectiveID string
+		if err := objectiveRows.Scan(&objectiveID); err != nil {
+			_ = objectiveRows.Close()
+			return errors.New("workqueue: development objective semantic scan failed")
+		}
+		objectiveIDs = append(objectiveIDs, objectiveID)
+		if len(objectiveIDs) > MaxDevelopmentObjectives {
+			_ = objectiveRows.Close()
+			return errors.New("workqueue: development objective row bound exceeded")
+		}
+	}
+	if err := objectiveRows.Close(); err != nil {
+		return errors.New("workqueue: development objective semantic scan failed")
+	}
+	for _, objectiveID := range objectiveIDs {
+		if _, found, err := developmentObjectiveByID(s.db, objectiveID); err != nil || !found {
+			return errors.New("workqueue: development objective semantic integrity failed")
+		}
+	}
+	if err := s.developmentRunnerIntegrity(); err != nil {
+		return err
+	}
+	if err := s.developmentRequestIntegrity(); err != nil {
+		return err
 	}
 	foreignRows, err := s.db.Query(`PRAGMA foreign_key_check`)
 	if err != nil {

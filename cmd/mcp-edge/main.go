@@ -254,6 +254,7 @@ Usage:
   mcp-edge lifecycle finalize-state-migration
   mcp-edge lifecycle rollback-state-migration
   mcp-edge doctor [--repair]
+  mcp-edge project prepare --alias <PROJECT> --repository <REPOSITORY> --target <ALIAS>
   mcp-edge project discover --alias <PROJECT> --repository <REPOSITORY>
   mcp-edge project status --alias <PROJECT> [--target <ALIAS>]
   mcp-edge project resolve --alias <PROJECT> [--target <ALIAS>]

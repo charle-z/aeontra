@@ -6,7 +6,9 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
@@ -87,13 +89,58 @@ var openLocalProjectDiscovery = func() (localProjectDiscovery, error) {
 	return localProjectDiscovery{owner: github.Owner, roots: roots}, nil
 }
 
+// This operator command uses the same preparation policy as the Edge handler.
+// It does not replace the managed daemon or expose its private Git authority.
+var prepareLocalProject = func(ctx context.Context, alias, repository, target string) (edgeclient.ProjectStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := ensureWorkcellUser(); err != nil {
+		return edgeclient.ProjectStatus{}, err
+	}
+	state := defaultStateRoot()
+	credential, err := edgeclient.LoadGitHubCredential(state)
+	if err != nil {
+		return edgeclient.ProjectStatus{}, errors.New("local GitHub authority is unavailable")
+	}
+	roots, err := edgeclient.DefaultWorkspaceRoots()
+	if err != nil {
+		return edgeclient.ProjectStatus{}, err
+	}
+	workspaces, err := edgeclient.OpenWorkspaceRegistryWithRoots(state, roots)
+	if err != nil {
+		return edgeclient.ProjectStatus{}, err
+	}
+	defer workspaces.Close()
+	projects, err := edgeclient.OpenProjectRegistry(edgeclient.ProjectRegistryConfig{
+		StateRoot: state, AllowedOwner: credential.Owner, Workspaces: workspaces,
+	})
+	if err != nil {
+		return edgeclient.ProjectStatus{}, err
+	}
+	defer projects.Close()
+	profile := edgeclient.WorkspaceProfileLinuxWorkcell
+	if runtime.GOOS == "windows" {
+		profile = edgeclient.WorkspaceProfileWindowsWorkcell
+	}
+	config := edgeclient.ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots, Credential: credential,
+	}
+	plan, err := edgeclient.PlanProjectPreparation(ctx, config, edgeclient.ProjectPreparationRequest{
+		Alias: alias, Repository: repository, TargetAlias: target, Profile: profile,
+	})
+	if err != nil {
+		return edgeclient.ProjectStatus{}, err
+	}
+	return edgeclient.ApplyProjectPreparation(ctx, config, plan)
+}
+
 func projectCommand(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("project requires discover, status or resolve")
+		return errors.New("project requires prepare, discover, status or resolve")
 	}
 	operation := args[0]
-	if operation != "discover" && operation != "status" && operation != "resolve" {
-		return errors.New("project accepts only discover, status or resolve")
+	if operation != "prepare" && operation != "discover" && operation != "status" && operation != "resolve" {
+		return errors.New("project accepts only prepare, discover, status or resolve")
 	}
 	fs := flag.NewFlagSet("project "+operation, flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -105,6 +152,18 @@ func projectCommand(args []string, stdout, stderr io.Writer) error {
 	}
 	encoder := json.NewEncoder(stdout)
 	encoder.SetEscapeHTML(false)
+	if operation == "prepare" {
+		if *repository == "" || *target == "" {
+			return errors.New("project preparation requires --alias, --repository and --target")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		status, err := prepareLocalProject(ctx, *alias, *repository, *target)
+		if err != nil {
+			return err
+		}
+		return encoder.Encode(status)
+	}
 	if operation == "discover" {
 		if *repository == "" || *target != "" {
 			return errors.New("project discovery requires --alias and --repository")

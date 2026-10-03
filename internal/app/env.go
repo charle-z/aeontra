@@ -81,6 +81,15 @@ const (
 
 const maintainerProfileEnv = "MCP_DEVBOX_MAINTAINER_PROFILE"
 
+const (
+	developmentRunnerProfileEnv     = "MCP_DEVBOX_DEVELOPMENT_RUNNER_PROFILE"
+	developmentRunnerRepositoryEnv  = "MCP_DEVBOX_DEVELOPMENT_RUNNER_REPOSITORY"
+	developmentRunnerWorkflowRefEnv = "MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_REF"
+	developmentRunnerWorkflowSHAEnv = "MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_SHA"
+	developmentRunnerGenerationEnv  = "MCP_DEVBOX_DEVELOPMENT_RUNNER_GENERATION"
+	developmentRunnerCalibrationEnv = "MCP_DEVBOX_DEVELOPMENT_RUNNER_CALIBRATION"
+)
+
 // envFallback returns flagVal when non-empty (after trimming), otherwise the value
 // of the named environment variable.
 func envFallback(flagVal, envName string) string {

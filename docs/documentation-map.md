@@ -164,6 +164,8 @@ above:
 - Development workspace state, runtime-root separation, durable process identity,
   toolbox recovery and bounded Edge concurrency:
   `docs/adr/0007-development-environment-state-and-concurrency.md`.
+- Development-complete capability resolution, immutable attempts and governed runner migration:
+  `docs/adr/0008-development-complete-capability-resolution.md`.
 - Private rootless L3 deployment and acceptance:
   `docs/runbooks/private-sandbox-runner.md`.
 - P16 measured capacity evidence: `docs/baselines/2026-07-22-p16-capacity.md`.

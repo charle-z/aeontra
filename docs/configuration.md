@@ -148,6 +148,12 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Minimum configuration:** server `/state` persistence plus the documented signed
   package/onboarding process. Edge identity is not configured through public MCP
   environment variables.
+- **Local operator recovery:** `mcp-edge project prepare --alias <project>
+  --repository <repository> --target <edge-alias>` uses the same owner-bound
+  preparation policy as MCP, with a two-minute deadline and no caller-supplied
+  path, state root or credential. It can associate an unclaimed canonical
+  checkout; disappearance of an already registered binding still fails closed.
+  It does not replace or restart the managed Edge daemon.
 - **Volumes and paths:** server coordination is under `/state/edge` and
   `/state/model-turns`; the real Edge keeps private state under
   `~/.local/state/mcp-edge`, with workspaces under the configured local roots.
@@ -372,6 +378,28 @@ repository read and search policy even if an administrator later misconfigures a
 | `GITHUB_OWNER_TYPE` | API routing | Required by documented setup; not secret | constructor default `user`; `user` or `org` | `user`; platform env | Invalid value makes the client unconfigured and tools fail closed. |
 | `GITHUB_DEFAULT_VISIBILITY` | repo creation | Optional; not secret | `private`; `private` or `public` | `private`; platform env | Missing stays private. Invalid requested visibility is rejected. |
 
+### Isolated development runner
+
+The runner is disabled unless an administrator configures the complete reviewed
+template below. It uses the existing GitHub adapter to dispatch one exact workflow;
+the GitHub credential stays in the control plane. It does not grant a workcell host
+Docker access. Source must be a public, clean committed checkout. Only the documented
+fixed command profiles are supported; unsupported command options are rejected.
+
+| Name | Component | Required / secret | Default and valid values | Missing or invalid effect |
+|---|---|---|---|---|
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_PROFILE` | isolated VM broker | Required to enable; not secret | unset/disabled or `github-hosted-ubuntu24-v1` | A partial or unsupported configuration fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_REPOSITORY` | owner-bound reviewed workflow | Required with profile; not secret | exact repository name under `GITHUB_OWNER` | Missing or invalid name fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_REF` | dispatch ref | Required with profile; not secret | exact reviewed branch, revalidated against the SHA before dispatch | A moved branch blocks dispatch; it does not silently update the template. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_SHA` | immutable workflow revision | Required with profile; not secret | 40 lowercase hexadecimal characters | Missing or malformed SHA fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_GENERATION` | template generation | Required with profile; not secret | canonical positive integer, at most `2^63-1` | Missing, zero, or malformed generation fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_CALIBRATION` | successful exact-template probe | Optional; not secret | successful `probe-only` effect ID, 64 lowercase hexadecimal characters | Missing makes the first explicitly requested runner operation run a durable calibration probe; no workload starts before it passes. An explicit stale or incomplete reference blocks workloads. |
+
+The installation and calibration procedure is in
+[`development-runner.md`](development-runner.md). Runner charges and repository
+visibility are independent of Aeontra's execution policy; keep GitHub account budgets
+under operator control.
+
 ### Coolify adapter
 
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
@@ -456,7 +484,7 @@ because they appear in source.
 | `/opt/mcp-devbox/releases/<release>` and `/opt/mcp-devbox/current` | signed immutable Edge releases and active link | root-owned package/updater state | replace only through the signed installer/updater; source release and installed release require separate evidence |
 | `/opt/mcp-devbox/current/codex/codex` | pinned stock Codex CLI used by the active signed harness | immutable component hashed by the Edge manifest | mounted read-only at `/mcp-codex` only inside the selected trusted Linux workcell |
 | `/opt/mcp-devbox/current/codex/container-tools/` | Docker CLI 29.8.1 and Buildx 0.37.1 in Linux manifest v7 | immutable components hashed by the signed Edge manifest | mounted read-only inside the selected Codex Linux workcell; no container daemon or host socket is bundled |
-| `/state/workqueue/queue.db` | durable control-plane jobs, task groups, versioned Git or test evidence criteria, receipts, leases, fences and opaque worker bindings | private SQLite schema version 2 with additive test columns; new test-contract rows fail closed on older readers, `0600`, single active writer | never contains prompts, source, paths, commands or credentials |
+| `/state/workqueue/queue.db` | durable control-plane jobs, task groups, development objectives, capability/source/environment digests, versioned Git or test evidence criteria, receipts, leases, fences and opaque worker bindings | private SQLite schema version 3; v1/v2 migrate transactionally and older readers fail closed on v3, `0600`, single active writer | never contains prompts, source bodies, host paths, commands or credentials |
 | `~/.local/state/mcp-edge/project-worktrees.db` | Edge-private managed worktree identity, ownership and fence registry | private SQLite, `0600` | paths remain local and are never returned by public task tools |
 | `<edge-state>/worktree-test-profile.json` | one optional operator-owned managed-worktree test profile | private regular file, owner UID, exact `0600`, canonical JSON with version `1`, profile ID, fixed argv and timeout; absent by default | never writable through a public MCP tool; only its ID, digest and timeout are returned to a task start |
 | `/opt/mcp-devbox/current/codex/pin.json` | official tag, asset, archive SHA-256, binary SHA-256 and provider contract | immutable component hashed by the Edge manifest | server-owned input; a runtime request cannot replace the executable, pin or provider URL |

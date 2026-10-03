@@ -1002,6 +1002,60 @@ func TestProjectProcessLogWriterRedactsSecretsAcrossWriteBoundaries(t *testing.T
 	}
 }
 
+func TestProjectProcessManagerWaitsForWatchedNaturalExit(t *testing.T) {
+	for _, operation := range []string{"status", "stop", "signal", "stdin"} {
+		for _, code := range []int{0, 7} {
+			t.Run(operation+"/"+strconv.Itoa(code), func(t *testing.T) {
+				platform := newFakeProjectProcessPlatform()
+				manager := openTestProjectProcessManager(t, platform, 1<<20)
+				started, _, err := manager.Start(context.Background(), testProjectProcessRequest(t, "delayed-natural-exit"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				platform.mu.Lock()
+				pid := platform.nextPID
+				process := platform.processes[pid]
+				// The process has gone, but its wait result has not reached the watcher.
+				process.alive = false
+				platform.mu.Unlock()
+				defer close(process.exit)
+				switch operation {
+				case "status":
+					_, err = manager.Status(ProjectProcessReadRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", LimitBytes: 4096})
+				case "stop":
+					_, err = manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", GracePeriod: 100 * time.Millisecond})
+				case "signal":
+					_, err = manager.Signal(ProjectProcessSignalRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", Signal: ProjectProcessInterrupt})
+				case "stdin":
+					_, _, err = manager.WriteStdin(ProjectProcessStdinRequest{ProcessID: started.ProcessID, ProjectAlias: "project", TargetAlias: "parrot", FrameID: "late-stdin", Data: "not delivered"})
+					if !errors.Is(err, ErrProjectProcessIdentityChanged) {
+						t.Fatalf("dead process stdin err=%v", err)
+					}
+					err = nil
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				record, err := manager.boundRecord(started.ProcessID, "project", "parrot")
+				if err != nil || record.State != ProjectProcessRunning || record.ExitKnown || record.Reason != "" || record.Identity != process.identity {
+					t.Fatalf("settled before authoritative wait result: record=%+v err=%v", record, err)
+				}
+				platform.mu.Lock()
+				signals, stdin := len(platform.signals), process.stdin.String()
+				platform.mu.Unlock()
+				if signals != 0 || stdin != "" {
+					t.Fatalf("effect reached dead process: signals=%d stdin=%q", signals, stdin)
+				}
+				platform.naturalExit(pid, code)
+				status := waitProjectProcessState(t, manager, started.ProcessID, ProjectProcessExited)
+				if !status.ExitKnown || status.ExitCode != code || status.Reason != "" {
+					t.Fatalf("natural wait result was lost: %+v", status)
+				}
+			})
+		}
+	}
+}
+
 func TestProjectProcessManagerRecordsNaturalExitAndTruncation(t *testing.T) {
 	platform := newFakeProjectProcessPlatform()
 	platform.stdout = strings.Repeat("x", 256)

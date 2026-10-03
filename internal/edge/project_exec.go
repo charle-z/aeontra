@@ -21,6 +21,21 @@ const (
 var projectExecEnvironmentKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,63}$`)
 
 func validateOperationRequestWithProjectExec(kind OperationKind, request OperationRequest) (OperationRequest, error) {
+	if kind == OperationProjectDevelopmentBootstrapResolve || kind == OperationProjectDevelopmentBootstrapStart {
+		return normalizeDevelopmentBootstrapRequest(kind, request)
+	}
+	if request.DevelopmentBootstrap != nil {
+		return OperationRequest{}, errors.New("development bootstrap binding is invalid for this operation")
+	}
+	if kind == OperationProjectDevelopmentCommandStart {
+		return normalizeProjectDevelopmentCommandRequest(request)
+	}
+	if request.DevelopmentCommand != nil {
+		return OperationRequest{}, errors.New("development binding is invalid for this operation")
+	}
+	if request.DevelopmentRecoveryOperationID != "" || request.DevelopmentRecoveryIdempotencyKey != "" {
+		return OperationRequest{}, errors.New("development recovery identity is invalid for this operation")
+	}
 	isWorktreeTest := kind == OperationProjectWorktreeTestProfile || kind == OperationProjectWorktreeTestStart || kind == OperationProjectWorktreeTestStatus || kind == OperationProjectWorktreeTestStop
 	if isWorktreeTest {
 		return normalizeProjectWorktreeTestRequest(kind, request)
@@ -191,7 +206,7 @@ func operationRequestsEqual(left, right OperationRequest) bool {
 }
 
 func projectOperationUsesIdempotency(kind OperationKind) bool {
-	return kind == OperationProjectSnapshot || kind == OperationProjectExec || kind == OperationProjectProcessStart ||
+	return kind == OperationProjectDevelopmentBootstrapResolve || kind == OperationProjectDevelopmentBootstrapStart || kind == OperationProjectDevelopmentCommandStart || kind == OperationProjectDevelopmentInspect || kind == OperationProjectSnapshot || kind == OperationProjectExec || kind == OperationProjectProcessStart ||
 		kind == OperationProjectWorktreeTestProfile || kind == OperationProjectWorktreeTestStart ||
 		kind == OperationProjectWorktreeTestStop ||
 		kind == OperationProjectProcessStdin ||

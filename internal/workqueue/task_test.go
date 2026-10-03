@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestSchemaOneMigratesToDurableTaskGroups(t *testing.T) {
+func TestSchemaOneMigratesToDurableTaskGroupsAndObjectives(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "queue")
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestSchemaOneMigratesToDurableTaskGroups(t *testing.T) {
 	}
 	defer store.Close()
 	var version int
-	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	tasks, err := store.Tasks(10)
@@ -157,7 +157,7 @@ func TestTaskAcceptanceContractIsDurableAndIdempotencyBound(t *testing.T) {
 	}
 }
 
-func TestSchemaTwoMigrationPreservesLegacyTasksWithoutAcceptanceContract(t *testing.T) {
+func TestSchemaThreeMigrationPreservesLegacyTasksWithoutAcceptanceContract(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "queue")
 	store, err := Open(Config{Root: root, ControllerID: "controller-migration"})
 	if err != nil {
@@ -188,6 +188,7 @@ func TestSchemaTwoMigrationPreservesLegacyTasksWithoutAcceptanceContract(t *test
 		`ALTER TABLE task_workers DROP COLUMN acceptance_receipt`,
 		`ALTER TABLE task_workers DROP COLUMN worktree_cleaned`,
 		`ALTER TABLE task_workers DROP COLUMN test_acceptance_receipt`,
+		`DROP TABLE development_objectives`,
 		`PRAGMA user_version=2`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
@@ -204,12 +205,16 @@ func TestSchemaTwoMigrationPreservesLegacyTasksWithoutAcceptanceContract(t *test
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	var version int
-	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	var ignoredExtension string
 	if err := store.db.QueryRow(`SELECT task_id FROM task_groups WHERE task_id=?`, task.ID).Scan(&ignoredExtension); err != nil || ignoredExtension != task.ID {
 		t.Fatalf("v2-compatible task lookup=%q err=%v", ignoredExtension, err)
+	}
+	var objectiveTable int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='development_objectives'`).Scan(&objectiveTable); err != nil || objectiveTable != 1 {
+		t.Fatalf("development objective table count=%d err=%v", objectiveTable, err)
 	}
 	preserved, found, err := store.Task(task.ID)
 	if err != nil || !found || preserved.IdempotencyKey != task.IdempotencyKey || preserved.AcceptanceContract != nil || len(preserved.Workers) != 1 {
@@ -217,7 +222,7 @@ func TestSchemaTwoMigrationPreservesLegacyTasksWithoutAcceptanceContract(t *test
 	}
 }
 
-func TestTaskAcceptanceSchemaExtensionMigrationIsAtomic(t *testing.T) {
+func TestSchemaThreeExtensionMigrationIsAtomic(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "queue.db")
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -233,7 +238,7 @@ func TestTaskAcceptanceSchemaExtensionMigrationIsAtomic(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := ensureTaskAcceptanceColumns(db, 2); err == nil {
+	if err := ensureSchemaExtensions(db, 2); err == nil {
 		t.Fatal("migration unexpectedly altered a view as a worker table")
 	}
 	rows, err := db.Query(`PRAGMA table_info(task_groups)`)
@@ -258,6 +263,10 @@ func TestTaskAcceptanceSchemaExtensionMigrationIsAtomic(t *testing.T) {
 	var version int
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
 		t.Fatalf("version=%d err=%v", version, err)
+	}
+	var objectiveTable int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='development_objectives'`).Scan(&objectiveTable); err != nil || objectiveTable != 0 {
+		t.Fatalf("failed migration left objective table count=%d err=%v", objectiveTable, err)
 	}
 }
 
@@ -439,7 +448,7 @@ func TestTaskTestAcceptanceReceiptIsDurableImmutableAndContractBound(t *testing.
 	}
 	defer store.Close()
 	var version int
-	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("schema version=%d err=%v", version, err)
 	}
 	persisted, found, err := store.Task(task.ID)

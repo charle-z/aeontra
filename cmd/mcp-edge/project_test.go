@@ -11,6 +11,45 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
+func TestProjectPrepareCLIUsesBoundedCanonicalPreparation(t *testing.T) {
+	oldPrepare := prepareLocalProject
+	t.Cleanup(func() { prepareLocalProject = oldPrepare })
+	called := false
+	prepareLocalProject = func(ctx context.Context, alias, repository, target string) (edgeclient.ProjectStatus, error) {
+		called = true
+		if _, ok := ctx.Deadline(); !ok || alias != "project" || repository != "repo" || target != "parrot" {
+			t.Fatalf("unbounded or changed preparation: %q %q %q", alias, repository, target)
+		}
+		return edgeclient.ProjectStatus{Alias: alias, Repository: "charle-z/" + repository, Target: target, State: "ready"}, nil
+	}
+	var stdout bytes.Buffer
+	if err := projectCommand([]string{"prepare", "--alias", "project", "--repository", "repo", "--target", "parrot"}, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if !called || !strings.Contains(stdout.String(), `"state":"ready"`) {
+		t.Fatalf("prepare was not completed: %s", stdout.String())
+	}
+}
+
+func TestProjectPrepareCLIRejectsIncompleteAndFreePathArguments(t *testing.T) {
+	oldPrepare := prepareLocalProject
+	t.Cleanup(func() { prepareLocalProject = oldPrepare })
+	prepareLocalProject = func(context.Context, string, string, string) (edgeclient.ProjectStatus, error) {
+		t.Fatal("invalid preparation opened local authority")
+		return edgeclient.ProjectStatus{}, nil
+	}
+	for _, args := range [][]string{
+		{"prepare", "--alias", "project"},
+		{"prepare", "--alias", "project", "--repository", "repo"},
+		{"prepare", "--alias", "project", "--repository", "repo", "--target", "parrot", "/tmp/repo"},
+		{"prepare", "--alias", "project", "--repository", "repo", "--target", "parrot", "--state", "/tmp/state"},
+	} {
+		if err := projectCommand(args, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+			t.Fatalf("invalid preparation accepted: %v", args)
+		}
+	}
+}
+
 type mutableProjectInspector struct {
 	state edgeclient.ProjectCheckoutState
 }

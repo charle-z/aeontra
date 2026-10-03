@@ -1,0 +1,310 @@
+name: Aeontra isolated development runner
+run-name: aeontra-development-${{ inputs.effect_id }}-${{ inputs.plan_digest }}-${{ inputs.execution_digest }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      effect_id: {required: true, type: string}
+      plan_digest: {required: true, type: string}
+      source_owner: {required: true, type: string}
+      source_repo: {required: true, type: string}
+      source_sha: {required: true, type: string}
+      command_profile: {required: true, type: choice, options: [probe-only, make-validate-all, go-test-all]}
+      workflow_sha: {required: true, type: string}
+      workflow_id: {required: true, type: string}
+      execution_digest: {required: true, type: string}
+
+# No production environment, deployment permission, OIDC permission or secrets.
+# Standard public-repository hosted VM only; not ubuntu-slim or a paid label.
+permissions:
+  contents: read
+concurrency:
+  group: development-runner-${{ inputs.effect_id }}
+  cancel-in-progress: false
+
+jobs:
+  execution:
+    name: Isolated development execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EFFECT_ID: ${{ inputs.effect_id }}
+      PLAN_DIGEST: ${{ inputs.plan_digest }}
+      SOURCE_OWNER: ${{ inputs.source_owner }}
+      SOURCE_REPO: ${{ inputs.source_repo }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      COMMAND_PROFILE: ${{ inputs.command_profile }}
+      WORKFLOW_SHA: ${{ inputs.workflow_sha }}
+      WORKFLOW_ID: ${{ inputs.workflow_id }}
+      EXECUTION_DIGEST: ${{ inputs.execution_digest }}
+    steps:
+      - name: Validate immutable request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_SHA" = "$WORKFLOW_SHA"
+          [[ "$EFFECT_ID" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$PLAN_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$SOURCE_OWNER" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]]
+          [[ "$SOURCE_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]
+          [[ "$WORKFLOW_ID" =~ ^[1-9][0-9]{0,18}$ ]]
+          [[ "$EXECUTION_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          case "$COMMAND_PROFILE" in probe-only|make-validate-all|go-test-all) ;; *) exit 1 ;; esac
+          # Bind the title to actual inputs; an asserted digest is not evidence.
+          python3 - <<'PYTHON'
+          import hashlib, json, os, struct
+          with open(os.environ['GITHUB_EVENT_PATH'], 'rb') as event_file:
+              event = json.load(event_file)
+          repository = event.get('repository') if isinstance(event, dict) else None
+          if (not isinstance(repository, dict) or repository.get('private') is not False
+                  or repository.get('full_name') != os.environ['GITHUB_REPOSITORY']):
+              raise SystemExit('runner repository must be the exact public repository')
+          digest = hashlib.sha256(b'aeontra-development-runner-execution-v1\x00')
+          for name in ('EFFECT_ID', 'PLAN_DIGEST', 'SOURCE_OWNER', 'SOURCE_REPO',
+                       'SOURCE_SHA', 'COMMAND_PROFILE', 'WORKFLOW_SHA', 'WORKFLOW_ID'):
+              value = os.environ[name].encode('utf-8')
+              digest.update(struct.pack('>I', len(value)))
+              digest.update(value)
+          if digest.hexdigest() != os.environ['EXECUTION_DIGEST']:
+              raise SystemExit('execution input binding mismatch')
+          PYTHON
+          if test "$COMMAND_PROFILE" = probe-only; then
+            test "$SOURCE_OWNER/$SOURCE_REPO" = "$GITHUB_REPOSITORY"
+            test "$SOURCE_SHA" = "$WORKFLOW_SHA"
+          fi
+
+      - name: Set up pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.6'
+          cache: false
+
+      - name: Stage trusted CI runtime adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir .aeontra-runner-ci
+          printf '%s\n' 'name: Trusted CI runtime adapter' 'description: Stage only ephemeral Actions cache authority' 'runs:' '  using: node24' '  main: index.js' >.aeontra-runner-ci/action.yml
+          cat >.aeontra-runner-ci/index.js <<'JAVASCRIPT'
+          const fs = require('fs');
+          const names = ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RUNTIME_URL', 'ACTIONS_RESULTS_URL'];
+          const values = {};
+          for (const name of names) {
+            if (!process.env[name]) throw new Error('ephemeral CI runtime contract missing');
+            values[name] = process.env[name];
+          }
+          for (const name of ['ACTIONS_CACHE_URL', 'ACTIONS_CACHE_SERVICE_V2']) {
+            if (process.env[name]) values[name] = process.env[name];
+          }
+          for (const name of ['GITHUB_REF', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT']) {
+            if (process.env[name]) values[name] = process.env[name];
+          }
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/aeontra-ci.json', JSON.stringify(values), {mode: 0o600, flag: 'wx'});
+          JAVASCRIPT
+
+      - name: Capture scoped CI runtime
+        uses: ./.aeontra-runner-ci
+
+      - name: Prepare disposable VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fixed VM-only setup. It never changes an Edge/VPS host.
+          sudo install -d -m 0700 /opt/aeontra-control
+          sudo install -m 0600 "$RUNNER_TEMP/aeontra-ci.json" /opt/aeontra-control/ci.json
+          rm "$RUNNER_TEMP/aeontra-ci.json"
+          sudo chmod 0700 "$RUNNER_WORKSPACE" "$RUNNER_TEMP" "$HOME"
+          sudo systemctl stop docker.service docker.socket
+          sudo useradd --create-home --shell /bin/bash aeontra-workload
+          sudo chmod 0700 /home/aeontra-workload
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends uidmap slirp4netns=1.2.1-1build2
+          # Ubuntu's AppArmor unprivileged-userns restriction is changed only in
+          # this disposable VM; the subsequent nested mount probe is mandatory.
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          sudo mount -o remount,hidepid=2 /proc
+          grep -Eq '^aeontra-workload:[0-9]+:[0-9]+$' /etc/subuid
+          grep -Eq '^aeontra-workload:[0-9]+:[0-9]+$' /etc/subgid
+          work="$(mktemp -d)"
+          curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --max-time 300 -o "$work/docker.tgz" https://download.docker.com/linux/static/stable/x86_64/docker-29.8.1.tgz
+          printf '%s  %s\n' d8db66739d2e28d4933786d73e918d9be643a67fbd835db1bf740d650a259e70 "$work/docker.tgz" | sha256sum --check --status
+          tar -xzf "$work/docker.tgz" -C "$work"
+          sudo install -d -m 0755 /opt/aeontra-bin
+          sudo install -m 0755 "$work"/docker/* /opt/aeontra-bin/
+          curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --max-time 300 -o "$work/buildx" https://github.com/docker/buildx/releases/download/v0.37.1/buildx-v0.37.1.linux-amd64
+          printf '%s  %s\n' 9447199cdb435f25880548343c128a4b6650e8891ee598905d8d29d39a8e359b "$work/buildx" | sha256sum --check --status
+          sudo install -d -m 0755 /usr/local/lib/docker/cli-plugins
+          sudo install -m 0755 "$work/buildx" /usr/local/lib/docker/cli-plugins/docker-buildx
+          # Pin the checksum manifest itself, then verify the release archive.
+          curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --max-time 300 -o "$work/SHA256SUMS" https://github.com/rootless-containers/rootlesskit/releases/download/v2.3.5/SHA256SUMS
+          printf '%s  %s\n' 35c4618e1e9a5cb2aaea08edbba6e3de5bbeedd00a65fcf7d14f31fc942a7655 "$work/SHA256SUMS" | sha256sum --check --status
+          curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --max-time 300 -o "$work/rootlesskit-x86_64.tar.gz" https://github.com/rootless-containers/rootlesskit/releases/download/v2.3.5/rootlesskit-x86_64.tar.gz
+          (cd "$work" && grep '  rootlesskit-x86_64.tar.gz$' SHA256SUMS | sha256sum --check --status)
+          tar -xzf "$work/rootlesskit-x86_64.tar.gz" -C "$work" rootlesskit
+          sudo install -m 0755 "$work/rootlesskit" /opt/aeontra-bin/rootlesskit
+          sudo install -d -o aeontra-workload -g aeontra-workload -m 0700 /home/aeontra-workload/runtime
+          sudo install -d -m 0755 /opt/aeontra-go
+          sudo cp -a "$(go env GOROOT)/." /opt/aeontra-go/
+          sudo chown -R root:root /opt/aeontra-go
+          sudo chmod -R go-w /opt/aeontra-go
+          sudo tee /etc/systemd/system/aeontra-rootless.service >/dev/null <<'UNIT'
+          [Service]
+          User=aeontra-workload
+          Group=aeontra-workload
+          Delegate=yes
+          KillMode=control-group
+          MemoryMax=10G
+          TasksMax=4096
+          Environment=HOME=/home/aeontra-workload
+          Environment=PATH=/opt/aeontra-bin:/usr/bin:/bin
+          Environment=XDG_RUNTIME_DIR=/home/aeontra-workload/runtime
+          ExecStart=/opt/aeontra-bin/rootlesskit --net=slirp4netns --port-driver=builtin --disable-host-loopback --copy-up=/etc --copy-up=/run --propagation=rslave /opt/aeontra-bin/dockerd --rootless --host=unix:///home/aeontra-workload/runtime/docker.sock --data-root=/home/aeontra-workload/docker --exec-root=/home/aeontra-workload/runtime/dockerd
+          UNIT
+          sudo systemctl daemon-reload
+          sudo systemctl start aeontra-rootless.service
+          # Trusted executor drops supplementary groups and UID before every
+          # child. Output cannot inject runner commands or alter GITHUB_OUTPUT.
+          sudo tee /opt/aeontra-control/execute.py >/dev/null <<'PYTHON'
+          import json, os, subprocess, sys
+          env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin',
+                 'XDG_RUNTIME_DIR': '/home/aeontra-workload/runtime', 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock',
+                 'DOCKER_CONFIG': '/home/aeontra-workload/.docker', 'GITHUB_ACTIONS': 'true',
+                 'GOTOOLCHAIN': 'local', 'GOENV': 'off'}
+          env.update(json.load(open('/opt/aeontra-control/ci.json')))
+          with open('/opt/aeontra-control/runtime.env', 'w') as f:
+              for key, value in env.items():
+                  if '\n' in value or '\r' in value: raise ValueError('invalid private environment')
+                  f.write(key + '=' + '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"\n')
+          os.chmod('/opt/aeontra-control/runtime.env', 0o600)
+          executable = {'docker': '/opt/aeontra-bin/docker', 'go': '/opt/aeontra-go/bin/go', 'make': '/usr/bin/make'}.get(sys.argv[2])
+          if not executable: raise ValueError('unregistered executable')
+          with open('/opt/aeontra-control/' + sys.argv[1] + '.log', 'wb') as log:
+              argv = ['/usr/bin/systemd-run', '--quiet', '--wait', '--pipe', '--collect',
+                      '--unit=aeontra-' + sys.argv[1], '--service-type=exec',
+                      '-p', 'User=aeontra-workload', '-p', 'Group=aeontra-workload',
+                      '-p', 'Delegate=yes', '-p', 'KillMode=control-group', '-p', 'MemoryMax=10G',
+                      '-p', 'TasksMax=4096', '-p', 'RuntimeMaxSec=4200',
+                      '-p', 'EnvironmentFile=/opt/aeontra-control/runtime.env',
+                      '--working-directory=/home/aeontra-workload/source', executable] + sys.argv[3:]
+              child = subprocess.Popen(argv, env={'PATH': '/usr/bin:/bin'},
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              retained = 0
+              while True:
+                  chunk = child.stdout.read(65536)
+                  if not chunk: break
+                  keep = min(len(chunk), max(0, (16 << 20) - retained))
+                  log.write(chunk[:keep]); retained += keep
+              status = child.wait(timeout=15)
+          sys.exit(status)
+          PYTHON
+          sudo chmod 0600 /opt/aeontra-control/execute.py
+
+      - name: Fetch exact public Git objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Credential-free Git transport, not command-output reconstruction.
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control git -c core.hooksPath=/dev/null init /home/aeontra-workload/source
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control git -C /home/aeontra-workload/source -c core.hooksPath=/dev/null remote add origin "https://github.com/$SOURCE_OWNER/$SOURCE_REPO.git"
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control GIT_TERMINAL_PROMPT=0 git -C /home/aeontra-workload/source -c core.hooksPath=/dev/null fetch --no-tags origin "$SOURCE_SHA"
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control git -C /home/aeontra-workload/source -c core.hooksPath=/dev/null checkout --detach "$SOURCE_SHA"
+          test "$(sudo git -C /home/aeontra-workload/source rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(sudo git -C /home/aeontra-workload/source rev-parse --is-shallow-repository)" = false
+          sudo chown -R aeontra-workload:aeontra-workload /home/aeontra-workload/source
+
+      - name: Probe kernel and CI contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo runuser -u aeontra-workload -- unshare --user --map-root-user --mount --pid --fork sh -eu -c 'unshare --user --map-root-user --mount --pid --fork sh -eu -c "mount -t proc proc /proc; test -r /proc/self/status"'
+          for attempt in $(seq 1 30); do
+            if sudo python3 /opt/aeontra-control/execute.py docker-info docker info; then break; fi
+            if test "$attempt" = 30; then exit 1; fi
+            sleep 1
+          done
+          sudo grep -q rootless /opt/aeontra-control/docker-info.log
+          sudo python3 /opt/aeontra-control/execute.py workspace-bind docker run --rm --mount type=bind,src=/home/aeontra-workload/source,dst=/workspace,readonly busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 cat /workspace/.git/HEAD
+          sudo grep -Fx "$SOURCE_SHA" /opt/aeontra-control/workspace-bind.log
+          sudo systemctl show aeontra-rootless.service --property=Delegate --value | grep -Fx yes
+          test "$(stat -fc %T /sys/fs/cgroup)" = cgroup2fs
+          cgroup="$(sudo systemctl show aeontra-rootless.service --property=ControlGroup --value)"
+          case "$cgroup" in /system.slice/aeontra-rootless.service) ;; *) exit 1 ;; esac
+          sudo runuser -u aeontra-workload -- sh -eu -c 'test -w "$1/cgroup.procs"; test -w "$1/cgroup.subtree_control"' sh "/sys/fs/cgroup$cgroup"
+          # Real nested runc/proc execution and GitHub cache export/import. No
+          # capability is inferred merely from the runs-on label or env names.
+          sudo install -d -o aeontra-workload -g aeontra-workload -m 0700 /home/aeontra-workload/probe
+          printf '%s\n' 'FROM busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0' 'RUN test -r /proc/self/status && echo measured > /proof' | sudo tee /home/aeontra-workload/probe/Dockerfile >/dev/null
+          sudo chown aeontra-workload:aeontra-workload /home/aeontra-workload/probe/Dockerfile
+          buildkit_image=moby/buildkit:v0.31.2-ubuntu@sha256:50cccfc001857e9e198d41632c0c2ca5a43ec5d0bf8f01335edab2c42215c9ae
+          sudo python3 /opt/aeontra-control/execute.py builder-export docker buildx create --name measured-export --driver docker-container --driver-opt "image=$buildkit_image" --use
+          sudo python3 /opt/aeontra-control/execute.py cache-export docker buildx build --progress=plain --cache-to "type=gha,version=2,scope=$EFFECT_ID,mode=max" --output type=cacheonly /home/aeontra-workload/probe
+          sudo python3 /opt/aeontra-control/execute.py builder-remove docker buildx rm measured-export
+          sudo python3 /opt/aeontra-control/execute.py builder-import docker buildx create --name measured-import --driver docker-container --driver-opt "image=$buildkit_image" --use
+          sudo python3 /opt/aeontra-control/execute.py cache-import docker buildx build --progress=plain --cache-from "type=gha,version=2,scope=$EFFECT_ID" --output type=cacheonly /home/aeontra-workload/probe
+          sudo grep -q CACHED /opt/aeontra-control/cache-import.log
+          sudo python3 /opt/aeontra-control/execute.py pinned-go go version
+          sudo grep -Fx 'go version go1.26.6 linux/amd64' /opt/aeontra-control/pinned-go.log
+          sudo python3 /opt/aeontra-control/execute.py make make --version
+
+      - name: Execute exact profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$COMMAND_PROFILE" in
+            probe-only) sudo install -m 0600 /dev/null /opt/aeontra-control/command.log ;;
+            make-validate-all) sudo python3 /opt/aeontra-control/execute.py command make validate-all ;;
+            go-test-all) sudo python3 /opt/aeontra-control/execute.py command go test ./... -count=1 ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Bind trusted receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub's exact-run job/step metadata is the broker receipt source.
+          # Repository-controlled files/logs/artifacts are never attestation.
+          sudo systemctl stop aeontra-rootless.service
+          sudo test -f /opt/aeontra-control/command.log
+          sudo test ! -L /opt/aeontra-control/command.log
+          printf '%s\n' 'Exact command completed; semantic acceptance remains separate.'
+
+      - name: Bounded untrusted command diagnostics
+        if: always()
+        shell: bash
+        run: |
+          sudo python3 - <<'PYTHON'
+          import json, os, stat
+          directory = '/opt/aeontra-control/'
+          path = directory + 'command.log'
+          if not os.path.exists(path):
+              raise SystemExit(0)
+          mode = os.lstat(path).st_mode
+          if not stat.S_ISREG(mode):
+              raise SystemExit('invalid private diagnostic log')
+          values = json.load(open(directory + 'ci.json'))
+          with open(path, 'rb') as log:
+              log.seek(max(0, os.fstat(log.fileno()).st_size - (16 << 10)))
+              data = log.read(16 << 10).decode('utf-8', errors='replace')
+          for value in sorted((value for value in values.values() if isinstance(value, str) and value), key=len, reverse=True):
+              data = data.replace(value, '[REDACTED]')
+          for line in data.splitlines():
+              print('aeontra-untrusted-log ' + json.dumps(line, ensure_ascii=True))
+          PYTHON
+
+      - name: Stop disposable workload
+        if: always()
+        shell: bash
+        run: |
+          if sudo systemctl cat aeontra-rootless.service >/dev/null 2>&1; then
+            sudo systemctl stop aeontra-rootless.service
+          fi
+          if id aeontra-workload >/dev/null 2>&1; then
+            sudo pkill -KILL -u aeontra-workload || test "$?" = 1
+          fi

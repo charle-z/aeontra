@@ -1,12 +1,14 @@
 # P16 durable scheduler store
 
-Status: **P16 durable task groups and fenced Edge workers implemented in source; exact-head and real-device acceptance pending.**
+Status: **Durable task groups, fenced Edge workers and exact-command development routing are implemented in source. Real-runner and deployment acceptance must be recorded separately.**
 
-`internal/workqueue` is the private coordination store for admission, VPS workers and
-per-Edge pools. It still grants no execution authority by itself. The public
-`project_task_*` tools connect its identities to the existing signed Edge operation,
-workspace and model-turn authorities; the queue never receives a host path, credential,
-command, source file or model response.
+`internal/workqueue` is the private coordination store for admission, VPS workers,
+per-Edge pools and development objectives. It still grants no execution authority by
+itself. The public `project_task_*` tools connect task identities to the existing signed
+Edge operation, workspace and model-turn authorities. Development-objective rows contain
+only bounded canonical coordination metadata such as capability names, source digests,
+environment-attestation digests, revisions and attempt identities; the queue never
+stores a source body, host path, credential, command, prompt or model response.
 
 ## Storage and writer model
 
@@ -18,18 +20,17 @@ The control plane opens one private root and stores:
 ```
 
 The root is a real non-symlink directory with private permissions. `queue.db` is SQLite
-schema version 2, mode `0600`, WAL, `synchronous=FULL`, foreign keys, bounded pages and
+schema version 3, mode `0600`, WAL, `synchronous=FULL`, foreign keys, bounded pages and
 one database connection. A non-blocking advisory lock allows exactly one active
 control-plane writer and releases automatically when the process exits. `Writers`
 values other than one fail closed. Redis and additional resident queue services are not
-required. Version-1 databases migrate transactionally to schema version 2; future
-schema versions fail closed. The optional acceptance contract, receipt and cleanup
-checkpoint are additive columns migrated in one transaction without changing
-`PRAGMA user_version=2`, so a previous v2 binary can open the database and ignore them.
-That older binary does not enforce the acceptance contract: stop task coordination and
-take a private backup before rollback, and do not let an older binary operate on
-contract-bearing tasks. If recovery must continue under the older binary, restore the
-pre-upgrade backup using the documented restore procedure.
+required. Version-1 and version-2 databases migrate transactionally to schema version 3;
+future schema versions fail closed. The v3 migration preserves the existing task
+acceptance columns and creates the development-objective table in the same transaction.
+A v2 binary must reject a v3 database instead of operating while unaware of objective
+state. Take a private backup before rollback and stop coordination; recovery under an
+older binary requires restoring a compatible pre-upgrade backup rather than editing
+SQLite manually.
 
 The persisted controller identity must match on reopen. A second controller identity, future schema, unsafe symlink/layout, corrupt database, row overflow or storage above 64 MiB blocks opening.
 
@@ -147,6 +148,69 @@ from the task and worker. Cleanup removes the registered worktree but deliberate
 preserves its Git branch, Git evidence receipt and durable task record. The task remains
 semantically pending for review.
 
+## Durable development objectives
+
+Schema v3 adds `development_objectives` to the same `queue.db`; there is no second
+scheduler database or resident coordination service. One row stores the canonical
+versioned objective record, revision, semantic state, record digest and timestamps.
+
+The canonical record is capped at 256 KiB and contains only:
+
+- objective, step and attempt identities;
+- optional immutable project/target scope for dispatchable objectives;
+- the immutable authority policy;
+- canonical capability requirements;
+- source-content digests, never source bodies;
+- execution-environment identities, generations, classes and attestation digests;
+- attempt lifecycle and closed failure classes.
+- bounded provisioning plans, stable effect identities, exact job IDs, lease fences
+  and receipt digests; provisioning records contain no executable, host path or secret.
+
+The first persisted revision must be revision 1. A later write must be exactly the next
+revision and must satisfy the development transition validator: project/target scope and
+policy cannot be rewritten, requirements can only grow, prior attempts are immutable,
+and a new attempt must descend from the previous failed attempt. Replaying the exact same revision and
+digest is idempotent. Stale, skipped, divergent or corrupt revisions fail closed.
+Cancellation is a durable terminal objective state and cancels any currently planned or
+running attempt without rewriting earlier attempts.
+
+The supervisor persists a provisioning plan before enqueueing its effect. Replaying
+the same effect key recovers the exact workqueue job, including when enqueue committed
+but its response was lost. The current fence is persisted before invoking a registered
+broker. Completion is recovered only from the queue's exact fenced outcome. An effect
+receipt does not accept an objective or advertise a capability: the supervisor must
+re-attest the output environment before starting an execution attempt.
+
+Cancellation reconciles even an unacknowledged enqueue and requests cancellation of a
+leased effect. A broker can still stop that captured effect after the objective is
+cancelled. Provisioning uses the existing queue, lease limits and coordinator; it does
+not create another scheduler. Each step retains at most 16 provisioning attempts.
+
+The store admits at most 1024 development-objective rows. Capacity is checked inside
+the same write transaction before insertion. Canonical accepted, failed and cancelled
+objectives older than thirty days can be pruned during new-objective admission only
+when no retained request or nonterminal queue job owns them. Active, recent, corrupt
+or uncertain records are never discarded to free capacity. Exact-ID replay does not
+trigger maintenance.
+
+The same schema also stores bounded development requests and isolated-runner effect
+metadata. Private argv/stdin/environment stay in the pinned model-turn body store;
+queue rows contain only references, digests and lifecycle identities. Terminal request
+keys are retained for thirty days. Runner effect pruning preserves active or uncertain
+dispatches and the configured calibration. See `docs/development-runner.md` for the
+external runner's stricter reconciliation and retention rules.
+
+Every read recomputes the record digest, parses the bounded canonical JSON and checks
+the row identity, revision and state against the record. `Integrity()` performs the same
+semantic validation over every retained objective. Restart therefore recovers the exact
+attempt history rather than reconstructing it from chat text.
+
+This persistence grants no new execution authority. Capability attestations, runner
+selection, provisioning, effect dispatch and semantic acceptance remain separate
+layers. Legacy unscoped objective records remain readable, but the internal development
+supervisor rejects them for dispatch. A succeeded attempt still leaves the overall
+objective `acceptance_pending` until an explicit evaluator accepts it.
+
 ## Dependencies
 
 A job with unfinished dependencies remains `blocked`. Successful completion of every dependency promotes it to `queued`. A failed or cancelled dependency propagates `dependency_failed` transitively and stores a bounded safe summary. Missing or duplicate dependency IDs fail enqueue.
@@ -163,10 +227,11 @@ Tests cover legal/illegal transitions, equal and different concurrent enqueue,
 global/per-workspace bounds, idempotency conflict and dependency-order normalization,
 one active fenced lease, expiry recovery, stale completion rejection, dependency
 success/failure propagation, queued/running cancellation, restart reconciliation,
-task-group reuse/conflict, independent worker binding, schema migration, reopen/integrity,
-automatic advisory-lock release after a real process exit, unsupported multi-writer
-configuration, backup/restore, unsafe layout, unknown schema-zero databases and future
-schemas, list/output bounds, race execution and fuzz input validation. Existing database
+task-group reuse/conflict, independent worker binding, v1/v2-to-v3 schema migration,
+objective revision CAS/replay/restart/corruption checks, atomic migration rollback,
+reopen/integrity, automatic advisory-lock release after a real process exit, unsupported
+multi-writer configuration, backup/restore, unsafe layout, unknown schema-zero databases
+and future schemas, list/output bounds, race execution and fuzz input validation. Existing database
 and lock ownership is validated; terminal summaries that resemble secrets fail closed.
 The package is enforced by the atomic coverage gate at a 70% minimum.
 
