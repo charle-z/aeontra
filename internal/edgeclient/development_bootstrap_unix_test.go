@@ -81,6 +81,34 @@ func TestSelectGoBootstrapArtifactRejectsUnsupportedOrMalformedMetadata(t *testi
 	}
 }
 
+func TestOfficialSHA256SidecarAcceptsOfficialArtifactNames(t *testing.T) {
+	digest := "4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10"
+	for _, name := range []string{"", "rustup-init", "*rustup-init", "./rustup-init", "*./rustup-init"} {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseOfficialSHA256Sidecar([]byte(digest+" "+name+"\n"), "rustup-init")
+			if err != nil || got != digest {
+				t.Fatalf("official artifact checksum was rejected: got=%q err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestOfficialSHA256SidecarRejectsOtherArtifactNames(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	for _, name := range []string{"other-artifact", "dir/rustup-init", "../rustup-init", "/rustup-init", "././rustup-init", "**./rustup-init", "rustup-init extra"} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseOfficialSHA256Sidecar([]byte(digest+" "+name+"\n"), "rustup-init"); err == nil {
+				t.Fatal("a different artifact name was accepted")
+			}
+		})
+	}
+	for _, body := range []string{"", "invalid rustup-init", strings.Repeat("a", developmentBootstrapSHA256Limit+1)} {
+		if _, err := parseOfficialSHA256Sidecar([]byte(body), "rustup-init"); err == nil {
+			t.Fatal("invalid checksum metadata was accepted")
+		}
+	}
+}
+
 func TestDevelopmentBootstrapRecipeIsFixedQuotedAndRuntimeScoped(t *testing.T) {
 	goResolution := DevelopmentBootstrapResolution{
 		CapabilityID: "toolchain.go.v1-26-6", Toolchain: "go", Version: "1.26.6", Platform: "amd64",

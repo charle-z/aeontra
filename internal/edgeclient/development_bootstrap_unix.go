@@ -425,8 +425,13 @@ func parseOfficialSHA256Sidecar(body []byte, expectedFile string) (string, error
 	if len(fields) < 1 || len(fields) > 2 || !bootstrapSHA256Pattern.MatchString(fields[0]) {
 		return "", errors.New("official checksum metadata is invalid")
 	}
-	if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") != expectedFile {
-		return "", errors.New("official checksum metadata names another artifact")
+	if len(fields) == 2 {
+		// rustup's official sidecar uses the binary marker and a single ./
+		// prefix. Accept those spellings, not arbitrary path normalization.
+		name := strings.TrimPrefix(fields[1], "*")
+		if name != expectedFile && name != "./"+expectedFile {
+			return "", errors.New("official checksum metadata names another artifact")
+		}
 	}
 	return fields[0], nil
 }
