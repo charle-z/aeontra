@@ -33,7 +33,9 @@ capture_output(io.BytesIO(b'error: earlier expected negative\n' + b'panic: test 
 assert len(critical.getvalue()) <= (16 << 10) + 256
 assert b'panic: test timed out after 10m0s' in critical.getvalue()
 assert b'TestRealWork (10m0s)' in critical.getvalue()
-assert b'earlier expected negative' not in critical.getvalue()
+# The first observed failure may be an expected negative fixture, not a cause.
+# Preserve it alongside the later panic instead of silently replacing it.
+assert b'earlier expected negative' in critical.getvalue()
 assert b'panic: test timed out' not in output.getvalue()
 assert output.getvalue().endswith(b'make: exit 2\n')
 for prefix, expected in ((b'error: first failure without panic\n', b'first failure without panic'), (b'', b'reason=none')):
@@ -119,6 +121,65 @@ print('fixture passed')
 	output, err := runRunnerDiagnostics(t, directory)
 	if err != nil || !strings.Contains(output, "panic: true timeout [REDACTED]") || !strings.Contains(output, "TestRealWork") || !strings.Contains(output, "DONE exact-final-summary") || !strings.Contains(output, "make: exact-final-exit-2") || strings.Contains(output, "private-token") || len(output) > 16<<10 {
 		t.Fatalf("end-to-end failure evidence lost or unsafe: err=%v bytes=%d: %s", err, len(output), output)
+	}
+}
+
+func TestDevelopmentRunnerDualFailureEvidenceEndToEnd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux capture and renderer are verified in WSL")
+	}
+	directory := t.TempDir()
+	for name, body := range map[string]string{
+		"ci.json":                 `{"ACTIONS_RUNTIME_TOKEN":"private-token","ACTIONS_RESULTS_URL":"private-url"}`,
+		"acl-diagnostics.log":     strings.Repeat("preceding probe output\n", 256),
+		"overlay-diagnostics.log": strings.Repeat("preceding overlay output\n", 256),
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	program := "import io, os\n" + runnerOutputCaptureScript(t) + fmt.Sprintf(`
+early = b'error: first observed overlay fixture failure private-token private-url\n'
+panic = b'panic: test timed out after 10m0s private-token\n\trunning tests:\n\tTestRealWork (10m0s)\n'
+body = early + (b'ordinary output ' + b'z' * 256 + b'\n') * 65536 + panic + (b'goroutine stack ' + b'z' * 256 + b'\n') * 8192 + (b'EOF-noise "\\\t\x01\n') * 1200 + b'DONE exact-final-summary\nmake: exact-final-exit-2\n'
+with open(%q, 'wb') as output, open(%q, 'wb') as critical:
+    capture_output(io.BytesIO(body), output, critical)
+with open(%q, 'rb') as critical:
+    data = critical.read()
+assert len(data) <= (16 << 10) + 256
+assert early in data and panic in data
+with open(%q, 'rb') as output:
+    data = output.read()
+assert early not in data and panic not in data[-(2 << 20):]
+assert len(data) <= (16 << 20) + 256
+print('fixture passed')
+`, filepath.ToSlash(filepath.Join(directory, "command.log")), filepath.ToSlash(filepath.Join(directory, "command-context.log")), filepath.ToSlash(filepath.Join(directory, "command-context.log")), filepath.ToSlash(filepath.Join(directory, "command.log")))
+	runRunnerACLFixture(t, "", program)
+	output, err := runRunnerDiagnostics(t, directory)
+	for _, expected := range []string{"first observed overlay fixture failure [REDACTED] [REDACTED]", "panic: test timed out after 10m0s [REDACTED]", "TestRealWork", "DONE exact-final-summary", "make: exact-final-exit-2"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("dual failure evidence missing %q: err=%v bytes=%d: %s", expected, err, len(output), output)
+		}
+	}
+	if err != nil || strings.Contains(output, "private-token") || strings.Contains(output, "private-url") || strings.Contains(output, "\x01") || len(output) > 16<<10 {
+		t.Fatalf("dual evidence unsafe: err=%v bytes=%d: %s", err, len(output), output)
+	}
+	contextBytes, tailBytes, inTail := 0, 0, false
+	for _, line := range strings.Split(strings.TrimSuffix(output, "\n"), "\n") {
+		if !strings.HasPrefix(line, "aeontra-untrusted-log command ") || strings.Contains(line, "aeontra-capture bytes_seen=") {
+			continue
+		}
+		if strings.Contains(line, "EOF-noise") {
+			inTail = true
+		}
+		if inTail {
+			tailBytes += len(line) + 1
+		} else {
+			contextBytes += len(line) + 1
+		}
+	}
+	if contextBytes > 4<<10 || tailBytes > 4<<10 || !inTail {
+		t.Fatalf("encoded allowances exceeded: context=%d tail=%d", contextBytes, tailBytes)
 	}
 }
 
