@@ -67,8 +67,14 @@ func developmentWorkcellInventoryProbe() (string, []linuxToolDefinition) {
 		// Only lookup absence may omit a row. A failed measurement of a
 		// present tool invalidates the whole snapshot, including earlier rows.
 		script.WriteString("if command -v " + definition.Executables[0] + " >/dev/null 2>&1; then\n")
-		fmt.Fprintf(&script, "if (ulimit -f 4; timeout %d %s %s >\"$tmp\" 2>/dev/null); then printf '%s\\t'; head -c 1024 \"$tmp\" | tr '\\n\\r\\t' '   '; printf '\\n'; else exit %d; fi\nfi\n",
-			developmentWorkcellInventoryProbeTimeoutSeconds, definition.Executables[0], strings.Join(definition.VersionArgs, " "), definition.Name, developmentWorkcellInventoryMeasurementFailureExitCode)
+		probeEnvironment := ""
+		if definition.Name == "go" {
+			// Inventory measures the installed executable, not the module's
+			// selected toolchain. Normal command execution is unchanged.
+			probeEnvironment = "GOTOOLCHAIN=local "
+		}
+		fmt.Fprintf(&script, "if (ulimit -f 4; %stimeout %d %s %s >\"$tmp\" 2>/dev/null); then printf '%s\\t'; head -c 1024 \"$tmp\" | tr '\\n\\r\\t' '   '; printf '\\n'; else exit %d; fi\nfi\n",
+			probeEnvironment, developmentWorkcellInventoryProbeTimeoutSeconds, definition.Executables[0], strings.Join(definition.VersionArgs, " "), definition.Name, developmentWorkcellInventoryMeasurementFailureExitCode)
 	}
 	return script.String(), definitions
 }

@@ -5,6 +5,7 @@ package edgeclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,6 +115,28 @@ func TestDevelopmentInventoryProbePreservesMeasuredCapabilities(t *testing.T) {
 	caps, err := developmentCapabilitiesFromLinuxInventory(entries)
 	if err != nil || !caps.Has("toolchain.go.v1-26-6") || !caps.Has("toolchain.rust.v1-95-0") || caps.Has("toolchain.rust.v1-95-1") || caps.Has("toolchain.node") {
 		t.Fatalf("capabilities=%v err=%v", caps.IDs(), err)
+	}
+}
+
+func TestDevelopmentInventoryProbeGoDoesNotDownloadSelectedToolchain(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "download-attempt")
+	output, definitions, err := runDevelopmentInventoryProbeFixture(t, map[string]string{
+		"go":  fmt.Sprintf("if [ \"${GOTOOLCHAIN-}\" != local ]; then printf attempted > %q; exit 1; fi\nprintf 'go version go1.26.5 linux/amd64\\n'\n", marker),
+		"git": "test -z \"${GOTOOLCHAIN-}\" || exit 1\nprintf 'git version 2.43.0\\n'\n",
+	})
+	if err != nil {
+		t.Fatalf("Go inventory tried module-selected provisioning: output=%q err=%v", output, err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("inventory attempted a toolchain download: %v", err)
+	}
+	entries, err := parseDevelopmentWorkcellInventory(output, definitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps, err := developmentCapabilitiesFromLinuxInventory(entries)
+	if err != nil || !caps.Has("toolchain.go.v1-26-5") || caps.Has("toolchain.go.v1-26-6") || !caps.Has("git.cli") {
+		t.Fatalf("inventory did not measure installed Go independently: capabilities=%v err=%v", caps.IDs(), err)
 	}
 }
 
