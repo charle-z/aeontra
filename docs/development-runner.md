@@ -129,6 +129,10 @@ The source's own nested images/dependencies are not transformed into provider
 policy and are not claimed to be hermetically pinned by this broker.
 
 Command and calibration diagnostics are untrusted data, never receipt evidence.
+A command drains its complete output but retains only the last 16 MiB, discarding
+the first partial line after truncation. Numeric capture metadata records the
+bytes seen, dropped and retained. A prefix-only log cannot establish the final
+failure of a long command.
 A trusted final step reads only fixed controller-owned probe, daemon and command
 logs without following links. It emits at most 16 KiB of prefixed JSON, escaping
 control characters and redacting every staged CI credential value before output.
@@ -140,6 +144,12 @@ the command outcome or attests acceptance.
 Probe errors remain visible even when no command was started. Full private logs
 are discarded with the VM; diagnostics do not recover source bytes or authorize
 a retry.
+Before teardown, fixed cgroup-v2 PID and memory counters are captured for the
+rootless user manager and the command unit when still present. The latter may
+already have been collected; absent counters are reported as unavailable, not
+zero. Current counts are not peak measurements. Event counters can demonstrate
+a quota hit but their absence cannot identify the cause of a failed fork. These
+diagnostics neither increase limits nor change receipt or acceptance decisions.
 After an exact `make validate-all` failure, a fixed workload-UID diagnostic can
 read numeric ACLs and namespace maps from its Docker storage and a read-only image
 subpath. A pinned, bounded holder runs no binaries from the inspected image and

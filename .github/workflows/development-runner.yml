@@ -398,6 +398,29 @@ jobs:
           # child. Output cannot inject runner commands or alter GITHUB_OUTPUT.
           sudo tee /opt/aeontra-control/execute.py >/dev/null <<'PYTHON'
           import json, os, pwd, subprocess, sys
+          def capture_output(stream, log):
+              from collections import deque
+              chunks, retained, seen = deque(), 0, 0
+              limit = 16 << 20
+              try:
+                  while True:
+                      chunk = stream.read(65536)
+                      if not chunk: break
+                      chunks.append(chunk); retained += len(chunk); seen += len(chunk)
+                      while retained > limit:
+                          first = chunks.popleft()
+                          discard = min(len(first), retained - limit)
+                          retained -= discard
+                          if discard < len(first): chunks.appendleft(first[discard:])
+              finally:
+                  data = b''.join(chunks)
+                  if seen > limit:
+                      # The window can begin inside a credential. Never retain
+                      # that partial line; the renderer drops an incomplete end.
+                      _, _, data = data.partition(b'\n')
+                  log.write(('aeontra-capture bytes_seen=%d bytes_dropped=%d bytes_retained=%d\n' %
+                             (seen, seen - len(data), len(data))).encode('ascii'))
+                  log.write(data)
           workload_uid = pwd.getpwnam('aeontra-workload').pw_uid
           env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin',
                  'XDG_RUNTIME_DIR': '/run/user/' + str(workload_uid), 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock',
@@ -431,12 +454,7 @@ jobs:
                       '--working-directory=/home/aeontra-workload/source', executable] + sys.argv[3:]
               child = subprocess.Popen(argv, env={'PATH': '/usr/bin:/bin'},
                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-              retained = 0
-              while True:
-                  chunk = child.stdout.read(65536)
-                  if not chunk: break
-                  keep = min(len(chunk), max(0, (16 << 20) - retained))
-                  log.write(chunk[:keep]); retained += keep
+              capture_output(child.stdout, log)
               status = child.wait(timeout=15)
           sys.exit(status)
           PYTHON
@@ -597,6 +615,65 @@ jobs:
           sudo test ! -L /opt/aeontra-control/command.log
           printf '%s\n' 'Exact command completed; semantic acceptance remains separate.'
 
+      - name: Capture bounded workload resource counters
+        if: always()
+        shell: bash
+        run: |
+          if ! sudo test -d /opt/aeontra-control; then exit 0; fi
+          sudo python3 - <<'RESOURCE_COUNTERS'
+          import json, os, pwd, stat, subprocess
+          def read_counter(group, name):
+              fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=group)
+              try:
+                  if not stat.S_ISREG(os.fstat(fd).st_mode): raise ValueError('nonregular counter')
+                  data = os.read(fd, 1025)
+                  if len(data) > 1024: raise ValueError('oversized counter')
+              finally:
+                  os.close(fd)
+              tokens = data.decode('ascii').split()
+              if name.endswith('.events'):
+                  allowed = {'max'} if name == 'pids.events' else {'low', 'high', 'max', 'oom', 'oom_kill', 'oom_group_kill', 'sock_throttled'}
+                  if len(tokens) % 2: raise ValueError('invalid event pairs')
+                  result = {}
+                  for key, value in zip(tokens[::2], tokens[1::2]):
+                      if key not in allowed or key in result or not value.isdecimal(): raise ValueError('invalid event')
+                      result[key] = int(value)
+                  return result
+              if len(tokens) != 1 or not (tokens[0].isdecimal() or tokens[0] == 'max'):
+                  raise ValueError('invalid scalar counter')
+              return int(tokens[0]) if tokens[0].isdecimal() else 'max'
+          def capture(unit, scope):
+              group = None
+              try:
+                  result = subprocess.run(['/usr/bin/systemctl', 'show', unit, '--property=ControlGroup', '--value'],
+                                          capture_output=True, timeout=3, env={'PATH': '/usr/bin:/bin'})
+                  if result.returncode or len(result.stdout) > 1024: raise ValueError('unit unavailable')
+                  path = result.stdout.decode('ascii').strip()
+                  if not path.startswith('/') or path == '/': raise ValueError('empty unit cgroup')
+                  parts = path[1:].split('/')
+                  if any(part in ('', '.', '..') for part in parts): raise ValueError('invalid cgroup path')
+                  flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                  group = os.open('/sys/fs/cgroup', flags)
+                  for part in parts:
+                      child = os.open(part, flags, dir_fd=group)
+                      os.close(group); group = child
+                  counters = {name: read_counter(group, name) for name in
+                              ('pids.current', 'pids.max', 'pids.events', 'memory.current', 'memory.max', 'memory.events')}
+                  return {'scope': scope, 'state': 'observed', 'counters': counters}
+              except (OSError, ValueError, subprocess.SubprocessError) as error:
+                  return {'scope': scope, 'state': 'unavailable', 'error_type': type(error).__name__}
+              finally:
+                  if group is not None: os.close(group)
+          try:
+              uid = pwd.getpwnam('aeontra-workload').pw_uid
+          except KeyError:
+              raise SystemExit(0)
+          if uid <= 0: raise ValueError('invalid workload identity')
+          with open('/opt/aeontra-control/resources.log', 'w') as log:
+              for unit, scope in (('user@%d.service' % uid, 'rootless-manager'), ('aeontra-command.service', 'command')):
+                  log.write(json.dumps(capture(unit, scope)) + '\n')
+          RESOURCE_COUNTERS
+
       - name: Bounded untrusted command diagnostics
         if: always()
         shell: bash
@@ -607,7 +684,7 @@ jobs:
             fi
           fi
           sudo python3 - <<'PYTHON'
-          import json, os, stat
+          import json, os, re, stat
           from collections import deque
           directory = '/opt/aeontra-control/'
           if not os.path.exists(directory + 'ci.json'):
@@ -634,7 +711,7 @@ jobs:
                   allowance -= cost
           # Fixed controller-owned logs only; failures before command execution
           # must remain observable. No glob, environment file or source input.
-          names = ('acl-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'volume-copy',
+          names = ('resources', 'acl-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'volume-copy',
                    'builder-export', 'cache-export', 'builder-remove',
                    'builder-import', 'cache-import', 'pinned-go', 'make')
           for name in names:
@@ -648,6 +725,12 @@ jobs:
                   os.close(fd)
                   invalid_log()
               with os.fdopen(fd, 'rb') as log:
+                  if name == 'command':
+                      header = log.readline(256)
+                      if re.fullmatch(rb'aeontra-capture bytes_seen=[0-9]{1,20} bytes_dropped=[0-9]{1,20} bytes_retained=[0-9]{1,20}\n', header):
+                          text = header.decode('ascii').rstrip()
+                          for value in secrets: text = text.replace(value, '[REDACTED]')
+                          emit_lines(name, [text], 256)
                   window = (2 << 20) if name == 'command' else (4 << 10)
                   start = max(0, os.fstat(log.fileno()).st_size - window)
                   log.seek(start)
