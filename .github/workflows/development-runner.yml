@@ -178,6 +178,33 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
           sudo sysctl -w kernel.unprivileged_userns_clone=1
+          # off must mean NOFOLLOW in this fresh VM, including unchanged
+          # upstream mounts. Never apply this policy to an Edge or VPS host.
+          sudo python3 - <<'OVERLAY_REDIRECT_POLICY'
+          import os, stat
+          def configure_overlay_redirect_policy(path):
+              if os.geteuid() != 0:
+                  raise RuntimeError('overlay setup requires the VM controller')
+              fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+              try:
+                  info = os.fstat(fd)
+                  if not stat.S_ISREG(info.st_mode) or info.st_uid != 0:
+                      raise RuntimeError('overlay parameter identity is invalid')
+                  value = os.read(fd, 8)
+                  if value not in (b'Y', b'Y\n', b'N', b'N\n'):
+                      raise RuntimeError('overlay redirect policy is unknown')
+                  if value in (b'Y', b'Y\n'):
+                      os.lseek(fd, 0, os.SEEK_SET)
+                      if os.write(fd, b'N\n') != 2:
+                          raise RuntimeError('overlay redirect policy write was incomplete')
+                  os.lseek(fd, 0, os.SEEK_SET)
+                  if os.read(fd, 8) not in (b'N', b'N\n'):
+                      raise RuntimeError('overlay redirect policy was not applied')
+              finally: os.close(fd)
+          if __name__ == '__main__':
+              configure_overlay_redirect_policy('/sys/module/overlay/parameters/redirect_always_follow')
+              print('overlay_redirect_always_follow=N')
+          OVERLAY_REDIRECT_POLICY
           # runc detects the user-bus owner through real process cgroup metadata.
           # Exempt only this fixed workload group from hidepid metadata filtering;
           # cross-UID ptrace/DAC still deny controller secrets and are probed below.

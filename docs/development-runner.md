@@ -93,6 +93,12 @@ closed. Make, unknown commands and other command options retain their
 existing inference. Existing objective contracts are immutable and are not
 migrated to the new inference.
 
+An exact Corepack `packageManager` pin with a complete SHA224, SHA256, SHA384
+or SHA512 hexadecimal suffix retains its numeric version before bounded
+requirement conversion. The generic package-manager requirement and conflicts
+are preserved. Unsupported or malformed integrity syntax remains unresolved;
+this syntax check does not download or verify the package-manager artifact.
+
 There is no public runner tool, caller argv, shell string, arbitrary environment,
 prompt, credential, helper URL or source-body input. The private request binds
 source owner, repository, exact public Git SHA, source digest, command profile,
@@ -101,6 +107,15 @@ stays on Edge. A dirty local tree cannot be transported as this public SHA;
 normal governed Git publication and explicit location approval must precede it.
 
 ## VM authority and measured capabilities
+
+Before starting rootless Docker, fixed controller setup verifies
+`/sys/module/overlay/parameters/redirect_always_follow` and sets it to `N` in
+that disposable VM. This makes `redirect_dir=off` resolve to the kernel's
+`nofollow` policy instead of implicit redirect following. Unknown values,
+missing or non-root-owned parameters, symlinks, and unsuccessful writes block
+preparation. No module is reloaded. The Edge and VPS kernel settings are
+unchanged. The original overlay mount diagnostics and complete upstream command
+remain required evidence; this setup alone does not establish acceptance.
 
 The workflow has `contents: read` only, no production environment, secrets or
 OIDC grant. Go, Docker, Buildx, RootlessKit and runner-owned fixture images use

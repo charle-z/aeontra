@@ -51,6 +51,62 @@ func TestDevelopmentToolchainRequirementsRejectConflictAndRepoCondition(t *testi
 	}
 }
 
+func TestDevelopmentCorepackPackageManagerRequirements(t *testing.T) {
+	workspace := t.TempDir()
+	writeToolchainFixture(t, workspace, map[string]string{"package.json": `{"packageManager":"` + corepackPnpmFixture + `"}`})
+	readiness, err := DetectToolchainReadiness(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requirements, err := DevelopmentRequirementsFromToolchainReadiness(readiness)
+	if err != nil || len(requirements) != 1 || requirements[0].ID != "toolchain.pnpm.v11-19-0" || readiness.Status != ToolchainEdgeRequired {
+		t.Fatalf("Corepack generic capability lost: %+v %+v %v", readiness, requirements, err)
+	}
+	for _, finding := range readiness.Findings {
+		if finding.Tool == "pnpm" && finding.Pin != "11.19.0" {
+			t.Fatalf("integrity suffix reached bounded findings: %+v", finding)
+		}
+	}
+}
+
+func TestDevelopmentCorepackInvalidIntegrityRemainsUnresolved(t *testing.T) {
+	hash := strings.Repeat("a", 128)
+	for _, version := range []string{
+		"11.19.0+sha512." + hash[:127], "11.19.0+sha512." + hash + "a",
+		"11.19.0+sha512." + hash[:127] + "g", "11.19.0+sha1." + strings.Repeat("a", 40),
+		"11.19.0+SHA512." + hash, "11.19.0+sha512", "11.19.0+sha512." + hash + "+sha512." + hash,
+		"11.19.0+sha512." + hash + ".extra", "11.19.0+sha512." + hash[:64] + " " + hash[65:],
+		"^11.19.0+sha512." + hash, "11.19+sha512." + hash, "v11.19.0+sha512." + hash,
+		"011.19.0+sha512." + hash, "11.19.0.1+sha512." + hash,
+		"https://example.test/pnpm.js+sha512." + hash,
+	} {
+		for _, manager := range []string{"pnpm", "npm", "yarn"} {
+			t.Run(manager+"@"+version, func(t *testing.T) {
+				workspace := t.TempDir()
+				writeToolchainFixture(t, workspace, map[string]string{"package.json": `{"packageManager":"` + manager + "@" + version + `"}`})
+				readiness, err := DetectToolchainReadiness(workspace)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if requirements, err := DevelopmentRequirementsFromToolchainReadiness(readiness); err == nil {
+					t.Fatalf("invalid integrity became requirements: %+v", requirements)
+				}
+			})
+		}
+	}
+	for _, version := range []string{"^11.19.0", "https://example.test/pnpm.js", "11.19.0+build"} {
+		workspace := t.TempDir()
+		writeToolchainFixture(t, workspace, map[string]string{"package.json": `{"packageManager":"pnpm@` + version + `"}`})
+		readiness, err := DetectToolchainReadiness(workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := DevelopmentRequirementsFromToolchainReadiness(readiness); err == nil {
+			t.Fatalf("non-exact package-manager version accepted: %q", version)
+		}
+	}
+}
+
 func TestDevelopmentWorkcellAttestationUsesOnlyObservedAvailableTools(t *testing.T) {
 	preparation := LinuxWorkcellPreparation{
 		Workspace: Workspace{
