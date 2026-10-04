@@ -105,6 +105,51 @@ func TestDevelopmentRunnerDiagnosticsBeforeCommand(t *testing.T) {
 	}
 }
 
+func TestDevelopmentRunnerDiagnosticsPreserveFailureBeforeLargeStack(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")
+	}
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "ci.json"), []byte(`{"ACTIONS_RUNTIME_TOKEN":"private-token"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Repeat("error: expected negative-case output\n", 256) +
+		"panic: test timed out after 10m0s private-token\n\trunning tests:\n\tTestIntegration/worker/example (10m0s)\n" +
+		strings.Repeat("goroutine 999 [chan receive]:\n\t/usr/local/go/src/testing/testing.go:2220\n", 9000)
+	if err := os.WriteFile(filepath.Join(directory, "command.log"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "panic: test timed out after 10m0s") ||
+		!strings.Contains(output, "TestIntegration/worker/example") ||
+		strings.Contains(output, "private-token") || len(output) > 16<<10 {
+		t.Fatalf("failure context lost or unsafe: bytes=%d err=%v: %s", len(output), err, output)
+	}
+}
+
+func TestDevelopmentRunnerDiagnosticsCommandWindowDiscardsPartialSecrets(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")
+	}
+	directory := t.TempDir()
+	token := "panic:" + strings.Repeat("p", 256)
+	credentials, _ := json.Marshal(map[string]string{"ACTIONS_RUNTIME_TOKEN": token})
+	if err := os.WriteFile(filepath.Join(directory, "ci.json"), credentials, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Both window boundaries fall inside a credential, while a complete
+	// failure line between them must remain observable.
+	suffix := "\npanic: safe complete failure\n" + token[:128]
+	body := token + strings.Repeat("y", (2<<20)-len(suffix)-64) + suffix
+	if err := os.WriteFile(filepath.Join(directory, "command.log"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "safe complete failure") || strings.Contains(output, "ppp") {
+		t.Fatalf("partial credential exposed: err=%v output=%s", err, output)
+	}
+}
+
 func TestDevelopmentRunnerControllerIdentityAcrossUserNamespaces(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("hosted Linux probe requires native Python; verified in WSL")

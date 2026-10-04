@@ -132,6 +132,11 @@ Command and calibration diagnostics are untrusted data, never receipt evidence.
 A trusted final step reads only fixed controller-owned probe, daemon and command
 logs without following links. It emits at most 16 KiB of prefixed JSON, escaping
 control characters and redacting every staged CI credential value before output.
+For command logs, it scans at most the last 2 MiB of complete lines and emits
+up to 4 KiB of failure context before a separate 4 KiB tail. This preserves a
+Go panic header and active-test context that a large stack dump can otherwise
+hide. Older context outside that window is unavailable; log text never changes
+the command outcome or attests acceptance.
 Probe errors remain visible even when no command was started. Full private logs
 are discarded with the VM; diagnostics do not recover source bytes or authorize
 a retry.
