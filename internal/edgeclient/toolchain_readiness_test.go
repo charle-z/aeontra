@@ -195,6 +195,59 @@ func TestDetectToolchainReadinessRejectsSymlinkManifest(t *testing.T) {
 	}
 }
 
+const corepackPnpmFixture = "pnpm@11.19.0+sha512.7881f3ed590d472c4a955e2b88b2121791116066dcc88cbca3849ec9b60f1bbaa6d2ccb221fa91da4e1c65bef2bcbe379365aea7ac539c7bf86dedc3a1b22dce"
+
+func TestSplitPackageManagerCorepackIntegrity(t *testing.T) {
+	for algorithm, size := range map[string]int{"sha224": 56, "sha256": 64, "sha384": 96, "sha512": 128} {
+		t.Run(algorithm, func(t *testing.T) {
+			for _, manager := range []string{"npm", "pnpm", "yarn"} {
+				name, version := splitPackageManager(manager + "@11.19.0+" + algorithm + "." + strings.Repeat("ab", size/2))
+				if name != manager || version != "11.19.0" {
+					t.Fatalf("name=%q version=%q", name, version)
+				}
+			}
+			for _, digest := range []string{strings.Repeat("a", size-1), strings.Repeat("a", size+1), strings.Repeat("a", size-1) + "g"} {
+				pin := "11.19.0+" + algorithm + "." + digest
+				if _, version := splitPackageManager("pnpm@" + pin); version != pin {
+					t.Fatalf("malformed %s digest was normalized: %q", algorithm, version)
+				}
+			}
+		})
+	}
+	name, version := splitPackageManager(corepackPnpmFixture)
+	if name != "pnpm" || version != "11.19.0" {
+		t.Fatalf("real Corepack pin was not normalized: %q %q", name, version)
+	}
+	unknown := "11.19.0+sha512." + strings.Repeat("a", 128)
+	if _, version := splitPackageManager("go@" + unknown); version != unknown {
+		t.Fatal("non-Corepack manager was normalized")
+	}
+}
+
+func TestDetectToolchainReadinessCorepackConflictAndScope(t *testing.T) {
+	workspace := t.TempDir()
+	writeToolchainFixture(t, workspace, map[string]string{
+		"package.json":   fmt.Sprintf(`{"packageManager":%q}`, corepackPnpmFixture),
+		".tool-versions": "pnpm 11.18.0\n",
+	})
+	readiness, err := DetectToolchainReadiness(workspace)
+	if err != nil || readiness.Status != ToolchainPinConflict {
+		t.Fatalf("normalized package-manager conflict lost: %+v %v", readiness, err)
+	}
+	if canonicalToolchainVersion(strings.TrimPrefix(corepackPnpmFixture, "pnpm@")) != "" {
+		t.Fatal("Corepack normalization escaped packageManager scope")
+	}
+	lockWorkspace := t.TempDir()
+	writeToolchainFixture(t, lockWorkspace, map[string]string{
+		"package.json":      fmt.Sprintf(`{"packageManager":%q}`, corepackPnpmFixture),
+		"package-lock.json": "{}",
+	})
+	readiness, err = DetectToolchainReadiness(lockWorkspace)
+	if err != nil || readiness.Status != ToolchainPinConflict {
+		t.Fatalf("packageManager/lockfile conflict lost: %+v %v", readiness, err)
+	}
+}
+
 func writeToolchainFixture(t *testing.T, workspace string, files map[string]string) {
 	t.Helper()
 	for name, content := range files {
