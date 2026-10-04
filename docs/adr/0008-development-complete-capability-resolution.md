@@ -103,6 +103,11 @@ The source implementation now has adapters for four existing typed states:
 Repository toolchain detection is converted only into requirements. It never adds a
 capability to one of those environment attestations.
 
+The confined Go version probe uses `GOTOOLCHAIN=local` to measure the installed
+executable without downloading the module-selected toolchain. This override is
+limited to inventory; normal command execution and managed provisioning retain
+their existing toolchain selection semantics.
+
 Initial execution classes follow the existing authority ladder:
 
 1. networkless L3 sandbox;
