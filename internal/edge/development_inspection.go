@@ -8,14 +8,15 @@ import (
 const OperationProjectDevelopmentInspect OperationKind = "project_development_inspect"
 
 type ProjectDevelopmentInspection struct {
-	Version             int                             `json:"version"`
-	ProjectGeneration   uint64                          `json:"project_generation"`
-	SourceDigest        string                          `json:"source_digest"`
-	SourceHead          string                          `json:"source_head,omitempty"`
-	SourceClean         bool                            `json:"source_clean"`
-	SourceEvidenceKnown bool                            `json:"source_evidence_known"`
-	Requirements        []development.CapabilityID      `json:"requirements"`
-	Environments        []development.EnvironmentRecord `json:"environments"`
+	Version               int                                `json:"version"`
+	ProjectGeneration     uint64                             `json:"project_generation"`
+	SourceDigest          string                             `json:"source_digest"`
+	SourceHead            string                             `json:"source_head,omitempty"`
+	SourceClean           bool                               `json:"source_clean"`
+	SourceEvidenceKnown   bool                               `json:"source_evidence_known"`
+	Requirements          []development.CapabilityID         `json:"requirements"`
+	Environments          []development.EnvironmentRecord    `json:"environments"`
+	GoCommandRequirements *development.GoCommandRequirements `json:"go_command_requirements,omitempty"`
 }
 
 func validProjectDevelopmentInspection(result OperationResult) bool {
@@ -30,6 +31,10 @@ func validProjectDevelopmentInspection(result OperationResult) bool {
 			return false
 		}
 	} else if inspection.SourceHead != "" || inspection.SourceClean {
+		return false
+	}
+	if inspection.GoCommandRequirements != nil && (!inspection.SourceEvidenceKnown || !inspection.SourceClean ||
+		!inspection.GoCommandRequirements.Valid(inspection.SourceDigest, inspection.Requirements)) {
 		return false
 	}
 	ids := make([]string, 0, len(inspection.Requirements))
