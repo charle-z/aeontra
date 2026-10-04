@@ -1101,7 +1101,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				applyTaskAcceptanceReceipt(item, *worker.AcceptanceReceipt)
 			} else if worker.TestAcceptanceReceipt != nil {
 				applyTaskTestReceipt(item, *worker.TestAcceptanceReceipt)
-			} else if worker.State == workqueue.StateSucceeded {
+			} else if worker.State == workqueue.StateSucceeded && (task.AcceptanceContract != nil || task.TestAcceptanceContract != nil) {
 				item.State, item.RuntimeState, item.AcceptanceState = "reconciliation_required", string(modelturn.RuntimeStateCompleted), "reconciliation_required"
 				item.ReconciliationReason = "acceptance_receipt_missing"
 			}
