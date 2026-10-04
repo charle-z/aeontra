@@ -172,6 +172,21 @@ All emitted fields remain bounded untrusted diagnostics. Known public GitHub
 repository/ref/run metadata is not a credential; CI secrets and unknown staged
 values remain redacted without corrupting numeric ACL evidence.
 
+Calibration and failed Make executions also collect an optional, fixed overlay
+mount diagnostic before stopping the rootless daemon. A trusted static fixture
+runs in the existing rootless Docker namespace, with no network or CI credentials,
+a read-only root, 256 MiB/64 tasks and a fresh anonymous `/tmp` volume. It compares
+`redirect_dir=off` with and without `userxattr`, preserving syscall errno,
+lower-file verification, unmount status, backing filesystem type and read-only
+kernel defaults. Manager PID/memory event counters bracket the experiment.
+Container creation and cleanup are each bounded to 5 seconds; execution to 30
+seconds. Cleanup targets only the newly captured container ID and its anonymous
+volume, never an existing container with the diagnostic's name.
+A rejected optional mount is compatibility evidence only, not a failed general
+capability, accepted command or reason to alter host settings. Preparation,
+verification and cleanup failures remain failures. This fixture does not execute
+the upstream overlay helper or establish complete BuildKit acceptance.
+
 Fresh trusted probes require:
 
 - an actual nested user-namespace PID/proc mount;
