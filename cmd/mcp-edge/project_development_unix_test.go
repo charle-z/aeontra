@@ -91,6 +91,103 @@ func TestDevelopmentInventoryFailureKeepsMeasurementDistinct(t *testing.T) {
 	}
 }
 
+func TestProjectDevelopmentProducerOptionalGoEvidenceKeepsGenericInspection(t *testing.T) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("real Git is required for producer source binding")
+	}
+	for _, kind := range []string{"malformed", "oversized", "symlink", "ignored symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			stateRoot := t.TempDir()
+			roots, err := edgeclient.DefaultWorkspaceRoots()
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspacePath := filepath.Join(roots.Dev, "producer-fixture")
+			if err := os.MkdirAll(workspacePath, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(roots.HTBLinux, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			git := func(args ...string) {
+				t.Helper()
+				command := exec.CommandContext(t.Context(), gitPath, append([]string{"-c", "core.hooksPath=/dev/null", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test"}, args...)...)
+				command.Dir = workspacePath
+				command.Env = []string{"HOME=" + t.TempDir(), "PATH=/usr/local/bin:/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_TERMINAL_PROMPT=0"}
+				if output, err := command.CombinedOutput(); err != nil {
+					t.Fatalf("fixture Git: %v: %s", err, output)
+				}
+			}
+			git("init", "--quiet")
+			git("remote", "add", "origin", "https://github.com/charle-z/producer-fixture.git")
+			for name, content := range map[string]string{"go.mod": "module example.test/project\ngo 1.26.6\n", "Makefile": "all:\n\ttrue\n"} {
+				if err := os.WriteFile(filepath.Join(workspacePath, name), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			workPath := filepath.Join(workspacePath, "go.work")
+			switch kind {
+			case "malformed":
+				err = os.WriteFile(workPath, []byte("go invalid\n"), 0o600)
+			case "oversized":
+				err = os.WriteFile(workPath, []byte(strings.Repeat(" ", (128<<10)+1)), 0o600)
+			case "symlink", "ignored symlink":
+				err = os.Symlink(filepath.Join(t.TempDir(), "outside-workspace"), workPath)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			git("add", "go.mod", "Makefile")
+			if kind == "ignored symlink" {
+				if err := os.WriteFile(filepath.Join(workspacePath, ".gitignore"), []byte("go.work\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				git("add", ".gitignore")
+			} else {
+				git("add", "go.work")
+			}
+			git("commit", "--quiet", "-m", "test: initialize producer fixture")
+			if _, err := edgeclient.ConfigureGitHubCredential(stateRoot, "charle-z", strings.NewReader("fixture-only-authority-not-a-real-token")); err != nil {
+				t.Fatal(err)
+			}
+			workspaces, err := edgeclient.OpenWorkspaceRegistryWithRoots(stateRoot, roots)
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspace, _, err := workspaces.AddProfile(workspacePath, edgeclient.WorkspaceProfileLinuxWorkcell)
+			if err != nil {
+				t.Fatal(err)
+			}
+			projects, err := edgeclient.OpenProjectRegistry(edgeclient.ProjectRegistryConfig{StateRoot: stateRoot, AllowedOwner: "charle-z", Workspaces: workspaces})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := projects.Register(edgeclient.ProjectRegistration{Alias: "project", Owner: "charle-z", Repository: "producer-fixture", PreferredTarget: "parrot", TargetAlias: "parrot", WorkspaceID: workspace.ID, AllowedProfiles: []edgeclient.WorkspaceProfile{edgeclient.WorkspaceProfileLinuxWorkcell}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := projects.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := workspaces.Close(); err != nil {
+				t.Fatal(err)
+			}
+			inspection, code := inspectProjectDevelopmentWithInventory(t.Context(), stateRoot, edge.Operation{ID: "eo_" + strings.Repeat("a", 32), Request: edge.OperationRequest{Alias: "project", TargetAlias: "parrot"}},
+				func(context.Context, edgeclient.DirectWorkcellCommandRequest) ([]edgeclient.LinuxToolInventoryEntry, error) {
+					return []edgeclient.LinuxToolInventoryEntry{{Name: "go", Available: true, Version: "1.26.6", Capability: "go-toolchain"}, {Name: "make", Available: true, Version: "4.4", Capability: "build-tool"}}, nil
+				})
+			if code != "" || inspection == nil {
+				t.Fatalf("optional Go metadata blocked generic producer: %s", code)
+			}
+			observed := inspection.result.DevelopmentInspection
+			if observed.GoCommandRequirements != nil || !observed.SourceClean || !reflect.DeepEqual(observed.Requirements, []development.CapabilityID{"build.make", "toolchain.go.v1-26-6"}) {
+				t.Fatalf("generic source requirements changed: %+v", observed)
+			}
+		})
+	}
+}
+
 type developmentTestProcessPlatform struct {
 	starts int
 	exits  chan edgeclient.ProjectProcessExit

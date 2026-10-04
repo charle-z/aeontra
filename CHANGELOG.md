@@ -6,6 +6,9 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Infer only Go requirements for the registered isolated `go-test-all` command
+  when fresh committed-source evidence identifies module/workspace minimum versions.
+  Preserve exact Go pins, caller requirements and conservative older Edge behavior.
 - Run operator-pinned tests for a durable task in its isolated worker checkout and
   retain a source-bound, immutable result receipt. Test execution is opt-in and does
   not turn process completion into automatic task acceptance.

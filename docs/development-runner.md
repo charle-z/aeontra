@@ -74,6 +74,25 @@ an empty cwd/stdin/environment, the explicit registered `runner_profile`, and
 `timeout_seconds: 4200`. Other options are rejected before staging. The private
 GitHub adapter receives the fixed command-profile identifier, not those bytes.
 
+For `go-test-all` only, an updated Edge can add versioned Go requirement
+provenance to the private inspection result. Root `go.mod` and `go.work` `go`
+directives are [minimum Go versions](https://go.dev/doc/toolchain#module-and-workspace-configuration),
+not exact patch pins. A minimum at or below the provider's pinned Go version
+requires that actual exact provider capability; a higher minimum remains
+unsatisfied. Go pins from `.tool-versions` and `mise.toml` retain their precision,
+and all explicit caller requirements remain required. The provider does not
+claim capabilities for older Go patches or unrelated package managers.
+
+The additional evidence requires clean committed source, tracked HEAD manifests,
+canonical bounded values and the same source digest before and after reading.
+Ignored/untracked Go evidence or older Edge results without this metadata retain
+the conservative original requirements. If the optional collector cannot
+establish reliable provenance, it omits the metadata and preserves those same
+requirements. Malformed or conflicting metadata received by the backend fails
+closed. Make, unknown commands and other command options retain their
+existing inference. Existing objective contracts are immutable and are not
+migrated to the new inference.
+
 There is no public runner tool, caller argv, shell string, arbitrary environment,
 prompt, credential, helper URL or source-body input. The private request binds
 source owner, repository, exact public Git SHA, source digest, command profile,
@@ -292,3 +311,9 @@ For rollback, stop admission of new runner requests, cancel/reconcile captured
 nonterminal runs, retain workqueue backups and disable the profile. Restore a
 previous reviewed template only with an explicit pin and calibration. Neither
 rollback nor cleanup deletes the Edge workspace or reconstructs Git history.
+
+Deploy a backend that understands the additive Go inspection metadata before
+installing its signed Edge release. A new backend accepts older Edge evidence
+conservatively. Older backends strictly reject unknown result fields, so restore
+the older Edge release before rolling back the backend; settle captured effects
+and preserve their matching journals before either rollback.

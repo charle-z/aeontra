@@ -35,6 +35,10 @@ func projectDevelopmentGitRunner(stateRoot string) edgeclient.DevGitCommandRunne
 }
 
 func inspectProjectDevelopment(ctx context.Context, stateRoot string, operation edge.Operation) (*projectDevelopmentInspectionContext, string) {
+	return inspectProjectDevelopmentWithInventory(ctx, stateRoot, operation, edgeclient.CollectDevelopmentWorkcellInventory)
+}
+
+func inspectProjectDevelopmentWithInventory(ctx context.Context, stateRoot string, operation edge.Operation, collectInventory func(context.Context, edgeclient.DirectWorkcellCommandRequest) ([]edgeclient.LinuxToolInventoryEntry, error)) (*projectDevelopmentInspectionContext, string) {
 	request := operation.Request
 	_, workspaces, projects, roots, code := openProjectControlState(stateRoot)
 	if code != "" {
@@ -57,7 +61,7 @@ func inspectProjectDevelopment(ctx context.Context, stateRoot string, operation 
 	if err != nil {
 		return nil, "project_development_requirements_unresolved"
 	}
-	inventory, err := edgeclient.CollectDevelopmentWorkcellInventory(ctx, edgeclient.DirectWorkcellCommandRequest{
+	inventory, err := collectInventory(ctx, edgeclient.DirectWorkcellCommandRequest{
 		OperationID: operation.ID, Workspace: resolved.Workspace, StateRoot: stateRoot, WorkspaceRoots: roots,
 	})
 	if err != nil {
@@ -81,6 +85,24 @@ func inspectProjectDevelopment(ctx context.Context, stateRoot string, operation 
 		Requirements: make([]development.CapabilityID, 0, len(requirements)), Environments: []development.EnvironmentRecord{record}}
 	for _, requirement := range requirements {
 		inspection.Requirements = append(inspection.Requirements, requirement.ID)
+	}
+	var goRequirements *development.GoCommandRequirements
+	if sourceClean {
+		goRequirements, err = edgeclient.DevelopmentGoCommandRequirements(ctx, resolved.Workspace.Path, sourceDigest, inspection.Requirements, projectDevelopmentGitRunner(stateRoot))
+		if err != nil {
+			// Optional command provenance cannot block generic inspection or
+			// remove conservative requirements when it cannot be established.
+			goRequirements = nil
+		}
+	}
+	if goRequirements != nil {
+		// Only the additive Go evidence needs this binding window. Generic
+		// inspections keep their existing single bounded source measurement.
+		digest, head, clean, err := edgeclient.RegisteredProjectSourceEvidence(ctx, projects, resolved, projectDevelopmentGitRunner(stateRoot))
+		if err != nil || digest != sourceDigest || head != sourceHead || clean != sourceClean {
+			return nil, "project_development_source_changed"
+		}
+		inspection.GoCommandRequirements = goRequirements
 	}
 	// A toolbox is deliberately not inferred from a socket or a base-image
 	// name. Its live manager supplies a separate identity-checked attestation.

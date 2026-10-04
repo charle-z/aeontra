@@ -421,8 +421,12 @@ func (s *Server) reconcileDevelopmentRequest(ctx context.Context, request workqu
 		if err != nil {
 			return err
 		}
-		raw := make([]string, 0, len(command.Requirements)+len(op.Result.DevelopmentInspection.Requirements))
-		for _, id := range op.Result.DevelopmentInspection.Requirements {
+		sourceRequirements, err := developmentCommandSourceRequirements(command, op.Result.DevelopmentInspection)
+		if err != nil {
+			return err
+		}
+		raw := make([]string, 0, len(command.Requirements)+len(sourceRequirements))
+		for _, id := range sourceRequirements {
 			raw = append(raw, string(id))
 		}
 		for _, id := range command.Requirements {

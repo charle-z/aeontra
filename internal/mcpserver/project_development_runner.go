@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"go/version"
 	"reflect"
 	"strings"
 
@@ -14,6 +15,52 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/tools"
 	"github.com/charle-z/mcp-devbox/internal/workqueue"
 )
+
+// Scoped source inference applies only to the already registered exact Go
+// runner command. Explicit caller requirements are unioned by the caller and
+// never changed. Absent legacy metadata keeps the original conservative set.
+func developmentCommandSourceRequirements(command projectDevelopmentBody, inspection *edge.ProjectDevelopmentInspection) ([]development.CapabilityID, error) {
+	if inspection.GoCommandRequirements == nil || command.RunnerProfile != tools.DevelopmentRunnerProfile {
+		return inspection.Requirements, nil
+	}
+	profile, err := developmentRunnerCommandProfile(command.Argv, command.CWD, command.Stdin, command.Environment, command.TimeoutSeconds)
+	if err != nil || profile != "go-test-all" {
+		return inspection.Requirements, nil
+	}
+	evidence := inspection.GoCommandRequirements
+	if !inspection.SourceEvidenceKnown || !inspection.SourceClean || !evidence.Valid(inspection.SourceDigest, inspection.Requirements) {
+		return nil, errors.New("development Go source requirements are invalid")
+	}
+	names := make([]string, 0, len(evidence.ExactRequirements)+3)
+	for _, id := range evidence.ExactRequirements {
+		names = append(names, string(id))
+	}
+	// Bind compatibility to the actual pinned provider version. This does
+	// not fabricate capabilities for older patch versions or relax Missing.
+	required, err := development.VersionRequirement("toolchain.go", tools.DevelopmentRunnerGoVersion)
+	if err != nil {
+		return nil, err
+	}
+	names = append(names, string(required.ID))
+	for _, minimum := range evidence.MinimumVersions {
+		if version.Compare("go"+minimum.Version, "go"+tools.DevelopmentRunnerGoVersion) > 0 {
+			required, err := development.VersionRequirement("toolchain.go", minimum.Version)
+			if err != nil {
+				return nil, err
+			}
+			names = append(names, string(required.ID))
+		}
+	}
+	requirements, err := development.Requirements(names...)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]development.CapabilityID, 0, len(requirements))
+	for _, required := range requirements {
+		ids = append(ids, required.ID)
+	}
+	return ids, nil
+}
 
 // The public VM dispatch contains only a fixed administrator-reviewed profile.
 // Unsupported private options are rejected, never dropped or approximated.
