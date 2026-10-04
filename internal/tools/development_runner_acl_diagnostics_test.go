@@ -367,6 +367,10 @@ assert 'NEVER-INHERIT' not in captured['environment']
 print('fixture passed')
 `
 	runRunnerACLFixture(t, "", program)
+	// Capturing output must never convert a child failure into success.
+	failed := strings.ReplaceAll(program, "wait=lambda **kwargs: 0", "wait=lambda **kwargs: 17")
+	failed = strings.ReplaceAll(failed, "assert result.code == 0", "assert result.code == 17")
+	runRunnerACLFixture(t, "", failed)
 }
 
 func TestDevelopmentRunnerACLLogUsesExistingBoundedRedaction(t *testing.T) {
