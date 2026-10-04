@@ -99,6 +99,9 @@ func (request DevelopmentRequest) Valid() bool {
 		request.ProcessID != "" && !developmentRequestProcess.MatchString(request.ProcessID) {
 		return false
 	}
+	if request.State == DevelopmentRequestCancelling && request.Reason == DevelopmentRequestReasonReconciliationRequired && request.ProcessID == "" {
+		return false
+	}
 	return validDevelopmentRequestReasonForState(request.State, request.Reason)
 }
 
@@ -332,6 +335,12 @@ func validDevelopmentRequestTransition(before, after DevelopmentRequest) bool {
 		!setOnceDevelopmentRequestID(before.ProcessID, after.ProcessID, developmentRequestProcess.MatchString) {
 		return false
 	}
+	// Once a failed stop enters captured-process observation, later polls cannot
+	// erase that phase and authorize another stop, even if its journal is pruned.
+	if before.State == DevelopmentRequestCancelling && before.Reason == DevelopmentRequestReasonReconciliationRequired &&
+		after.State == DevelopmentRequestCancelling && after.Reason != DevelopmentRequestReasonReconciliationRequired {
+		return false
+	}
 	return true
 }
 
@@ -397,7 +406,7 @@ func validDevelopmentRequestReasonForState(state DevelopmentRequestState, reason
 		return reason == DevelopmentRequestReasonSemanticAcceptancePending || reason == DevelopmentRequestReasonCodeFailure ||
 			reason == DevelopmentRequestReasonNewRequirement || reason == DevelopmentRequestReasonSourceChanged
 	case DevelopmentRequestCancelling:
-		return reason == DevelopmentRequestReasonCancellationRequested
+		return reason == DevelopmentRequestReasonCancellationRequested || reason == DevelopmentRequestReasonReconciliationRequired
 	case DevelopmentRequestCancelled:
 		return reason == DevelopmentRequestReasonNone || reason == DevelopmentRequestReasonCancellationRequested
 	case DevelopmentRequestCompleted:

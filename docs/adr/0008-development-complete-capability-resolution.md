@@ -394,6 +394,23 @@ Install and verify the receipt-capable signed Edge before upgrading the control
 plane that requests the versioned legacy observation. An older Edge cannot supply
 that receipt; its terminal generic failure remains pending rather than generating
 another observation key.
+After a captured process stop fails or is cancelled, the coordinator observes
+that exact process through the existing scoped status route. Only an authenticated,
+identity-matching terminal result with a known exit settles cancellation. Pending,
+failed, foreign or unknown-exit observations remain unresolved. A still-running
+observation schedules another read, not another stop or command start; lost read
+acknowledgements recover the captured observation from the existing journal.
+The private request durably retains the existing `reconciliation_required` reason
+while cancelling a captured process. Terminal stop-record retention cannot erase
+that read-only phase. Ordinary pre-cancellation reads are cleared atomically when
+cancellation is admitted. Older cancelling observations without a retained stop
+binding remain unresolved instead of authorizing another stop. No table or schema
+version changes; legacy cancellation-requested records remain readable. Rollback
+to a backend that predates this state/reason combination requires settling these
+requests or restoring its matching pre-rollout database snapshot.
+An unwatched Unix worker's finite stop wait reconciles its private exit receipt
+after daemon restart, matching Windows behavior. Active watchers retain ownership
+of their wait result, and live or unavailable identities receive no extra signal.
 The separately opted-in isolated runner supports fixed public-source commands;
 its configuration, calibration and recovery contract are documented in
 `docs/development-runner.md`.

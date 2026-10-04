@@ -532,6 +532,136 @@ func TestProjectProcessReconcileContinuesExactStoppingIntent(t *testing.T) {
 	}
 }
 
+type offlineReceiptProjectProcessPlatform struct {
+	*fakeProjectProcessPlatform
+	workerRoot string
+}
+
+func (platform *offlineReceiptProjectProcessPlatform) Signal(identity ProjectProcessIdentity, signal ProjectProcessSignal) error {
+	if err := platform.fakeProjectProcessPlatform.Signal(identity, signal); err != nil {
+		return err
+	}
+	alive, err := platform.Alive(identity)
+	if err != nil || alive {
+		return err
+	}
+	return writeProjectProcessWorkerExit(platform.workerRoot, identity.ProcessID, ProjectProcessExit{ExitKnown: true, ExitCode: 137, TerminalSignal: signal})
+}
+
+func reopenedUnwatchedProjectProcess(t *testing.T, state ProjectProcessState) (*ProjectProcessManager, *fakeProjectProcessPlatform, projectProcessRecord) {
+	t.Helper()
+	platform := newFakeProjectProcessPlatform()
+	manager := openTestProjectProcessManager(t, platform, 1<<20)
+	identity := ProjectProcessIdentity{ProcessID: "pr_0123456789abcdef0123456789abcdef", PID: 4321, ProcessGroupID: 4321, StartTicks: 77}
+	platform.processes[identity.PID] = &fakeProjectProcess{identity: identity, exit: make(chan ProjectProcessExit, 1), alive: true}
+	record := projectProcessRecord{
+		ProcessID: identity.ProcessID, IdempotencyKey: "stop-unwatched", RequestDigest: strings.Repeat("a", 64),
+		OperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", WorkspaceID: "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ProjectAlias: "project", TargetAlias: "parrot", ProjectOwner: "acme", ProjectRepository: "project",
+		ProjectClaimGeneration: 1, ProjectProfile: "linux-workcell", ProjectMode: "dev", ProjectState: "ready",
+		Identity: identity, State: ProjectProcessRunning, StartedAt: time.Now().UTC().Add(-time.Minute),
+	}
+	if err := manager.insertRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.db.Exec(`UPDATE project_processes SET pid=?,process_group_id=?,start_ticks=? WHERE process_id=?`, identity.PID, identity.ProcessGroupID, identity.StartTicks, record.ProcessID); err != nil {
+		t.Fatal(err)
+	}
+	for _, stream := range []string{"stdout", "stderr"} {
+		writer, err := manager.openLogWriter(record.ProcessID, stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := manager.stateRoot
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenProjectProcessManager(ProjectProcessManagerConfig{StateRoot: root, Platform: platform})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if _, err := reopened.db.Exec(`UPDATE project_processes SET state=? WHERE process_id=?`, state, record.ProcessID); err != nil {
+		t.Fatal(err)
+	}
+	record.State = state
+	return reopened, platform, record
+}
+
+func TestProjectProcessStopReconcilesUnwatchedWorkerAfterRestart(t *testing.T) {
+	for _, receipt := range []bool{false, true} {
+		t.Run(strconv.FormatBool(receipt), func(t *testing.T) {
+			manager, platform, record := reopenedUnwatchedProjectProcess(t, ProjectProcessRunning)
+			if receipt {
+				manager.platform = &offlineReceiptProjectProcessPlatform{fakeProjectProcessPlatform: platform, workerRoot: manager.workerRoot}
+			}
+			started := time.Now()
+			stopped, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: record.ProcessID, ProjectAlias: record.ProjectAlias, TargetAlias: record.TargetAlias, WorkspaceID: record.WorkspaceID, GracePeriod: 40 * time.Millisecond})
+			if err != nil || stopped.State != ProjectProcessStopped {
+				t.Fatalf("stop=%+v err=%v", stopped, err)
+			}
+			if elapsed := time.Since(started); elapsed < 30*time.Millisecond || elapsed > 2*time.Second {
+				t.Fatalf("stop did not preserve bounded grace: %s", elapsed)
+			}
+			if receipt {
+				if !stopped.ExitKnown || stopped.ExitCode != 137 || stopped.TerminalSignal != ProjectProcessKill {
+					t.Fatalf("worker receipt was not preserved: %+v", stopped)
+				}
+			} else if stopped.ExitKnown || stopped.Reason != "process_stopped_while_offline" {
+				t.Fatalf("offline absence fabricated a known exit: %+v", stopped)
+			}
+			if stopped.ProcessID != record.ProcessID || stopped.WorkspaceID != record.WorkspaceID || stopped.ProjectAlias != record.ProjectAlias || stopped.TargetAlias != record.TargetAlias || stopped.ProjectOwner != record.ProjectOwner || stopped.ProjectRepository != record.ProjectRepository || stopped.ProjectClaimGeneration != record.ProjectClaimGeneration || stopped.ProjectProfile != record.ProjectProfile || stopped.ProjectMode != record.ProjectMode || stopped.ProjectState != record.ProjectState {
+				t.Fatalf("captured binding changed: %+v", stopped)
+			}
+			if again, err := manager.Stop(context.Background(), ProjectProcessStopRequest{ProcessID: record.ProcessID, ProjectAlias: record.ProjectAlias, TargetAlias: record.TargetAlias, WorkspaceID: record.WorkspaceID, GracePeriod: 40 * time.Millisecond}); err != nil || again.State != stopped.State || again.ExitKnown != stopped.ExitKnown || again.ExitCode != stopped.ExitCode {
+				t.Fatalf("terminal stop did not remain idempotent: %+v err=%v", again, err)
+			}
+			platform.mu.Lock()
+			signals := append([]ProjectProcessSignal(nil), platform.signals...)
+			platform.mu.Unlock()
+			if !slices.Equal(signals, []ProjectProcessSignal{ProjectProcessTerminate, ProjectProcessKill}) {
+				t.Fatalf("signals=%v", signals)
+			}
+		})
+	}
+}
+
+func TestProjectProcessTerminalWaitPreservesWatcherAndLivenessBoundaries(t *testing.T) {
+	for _, mode := range []string{"live", "transient", "watched", "identity-changed"} {
+		t.Run(mode, func(t *testing.T) {
+			manager, platform, record := reopenedUnwatchedProjectProcess(t, ProjectProcessStopping)
+			process := platform.processes[record.Identity.PID]
+			switch mode {
+			case "transient":
+				process.aliveErr = errors.New("temporary proc lookup failure")
+			case "watched":
+				process.alive = false
+				manager.watching[record.ProcessID] = true
+			case "identity-changed":
+				process.identity.StartTicks++
+			}
+			terminal, ok := manager.waitTerminal(context.Background(), record.ProcessID, 40*time.Millisecond)
+			if mode == "identity-changed" {
+				if !ok || terminal.State != ProjectProcessFailed || terminal.ExitKnown || terminal.Reason != "process_identity_changed" {
+					t.Fatalf("changed identity was not failed closed: %+v terminal=%t", terminal, ok)
+				}
+			} else {
+				persisted, err := manager.recordByID(record.ProcessID)
+				if err != nil || ok || persisted.State != ProjectProcessStopping || persisted.ExitKnown {
+					t.Fatalf("uncertain/watched process settled: %+v terminal=%t err=%v", persisted, ok, err)
+				}
+			}
+			if len(platform.signals) != 0 {
+				t.Fatalf("terminal observation signalled process: %v", platform.signals)
+			}
+		})
+	}
+}
+
 func TestProjectProcessManagerReservesProcessCapacityAtomically(t *testing.T) {
 	platform := newFakeProjectProcessPlatform()
 	next := 0
