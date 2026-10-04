@@ -167,6 +167,124 @@ func TestDevelopmentRequestCanCancelDuringPreparing(t *testing.T) {
 	}
 }
 
+func TestDevelopmentRequestCancellationReconciliationRequiresCapturedProcess(t *testing.T) {
+	for _, processID := range []string{"", "unknown-process", "pr_44444444444444444444444444444444"} {
+		t.Run(processID, func(t *testing.T) {
+			request := developmentRequestFixture()
+			request.State = DevelopmentRequestCancelling
+			request.Reason = DevelopmentRequestReasonReconciliationRequired
+			request.ProcessID = processID
+			want := processID == "pr_44444444444444444444444444444444"
+			if request.Valid() != want {
+				t.Fatalf("captured process %q valid=%t want=%t", processID, request.Valid(), want)
+			}
+		})
+	}
+}
+
+func TestDevelopmentRequestCancellationReconciliationPersistsAndIsMonotonic(t *testing.T) {
+	store := openTestStore(t, Config{ControllerID: "controller-development-request-cancel-observation"})
+	config := store.config
+	initial := developmentRequestFixture()
+	if _, _, err := store.SaveDevelopmentRequest(initial); err != nil {
+		t.Fatal(err)
+	}
+	legacy := initial
+	legacy.Revision++
+	legacy.State, legacy.Reason = DevelopmentRequestCancelling, DevelopmentRequestReasonCancellationRequested
+	legacy.ProcessID = "pr_44444444444444444444444444444444"
+	legacy.ActiveOperationID = "eo_55555555555555555555555555555555"
+	if _, _, err := store.SaveDevelopmentRequest(legacy); err != nil {
+		t.Fatalf("legacy cancellation is invalid: %v", err)
+	}
+	observation := legacy
+	observation.Revision++
+	observation.Reason = DevelopmentRequestReasonReconciliationRequired
+	observation.ActiveOperationID = ""
+	if _, _, err := store.SaveDevelopmentRequest(observation); err != nil {
+		t.Fatalf("captured cancellation cannot enter observation: %v", err)
+	}
+	stale := legacy
+	stale.Revision++
+	stale.ActiveOperationID = "eo_66666666666666666666666666666666"
+	if _, _, err := store.SaveDevelopmentRequest(stale); err == nil {
+		t.Fatal("stale cancellation CAS erased the observation phase")
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(config)
+	if err != nil {
+		t.Fatalf("observation phase prevented reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	recovered, found, err := reopened.DevelopmentRequest(initial.ID)
+	if err != nil || !found || recovered != observation {
+		t.Fatalf("observation changed across reopen: %+v found=%t err=%v", recovered, found, err)
+	}
+	if err := reopened.Integrity(); err != nil {
+		t.Fatalf("observation record failed integrity: %v", err)
+	}
+	touched, err := reopened.TouchDevelopmentRequest(recovered.ID, recovered.Revision)
+	if err != nil || touched.Reason != DevelopmentRequestReasonReconciliationRequired || touched.ProcessID != recovered.ProcessID {
+		t.Fatalf("polling lost captured observation phase: %+v err=%v", touched, err)
+	}
+	reverse := touched
+	reverse.Revision++
+	reverse.Reason = DevelopmentRequestReasonCancellationRequested
+	if !reverse.Valid() {
+		t.Fatal("legacy cancellation reason ceased to be a valid record")
+	}
+	if _, _, err := reopened.SaveDevelopmentRequest(reverse); err == nil {
+		t.Fatal("cancellation observation regressed to another stop phase")
+	}
+	advanced := touched
+	advanced.Revision++
+	advanced.ActiveOperationID = "eo_77777777777777777777777777777777"
+	if _, _, err := reopened.SaveDevelopmentRequest(advanced); err != nil {
+		t.Fatalf("next read could not preserve observation phase: %v", err)
+	}
+	terminal := advanced
+	terminal.Revision++
+	terminal.State, terminal.Reason = DevelopmentRequestCancelled, DevelopmentRequestReasonCancellationRequested
+	if _, _, err := reopened.SaveDevelopmentRequest(terminal); err != nil {
+		t.Fatalf("observed terminal cancellation is invalid: %v", err)
+	}
+}
+
+func TestDevelopmentRequestLegacyCancellationWithoutProcessSurvivesReopen(t *testing.T) {
+	store := openTestStore(t, Config{ControllerID: "controller-development-request-legacy-cancel"})
+	config := store.config
+	initial := developmentRequestFixture()
+	if _, _, err := store.SaveDevelopmentRequest(initial); err != nil {
+		t.Fatal(err)
+	}
+	legacy := initial
+	legacy.Revision++
+	legacy.State, legacy.Reason = DevelopmentRequestCancelling, DevelopmentRequestReasonCancellationRequested
+	if _, _, err := store.SaveDevelopmentRequest(legacy); err != nil {
+		t.Fatal(err)
+	}
+	unbound := legacy
+	unbound.Revision++
+	unbound.Reason = DevelopmentRequestReasonReconciliationRequired
+	if _, _, err := store.SaveDevelopmentRequest(unbound); err == nil {
+		t.Fatal("uncaptured process entered cancellation observation")
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	recovered, found, err := reopened.DevelopmentRequest(initial.ID)
+	if err != nil || !found || recovered != legacy {
+		t.Fatalf("legacy cancellation was migrated or lost: %+v found=%t err=%v", recovered, found, err)
+	}
+}
+
 func TestDevelopmentRequestExpiredTerminalRowsDoNotBlockNewRequests(t *testing.T) {
 	store := openTestStore(t, Config{ControllerID: "controller-development-request-retention"})
 	active := developmentRequestFixture()

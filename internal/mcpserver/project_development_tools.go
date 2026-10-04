@@ -206,6 +206,20 @@ func (s *Server) handleProjectDevelopmentCancel(arguments json.RawMessage) (stri
 		return "", err
 	}
 	if !projectDevelopmentTerminal(request.State) && request.State != workqueue.DevelopmentRequestCancelling {
+		if request.ProcessID != "" && request.ActiveOperationID != "" {
+			op, readErr := s.edgeOperations.OperationStatus(request.ActiveOperationID)
+			if readErr != nil {
+				return "", readErr
+			}
+			if op.Kind == edge.OperationProjectProcessStatus {
+				if op.DeviceID != request.DeviceID || op.Request.Alias != request.Alias || op.Request.TargetAlias != request.Target || op.Request.Profile != "linux-workcell" || op.Request.BackgroundProcessID != request.ProcessID {
+					return "", errors.New("development cancellation admission binding mismatch")
+				}
+				// Atomically discard the ordinary pre-cancel read. Subsequent
+				// process observations belong to cancellation recovery.
+				request.ActiveOperationID = ""
+			}
+		}
 		request.Revision++
 		request.State = workqueue.DevelopmentRequestCancelling
 		request.Reason = workqueue.DevelopmentRequestReasonCancellationRequested
@@ -696,22 +710,27 @@ func (s *Server) failDevelopmentAttempt(request workqueue.DevelopmentRequest, ob
 	return s.finishDevelopmentRequest(request, workqueue.DevelopmentRequestFailed, reason)
 }
 
-func (s *Server) processOperation(request workqueue.DevelopmentRequest, kind edge.OperationKind) (edge.Operation, error) {
-	if request.ActiveOperationID != "" {
-		op, err := s.edgeOperations.OperationStatus(request.ActiveOperationID)
-		if err != nil {
-			return op, err
-		}
-		if op.Kind != kind || op.DeviceID != request.DeviceID || op.Request.BackgroundProcessID != request.ProcessID {
-			return op, errors.New("development process operation mismatch")
-		}
-		return op, nil
-	}
+func developmentProcessRequest(request workqueue.DevelopmentRequest, kind edge.OperationKind) edge.OperationRequest {
 	base := edge.OperationRequest{Alias: request.Alias, TargetAlias: request.Target, Profile: "linux-workcell", BackgroundProcessID: request.ProcessID}
 	if kind == edge.OperationProjectProcessStatus {
 		base.OutputLimit = 1
 	} else {
 		base.GraceSeconds = 5
+	}
+	return base
+}
+
+func (s *Server) processOperation(request workqueue.DevelopmentRequest, kind edge.OperationKind) (edge.Operation, error) {
+	base := developmentProcessRequest(request, kind)
+	if request.ActiveOperationID != "" {
+		op, err := s.edgeOperations.OperationStatus(request.ActiveOperationID)
+		if err != nil {
+			return op, err
+		}
+		if op.Kind != kind || op.DeviceID != request.DeviceID || !reflect.DeepEqual(op.Request, base) {
+			return op, errors.New("development process operation mismatch")
+		}
+		return op, nil
 	}
 	op, _, err := s.edgeOperations.CreateOperation(request.DeviceID, kind, base)
 	if err != nil {
@@ -730,13 +749,18 @@ func (s *Server) processOperation(request workqueue.DevelopmentRequest, kind edg
 	}
 	request.ActiveOperationID = op.ID
 	_, err = s.saveDevelopmentRequest(request)
+	if err == nil && (op.Kind != kind || op.DeviceID != request.DeviceID || !reflect.DeepEqual(op.Request, base)) {
+		// Capture even inconsistent acknowledgement evidence before rejecting
+		// it, so the next round cannot blindly repeat the requested effect.
+		return op, errors.New("development process operation mismatch")
+	}
 	return op, err
 }
 
 func developmentProcessResult(request workqueue.DevelopmentRequest, objective development.Objective, op edge.Operation) bool {
 	a := objective.Scope.Anchor
 	r := op.Result
-	return op.DeviceID == request.DeviceID && op.Request.Alias == request.Alias && op.Request.TargetAlias == request.Target && op.Request.BackgroundProcessID == request.ProcessID && op.State == edge.OperationSucceeded && r.BackgroundProcessID == request.ProcessID && r.WorkspaceID == a.WorkspaceID && r.ProjectOwner == a.Owner && r.ProjectRepository == a.Repository
+	return (op.Kind == edge.OperationProjectProcessStatus || op.Kind == edge.OperationProjectProcessStop) && op.DeviceID == request.DeviceID && op.Request.Alias == request.Alias && op.Request.TargetAlias == request.Target && op.Request.Profile == "linux-workcell" && op.Request.BackgroundProcessID == request.ProcessID && op.State == edge.OperationSucceeded && r.BackgroundProcessID == request.ProcessID && r.WorkspaceID == a.WorkspaceID && r.ProjectAlias == request.Alias && r.ProjectTarget == request.Target && r.ProjectProfile == "linux-workcell" && r.ProjectMode == "dev" && r.ProjectOwner == a.Owner && r.ProjectRepository == a.Repository
 }
 
 func (s *Server) pollDevelopmentProcess(request workqueue.DevelopmentRequest, objective development.Objective) error {
@@ -864,7 +888,6 @@ func (s *Server) acceptDevelopmentCommand(ctx context.Context, request workqueue
 
 func (s *Server) cancelDevelopmentRequest(ctx context.Context, request workqueue.DevelopmentRequest) error {
 	command, err := s.developmentBody(ctx, request)
-	bodyAvailable := err == nil
 	if err != nil && request.ProcessID == "" {
 		objective, found, readErr := s.workQueue.DevelopmentObjective(request.ObjectiveID)
 		if readErr == nil && found && len(objective.Steps) == 1 && len(objective.Steps[0].Attempts) > 0 {
@@ -892,7 +915,9 @@ func (s *Server) cancelDevelopmentRequest(ctx context.Context, request workqueue
 		if start.DeviceID != request.DeviceID || start.Kind != edge.OperationProjectDevelopmentCommandStart || start.Request.IdempotencyKey != developmentOperationKey(request, "command") || start.Request.Alias != request.Alias || start.Request.TargetAlias != request.Target {
 			return errors.New("development cancellation binding mismatch")
 		}
-		if start.State == edge.OperationFailed && (bodyAvailable || request.ProcessID == "") {
+		// Once captured, the process owns cancellation. Re-observing its old
+		// start would replace a pending stop/status binding and replay a stop.
+		if start.State == edge.OperationFailed && request.ProcessID == "" {
 			original := start
 			body := start.Request
 			if !reflect.DeepEqual(body.Argv, command.Argv) || body.CWD != command.CWD || body.Stdin != command.Stdin || !reflect.DeepEqual(body.Environment, command.Environment) {
@@ -956,19 +981,71 @@ func (s *Server) cancelDevelopmentRequest(ctx context.Context, request workqueue
 		if err != nil || !present {
 			return errors.New("development cancellation objective unavailable")
 		}
+		kind := edge.OperationProjectProcessStop
+		if request.Reason == workqueue.DevelopmentRequestReasonReconciliationRequired {
+			kind = edge.OperationProjectProcessStatus
+		}
 		if request.ActiveOperationID != "" {
 			old, err := s.edgeOperations.OperationStatus(request.ActiveOperationID)
 			if err != nil {
 				return err
 			}
-			if old.Kind != edge.OperationProjectProcessStop {
+			if old.Kind == edge.OperationProjectProcessStop || old.Kind == edge.OperationProjectProcessStatus {
+				if old.DeviceID != request.DeviceID || !reflect.DeepEqual(old.Request, developmentProcessRequest(request, old.Kind)) {
+					return errors.New("development cancellation process binding mismatch")
+				}
+				if old.Kind == edge.OperationProjectProcessStatus && kind != edge.OperationProjectProcessStatus {
+					lookup, ok := s.edgeOperations.(developmentProcessLookup)
+					if !ok {
+						return errors.New("development cancellation observation recovery unavailable")
+					}
+					stopBody := developmentProcessRequest(request, edge.OperationProjectProcessStop)
+					stop, found, err := lookup.LatestDevelopmentProcessOperation(request.DeviceID, edge.OperationProjectProcessStop, stopBody)
+					if err != nil {
+						return err
+					}
+					if found {
+						if stop.DeviceID != request.DeviceID || stop.Kind != edge.OperationProjectProcessStop || !reflect.DeepEqual(stop.Request, stopBody) {
+							return errors.New("development cancellation stop recovery binding mismatch")
+						}
+						if stop.State == edge.OperationFailed || stop.State == edge.OperationCancelled {
+							kind = edge.OperationProjectProcessStatus
+						} else {
+							request.ActiveOperationID = stop.ID
+						}
+					} else {
+						// A legacy cancellation observation without its stop journal
+						// cannot authorize another effect after record retention.
+						return errors.New("development cancellation stop recovery unavailable")
+					}
+				} else if old.Kind == edge.OperationProjectProcessStop && (old.State == edge.OperationFailed || old.State == edge.OperationCancelled) {
+					// A failed stop can already have stopped its captured process.
+					// Observe it independently; never retry the effect or treat the
+					// failed acknowledgement itself as terminal process evidence.
+					kind = edge.OperationProjectProcessStatus
+					request.ActiveOperationID = ""
+				}
+			} else {
+				capturedStart := validDevelopmentCapturedStart(request, objective, old) && old.Result.BackgroundProcessID == request.ProcessID
+				acceptanceRead := old.Kind == edge.OperationProjectDevelopmentInspect && old.DeviceID == request.DeviceID && old.Request.Alias == request.Alias && old.Request.TargetAlias == request.Target && old.Request.Profile == "linux-workcell" && old.Request.IdempotencyKey == developmentOperationKey(request, "accept-inspect")
+				if !capturedStart && !acceptanceRead {
+					return errors.New("development cancellation phase binding mismatch")
+				}
 				request.ActiveOperationID = ""
 				if request, err = s.saveDevelopmentRequest(request); err != nil {
 					return err
 				}
 			}
 		}
-		op, err := s.processOperation(request, edge.OperationProjectProcessStop)
+		if kind == edge.OperationProjectProcessStatus && request.Reason != workqueue.DevelopmentRequestReasonReconciliationRequired {
+			// Persist recovery before creating its read. This remains authoritative
+			// even if terminal stop records are pruned or the read ACK is lost.
+			request.Reason = workqueue.DevelopmentRequestReasonReconciliationRequired
+			if request, err = s.saveDevelopmentRequest(request); err != nil {
+				return err
+			}
+		}
+		op, err := s.processOperation(request, kind)
 		if err != nil {
 			return err
 		}
@@ -982,8 +1059,19 @@ func (s *Server) cancelDevelopmentRequest(ctx context.Context, request workqueue
 		if !developmentProcessResult(request, objective, op) {
 			return errors.New("development cancellation process evidence mismatch")
 		}
+		if kind == edge.OperationProjectProcessStatus && !op.Result.BackgroundExitKnown {
+			if op.Result.BackgroundProcessState != "running" && op.Result.BackgroundProcessState != "starting" && op.Result.BackgroundProcessState != "stopping" {
+				return nil
+			}
+		}
 		if op.Result.BackgroundProcessState != "stopped" && op.Result.BackgroundProcessState != "exited" && op.Result.BackgroundProcessState != "failed" {
 			request.ActiveOperationID = ""
+			if kind == edge.OperationProjectProcessStatus {
+				// Persist the next read binding directly. An empty durable phase
+				// would incorrectly allow another stop on the next round.
+				_, err = s.processOperation(request, kind)
+				return err
+			}
 			_, err = s.saveDevelopmentRequest(request)
 			return err
 		}

@@ -1039,6 +1039,20 @@ func (manager *ProjectProcessManager) waitTerminal(ctx context.Context, processI
 		if err == nil && projectProcessTerminal(record.State) {
 			return record, true
 		}
+		if err == nil && record.State == ProjectProcessStopping {
+			manager.watchMu.Lock()
+			watched := manager.watching[record.ProcessID]
+			manager.watchMu.Unlock()
+			if !watched {
+				alive, aliveErr := manager.platform.Alive(record.Identity)
+				if errors.Is(aliveErr, ErrProjectProcessIdentityChanged) || aliveErr == nil && !alive {
+					_ = manager.reconcileRecord(record)
+					if terminal, terminalErr := manager.recordByID(processID); terminalErr == nil && projectProcessTerminal(terminal.State) {
+						return terminal, true
+					}
+				}
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return projectProcessRecord{}, false

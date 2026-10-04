@@ -72,7 +72,8 @@ func (s *projectTaskEdgeStore) CreateOperation(deviceID string, kind edge.Operat
 		s.testStatusRequests++
 	}
 	for _, existing := range s.operations {
-		if kind != edge.OperationProjectWorktreeTestStatus && existing.DeviceID == deviceID && existing.Kind == kind && reflect.DeepEqual(existing.Request, request) {
+		// Fresh process observations have no idempotency key in the real store.
+		if kind != edge.OperationProjectWorktreeTestStatus && kind != edge.OperationProjectProcessStatus && existing.DeviceID == deviceID && existing.Kind == kind && reflect.DeepEqual(existing.Request, request) {
 			return existing, false, nil
 		}
 	}
