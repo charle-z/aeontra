@@ -136,6 +136,14 @@ do not replace server-side enforcement.
 | `repo_fast_forward` | 0/0/0/0 | Revalidate and run exactly `git merge --ff-only <upstream>` in the attested private L3 executor; allow mode only. |
 | `git_commit` | 0/0/0/0 | Stage and commit locally in the attested private L3 executor; allow mode only. It does not push. |
 
+### Task evidence after cleanup
+
+Git and test evidence contracts are opt-in. After a succeeded worker's worktree
+is cleaned, a task without either contract remains `acceptance_pending` for
+manual review. Status does not require a receipt or poll the removed worktree.
+Tasks with an evidence contract still require its durable verified receipt.
+Cleanup never accepts the natural-language objective.
+
 ### Development-environment v2 semantics
 
 Project and process tools distinguish ordinary development state from a boundary

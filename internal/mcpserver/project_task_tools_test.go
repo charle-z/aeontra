@@ -805,7 +805,8 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 	nilServer.StopProjectTaskCoordinator()
 
 	server, turns := modelTurnServer(t)
-	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test"})
+	queueRoot := filepath.Join(t.TempDir(), "queue")
+	queue, err := workqueue.Open(workqueue.Config{Root: queueRoot, ControllerID: "mcp-task-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -871,6 +872,32 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 	cleaned, err := server.table["project_task_cleanup"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `","idempotency_key":"parallel-cleanup-finish-0001"}`))
 	if err != nil || !strings.Contains(cleaned, `"cleaned":true`) {
 		t.Fatalf("cleaned=%s err=%v", cleaned, err)
+	}
+	statusCallsBeforeCleanupReads := edges.worktreeStatusRequests
+	for _, reopen := range []bool{false, true} {
+		if reopen {
+			if err := queue.Close(); err != nil {
+				t.Fatal(err)
+			}
+			queue, err = workqueue.Open(workqueue.Config{Root: queueRoot, ControllerID: "mcp-task-test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			server.WithWorkQueue(queue)
+		}
+		statusAfterCleanup, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+		if err != nil || !strings.Contains(statusAfterCleanup, `"state":"acceptance_pending"`) ||
+			!strings.Contains(statusAfterCleanup, `"runtime_state":"completed"`) ||
+			!strings.Contains(statusAfterCleanup, `"acceptance_state":"pending"`) ||
+			!strings.Contains(statusAfterCleanup, `"continuation":{"state":"review_required"}`) ||
+			strings.Contains(statusAfterCleanup, `"reconciliation_reason":`) ||
+			strings.Contains(statusAfterCleanup, `"git_evidence_state":"verified"`) ||
+			strings.Contains(statusAfterCleanup, `"state":"accepted"`) {
+			t.Fatalf("status after cleanup (reopen=%t)=%s err=%v", reopen, statusAfterCleanup, err)
+		}
+		if edges.worktreeStatusRequests != statusCallsBeforeCleanupReads {
+			t.Fatal("status re-polled a cleaned worktree without an evidence contract")
+		}
 	}
 
 	queued, _, err := queue.CreateTask(workqueue.TaskSpec{
