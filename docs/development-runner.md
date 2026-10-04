@@ -95,6 +95,12 @@ UID/GID ranges and delegated cgroup-v2 units. It disables the VM's rootful Docke
 service and applies the reviewed unprivileged-userns AppArmor/sysctl change in
 that VM only. It does not change an Edge or production VPS posture.
 The daemon runs as a systemd user service with its user bus and runtime directory.
+Its home is created exclusively as a new empty directory. Before transferring
+ownership or creating source/runtime descendants, setup removes only that root's
+inherited access/default ACLs. A controller UID inherited from the hosted VM's
+`/home` default ACL may be unmapped inside rootless Docker and make volume
+population fail. Existing paths, identity drift or unexpected ACL errors block
+setup. Parent, application and image ACLs are never scrubbed.
 Its fixed `env -i` launch clears the manager's inherited environment and assigns
 only workload-owned HOME/XDG paths, the pinned binary path and the user's bus.
 An instance-specific, root-owned `user@UID.service` drop-in delegates controllers
@@ -143,6 +149,8 @@ Fresh trusted probes require:
 - subordinate UID/GID mapping and writable delegated cgroup-v2 control files;
 - a responding rootless Docker daemon, exact workspace Git bind and nested runc
   execution with a digest-pinned fixture;
+- real anonymous `/tmp` volume population and bounded write/read verification,
+  with a read-only container root, no network and enforced memory/PID limits;
 - actual GitHub cache export followed by import into a new, empty pinned
   BuildKit builder under an effect-specific cache scope;
 - the fixed Go version, Make and complete non-shallow Git objects.
