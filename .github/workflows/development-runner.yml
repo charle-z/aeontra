@@ -368,6 +368,115 @@ jobs:
                   raise SystemExit(1)
           ACL_DIAGNOSTICS
           sudo chmod 0755 /opt/aeontra-bin/runner-acl-diagnostics.py
+          # Fixed namespace-only mount experiment, never repository code or a
+          # required capability. Preserve syscall errno instead of shell text.
+          sudo tee /opt/aeontra-control/overlay-probe.go >/dev/null <<'OVERLAY_PROBE'
+          package main
+          import (
+              "encoding/json"
+              "fmt"
+              "os"
+              "path/filepath"
+              "strings"
+              "syscall"
+          )
+          func emit(record map[string]any) { if err := json.NewEncoder(os.Stdout).Encode(record); err != nil { panic(err) } }
+          func errno(err error) int { if code, ok := err.(syscall.Errno); ok { return int(code) }; if err != nil { return -1 }; return 0 }
+          func probe(root, mode, option string) error {
+              base := filepath.Join(root, mode)
+              for _, name := range []string{"lower", "upper", "work", "merged"} {
+                  if err := os.MkdirAll(filepath.Join(base, name), 0700); err != nil { return err }
+              }
+              if err := os.WriteFile(filepath.Join(base, "lower", "marker"), []byte("aeontra-overlay-marker"), 0600); err != nil { return err }
+              options := "lowerdir=" + filepath.Join(base, "lower") + ",upperdir=" + filepath.Join(base, "upper") + ",workdir=" + filepath.Join(base, "work") + ",redirect_dir=off" + option
+              target := filepath.Join(base, "merged")
+              mountErr := syscall.Mount("overlay", target, "overlay", 0, options)
+              if mountErr != nil {
+                  emit(map[string]any{"mode": mode, "mounted": false, "errno": errno(mountErr), "error": mountErr.Error()})
+                  return nil // A rejected optional mount is diagnostic, not acceptance.
+              }
+              marker, readErr := os.ReadFile(filepath.Join(target, "marker"))
+              unmountErr := syscall.Unmount(target, 0)
+              verified := readErr == nil && string(marker) == "aeontra-overlay-marker"
+              emit(map[string]any{"mode": mode, "mounted": true, "verified": verified, "unmount_errno": errno(unmountErr)})
+              if unmountErr != nil { return unmountErr }
+              if !verified { return fmt.Errorf("overlay marker verification failed") }
+              return nil
+          }
+          func main() {
+              for _, item := range []struct{ name, path string }{
+                  {"kernel", "/proc/sys/kernel/osrelease"}, {"uid_map", "/proc/self/uid_map"},
+                  {"redirect_dir", "/sys/module/overlay/parameters/redirect_dir"},
+                  {"redirect_always_follow", "/sys/module/overlay/parameters/redirect_always_follow"},
+                  {"metacopy", "/sys/module/overlay/parameters/metacopy"}, {"index", "/sys/module/overlay/parameters/index"},
+              } {
+                  value, err := os.ReadFile(item.path)
+                  emit(map[string]any{"field": item.name, "available": err == nil, "value": strings.TrimSpace(string(value))})
+              }
+              var fs syscall.Statfs_t
+              if err := syscall.Statfs("/tmp", &fs); err != nil { panic(err) }
+              emit(map[string]any{"tmp_filesystem_type": fmt.Sprintf("0x%x", fs.Type)})
+              root, err := os.MkdirTemp("/tmp", "aeontra-overlay-")
+              if err != nil { panic(err) }
+              for _, item := range []struct{ mode, option string }{{"default", ""}, {"userxattr", ",userxattr"}} {
+                  if err := probe(root, item.mode, item.option); err != nil { panic(err) }
+              }
+              if err := os.RemoveAll(root); err != nil { panic(err) }
+          }
+          OVERLAY_PROBE
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control CGO_ENABLED=0 GO111MODULE=off GOTOOLCHAIN=local /opt/aeontra-go/bin/go build -o /opt/aeontra-bin/overlay-probe /opt/aeontra-control/overlay-probe.go
+          sudo chmod 0755 /opt/aeontra-bin/overlay-probe
+          sudo tee /opt/aeontra-bin/runner-overlay-diagnostics.py >/dev/null <<'OVERLAY_DIAGNOSTICS'
+          #!/usr/bin/python3
+          import json, os, pwd, re, stat, subprocess
+          def emit(record):
+              encoded = json.dumps(record, separators=(',', ':'))
+              if len(encoded.encode()) > 1000: raise ValueError('oversized overlay record')
+              print(encoded, flush=True)
+          def counters():
+              uid = os.getuid()
+              base = '/sys/fs/cgroup/user.slice/user-%d.slice/user@%d.service/' % (uid, uid)
+              result = {}
+              for name in ('pids.events', 'memory.events'):
+                  fd = os.open(base + name, os.O_RDONLY | os.O_NOFOLLOW)
+                  try:
+                      if not stat.S_ISREG(os.fstat(fd).st_mode): raise ValueError('invalid counter type')
+                      raw = os.read(fd, 1025)
+                  finally: os.close(fd)
+                  if len(raw) > 1024: raise ValueError('oversized counter')
+                  tokens = raw.decode('ascii').split()
+                  if len(tokens) % 2 or any(not value.isdecimal() for value in tokens[1::2]): raise ValueError('invalid event counter')
+                  result[name] = {key: int(value) for key, value in zip(tokens[::2], tokens[1::2])}
+              return result
+          def main():
+              if os.getuid() <= 0 or os.getuid() != pwd.getpwnam('aeontra-workload').pw_uid: raise ValueError('overlay diagnostic must run as workload')
+              env = {'HOME': '/home/aeontra-workload', 'PATH': '/usr/bin:/bin', 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock'}
+              docker = '/opt/aeontra-bin/docker'
+              emit({'phase': 'before', 'counters': counters()})
+              created = subprocess.run([docker, 'create', '--name=aeontra-overlay-diagnostic', '--pull=never', '--privileged',
+                  '--network=none', '--read-only', '--memory=256m', '--pids-limit=64', '--mount', 'type=volume,dst=/tmp',
+                  '--mount', 'type=bind,src=/opt/aeontra-bin/overlay-probe,dst=/overlay-probe,readonly',
+                  'busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0', '/overlay-probe'],
+                  env=env, capture_output=True, timeout=5)
+              if created.returncode or not re.fullmatch(rb'[a-f0-9]{64}\n?', created.stdout):
+                  raise RuntimeError('overlay experiment creation failed')
+              cid = created.stdout.decode('ascii').strip()
+              try:
+                  result = subprocess.run([docker, 'start', '--attach', cid],
+                      env=env, capture_output=True, timeout=30)
+                  if len(result.stdout) > 4096: raise ValueError('oversized overlay output')
+                  for line in result.stdout.splitlines():
+                      record = json.loads(line)
+                      if not isinstance(record, dict): raise ValueError('invalid overlay record')
+                      emit(record)
+                  if result.returncode: raise RuntimeError('overlay experiment infrastructure failed')
+              finally:
+                  cleanup = subprocess.run([docker, 'rm', '--force', '--volumes', cid], env=env, capture_output=True, timeout=5)
+                  emit({'phase': 'after', 'counters': counters(), 'cleanup_exit': cleanup.returncode})
+                  if cleanup.returncode: raise RuntimeError('overlay experiment cleanup failed')
+          if __name__ == '__main__': main()
+          OVERLAY_DIAGNOSTICS
+          sudo chmod 0755 /opt/aeontra-bin/runner-overlay-diagnostics.py
           workload_uid="$(id -u aeontra-workload)"
           # Bound the manager ancestor, including Docker's sibling scopes.
           sudo install -d -m 0755 "/etc/systemd/system/user@${workload_uid}.service.d"
@@ -467,9 +576,9 @@ jobs:
                  'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/' + str(workload_uid) + '/bus',
                  'DOCKER_CONFIG': '/home/aeontra-workload/.docker', 'GITHUB_ACTIONS': 'true',
                  'GOTOOLCHAIN': 'local', 'GOENV': 'off'}
-          diagnostic = sys.argv[2] == 'acl-diagnostics'
+          diagnostic = sys.argv[2] in ('acl-diagnostics', 'overlay-diagnostics')
           if diagnostic:
-              if sys.argv[1:] != ['acl-diagnostics', 'acl-diagnostics']:
+              if sys.argv[1:] != [sys.argv[2], sys.argv[2]]:
                   raise ValueError('invalid fixed diagnostic invocation')
               env.pop('GITHUB_ACTIONS')
           else:
@@ -480,7 +589,8 @@ jobs:
                   f.write(key + '=' + '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"\n')
           os.chmod('/opt/aeontra-control/runtime.env', 0o600)
           executable = {'docker': '/opt/aeontra-bin/docker', 'go': '/opt/aeontra-go/bin/go', 'make': '/usr/bin/make',
-                        'acl-diagnostics': '/opt/aeontra-bin/runner-acl-diagnostics.py'}.get(sys.argv[2])
+                        'acl-diagnostics': '/opt/aeontra-bin/runner-acl-diagnostics.py',
+                        'overlay-diagnostics': '/opt/aeontra-bin/runner-overlay-diagnostics.py'}.get(sys.argv[2])
           if not executable: raise ValueError('unregistered executable')
           with open('/opt/aeontra-control/' + sys.argv[1] + '.log', 'wb') as log, ExitStack() as stack:
               critical = None
@@ -680,6 +790,13 @@ jobs:
           set -euo pipefail
           sudo python3 /opt/aeontra-control/execute.py acl-diagnostics acl-diagnostics
 
+      - name: Inspect rootless overlay compatibility
+        if: ${{ !cancelled() && (inputs.command_profile == 'probe-only' || (steps.exact-command.outcome == 'failure' && inputs.command_profile == 'make-validate-all')) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo python3 /opt/aeontra-control/execute.py overlay-diagnostics overlay-diagnostics
+
       - name: Bind trusted receipt
         shell: bash
         run: |
@@ -818,7 +935,7 @@ jobs:
               return lines if len(lines) > 1 else []
           # Fixed controller-owned logs only; failures before command execution
           # must remain observable. No glob, environment file or source input.
-          names = ('resources', 'acl-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'nested-idmap', 'volume-copy',
+          names = ('resources', 'acl-diagnostics', 'overlay-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'nested-idmap', 'volume-copy',
                    'builder-export', 'cache-export', 'builder-remove',
                    'builder-import', 'cache-import', 'pinned-go', 'make')
           for name in names:
