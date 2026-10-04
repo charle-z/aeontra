@@ -127,6 +127,70 @@ func TestDevelopmentRunnerDiagnosticsPreserveFailureBeforeLargeStack(t *testing.
 	}
 }
 
+func TestDevelopmentRunnerDiagnosticsPreservesEncodedEOF(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")
+	}
+	directory := t.TempDir()
+	for name, body := range map[string]string{
+		"ci.json":             `{}`,
+		"command.log":         strings.Repeat("\"\\\t\x01\u2603\n", 1200) + "DONE exact-final-summary\nmake: exact-final-exit-2\n",
+		"acl-diagnostics.log": strings.Repeat("large preceding diagnostic\n", 256),
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "DONE exact-final-summary") || !strings.Contains(output, "make: exact-final-exit-2") || len(output) > 16<<10 {
+		t.Fatalf("encoded EOF lost: err=%v bytes=%d: %s", err, len(output), output)
+	}
+}
+
+func TestDevelopmentRunnerDiagnosticsCriticalContext(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")
+	}
+	directory := t.TempDir()
+	for name, body := range map[string]string{
+		"ci.json":             `{"ACTIONS_RUNTIME_TOKEN":"private-token"}`,
+		"command-context.log": "aeontra-context reason=panic\npanic: true timeout private-token\n\trunning tests:\n\tTestRealWork (10m0s)\n",
+		"command.log":         strings.Repeat("=== FAIL: summarized unknown\n", 90000) + "DONE exact-final-summary\nmake: exit 2\n",
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "panic: true timeout [REDACTED]") || !strings.Contains(output, "TestRealWork") || !strings.Contains(output, "DONE exact-final-summary") || strings.Contains(output, "private-token") || len(output) > 16<<10 {
+		t.Fatalf("critical evidence lost or unsafe: err=%v bytes=%d: %s", err, len(output), output)
+	}
+	contextPath := filepath.Join(directory, "command-context.log")
+	if err := os.Remove(contextPath); err != nil {
+		t.Fatal(err)
+	}
+	private := filepath.Join(t.TempDir(), "private")
+	if err := os.WriteFile(private, []byte("NEVER-READ"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(private, contextPath); err != nil {
+		t.Fatal(err)
+	}
+	output, err = runRunnerDiagnostics(t, directory)
+	if err == nil || strings.Contains(output, "NEVER-READ") {
+		t.Fatalf("context symlink accepted: %v %s", err, output)
+	}
+	if err := os.Remove(contextPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(contextPath, []byte(strings.Repeat("x", (16<<10)+257)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runRunnerDiagnostics(t, directory); err == nil {
+		t.Fatal("oversized context accepted")
+	}
+}
+
 func TestDevelopmentRunnerDiagnosticsCommandWindowDiscardsPartialSecrets(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")

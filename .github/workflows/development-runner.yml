@@ -400,20 +400,50 @@ jobs:
           # child. Output cannot inject runner commands or alter GITHUB_OUTPUT.
           sudo tee /opt/aeontra-control/execute.py >/dev/null <<'PYTHON'
           import json, os, pwd, subprocess, sys
-          def capture_output(stream, log):
+          from contextlib import ExitStack
+          def capture_output(stream, log, critical_log=None):
               from collections import deque
               chunks, retained, seen = deque(), 0, 0
               limit = 16 << 20
+              pending, discarding, oversized = b'', False, 0
+              first, panic, remaining = None, None, [0, 0]
+              context_bytes = [0, 0]
+              def complete_line(line):
+                  nonlocal first, panic
+                  stripped = line.lstrip()
+                  if stripped.startswith(b'panic:'):
+                      panic, remaining[1], context_bytes[1] = [], 32, 0
+                  if first is None and stripped.startswith((b'panic:', b'--- FAIL:', b'Error response', b'ERROR', b'error:', b'make:')):
+                      first, remaining[0] = [], 32
+                  for index, context in enumerate((first, panic)):
+                      if remaining[index]:
+                          if context_bytes[index] + len(line) <= (16 << 10):
+                              context.append(line); context_bytes[index] += len(line)
+                          remaining[index] -= 1
+              def observe(chunk):
+                  nonlocal pending, discarding, oversized
+                  parts = chunk.split(b'\n')
+                  for index, part in enumerate(parts):
+                      ended = index < len(parts) - 1
+                      if not discarding:
+                          if len(pending) + len(part) > 65536:
+                              pending, discarding = b'', True
+                              oversized += 1
+                          else: pending += part
+                      if ended:
+                          if not discarding: complete_line(pending + b'\n')
+                          pending, discarding = b'', False
               try:
                   while True:
                       chunk = stream.read(65536)
                       if not chunk: break
+                      if critical_log is not None: observe(chunk)
                       chunks.append(chunk); retained += len(chunk); seen += len(chunk)
                       while retained > limit:
-                          first = chunks.popleft()
-                          discard = min(len(first), retained - limit)
+                          oldest_chunk = chunks.popleft()
+                          discard = min(len(oldest_chunk), retained - limit)
                           retained -= discard
-                          if discard < len(first): chunks.appendleft(first[discard:])
+                          if discard < len(oldest_chunk): chunks.appendleft(oldest_chunk[discard:])
               finally:
                   data = b''.join(chunks)
                   if seen > limit:
@@ -423,6 +453,12 @@ jobs:
                   log.write(('aeontra-capture bytes_seen=%d bytes_dropped=%d bytes_retained=%d\n' %
                              (seen, seen - len(data), len(data))).encode('ascii'))
                   log.write(data)
+                  if critical_log is not None:
+                      context = b''.join(panic if panic is not None else first or [])
+                      reason = 'panic' if panic is not None else 'failure' if first is not None else 'none'
+                      critical_log.write(('aeontra-context reason=%s bytes_retained=%d oversize_lines=%d\n' %
+                                          (reason, len(context), oversized)).encode('ascii'))
+                      critical_log.write(context)
           workload_uid = pwd.getpwnam('aeontra-workload').pw_uid
           env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin',
                  'XDG_RUNTIME_DIR': '/run/user/' + str(workload_uid), 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock',
@@ -446,7 +482,12 @@ jobs:
           executable = {'docker': '/opt/aeontra-bin/docker', 'go': '/opt/aeontra-go/bin/go', 'make': '/usr/bin/make',
                         'acl-diagnostics': '/opt/aeontra-bin/runner-acl-diagnostics.py'}.get(sys.argv[2])
           if not executable: raise ValueError('unregistered executable')
-          with open('/opt/aeontra-control/' + sys.argv[1] + '.log', 'wb') as log:
+          with open('/opt/aeontra-control/' + sys.argv[1] + '.log', 'wb') as log, ExitStack() as stack:
+              critical = None
+              if sys.argv[1] == 'command':
+                  # Fresh fixed sideband before launch, including failed starts.
+                  critical = stack.enter_context(open('/opt/aeontra-control/command-context.log', 'wb'))
+                  os.chmod('/opt/aeontra-control/command-context.log', 0o600)
               argv = ['/usr/bin/systemd-run', '--quiet', '--wait', '--pipe', '--collect',
                       '--unit=aeontra-' + sys.argv[1], '--service-type=exec',
                       '-p', 'User=aeontra-workload', '-p', 'Group=aeontra-workload',
@@ -456,7 +497,7 @@ jobs:
                       '--working-directory=/home/aeontra-workload/source', executable] + sys.argv[3:]
               child = subprocess.Popen(argv, env={'PATH': '/usr/bin:/bin'},
                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-              capture_output(child.stdout, log)
+              capture_output(child.stdout, log, critical)
               status = child.wait(timeout=15)
           sys.exit(status)
           PYTHON
@@ -732,6 +773,7 @@ jobs:
           # Reserve room for one fixed capture/open error without exceeding
           # the total encoded-output ceiling.
           budget = (16 << 10) - 256
+          command_reserved = (8 << 10) + 256 if os.path.exists(directory + 'command.log') else 0
           def invalid_log():
               print('aeontra-untrusted-log diagnostic "invalid private diagnostic log"')
               raise SystemExit(1)
@@ -745,6 +787,35 @@ jobs:
                   print(encoded)
                   budget -= cost
                   allowance -= cost
+          def encoded_tail(name, lines, allowance):
+              selected, available = [], min(budget, allowance)
+              for line in reversed(lines):
+                  encoded = 'aeontra-untrusted-log ' + name + ' ' + json.dumps(line[:1024], ensure_ascii=True)
+                  cost = len(encoded) + 1
+                  if cost > available: break
+                  selected.append(encoded); available -= cost
+              return list(reversed(selected))
+          def emit_encoded(lines):
+              global budget
+              for line in lines:
+                  print(line); budget -= len(line) + 1
+          def critical_context():
+              try:
+                  fd = os.open(directory + 'command-context.log', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+              except FileNotFoundError:
+                  return []
+              except OSError:
+                  invalid_log()
+              with os.fdopen(fd, 'rb') as log:
+                  if not stat.S_ISREG(os.fstat(log.fileno()).st_mode) or os.fstat(log.fileno()).st_size > (16 << 10) + 256:
+                      invalid_log()
+                  raw = log.read((16 << 10) + 257)
+              if len(raw) > (16 << 10) + 256: invalid_log()
+              raw, _, _ = raw.rpartition(b'\n')
+              text = raw.decode('utf-8', errors='replace')
+              for value in secrets: text = text.replace(value, '[REDACTED]')
+              lines = text.splitlines()
+              return lines if len(lines) > 1 else []
           # Fixed controller-owned logs only; failures before command execution
           # must remain observable. No glob, environment file or source input.
           names = ('resources', 'acl-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'nested-idmap', 'volume-copy',
@@ -796,14 +867,19 @@ jobs:
                   # Earlier negative-test errors must not hide the last panic.
                   if panic is not None:
                       context = lines[panic:panic + 32]
-                  emit_lines(name, context, 4 << 10)
+                  critical = critical_context()
+                  if critical: context = critical
                   # Discard a partial tail line before emitting it as well.
                   tail = data[-4096:]
                   if len(data) > 4096:
                       _, _, tail = tail.partition('\n')
-                  emit_lines(name, tail.splitlines(), 4 << 10)
+                  selected = encoded_tail(name, tail.splitlines(), 4 << 10)
+                  reserved = sum(len(line) + 1 for line in selected)
+                  emit_lines(name, context, min(4 << 10, max(0, budget - reserved)))
+                  emit_encoded(selected)
+                  command_reserved = 0
               else:
-                  emit_lines(name, data.splitlines(), budget)
+                  emit_lines(name, data.splitlines(), max(0, budget - command_reserved))
           PYTHON
 
       - name: Stop disposable workload

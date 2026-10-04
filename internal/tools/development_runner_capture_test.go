@@ -15,7 +15,7 @@ func runnerOutputCaptureScript(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, script, found := strings.Cut(string(body), "def capture_output(stream, log):\n")
+	_, script, found := strings.Cut(string(body), "          def capture_output(")
 	if !found {
 		t.Fatal("bounded final-output capture missing")
 	}
@@ -23,7 +23,103 @@ func runnerOutputCaptureScript(t *testing.T) string {
 	if !found {
 		t.Fatal("capture function boundary missing")
 	}
-	return "def capture_output(stream, log):\n" + strings.TrimPrefix(strings.ReplaceAll(script, "\n          ", "\n"), "          ")
+	return "def capture_output(" + strings.ReplaceAll(script, "\n          ", "\n")
+}
+
+func TestDevelopmentRunnerCaptureCriticalContextAcrossEviction(t *testing.T) {
+	program := "import io\n" + runnerOutputCaptureScript(t) + `
+output, critical = io.BytesIO(), io.BytesIO()
+capture_output(io.BytesIO(b'error: earlier expected negative\n' + b'panic: test timed out after 10m0s\n\trunning tests:\n\tTestRealWork (10m0s)\n' + (b'goroutine stack ' + b'z' * 256 + b'\n') * 65536 + b'DONE 12062 tests\nmake: exit 2\n'), output, critical)
+assert len(critical.getvalue()) <= (16 << 10) + 256
+assert b'panic: test timed out after 10m0s' in critical.getvalue()
+assert b'TestRealWork (10m0s)' in critical.getvalue()
+assert b'earlier expected negative' not in critical.getvalue()
+assert b'panic: test timed out' not in output.getvalue()
+assert output.getvalue().endswith(b'make: exit 2\n')
+for prefix, expected in ((b'error: first failure without panic\n', b'first failure without panic'), (b'', b'reason=none')):
+    safe = io.BytesIO()
+    capture_output(io.BytesIO(prefix + (b'ordinary complete output ' + b'z' * 256 + b'\n') * 65536), io.BytesIO(), safe)
+    assert expected in safe.getvalue()
+    assert len(safe.getvalue()) <= (16 << 10) + 256
+class SplitStream:
+    def __init__(self, chunks): self.chunks = iter(chunks)
+    def read(self, limit): return next(self.chunks, b'')
+safe = io.BytesIO()
+capture_output(SplitStream([b'pa', b'nic: private-token\nrun', b'ning tests:\n']), io.BytesIO(), safe)
+assert b'panic: private-token\nrunning tests:\n' in safe.getvalue()
+# Do not preserve an overlong line's tail, incomplete EOF or fragments.
+safe = io.BytesIO()
+capture_output(SplitStream([b'panic: private-prefix' + b'p' * 65536, b'private-suffix\nerror: safe complete\n', b'panic: incomplete-secret']), io.BytesIO(), safe)
+assert b'error: safe complete' in safe.getvalue()
+assert b'private-' not in safe.getvalue() and b'incomplete-secret' not in safe.getvalue()
+class BrokenStream:
+    def __init__(self): self.calls = 0
+    def read(self, limit):
+        self.calls += 1
+        if self.calls == 1: return b'panic: before read failure\n'
+        raise OSError('fixture failure')
+safe = io.BytesIO()
+try: capture_output(BrokenStream(), io.BytesIO(), safe)
+except OSError: pass
+else: raise AssertionError('read failure suppressed')
+assert b'panic: before read failure' in safe.getvalue()
+print('fixture passed')
+`
+	runRunnerACLFixture(t, "", program)
+}
+
+func TestDevelopmentRunnerContextReplacedBeforeLaunch(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := "          with open('/opt/aeontra-control/' + sys.argv[1] + '.log', 'wb')"
+	_, launcher, found := strings.Cut(string(body), prefix)
+	if !found {
+		t.Fatal("launcher start missing")
+	}
+	launcher, _, found = strings.Cut(launcher, "          sys.exit(status)")
+	if !found {
+		t.Fatal("launcher end missing")
+	}
+	launcher = strings.TrimPrefix(prefix, "          ") + strings.ReplaceAll(launcher, "\n          ", "\n")
+	directory := t.TempDir()
+	launcher = strings.ReplaceAll(launcher, "/opt/aeontra-control/", filepath.ToSlash(directory)+"/")
+	program := "import os, sys, subprocess\nfrom contextlib import ExitStack\n" + runnerOutputCaptureScript(t) + fmt.Sprintf(`
+path = %q
+with open(path, 'wb') as old: old.write(b'panic: stale prior attempt\n')
+sys.argv = ['executor', 'command', 'make']
+diagnostic, executable = False, '/usr/bin/make'
+def failed_launch(*args, **kwargs): raise OSError('fixture launch rejected')
+subprocess.Popen = failed_launch
+try: exec(%q)
+except OSError: pass
+else: raise AssertionError('launch failure suppressed')
+with open(path, 'rb') as current: assert current.read() == b''
+print('fixture passed')
+`, filepath.ToSlash(filepath.Join(directory, "command-context.log")), launcher)
+	runRunnerACLFixture(t, "", program)
+}
+
+func TestDevelopmentRunnerCriticalEvidenceEndToEnd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux capture and renderer are verified in WSL")
+	}
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "ci.json"), []byte(`{"ACTIONS_RUNTIME_TOKEN":"private-token"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	program := "import io\n" + runnerOutputCaptureScript(t) + fmt.Sprintf(`
+body = b'panic: true timeout private-token\n\trunning tests:\n\tTestRealWork (10m0s)\n' + (b'goroutine stack ' + b'z' * 256 + b'\n') * 65536 + b'DONE exact-final-summary\nmake: exact-final-exit-2\n'
+with open(%q, 'wb') as output, open(%q, 'wb') as critical:
+    capture_output(io.BytesIO(body), output, critical)
+print('fixture passed')
+`, filepath.ToSlash(filepath.Join(directory, "command.log")), filepath.ToSlash(filepath.Join(directory, "command-context.log")))
+	runRunnerACLFixture(t, "", program)
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "panic: true timeout [REDACTED]") || !strings.Contains(output, "TestRealWork") || !strings.Contains(output, "DONE exact-final-summary") || !strings.Contains(output, "make: exact-final-exit-2") || strings.Contains(output, "private-token") || len(output) > 16<<10 {
+		t.Fatalf("end-to-end failure evidence lost or unsafe: err=%v bytes=%d: %s", err, len(output), output)
+	}
 }
 
 func TestDevelopmentRunnerCaptureRetainsActualFinalFailure(t *testing.T) {

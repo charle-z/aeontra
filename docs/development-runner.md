@@ -140,14 +140,20 @@ A command drains its complete output but retains only the last 16 MiB, discardin
 the first partial line after truncation. Numeric capture metadata records the
 bytes seen, dropped and retained. A prefix-only log cannot establish the final
 failure of a long command.
+A command also retains up to 16 KiB of complete lines from its first failure or,
+preferentially, its last panic and the following active-test context. This fixed
+private sideband is replaced on each command. Lines over 64 KiB and incomplete
+EOF lines are discarded rather than retaining credential fragments.
 A trusted final step reads only fixed controller-owned probe, daemon and command
 logs without following links. It emits at most 16 KiB of prefixed JSON, escaping
 control characters and redacting every staged CI credential value before output.
-For command logs, it scans at most the last 2 MiB of complete lines and emits
-up to 4 KiB of failure context before a separate 4 KiB tail. This preserves a
-Go panic header and active-test context that a large stack dump can otherwise
-hide. Older context outside that window is unavailable; log text never changes
-the command outcome or attests acceptance.
+For command logs, it scans at most the last 2 MiB of complete lines. It uses the
+bounded sideband when present, or that window's failure context for older logs,
+within one 4 KiB encoded context allowance. A separate 4 KiB encoded tail is
+selected from EOF backwards and emitted chronologically; JSON escaping and
+prefixes cannot displace the actual final lines. Earlier probe diagnostics leave
+this command allowance reserved. Arbitrary older log text remains unavailable;
+diagnostics never change the command outcome or attest acceptance.
 Probe errors remain visible even when no command was started. Full private logs
 are discarded with the VM; diagnostics do not recover source bytes or authorize
 a retry.
