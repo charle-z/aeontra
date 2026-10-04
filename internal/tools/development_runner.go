@@ -18,8 +18,9 @@ import (
 )
 
 const DevelopmentRunnerProfile = "github-hosted-ubuntu24-v1"
+const DevelopmentRunnerGoVersion = "1.26.8"
 const developmentRunnerWorkflow = "development-runner.yml"
-const developmentRunnerProbeStep = "Probe kernel and CI contracts (Go 1.26.8)"
+const developmentRunnerProbeStep = "Probe kernel and CI contracts (Go " + DevelopmentRunnerGoVersion + ")"
 
 var developmentRunnerSHA = regexp.MustCompile(`^[a-f0-9]{40}$`)
 var developmentRunnerEffectID = regexp.MustCompile(`^[a-f0-9]{64}$`)

@@ -35,6 +35,15 @@ func TestProjectDevelopmentInspectionIsScopedAndCannotClaimExternalAuthority(t *
 	if validOperationCompletionForKind(OperationProjectStatus, result, "") {
 		t.Fatal("inspection was accepted from a different operation kind")
 	}
+	// New evidence is optional; old results above remain valid, but additive
+	// evidence must bind clean exact source and account for each Go finding.
+	result.DevelopmentInspection.SourceClean = true
+	result.DevelopmentInspection.Requirements = []development.CapabilityID{"toolchain.go.v1-26-6"}
+	result.DevelopmentInspection.GoCommandRequirements = &development.GoCommandRequirements{Version: 1, SourceDigest: result.DevelopmentInspection.SourceDigest,
+		MinimumVersions: []development.GoMinimum{{Manifest: "go.mod", Version: "1.26.6"}}}
+	if !validOperationCompletionForKind(OperationProjectDevelopmentInspect, result, "") {
+		t.Fatal("valid additive Go provenance rejected")
+	}
 	for _, mutate := range []func(*OperationResult){
 		func(r *OperationResult) { r.WorkspaceID = "ws_" + strings.Repeat("b", 32) },
 		func(r *OperationResult) { r.DevelopmentInspection.ProjectGeneration++ },
@@ -48,6 +57,11 @@ func TestProjectDevelopmentInspectionIsScopedAndCannotClaimExternalAuthority(t *
 		func(r *OperationResult) { r.ExecCompleted = true },
 		func(r *OperationResult) { r.DevelopmentInspection.SourceHead = "main" },
 		func(r *OperationResult) { r.DevelopmentInspection.SourceEvidenceKnown = false },
+		func(r *OperationResult) { r.DevelopmentInspection.SourceClean = false },
+		func(r *OperationResult) { r.DevelopmentInspection.SourceDigest = "sha256:" + strings.Repeat("b", 64) },
+		func(r *OperationResult) {
+			r.DevelopmentInspection.Requirements = []development.CapabilityID{"toolchain.go.v1-26-8"}
+		},
 	} {
 		forged := result
 		inspection := *result.DevelopmentInspection
