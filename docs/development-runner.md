@@ -95,6 +95,13 @@ separate workload UID without sudo or controller group membership, subordinate
 UID/GID ranges and delegated cgroup-v2 units. It disables the VM's rootful Docker
 service and applies the reviewed unprivileged-userns AppArmor/sysctl change in
 that VM only. It does not change an Edge or production VPS posture.
+The fresh account receives 262144 unused subordinate UID and GID IDs through
+`useradd`'s allocator. The default 65536-ID outer mapping cannot contain a nested
+test user's range `100000..165535`. Calibration reads the kernel UID/GID maps
+inside the pinned container and requires the full allocation and the expected
+non-root host owner. This is subordinate-map capacity evidence, not evidence
+that every privileged kernel test will pass. Other users' assignments, memory
+limits, task limits and controller credential protections are unchanged.
 The daemon runs as a systemd user service with its user bus and runtime directory.
 Its home is created exclusively as a new empty directory. Before transferring
 ownership or creating source/runtime descendants, setup removes only that root's

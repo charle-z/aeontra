@@ -119,7 +119,9 @@ jobs:
           rm "$RUNNER_TEMP/aeontra-ci.json"
           sudo chmod 0700 "$RUNNER_WORKSPACE" "$RUNNER_TEMP" "$HOME"
           sudo systemctl stop docker.service docker.socket
-          sudo useradd --no-create-home --home-dir /home/aeontra-workload --shell /bin/bash aeontra-workload
+          # Allocate unused ranges through useradd, only for this fresh VM UID.
+          # Nested rootless test users need IDs beyond the default 65536.
+          sudo useradd --no-create-home --home-dir /home/aeontra-workload --shell /bin/bash --key SUB_UID_COUNT=262144 --key SUB_GID_COUNT=262144 aeontra-workload
           # Host /home may carry a controller-UID default ACL. Clear inheritance
           # only on this newly created empty root, before any source or storage.
           sudo python3 - <<'FRESH_WORKLOAD_HOME'
@@ -555,6 +557,40 @@ jobs:
           sudo grep -Eq '^ Cgroup Version: 2$' /opt/aeontra-control/docker-info.log
           sudo python3 /opt/aeontra-control/execute.py workspace-bind docker run --rm --memory 256m --pids-limit 64 --mount type=bind,src=/home/aeontra-workload/source,dst=/workspace,readonly busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 sh -eu -c 'test "$(cat /sys/fs/cgroup/memory.max)" = 268435456; test "$(cat /sys/fs/cgroup/pids.max)" = 64; cat /workspace/.git/HEAD'
           sudo grep -Fx "$SOURCE_SHA" /opt/aeontra-control/workspace-bind.log
+          sudo python3 /opt/aeontra-control/execute.py nested-idmap docker run --rm --pull=never --network=none --read-only --memory 256m --pids-limit 64 busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 sh -eu -c 'printf "uid\n"; cat /proc/self/uid_map; printf "gid\n"; cat /proc/self/gid_map'
+          sudo chmod 0600 /opt/aeontra-control/nested-idmap.log
+          sudo python3 - <<'NESTED_IDMAP'
+          import os, pwd, re, stat
+          def read_probe(path, owner):
+              fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+              try:
+                  observed = os.fstat(fd)
+                  if not stat.S_ISREG(observed.st_mode) or observed.st_uid != owner or stat.S_IMODE(observed.st_mode) & 0o077:
+                      raise ValueError('invalid private namespace probe log')
+                  return os.read(fd, 4097).decode('ascii')
+              finally: os.close(fd)
+          def verify_maps(text, uid, gid):
+              header, separator, body = text.partition('\n')
+              captured = re.fullmatch(r'aeontra-capture bytes_seen=([0-9]+) bytes_dropped=0 bytes_retained=([0-9]+)', header)
+              if (len(text) > 4096 or not captured or not separator or
+                      int(captured[1]) != len(body) or int(captured[2]) != len(body)):
+                  raise ValueError('incomplete namespace probe capture')
+              if uid <= 0 or gid <= 0 or not body.startswith('uid\n') or body.count('gid\n') != 1:
+                  raise ValueError('invalid namespace map output')
+              user_map, group_map = body[4:].split('gid\n')
+              for body, identity in ((user_map, uid), (group_map, gid)):
+                  rows = [list(map(int, line.split())) for line in body.splitlines()]
+                  if (len(rows) != 2 or rows[0] != [0, identity, 1] or len(rows[1]) != 3 or
+                          rows[1][0] != 1 or rows[1][1] < 100000 or rows[1][2] != 262144 or
+                          rows[1][1] + rows[1][2] >= 4294967295 or
+                          rows[1][1] <= identity < rows[1][1] + rows[1][2]):
+                      raise ValueError('nested subordinate namespace capacity or identity mismatch')
+          if __name__ == '__main__':
+              text = read_probe('/opt/aeontra-control/nested-idmap.log', 0)
+              account = pwd.getpwnam('aeontra-workload')
+              verify_maps(text, account.pw_uid, account.pw_gid)
+              print('Rootless subordinate UID/GID maps verified for nested allocation')
+          NESTED_IDMAP
           # Exercise image-to-volume xattr copying, not only workspace binds.
           sudo python3 /opt/aeontra-control/execute.py volume-copy docker run --rm --pull=never --network=none --read-only --memory 256m --pids-limit 64 --mount type=volume,dst=/tmp busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 sh -eu -c 'test "$(cat /sys/fs/cgroup/memory.max)" = 268435456; test "$(cat /sys/fs/cgroup/pids.max)" = 64; printf "%s\n" volume-copy-verified > /tmp/aeontra-proof; cat /tmp/aeontra-proof'
           sudo grep -Fx volume-copy-verified /opt/aeontra-control/volume-copy.log
@@ -711,7 +747,7 @@ jobs:
                   allowance -= cost
           # Fixed controller-owned logs only; failures before command execution
           # must remain observable. No glob, environment file or source input.
-          names = ('resources', 'acl-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'volume-copy',
+          names = ('resources', 'acl-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'nested-idmap', 'volume-copy',
                    'builder-export', 'cache-export', 'builder-remove',
                    'builder-import', 'cache-import', 'pinned-go', 'make')
           for name in names:
