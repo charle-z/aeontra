@@ -179,7 +179,18 @@ following active-test context. When distinct contexts exist, each receives up to
 8 KiB of complete lines within the same 16 KiB private sideband; a single context
 can use 16 KiB. Exact byte lengths frame the two sections, not log-authored markers.
 The first observation can be an expected negative fixture and does not establish
-the cause of failure. This fixed sideband is replaced on each command. Lines over
+the cause of failure.
+Independently, the command samples its first complete bounded Go failed-subtest
+marker (`--- FAIL: Test…/… (duration)`). The marker is stored separately from up to
+32 preceding and 16 following complete stdout lines. The preceding window is at
+most 4 KiB; the marker and surrounding sample together use at most 8 KiB. When a
+sample exists, the first observation and last panic each use at most 4 KiB within
+the unchanged 16 KiB private sideband. Exact byte lengths frame every section.
+The sample is not an integration classifier or a representative failure claim.
+Surrounding stdout is explicitly unassociated: parallel tests may interleave,
+and an assertion or initialization error outside the bounded window is unavailable.
+A top-level failure without a subtest marker does not create this sample.
+This fixed sideband is replaced on each command. Lines over
 64 KiB and incomplete EOF lines are discarded rather than retaining credential
 fragments.
 A trusted final step reads only fixed controller-owned probe, daemon and command
@@ -189,8 +200,15 @@ For command logs, it scans at most the last 2 MiB of complete lines. It uses the
 bounded sideband when present, or that window's failure context for older logs,
 within one 4 KiB encoded context allowance. A dual sideband gives the first
 observation at most half that allowance, reserving the remainder for the last
-panic; legacy single-context sidebands remain readable. A separate 4 KiB encoded
-tail is selected from EOF backwards and emitted chronologically; JSON escaping and
+panic; legacy single-context sidebands remain readable. The 4 KiB encoded
+context division for a subtest sample gives the first observation at most 1 KiB,
+the sample at most 2 KiB, and the last-panic context the remaining allowance. The
+sample emits its marker before preceding/following text so nearby noise cannot
+consume the marker's allowance. Marker display is limited to 128 Unicode characters,
+with an explicit truncation annotation; the complete private marker is retained.
+Legacy single and dual sidebands remain readable.
+A separate 4 KiB encoded tail is selected from EOF backwards and emitted
+chronologically; JSON escaping and
 prefixes cannot displace the actual final lines. Earlier probe diagnostics leave
 this command allowance reserved. Arbitrary older log text remains unavailable;
 diagnostics never change the command outcome or attest acceptance.
