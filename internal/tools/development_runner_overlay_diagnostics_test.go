@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,7 +58,7 @@ func TestDevelopmentRunnerOverlayDiagnosticsStayOptionalAndBounded(t *testing.T)
 		}
 	}
 	probe := runnerACLScript(t, "OVERLAY_PROBE")
-	for _, required := range []string{"syscall.Mount", "redirect_dir=off", "userxattr", "syscall.Errno", "syscall.Unmount", "redirect_always_follow", "metacopy", "index", "os.ReadFile"} {
+	for _, required := range []string{"syscall.Mount", "redirect_dir=", "userxattr", "syscall.Errno", "syscall.Unmount", "redirect_always_follow", "metacopy", "index", "os.ReadFile"} {
 		if !strings.Contains(probe, required) {
 			t.Fatalf("missing overlay A/B evidence %q", required)
 		}
@@ -157,6 +158,56 @@ func TestDevelopmentRunnerOverlayProbeCompilesWithoutSourceDependencies(t *testi
 	command.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("fixed overlay probe does not compile: %v: %s", err, output)
+	}
+}
+
+func TestDevelopmentRunnerOverlayControlPreservesOriginalMounts(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux syscall fixture verified in WSL")
+	}
+	probe := runnerACLScript(t, "OVERLAY_PROBE")
+	if strings.Count(probe, "syscall.Mount(") != 1 {
+		t.Fatal("unexpected fixture mount surface")
+	}
+	probe = strings.Replace(probe, "syscall.Mount(", "recordMount(", 1)
+	probe += `
+func recordMount(source, target, fstype string, flags uintptr, options string) error {
+    emit(map[string]any{"mount_options": options})
+    return syscall.EPERM
+}
+`
+	directory := t.TempDir()
+	file := filepath.Join(directory, "probe.go")
+	if err := os.WriteFile(file, []byte(probe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "go", "run", file)
+	command.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GO111MODULE=off", "CGO_ENABLED=0")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("instrumented mount fixture failed: %v: %s", err, output)
+	}
+	var options []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		var record struct {
+			Options string `json:"mount_options"`
+		}
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("invalid fixture record: %v", err)
+		}
+		if record.Options != "" {
+			options = append(options, record.Options)
+		}
+	}
+	if len(options) != 3 {
+		t.Fatalf("need original A/B mounts plus one control, got %d", len(options))
+	}
+	for i, suffix := range []string{",redirect_dir=off", ",redirect_dir=off,userxattr", ",redirect_dir=nofollow,userxattr"} {
+		if !strings.HasSuffix(options[i], suffix) || strings.Count(options[i], "redirect_dir=") != 1 {
+			t.Fatalf("mount %d changed its exact options: %s", i, options[i])
+		}
 	}
 }
 

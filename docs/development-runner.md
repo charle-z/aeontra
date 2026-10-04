@@ -195,7 +195,9 @@ Calibration and failed Make executions also collect an optional, fixed overlay
 mount diagnostic before stopping the rootless daemon. A trusted static fixture
 runs in the existing rootless Docker namespace, with no network or CI credentials,
 a read-only root, 256 MiB/64 tasks and a fresh anonymous `/tmp` volume. It compares
-`redirect_dir=off` with and without `userxattr`, preserving syscall errno,
+`redirect_dir=off` with and without `userxattr`, plus a separate
+`redirect_dir=nofollow,userxattr` control. The original two mounts are unchanged.
+It preserves syscall errno,
 lower-file verification, unmount status, backing filesystem type and read-only
 kernel defaults. Manager PID/memory event counters bracket the experiment.
 Container creation and cleanup are each bounded to 5 seconds; execution to 30
@@ -205,6 +207,9 @@ A rejected optional mount is compatibility evidence only, not a failed general
 capability, accepted command or reason to alter host settings. Preparation,
 verification and cleanup failures remain failures. This fixture does not execute
 the upstream overlay helper or establish complete BuildKit acceptance.
+The additional control distinguishes an explicit redirect policy conflict from
+other restrictions; success does not attest the omitted-`userxattr` mount used
+by unchanged upstream tests. No kernel parameter is modified by the diagnostic.
 
 Fresh trusted probes require:
 
