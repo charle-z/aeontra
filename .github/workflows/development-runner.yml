@@ -382,13 +382,13 @@ jobs:
           )
           func emit(record map[string]any) { if err := json.NewEncoder(os.Stdout).Encode(record); err != nil { panic(err) } }
           func errno(err error) int { if code, ok := err.(syscall.Errno); ok { return int(code) }; if err != nil { return -1 }; return 0 }
-          func probe(root, mode, option string) error {
+          func probe(root, mode, redirect, option string) error {
               base := filepath.Join(root, mode)
               for _, name := range []string{"lower", "upper", "work", "merged"} {
                   if err := os.MkdirAll(filepath.Join(base, name), 0700); err != nil { return err }
               }
               if err := os.WriteFile(filepath.Join(base, "lower", "marker"), []byte("aeontra-overlay-marker"), 0600); err != nil { return err }
-              options := "lowerdir=" + filepath.Join(base, "lower") + ",upperdir=" + filepath.Join(base, "upper") + ",workdir=" + filepath.Join(base, "work") + ",redirect_dir=off" + option
+              options := "lowerdir=" + filepath.Join(base, "lower") + ",upperdir=" + filepath.Join(base, "upper") + ",workdir=" + filepath.Join(base, "work") + ",redirect_dir=" + redirect + option
               target := filepath.Join(base, "merged")
               mountErr := syscall.Mount("overlay", target, "overlay", 0, options)
               if mountErr != nil {
@@ -418,8 +418,11 @@ jobs:
               emit(map[string]any{"tmp_filesystem_type": fmt.Sprintf("0x%x", fs.Type)})
               root, err := os.MkdirTemp("/tmp", "aeontra-overlay-")
               if err != nil { panic(err) }
-              for _, item := range []struct{ mode, option string }{{"default", ""}, {"userxattr", ",userxattr"}} {
-                  if err := probe(root, item.mode, item.option); err != nil { panic(err) }
+              for _, item := range []struct{ mode, redirect, option string }{
+                  {"default", "off", ""}, {"userxattr", "off", ",userxattr"},
+                  {"nofollow-userxattr", "nofollow", ",userxattr"},
+              } {
+                  if err := probe(root, item.mode, item.redirect, item.option); err != nil { panic(err) }
               }
               if err := os.RemoveAll(root); err != nil { panic(err) }
           }
