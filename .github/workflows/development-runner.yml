@@ -186,6 +186,139 @@ jobs:
                    '--exec-root=/home/aeontra-workload/runtime/dockerd'])
           ROOTLESS_CHILD
           sudo chmod 0755 /opt/aeontra-bin/rootless-child.py
+          # Docker inspect has no raw ACL reader. This fixed diagnostic reads
+          # only workload storage and one read-only image subpath; it never
+          # executes an image's binaries or supplies receipt evidence.
+          sudo tee /opt/aeontra-bin/runner-acl-diagnostics.py >/dev/null <<'ACL_DIAGNOSTICS'
+          #!/usr/bin/python3
+          import errno, json, os, pwd, re, stat, struct, subprocess, sys
+          budget = 3800
+          def emit(value):
+              global budget
+              line = json.dumps(value, separators=(',', ':'), ensure_ascii=True)
+              if len(line) > 1000:
+                  line = '{"diagnostic_error":"oversized diagnostic record"}'
+              if len(line) + 1 <= budget:
+                  print(line, flush=True)
+                  budget -= len(line) + 1
+          def decode_acl(raw):
+              if len(raw) < 4 or len(raw) > 256 or (len(raw) - 4) % 8 or struct.unpack_from('<I', raw)[0] != 2:
+                  raise ValueError('invalid or oversized ACL')
+              tags = {1: 'owner', 2: 'user', 4: 'group_owner', 8: 'group', 16: 'mask', 32: 'other'}
+              entries = []
+              for offset in range(4, len(raw), 8):
+                  tag, perm, identifier = struct.unpack_from('<HHI', raw, offset)
+                  if tag not in tags or perm > 7:
+                      raise ValueError('invalid ACL entry')
+                  entries.append([tags[tag], identifier if tag in (2, 8) else None, perm])
+              return {'raw_hex': raw.hex(), 'entries': entries,
+                      'unmapped_named_id': any(entry[0] in ('user', 'group') and entry[1] == 4294967295 for entry in entries)}
+          def read_map(path):
+              with open(path) as source:
+                  data = source.read(4097)
+              if len(data) > 4096:
+                  raise ValueError('oversized namespace map')
+              mappings = [list(map(int, line.split())) for line in data.splitlines()]
+              if not mappings or any(len(row) != 3 or min(row) < 0 or row[2] == 0 for row in mappings):
+                  raise ValueError('invalid namespace map')
+              return mappings
+          def inspect_fd(fd, label, require_owner=True):
+              observed = os.fstat(fd)
+              if not stat.S_ISDIR(observed.st_mode) or (require_owner and observed.st_uid != os.getuid()):
+                  raise ValueError('diagnostic directory ownership mismatch')
+              emit({'directory': label, 'uid': observed.st_uid, 'gid': observed.st_gid, 'mode': oct(stat.S_IMODE(observed.st_mode))})
+              for name in ('system.posix_acl_access', 'system.posix_acl_default'):
+                  try:
+                      raw = os.getxattr(fd, name)
+                      emit({'directory': label, 'xattr': name, **decode_acl(raw)})
+                  except OSError as error:
+                      emit({'directory': label, 'xattr': name, 'errno': error.errno})
+                      if error.errno not in (errno.ENODATA, errno.ENOTSUP):
+                          raise
+                  except ValueError:
+                      emit({'directory': label, 'xattr': name, 'error': 'invalid or oversized ACL'})
+                      raise
+          def inspect_storage():
+              # Walk every component without following a workload-supplied link.
+              fd = os.open('/home', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+              try:
+                  for name, label in (('aeontra-workload', 'workload-home'), ('docker', 'docker-data-root')):
+                      child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                      os.close(fd)
+                      fd = child
+                      inspect_fd(fd, label)
+              finally:
+                  os.close(fd)
+          def docker(*argv):
+              result = subprocess.run(['/opt/aeontra-bin/docker', *argv], capture_output=True, timeout=10)
+              if result.returncode or len(result.stdout) > 16384:
+                  emit({'docker_diagnostic': argv[0], 'exit_code': result.returncode, 'stdout_bytes': len(result.stdout)})
+                  raise RuntimeError('bounded Docker diagnostic unavailable')
+              return result.stdout.decode('utf-8', errors='strict').strip()
+          def reader(pid, initial_namespace):
+              mappings = read_map('/proc/self/uid_map')
+              namespace = os.stat('/proc/self/ns/user').st_ino
+              if namespace == initial_namespace or namespace != os.stat('/proc/' + str(pid) + '/ns/user').st_ino:
+                  raise ValueError('reader did not enter the holder namespace')
+              emit({'reader': 'image-tmp-rootless', 'uid_map': mappings, 'gid_map': read_map('/proc/self/gid_map')})
+              # This is the kernel root reference of our fixed BusyBox holder,
+              # not a repository-supplied path. The final image directory may
+              # not be a symlink. nsenter itself runs only as the workload UID.
+              fd = os.open('/proc/' + str(pid) + '/root/image-tmp', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+              try:
+                  inspect_fd(fd, 'buildkit-tests-tmp-rootless', require_owner=False)
+              finally:
+                  os.close(fd)
+          def main():
+              if len(sys.argv) == 4 and sys.argv[1] == '--reader' and sys.argv[2].isdigit() and sys.argv[3].isdigit():
+                  reader(int(sys.argv[2]), int(sys.argv[3]))
+                  return
+              if len(sys.argv) != 1 or os.getuid() != pwd.getpwnam('aeontra-workload').pw_uid or os.getuid() == 0:
+                  raise ValueError('diagnostic must run as workload')
+              emit({'reader': 'workload', 'uid_map': read_map('/proc/self/uid_map'), 'gid_map': read_map('/proc/self/gid_map')})
+              inspect_storage()
+              info_format = '{"server_version":{{json .ServerVersion}},"driver":{{json .Driver}},"driver_status":{{json .DriverStatus}},"kernel":{{json .KernelVersion}},"cgroup_driver":{{json .CgroupDriver}},"security_options":{{json .SecurityOptions}}}'
+              emit({'docker_info': json.loads(docker('info', '--format', info_format))})
+              image = docker('image', 'inspect', 'buildkit-tests', '--format', '{{.Id}}')
+              if not re.fullmatch(r'sha256:[a-f0-9]{64}', image):
+                  raise ValueError('invalid diagnostic image identity')
+              emit({'image': image})
+              cid = docker('run', '--detach', '--rm', '--pull=never', '--network=none', '--read-only', '--memory=64m', '--pids-limit=16', '--user=0:0',
+                  '--mount', 'type=image,src=' + image + ',dst=/image-tmp,image-subpath=tmp',
+                  'busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0', '/bin/sleep', '45')
+              if not re.fullmatch(r'[a-f0-9]{64}', cid):
+                  raise ValueError('invalid diagnostic holder identity')
+              try:
+                  pid_text = docker('inspect', '--format', '{{.State.Pid}}', cid)
+                  if not pid_text.isdigit() or int(pid_text) <= 0:
+                      raise ValueError('invalid diagnostic holder process')
+                  pid = int(pid_text)
+                  with open('/proc/' + str(pid) + '/status') as status:
+                      owner = next((int(line.split()[1]) for line in status if line.startswith('Uid:')), None)
+                  if owner != os.getuid():
+                      raise ValueError('diagnostic holder ownership mismatch')
+                  fd = os.open('/proc/' + str(pid) + '/root/image-tmp', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                  try:
+                      inspect_fd(fd, 'buildkit-tests-tmp-initial', require_owner=False)
+                  finally:
+                      os.close(fd)
+                  initial_namespace = os.stat('/proc/self/ns/user').st_ino
+                  result = subprocess.run(['/usr/bin/nsenter', '--target', str(pid), '--user', '--preserve-credentials', '--',
+                      '/usr/bin/python3', '/opt/aeontra-bin/runner-acl-diagnostics.py', '--reader', str(pid), str(initial_namespace)], capture_output=True, timeout=10)
+                  if result.returncode or len(result.stdout) > 3800:
+                      raise RuntimeError('rootless ACL reader unavailable')
+                  for line in result.stdout.decode('utf-8', errors='strict').splitlines():
+                      emit(json.loads(line))
+              finally:
+                  docker('rm', '--force', cid)
+          if __name__ == '__main__':
+              try:
+                  main()
+              except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                  emit({'diagnostic_error': type(error).__name__, 'errno': getattr(error, 'errno', None)})
+                  raise SystemExit(1)
+          ACL_DIAGNOSTICS
+          sudo chmod 0755 /opt/aeontra-bin/runner-acl-diagnostics.py
           workload_uid="$(id -u aeontra-workload)"
           # Bound the manager ancestor, including Docker's sibling scopes.
           sudo install -d -m 0755 "/etc/systemd/system/user@${workload_uid}.service.d"
@@ -226,20 +359,27 @@ jobs:
                  'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/' + str(workload_uid) + '/bus',
                  'DOCKER_CONFIG': '/home/aeontra-workload/.docker', 'GITHUB_ACTIONS': 'true',
                  'GOTOOLCHAIN': 'local', 'GOENV': 'off'}
-          env.update(json.load(open('/opt/aeontra-control/ci.json')))
+          diagnostic = sys.argv[2] == 'acl-diagnostics'
+          if diagnostic:
+              if sys.argv[1:] != ['acl-diagnostics', 'acl-diagnostics']:
+                  raise ValueError('invalid fixed diagnostic invocation')
+              env.pop('GITHUB_ACTIONS')
+          else:
+              env.update(json.load(open('/opt/aeontra-control/ci.json')))
           with open('/opt/aeontra-control/runtime.env', 'w') as f:
               for key, value in env.items():
                   if '\n' in value or '\r' in value: raise ValueError('invalid private environment')
                   f.write(key + '=' + '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"\n')
           os.chmod('/opt/aeontra-control/runtime.env', 0o600)
-          executable = {'docker': '/opt/aeontra-bin/docker', 'go': '/opt/aeontra-go/bin/go', 'make': '/usr/bin/make'}.get(sys.argv[2])
+          executable = {'docker': '/opt/aeontra-bin/docker', 'go': '/opt/aeontra-go/bin/go', 'make': '/usr/bin/make',
+                        'acl-diagnostics': '/opt/aeontra-bin/runner-acl-diagnostics.py'}.get(sys.argv[2])
           if not executable: raise ValueError('unregistered executable')
           with open('/opt/aeontra-control/' + sys.argv[1] + '.log', 'wb') as log:
               argv = ['/usr/bin/systemd-run', '--quiet', '--wait', '--pipe', '--collect',
                       '--unit=aeontra-' + sys.argv[1], '--service-type=exec',
                       '-p', 'User=aeontra-workload', '-p', 'Group=aeontra-workload',
                       '-p', 'Delegate=yes', '-p', 'KillMode=control-group', '-p', 'MemoryMax=10G',
-                      '-p', 'TasksMax=4096', '-p', 'RuntimeMaxSec=4200',
+                      '-p', 'TasksMax=4096', '-p', 'RuntimeMaxSec=' + ('60' if diagnostic else '4200'),
                       '-p', 'EnvironmentFile=/opt/aeontra-control/runtime.env',
                       '--working-directory=/home/aeontra-workload/source', executable] + sys.argv[3:]
               child = subprocess.Popen(argv, env={'PATH': '/usr/bin:/bin'},
@@ -377,6 +517,7 @@ jobs:
           sudo python3 /opt/aeontra-control/execute.py make make --version
 
       - name: Execute exact profile
+        id: exact-command
         shell: bash
         run: |
           set -euo pipefail
@@ -386,6 +527,13 @@ jobs:
             go-test-all) sudo python3 /opt/aeontra-control/execute.py command go test ./... -count=1 ;;
             *) exit 1 ;;
           esac
+
+      - name: Inspect rootless storage ACL after exact make failure
+        if: ${{ !cancelled() && steps.exact-command.outcome == 'failure' && inputs.command_profile == 'make-validate-all' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo python3 /opt/aeontra-control/execute.py acl-diagnostics acl-diagnostics
 
       - name: Bind trusted receipt
         shell: bash
@@ -414,7 +562,9 @@ jobs:
           if not os.path.exists(directory + 'ci.json'):
               raise SystemExit(0)
           values = json.load(open(directory + 'ci.json'))
-          secrets = sorted((value for value in values.values() if isinstance(value, str) and value), key=len, reverse=True)
+          public_metadata = {'GITHUB_REF', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT'}
+          secrets = sorted((value for key, value in values.items() if key not in public_metadata
+                            and isinstance(value, str) and value), key=len, reverse=True)
           # Reserve room for one fixed capture/open error without exceeding
           # the total encoded-output ceiling.
           budget = (16 << 10) - 256
@@ -423,7 +573,7 @@ jobs:
               raise SystemExit(1)
           # Fixed controller-owned logs only; failures before command execution
           # must remain observable. No glob, environment file or source input.
-          names = ('command', 'rootless-service', 'docker-info', 'workspace-bind',
+          names = ('acl-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind',
                    'builder-export', 'cache-export', 'builder-remove',
                    'builder-import', 'cache-import', 'pinned-go', 'make')
           for name in names:

@@ -128,6 +128,14 @@ control characters and redacting every staged CI credential value before output.
 Probe errors remain visible even when no command was started. Full private logs
 are discarded with the VM; diagnostics do not recover source bytes or authorize
 a retry.
+After an exact `make validate-all` failure, a fixed workload-UID diagnostic can
+read numeric ACLs and namespace maps from its Docker storage and a read-only image
+subpath. A pinned, bounded holder runs no binaries from the inspected image and
+receives no CI credentials or network. The diagnostic cannot alter image ACLs,
+change the storage driver, suppress the command failure or attest success.
+All emitted fields remain bounded untrusted diagnostics. Known public GitHub
+repository/ref/run metadata is not a credential; CI secrets and unknown staged
+values remain redacted without corrupting numeric ACL evidence.
 
 Fresh trusted probes require:
 
