@@ -1,9 +1,10 @@
 # Isolated development runner
 
-Status: validation pending. The private broker and workflow are implemented;
-unit tests are not evidence that a GitHub-hosted VM completed calibration or a
-repository's complete workflow. Source, deployment and Edge acceptance remain
-separate facts.
+Status: implemented. Enable the administrator-pinned profile explicitly and
+validate each registered template and exact repository command as described
+below. Unit and package tests do not establish acceptance on another VM or Edge.
+Record source, deployment, device and command acceptance separately for each
+installation.
 
 This runner owns one disposable GitHub-hosted Ubuntu 24.04 VM per execution. It
 uses the existing source broker's GitHub credential, the existing workqueue
