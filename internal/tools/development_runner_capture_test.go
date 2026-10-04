@@ -70,6 +70,111 @@ print('fixture passed')
 	runRunnerACLFixture(t, "", program)
 }
 
+func TestDevelopmentRunnerCaptureFailedSubtest(t *testing.T) {
+	program := "import io\n" + runnerOutputCaptureScript(t) + `
+for before, after in ((b'    case_test.go:42: initialization assertion private-token\n', b''), (b'', b'    case_test.go:42: initialization assertion private-token\n')):
+    marker = b'    --- FAIL: TestMatrix/case/worker=example (0.01s)\n'
+    body = b'error: unrelated first failure\n' + (b'ordinary output ' + b'z' * 256 + b'\n') * 65536
+    body += b'=== NAME  TestOther/case\n' + before + marker + after
+    body += b'--- FAIL: TestMatrix (1.00s)\n' + (b'ordinary output ' + b'z' * 256 + b'\n') * 65536
+    body += b'panic: test timed out after 10m0s\n\trunning tests:\n\tTestActive (10m0s)\n'
+    body += (b'goroutine stack ' + b'z' * 256 + b'\n') * 8192 + b'DONE final summary\nmake: exit 2\n'
+    output, critical = io.BytesIO(), io.BytesIO()
+    capture_output(io.BytesIO(body), output, critical)
+    data = critical.getvalue()
+    assert len(data) <= (16 << 10) + 256
+    assert b'reason=subtest' in data and marker in data
+    assert b'initialization assertion private-token' in data
+    assert b'=== NAME  TestOther/case' in data
+    assert b'unrelated first failure' in data and b'TestActive (10m0s)' in data
+    assert b'initialization assertion' not in output.getvalue()
+    assert output.getvalue().endswith(b'make: exit 2\n')
+# Freeze the first complete bounded subtest marker, not its later parent/sibling.
+safe = io.BytesIO()
+capture_output(io.BytesIO(b'--- FAIL: TestPlain (0.01s)\n    plain_test.go:1: post-marker detail\n    --- FAIL: TestAny/first (0.01s)\n    --- FAIL: TestAny/second (0.01s)\n'), io.BytesIO(), safe)
+assert b'subtest_marker_bytes=' in safe.getvalue()
+header, body = safe.getvalue().split(b'\n', 1)
+fields = dict(item.split(b'=', 1) for item in header.split()[1:])
+start = int(fields[b'first_bytes'])
+marker = body[start:start + int(fields[b'subtest_marker_bytes'])]
+assert marker == b'    --- FAIL: TestAny/first (0.01s)\n'
+# A partial marker at EOF and an overlong preceding line must not be preserved.
+safe = io.BytesIO()
+capture_output(io.BytesIO(b'private-prefix' + b'p' * 65536 + b'private-suffix\n    --- FAIL: TestAny/safe (0.01s)\n--- FAIL: TestAny/incomplete'), io.BytesIO(), safe)
+assert b'private-' not in safe.getvalue() and b'incomplete' not in safe.getvalue()
+class SplitStream:
+    def __init__(self, chunks): self.chunks = iter(chunks)
+    def read(self, limit): return next(self.chunks, b'')
+safe = io.BytesIO()
+capture_output(SplitStream([b'    case_test.go:42: before split\n    --- FA', b'IL: TestAny/split (0.01s)\n']), io.BytesIO(), safe)
+assert b'case_test.go:42: before split' in safe.getvalue() and b'TestAny/split' in safe.getvalue()
+class BrokenStream:
+    def __init__(self): self.calls = 0
+    def read(self, limit):
+        self.calls += 1
+        if self.calls == 1: return b'    --- FAIL: TestAny/readfailure (0.01s)\n'
+        raise OSError('fixture failure')
+safe = io.BytesIO()
+try: capture_output(BrokenStream(), io.BytesIO(), safe)
+except OSError: pass
+else: raise AssertionError('read failure suppressed')
+assert b'TestAny/readfailure' in safe.getvalue()
+safe = io.BytesIO()
+capture_output(io.BytesIO(b'preceding ' + b'p' * 4000 + b'\n    --- FAIL: TestAny/bounded (0.01s)\n' + b'following ' + b'p' * 4000 + b'\n'), io.BytesIO(), safe)
+assert b'TestAny/bounded' in safe.getvalue() and len(safe.getvalue()) <= (16 << 10) + 256
+print('fixture passed')
+`
+	runRunnerACLFixture(t, "", program)
+}
+
+func TestDevelopmentRunnerFailedSubtestEvidenceEndToEnd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux capture and renderer are verified in WSL")
+	}
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "ci.json"), []byte(`{"ACTIONS_RUNTIME_TOKEN":"private-token"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	program := "import io\n" + runnerOutputCaptureScript(t) + fmt.Sprintf(`
+body = b'error: unrelated first failure private-token\n' + b'first noisy context\n' * 150
+body += b'=== NAME  TestOther/case\n    case_test.go:42: initialization assertion private-token\n    --- FAIL: TestMatrix/case (0.01s)\n'
+body += b'following noisy context\n' * 150
+body += b'panic: actual timeout private-token\n\trunning tests:\n\tTestActive (10m0s)\n'
+body += (b'goroutine stack ' + b'z' * 256 + b'\n') * 65536
+body += (b'EOF-noise "\\\t\x01\n') * 1200 + b'DONE final summary\nmake: exit 2\n'
+with open(%q, 'wb') as output, open(%q, 'wb') as critical:
+    capture_output(io.BytesIO(body), output, critical)
+print('fixture passed')
+`, filepath.ToSlash(filepath.Join(directory, "command.log")), filepath.ToSlash(filepath.Join(directory, "command-context.log")))
+	runRunnerACLFixture(t, "", program)
+	output, err := runRunnerDiagnostics(t, directory)
+	for _, expected := range []string{"unrelated first failure [REDACTED]", "TestMatrix/case", "surrounding-stdout-unassociated", "initialization assertion [REDACTED]", "actual timeout [REDACTED]", "TestActive", "DONE final summary", "make: exit 2"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("subtest evidence missing %q: err=%v bytes=%d: %s", expected, err, len(output), output)
+		}
+	}
+	if err != nil || strings.Contains(output, "private-token") || strings.Contains(output, "\x01") || len(output) > 16<<10 {
+		t.Fatalf("subtest evidence unsafe: err=%v bytes=%d: %s", err, len(output), output)
+	}
+	contextBytes, tailBytes, inTail := 0, 0, false
+	for _, line := range strings.Split(strings.TrimSuffix(output, "\n"), "\n") {
+		if !strings.HasPrefix(line, "aeontra-untrusted-log command ") || strings.Contains(line, "aeontra-capture bytes_seen=") {
+			continue
+		}
+		if strings.Contains(line, "EOF-noise") {
+			inTail = true
+		}
+		if inTail {
+			tailBytes += len(line) + 1
+		} else {
+			contextBytes += len(line) + 1
+		}
+	}
+	if contextBytes > 4<<10 || tailBytes > 4<<10 || !inTail {
+		t.Fatalf("triple encoded allowances exceeded: context=%d tail=%d", contextBytes, tailBytes)
+	}
+}
+
 func TestDevelopmentRunnerContextReplacedBeforeLaunch(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
 	if err != nil {
