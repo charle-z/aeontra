@@ -593,10 +593,23 @@ jobs:
                              (seen, seen - len(data), len(data))).encode('ascii'))
                   log.write(data)
                   if critical_log is not None:
-                      context = b''.join(panic if panic is not None else first or [])
-                      reason = 'panic' if panic is not None else 'failure' if first is not None else 'none'
-                      critical_log.write(('aeontra-context reason=%s bytes_retained=%d oversize_lines=%d\n' %
-                                          (reason, len(context), oversized)).encode('ascii'))
+                      if first is not None and panic is not None and first != panic:
+                          def bounded_context(lines):
+                              selected, size = [], 0
+                              for line in lines:
+                                  if size + len(line) <= (8 << 10):
+                                      selected.append(line); size += len(line)
+                              return b''.join(selected)
+                          observed, last_panic = bounded_context(first), bounded_context(panic)
+                          context = observed + last_panic
+                          header = ('aeontra-context reason=both first_bytes=%d panic_bytes=%d bytes_retained=%d oversize_lines=%d\n' %
+                                    (len(observed), len(last_panic), len(context), oversized))
+                      else:
+                          context = b''.join(panic if panic is not None else first or [])
+                          reason = 'panic' if panic is not None else 'failure' if first is not None else 'none'
+                          header = ('aeontra-context reason=%s bytes_retained=%d oversize_lines=%d\n' %
+                                    (reason, len(context), oversized))
+                      critical_log.write(header.encode('ascii'))
                       critical_log.write(context)
           workload_uid = pwd.getpwnam('aeontra-workload').pw_uid
           env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin',
@@ -950,7 +963,7 @@ jobs:
               try:
                   fd = os.open(directory + 'command-context.log', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
               except FileNotFoundError:
-                  return []
+                  return None
               except OSError:
                   invalid_log()
               with os.fdopen(fd, 'rb') as log:
@@ -958,11 +971,30 @@ jobs:
                       invalid_log()
                   raw = log.read((16 << 10) + 257)
               if len(raw) > (16 << 10) + 256: invalid_log()
+              header, _, body = raw.partition(b'\n')
+              if header.startswith(b'aeontra-context reason=both'):
+                  match = re.fullmatch(rb'aeontra-context reason=both first_bytes=([0-9]{1,20}) panic_bytes=([0-9]{1,20}) bytes_retained=([0-9]{1,20}) oversize_lines=[0-9]{1,20}', header)
+                  if not match: invalid_log()
+                  first_bytes, panic_bytes, retained = (int(value) for value in match.groups())
+                  if first_bytes > (8 << 10) or panic_bytes > (8 << 10) or first_bytes + panic_bytes != retained or retained != len(body):
+                      invalid_log()
+                  if not retained: return None
+                  first, panic = body[:first_bytes], body[first_bytes:]
+                  if (first and not first.endswith(b'\n')) or (panic and not panic.endswith(b'\n')):
+                      invalid_log()
+                  def redacted_lines(value):
+                      text = value.decode('utf-8', errors='replace')
+                      for secret in secrets: text = text.replace(secret, '[REDACTED]')
+                      return text.splitlines()
+                  # Byte lengths, not untrusted section-like log markers, frame
+                  # the observed first failure and independently bounded panic.
+                  return (['aeontra-context first-observed-failure'] + redacted_lines(first),
+                          redacted_lines(header) + ['aeontra-context last-panic'] + redacted_lines(panic))
               raw, _, _ = raw.rpartition(b'\n')
               text = raw.decode('utf-8', errors='replace')
               for value in secrets: text = text.replace(value, '[REDACTED]')
               lines = text.splitlines()
-              return lines if len(lines) > 1 else []
+              return ([], lines) if len(lines) > 1 else None
           # Fixed controller-owned logs only; failures before command execution
           # must remain observable. No glob, environment file or source input.
           names = ('resources', 'acl-diagnostics', 'overlay-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'nested-idmap', 'volume-copy',
@@ -1015,14 +1047,20 @@ jobs:
                   if panic is not None:
                       context = lines[panic:panic + 32]
                   critical = critical_context()
-                  if critical: context = critical
+                  observed = []
+                  if critical: observed, context = critical
                   # Discard a partial tail line before emitting it as well.
                   tail = data[-4096:]
                   if len(data) > 4096:
                       _, _, tail = tail.partition('\n')
                   selected = encoded_tail(name, tail.splitlines(), 4 << 10)
                   reserved = sum(len(line) + 1 for line in selected)
-                  emit_lines(name, context, min(4 << 10, max(0, budget - reserved)))
+                  allowance = min(4 << 10, max(0, budget - reserved))
+                  if observed:
+                      before = budget
+                      emit_lines(name, observed, allowance // 2)
+                      allowance -= before - budget
+                  emit_lines(name, context, allowance)
                   emit_encoded(selected)
                   command_reserved = 0
               else:
